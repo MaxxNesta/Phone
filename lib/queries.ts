@@ -9,11 +9,13 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   default_lead_time_days: number;
   /** Which package this company is on. Read by lib/plans.ts to decide what
    *  is offered — never to decide what may be posted. */
-  plan: Plan };
+  plan: Plan;
+  /** Counter retail (the default here) or the trading flow — 0117. */
+  retail_mode: boolean };
 
 export async function getCompany(): Promise<Company | null> {
   const rows = await sql<Company[]>`
-    select id, code, name, name_my, base_currency, default_lead_time_days, plan
+    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode
       from company order by created_at limit 1`;
   return rows[0] ?? null;
 }

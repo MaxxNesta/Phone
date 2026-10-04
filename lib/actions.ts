@@ -10,11 +10,12 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
   from "./import-vouchers";
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines } from "./queries";
 import { scaffoldCompany } from "./setup";
+import { requirePermission, requireUser } from "./auth";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
 import { asRegion } from "./regions";
 import {
-  postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postPurchaseWithReceipt,
+  postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postRetailSale, postPurchaseWithReceipt,
   postCreditNote, postDebitNote,
   postSalesOrder, postPurchaseOrder, postDelivery, postGoodsReceipt,
   postSupplierPayment, postCustomerReceipt,
@@ -60,6 +61,15 @@ function dateTime(fd: FormData, dateKey: string, timeKey: string): string {
   const date = str(fd, dateKey);
   const time = str(fd, timeKey);
   return time ? `${date}T${time}` : date;
+}
+
+/** A month count from a form, or null when left blank. */
+function months(fd: FormData, key: string): number | null {
+  const v = String(fd.get(key) ?? "").trim();
+  if (v === "") return null;
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n) || n < 0 || n > 120) throw new Error("Warranty must be 0 to 120 months");
+  return n;
 }
 
 async function companyId(): Promise<string> {
@@ -110,6 +120,11 @@ export async function setupCompany(_prev: unknown, fd: FormData): Promise<Action
   const toastMsg = "Company set up";
 
   try {
+    // Public, because it runs before anyone can sign in — so it works exactly
+    // once. One database serves one business.
+    const [exists] = await sql`select 1 as yes from company limit 1`;
+    if (exists) return { error: "This database already has a company." };
+
     const name = str(fd, "name");
     const code = str(fd, "code").toUpperCase();
     const month = num(fd, "fiscal_year_start_month");
@@ -146,6 +161,7 @@ export async function companyExists(): Promise<boolean> {
 // --------------------------------------------------------------- partners --
 
 export async function createPartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   const toastMsg = "Partner added";
   const code = str(fd, "code").toUpperCase();
 
@@ -206,6 +222,7 @@ function listPath(fd: FormData): string {
 }
 
 export async function updatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   const toastMsg = "Partner updated";
   const code = str(fd, "code").toUpperCase();
 
@@ -257,6 +274,7 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
 
 /** Deactivates a partner without touching any document already against them. */
 export async function deactivatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -274,6 +292,7 @@ export async function deactivatePartner(_prev: unknown, fd: FormData): Promise<A
 /** Puts back what deactivatePartner retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -290,6 +309,7 @@ export async function activatePartner(_prev: unknown, fd: FormData): Promise<Act
 
 /** Hard delete only succeeds for a partner with no documents against them. Deactivating is the way to retire one. */
 export async function deletePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -310,6 +330,7 @@ export async function deletePartner(_prev: unknown, fd: FormData): Promise<Actio
 // ------------------------------------------------------ categories & items --
 
 export async function createCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   let returnTo: string | null = null;
   let composedCode: string | null = null;
   const toastMsg = "Category added";
@@ -369,6 +390,7 @@ export async function createCategory(_prev: unknown, fd: FormData): Promise<Acti
  * "fix a typo" / "retire it" edit, not a restructure.
  */
 export async function updateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const toastMsg = "Category updated";
   const returnTo = str(fd, "return_to") || "/items/categories";
   const id = str(fd, "id");
@@ -396,6 +418,7 @@ export async function updateCategory(_prev: unknown, fd: FormData): Promise<Acti
 
 /** Deactivates a category without touching any item or sub category already filed under it. */
 export async function deactivateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const returnTo = str(fd, "return_to") || "/items/categories";
   const id = str(fd, "id");
 
@@ -416,6 +439,7 @@ export async function deactivateCategory(_prev: unknown, fd: FormData): Promise<
 /** Puts back what deactivateCategory retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const returnTo = str(fd, "return_to") || "/items/categories";
 
   try {
@@ -439,6 +463,7 @@ export async function activateCategory(_prev: unknown, fd: FormData): Promise<Ac
  * has history.
  */
 export async function deleteCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const returnTo = str(fd, "return_to") || "/items/categories";
 
   try {
@@ -465,6 +490,7 @@ export async function deleteCategory(_prev: unknown, fd: FormData): Promise<Acti
  * target rather than off its parent.
  */
 export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const toastMsg = "Category inserted";
 
   try {
@@ -516,6 +542,7 @@ export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise
 
 /** Re-parents a category. Refuses moves that would make the tree cyclic. */
 export async function moveCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
 
@@ -569,6 +596,7 @@ export async function moveCategory(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function createItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   let returnTo: string | null = null;
   let fullCode: string | null = null;
   const toastMsg = "Item added";
@@ -668,14 +696,16 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       const [item] = await tx`
         insert into item
           (company_id, item_group_id, brand_id, serial, code, name, name_my, base_uom_id, is_stocked,
-           tracks_batch, tracks_expiry)
+           tracks_batch, tracks_expiry, tracks_serial, warranty_months, supplier_warranty_months)
         values
           (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${name}, ${str(fd, "name_my") || null},
            ${uomId}, ${fd.get("is_stocked") !== null},
            -- Expiry without batches is a date attached to nothing, so the
            -- second is only honoured when the first is on.
            ${fd.get("tracks_batch") !== null},
-           ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null})
+           ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
+           ${fd.get("tracks_serial") !== null}, ${months(fd, "warranty_months")},
+           ${months(fd, "supplier_warranty_months")})
         returning id`;
 
       for (const p of newPacks) {
@@ -751,13 +781,15 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
             insert into item
               (company_id, item_group_id, parent_item_id, serial, name, name_my,
                base_uom_id, valuation_method, is_stocked, brand_id,
-               tracks_batch, tracks_expiry)
+               tracks_batch, tracks_expiry, tracks_serial, warranty_months, supplier_warranty_months)
             values
               (${co}, ${groupId}, ${item.id}, ${serial + "-" + suffix},
                ${name + " " + label}, ${nameMy ? nameMy + " " + label : null},
                ${uomId}, 'FIFO', ${fd.get("is_stocked") !== null}, ${brandId},
                ${fd.get("tracks_batch") !== null},
-               ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null})
+               ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
+               ${fd.get("tracks_serial") !== null}, ${months(fd, "warranty_months")},
+               ${months(fd, "supplier_warranty_months")})
             returning id`;
           for (const id of combo) {
             await tx`insert into item_variant_option (item_id, option_id)
@@ -803,6 +835,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
  * rarer operation than this quick edit is for.
  */
 export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const toastMsg = "Item updated";
 
   try {
@@ -911,6 +944,7 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
 /** Deactivates an item without touching any document or stock history against it. */
 export async function deactivateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -929,6 +963,7 @@ export async function deactivateItem(_prev: unknown, fd: FormData): Promise<Acti
 /** Puts back what deactivateItem retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -946,6 +981,7 @@ export async function activateItem(_prev: unknown, fd: FormData): Promise<Action
 
 /** Hard delete only succeeds for an item nothing has ever touched. Deactivating is the way to retire one. */
 export async function deleteItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1017,11 +1053,13 @@ async function postNote(
 
 /** The customer owes less, and no goods came back. */
 export async function createCreditNote(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.return");
   return postNote("CREDIT_NOTE", fd);
 }
 
 /** We owe the supplier less, and no goods went back. */
 export async function createDebitNote(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   return postNote("DEBIT_NOTE", fd);
 }
 
@@ -1033,6 +1071,7 @@ export async function createDebitNote(_prev: unknown, fd: FormData): Promise<Act
 // up with one code pointing at a deleted account.
 
 export async function createTaxCode(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -1074,6 +1113,7 @@ export async function createTaxCode(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function updateTaxCode(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -1115,6 +1155,7 @@ export async function updateTaxCode(_prev: unknown, fd: FormData): Promise<Actio
  * posted, since the tax on those lines was written when they posted.
  */
 export async function addTaxRate(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "tax_code_id");
@@ -1168,6 +1209,7 @@ export async function addTaxRate(_prev: unknown, fd: FormData): Promise<ActionRe
 // to move on without dragging history with it.
 
 export async function setItemPrice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const itemId = str(fd, "item_id");
@@ -1204,6 +1246,7 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const toastMsg = "Brand added";
   const code = str(fd, "code").toUpperCase();
 
@@ -1232,6 +1275,7 @@ export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionR
 }
 
 export async function updateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const toastMsg = "Brand updated";
   const code = str(fd, "code").toUpperCase();
 
@@ -1264,6 +1308,7 @@ export async function updateBrand(_prev: unknown, fd: FormData): Promise<ActionR
 
 /** Deactivates a brand without touching any item that already uses it. */
 export async function deactivateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1281,6 +1326,7 @@ export async function deactivateBrand(_prev: unknown, fd: FormData): Promise<Act
 /** Puts back what deactivateBrand retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1297,6 +1343,7 @@ export async function activateBrand(_prev: unknown, fd: FormData): Promise<Actio
 
 /** Hard delete only succeeds for a brand no item has ever used. Deactivating is the way to retire one. */
 export async function deleteBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1321,6 +1368,7 @@ export type PickerBrand = { id: string; code: string; name: string };
 export async function createBrandInline(
   input: NewBrandInput
 ): Promise<{ ok: true; brand: PickerBrand } | { ok: false; error: string }> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
 
@@ -1361,6 +1409,7 @@ export async function createBrandInline(
  * "Btl" into "Bottle" — and why a unit in use is retired rather than deleted.
  */
 export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -1387,6 +1436,7 @@ export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionRe
 }
 
 export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -1424,6 +1474,7 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
  * whole reason this is not a delete.
  */
 export async function deactivateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1441,6 +1492,7 @@ export async function deactivateUnit(_prev: unknown, fd: FormData): Promise<Acti
 /** Puts back what deactivateUnit retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1458,6 +1510,7 @@ export async function activateUnit(_prev: unknown, fd: FormData): Promise<Action
 /** Hard delete only succeeds for a unit nothing has ever been counted in.
  *  Deactivating is the way to retire one that has. */
 export async function deleteUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -1517,6 +1570,7 @@ export type PickerItem = {
 export async function createItemInline(
   input: NewItemInput
 ): Promise<{ ok: true; item: PickerItem } | { ok: false; error: string }> {
+  await requirePermission("items.manage");
   let fullCode: string | null = null;
 
   try {
@@ -1645,6 +1699,15 @@ function parseLines(fd: FormData): InvoiceLine[] {
       // the building — silently, because the entry still balances.
       source: l.source === "CONSIGNMENT" ? "CONSIGNMENT" as const : "OWNED" as const,
       consignorId: l.consignorId || null,
+      // The handsets on this line. Dropped here, a phone could never be sold
+      // or received through a form at all — the engine requires them.
+      serials: Array.isArray(l.serials)
+        ? l.serials.map((s: unknown) => String(s).trim()).filter(Boolean) : undefined,
+      unitDetails: Array.isArray(l.unitDetails) ? l.unitDetails : undefined,
+      warrantyMonths: l.warrantyMonths === undefined || l.warrantyMonths === "" || l.warrantyMonths === null
+        ? null : Number(l.warrantyMonths),
+      discountAmount: l.discountAmount === undefined || l.discountAmount === "" || l.discountAmount === null
+        ? null : Number(l.discountAmount),
     }))
     .filter((l) => l.itemId && l.qty > 0);
 
@@ -1656,6 +1719,7 @@ function parseLines(fd: FormData): InvoiceLine[] {
 }
 
 export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Sales invoice posted";
 
@@ -1722,6 +1786,11 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // (revenue only, a real delivery fulfils it later); or "take now"
     // (delivery and invoice post together). Matching and deferring are
     // mutually exclusive — the form only shows one at a time.
+    // Retail: the invoice is the hand-over, so it moves the stock itself and
+    // no delivery exists (docs/06-phone-retail.md, D-P1). Consigned goods
+    // still go through the delivery, which is the only path that settles them.
+    const [mode] = await sql`select retail_mode from company where id = ${co}`;
+    const retail = Boolean(mode?.retail_mode) && !lines.some((l) => l.source === "CONSIGNMENT");
     const result = await postOnce(co, attemptKey(fd), (tx) =>
       deliveryId
         ? postSalesInvoice({
@@ -1733,7 +1802,9 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
           }, tx)
         : toDeliver
           ? postSalesInvoice(input, tx)
-          : postSaleWithDelivery(input, tx));
+          : retail
+            ? postRetailSale(input, tx)
+            : postSaleWithDelivery(input, tx));
 
     docId = result.id;
     toastMsg = `Invoice ${result.docNo} posted`;
@@ -1758,6 +1829,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
 }
 
 export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   let docId: string;
   let toastMsg = "Purchase invoice posted";
 
@@ -1835,6 +1907,7 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
 // -------------------------------------------------------------- returns --
 
 export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.return");
   let docId: string;
   let toastMsg = "Sales return posted";
 
@@ -1874,6 +1947,7 @@ export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<A
 }
 
 export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   let docId: string;
   let toastMsg = "Purchase return posted";
 
@@ -1995,6 +2069,7 @@ function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
 }
 
 export async function createSalesOrder(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Sales order saved";
 
@@ -2034,6 +2109,7 @@ export async function createSalesOrder(_prev: unknown, fd: FormData): Promise<Ac
 }
 
 export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   let docId: string;
   let toastMsg = "Purchase order saved";
 
@@ -2073,6 +2149,7 @@ export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise
 }
 
 export async function createDelivery(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Delivery posted";
 
@@ -2125,6 +2202,7 @@ export async function createDelivery(_prev: unknown, fd: FormData): Promise<Acti
  * invoice have nothing to deliver and are skipped.
  */
 export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Delivery posted";
 
@@ -2177,6 +2255,7 @@ export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promi
 }
 
 export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
   let docId: string;
   let toastMsg = "Goods receipt posted";
 
@@ -2279,6 +2358,7 @@ async function settle(
 }
 
 export async function createSupplierPayment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let docId: string;
   let toastMsg = "Payment posted";
   try {
@@ -2298,6 +2378,7 @@ export async function createSupplierPayment(_prev: unknown, fd: FormData): Promi
 }
 
 export async function createCustomerReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Receipt posted";
   try {
@@ -2318,6 +2399,7 @@ export async function createCustomerReceipt(_prev: unknown, fd: FormData): Promi
 
 /** Open invoices for one partner, for the settlement screens. */
 export async function getSettlementData(kind: "pay" | "receive") {
+  await requireUser();
   const co = await companyId();
   const docType = kind === "pay" ? "PURCHASE_INVOICE" : "SALES_INVOICE";
   const role = kind === "pay" ? "is_supplier" : "is_customer";
@@ -2436,6 +2518,7 @@ async function postVoucherFrom(
  * what the receipt has not already given away.
  */
 export async function linkReceiptToOrder(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   try {
     const co = await companyId();
     const raw = String(fd.get("allocations") ?? "[]");
@@ -2469,6 +2552,7 @@ export async function linkReceiptToOrder(_prev: unknown, fd: FormData): Promise<
 
 /** The remainder is not coming — a different statement from "it arrived". */
 export async function closeOrderAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   try {
     const co = await companyId();
     const documentId = str(fd, "document_id");
@@ -2605,6 +2689,7 @@ async function invoiceCorrection(co: string, fd: FormData) {
 export async function previewOrderCorrection(
   _prev: unknown, fd: FormData,
 ): Promise<PreviewResult> {
+  await requirePermission("documents.void");
   try {
     const co = await companyId();
     const { documentId, order } = await orderCorrection(co, fd);
@@ -2726,6 +2811,7 @@ function correctionLines(fd: FormData) {
 export async function correctOrder(
   _prev: unknown, fd: FormData,
 ): Promise<CorrectionResult> {
+  await requirePermission("documents.void");
   let landOn: string;
   const co = await companyId();
   const reason = str(fd, "reason");
@@ -2799,6 +2885,7 @@ export async function correctOrder(
 export async function previewInvoiceCorrection(
   _prev: unknown, fd: FormData,
 ): Promise<PreviewResult> {
+  await requirePermission("documents.void");
   try {
     const co = await companyId();
     const { documentId, invoice } = await invoiceCorrection(co, fd);
@@ -2837,6 +2924,7 @@ export async function previewInvoiceCorrection(
 export async function correctVoucher(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("documents.void");
   let landOn: string;
   try {
     const co = await companyId();
@@ -2890,6 +2978,7 @@ export async function correctVoucher(
 export async function correctSettlement(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("documents.void");
   let landOn: string;
   try {
     const co = await companyId();
@@ -2938,6 +3027,7 @@ export async function correctSettlement(
 export async function correctInvoice(
   _prev: unknown, fd: FormData,
 ): Promise<CorrectionResult> {
+  await requirePermission("documents.void");
   let landOn: string;
   try {
     const co = await companyId();
@@ -3001,6 +3091,7 @@ export async function correctInvoice(
 export async function applyAdvanceAction(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let invoiceId: string;
   try {
     const co = await companyId();
@@ -3043,6 +3134,7 @@ function financeRevalidate() {
 }
 
 export async function createCashVoucher(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let id: string;
   let toastMsg = "Cash voucher posted";
   try {
@@ -3058,6 +3150,7 @@ export async function createCashVoucher(_prev: unknown, fd: FormData): Promise<A
 }
 
 export async function createBankVoucher(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let id: string;
   let toastMsg = "Bank voucher posted";
   try {
@@ -3073,6 +3166,7 @@ export async function createBankVoucher(_prev: unknown, fd: FormData): Promise<A
 }
 
 export async function createJournalVoucher(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let id: string;
   let toastMsg = "Journal voucher posted";
   try {
@@ -3088,6 +3182,7 @@ export async function createJournalVoucher(_prev: unknown, fd: FormData): Promis
 }
 
 export async function createCashTransfer(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let id: string;
   let toastMsg = "Transfer posted";
   try {
@@ -3135,6 +3230,7 @@ export async function createCashTransfer(_prev: unknown, fd: FormData): Promise<
 }
 
 export async function createAccountOpening(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let id: string;
   let toastMsg = "Opening balances posted";
   try {
@@ -3185,6 +3281,7 @@ export async function peekVoucherNo(
   type: "CASH_VOUCHER" | "BANK_VOUCHER" | "JOURNAL_VOUCHER",
   direction?: "IN" | "OUT",
 ): Promise<string> {
+  await requireUser();
   const co = await companyId();
   const [row] = await sql`
     select fn_peek_document_no(${co}, ${type}, current_date, ${direction ?? null}) as no`;
@@ -3192,6 +3289,7 @@ export async function peekVoucherNo(
 }
 
 export async function getFinanceData() {
+  await requirePermission("accounting.view");
   const co = await companyId();
 
   const [accounts, accountTree, cashAccounts, bankAccounts, branches, costCenters] = await Promise.all([
@@ -3228,6 +3326,7 @@ export async function getFinanceData() {
 
 /** Movements on one account with its running balance. */
 export async function getAccountLedger(accountId: string, from?: string, to?: string) {
+  await requirePermission("accounting.view");
   const co = await companyId();
   return sql`
     select entry_no, entry_date, memo, source_type, doc_no, doc_type,
@@ -3253,6 +3352,7 @@ export async function getAccountLedger(accountId: string, from?: string, to?: st
  * balances are reported per account beside the list instead.
  */
 export async function getAccountsLedger(accountIds: string[], from?: string, to?: string) {
+  await requirePermission("accounting.view");
   const co = await companyId();
   if (accountIds.length === 0) return [];
   return sql`
@@ -3270,6 +3370,7 @@ export async function getAccountsLedger(accountIds: string[], from?: string, to?
 // ------------------------------------------------------------- form lookups --
 
 export async function getFormData() {
+  await requireUser();
   const co = await companyId();
 
   const [
@@ -3449,6 +3550,7 @@ function isUniqueViolation(e: unknown): boolean {
 }
 
 export async function createLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const toastMsg = "Warehouse added";
   const code = str(fd, "code").toUpperCase();
 
@@ -3478,6 +3580,7 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
 }
 
 export async function updateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const toastMsg = "Warehouse updated";
 
   try {
@@ -3524,6 +3627,7 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
 
 /** Deactivates a warehouse without touching any history that points at it. */
 export async function deactivateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -3541,6 +3645,7 @@ export async function deactivateLocation(_prev: unknown, fd: FormData): Promise<
 /** Puts back what deactivateLocation retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -3561,6 +3666,7 @@ export async function activateLocation(_prev: unknown, fd: FormData): Promise<Ac
  * foreign key everywhere it was used. Deactivating is the way to retire one.
  */
 export async function deleteLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -3596,6 +3702,7 @@ export async function deleteLocation(_prev: unknown, fd: FormData): Promise<Acti
  * should be behind one.
  */
 export async function setCompanyPlan(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const plan = str(fd, "plan");
@@ -3621,6 +3728,7 @@ export async function setCompanyPlan(_prev: unknown, fd: FormData): Promise<Acti
  * is a question with an answer.
  */
 export async function createVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -3642,6 +3750,7 @@ export async function createVariantAttribute(_prev: unknown, fd: FormData): Prom
 }
 
 export async function updateVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -3668,6 +3777,7 @@ export async function updateVariantAttribute(_prev: unknown, fd: FormData): Prom
  * there: it disappears from the pickers and leaves what exists alone.
  */
 export async function deleteVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -3694,6 +3804,7 @@ export async function deleteVariantAttribute(_prev: unknown, fd: FormData): Prom
 }
 
 export async function createVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code");
   try {
     const co = await companyId();
@@ -3764,6 +3875,7 @@ export async function createVariantOption(_prev: unknown, fd: FormData): Promise
  * needs to know which two rows clash.
  */
 export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const parentId = str(fd, "parent_id");
@@ -3850,6 +3962,7 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
 }
 
 export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   try {
     const co = await companyId();
     const supplierId = str(fd, "supplier_id");
@@ -3885,6 +3998,7 @@ export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<Ac
 }
 
 export async function deleteSupplierItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   try {
     const co = await companyId();
     await sql`delete from supplier_item
@@ -3900,6 +4014,7 @@ export async function deleteSupplierItem(_prev: unknown, fd: FormData): Promise<
 export async function draftOrderFromReplenishment(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   let target = "";
   try {
     const co = await companyId();
@@ -3993,6 +4108,7 @@ export async function draftOrderFromReplenishment(
 }
 
 export async function setVariantPhoto(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4048,6 +4164,7 @@ export async function setVariantPhoto(_prev: unknown, fd: FormData): Promise<Act
  * code is fixed from the moment the first variant carries it.
  */
 export async function updateVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code");
   try {
     const co = await companyId();
@@ -4086,6 +4203,7 @@ export async function updateVariantOption(_prev: unknown, fd: FormData): Promise
 }
 
 export async function deleteVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4141,6 +4259,7 @@ export async function deleteVariantOption(_prev: unknown, fd: FormData): Promise
 
 /** Moves one value up or down its list, since the order is meaningful. */
 export async function moveVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4193,6 +4312,7 @@ const ATTACHMENT_TYPES: Record<string, string[]> = {
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requireUser();
   try {
     const co = await companyId();
     const documentId = str(fd, "document_id");
@@ -4256,6 +4376,7 @@ export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<Ac
 
 /** Removes the row, then the object. Nothing here is posted, so nothing is reversed. */
 export async function deleteAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requireUser();
   try {
     const co = await companyId();
     const id = str(fd, "attachment_id");
@@ -4286,6 +4407,7 @@ export async function deleteAttachment(_prev: unknown, fd: FormData): Promise<Ac
  * that is not yet good enough to post.
  */
 export async function saveInvoiceDraft(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   try {
     const co = await companyId();
     // Whatever the form says it is, checked against the four the draft table
@@ -4350,6 +4472,7 @@ export async function saveInvoiceDraft(_prev: unknown, fd: FormData): Promise<Ac
 
 /** Throw a draft away. Nothing was posted, so nothing is reversed. */
 export async function discardInvoiceDraft(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   try {
     const co = await companyId();
     const id = str(fd, "draft_id");
@@ -4366,6 +4489,7 @@ export async function discardInvoiceDraft(_prev: unknown, fd: FormData): Promise
 // -------------------------------------------------------------- year end --
 
 export async function closeFiscalYear(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let docId: string;
   let moved: string;
   try {
@@ -4390,6 +4514,7 @@ export async function closeFiscalYear(_prev: unknown, fd: FormData): Promise<Act
 }
 
 export async function reopenYear(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const fiscalYearId = str(fd, "fiscal_year_id");
@@ -4420,6 +4545,7 @@ export async function reopenYear(_prev: unknown, fd: FormData): Promise<ActionRe
 export async function previewBankStatement(
   content: string, filename: string, format: UploadFormat,
 ) {
+  await requirePermission("accounting.post");
   await companyId();
   const { planBankStatement } = await import("./read-bank-statement");
   const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
@@ -4427,6 +4553,7 @@ export async function previewBankStatement(
 }
 
 export async function importBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let statementId: string;
   try {
     const co = await companyId();
@@ -4485,6 +4612,7 @@ export async function importBankStatement(_prev: unknown, fd: FormData): Promise
 }
 
 export async function matchBankLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const statementLineId = str(fd, "statement_line_id");
@@ -4529,6 +4657,7 @@ export async function matchBankLine(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function unmatchBankLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const statementLineId = str(fd, "statement_line_id");
@@ -4555,6 +4684,7 @@ export async function unmatchBankLine(_prev: unknown, fd: FormData): Promise<Act
 
 /** Set aside a line that is not ours to match — and say why. */
 export async function ignoreBankLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const statementLineId = str(fd, "statement_line_id");
@@ -4595,6 +4725,7 @@ export async function ignoreBankLine(_prev: unknown, fd: FormData): Promise<Acti
  * automatic match, because nobody re-checks the ones the machine did.
  */
 export async function autoMatchBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const statementId = str(fd, "statement_id");
@@ -4653,6 +4784,7 @@ export async function autoMatchBankStatement(_prev: unknown, fd: FormData): Prom
 }
 
 export async function setBankStatementStatus(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const statementId = str(fd, "statement_id");
@@ -4687,6 +4819,7 @@ export async function setBankStatementStatus(_prev: unknown, fd: FormData): Prom
 }
 
 export async function deleteBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const statementId = str(fd, "statement_id");
@@ -4709,6 +4842,7 @@ export async function deleteBankStatement(_prev: unknown, fd: FormData): Promise
 // live on the shop.
 
 export async function createPartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -4730,6 +4864,7 @@ export async function createPartnerCategory(_prev: unknown, fd: FormData): Promi
 }
 
 export async function updatePartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4751,6 +4886,7 @@ export async function updatePartnerCategory(_prev: unknown, fd: FormData): Promi
 }
 
 export async function setPartnerCategoryActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4773,6 +4909,7 @@ export async function setPartnerCategoryActive(_prev: unknown, fd: FormData): Pr
  * leaves the customers who are in it still saying what they are.
  */
 export async function deletePartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("partners.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4806,6 +4943,7 @@ function weekdaysFrom(fd: FormData): number[] {
 }
 
 export async function createRoute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const code = str(fd, "code").toUpperCase();
   let routeId: string;
   try {
@@ -4832,6 +4970,7 @@ export async function createRoute(_prev: unknown, fd: FormData): Promise<ActionR
 }
 
 export async function updateRoute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4856,6 +4995,7 @@ export async function updateRoute(_prev: unknown, fd: FormData): Promise<ActionR
 }
 
 export async function setRouteActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -4871,6 +5011,7 @@ export async function setRouteActive(_prev: unknown, fd: FormData): Promise<Acti
 }
 
 export async function addRouteStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const routeId = str(fd, "route_id");
@@ -4902,6 +5043,7 @@ export async function addRouteStops(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function removeRouteStop(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const stopId = str(fd, "stop_id");
@@ -4923,6 +5065,7 @@ export async function removeRouteStop(_prev: unknown, fd: FormData): Promise<Act
 }
 
 export async function reorderRouteStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const routeId = str(fd, "route_id");
@@ -4960,6 +5103,7 @@ export async function reorderRouteStops(_prev: unknown, fd: FormData): Promise<A
  * changing the beat next month must not rewrite last Tuesday.
  */
 export async function generateTripFromRoute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   let tripId: string;
   try {
     const co = await companyId();
@@ -5046,6 +5190,7 @@ export async function generateTripFromRoute(_prev: unknown, fd: FormData): Promi
 // it lives here rather than in posting.ts.
 
 export async function createVehicle(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -5066,6 +5211,7 @@ export async function createVehicle(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function updateVehicle(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5085,6 +5231,7 @@ export async function updateVehicle(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function setVehicleActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5099,6 +5246,7 @@ export async function setVehicleActive(_prev: unknown, fd: FormData): Promise<Ac
 }
 
 export async function createDriver(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -5119,6 +5267,7 @@ export async function createDriver(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function updateDriver(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5139,6 +5288,7 @@ export async function updateDriver(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function setDriverActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5154,6 +5304,7 @@ export async function setDriverActive(_prev: unknown, fd: FormData): Promise<Act
 
 /** A trip, with the deliveries ticked on the form as its first stops. */
 export async function createTrip(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   let tripId: string;
   try {
     const co = await companyId();
@@ -5188,6 +5339,7 @@ export async function createTrip(_prev: unknown, fd: FormData): Promise<ActionRe
 }
 
 export async function addTripStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const tripId = str(fd, "trip_id");
@@ -5222,6 +5374,7 @@ export async function addTripStops(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function removeTripStop(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const stopId = str(fd, "stop_id");
@@ -5254,6 +5407,7 @@ export async function removeTripStop(_prev: unknown, fd: FormData): Promise<Acti
  * because two stops briefly share a number.
  */
 export async function reorderTripStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const tripId = str(fd, "trip_id");
@@ -5280,6 +5434,7 @@ export async function reorderTripStops(_prev: unknown, fd: FormData): Promise<Ac
 
 /** What happened at one stop. Proof of delivery, not a posting. */
 export async function answerTripStop(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const stopId = str(fd, "stop_id");
@@ -5321,6 +5476,7 @@ export async function answerTripStop(_prev: unknown, fd: FormData): Promise<Acti
  * with failed stops, which is a truer record.
  */
 export async function setTripStatus(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const tripId = str(fd, "trip_id");
@@ -5367,6 +5523,7 @@ export async function setTripStatus(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function createSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const toastMsg = "Salesperson added";
   const code = str(fd, "code").toUpperCase();
 
@@ -5395,6 +5552,7 @@ export async function createSalesman(_prev: unknown, fd: FormData): Promise<Acti
 }
 
 export async function updateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   const toastMsg = "Salesperson updated";
 
   try {
@@ -5427,6 +5585,7 @@ export async function updateSalesman(_prev: unknown, fd: FormData): Promise<Acti
 }
 
 export async function deactivateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5444,6 +5603,7 @@ export async function deactivateSalesman(_prev: unknown, fd: FormData): Promise<
 /** Puts back what deactivateSalesman retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5459,6 +5619,7 @@ export async function activateSalesman(_prev: unknown, fd: FormData): Promise<Ac
 }
 
 export async function deleteSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5503,6 +5664,7 @@ function parseAdjustmentLines(fd: FormData): AdjustmentLine[] {
 }
 
 export async function createStockAdjustment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
   let docId: string;
   let toastMsg = "Stock adjustment posted";
 
@@ -5554,6 +5716,7 @@ function parseTransferLines(fd: FormData): TransferLine[] {
 }
 
 export async function createStockTransfer(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
   let docId: string;
   let toastMsg = "Transfer posted";
 
@@ -5598,6 +5761,7 @@ export async function createStockTransfer(_prev: unknown, fd: FormData): Promise
 // ------------------------------------------------------------ reorder points --
 
 export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const itemId = str(fd, "item_id");
@@ -5625,6 +5789,7 @@ export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<
 }
 
 export async function updateReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5643,6 +5808,7 @@ export async function updateReorderPoint(_prev: unknown, fd: FormData): Promise<
 }
 
 export async function deleteReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5694,6 +5860,7 @@ function moneyFlags(kind: string): { cash: boolean; bank: boolean } {
 }
 
 export async function createAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   const toastMsg = "Account added";
   const code = str(fd, "code");
 
@@ -5763,6 +5930,7 @@ export async function createAccount(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function updateAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   const toastMsg = "Account updated";
 
   try {
@@ -5864,6 +6032,7 @@ export async function updateAccount(_prev: unknown, fd: FormData): Promise<Actio
 }
 
 export async function deactivateAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5884,6 +6053,7 @@ export async function deactivateAccount(_prev: unknown, fd: FormData): Promise<A
 /** Puts back what deactivateAccount retired. Reactivating is always safe, so
  *  unlike deactivation it carries no guard. */
 export async function activateAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5905,6 +6075,7 @@ export async function activateAccount(_prev: unknown, fd: FormData): Promise<Act
  * deactivated instead.
  */
 export async function deleteAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -5947,6 +6118,7 @@ export async function deleteAccount(_prev: unknown, fd: FormData): Promise<Actio
 // ---------------------------------------------------------- consignment --
 
 export async function createConsignmentAgreement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   try {
     const co = await companyId();
     const partnerId = str(fd, "partner_id");
@@ -5967,6 +6139,7 @@ export async function createConsignmentAgreement(_prev: unknown, fd: FormData): 
 }
 
 export async function addConsignmentAgreementLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   try {
     const co = await companyId();
     const agreementId = str(fd, "agreement_id");
@@ -6016,6 +6189,7 @@ function parseConsignmentReceiptLines(fd: FormData): ConsignmentReceiptLine[] {
 }
 
 export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
   let docId: string;
   let toastMsg = "Consignment receipt posted";
 
@@ -6056,6 +6230,7 @@ export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Pr
  * be shown plainly rather than tucked away.
  */
 export async function createConsignmentSale(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Consignment sale posted";
 
@@ -6125,6 +6300,7 @@ export async function createConsignmentSale(_prev: unknown, fd: FormData): Promi
  * ordinary case in order to prevent a confusion that does not arise.
  */
 export async function createVolumeDiscount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
   try {
     const co = await companyId();
@@ -6169,6 +6345,7 @@ export async function createVolumeDiscount(_prev: unknown, fd: FormData): Promis
 }
 
 export async function deactivateVolumeDiscount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -6185,6 +6362,7 @@ export async function deactivateVolumeDiscount(_prev: unknown, fd: FormData): Pr
 }
 
 export async function activateVolumeDiscount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -6209,6 +6387,7 @@ export async function activateVolumeDiscount(_prev: unknown, fd: FormData): Prom
 export async function reconcileNegativeStockAction(
   _prev: unknown, fd: FormData
 ): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
   let msg: string;
   try {
     const co = await companyId();
@@ -6244,6 +6423,7 @@ export async function reconcileNegativeStockAction(
  * half-undone chain is worse than a refusal.
  */
 export async function voidDocumentAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("documents.void");
   let msg: string;
   let docId: string;
   try {
@@ -6302,6 +6482,7 @@ async function readUpload(content: string, format: UploadFormat): Promise<string
 export async function previewItemImport(
   content: string, filename: string, format: UploadFormat = "csv"
 ) {
+  await requirePermission("items.manage");
   const co = await companyId();
   const master = (await getImportMasterData(co)) as unknown as MasterData;
   const plan = planImport(await readUpload(content, format), master);
@@ -6311,6 +6492,7 @@ export async function previewItemImport(
 export async function runItemImport(
   _prev: unknown, fd: FormData
 ): Promise<ActionResult> {
+  await requirePermission("items.manage");
   let done: { ref: string; itemsCreated: number; itemsMatched: number };
   try {
     const co = await companyId();
@@ -6363,6 +6545,7 @@ export async function runItemImport(
  * than by the user remembering.
  */
 export async function itemImportTemplate(): Promise<{ base64: string }> {
+  await requirePermission("items.manage");
   const { buildImportTemplate } = await import("./read-spreadsheet");
   return { base64: await buildImportTemplate() };
 }
@@ -6372,6 +6555,7 @@ export async function itemImportTemplate(): Promise<{ base64: string }> {
 export async function previewVoucherImport(
   content: string, filename: string, format: UploadFormat, kind: VoucherKind
 ) {
+  await requirePermission("accounting.post");
   const co = await companyId();
   const master = (await getVoucherImportMasterData(co)) as unknown as VoucherMasterData;
   const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
@@ -6380,11 +6564,13 @@ export async function previewVoucherImport(
 
 /** The blank workbook for a receipt import, columns matching the screen. */
 export async function voucherImportTemplate(kind: VoucherKind): Promise<{ base64: string }> {
+  await requirePermission("accounting.post");
   const { buildVoucherTemplate } = await import("./read-spreadsheet");
   return { base64: await buildVoucherTemplate(voucherColumns(kind), kind) };
 }
 
 export async function runVoucherImport(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let done: { ref: string; posted: number; total: number };
   let kind: VoucherKind = "cash";
   try {
@@ -6472,6 +6658,7 @@ export type MissingEntry = {
 export async function createMissingMasterData(
   entries: MissingEntry[]
 ): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
 
@@ -6566,6 +6753,7 @@ export async function createMissingMasterData(
 export async function createMissingBrands(
   names: string[]
 ): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
@@ -6619,6 +6807,7 @@ export async function createMissingBrands(
  * again on this side.
  */
 export async function createOpeningBatch(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("accounting.post");
   let id: string;
   try {
     const co = await companyId();
@@ -6691,6 +6880,7 @@ export async function createOpeningBatch(_prev: unknown, fd: FormData): Promise<
 export async function replaceConsignmentSettlement(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("documents.void");
   const invoiceId = str(fd, "invoice_id");
   try {
     const co = await companyId();
@@ -6721,6 +6911,7 @@ export async function replaceConsignmentSettlement(
 export async function recordSupplierConfirmation(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("purchase.post");
   let orderId = "";
   try {
     const co = await companyId();
@@ -6782,6 +6973,7 @@ export async function recordSupplierConfirmation(
 export async function saveSupplierPerformanceSettings(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requirePermission("purchase.view");
   try {
     const co = await companyId();
 
@@ -6837,6 +7029,7 @@ export async function saveSupplierPerformanceSettings(
 export async function saveRadarPreset(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requireUser();
   try {
     const co = await companyId();
     const name = str(fd, "name").trim();
@@ -6874,6 +7067,7 @@ export async function saveRadarPreset(
 export async function deleteRadarPreset(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
+  await requireUser();
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -6901,6 +7095,7 @@ export async function deleteRadarPreset(
  * real decision, not decoration.
  */
 export async function createPriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -6934,6 +7129,7 @@ export async function createPriceLevel(_prev: unknown, fd: FormData): Promise<Ac
 }
 
 export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -6963,6 +7159,7 @@ export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
 }
 
 export async function deletePriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
@@ -7006,6 +7203,7 @@ export async function deletePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
 export async function addItemPack(
   itemId: string, uomId: string, factor: number,
 ): Promise<ActionResult | { pack: true; uomId: string; code: string; factor: number }> {
+  await requirePermission("items.manage");
   try {
     const co = await companyId();
     if (!itemId || !uomId) return { error: "Choose an item and a unit" };

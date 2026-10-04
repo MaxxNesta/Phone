@@ -322,6 +322,11 @@ export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> 
                   and mine.qty < 0
                   and mine.item_id = m.item_id
                   and mine.location_id = m.location_id
+                  -- A named unit is drawn by identity, never by queue
+                  -- position, so restoring it cannot change what any later
+                  -- issue should have cost (0117).
+                  and not exists (select 1 from item i
+                                   where i.id = mine.item_id and i.tracks_serial)
                   and (m.movement_date > mine.movement_date
                        or (m.movement_date = mine.movement_date
                            and m.created_at > mine.created_at))

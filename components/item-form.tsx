@@ -290,6 +290,28 @@ export function ItemForm({
           <fieldset className="trackbox">
             <legend>Traceability</legend>
 
+            <label className="trackbox-opt" htmlFor="tracks_serial">
+              <input id="tracks_serial" name="tracks_serial" type="checkbox" />
+              <span>
+                <strong>Track each unit by IMEI / serial</strong>
+                <span className="trackbox-note">
+                  For handsets and anything with its own identity. Every receipt names each
+                  unit, and every sale says exactly which one left — at that unit&apos;s cost.
+                </span>
+              </span>
+            </label>
+            <div className="row" style={{ marginBottom: "0.75rem" }}>
+              <div className="field">
+                <label htmlFor="warranty_months">Customer warranty (months)</label>
+                <input id="warranty_months" name="warranty_months" type="number" min="0" max="120" />
+                <span className="hint">Copied onto each sale; leave blank for none</span>
+              </div>
+              <div className="field">
+                <label htmlFor="supplier_warranty_months">Supplier warranty (months)</label>
+                <input id="supplier_warranty_months" name="supplier_warranty_months" type="number" min="0" max="120" />
+              </div>
+            </div>
+
             <label className="trackbox-opt" htmlFor="tracks_batch">
               <input
                 id="tracks_batch" name="tracks_batch" type="checkbox"

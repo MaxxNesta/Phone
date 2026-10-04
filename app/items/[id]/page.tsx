@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhoneSettings } from "@/components/phone-settings";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getStockMovements } from "@/lib/queries";
@@ -34,6 +35,8 @@ export default async function ItemPage({
   const [item] = (await sql`
     select i.id, i.code, i.name, i.name_my, i.barcode, i.is_stocked, i.is_active,
            i.valuation_method, i.tracks_batch, i.tracks_expiry,
+           i.tracks_serial, i.warranty_months, i.supplier_warranty_months,
+           exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
            i.parent_item_id,
            to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS') as photo_version,
            u.code as uom_code,
@@ -321,6 +324,7 @@ export default async function ItemPage({
           </div>
         </section>
       )}
+      <PhoneSettings item={item} />
     </>
   );
 }

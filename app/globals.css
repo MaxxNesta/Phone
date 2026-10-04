@@ -1,6 +1,7 @@
 @import "./erp/theme.css";
 @import "./erp/bridge.css";
 @import "./erp/components.css";
+@import "./erp/retail.css";
 :root {
   --ground:    #F4F6F8;
   --surface:   #FFFFFF;
@@ -4466,3 +4467,63 @@ tbody tr.row-selected > td:first-child { box-shadow: inset 2px 0 0 var(--brand);
 }
 .drilltable td { padding: 0.2rem 0.5rem 0.2rem 0; white-space: nowrap; }
 .drilltable td.wrap { white-space: normal; max-width: 18ch; }
+
+/* ---------------------------------------------------------- sign-in -- */
+
+main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(--s3); }
+.login-wrap { width: 100%; max-width: 400px; }
+.login-card .form { max-width: none; }
+
+.whoami {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2);
+  padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); font-size: var(--t-sm);
+}
+.whoami-name { font-weight: 600; color: var(--ink); }
+.whoami-role { color: var(--muted); }
+.whoami form { margin-left: auto; }
+.linkish {
+  background: none; border: 0; padding: 0; color: var(--brand);
+  font: inherit; cursor: pointer; text-decoration: underline;
+}
+
+/* -------------------------------------------------------------- POS -- */
+
+.pos {
+  display: grid; gap: var(--s3);
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2.2fr) minmax(260px, 1fr);
+  align-items: start;
+}
+.pos > .alert { grid-column: 1 / -1; }
+.alert.ok { border-color: var(--brand); color: var(--ink); }
+.pos-stack { display: flex; flex-direction: column; gap: var(--s3); }
+.pos-results, .pos-picker ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pos-results button, .pos-picker li button {
+  width: 100%; text-align: left; background: none; border: 1px solid var(--line);
+  border-radius: 6px; padding: var(--s2); cursor: pointer; color: var(--ink); font: inherit;
+  display: flex; flex-direction: column; gap: 2px; min-height: 44px;
+}
+.pos-results button:hover:not(:disabled), .pos-picker li button:hover { border-color: var(--brand); }
+.pos-results button:disabled { opacity: 0.5; cursor: not-allowed; }
+.pos-item-name { font-weight: 600; }
+.pos-item-meta { font-size: var(--t-sm); color: var(--muted); }
+.pos-picker { border-top: 1px solid var(--line); padding-top: var(--s2); }
+.pos-picker-head { display: flex; justify-content: space-between; margin-bottom: var(--s2); }
+.pos-imei { font-size: var(--t-sm); color: var(--muted); }
+.pos-num { width: 7.5em; text-align: right; }
+.pos-small { width: 4.5em; }
+.pos-check { display: flex; gap: var(--s2); align-items: center; font-size: var(--t-sm); }
+.pos-totals { display: grid; grid-template-columns: 1fr auto; gap: var(--s1) var(--s3); margin: 0; }
+.pos-totals dd { margin: 0; text-align: right; }
+.pos-grand { font-weight: 700; font-size: 1.15rem; }
+.pos-pay { border: 1px solid var(--line); border-radius: 6px; padding: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
+.pos-pay-row { display: flex; gap: var(--s2); }
+.pos-pay-row select { flex: 1; min-width: 0; }
+.pos-pay-actions { display: flex; justify-content: space-between; font-size: var(--t-sm); }
+.pos-post { width: 100%; min-height: 48px; font-size: 1.05rem; }
+.pos-cart { overflow-x: auto; }
+@media (max-width: 1100px) { .pos { grid-template-columns: 1fr; } }
+
+.receipt { max-width: 380px; margin: 0 auto; font-size: var(--t-sm); }
+.receipt h1 { font-size: 1.2rem; margin: 0 0 var(--s1); }
+.receipt p { margin: 0 0 var(--s1); }
+@media print { .receipt { max-width: none; } }

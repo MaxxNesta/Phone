@@ -9,7 +9,12 @@ import { MobileNav } from "@/components/mobile-nav";
 import { SidebarCollapse } from "@/components/sidebar-collapse";
 import { Toast } from "@/components/toast";
 import {
-  LayoutDashboard, ShoppingCart, Package, Wallet, BookOpen, Boxes, Database, Truck } from "lucide-react";
+  LayoutDashboard, ShoppingCart, Package, BookOpen, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
+  Smartphone, Barcode, FileText, Search,
+} from "lucide-react";
+import { headers } from "next/headers";
+import { currentUser, can, ROLE_LABEL, type Permission } from "@/lib/auth";
+import { signOut } from "@/lib/auth-actions";
 import { DatePickerFix } from "@/components/date-picker-fix";
 
 // One face for the whole product, chosen for the thing an ERP does most:
@@ -50,8 +55,8 @@ const notoMyanmar = Noto_Sans_Myanmar({
 });
 
 export const metadata: Metadata = {
-  title: "Myanmar ERP",
-  description: "Inventory and accounting for Myanmar trading and distribution",
+  title: "Phone Retail ERP",
+  description: "Point of sale, IMEI stock and accounting for phone shops",
 };
 
 export const dynamic = "force-dynamic";
@@ -64,6 +69,22 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     company = await getCompany();
   } catch (e) {
     dbError = e instanceof Error ? e.message : String(e);
+  }
+
+  // Sign-in and first-run screens draw without the application around them.
+  const path = (await headers()).get("x-pathname") ?? "";
+  const bare = path === "/login" || path.startsWith("/setup");
+  const user = bare || dbError ? null : await currentUser();
+  const may = (p: Permission) => can(user, p);
+  // Distribution screens (orders, deliveries, routes) only in the trading flow.
+  const wholesale = company ? !company.retail_mode : false;
+
+  if (bare) {
+    return (
+      <html lang="en" className={`${inter.variable} ${notoMyanmar.variable}`}>
+        <body><main className="bare">{children}</main><Toast /></body>
+      </html>
+    );
   }
 
   return (
@@ -94,142 +115,170 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             <SidebarCollapse />
 
-            <NavGroup label="Overview" icon={<LayoutDashboard size={14} />} match={["/"]}>
-              <NavLink href="/">Dashboard</NavLink>
-              <NavLink href="/documents" exact>All documents</NavLink>
-              <NavLink href="/documents/history">History log</NavLink>
-            </NavGroup>
+            <NavLink href="/" exact><LayoutDashboard size={15} /> Dashboard</NavLink>
 
-            <NavGroup label="Sales" icon={<ShoppingCart size={14} />} match={["/sales", "/receivables"]}>
-              <NavLink href="/sales/orders" exact>Sales orders</NavLink>
-              <NavLink href="/sales/deliver">Deliveries</NavLink>
-              <NavLink href="/sales/invoices" exact>Sales invoices</NavLink>
-              <NavLink href="/sales/consignment">Consignment sale</NavLink>
-              <NavLink href="/sales/returns" exact>Customer returns</NavLink>
-              <NavLink href="/sales/credit-notes" exact>Credit notes</NavLink>
-              <NavLink href="/sales/discounts" exact>Volume discounts</NavLink>
-              <NavLink href="/sales/discounts-given" exact>Discounts given</NavLink>
-              <NavLink href="/sales/reports">Sales report</NavLink>
-              <NavLink href="/receivables" exact>Receivables</NavLink>
-              <NavLink href="/receivables/advances">Customer advances</NavLink>
-              <NavLink href="/receivables/receive">Receive payment</NavLink>
-            </NavGroup>
+            {may("pos.sell") && <NavLink href="/pos"><ScanLine size={15} /> POS / Sales</NavLink>}
 
-            <NavGroup label="Purchases" icon={<Package size={14} />} match={["/purchases", "/payables"]}>
-              <NavLink href="/purchases/orders" exact>Purchase orders</NavLink>
-              <NavLink href="/purchases/receive" exact>Goods receipts</NavLink>
-              <NavLink href="/purchases/invoices" exact>Purchase invoices</NavLink>
-              <NavLink href="/purchases/returns" exact>Supplier returns</NavLink>
-              {/* Business and above. Hiding the link withholds an upsell; it
-                  is not access control, because there is nobody to
-                  authenticate — see lib/plans.ts. */}
-              {company && planIncludes(company.plan, "supplier_performance") && (
-                <NavLink href="/purchases/supplier-performance" exact>
-                  Supplier performance
-                </NavLink>
-              )}
-              <NavLink href="/purchases/debit-notes" exact>Debit notes</NavLink>
-              <NavLink href="/payables" exact>Payables</NavLink>
-              <NavLink href="/payables/advances">Supplier advances</NavLink>
-              <NavLink href="/payables/pay">Pay supplier</NavLink>
-            </NavGroup>
+            {may("sales.view") && (
+              <NavGroup label="Sales History" icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}>
+                <NavLink href="/sales/invoices" exact>Sales invoices</NavLink>
+                {wholesale && <NavLink href="/sales/orders" exact>Sales orders</NavLink>}
+                {wholesale && <NavLink href="/sales/deliver">Deliveries</NavLink>}
+                {wholesale && <NavLink href="/sales/consignment">Consignment sale</NavLink>}
+                <NavLink href="/sales/returns" exact>Customer returns</NavLink>
+                <NavLink href="/sales/credit-notes" exact>Credit notes</NavLink>
+                {wholesale && <NavLink href="/sales/discounts" exact>Volume discounts</NavLink>}
+                <NavLink href="/sales/discounts-given" exact>Discounts given</NavLink>
+                <NavLink href="/receivables" exact>Receivables</NavLink>
+                <NavLink href="/receivables/advances">Customer advances</NavLink>
+                <NavLink href="/receivables/receive">Receive payment</NavLink>
+              </NavGroup>
+            )}
 
-            {/* Its own group rather than a tail on Sales: a trip is a yard
-                operation with its own masters, and step two adds route plans
-                beside it. */}
-            <NavGroup label="Logistics" icon={<Truck size={14} />} match={["/logistics"]}>
-              <NavLink href="/logistics/routes" exact>Routes</NavLink>
-              <NavLink href="/logistics/trips" exact>Delivery trips</NavLink>
-              <NavLink href="/logistics/vehicles" exact>Vehicles</NavLink>
-              <NavLink href="/logistics/drivers" exact>Drivers</NavLink>
-            </NavGroup>
+            {may("items.manage") && (
+              <NavGroup label="Products" icon={<Smartphone size={15} />} match={["/products", "/items"]}>
+                <NavLink href="/products" exact>All products</NavLink>
+                <NavLink href="/items" exact>Edit catalogue</NavLink>
+                <NavLink href="/items/categories">Categories</NavLink>
+                <NavLink href="/items/subcategories">Sub Categories</NavLink>
+                <NavLink href="/items/brands">Brands</NavLink>
+                <NavLink href="/items/attributes">Variants (storage, colour)</NavLink>
+                <NavLink href="/items/prices">Price levels</NavLink>
+                <NavLink href="/items/units">Units</NavLink>
+                <NavLink href="/items/purchasing">Purchasing terms</NavLink>
+              </NavGroup>
+            )}
 
-            <NavGroup label="Cash &amp; Bank" icon={<Wallet size={14} />} match={[
-              "/finance/cash-detail", "/finance/bank-detail",
-              "/finance/cash-receipt", "/finance/cash-payment",
-              "/finance/bank-receipt", "/finance/bank-payment",
-              "/finance/transfer",
-            ]}>
-              <NavLink href="/finance/cash-detail">Cash book</NavLink>
-              <NavLink href="/finance/bank-detail">Bank book</NavLink>
-              <NavLink href="/finance/cash-receipt">Cash receipt</NavLink>
-              <NavLink href="/finance/cash-payment">Cash payment</NavLink>
-              <NavLink href="/finance/bank-receipt">Bank receipt</NavLink>
-              <NavLink href="/finance/bank-payment">Bank payment</NavLink>
-              <NavLink href="/finance/bank-reconciliation">Bank reconciliation</NavLink>
-              <NavLink href="/finance/transfer">Interbranch transfer</NavLink>
-            </NavGroup>
+            {may("inventory.view") && (
+              <NavLink href="/inventory/phones"><Barcode size={15} /> IMEI / Serial</NavLink>
+            )}
 
-            <NavGroup label="Accounting" icon={<BookOpen size={14} />} match={[
-              "/finance/journal", "/finance/opening", "/finance/general-ledger", "/ledger",
-              "/finance/income-statement", "/finance/balance-sheet", "/finance/cash-flow",
-              "/finance/aging",
-            ]}>
-              <NavSubGroup label="Transactions" match={["/finance/journal", "/finance/opening"]}>
-                <NavLink href="/finance/journal" sub>Journal Voucher</NavLink>
-                <NavLink href="/finance/year-end" sub>Year end</NavLink>
-                <NavLink href="/finance/opening" sub>Opening Balances</NavLink>
-              </NavSubGroup>
-              <NavSubGroup label="Ledgers" match={["/finance/general-ledger", "/ledger"]}>
-                <NavLink href="/finance/general-ledger" sub>General Ledger</NavLink>
-                <NavLink href="/ledger" sub>Trial Balance</NavLink>
-              </NavSubGroup>
-              <NavSubGroup label="Financial Reports" match={[
-                "/finance/income-statement", "/finance/balance-sheet", "/finance/cash-flow",
-                "/finance/inventory-cogs",
-              ]}>
-                <NavLink href="/finance/income-statement" sub>Income Statement</NavLink>
-                <NavLink href="/finance/balance-sheet" sub>Balance Sheet</NavLink>
-                <NavLink href="/finance/cash-flow" sub>Cash Flow</NavLink>
-                <NavLink href="/finance/inventory-cogs" sub>Inventory &amp; COGS</NavLink>
-                <NavLink href="/finance/cash-cycle" sub>Cash Conversion Cycle</NavLink>
-              </NavSubGroup>
-              {/* Not under Financial Reports. Aging answers "who owes us and
-                  how late", which is a working question asked while chasing
-                  money — not a statement drawn up at a period end beside the
-                  income statement and the balance sheet. */}
-              <NavLink href="/finance/aging">AR / AP Aging</NavLink>
-              {/* Same kind of question, asked of goods rather than money:
-                  what did we ship and never bill, and how long ago. */}
-              <NavLink href="/finance/shipped-not-invoiced">Shipped Not Invoiced</NavLink>
-            </NavGroup>
+            {may("inventory.view") && (
+              <NavGroup label="Inventory" icon={<Boxes size={15} />} match={["/inventory", "/items/stock"]}>
+                <NavLink href="/inventory" exact>Summary</NavLink>
+                <NavLink href="/inventory/warranty">Warranty lookup</NavLink>
+                <NavLink href="/items/stock">Stock by location</NavLink>
+                <NavLink href="/inventory/movements">Stock movements</NavLink>
+                {may("inventory.manage") && <NavLink href="/inventory/transfer">Transfer</NavLink>}
+                {may("inventory.manage") && <NavLink href="/inventory/adjustments">Adjustments</NavLink>}
+                <NavLink href="/inventory/replenishment">Replenishment</NavLink>
+                <NavLink href="/inventory/negative-stock">Negative stock</NavLink>
+                {wholesale && <NavLink href="/inventory/consignment" exact>Consignment</NavLink>}
+              </NavGroup>
+            )}
 
-            <NavGroup label="Inventory" icon={<Boxes size={14} />} match={["/items/stock", "/inventory"]}>
-              <NavLink href="/items/stock">Stock overview</NavLink>
-              <NavLink href="/inventory/consignment" exact>Consignment</NavLink>
-              <NavLink href="/inventory/replenishment">Replenishment</NavLink>
-              <NavLink href="/inventory/intelligence">Intelligence</NavLink>
-              <NavLink href="/inventory/movements">Stock movements</NavLink>
-              <NavLink href="/inventory/adjustments">Adjustments</NavLink>
-              <NavLink href="/inventory/negative-stock">Negative stock</NavLink>
-              <NavLink href="/inventory/transfer">Transfer</NavLink>
-            </NavGroup>
+            {may("purchase.view") && (
+              <NavGroup label="Purchases" icon={<Package size={15} />} match={["/purchases", "/payables"]}>
+                <NavLink href="/purchases/orders" exact>Purchase orders</NavLink>
+                <NavLink href="/purchases/receive" exact>Goods receipts</NavLink>
+                <NavLink href="/purchases/invoices" exact>Purchase invoices</NavLink>
+                <NavLink href="/purchases/returns" exact>Supplier returns</NavLink>
+                <NavLink href="/purchases/debit-notes" exact>Debit notes</NavLink>
+                {company && planIncludes(company.plan, "supplier_performance") && (
+                  <NavLink href="/purchases/supplier-performance" exact>Supplier performance</NavLink>
+                )}
+                {may("accounting.view") && <NavLink href="/payables" exact>Payables</NavLink>}
+                {may("accounting.post") && <NavLink href="/payables/pay">Pay supplier</NavLink>}
+              </NavGroup>
+            )}
 
-            <NavGroup label="Master data" icon={<Database size={14} />} match={[
-              "/partners", "/items", "/warehouses", "/salespersons", "/settings",
-            ]}>
-              <NavLink href="/partners" exact clearParams={["role", "category"]}>Partners</NavLink>
+            <NavGroup label="Customers" icon={<Users size={15} />} match={["/partners"]}>
+              <NavLink href="/partners?role=customer">Customers</NavLink>
+              <NavLink href="/partners?role=supplier">Suppliers</NavLink>
               <NavLink href="/partners/categories" exact>Partner categories</NavLink>
-              <NavLink href="/partners?role=customer" sub>Customers</NavLink>
-              <NavLink href="/partners?role=supplier" sub>Suppliers</NavLink>
-              <NavLink href="/items" exact>Items</NavLink>
-              <NavLink href="/items/categories">Categories</NavLink>
-              <NavLink href="/items/subcategories">Sub Categories</NavLink>
-              <NavLink href="/items/brands">Brands</NavLink>
-              <NavLink href="/items/attributes">Variant attributes</NavLink>
-              <NavLink href="/items/units">Units</NavLink>
-              <NavLink href="/items/purchasing">Purchasing terms</NavLink>
-              <NavLink href="/items/prices">Price levels</NavLink>
-              <NavLink href="/warehouses">Branches &amp; warehouses</NavLink>
-              <NavLink href="/salespersons">Salespersons</NavLink>
-              <NavLink href="/settings/accounts">Chart of Accounts</NavLink>
-              <NavLink href="/settings/tax-codes">Tax codes</NavLink>
-              <NavLink href="/settings/plan">Package</NavLink>
             </NavGroup>
+
+            {may("accounting.view") && (
+              <NavGroup label="Accounting" icon={<BookOpen size={15} />} match={["/finance", "/ledger"]}>
+                <NavSubGroup label="Cash &amp; bank" match={[
+                  "/finance/cash-detail", "/finance/bank-detail", "/finance/cash-receipt",
+                  "/finance/cash-payment", "/finance/bank-receipt", "/finance/bank-payment",
+                  "/finance/transfer", "/finance/bank-reconciliation",
+                ]}>
+                  <NavLink href="/finance/cash-detail" sub>Cash book</NavLink>
+                  <NavLink href="/finance/bank-detail" sub>Bank book</NavLink>
+                  <NavLink href="/finance/cash-receipt" sub>Cash receipt</NavLink>
+                  <NavLink href="/finance/cash-payment" sub>Cash payment</NavLink>
+                  <NavLink href="/finance/bank-receipt" sub>Bank receipt</NavLink>
+                  <NavLink href="/finance/bank-payment" sub>Bank payment</NavLink>
+                  <NavLink href="/finance/bank-reconciliation" sub>Bank reconciliation</NavLink>
+                  <NavLink href="/finance/transfer" sub>Interbranch transfer</NavLink>
+                </NavSubGroup>
+                <NavSubGroup label="Transactions" match={["/finance/journal", "/finance/opening", "/finance/year-end"]}>
+                  <NavLink href="/finance/journal" sub>Journal Voucher</NavLink>
+                  <NavLink href="/finance/year-end" sub>Year end</NavLink>
+                  <NavLink href="/finance/opening" sub>Opening Balances</NavLink>
+                </NavSubGroup>
+                <NavSubGroup label="Ledgers" match={["/finance/general-ledger", "/ledger"]}>
+                  <NavLink href="/finance/general-ledger" sub>General Ledger</NavLink>
+                  <NavLink href="/ledger" sub>Trial Balance</NavLink>
+                </NavSubGroup>
+                <NavSubGroup label="Financial Reports" match={[
+                  "/finance/income-statement", "/finance/balance-sheet", "/finance/cash-flow",
+                  "/finance/inventory-cogs", "/finance/cash-cycle",
+                ]}>
+                  <NavLink href="/finance/income-statement" sub>Income Statement</NavLink>
+                  <NavLink href="/finance/balance-sheet" sub>Balance Sheet</NavLink>
+                  <NavLink href="/finance/cash-flow" sub>Cash Flow</NavLink>
+                  <NavLink href="/finance/inventory-cogs" sub>Inventory &amp; COGS</NavLink>
+                  <NavLink href="/finance/cash-cycle" sub>Cash Conversion Cycle</NavLink>
+                </NavSubGroup>
+                <NavLink href="/finance/aging">AR / AP Aging</NavLink>
+                {wholesale && <NavLink href="/finance/shipped-not-invoiced">Shipped Not Invoiced</NavLink>}
+              </NavGroup>
+            )}
+
+            {may("reports.view") && (
+              <NavGroup label="Reports" icon={<BarChart3 size={15} />} match={["/reports", "/sales/reports"]}>
+                <NavLink href="/reports/phone-sales">Sales &amp; margin</NavLink>
+                <NavLink href="/reports/phone-stock">Stock &amp; aging</NavLink>
+                <NavLink href="/sales/reports">Sales report (detailed)</NavLink>
+              </NavGroup>
+            )}
+
+            {wholesale && may("settings.manage") && (
+              <NavGroup label="Logistics" icon={<Truck size={15} />} match={["/logistics"]}>
+                <NavLink href="/logistics/routes" exact>Routes</NavLink>
+                <NavLink href="/logistics/trips" exact>Delivery trips</NavLink>
+                <NavLink href="/logistics/vehicles" exact>Vehicles</NavLink>
+                <NavLink href="/logistics/drivers" exact>Drivers</NavLink>
+              </NavGroup>
+            )}
+
+            {may("settings.manage") && (
+              <NavGroup label="Settings" icon={<Settings size={15} />} match={[
+                "/warehouses", "/salespersons", "/settings",
+              ]}>
+                <NavLink href="/warehouses">Branches &amp; warehouses</NavLink>
+                <NavLink href="/salespersons">Salespersons</NavLink>
+                <NavLink href="/settings/accounts">Chart of Accounts</NavLink>
+                <NavLink href="/settings/tax-codes">Tax codes</NavLink>
+                <NavLink href="/settings/plan">Package</NavLink>
+                {may("users.manage") && <NavLink href="/settings/users">Users</NavLink>}
+              </NavGroup>
+            )}
+
+            <NavLink href="/documents" exact><FileText size={15} /> All documents</NavLink>
 
           </nav>
 
           <main className="main">
+            {user && (
+              <header className="topbar noprint">
+                <form action="/search" className="topsearch" role="search">
+                  <Search size={15} aria-hidden="true" />
+                  <input name="q" placeholder="Search IMEI, invoice, customer…" aria-label="Search IMEI, invoice or customer" />
+                </form>
+                <details className="usermenu">
+                  <summary aria-label={`${user.name}, ${ROLE_LABEL[user.role]}`}>{user.initials}</summary>
+                  <div className="usermenu-pop">
+                    <strong>{user.name}</strong>
+                    <span>{ROLE_LABEL[user.role]}</span>
+                    <form action={signOut}><button className="linkish">Sign out</button></form>
+                  </div>
+                </details>
+              </header>
+            )}
             <div className="inner">
               {dbError ? (
                 <div className="card">

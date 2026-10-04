@@ -186,15 +186,22 @@ export async function scaffoldCompany(input: SetupInput) {
     // Both read their accounts from the OUTPUT_TAX / INPUT_TAX roles rather
     // than holding account ids of their own, so re-charting a company cannot
     // leave a tax code pointing at an account that no longer exists.
+    // The rate lives in tax_rate since 0083, dated, so the code row carries
+    // none — writing tax_code.rate here broke setup on every fresh database.
     await tx`
-      insert into tax_code (company_id, code, name, rate, output_account_id, input_account_id)
-      select ${co.id}, v.code, v.name, v.rate,
-             (select account_id from system_account
-               where company_id = ${co.id} and role = 'OUTPUT_TAX'),
-             (select account_id from system_account
-               where company_id = ${co.id} and role = 'INPUT_TAX')
-        from (values ('NONE', 'No Commercial Tax', 0), ('CT5', 'Commercial Tax 5%', 5))
-             as v(code, name, rate)`;
+      with codes as (
+        insert into tax_code (company_id, code, name, output_account_id, input_account_id)
+        select ${co.id}, v.code, v.name,
+               (select account_id from system_account
+                 where company_id = ${co.id} and role = 'OUTPUT_TAX'),
+               (select account_id from system_account
+                 where company_id = ${co.id} and role = 'INPUT_TAX')
+          from (values ('NONE', 'No Commercial Tax'), ('CT5', 'Commercial Tax 5%'))
+               as v(code, name)
+        returning id, code)
+      insert into tax_rate (company_id, tax_code_id, rate, valid_from)
+      select ${co.id}, c.id, case c.code when 'CT5' then 5 else 0 end, date '1900-01-01'
+        from codes c`;
 
     for (const [type, prefix] of SERIES) {
       await tx`

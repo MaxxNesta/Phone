@@ -74,6 +74,12 @@ export type InvoiceLine = {
    * shelf and recorded as gone.
    */
   serials?: string[];
+
+  /** Customer warranty on this line, in months. Defaults to the item's. */
+  warrantyMonths?: number | null;
+
+  /** Per-unit detail where a purchase invoice receives the goods itself. */
+  unitDetails?: UnitDetail[];
 };
 
 export type InvoiceInput = {
@@ -119,6 +125,14 @@ export type SalesInvoiceInput = InvoiceInput & {
   /** Goods leave later. When true, this invoice posts revenue only — no
    *  delivery is created, and stock doesn't move until one is. */
   toDeliver?: boolean;
+
+  /**
+   * Counter retail: the customer takes the goods as the invoice posts, so the
+   * invoice itself moves the stock and carries cost of sales in its own
+   * entry — Dr COGS / Cr Inventory beside Dr Cash/AR / Cr Revenue. No
+   * delivery and no goods-shipped-not-invoiced. Set by postRetailSale.
+   */
+  issueStock?: boolean;
 
   /**
    * Which column of the price list filled these prices. Recorded on the
@@ -184,6 +198,11 @@ export type OrderInput = {
   lines: OrderLine[];
 };
 
+export type UnitDetail = {
+  serial: string; imei2?: string | null; deviceSerial?: string | null;
+  supplierWarrantyMonths?: number | null; notes?: string | null;
+};
+
 /** A delivery or goods receipt line — unpriced on the sales side (the
  *  invoice carries price), priced on the purchase side (there is no
  *  separate purchase invoice line price to fall back on for valuation). */
@@ -218,6 +237,10 @@ export type FulfillmentLine = {
    * discover that is while the box is open.
    */
   serials?: string[];
+
+  /** Optional per-unit detail for a received serial: IMEI 2, the maker's
+   *  serial, supplier warranty. Keyed by the serial it describes. */
+  unitDetails?: UnitDetail[];
 
   /**
    * The order line these goods also fulfil, when the document itself names
@@ -1263,7 +1286,14 @@ async function planFifoConsumption(
    * stock, which is the property worth keeping when the guard is relaxed
    * anywhere at all.
    */
-  allowNegative = false
+  allowNegative = false,
+  /**
+   * The layer of each unit leaving, one entry per unit, for an item whose
+   * units are named. A phone leaves at what that phone cost, not at whatever
+   * the oldest layer here happens to be — so these are drawn exactly, one
+   * unit at a time, and never fall back to FIFO or to negative stock.
+   */
+  pinnedLots?: string[],
 ): Promise<FifoPlan> {
   // Take the lock first, on its own. Postgres refuses FOR UPDATE on a query
   // that groups, so the aggregate below cannot carry it — and without a lock
@@ -1275,6 +1305,46 @@ async function planFifoConsumption(
      where sl.company_id = ${companyId} and sl.item_id = ${itemId} and sl.location_id = ${locationId}
      order by sl.received_date, sl.created_at
        for update`;
+
+  if (pinnedLots) {
+    if (pinnedLots.length !== qty) {
+      throw new Error(`${qty} units to issue but ${pinnedLots.length} named`);
+    }
+    const rows = await tx`
+      select sl.id, sl.location_id, sl.unit_cost + coalesce(a.delta, 0) as unit_cost,
+             sl.qty_received - coalesce((select sum(c.qty) from stock_lot_consumption c
+                                          where c.lot_id = sl.id), 0) as remaining
+        from stock_lot sl
+        left join lateral (
+              select sum(adj.delta_unit_cost) as delta
+                from stock_lot_adjustment adj where adj.lot_id = sl.id
+        ) a on true
+       where sl.id = any(${pinnedLots}) and sl.item_id = ${itemId}`;
+    const byId = new Map((rows as unknown as Array<{
+      id: string; location_id: string; unit_cost: string; remaining: string;
+    }>).map((r) => [r.id, r]));
+    const left = new Map<string, number>();
+    const draws: FifoDraw[] = [];
+    let total = 0;
+    for (const lotId of pinnedLots) {
+      const lot = byId.get(lotId);
+      if (!lot || lot.location_id !== locationId) {
+        throw new Error("A named unit is not on a layer at this location");
+      }
+      const rem = left.get(lotId) ?? Number(lot.remaining);
+      if (rem < 1 - 0.0001) {
+        throw new Error("A named unit's layer has nothing left on it — the stock and its serials disagree");
+      }
+      left.set(lotId, round4(rem - 1));
+      draws.push({ lotId, qty: 1, unitCost: Number(lot.unit_cost) });
+      total += Number(lot.unit_cost);
+    }
+    total = round4(total);
+    return {
+      totalCost: total, unitCost: qty > 0 ? round4(total / qty) : 0, draws,
+      uncoveredQty: 0, provisionalUnitCost: 0, priceSourceNo: null, priceSource: "NONE",
+    };
+  }
 
   // At what the lot costs now, not at what the receipt first guessed. A bill
   // that disagreed with its receipt put the difference back onto the goods
@@ -1557,14 +1627,20 @@ async function recordFifoConsumption(
    * purchase return sends them back.
    */
   expenseAccountId?: string | null,
-) {
+): Promise<string[]> {
+  // One id per draw, in draw order, so a caller that named its units can tie
+  // each unit to the slice it left on.
+  const ids: string[] = [];
   for (const d of plan.draws) {
-    await tx`
+    const [c] = await tx`
       insert into stock_lot_consumption
         (company_id, lot_id, stock_movement_id, qty, unit_cost, expense_account_id)
       values (${companyId}, ${d.lotId}, ${stockMovementId}, ${d.qty}, ${d.unitCost},
-              ${expenseAccountId ?? null})`;
+              ${expenseAccountId ?? null})
+      returning id`;
+    ids.push(c.id as string);
   }
+  return ids;
 }
 
 // ---------------------------------------------------- consignment FIFO --
@@ -1719,6 +1795,91 @@ function assertSerials(
     }
   });
   return seen;
+}
+
+// ------------------------------------------------------- serial units ----
+//
+// A unit points at the layer it is on now; an issue records the layer it was
+// drawn from (migration 0117). Leaving draws exactly that layer. Coming back
+// on to a shelf — a return, a transfer arriving, a void — puts the unit on a
+// new layer, and stock_serial_event keeps where it has been.
+
+type SerialUnit = { serialId: string; serialNo: string; lotId: string };
+
+const SERIAL_STATUS: Record<string, string> = {
+  SOLD: "already sold", RETURNED_TO_SUPPLIER: "returned to the supplier",
+  WRITTEN_OFF: "written off", ISSUED: "already issued",
+  RESERVED: "reserved — release it first", REPAIR: "in repair",
+};
+
+/**
+ * Lock each named unit and check it can leave from this location.
+ *
+ * Locked before it is read, so two tills scanning one phone queue here and
+ * the second finds it gone — the check runs after the wait, not before it.
+ * Accepts IMEI 1 or IMEI 2.
+ */
+async function claimSerials(
+  tx: TransactionSql, companyId: string, itemId: string, locationId: string,
+  serials: string[],
+): Promise<SerialUnit[]> {
+  const units: SerialUnit[] = [];
+  for (const raw of serials) {
+    const sn = raw.trim();
+    const [s] = await tx`
+      select id, item_id, serial_no from stock_serial
+       where company_id = ${companyId} and (serial_no = ${sn} or imei2 = ${sn})
+         for update`;
+    if (!s) throw new Error(`${sn} was never received.`);
+    const [st] = await tx`
+      select status, location_id, location_name, stock_lot_id, item_code
+        from v_stock_serial where serial_id = ${s.id}`;
+    if (st.status !== "IN_STOCK") {
+      throw new Error(`${sn} is ${SERIAL_STATUS[st.status] ?? st.status.toLowerCase()}.`);
+    }
+    if (s.item_id !== itemId) throw new Error(`${sn} is a ${st.item_code}, not the item on this line.`);
+    if (st.location_id !== locationId) {
+      throw new Error(`${sn} is at ${st.location_name}. Transfer it here first.`);
+    }
+    units.push({ serialId: s.id, serialNo: s.serial_no, lotId: st.stock_lot_id });
+  }
+  return units;
+}
+
+/** The units left on this movement, each tied to the slice it left on. */
+async function recordSerialIssues(
+  tx: TransactionSql, companyId: string, movementId: string,
+  units: SerialUnit[], consumptionIds: string[],
+  event: { kind: string; documentId: string; locationId: string } | null,
+) {
+  for (const [i, u] of units.entries()) {
+    await tx`
+      insert into stock_serial_issue
+        (company_id, serial_id, stock_movement_id, lot_id, consumption_id)
+      values (${companyId}, ${u.serialId}, ${movementId}, ${u.lotId}, ${consumptionIds[i]})`;
+    if (event) {
+      await tx`
+        insert into stock_serial_event
+          (company_id, serial_id, event, document_id, from_location_id, lot_id)
+        values (${companyId}, ${u.serialId}, ${event.kind}, ${event.documentId},
+                ${event.locationId}, ${u.lotId})`;
+    }
+  }
+}
+
+/** Units back on a shelf, on the layer that brought them there. */
+async function moveSerialsTo(
+  tx: TransactionSql, companyId: string, serialIds: string[], lotId: string,
+  event: { kind: string; documentId: string; from?: string | null; to: string },
+) {
+  for (const id of serialIds) {
+    await tx`update stock_serial set stock_lot_id = ${lotId} where id = ${id}`;
+    await tx`
+      insert into stock_serial_event
+        (company_id, serial_id, event, document_id, from_location_id, to_location_id, lot_id)
+      values (${companyId}, ${id}, ${event.kind}, ${event.documentId},
+              ${event.from ?? null}, ${event.to}, ${lotId})`;
+  }
 }
 
 async function createFifoLot(
@@ -2227,6 +2388,14 @@ async function resolveDeliveryBehind(
 
   if (src.doc_type === "DELIVERY") return sourceDocumentId;
 
+  // A counter sale moved the goods itself, so it is its own delivery.
+  if (src.doc_type === "SALES_INVOICE") {
+    const [own] = await tx`
+      select 1 as yes from stock_movement
+       where document_id = ${sourceDocumentId} and qty < 0 limit 1`;
+    if (own) return sourceDocumentId;
+  }
+
   if (src.doc_type === "SALES_INVOICE" && src.source_document_id) {
     const [linked] = await tx`
       select doc_type from document where id = ${src.source_document_id} and company_id = ${companyId}`;
@@ -2427,28 +2596,13 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
    */
   const serialTracked = await serialTracking(tx, input.lines.map((l) => l.itemId));
   assertSerials(input.lines, serialTracked, "issue");
-  const issuing = new Map<string, { id: string; itemId: string }>();
+  // Locked and checked here, before a document exists, so a bad scan is
+  // refused whole. Each unit's layer is what the planner then draws.
+  const issuing = new Map<FulfillmentLine, SerialUnit[]>();
   for (const line of input.lines) {
     if (!serialTracked.has(line.itemId)) continue;
-    for (const raw of line.serials ?? []) {
-      const sn = raw.trim();
-      const [found] = await tx`
-        select serial_id, item_id, location_id
-          from v_stock_serial_available
-         where company_id = ${input.companyId} and serial_no = ${sn}`;
-      if (!found) {
-        throw new Error(
-          `${sn} is not on the shelf. It was never received, or it has already gone out.`
-        );
-      }
-      if (found.item_id !== line.itemId) {
-        throw new Error(`${sn} belongs to a different item.`);
-      }
-      if (found.location_id !== input.locationId) {
-        throw new Error(`${sn} is at another location.`);
-      }
-      issuing.set(sn, { id: found.serial_id as string, itemId: line.itemId });
-    }
+    issuing.set(line, await claimSerials(
+      tx, input.companyId, line.itemId, input.locationId, line.serials ?? []));
   }
 
   const { companyId, partnerId, locationId, docDate } = input;
@@ -2657,8 +2811,10 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
     // allowNegativeStock is set only when someone confirmed the goods
     // physically exist. Without it this still refuses, so no route reaches
     // negative stock without a person having said so.
+    const units = issuing.get(line);
     const plan = await planFifoConsumption(
-      tx, companyId, line.itemId, locationId, baseQty, input.allowNegativeStock === true
+      tx, companyId, line.itemId, locationId, baseQty,
+      !units && input.allowNegativeStock === true, units?.map((u) => u.lotId)
     );
     const unitCost = plan.unitCost;
     const totalCost = plan.totalCost;
@@ -2721,20 +2877,14 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
       expenseAccountId = cogs[0].a as string;
     }
 
-    await recordFifoConsumption(tx, companyId, movement.id, plan, expenseAccountId);
+    const consumptionIds = await recordFifoConsumption(
+      tx, companyId, movement.id, plan, expenseAccountId);
 
-    // And which units these were. Written against the movement rather than the
-    // document, so the record survives everything the document goes through:
-    // an issue stops counting when its document is reversed, which is what
-    // puts a handset back on the shelf when a sale is voided.
-    if (serialTracked.has(line.itemId)) {
-      for (const raw of line.serials ?? []) {
-        const unit = issuing.get(raw.trim());
-        if (!unit) continue;
-        await tx`
-          insert into stock_serial_issue (company_id, serial_id, stock_movement_id)
-          values (${companyId}, ${unit.id}, ${movement.id})`;
-      }
+    // And which units these were, each tied to the slice it left on — which
+    // is what lets a void or a return put that exact unit back.
+    if (units) {
+      await recordSerialIssues(tx, companyId, movement.id, units, consumptionIds,
+        { kind: "SOLD", documentId: doc.id, locationId });
     }
     // Whatever no layer covered goes on the reconciliation worklist, with the
     // cost it was charged out at, so the receipt that eventually arrives can
@@ -3273,6 +3423,84 @@ async function claimDeliveredCost(
 }
 
 /**
+ * Take one invoice line's goods off the shelf, for a retail sale.
+ *
+ * What a delivery does for a line, minus the holding account: the movement,
+ * the FIFO layers (or each named unit's own layer), the serial issues and the
+ * negative-stock worklist. Returns the cost and where it goes, and the
+ * caller posts it in its own entry.
+ */
+async function issueStockLine(tx: TransactionSql, a: {
+  companyId: string; documentId: string; lineId: string; itemId: string;
+  locationId: string; docDate: string; qty: number; serials?: string[];
+  focReasonId?: string | null; allowNegative: boolean; negativeStockReason?: string | null;
+}) {
+  const [item] = await tx`
+    select code, name, tracks_serial from item where id = ${a.itemId}`;
+
+  let units: SerialUnit[] | undefined;
+  if (item.tracks_serial) {
+    units = await claimSerials(tx, a.companyId, a.itemId, a.locationId, a.serials ?? []);
+  } else {
+    // Same rule a delivery applies: short needs a confirmation and a reason.
+    const [{ on_hand }] = await tx`
+      select fn_qty_on_hand(${a.companyId}, ${a.itemId}, ${a.locationId}) as on_hand`;
+    const onHand = Number(on_hand);
+    if (onHand < a.qty && !a.allowNegative) {
+      throw new Error(
+        `Not enough ${item.code} (${item.name}) at this location — ${onHand} on hand, ${a.qty} requested`);
+    }
+    if (onHand < a.qty && !a.negativeStockReason?.trim()) {
+      throw new Error(
+        `${item.code} (${item.name}) is short at this location — ${onHand} on hand, ` +
+        `${a.qty} going out. Say why the goods are there when the books say they are not.`);
+    }
+  }
+
+  const plan = await planFifoConsumption(
+    tx, a.companyId, a.itemId, a.locationId, a.qty,
+    !units && a.allowNegative, units?.map((u) => u.lotId));
+
+  const [movement] = await tx`
+    insert into stock_movement
+      (company_id, item_id, location_id, movement_date, qty,
+       unit_cost, total_cost, document_id, document_line_id)
+    values
+      (${a.companyId}, ${a.itemId}, ${a.locationId}, ${a.docDate}::date,
+       ${-a.qty}, ${plan.unitCost}, ${-plan.totalCost}, ${a.documentId}, ${a.lineId})
+    returning id`;
+
+  let expenseAccountId: string;
+  if (a.focReasonId) {
+    const [foc] = await tx`select account_id from foc_reason where id = ${a.focReasonId}`;
+    expenseAccountId = foc.account_id as string;
+  } else {
+    const [cogs] = await tx`
+      select fn_resolve_account_for_item(${a.companyId}, 'COGS', ${a.itemId}) as a`;
+    expenseAccountId = cogs.a as string;
+  }
+
+  const consumptionIds = await recordFifoConsumption(
+    tx, a.companyId, movement.id, plan, expenseAccountId);
+  if (units) {
+    await recordSerialIssues(tx, a.companyId, movement.id, units, consumptionIds,
+      { kind: "SOLD", documentId: a.documentId, locationId: a.locationId });
+  }
+  await recordNegativeStock(tx, a.companyId, a.documentId, a.itemId, a.locationId,
+    plan, expenseAccountId);
+
+  const [inv] = await tx`
+    select fn_resolve_account_for_item(${a.companyId}, 'INVENTORY', ${a.itemId}) as a`;
+
+  return {
+    totalCost: plan.totalCost,
+    expenseAccountId,
+    inventoryAccountId: inv.a as string,
+    consumptions: plan.draws.map((d, i) => ({ id: consumptionIds[i], qty: d.qty, unitCost: d.unitCost })),
+  };
+}
+
+/**
  * Sales invoice: revenue is recognised and the customer owes money. Stock
  * does not move here — that already happened on delivery (or happens in the
  * same breath via postSaleWithDelivery, for the common "sell it and it
@@ -3286,6 +3514,19 @@ async function _postSalesInvoice(
 ) {
   if (input.lines.length === 0) throw new Error("An invoice needs at least one line");
   assertLines(input.lines);
+
+  // A retail sale is one document: it cannot also bill a delivery or promise
+  // one, and it draws only on owned stock — consignment settles through the
+  // delivery path, which is the trading flow.
+  if (input.issueStock) {
+    if (input.deliveryId || input.toDeliver) {
+      throw new Error("A counter sale hands the goods over as it posts; it cannot bill or promise a delivery.");
+    }
+    if (input.lines.some((l) => l.source === "CONSIGNMENT")) {
+      throw new Error("Consigned goods are sold through the delivery flow, not at the counter.");
+    }
+    assertSerials(input.lines, await serialTracking(tx, input.lines.map((l) => l.itemId)), "sell");
+  }
 
   // An amendment is the sanctioned way to change an agreed price and carries
   // its own reason and version; every other posting bills what was agreed.
@@ -3490,6 +3731,15 @@ async function _postSalesInvoice(
        ${input.priceLevelId ?? null})
     returning id`;
 
+  // A counter sale that went short says so on itself, the way a delivery does.
+  if (input.issueStock && input.allowNegativeStock === true) {
+    await tx`
+      update document set negative_stock_confirmed = true,
+             negative_stock_confirmed_at = now(),
+             negative_stock_reason = ${input.negativeStockReason?.trim() || null}
+       where id = ${doc.id}`;
+  }
+
   const journal: JournalLine[] = [];
   /** What this invoice bills, for the cost claim once every line exists. */
   const billedLines: Array<{ lineId: string; itemId: string; qty: number }> = [];
@@ -3499,7 +3749,8 @@ async function _postSalesInvoice(
     lineNo++;
 
     const [item] = await tx`
-      select id, code, name, is_stocked, base_uom_id from item where id = ${line.itemId}`;
+      select id, code, name, is_stocked, base_uom_id, warranty_months
+        from item where id = ${line.itemId}`;
     if (!item) throw new Error("Item not found");
 
     /* The invoice speaks in whatever was sold — five cartons, not a hundred
@@ -3521,7 +3772,8 @@ async function _postSalesInvoice(
          discount_pct, discount_amount,
          volume_discount_pct, volume_discount_amount, volume_discount_id,
          invoice_discount_pct, invoice_discount_amount, invoice_discount_id,
-         net_amount, tax_code_id, tax_amount, gross_amount, foc_reason_id, source_line_id)
+         net_amount, tax_code_id, tax_amount, gross_amount, foc_reason_id,
+         warranty_months, source_line_id)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty},
@@ -3531,6 +3783,9 @@ async function _postSalesInvoice(
          ${d?.invoiceDiscountPct ?? 0}, ${d?.invoiceDiscountAmount ?? 0}, ${d?.invoiceDiscountId ?? null},
          ${net}, ${line.focReasonId ? null : (line.taxCodeId ?? t?.rate.id ?? null)},
          ${lineTax}, ${round4(net + lineTax)}, ${line.focReasonId ?? null},
+         -- Copied, so a later change to the model's warranty does not
+         -- rewrite what this customer was promised.
+         ${line.warrantyMonths ?? item.warranty_months ?? null},
          -- Which order line this bills. The purchase side has always recorded
          -- it and the sales side never did, though the form sends it and the
          -- type carries it: it was read off the input and dropped. A sales
@@ -3547,8 +3802,35 @@ async function _postSalesInvoice(
     /* Which units this line bills, for the cost claim after the loop. Free
        lines are left out: a giveaway's cost went to its reason's account
        when the goods left and is not waiting here to be recognised. */
-    if (!line.focReasonId && item.is_stocked) {
+    if (!line.focReasonId && item.is_stocked && !input.issueStock) {
       billedLines.push({ lineId: invLine.id as string, itemId: line.itemId, qty: baseQty });
+    }
+
+    /* Counter retail: the goods leave now, on this document, and their cost
+       is recognised in this entry — Dr COGS / Cr Inventory, once.
+
+       The claim rows are written too, against this invoice's own layers, so
+       the sales report and the cost reconciliation read retail and trading
+       sales the same way. They never touch 1090: v_delivery_cost_unclaimed
+       reads deliveries only. */
+    if (input.issueStock && item.is_stocked) {
+      const issued = await issueStockLine(tx, {
+        companyId, documentId: doc.id as string, lineId: invLine.id as string,
+        itemId: line.itemId, locationId, docDate, qty: baseQty,
+        serials: line.serials, focReasonId: line.focReasonId,
+        allowNegative: input.allowNegativeStock === true,
+        negativeStockReason: input.negativeStockReason,
+      });
+      journal.push({ accountId: issued.inventoryAccountId, amount: -issued.totalCost, locationId });
+      journal.push({ accountId: issued.expenseAccountId, amount: issued.totalCost, locationId });
+      if (!line.focReasonId) {
+        for (const c of issued.consumptions) {
+          await tx`
+            insert into sales_cost_allocation
+              (company_id, invoice_line_id, consumption_id, qty, unit_cost, posted_by_document_id)
+            values (${companyId}, ${invLine.id}, ${c.id}, ${c.qty}, ${c.unitCost}, ${doc.id})`;
+        }
+      }
     }
 
     /* Revenue, and the cost of the goods it bills.
@@ -3736,6 +4018,20 @@ async function _postSalesInvoice(
 
 export async function postSalesInvoice(input: SalesInvoiceInput & { deliveryId?: string | null }, tx?: TransactionSql) {
   return inTransaction(tx, (t) => _postSalesInvoice(t, input));
+}
+
+/**
+ * Counter retail sale: one document, one entry, one transaction.
+ *
+ *   Dr Cash / Bank / AR        Cr Sales Revenue (and tax)
+ *   Dr Cost of Goods Sold      Cr Inventory
+ *
+ * Stock leaves on this invoice, each named unit at its own cost, and cash
+ * taken at the counter becomes a receipt allocated to it — exactly as
+ * postSalesInvoice already does. See docs/06-phone-retail.md, D-P1.
+ */
+export async function postRetailSale(input: SalesInvoiceInput, outer?: TransactionSql) {
+  return inTransaction(outer, (tx) => _postSalesInvoice(tx, { ...input, issueStock: true }));
 }
 
 /**
@@ -3981,9 +4277,18 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
           + "that left were never named. Record the receipt first."
         );
       }
+      const details = new Map((line.unitDetails ?? []).map((d) => [d.serial.trim(), d]));
+      const extra = [...details.values()].flatMap((d) => [d.imei2?.trim(), d.deviceSerial?.trim()])
+        .filter((x): x is string => Boolean(x));
       const clash = await tx`
-        select serial_no from stock_serial
-         where company_id = ${companyId} and serial_no = any(${given})`;
+        select coalesce(
+                 case when serial_no = any(${[...given, ...extra]}) then serial_no end,
+                 case when imei2 = any(${[...given, ...extra]}) then imei2 end,
+                 device_serial) as serial_no
+          from stock_serial
+         where company_id = ${companyId}
+           and (serial_no = any(${[...given, ...extra]}) or imei2 = any(${[...given, ...extra]})
+                or device_serial = any(${extra}))`;
       if (clash.length > 0) {
         throw new Error(
           `${(clash as unknown as { serial_no: string }[])[0].serial_no} is already `
@@ -3991,10 +4296,19 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         );
       }
       for (const sn of given) {
-        await tx`
+        const d = details.get(sn);
+        const [unit] = await tx`
           insert into stock_serial
-            (company_id, item_id, serial_no, stock_lot_id, stock_movement_id)
-          values (${companyId}, ${line.itemId}, ${sn}, ${lotId}, ${movement.id})`;
+            (company_id, item_id, serial_no, stock_lot_id, stock_movement_id,
+             imei2, device_serial, supplier_warranty_months, notes)
+          values (${companyId}, ${line.itemId}, ${sn}, ${lotId}, ${movement.id},
+                  ${d?.imei2?.trim() || null}, ${d?.deviceSerial?.trim() || null},
+                  ${d?.supplierWarrantyMonths ?? null}, ${d?.notes?.trim() || null})
+          returning id`;
+        await tx`
+          insert into stock_serial_event
+            (company_id, serial_id, event, document_id, to_location_id, lot_id)
+          values (${companyId}, ${unit.id}, 'RECEIVED', ${doc.id}, ${locationId}, ${lotId})`;
       }
     }
 
@@ -5329,6 +5643,9 @@ export async function postPurchaseWithReceipt(
           // hundred and twenty pieces on the shelf, not five.
           uomId: l.uomId,
           batchNo: l.batchNo, expiryDate: l.expiryDate,
+          // The handsets in the box. Without these a bill that receives
+          // phones is refused: the receipt it composes has to name them.
+          serials: l.serials, unitDetails: l.unitDetails,
           // Only where the order is what this receipt answers. Without an
           // order these carry nothing, exactly as before.
           sourceLineId: orderId ? l.sourceLineId : undefined,
@@ -5395,6 +5712,8 @@ export type AdjustmentLine = {
    */
   batchNo?: string | null;
   expiryDate?: string | null;
+  /** The units lost, for a decrease of a serial-tracked item. */
+  serials?: string[];
 };
 export type AdjustmentInput = {
   companyId: string;
@@ -5472,6 +5791,21 @@ async function _postStockAdjustment(
       let totalCost: number;
       let plan: FifoPlan | null = null;
 
+      /* A phone found or lost has a name. Found stock with an IMEI is a
+         receipt — it needs a supplier and a cost — so an increase is refused;
+         a loss writes off the exact units. */
+      const [{ tracks_serial: named }] = await tx`
+        select tracks_serial from item where id = ${line.itemId}`;
+      let units: SerialUnit[] | undefined;
+      if (named) {
+        if (line.qty > 0) {
+          throw new Error(`${item.code} is tracked by serial. Bring units in on a goods receipt so each one is named.`);
+        }
+        assertSerials([{ itemId: line.itemId, qty: -line.qty, serials: line.serials }],
+          new Set([line.itemId]), "write off");
+        units = await claimSerials(tx, companyId, line.itemId, locationId, line.serials ?? []);
+      }
+
       if (line.qty < 0) {
         const onHandRows = await tx`
           select fn_qty_on_hand(${companyId}, ${line.itemId}, ${locationId}) as on_hand`;
@@ -5482,7 +5816,8 @@ async function _postStockAdjustment(
               `${onHand} on hand, ${-line.qty} requested`
           );
         }
-        plan = await planFifoConsumption(tx, companyId, line.itemId, locationId, -line.qty);
+        plan = await planFifoConsumption(tx, companyId, line.itemId, locationId, -line.qty,
+          false, units?.map((u) => u.lotId));
         unitCost = plan.unitCost;
         totalCost = -plan.totalCost;
       } else {
@@ -5524,8 +5859,12 @@ async function _postStockAdjustment(
         {
           const adjAcct = await tx`
             select fn_system_account(${companyId}, 'STOCK_ADJUSTMENT') as a`;
-          await recordFifoConsumption(
+          const ids = await recordFifoConsumption(
             tx, companyId, movement.id, plan, adjAcct[0].a as string);
+          if (units) {
+            await recordSerialIssues(tx, companyId, movement.id, units, ids,
+              { kind: "WRITTEN_OFF", documentId: doc.id, locationId });
+          }
         }
       } else {
         await createFifoLot(tx, companyId, line.itemId, locationId, receivedAt, unitCost, line.qty, movement.id,
@@ -5577,7 +5916,11 @@ export async function postStockAdjustment(input: AdjustmentInput) {
 // location does moving value between warehouses need an entry to keep the
 // balance sheet in step with where it physically sits.
 
-export type TransferLine = { itemId: string; qty: number };
+export type TransferLine = {
+  itemId: string; qty: number;
+  /** The units moving, for a serial-tracked item. They arrive with their cost. */
+  serials?: string[];
+};
 export type TransferInput = {
   companyId: string;
   fromLocationId: string;
@@ -5613,6 +5956,8 @@ export async function postStockTransfer(input: TransferInput) {
   return sql.begin(async (tx) => {
     const { companyId, fromLocationId, toLocationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
+    const serialTrackedT = await serialTracking(tx, lines.map((l) => l.itemId));
+    assertSerials(lines, serialTrackedT, "transfer");
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
     const fiscalYear = fyRows[0]?.fy ?? null;
@@ -5689,9 +6034,12 @@ export async function postStockTransfer(input: TransferInput) {
         );
       }
 
+      const units = serialTrackedT.has(line.itemId)
+        ? await claimSerials(tx, companyId, line.itemId, fromLocationId, line.serials ?? [])
+        : undefined;
       const plan = await planFifoConsumption(
         tx, companyId, line.itemId, fromLocationId, line.qty,
-        input.allowNegativeStock === true
+        !units && input.allowNegativeStock === true, units?.map((u) => u.lotId)
       );
       const unitCost = plan.unitCost;
       const totalCost = plan.totalCost;
@@ -5717,7 +6065,10 @@ export async function postStockTransfer(input: TransferInput) {
           (${companyId}, ${line.itemId}, ${fromLocationId}, ${docDate}::date,
            ${-line.qty}, ${unitCost}, ${-totalCost}, ${doc.id}, ${docLine.id})
         returning id`;
-      await recordFifoConsumption(tx, companyId, outMovement.id, plan);
+      const consumptionIds = await recordFifoConsumption(tx, companyId, outMovement.id, plan);
+      if (units) {
+        await recordSerialIssues(tx, companyId, outMovement.id, units, consumptionIds, null);
+      }
       // The source warehouse goes negative exactly as it would on a delivery,
       // so the shortfall lands on the same worklist and is reconciled the
       // same way.
@@ -5735,7 +6086,18 @@ export async function postStockTransfer(input: TransferInput) {
           (${companyId}, ${line.itemId}, ${toLocationId}, ${docDate}::date,
            ${line.qty}, ${unitCost}, ${totalCost}, ${doc.id}, ${docLine.id})
         returning id`;
-      await createFifoLot(tx, companyId, line.itemId, toLocationId, receivedAt, unitCost, line.qty, inMovement.id);
+      // Named units arrive one layer each, at the cost each left at — an
+      // averaged layer would blur two phones that cost different amounts.
+      if (units) {
+        for (const [i, u] of units.entries()) {
+          const lotId = await createFifoLot(tx, companyId, line.itemId, toLocationId, receivedAt,
+            plan.draws[i].unitCost, 1, inMovement.id);
+          await moveSerialsTo(tx, companyId, [u.serialId], lotId,
+            { kind: "TRANSFER", documentId: doc.id, from: fromLocationId, to: toLocationId });
+        }
+      } else {
+        await createFifoLot(tx, companyId, line.itemId, toLocationId, receivedAt, unitCost, line.qty, inMovement.id);
+      }
 
       const [fromAcct] = await tx`
         select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${line.itemId}, null, ${fromLocationId}) as a`;
@@ -5794,6 +6156,8 @@ export type ReturnLine = {
    */
   taxCodeId?: string | null;
   focReasonId?: string | null;
+  /** The exact units coming back (or going back), for a serial-tracked item. */
+  serials?: string[];
 };
 export type ReturnInput = {
   companyId: string;
@@ -6005,6 +6369,52 @@ export async function postDebitNote(input: NoteInput, tx?: TransactionSql) {
   return inTransaction(tx, (t) => _postNote(t, "DEBIT_NOTE", input));
 }
 
+/**
+ * The units a customer is bringing back: locked, sold, sold to them, and —
+ * where a sale is named — sold on that sale. Each comes back at the cost it
+ * left at, read off the slice it left on, so a returned phone is worth what
+ * it was worth and no other phone's cost moves.
+ */
+async function unitsComingBack(
+  tx: TransactionSql, companyId: string, partnerId: string,
+  sourceDocumentId: string | null | undefined, itemId: string, serials: string[],
+) {
+  const out: { serialId: string; unitCost: number }[] = [];
+  for (const raw of serials) {
+    const sn = raw.trim();
+    const [s] = await tx`
+      select id from stock_serial
+       where company_id = ${companyId} and (serial_no = ${sn} or imei2 = ${sn}) for update`;
+    if (!s) throw new Error(`${sn} was never received here.`);
+    const [st] = await tx`
+      select status, item_id, customer_id, out_document_id, out_doc_no, stock_lot_id, unit_cost
+        from v_stock_serial where serial_id = ${s.id}`;
+    if (st.status !== "SOLD") {
+      throw new Error(`${sn} is not out with a customer, so it cannot be returned by one.`);
+    }
+    if (st.item_id !== itemId) throw new Error(`${sn} is not the item on this line.`);
+    if (st.customer_id !== partnerId) {
+      throw new Error(`${sn} was sold to a different customer, on ${st.out_doc_no}.`);
+    }
+    if (sourceDocumentId) {
+      const [same] = await tx`
+        select 1 as yes from document d
+         where d.id = ${st.out_document_id}
+           and (d.id = ${sourceDocumentId} or d.lifecycle_owner_id = ${sourceDocumentId}
+                or d.id = (select source_document_id from document where id = ${sourceDocumentId}))`;
+      if (!same) throw new Error(`${sn} was sold on ${st.out_doc_no}, not on the sale named here.`);
+    }
+    const [cost] = await tx`
+      select c.unit_cost from stock_serial_issue si
+        join stock_lot_consumption c on c.id = si.consumption_id
+       where si.serial_id = ${s.id} and si.lot_id = ${st.stock_lot_id}
+         and fn_serial_issue_stands(si.stock_movement_id)
+       order by si.created_at desc limit 1`;
+    out.push({ serialId: s.id as string, unitCost: Number(cost?.unit_cost ?? st.unit_cost) });
+  }
+  return out;
+}
+
 export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql) {
   if (input.lines.length === 0) throw new Error("A return needs at least one line");
   assertLines(input.lines);
@@ -6012,6 +6422,8 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
   return inTransaction(outer, async (tx) => {
     const { companyId, partnerId, locationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
+    const serialTrackedR = await serialTracking(tx, input.lines.map((l) => l.itemId));
+    assertSerials(input.lines, serialTrackedR, "take back");
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
     const fiscalYear = fyRows[0]?.fy ?? null;
@@ -6121,11 +6533,19 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         // With no source named there is nothing to read, so it falls back to
         // what stock here is worth right now.
         const taken = returnedSoFar.get(line.itemId) ?? 0;
-        const layers = input.sourceDocumentId
-          ? await resolveReturnLayers(
-              tx, companyId, input.sourceDocumentId, line.itemId, line.qty, taken
-            )
+        // A named unit carries its own cost back; FIFO slices are for the
+        // anonymous goods beside it.
+        const units = serialTrackedR.has(line.itemId)
+          ? await unitsComingBack(tx, companyId, partnerId, input.sourceDocumentId,
+                                  line.itemId, line.serials ?? [])
           : null;
+        const layers = units
+          ? units.map((u) => ({ qty: 1, unitCost: u.unitCost }))
+          : input.sourceDocumentId
+            ? await resolveReturnLayers(
+                tx, companyId, input.sourceDocumentId, line.itemId, line.qty, taken
+              )
+            : null;
         returnedSoFar.set(line.itemId, round4(taken + line.qty));
 
         const slices: ReturnLayer[] = layers ?? [
@@ -6136,7 +6556,7 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         ];
 
         let totalCost = 0;
-        for (const slice of slices) {
+        for (const [si, slice] of slices.entries()) {
           const sliceCost = round4(slice.unitCost * slice.qty);
           totalCost = round4(totalCost + sliceCost);
 
@@ -6151,10 +6571,14 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
               (${companyId}, ${line.itemId}, ${locationId}, ${docDate}::date,
                ${slice.qty}, ${slice.unitCost}, ${sliceCost}, ${doc.id}, ${docLine.id})
             returning id`;
-          await createFifoLot(
+          const lotId = await createFifoLot(
             tx, companyId, line.itemId, locationId, receivedAt,
             slice.unitCost, slice.qty, movement.id
           );
+          if (units) {
+            await moveSerialsTo(tx, companyId, [units[si].serialId], lotId,
+              { kind: "CUSTOMER_RETURN", documentId: doc.id, to: locationId });
+          }
         }
 
         const inventory = await tx`
@@ -6253,6 +6677,8 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
 
   return inTransaction(outer, async (tx) => {
     const { companyId, partnerId, locationId, docDate } = input;
+    const serialTrackedP = await serialTracking(tx, input.lines.map((l) => l.itemId));
+    assertSerials(input.lines, serialTrackedP, "send back");
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
     const fiscalYear = fyRows[0]?.fy ?? null;
@@ -6456,7 +6882,23 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
         );
       }
 
-      const plan = await planFifoConsumption(tx, companyId, line.itemId, locationId, line.qty);
+      // A named unit goes back off its own layer, and only to the supplier
+      // it came from.
+      const units = serialTrackedP.has(line.itemId)
+        ? await claimSerials(tx, companyId, line.itemId, locationId, line.serials ?? [])
+        : undefined;
+      if (units) {
+        const wrong = await tx`
+          select imei as serial_no, supplier_name from v_stock_serial
+           where serial_id = any(${units.map((u) => u.serialId)})
+             and supplier_id is distinct from ${partnerId}`;
+        if (wrong.length > 0) {
+          throw new Error(`${wrong[0].serial_no ?? "That unit"} came from ${wrong[0].supplier_name ?? "another supplier"}.`);
+        }
+      }
+
+      const plan = await planFifoConsumption(
+        tx, companyId, line.itemId, locationId, line.qty, false, units?.map((u) => u.lotId));
       const unitCost = plan.unitCost;
       const totalCost = plan.totalCost;
 
@@ -6481,7 +6923,11 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
           (${companyId}, ${line.itemId}, ${locationId}, ${docDate}::date,
            ${-line.qty}, ${unitCost}, ${-totalCost}, ${doc.id}, ${docLine.id})
         returning id`;
-      await recordFifoConsumption(tx, companyId, movement.id, plan);
+      const consumptionIds = await recordFifoConsumption(tx, companyId, movement.id, plan);
+      if (units) {
+        await recordSerialIssues(tx, companyId, movement.id, units, consumptionIds,
+          { kind: "SUPPLIER_RETURN", documentId: doc.id, locationId });
+      }
 
       const inventory = await tx`
         select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${line.itemId}) as a`;
@@ -8021,11 +8467,13 @@ async function voidDocumentIn(
      * safe: the engine refuses without it, so an importer or a script cannot
      * quietly put stock on a shelf it has never seen.
      */
+    // What it composed, and what it moved itself — a counter sale's invoice.
     const restoring = await tx`
       select coalesce(sum(-sm.qty), 0) as qty
         from stock_movement sm
         join document d on d.id = sm.document_id
-       where d.lifecycle_owner_id = ${documentId}
+       where (d.lifecycle_owner_id = ${documentId}
+              or (d.id = ${documentId} and d.doc_type = 'SALES_INVOICE'))
          and d.status = 'POSTED' and sm.qty < 0`;
     const comingBack = Number((restoring as unknown as { qty: string }[])[0]?.qty ?? 0);
     if (comingBack > 0 && input.goodsBack !== true) {
@@ -8237,7 +8685,10 @@ async function voidDocumentIn(
       }
     }
 
-    if (doc.doc_type === "DELIVERY") {
+    // A counter sale's invoice issued its own stock (postRetailSale), so it is
+    // undone the way a delivery is. An invoice with no movements finds no
+    // slices and does nothing here.
+    if (doc.doc_type === "DELIVERY" || doc.doc_type === "SALES_INVOICE") {
       // received_date comes too: the layer goes back where it was in the
       // queue, not to the back of it. For a counter sale undone in the same
       // breath the difference was immaterial, which is why this used the
@@ -8247,7 +8698,9 @@ async function voidDocumentIn(
       // one. planVoidIn has already refused the case where something was
       // issued in between; this keeps the queue honest for everything after.
       const consumed = await tx`
-        select c.qty, c.unit_cost, l.item_id, l.location_id, l.received_date
+        select c.id, c.qty, c.unit_cost, l.item_id, l.location_id, l.received_date,
+               (select si.serial_id from stock_serial_issue si
+                 where si.consumption_id = c.id limit 1) as serial_id
           from stock_lot_consumption c
           join stock_movement sm on sm.id = c.stock_movement_id
           join stock_lot l on l.id = c.lot_id
@@ -8255,8 +8708,8 @@ async function voidDocumentIn(
          order by c.created_at`;
 
       for (const slice of consumed as unknown as {
-        qty: string; unit_cost: string; item_id: string; location_id: string;
-        received_date: string;
+        id: string; qty: string; unit_cost: string; item_id: string; location_id: string;
+        received_date: string; serial_id: string | null;
       }[]) {
         const qty = Number(slice.qty);
         const unitCost = Number(slice.unit_cost);
@@ -8271,10 +8724,15 @@ async function voidDocumentIn(
              ${plan.reversalDate}::date, ${qty}, ${unitCost}, ${cost}, ${reversal.id})
           returning id`;
 
-        await createFifoLot(tx, doc.company_id as string, slice.item_id,
+        const lotId = await createFifoLot(tx, doc.company_id as string, slice.item_id,
                             slice.location_id,
                             new Date(slice.received_date).toISOString(),
                             unitCost, qty, back.id as string);
+        // The handset that left on this slice is the one that comes back on it.
+        if (slice.serial_id) {
+          await moveSerialsTo(tx, doc.company_id as string, [slice.serial_id], lotId,
+            { kind: "RESTORED", documentId: reversal.id as string, to: slice.location_id });
+        }
       }
     }
 
@@ -8454,7 +8912,10 @@ export async function amendDocumentIn<T>(tx: TransactionSql, input: AmendInput<T
     if (isOrder) {
       await tx`update document set status = 'CANCELLED' where id = ${orig.id}`;
     } else {
-      await voidDocumentIn(tx, { documentId: input.documentId, reason: input.reason });
+      // Goods a counter sale took out come straight back and leave again on
+      // the replacement, in this transaction — amendInvoice refuses any
+      // change to which goods those are, so nothing reaches a shelf unseen.
+      await voidDocumentIn(tx, { documentId: input.documentId, reason: input.reason, goodsBack: true });
     }
 
     const replacement = await input.repost(tx, identity);
@@ -9387,12 +9848,32 @@ export async function amendInvoice(input: {
       // its quantities from that document; a correction may change what was
       // charged for the goods and never how many there were. The screen locks
       // the field, and this is what makes the lock mean something.
-      if (orig.source_document_id) {
+      const [ownStock] = await tx`
+        select 1 as yes from stock_movement
+         where document_id = ${input.documentId} and qty < 0 limit 1`;
+      if (orig.source_document_id || ownStock) {
         await assertQuantitiesUnchanged(
           tx, input.documentId, input.invoice.lines ?? []);
       }
 
-      const next = { ...input.invoice, amendOf: identity };
+      /* A counter sale corrects price, discount, customer or payment — never
+         which handsets left. Those are the same units or it is a return. */
+      if (ownStock) {
+        const before = (await tx`
+          select s.serial_no from stock_serial_issue si
+            join stock_serial s on s.id = si.serial_id
+            join stock_movement sm on sm.id = si.stock_movement_id
+           where sm.document_id = ${input.documentId}`)
+          .map((r: any) => r.serial_no as string).sort();
+        const after = (input.invoice.lines ?? [])
+          .flatMap((l) => (l.serials ?? []).map((s) => s.trim())).sort();
+        if (before.join(",") !== after.join(",")) {
+          throw new Error(
+            "A correction cannot change which handsets were sold. Return the unit and sell the other one.");
+        }
+      }
+
+      const next = { ...input.invoice, amendOf: identity, issueStock: Boolean(ownStock) };
       return orig.doc_type === "SALES_INVOICE"
         ? _postSalesInvoice(tx, next)
         : _postPurchaseInvoice(tx, next);
