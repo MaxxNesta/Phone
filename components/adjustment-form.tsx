@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 
@@ -12,6 +13,8 @@ type Line = {
   key: number; itemId: string; qty: string; unitCost: string;
   /** Only carried on an increase — a loss consumes lots FIFO already picked. */
   batchNo?: string; expiryDate?: string;
+  /** The handsets lost, for a decrease of an item tracked by IMEI. */
+  serials?: ScannedSerial[];
 };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -26,6 +29,7 @@ export function AdjustmentForm({
   items: initialItems,
   locations,
   stockByLocation,
+  shelfSerials = [],
   today,
   categories,
   uoms,
@@ -34,6 +38,8 @@ export function AdjustmentForm({
   items: Item[];
   locations: Location[];
   stockByLocation: StockRow[];
+  /** Handsets on each shelf, offered when a phone is written off. */
+  shelfSerials?: { item_id: string; location_id: string; imei: string }[];
   today: string;
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
@@ -90,6 +96,9 @@ export function AdjustmentForm({
   const amount = (l: Line) => (Number(l.qty) || 0) * effectiveCost(l);
   const total = lines.reduce((s, l) => s + amount(l), 0);
 
+  const serialShort = lines.some((l) => isLoss(l) && byId(l.itemId)?.tracks_serial
+    && (l.serials?.length ?? 0) !== Math.abs(Number(l.qty)));
+
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) !== 0)
@@ -97,6 +106,7 @@ export function AdjustmentForm({
         itemId: l.itemId,
         qty: Number(l.qty),
         unitCost: !isLoss(l) && l.unitCost !== "" ? Number(l.unitCost) : "",
+        serials: (l.serials ?? []).map((x) => x.serial),
         // Found stock arrives, so it names its lot like any other arrival.
         // A loss sends nothing: FIFO decides which layers it takes.
         batchNo: isLoss(l) ? "" : (l.batchNo ?? ""),
@@ -225,6 +235,24 @@ export function AdjustmentForm({
                   the same as a goods receipt — the engine refuses it
                   otherwise. Only on an increase: a loss consumes layers that
                   already exist and FIFO chooses them. */}
+              {lines.filter((l) => isLoss(l) && byId(l.itemId)?.tracks_serial).map((l) => {
+                const item = byId(l.itemId)!;
+                return (
+                  <tr key={`serial-${l.key}`} className="batchrow">
+                    <td colSpan={6}>
+                      <SerialEntry
+                        label={`${item.code} — which handsets are written off`}
+                        qty={Math.abs(Number(l.qty)) || 0}
+                        value={l.serials ?? []}
+                        suggestions={shelfSerials
+                          .filter((u) => u.item_id === item.id && u.location_id === locationId)
+                          .map((u) => u.imei)}
+                        onChange={(v) => setLine(l.key, { serials: v })}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
               {lines.filter((l) => !isLoss(l) && byId(l.itemId)?.tracks_batch).map((l) => {
                 const item = byId(l.itemId)!;
                 return (
@@ -293,7 +321,8 @@ export function AdjustmentForm({
       </div>
 
       <div className="actions">
-        <button type="submit" disabled={pending || lines.every((l) => !l.itemId || Number(l.qty) === 0) || shortages.length > 0}>
+        {serialShort && <span className="low" role="status">Name one IMEI per handset lost.</span>}
+        <button type="submit" disabled={pending || lines.every((l) => !l.itemId || Number(l.qty) === 0) || shortages.length > 0 || serialShort}>
           {pending ? "Posting…" : "Post adjustment"}
         </button>
         <span className="page-sub">

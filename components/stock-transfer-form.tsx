@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
@@ -9,7 +10,7 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Location = { id: string; code: string; name: string };
 type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
-type Line = { key: number; itemId: string; qty: string };
+type Line = { key: number; itemId: string; qty: string; serials?: ScannedSerial[] };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
@@ -24,6 +25,7 @@ export function StockTransferForm({
   items: initialItems,
   locations,
   stockByLocation,
+  shelfSerials = [],
   today,
   categories,
   uoms,
@@ -32,6 +34,8 @@ export function StockTransferForm({
   items: Item[];
   locations: Location[];
   stockByLocation: StockRow[];
+  /** Handsets on each shelf, so a phone line offers the IMEIs that can move. */
+  shelfSerials?: { item_id: string; location_id: string; imei: string }[];
   today: string;
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
@@ -80,8 +84,10 @@ export function StockTransferForm({
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty) }))
+      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), serials: (l.serials ?? []).map((x) => x.serial) }))
   );
+  const serialShort = lines.some((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
+    && (l.serials?.length ?? 0) !== Number(l.qty));
 
   const sameLocation = fromLocationId && toLocationId && fromLocationId === toLocationId;
 
@@ -172,7 +178,8 @@ export function StockTransferForm({
                 const item = byId(l.itemId);
                 const short = item?.is_stocked && Number(l.qty) > availableHere(l.itemId);
                 return (
-                  <tr key={l.key}>
+                  <Fragment key={l.key}>
+                  <tr>
                     <td style={{ minWidth: 240 }}>
                       <ItemPicker
                         mode="purchase"
@@ -197,6 +204,26 @@ export function StockTransferForm({
                         aria-label="Remove line" disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>
+                  {item?.tracks_serial && (
+                    <tr className="batchrow">
+                      <td colSpan={4}>
+                        <SerialEntry
+                          label={`${item.code} — which handsets move`}
+                          qty={Number(l.qty) || 0}
+                          value={l.serials ?? []}
+                          suggestions={shelfSerials
+                            .filter((u) => u.item_id === item.id && u.location_id === fromLocationId)
+                            .map((u) => u.imei)}
+                          onChange={(v) => setLine(l.key, {
+                            serials: v,
+                            ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
+                              ? { qty: String(v.length) } : {}),
+                          })}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -263,6 +290,7 @@ export function StockTransferForm({
       </div>
 
       <div className="actions">
+        {serialShort && <span className="low" role="status">Pick one IMEI per handset moving.</span>}
         <button
           type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
           onClick={
@@ -272,7 +300,7 @@ export function StockTransferForm({
           }
           disabled={
             (shortages.length > 0 && negativeConfirmed && !negativeReason.trim()) ||
-            pending || Boolean(sameLocation) ||
+            pending || Boolean(sameLocation) || serialShort ||
             lines.every((l) => !l.itemId || Number(l.qty) <= 0)
           }
         >

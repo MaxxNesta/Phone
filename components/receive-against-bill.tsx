@@ -1,17 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { Lock } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { RelatedDocumentsPanel } from "./related-documents";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
 
 type BillLine = {
   lineId: string;
   itemId: string;
   itemCode: string;
   itemName: string;
+  /** Each unit is named by IMEI. */
+  tracksSerial?: boolean;
   uomCode: string | null;
   billedQty: number;
   receivedQty: number;
@@ -87,6 +90,9 @@ export function ReceiveAgainstBill({
   const [receiving, setReceiving] = useState<Record<string, string>>(() =>
     Object.fromEntries(bill.lines.map((l) => [l.lineId, String(l.remainingQty)])));
 
+  /** IMEIs scanned per bill line, for the lines that are phones. */
+  const [scans, setScans] = useState<Record<string, ScannedSerial[]>>({});
+
   const entered = (l: BillLine) => Number(receiving[l.lineId]) || 0;
   const unitOf = (l: BillLine) => (l.uomCode ? ` ${l.uomCode}` : "");
 
@@ -150,8 +156,13 @@ export function ReceiveAgainstBill({
         // from here by the engine, which resolves the version that stands —
         // naming it from the browser would freeze a stale one.
         sourceLineId: l.lineId,
+        serials: (scans[l.lineId] ?? []).map((x) => x.serial),
+        unitDetails: (scans[l.lineId] ?? []).filter((x) => x.imei2)
+          .map((x) => ({ serial: x.serial, imei2: x.imei2 })),
       }))
   );
+  const serialShort = bill.lines.some((l) => l.tracksSerial && entered(l) > 0
+    && (scans[l.lineId]?.length ?? 0) !== entered(l));
 
   return (
     <form action={formAction} className="rcv">
@@ -234,7 +245,8 @@ export function ReceiveAgainstBill({
             </thead>
             <tbody>
               {bill.lines.map((l) => (
-                <tr key={l.lineId}>
+                <Fragment key={l.lineId}>
+                <tr>
                   <td>
                     <strong>{l.itemCode}</strong>
                     <div className="muted">{l.itemName}</div>
@@ -262,6 +274,26 @@ export function ReceiveAgainstBill({
                   </td>
                   <td className="r">{money(entered(l) * l.unitPrice)}</td>
                 </tr>
+                {l.tracksSerial && (
+                  <tr className="batchrow">
+                    <td colSpan={7}>
+                      <SerialEntry
+                        label={`${l.itemCode} — IMEI of each unit`}
+                        qty={entered(l)}
+                        value={scans[l.lineId] ?? []}
+                        withImei2
+                        onChange={(v) => {
+                          setScans((m) => ({ ...m, [l.lineId]: v }));
+                          // Scanning drives the quantity until one is typed.
+                          if (!(entered(l) > 0) || entered(l) === (scans[l.lineId]?.length ?? 0)) {
+                            setReceiving((r) => ({ ...r, [l.lineId]: String(v.length) }));
+                          }
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -341,7 +373,8 @@ export function ReceiveAgainstBill({
           Matches the existing bill. No new invoice or payment is created.
         </span>
         <Link className="btn ghost" href={backHref}>{backLabel}</Link>
-        <button type="submit" className="btn" disabled={pending || totals.received <= 0}>
+        {serialShort && <span className="low" role="status">Scan one IMEI per phone received.</span>}
+        <button type="submit" className="btn" disabled={pending || totals.received <= 0 || serialShort}>
           {pending ? "Posting…"
             : `Post goods receipt · ${qty(totals.received)}${oneUnit ? unit : ""}`}
         </button>

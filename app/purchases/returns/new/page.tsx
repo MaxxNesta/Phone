@@ -103,6 +103,8 @@ export default async function NewPurchaseReturn({
         categories={categories}
         uoms={d.uoms as never}
         today={today}
+        serialPool={await sql`select item_id, imei, supplier_id as partner_id, received_document_id as document_id, location_id
+                 from v_stock_serial where status = 'IN_STOCK' order by imei` as never}
         salesDocs={returnable as never}
         prefill={prefill as never}
       />

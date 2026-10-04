@@ -29,7 +29,7 @@ import {
   postStockAdjustment, postStockTransfer,
   importItems, importVouchers, voidDocument, reconcileNegativeStock,
   postSalesReturn, postPurchaseReturn, postConsignmentReceipt,
-  type InvoiceLine, type OrderLine, type FulfillmentLine, type Allocation, type VoucherLine,
+  type InvoiceLine, type UnitDetail, type OpeningStockLine, type OrderLine, type FulfillmentLine, type Allocation, type VoucherLine,
   type AdjustmentLine, type ReturnLine, type TransferLine, type ConsignmentReceiptLine,
   postYearEndClose,
   saveDocumentDraft, deleteDocumentDraft,
@@ -1554,6 +1554,8 @@ export type PickerItem = {
   /** Whether goods of this item arrive in identifiable lots, and whether
    *  those lots have a shelf life. A receipt form asks for what these say. */
   tracks_batch?: boolean; tracks_expiry?: boolean;
+  /** Each unit is named by IMEI / serial: the form asks for one per unit. */
+  tracks_serial?: boolean;
   /** Which size, which colour — `[{a: "Colour", o: "Red"}]`. Null for an
    *  ordinary item, which is most of a catalogue. Typed loosely because it
    *  arrives as json; asVariant() in variant-tags is what checks it. */
@@ -1701,9 +1703,7 @@ function parseLines(fd: FormData): InvoiceLine[] {
       consignorId: l.consignorId || null,
       // The handsets on this line. Dropped here, a phone could never be sold
       // or received through a form at all — the engine requires them.
-      serials: Array.isArray(l.serials)
-        ? l.serials.map((s: unknown) => String(s).trim()).filter(Boolean) : undefined,
-      unitDetails: Array.isArray(l.unitDetails) ? l.unitDetails : undefined,
+      ...serialFields(l),
       warrantyMonths: l.warrantyMonths === undefined || l.warrantyMonths === "" || l.warrantyMonths === null
         ? null : Number(l.warrantyMonths),
       discountAmount: l.discountAmount === undefined || l.discountAmount === "" || l.discountAmount === null
@@ -2015,6 +2015,29 @@ function parseOrderLines(fd: FormData): OrderLine[] {
   return lines;
 }
 
+/**
+ * The handsets a form line names: IMEIs, and for a receipt the optional second
+ * IMEI and maker's serial of each. Blank entries dropped; the engine checks
+ * the count against the quantity and every IMEI against the shelf.
+ */
+function serialFields(l: any): { serials?: string[]; unitDetails?: UnitDetail[] } {
+  const serials = Array.isArray(l.serials)
+    ? l.serials.map((s: unknown) => String(s).trim()).filter(Boolean) : [];
+  const unitDetails = Array.isArray(l.unitDetails)
+    ? l.unitDetails
+        .filter((d: any) => d && String(d.serial ?? "").trim())
+        .map((d: any) => ({
+          serial: String(d.serial).trim(),
+          imei2: d.imei2 ? String(d.imei2).trim() : null,
+          deviceSerial: d.deviceSerial ? String(d.deviceSerial).trim() : null,
+        }))
+    : [];
+  return {
+    serials: serials.length ? serials : undefined,
+    unitDetails: unitDetails.length ? unitDetails : undefined,
+  };
+}
+
 function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
   const raw = String(fd.get("lines") ?? "[]");
   let parsed: unknown;
@@ -2048,6 +2071,7 @@ function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
       // that actually takes the goods off the shelf.
       source: l.source === "CONSIGNMENT" ? "CONSIGNMENT" as const : "OWNED" as const,
       consignorId: l.consignorId || null,
+      ...serialFields(l),
     }))
     .filter((l) => l.itemId && l.qty > 0);
 
@@ -3383,7 +3407,7 @@ export async function getFormData() {
     sql`select id, code, name, payment_terms_days from business_partner
          where company_id = ${co} and is_supplier and is_active order by code`,
     sql`select i.id, i.code, i.name, i.is_stocked, i.item_group_id,
-                i.tracks_batch, i.tracks_expiry,
+                i.tracks_batch, i.tracks_expiry, i.tracks_serial,
                 -- What a scanner types. Without it the one moment
                 -- scanning exists for — putting a line on a document —
                 -- could not find the item it had just read.
@@ -5659,6 +5683,7 @@ function parseAdjustmentLines(fd: FormData): AdjustmentLine[] {
       // the form — the engine refuses a tracked increase without one.
       batchNo: l.batchNo ? String(l.batchNo) : null,
       expiryDate: l.expiryDate ? String(l.expiryDate) : null,
+      serials: serialFields(l).serials,
     }))
     .filter((l) => l.itemId && l.qty !== 0);
 }
@@ -5711,7 +5736,7 @@ function parseTransferLines(fd: FormData): TransferLine[] {
   if (!Array.isArray(parsed)) throw new Error("Could not read the lines");
 
   return parsed
-    .map((l: any) => ({ itemId: String(l.itemId ?? ""), qty: Number(l.qty) }))
+    .map((l: any) => ({ itemId: String(l.itemId ?? ""), qty: Number(l.qty), serials: serialFields(l).serials }))
     .filter((l) => l.itemId && l.qty > 0);
 }
 
@@ -6816,7 +6841,7 @@ export async function createOpeningBatch(_prev: unknown, fd: FormData): Promise<
 
     let parsed: {
       cutoverDate?: string;
-      stock?: { itemId: string; locationId: string; qty: number; unitCost: number }[];
+      stock?: OpeningStockLine[];
       receivables?: { partnerId: string; reference: string; amount: number; dueDate: string | null; locationId?: string | null }[];
       payables?: { partnerId: string; reference: string; amount: number; dueDate: string | null; locationId?: string | null }[];
       accounts?: { accountId: string; amount: number; locationId?: string | null }[];

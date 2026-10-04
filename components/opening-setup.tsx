@@ -1,16 +1,43 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useActionState } from "react";
 import { Boxes, Building2, CalendarDays, Landmark, TriangleAlert, Users, Wallet } from "lucide-react";
 import { money } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
 
-type Item = { id: string; code: string; name: string; is_stocked?: boolean };
+type Item = { id: string; code: string; name: string; is_stocked?: boolean; tracks_serial?: boolean };
 type Named = { id: string; code: string; name: string };
 type Account = Named & { account_type: string; is_control: boolean; subledger?: string | null };
 
-type StockRow = { key: number; itemId: string; locationId: string; qty: string; unitCost: string };
+type StockRow = {
+  key: number; itemId: string; locationId: string; qty: string; unitCost: string;
+  /** For a phone: one handset per line, pasted or scanned. */
+  units?: string;
+};
+
+type OpeningUnit = { serial: string; imei2: string | null; unitCost: number | null };
+
+/**
+ * One handset per line: "IMEI", "IMEI cost" or "IMEI IMEI2 cost", separated
+ * by spaces, commas or the tabs a spreadsheet copy carries. A second column
+ * that is long is an IMEI 2; a short one is a cost.
+ */
+function parseUnits(text: string): OpeningUnit[] {
+  const out: OpeningUnit[] = [];
+  for (const row of text.split(/\r?\n/)) {
+    const c = row.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+    if (!c.length) continue;
+    const num = (v?: string) => (v && /^[\d.]+$/.test(v) ? Number(v) : null);
+    if (c.length === 1) out.push({ serial: c[0], imei2: null, unitCost: null });
+    else if (c.length === 2) {
+      const looksImei = c[1].replace(/\D/g, "").length >= 14;
+      out.push(looksImei ? { serial: c[0], imei2: c[1], unitCost: null }
+                         : { serial: c[0], imei2: null, unitCost: num(c[1]) });
+    } else out.push({ serial: c[0], imei2: c[1], unitCost: num(c[2]) });
+  }
+  return out;
+}
 type PartnerRow = {
   key: number; partnerId: string; reference: string; amount: string; dueDate: string;
   /**
@@ -92,8 +119,14 @@ export function OpeningSetup({
   const openable = accounts.filter((a) => !a.is_control && !a.subledger);
   const stocked = items.filter((i) => i.is_stocked !== false);
 
+  const isPhone = (id: string) => Boolean(items.find((i) => i.id === id)?.tracks_serial);
+  const rowValue = (r: StockRow) => isPhone(r.itemId)
+    ? parseUnits(r.units ?? "").reduce((s, u) => s + (u.unitCost ?? n(r.unitCost)), 0)
+    : n(r.qty) * n(r.unitCost);
   const stockValue = useMemo(
-    () => stock.reduce((s, r) => s + (r.itemId ? n(r.qty) * n(r.unitCost) : 0), 0), [stock]);
+    () => stock.reduce((s, r) => s + (r.itemId ? rowValue(r) : 0), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stock, items]);
   const arTotal = useMemo(
     () => receivables.reduce((s, r) => s + (r.partnerId ? n(r.amount) : 0), 0), [receivables]);
   const apTotal = useMemo(
@@ -116,6 +149,7 @@ export function OpeningSetup({
     cutoverDate: cutover,
     stock: stock.filter((r) => r.itemId && n(r.qty) > 0).map((r) => ({
       itemId: r.itemId, locationId: r.locationId, qty: n(r.qty), unitCost: n(r.unitCost),
+      units: isPhone(r.itemId) ? parseUnits(r.units ?? "") : undefined,
     })),
     receivables: receivables.filter((r) => r.partnerId && n(r.amount)).map((r) => ({
       partnerId: r.partnerId, reference: r.reference, amount: n(r.amount),
@@ -192,7 +226,8 @@ export function OpeningSetup({
               </thead>
               <tbody>
                 {stock.map((r) => (
-                  <tr key={r.key}>
+                  <Fragment key={r.key}>
+                  <tr>
                     <td>
                       <select value={r.itemId} onChange={(e) => setStock((rs) =>
                         rs.map((x) => x.key === r.key ? { ...x, itemId: e.target.value } : x))}>
@@ -214,12 +249,41 @@ export function OpeningSetup({
                       rs.map((x) => x.key === r.key ? { ...x, qty: e.target.value } : x))} /></td>
                     <td><input type="number" step="any" value={r.unitCost} onChange={(e) => setStock((rs) =>
                       rs.map((x) => x.key === r.key ? { ...x, unitCost: e.target.value } : x))} /></td>
-                    <td className="r m">{money(n(r.qty) * n(r.unitCost))}</td>
+                    <td className="r m">{money(rowValue(r))}</td>
                     <td>
                       <button type="button" className="ghost tiny"
                               onClick={() => drop(setStock, r.key)}>×</button>
                     </td>
                   </tr>
+                  {isPhone(r.itemId) && (() => {
+                    const units = parseUnits(r.units ?? "");
+                    const dupes = units.length - new Set(units.map((u) => u.serial)).size;
+                    return (
+                      <tr className="batchrow">
+                        <td colSpan={6}>
+                          <div className="serialentry">
+                            <div className="serialentry-head">
+                              <span>Handsets — one per line: IMEI, or IMEI cost, or IMEI IMEI2 cost</span>
+                              <span className={units.length !== n(r.qty) || dupes ? "low" : "ok-qty"}>
+                                {units.length} of {n(r.qty) || 0}{dupes ? ` · ${dupes} repeated` : ""}
+                              </span>
+                            </div>
+                            <textarea rows={4} value={r.units ?? ""} aria-label="Handsets, one per line"
+                              placeholder={"356789012345678 1450000\n356789012345686 356789012345694 1500000"}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setStock((rs) => rs.map((x) => x.key === r.key
+                                  ? { ...x, units: v, qty: String(parseUnits(v).length) } : x));
+                              }} />
+                            <span className="hint">
+                              A unit with no cost takes the unit cost above. Paste straight from a spreadsheet.
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                  </Fragment>
                 ))}
               </tbody>
               <tfoot>

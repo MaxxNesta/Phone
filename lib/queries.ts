@@ -1114,7 +1114,7 @@ export async function getBillReceiptContext(companyId: string, invoiceId: string
   const own = await sql`
     select dl.id, dl.item_id, dl.base_qty as qty, dl.net_amount as net,
            dl.unit_price, dl.source_line_id,
-           i.code as item_code, i.name as item_name, u.code as uom_code
+           i.code as item_code, i.name as item_name, u.code as uom_code, i.tracks_serial
       from document_line dl
       join item i on i.id = dl.item_id
       join uom u on u.id = i.base_uom_id
@@ -1162,6 +1162,7 @@ export async function getBillReceiptContext(companyId: string, invoiceId: string
       lineId: l.id as string,
       itemId: l.item_id as string,
       itemCode: l.item_code as string,
+      tracksSerial: Boolean(l.tracks_serial),
       itemName: l.item_name as string,
       uomCode: (l.uom_code ?? null) as string | null,
       billedQty: Number(l.qty),

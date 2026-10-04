@@ -52,6 +52,9 @@ export default async function NewStockTransfer() {
         items={d.items as never}
         locations={d.locations as never}
         stockByLocation={d.stockByLocation as never}
+        shelfSerials={await sql`
+          select item_id, location_id, imei from v_stock_serial
+           where status = 'IN_STOCK' order by imei` as never}
         categories={categories}
         uoms={d.uoms as never}
         today={today}

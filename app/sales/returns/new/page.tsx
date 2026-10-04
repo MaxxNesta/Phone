@@ -57,6 +57,8 @@ export default async function NewSalesReturn() {
         categories={categories}
         uoms={d.uoms as never}
         today={today}
+        serialPool={await sql`select item_id, imei, customer_id as partner_id, out_document_id as document_id, location_id
+                 from v_stock_serial where status = 'SOLD' order by imei` as never}
         salesDocs={salesDocs as never}
       />
     </>

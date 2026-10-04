@@ -10073,6 +10073,13 @@ export type OpeningStockLine = {
   locationId: string;
   qty: number;
   unitCost: number;
+  /**
+   * The handsets, for an item tracked by IMEI — one per unit, each with its
+   * own cost where they differ (left out, the line's unit cost). Phones
+   * bought at different times cost different amounts, and each sells at its
+   * own.
+   */
+  units?: { serial: string; imei2?: string | null; deviceSerial?: string | null; unitCost?: number | null }[];
 };
 
 export type OpeningPartnerLine = {
@@ -10215,8 +10222,13 @@ export async function postOpeningBatch(input: OpeningBatchInput) {
       byLocation.set(l.locationId, list);
     }
 
+    // A named unit's own cost, where given, decides the line's value.
+    const lineValue = (l: OpeningStockLine) => l.units?.length
+      ? round4(l.units.reduce((s, u) => s + Number(u.unitCost ?? l.unitCost), 0))
+      : round4(l.qty * l.unitCost);
+
     for (const [locationId, lines] of byLocation) {
-      const total = round4(lines.reduce((s, l) => s + round4(l.qty * l.unitCost), 0));
+      const total = round4(lines.reduce((s, l) => s + lineValue(l), 0));
       const doc = await newDoc("OPENING_BALANCE", null, locationId, total,
         "Opening stock", null, null);
       const journal: JournalLine[] = [];
@@ -10224,13 +10236,25 @@ export async function postOpeningBatch(input: OpeningBatchInput) {
 
       for (const l of lines) {
         lineNo += 1;
-        const value = round4(l.qty * l.unitCost);
+        const value = lineValue(l);
         const [item] = await tx`
-          select base_uom_id, is_stocked from item
+          select code, base_uom_id, is_stocked, tracks_serial from item
            where id = ${l.itemId} and company_id = ${companyId}`;
         if (!item) throw new Error("Opening stock names an item that does not exist");
         if (!item.is_stocked) {
           throw new Error("Opening stock names an item that is not stocked");
+        }
+        const units = (l.units ?? []).map((u) => ({ ...u, serial: u.serial.trim() })).filter((u) => u.serial);
+        if (item.tracks_serial) {
+          assertSerials([{ itemId: l.itemId, qty: l.qty, serials: units.map((u) => u.serial) }],
+            new Set([l.itemId]), "open with");
+          for (const u of units) {
+            if (u.unitCost != null && !(Number(u.unitCost) >= 0)) {
+              throw new Error(`${u.serial}: cost cannot be negative`);
+            }
+          }
+        } else if (units.length) {
+          throw new Error(`${item.code} is not tracked by IMEI, so its opening stock names no units.`);
         }
 
         const [docLine] = await tx`
@@ -10240,7 +10264,7 @@ export async function postOpeningBatch(input: OpeningBatchInput) {
              net_amount, tax_amount, gross_amount)
           values
             (${companyId}, ${doc.id}, ${lineNo}, ${l.itemId}, ${locationId},
-             ${l.qty}, ${item.base_uom_id}, ${l.qty}, ${l.unitCost},
+             ${l.qty}, ${item.base_uom_id}, ${l.qty}, ${round4(value / l.qty)},
              ${value}, 0, ${value})
           returning id`;
 
@@ -10250,13 +10274,35 @@ export async function postOpeningBatch(input: OpeningBatchInput) {
              unit_cost, total_cost, document_id, document_line_id)
           values
             (${companyId}, ${l.itemId}, ${locationId}, ${docDate}::date,
-             ${l.qty}, ${l.unitCost}, ${value}, ${doc.id}, ${docLine.id})
+             ${l.qty}, ${round4(value / l.qty)}, ${value}, ${doc.id}, ${docLine.id})
           returning id`;
 
         // A real layer at a real cost, so the first sale out of opening stock
-        // draws what the goods actually cost rather than a guess.
-        await createFifoLot(tx, companyId, l.itemId, locationId, docDate,
-                            l.unitCost, l.qty, movement.id);
+        // draws what the goods actually cost rather than a guess. A handset
+        // gets a layer of its own, at its own cost.
+        if (item.tracks_serial) {
+          const clash = await tx`
+            select serial_no from stock_serial
+             where company_id = ${companyId}
+               and (serial_no = any(${units.map((u) => u.serial)}) or imei2 = any(${units.map((u) => u.serial)}))`;
+          if (clash.length) throw new Error(`${clash[0].serial_no} is already recorded.`);
+          for (const u of units) {
+            const cost = Number(u.unitCost ?? l.unitCost);
+            const lotId = await createFifoLot(tx, companyId, l.itemId, locationId, docDate, cost, 1, movement.id);
+            const [unit] = await tx`
+              insert into stock_serial
+                (company_id, item_id, serial_no, stock_lot_id, stock_movement_id, imei2, device_serial)
+              values (${companyId}, ${l.itemId}, ${u.serial}, ${lotId}, ${movement.id},
+                      ${u.imei2?.trim() || null}, ${u.deviceSerial?.trim() || null})
+              returning id`;
+            await tx`
+              insert into stock_serial_event (company_id, serial_id, event, document_id, to_location_id, lot_id, note)
+              values (${companyId}, ${unit.id}, 'RECEIVED', ${doc.id}, ${locationId}, ${lotId}, 'Opening stock')`;
+          }
+        } else {
+          await createFifoLot(tx, companyId, l.itemId, locationId, docDate,
+                              l.unitCost, l.qty, movement.id);
+        }
 
         const [inv] = await tx`
           select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${l.itemId}) as a`;

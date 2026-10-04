@@ -197,3 +197,13 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 .salepanel .saleline-edit input { width: 6.5em; min-height: 32px; padding: 0.2rem 0.4rem; }
 .salepanel .saleline-edit input.sm { width: 3.8em; }
 .salepanel .saleline-edit select { width: auto; min-height: 32px; padding: 0.2rem 1.6rem 0.2rem 0.4rem; }
+
+/* IMEI entry under a form line. */
+.serialentry { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0; }
+.serialentry-head { display: flex; justify-content: space-between; font-size: var(--t-sm); font-weight: 500; }
+.serialentry textarea { width: 100%; resize: vertical; min-height: 40px; font-family: var(--mono); }
+.serialentry-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s1); }
+.serialentry-list li { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.5rem;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: var(--t-sm); }
+.serialentry-offer { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
+.serialentry-offer .chip { min-height: 30px; padding: 0.2rem 0.6rem; font-family: var(--mono); font-size: 0.78rem; }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { Fragment, useActionState, useEffect, useState } from "react";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
@@ -9,7 +10,7 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
-type Line = { key: number; itemId: string; qty: string; unitPrice: string };
+type Line = { key: number; itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[] };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
   partner_id: string; rates?: Record<string, number> };
 
@@ -35,6 +36,7 @@ export function ReturnForm({
   uoms,
   salesDocs,
   prefill,
+  serialPool = [],
 }: {
   kind: "sales" | "purchase";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -45,6 +47,13 @@ export function ReturnForm({
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
   salesDocs?: SalesDoc[];
+  /**
+   * Handsets this return could name: for a customer return, the ones out with
+   * each customer and the sale they left on; for a supplier return, the ones
+   * on each shelf and who supplied them. Offered for one-tap entry.
+   */
+  serialPool?: { item_id: string; imei: string; partner_id: string;
+                 document_id: string | null; location_id: string | null }[];
   /**
    * Arrived here from a goods receipt being cancelled because the goods went
    * back. Everything this return needs is already on that receipt, so it is
@@ -71,6 +80,7 @@ export function ReturnForm({
       ? prefill.lines.map((l, i) => ({ key: i + 1, ...l }))
       : [{ key: 1, itemId: "", qty: "", unitPrice: "" }]);
   const [partnerId, setPartnerId] = useState(prefill?.partnerId ?? "");
+  const [locationId, setLocationId] = useState(prefill?.locationId || locations[0]?.id || "");
   const [docDate, setDocDate] = useState(today);
   const [sourceDocumentId, setSourceDocumentId] = useState(prefill?.sourceDocumentId ?? "");
   const [receivedTime, setReceivedTime] = useState("");
@@ -140,8 +150,11 @@ export function ReturnForm({
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0 }))
+      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0,
+                     serials: (l.serials ?? []).map((x) => x.serial) }))
   );
+  const serialShort = lines.some((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
+    && (l.serials?.length ?? 0) !== Number(l.qty));
 
   // Only a purchase return removes stock — a sales return adds it, so
   // there's nothing to run short of.
@@ -183,7 +196,7 @@ export function ReturnForm({
                   came into Mandalay go back from Mandalay, and asking again
                   invites picking the wrong shelf. */}
               <select id="location_id" name="location_id" required
-                      defaultValue={prefill?.locationId || locations[0]?.id || ""}>
+                      value={locationId} onChange={(e) => setLocationId(e.target.value)}>
                 {locations.map((l) => (
                   <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
                 ))}
@@ -281,7 +294,8 @@ export function ReturnForm({
                 const short = !isSales && item?.is_stocked && Number(l.qty) > Number(item.on_hand);
 
                 return (
-                  <tr key={l.key}>
+                  <Fragment key={l.key}>
+                  <tr>
                     <td style={{ minWidth: 240 }}>
                       <ItemPicker
                         mode={kind}
@@ -324,6 +338,28 @@ export function ReturnForm({
                         aria-label="Remove line" disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>
+                  {item?.tracks_serial && (
+                    <tr className="batchrow">
+                      <td colSpan={6}>
+                        <SerialEntry
+                          label={`${item.code} — ${isSales ? "which handsets came back" : "which handsets go back"}`}
+                          qty={Number(l.qty) || 0}
+                          value={l.serials ?? []}
+                          suggestions={serialPool
+                            .filter((u) => u.item_id === item.id && u.partner_id === partnerId
+                              && (!isSales || !sourceDocumentId || u.document_id === sourceDocumentId)
+                              && (isSales || !locationId || u.location_id === locationId))
+                            .map((u) => u.imei)}
+                          onChange={(v) => setLine(l.key, {
+                            serials: v,
+                            ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
+                              ? { qty: String(v.length) } : {}),
+                          })}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -349,7 +385,8 @@ export function ReturnForm({
       </div>
 
       <div className="actions">
-        <button type="submit" disabled={pending || total === 0 || shortages.length > 0}>
+        {serialShort && <span className="low" role="status">Name one IMEI per handset.</span>}
+        <button type="submit" disabled={pending || total === 0 || shortages.length > 0 || serialShort}>
           {pending ? "Posting…" : `Post ${isSales ? "sales" : "purchase"} return`}
         </button>
         <span className="page-sub">

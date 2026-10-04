@@ -6,6 +6,7 @@ import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { GrirCollisionLine } from "@/lib/queries";
 
 type Item = PickerItem;
@@ -28,6 +29,8 @@ type Line = {
   sourceLineId?: string | null;
   /** The order line behind the bill line, where the bill came from an order. */
   orderLineId?: string | null;
+  /** The handsets in the box, for an item tracked by IMEI. */
+  serials?: ScannedSerial[];
 };
 type MatchLine = {
   lineId: string; itemId: string; itemCode: string; itemName: string;
@@ -268,8 +271,15 @@ export function ReceiptForm({
         sourceLineId: l.sourceLineId ?? null,
         batchNo: l.batchNo?.trim() || null,
         expiryDate: l.expiryDate || null,
+        serials: (l.serials ?? []).map((x) => x.serial),
+        unitDetails: (l.serials ?? []).filter((x) => x.imei2).map((x) => ({ serial: x.serial, imei2: x.imei2 })),
       }))
   );
+
+  // A phone line whose IMEI count is not its quantity cannot post; saying so
+  // here saves a round trip to be told.
+  const serialShort = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
+    && (l.serials?.length ?? 0) !== Number(l.qty));
 
   return (
     <form action={formAction} className="form wide">
@@ -529,6 +539,28 @@ export function ReceiptForm({
                   </tr>
                 );
               })}
+              {lines.filter((l) => byId(l.itemId)?.tracks_serial).map((l) => {
+                const item = byId(l.itemId)!;
+                return (
+                  <tr key={`serial-${l.key}`} className="batchrow">
+                    <td colSpan={matchedPi ? 8 : 7}>
+                      <SerialEntry
+                        label={`${item.code} — IMEI of each unit`}
+                        qty={Number(l.qty) || 0}
+                        value={l.serials ?? []}
+                        withImei2
+                        onChange={(v) => setLine(l.key, {
+                          serials: v,
+                          // Scanning drives the quantity until somebody types a
+                          // different one; then the count is checked against it.
+                          ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
+                            ? { qty: String(v.length) } : {}),
+                        })}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
               {/* The lot, for items that keep one. On its own row beneath the
                   line rather than as two more columns: only some items need
                   it, and widening every receipt for the few that do would
@@ -642,7 +674,12 @@ export function ReceiptForm({
       )}
 
       <div className="actions">
-        <button type="submit" disabled={pending || total === 0}>
+        {serialShort.length > 0 && (
+          <span className="low" role="status">
+            Scan one IMEI per unit: {serialShort.map((l) => `${byId(l.itemId)?.code} ${l.serials?.length ?? 0}/${l.qty}`).join(", ")}
+          </span>
+        )}
+        <button type="submit" disabled={pending || total === 0 || serialShort.length > 0}>
           {pending ? "Posting…" : "Post goods receipt"}
         </button>
         <span className="page-sub">
