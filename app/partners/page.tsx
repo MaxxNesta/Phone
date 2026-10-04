@@ -16,6 +16,7 @@ export default async function Partners({
 
   const { role, category } = await searchParams;
   const all = (await getPartners(company.id)) as any[];
+  const currencies = await sql`select code, name from currency order by code`;
   // The price columns this company keeps, so a customer can be put on one.
   const priceLevels = (await sql`
     select id, name from price_level where company_id = ${company.id} order by sort_order`
@@ -87,6 +88,10 @@ export default async function Partners({
 
   return (
     <>
+      {/* One list of codes for every row's currency field. */}
+      <datalist id="currency-codes">
+        {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
+      </datalist>
       <div className="page-head">
         <span className="eyebrow">Master data</span>
         <h1>{role === "customer" ? "Customers" : role === "supplier" ? "Suppliers" : "Business partners"}</h1>

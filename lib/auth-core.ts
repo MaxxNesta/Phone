@@ -102,6 +102,9 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
 
 export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/settings/users", "users.manage"],
+  // Rates are kept by whoever buys stock; the page itself refuses edits to
+  // the currency list to anyone but an administrator.
+  ["/settings/currencies", "purchase.view"],
   ["/settings", "settings.manage"],
   ["/finance", "accounting.view"],
   ["/ledger", "accounting.view"],

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import { CurrencyRate, type FxOption } from "./currency-rate";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { AwaitingLine } from "@/lib/queries";
 import { ItemPicker } from "./item-picker";
@@ -13,7 +14,7 @@ import { PackageCheck, Truck, Clock } from "lucide-react";
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 
-type Partner = { id: string; code: string; name: string; payment_terms_days: number };
+type Partner = { id: string; code: string; name: string; payment_terms_days: number; currency?: string | null };
 type Location = { id: string; code: string; name: string };
 type CashAccount = { id: string; code: string; name: string };
 type MatchLine = {
@@ -35,6 +36,9 @@ type OpenDoc = {
   location_id?: string | null;
   /** The purchase order this receipt came in against, when it came from one. */
   source_no?: string | null;
+  /** A receipt valued in a foreign currency, and its rate. */
+  currency?: string;
+  exchange_rate?: number;
   lines: MatchLine[];
 };
 
@@ -84,7 +88,10 @@ export function InvoiceForm({
   initialGoodsReceiptId,
   awaiting = [],
   taxCodes = [],
+  fx,
 }: {
+  /** Currencies and latest rates — a purchase from abroad is billed in its own. */
+  fx?: { base: string; options: FxOption[] };
   kind: "sales" | "purchase";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   /** Keeps the voucher without posting it. Absent where drafts do not apply. */
@@ -140,6 +147,23 @@ export function InvoiceForm({
       : [{ key: 1, itemId: "", qty: "", unitPrice: "" }],
   );
   const [partnerId, setPartnerId] = useState(restored?.partnerId ?? "");
+  const base = fx?.base ?? "MMK";
+  const [currency, setCurrency] = useState(base);
+  const [rate, setRate] = useState("");
+  /** Set when the bill follows a receipt valued abroad: its rate, not ours. */
+  const [lockedFx, setLockedFx] = useState<string | null>(null);
+  const foreign = kind === "purchase" && currency !== base;
+  /** A receipt's kyat price shown in the currency the bill is written in. */
+  const priceFor = (d: OpenDoc, kyat: number) =>
+    d.currency && d.currency !== base && d.exchange_rate
+      ? String(Math.round((kyat / d.exchange_rate) * 10000) / 10000) : String(kyat);
+  /** Bill a receipt in its own currency, at its own rate. */
+  const followReceipt = (d: OpenDoc) => {
+    if (d.currency && d.currency !== base) {
+      setCurrency(d.currency); setRate(String(d.exchange_rate ?? ""));
+      setLockedFx(`At ${d.doc_no}'s rate — the goods were valued on the day they arrived.`);
+    } else { setLockedFx(null); }
+  };
   const [docDate, setDocDate] = useState(restored?.docDate ?? today);
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
   const [cashOut, setCashOut] = useState(restored?.cashOut ?? "");
@@ -231,7 +255,8 @@ export function InvoiceForm({
     if (id) setReceiveMode("match");
     setBillPart(false);
     const gr = openReceipts.find((d) => d.id === id);
-    if (!gr) return;
+    if (!gr) { setLockedFx(null); return; }
+    followReceipt(gr);
     if (gr.location_id) setLocationId(gr.location_id);
     setLines(
       gr.lines.map((l, idx) => ({
@@ -242,7 +267,7 @@ export function InvoiceForm({
         // pieces at 12,000 apiece.
         qty: String(l.enteredQty ?? l.qty),
         uomId: l.uomId ?? undefined,
-        unitPrice: String(l.unitPrice),
+        unitPrice: priceFor(gr, l.unitPrice),
         sourceLineId: l.lineId,
         sourceQty: String(l.enteredQty ?? l.qty),
       }))
@@ -290,6 +315,7 @@ export function InvoiceForm({
     if (!gr) return;
     setPartnerId(gr.partner_id);
     setMatchedGrId(gr.id);
+    followReceipt(gr);
     /* And says so. Without this the screen offered "Arriving with this bill"
        with the receipt's own lines already filled in, so posting would have
        received the same goods a second time — the mode has to follow the
@@ -309,7 +335,7 @@ export function InvoiceForm({
         // pieces at 12,000 apiece.
         qty: String(l.enteredQty ?? l.qty),
         uomId: l.uomId ?? undefined,
-        unitPrice: String(l.unitPrice),
+        unitPrice: priceFor(gr, l.unitPrice),
         sourceLineId: l.lineId,
         sourceQty: String(l.enteredQty ?? l.qty),
       }))
@@ -343,6 +369,13 @@ export function InvoiceForm({
   function pickPartner(id: string) {
     setPartnerId(id);
     setMatchedGrId("");
+    setLockedFx(null);
+    if (kind === "purchase") {
+      // The supplier's own currency, at the latest rate on file.
+      const cur = partners.find((x) => x.id === id)?.currency || base;
+      setCurrency(cur);
+      setRate(cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
+    }
     setFromOrderId(null);
     const p = partners.find((x) => x.id === id);
     if (p && p.payment_terms_days > 0) setDueDate(addDays(docDate, p.payment_terms_days));
@@ -569,6 +602,12 @@ export function InvoiceForm({
                 {leavesBalance ? "Filled from payment terms — required so this can be tracked as overdue" : "Filled from payment terms"}
               </span>
             </div>
+
+            {kind === "purchase" && fx && (
+              <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
+                locked={lockedFx}
+                onChange={(c, r) => { setCurrency(c); setRate(r); }} />
+            )}
           </div>
         </div>
       </div>
@@ -966,7 +1005,14 @@ export function InvoiceForm({
             </span>
           )}
           <span style={{ color: "var(--muted)" }}>Total</span>
-          <span className="big">{fmt(total)} MMK</span>
+          <span className="big">
+            {fmt(total)} {foreign ? currency : base}
+            {foreign && Number(rate) > 0 && (
+              <span className="subline" style={{ display: "block" }}>
+                ≈ {fmt(total * Number(rate))} {base} at {Number(rate).toLocaleString("en-US")}
+              </span>
+            )}
+          </span>
         </div>
       </div>
 
@@ -1045,7 +1091,7 @@ export function InvoiceForm({
             </div>
             {cashOverpaid && (
               <div className="alert" style={{ marginTop: "0.5rem" }}>
-                Amount paid can&rsquo;t be more than the invoice total ({fmt(total)} MMK).
+                Amount paid can&rsquo;t be more than the invoice total ({fmt(total)} {foreign ? currency : base}).
               </div>
             )}
           </div>

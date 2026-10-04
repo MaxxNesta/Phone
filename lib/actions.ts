@@ -184,7 +184,7 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
       insert into business_partner
         (company_id, code, name, name_my, company_name, is_customer, is_supplier,
          region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
-         category_id, supplier_category_id)
+         category_id, supplier_category_id, currency)
       values
         (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
          ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier},
@@ -199,7 +199,8 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
          -- What kind of shop it is. Classification only; it changes
          -- nothing about what they are charged or allowed to owe.
          ${str(fd, "category_id") || null},
-         ${str(fd, "supplier_category_id") || null})`;
+         ${str(fd, "supplier_category_id") || null},
+         ${(str(fd, "currency") || "").toUpperCase() || null})`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -257,6 +258,9 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
         price_level_id = ${str(fd, "price_level_id") || null},
         category_id = ${str(fd, "category_id") || null},
         supplier_category_id = ${str(fd, "supplier_category_id") || null},
+        -- What they bill in: a Shenzhen supplier is CNY, and every purchase
+        -- document for them defaults to it. Blank is kyat.
+        currency = ${(str(fd, "currency") || "").toUpperCase() || null},
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1854,6 +1858,7 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
 
     const input = {
       companyId: co,
+      ...fxFields(fd),
       partnerId: str(fd, "partner_id"),
       locationId: str(fd, "location_id"),
       docDate: str(fd, "doc_date"),
@@ -1961,6 +1966,7 @@ export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promis
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseReturn({
       companyId: co,
+      ...fxFields(fd),
       partnerId: str(fd, "partner_id"),
       locationId: str(fd, "location_id"),
       docDate: str(fd, "doc_date"),
@@ -2293,6 +2299,7 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postGoodsReceipt({
       companyId: co,
+      ...fxFields(fd),
       partnerId: str(fd, "partner_id"),
       locationId: str(fd, "location_id"),
       docDate: str(fd, "doc_date"),
@@ -2332,6 +2339,17 @@ function parseAllocations(fd: FormData): Allocation[] {
     .filter((a) => a.invoiceId && a.amount > 0);
 }
 
+/**
+ * The currency a purchase form was filled in, and the rate typed for it.
+ * Blank currency is kyat; a blank rate lets the engine use the rate on file
+ * for the document date.
+ */
+function fxFields(fd: FormData): { currency: string | null; exchangeRate: number | null } {
+  const currency = str(fd, "currency").toUpperCase() || null;
+  const rate = Number(str(fd, "exchange_rate"));
+  return { currency, exchangeRate: rate > 0 ? rate : null };
+}
+
 async function settle(
   fd: FormData,
   kind: "pay" | "receive"
@@ -2362,6 +2380,7 @@ async function settle(
 
   const input = {
     companyId: co,
+    ...fxFields(fd),
     partnerId: str(fd, "partner_id"),
     docDate: str(fd, "doc_date"),
     cashAccountId: str(fd, "cash_account_id"),
@@ -2430,20 +2449,26 @@ export async function getSettlementData(kind: "pay" | "receive") {
 
   const [partners, invoices, cashAccounts] = await Promise.all([
     kind === "pay"
-      ? sql`select id, code, name from business_partner
+      ? sql`select id, code, name, currency from business_partner
              where company_id = ${co} and is_supplier and is_active order by code`
       : sql`select id, code, name from business_partner
              where company_id = ${co} and is_customer and is_active order by code`,
-    sql`select document_id, doc_no, partner_id, posting_date, due_date,
-                gross_total, paid, outstanding, payment_status, days_overdue
-           from v_invoice_status
-          where company_id = ${co} and doc_type = ${docType} and outstanding <> 0
-          order by due_date nulls last, posting_date`,
+    sql`select s.document_id, s.doc_no, s.partner_id, s.posting_date, s.due_date,
+                s.gross_total, s.paid, s.outstanding, s.payment_status, s.days_overdue,
+                -- A bill owed in yuan is paid in yuan: its own currency, the
+                -- rate it is carried at, and what is left in that currency.
+                coalesce(o.currency, 'MMK') as currency,
+                coalesce(o.exchange_rate, 1)::float as exchange_rate,
+                coalesce(o.fc_outstanding, s.outstanding)::float as fc_outstanding
+           from v_invoice_status s
+           left join v_open_item o on o.document_id = s.document_id
+          where s.company_id = ${co} and s.doc_type = ${docType} and s.outstanding <> 0
+          order by s.due_date nulls last, s.posting_date`,
     sql`select id, code, name from account
          where company_id = ${co} and is_cash_account and is_active order by code`,
   ]);
 
-  return { partners, invoices, cashAccounts, role };
+  return { partners, invoices, cashAccounts, role, fx: await fxOptions(co) };
 }
 
 // ------------------------------------------------------ finance vouchers --
@@ -3404,7 +3429,7 @@ export async function getFormData() {
   ] = await Promise.all([
     sql`select id, code, name, payment_terms_days, price_level_id from business_partner
          where company_id = ${co} and is_customer and is_active order by code`,
-    sql`select id, code, name, payment_terms_days from business_partner
+    sql`select id, code, name, payment_terms_days, currency from business_partner
          where company_id = ${co} and is_supplier and is_active order by code`,
     sql`select i.id, i.code, i.name, i.is_stocked, i.item_group_id,
                 i.tracks_batch, i.tracks_expiry, i.tracks_serial,
@@ -3552,7 +3577,21 @@ export async function getFormData() {
     taxCodes,
     customerCredit,
     currencyScale: Number(moneyScale[0]?.decimal_places ?? 2),
+    fx: await fxOptions(co),
   };
+}
+
+/** The currencies a purchase can be in, each with its latest market rate. */
+export async function fxOptions(forCompany?: string) {
+  await requireUser();
+  const co = forCompany ?? await companyId();
+  const [c] = await sql`select base_currency from company where id = ${co}`;
+  const options = await sql`
+    select cu.code, cu.symbol,
+           fn_exchange_rate(${co}, cu.code, ${c.base_currency}, 'MARKET', current_date)::float as rate
+      from currency cu order by cu.code = ${c.base_currency} desc, cu.code`;
+  return { base: c.base_currency as string,
+           options: options as unknown as { code: string; symbol: string | null; rate: number | null }[] };
 }
 
 // ---------------------------------------------------------- warehouses --

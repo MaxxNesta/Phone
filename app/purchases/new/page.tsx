@@ -14,7 +14,7 @@ export default async function NewPurchaseInvoice({
   searchParams: Promise<{ goods_receipt_id?: string; draft?: string }>;
 }) {
   const { goods_receipt_id, draft: draftId } = await searchParams;
-  const { suppliers, items, locations, uoms, cashAccounts, taxCodes } = await getFormData();
+  const { suppliers, items, locations, uoms, cashAccounts, taxCodes, fx } = await getFormData();
   const [co] = await sql`select id from company order by created_at limit 1`;
 
   // Resuming an unfinished bill. A draft deleted meanwhile opens a blank
@@ -86,6 +86,7 @@ export default async function NewPurchaseInvoice({
 
       <InvoiceForm
         kind="purchase"
+        fx={fx}
         action={createPurchaseInvoice}
         saveDraft={saveInvoiceDraft}
         draft={draft}

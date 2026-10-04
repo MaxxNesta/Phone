@@ -745,6 +745,8 @@ export async function getReturnedAgainst(documentId: string) {
 export async function getReturnablePurchases(companyId: string) {
   return sql`
     select d.id, d.doc_type, d.doc_no, d.doc_date, d.partner_id,
+           -- A purchase in yuan is returned in yuan, at its own rate.
+           d.currency, d.exchange_rate::float as exchange_rate,
            -- What a receipt accrued, per item, quantity-weighted where an
            -- item arrived on more than one line. A return against a receipt
            -- clears an accrual of a known size, so the price is the
@@ -932,7 +934,7 @@ export async function getOpenGoodsReceipts(companyId: string, limit: number | nu
            -- Where the goods went. An invoice raised from this receipt bills
            -- for stock in that warehouse, so the form should not make somebody
            -- pick it again from a list they cannot get wrong.
-           d.location_id,
+           d.location_id, d.currency, d.exchange_rate::float as exchange_rate,
            -- The purchase order this receipt came in against, so an invoice
            -- billing it can show which of our orders it belongs to.
            src.doc_no as source_no,
@@ -1985,7 +1987,7 @@ export async function getPartners(companyId: string) {
     select bp.id, bp.code, bp.name, bp.name_my, bp.company_name,
            bp.is_customer, bp.is_supplier, bp.is_active,
            bp.region, bp.township, bp.address, bp.phone,
-           bp.payment_terms_days, bp.lead_time_days, bp.credit_limit, bp.price_level_id,
+           bp.payment_terms_days, bp.currency, bp.lead_time_days, bp.credit_limit, bp.price_level_id,
            (select pl.name from price_level pl where pl.id = bp.price_level_id) as price_level_name,
            bp.category_id,
            (select pc.name from partner_category pc where pc.id = bp.category_id) as category_name,
@@ -5561,17 +5563,21 @@ export async function getTransactionOrigin(
  */
 export async function getAdvancesFor(companyId: string, documentId: string) {
   const [doc] = await sql`
-    select partner_id, doc_type from document
+    select partner_id, doc_type, currency from document
      where id = ${documentId} and company_id = ${companyId}`;
   if (!doc) return [];
   const kind = doc.doc_type === "PURCHASE_INVOICE" ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT";
 
+  // Only advances paid in the bill's own currency can settle it; for a
+  // foreign one, what is left is shown in that currency.
   return sql`
-    select payment_id, doc_no, to_char(doc_date, 'YYYY-MM-DD') as doc_date, available
+    select payment_id, doc_no, to_char(doc_date, 'YYYY-MM-DD') as doc_date,
+           case when currency = 'MMK' then available else fc_available end as available
       from v_partner_advance
      where company_id = ${companyId}
        and partner_id = ${doc.partner_id}
        and doc_type = ${kind}
+       and currency = ${doc.currency}
      order by doc_date, doc_no`;
 }
 

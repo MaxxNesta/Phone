@@ -73,6 +73,23 @@ role→permission map in code. Every server action and route checks permission
 server-side; the navigation hides what the role cannot use. Roles: Admin,
 Manager, Cashier, Salesperson, Inventory Clerk, Accountant.
 
+**D-P6. Buying in yuan (or any currency), selling in kyat.** Migration 0119.
+Documents keep their totals in kyat at the document's own rate, so every
+report reads what it always read; the foreign figure is kyat over the rate.
+- Goods receipt: stock valued at the rate on the day the goods arrive (typed,
+  or the latest MARKET rate in Settings → Currencies).
+- Purchase invoice for a receipt: takes the receipt's rate (GR/IR clears to the
+  kyat). A bill with no receipt, or one that receives as it posts, uses its own.
+- The payable's journal line carries the yuan amount and rate.
+- Paying: amounts in the bill's currency; the bill comes down at its carrying
+  rate, the bank at today's; the gap is FX gain (4100) or loss (6400).
+- Advances in yuan: applied to a later yuan bill the same way.
+- `payment_allocation.amount` is the invoice side (kyat at the invoice's rate);
+  `base_amount` the payment side (kyat at the payment's rate). Equal for every
+  kyat document, so nothing that existed changes.
+- Not yet: unrealised FX revaluation of open yuan payables at month end; sales
+  in foreign currency; purchase orders in foreign currency (they stay kyat).
+
 ## Work list
 
 ### Reused unchanged

@@ -207,3 +207,9 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
   border: 1px solid var(--line); border-radius: 6px; background: var(--surface); font-size: var(--t-sm); }
 .serialentry-offer { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }
 .serialentry-offer .chip { min-height: 30px; padding: 0.2rem 0.6rem; font-family: var(--mono); font-size: 0.78rem; }
+
+/* Currency and rate forms: a tidy grid, left-aligned, in a narrow column or wide. */
+.fx-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--s3); align-items: end; }
+.fx-form > .alert, .fx-form > button { grid-column: 1 / -1; justify-self: start; }
+.fx-form .field { min-width: 0; }
+.fx-form input, .fx-form select { width: 100%; }

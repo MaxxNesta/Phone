@@ -22,6 +22,8 @@ type Partner = {
   supplier_category_id: string | null; supplier_category_name: string | null;
   township: string | null; address: string | null; phone: string | null;
   payment_terms_days: number;
+  /** What they bill or pay in; null is the company's own. */
+  currency?: string | null;
   /** Typed override, used only until receipts can be measured. */
   lead_time_days: number | null; credit_limit: string | null; outstanding: string;
   /** From v_customer_credit — what the limit is being used for, and what is
@@ -122,6 +124,11 @@ export function PartnerRow({
               <div className="field">
                 <label>Payment terms (days)</label>
                 <input name="payment_terms_days" type="number" min="0" defaultValue={partner.payment_terms_days} />
+              </div>
+              <div className="field">
+                <label>Currency</label>
+                <input name="currency" list="currency-codes" maxLength={3} placeholder="MMK"
+                  defaultValue={partner.currency ?? ""} style={{ textTransform: "uppercase" }} />
               </div>
               {/* An override, not the figure itself. Replenishment measures
                   how long this supplier has actually taken and uses that

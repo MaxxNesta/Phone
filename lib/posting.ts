@@ -83,6 +83,13 @@ export type InvoiceLine = {
 };
 
 export type InvoiceInput = {
+  /**
+   * The currency the prices are in, and kyat per unit of it. Purchases only:
+   * a yuan bill is entered in yuan and posted in kyat at this rate (or the
+   * rate on file for the day). Left unset, everything is in kyat.
+   */
+  currency?: string | null;
+  exchangeRate?: number | null;
   companyId: string;
   partnerId: string;
   locationId: string;
@@ -260,6 +267,13 @@ export type FulfillmentLine = {
   consignorId?: string | null;
 };
 export type FulfillmentInput = {
+  /**
+   * The currency the prices are in, and kyat per unit of it. Purchases only:
+   * a yuan bill is entered in yuan and posted in kyat at this rate (or the
+   * rate on file for the day). Left unset, everything is in kyat.
+   */
+  currency?: string | null;
+  exchangeRate?: number | null;
   companyId: string;
   partnerId: string;
   locationId: string;
@@ -297,10 +311,58 @@ export type FulfillmentInput = {
 
 type JournalLine = {
   accountId: string;
-  amount: number; // positive debit, negative credit
+  amount: number; // positive debit, negative credit — always in base (kyat)
   partnerId?: string | null;
   locationId?: string | null;
+  /**
+   * A line kept in a foreign currency — a payable in yuan. `fcAmount` is the
+   * same signed figure in that currency; the rate stored is base over it.
+   * Left unset, the line is in base and its amount is its own figure.
+   */
+  currency?: string | null;
+  fcAmount?: number;
 };
+
+/** A document in a foreign currency: which, and kyat per unit of it. */
+type Fx = { currency: string; rate: number };
+
+/**
+ * The currency and rate a purchase document is in. Null for the company's
+ * own currency, which is every document that names none. A foreign one needs
+ * a rate — the one given, or the latest MARKET rate on file for that date.
+ */
+async function resolveFx(
+  tx: TransactionSql, companyId: string, currency: string | null | undefined,
+  rate: number | null | undefined, docDate: string,
+): Promise<Fx | null> {
+  const [co] = await tx`select base_currency from company where id = ${companyId}`;
+  const cur = (currency ?? "").trim().toUpperCase();
+  if (!cur || cur === co.base_currency) return null;
+  const [known] = await tx`select code from currency where code = ${cur}`;
+  if (!known) throw new Error(`${cur} is not a currency this system knows`);
+  let r = Number(rate ?? 0);
+  if (!(r > 0)) {
+    const [onFile] = await tx`
+      select fn_exchange_rate(${companyId}, ${cur}, ${co.base_currency}, 'MARKET', ${docDate}::date) as r`;
+    r = Number(onFile?.r ?? 0);
+  }
+  if (!(r > 0)) {
+    throw new Error(`Enter the ${cur} rate for ${docDate} — how many ${co.base_currency} one ${cur} cost.`);
+  }
+  return { currency: cur, rate: r };
+}
+
+/** A base amount as the foreign figure it stands for. */
+const toFc = (base: number, fx: Fx) => round4(base / fx.rate);
+
+/** A foreign price in base, kept to four places like every other price here. */
+const toBase = (fc: number, fx: Fx | null) => (fx ? round4(fc * fx.rate) : fc);
+
+/** Whether an account is kept in this foreign currency — a yuan bank account. */
+async function isFcAccount(tx: TransactionSql, accountId: string, fx: Fx) {
+  const [a] = await tx`select currency from account where id = ${accountId}`;
+  return a?.currency === fx.currency;
+}
 
 function round4(n: number) {
   return Math.round(n * 10000) / 10000;
@@ -2410,10 +2472,14 @@ function consolidate(lines: JournalLine[]): JournalLine[] {
   const byKey = new Map<string, JournalLine>();
 
   for (const l of lines) {
-    const key = `${l.accountId}|${l.partnerId ?? ""}|${l.locationId ?? ""}`;
+    // A yuan line and a kyat line on one account are two different things
+    // owed, and never collapse into one.
+    const key = `${l.accountId}|${l.partnerId ?? ""}|${l.locationId ?? ""}|${l.currency ?? ""}`;
     const existing = byKey.get(key);
-    if (existing) existing.amount = round4(existing.amount + l.amount);
-    else byKey.set(key, { ...l, amount: round4(l.amount) });
+    if (existing) {
+      existing.amount = round4(existing.amount + l.amount);
+      if (l.currency) existing.fcAmount = round4((existing.fcAmount ?? 0) + (l.fcAmount ?? 0));
+    } else byKey.set(key, { ...l, amount: round4(l.amount) });
   }
 
   return [...byKey.values()].filter((l) => l.amount !== 0);
@@ -2472,16 +2538,22 @@ async function writeJournal(
        ${sourceType}, ${sourceId}, ${memo})
     returning id`;
 
+  const [{ base_currency: base }] = await tx`select base_currency from company where id = ${companyId}`;
   let lineNo = 0;
   for (const l of consolidated) {
     lineNo++;
+    // A foreign line keeps its own figure; a rounding remainder that leaves
+    // no foreign amount is posted in base.
+    const fcLine = Boolean(l.currency && l.currency !== base && l.fcAmount && Math.abs(l.fcAmount) > 0.00005);
     await tx`
       insert into journal_line
         (company_id, journal_entry_id, line_no, account_id, currency,
          amount, exchange_rate, base_amount, partner_id, location_id)
       values
-        (${companyId}, ${entry.id}, ${lineNo}, ${l.accountId}, 'MMK',
-         ${l.amount}, 1, ${l.amount}, ${l.partnerId ?? null}, ${l.locationId ?? null})`;
+        (${companyId}, ${entry.id}, ${lineNo}, ${l.accountId}, ${fcLine ? l.currency! : base},
+         ${fcLine ? l.fcAmount! : l.amount},
+         ${fcLine ? round4(Math.abs(l.amount / l.fcAmount!)) || 1 : 1},
+         ${l.amount}, ${l.partnerId ?? null}, ${l.locationId ?? null})`;
   }
 
   return entry.id;
@@ -4162,10 +4234,21 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
    * as goods not yet invoiced, which is what it is.
    */
   const billed = new Map<string, number>();
+  /* The currency. Goods answering a bill that came first arrive at the
+     bill's rate — the payable was already carried at it, and GR/IR has to
+     clear to the kyat. Anything else is valued at its own rate on the day it
+     arrived. Billed lines take the bill's kyat price below; the rest are
+     entered in the receipt's currency and converted. */
+  let fx: Fx | null = null;
+  let billFx = false;
   if (input.sourceDocumentId) {
     const [maybe] = await tx`
-      select doc_type from document
+      select doc_type, currency, exchange_rate from document
        where id = ${input.sourceDocumentId} and company_id = ${companyId}`;
+    if (maybe?.doc_type === "PURCHASE_INVOICE" && maybe.currency !== "MMK") {
+      fx = { currency: maybe.currency as string, rate: Number(maybe.exchange_rate) };
+      billFx = true;
+    }
     if (maybe?.doc_type === "PURCHASE_INVOICE") {
       // Quantity-weighted where an item is billed on more than one line, so
       // one receipt line takes one cost and it is the cost of those goods.
@@ -4179,8 +4262,13 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
     }
   }
 
+  if (!billFx) fx = await resolveFx(tx, companyId, input.currency, input.exchangeRate, docDate);
+
   const lines = input.lines.map((l) =>
-    billed.has(l.itemId) ? { ...l, unitCost: billed.get(l.itemId)! } : l);
+    billed.has(l.itemId) ? { ...l, unitCost: billed.get(l.itemId)! }
+      // Matched to a bill, the form works in kyat (the bill's kyat prices),
+      // so only a receipt in its own right converts what was typed.
+      : fx && !billFx && l.unitCost != null ? { ...l, unitCost: toBase(l.unitCost, fx) } : l);
 
   const netTotal = round4(lines.reduce((s, l) => s + l.qty * (l.unitCost ?? 0), 0));
 
@@ -4191,7 +4279,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
        net_total, tax_total, gross_total, memo, posted_at, reference, source_document_id)
     values
       (${companyId}, 'GOODS_RECEIPT', ${docNo}, ${fiscalYear}, ${docDate}::date,
-       ${docDate}::date, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
+       ${docDate}::date, ${partnerId}, ${locationId}, ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
        ${netTotal}, 0, ${netTotal}, ${input.memo ?? null}, now(), ${input.reference ?? null},
        ${input.sourceDocumentId ?? null})
     returning id`;
@@ -5227,6 +5315,48 @@ async function _postPurchaseInvoice(
   if (input.lines.length === 0) throw new Error("An invoice needs at least one line");
   assertLines(input.lines);
 
+  /* The currency. A bill for goods already received is in the receipt's
+     currency at the receipt's rate: the stock was valued, and the payable
+     accrued, on the day the goods arrived, and billing them later must not
+     revalue either. A rate that moves after that is settled when the bill is
+     paid, as FX gain or loss. A bill with no receipt behind it uses its own. */
+  const receiptIds = new Set<string>(input.goodsReceiptId ? [input.goodsReceiptId] : []);
+  const namedLines = input.lines.map((l) => l.sourceLineId).filter((x): x is string => Boolean(x));
+  if (namedLines.length) {
+    for (const r of await tx`
+      select distinct document_id from document_line where id = any(${namedLines})`) receiptIds.add(r.document_id);
+  }
+  const behind = receiptIds.size ? await tx`
+    select distinct currency, exchange_rate from document
+     where id = any(${[...receiptIds]}) and doc_type = 'GOODS_RECEIPT'` : [];
+  let fx: Fx | null;
+  if (behind.some((r: any) => r.currency !== "MMK")) {
+    if (behind.length > 1) {
+      throw new Error("These receipts were valued at different exchange rates. Bill each one on its own.");
+    }
+    fx = { currency: behind[0].currency as string, rate: Number(behind[0].exchange_rate) };
+    if (input.currency && input.currency.toUpperCase() !== fx.currency) {
+      throw new Error(`The goods were received in ${fx.currency}, so they are billed in ${fx.currency}.`);
+    }
+  } else {
+    fx = await resolveFx(tx, input.companyId, input.currency, input.exchangeRate, input.docDate);
+    if (fx && behind.length) {
+      throw new Error(`The goods were received in kyat, so the bill for them is in kyat too.`);
+    }
+  }
+  if (fx) {
+    // Prices and cash arrive in the bill's currency; everything below is kyat.
+    input = {
+      ...input,
+      lines: input.lines.map((l) => ({
+        ...l,
+        unitPrice: toBase(l.unitPrice, fx),
+        discountAmount: l.discountAmount == null ? l.discountAmount : toBase(l.discountAmount, fx),
+      })),
+      cashOut: input.cashOut ? toBase(input.cashOut, fx) : input.cashOut,
+    };
+  }
+
   const cashOut = round4(input.cashOut ?? 0);
   if (cashOut > 0 && !input.cashAccountId) {
     throw new Error("Choose which cash or bank account the money came from");
@@ -5286,7 +5416,8 @@ async function _postPurchaseInvoice(
        net_total, tax_total, gross_total, memo, posted_at, reference, source_document_id)
     values
       (${companyId}, 'PURCHASE_INVOICE', ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date,
-       ${docDate}::date, ${dueDate}, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
+       ${docDate}::date, ${dueDate}, ${partnerId}, ${locationId},
+       ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
        ${includesTax},
        ${netTotal}, ${taxTotal}, ${grossTotal}, ${input.memo ?? null}, now(),
        ${input.reference ?? null}, ${input.goodsReceiptId ?? null})
@@ -5499,7 +5630,10 @@ async function _postPurchaseInvoice(
       journal.push({ accountId, amount });
     }
   }
-  journal.push({ accountId: ap[0].a, amount: -grossTotal, partnerId });
+  // Owed in the bill's own currency: the supplier is owed yuan, and the kyat
+  // beside it is what that debt is carried at until it is paid.
+  journal.push({ accountId: ap[0].a, amount: -grossTotal, partnerId,
+                 ...(fx ? { currency: fx.currency, fcAmount: -toFc(grossTotal, fx) } : {}) });
 
   const entryId = await writeJournal(
     tx, companyId, docDate, "PURCHASE_INVOICE", doc.id, `${docNo} purchase invoice`, journal, locationId
@@ -5529,7 +5663,7 @@ async function _postPurchaseInvoice(
          source_document_id, lifecycle_owner_id, payment_type)
       values
         (${companyId}, 'SUPPLIER_PAYMENT', ${paymentNo}, ${fiscalYear}, ${docDate}::date,
-         ${docDate}::date, ${partnerId}, 'MMK', 1, 'POSTED',
+         ${docDate}::date, ${partnerId}, ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
          ${cashOut}, 0, ${cashOut}, ${`Cash paid against ${docNo}`}, now(),
          ${doc.id}, ${doc.id}, 'CASH')
       returning id`;
@@ -5546,8 +5680,11 @@ async function _postPurchaseInvoice(
       tx, companyId, docDate, "SUPPLIER_PAYMENT", payment.id,
       `${paymentNo} against ${docNo}`,
       [
-        { accountId: ap[0].a, amount: cashOut, partnerId },
-        { accountId: input.cashAccountId as string, amount: -cashOut },
+        { accountId: ap[0].a, amount: cashOut, partnerId,
+          ...(fx ? { currency: fx.currency, fcAmount: toFc(cashOut, fx) } : {}) },
+        { accountId: input.cashAccountId as string, amount: -cashOut,
+          ...(fx && await isFcAccount(tx, input.cashAccountId as string, fx)
+            ? { currency: fx.currency, fcAmount: -toFc(cashOut, fx) } : {}) },
       ],
       locationId
     );
@@ -5637,6 +5774,9 @@ export async function postPurchaseWithReceipt(
         memo: input.memo,
         reference: input.reference,
         sourceDocumentId: orderId,
+        // Received in the bill's currency, at the bill's rate: one purchase,
+        // one rate, so GR/IR clears to the kyat.
+        currency: input.currency, exchangeRate: input.exchangeRate,
         lines: toReceive.map((l) => ({
           itemId: l.itemId, qty: l.qty, unitCost: l.unitPrice,
           // Same on the buying side: a bill for five cartons has to put a
@@ -6160,6 +6300,13 @@ export type ReturnLine = {
   serials?: string[];
 };
 export type ReturnInput = {
+  /**
+   * The currency the prices are in, and kyat per unit of it. Purchases only:
+   * a yuan bill is entered in yuan and posted in kyat at this rate (or the
+   * rate on file for the day). Left unset, everything is in kyat.
+   */
+  currency?: string | null;
+  exchangeRate?: number | null;
   companyId: string;
   partnerId: string;
   locationId: string;
@@ -6209,6 +6356,13 @@ export type NoteCategory =
   | "RETURN" | "BILLING_ERROR" | "CANCELLATION" | "DISCOUNT" | "OTHER";
 
 export type NoteInput = {
+  /**
+   * The currency the prices are in, and kyat per unit of it. Purchases only:
+   * a yuan bill is entered in yuan and posted in kyat at this rate (or the
+   * rate on file for the day). Left unset, everything is in kyat.
+   */
+  currency?: string | null;
+  exchangeRate?: number | null;
   companyId: string;
   partnerId: string;
   docDate: string;
@@ -6255,7 +6409,12 @@ async function _postNote(
   }
 
   const scale = await currencyScale(tx, companyId);
-  const amount = roundMoney(input.amount, scale);
+  // A note on a yuan bill is written in yuan and taken off at the bill's rate.
+  const [srcFx] = await tx`
+    select currency, exchange_rate from document where id = ${input.sourceDocumentId}`;
+  const fx: Fx | null = srcFx && srcFx.currency !== "MMK"
+    ? { currency: srcFx.currency, rate: Number(srcFx.exchange_rate) } : null;
+  const amount = roundMoney(toBase(input.amount, fx), scale);
   if (!(amount > 0)) throw new Error("A note has to reduce the invoice by something");
 
   const source = await requireSource(tx, {
@@ -6314,7 +6473,7 @@ async function _postNote(
        source_document_id, adjustment_reason)
     values
       (${companyId}, ${kind}, ${docNo}, ${fiscalYear}, ${docDate}::date, ${docDate}::date,
-       ${partnerId}, ${noteLocation}, 'MMK', 1, 'POSTED',
+       ${partnerId}, ${noteLocation}, ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
        ${amount}, ${tax}, ${gross},
        -- The reason is the document. Kept in memo so every list, the history
        -- log and the printed note carry it without a column of its own.
@@ -6340,7 +6499,8 @@ async function _postNote(
     // comes back off.
     const ap = await tx`
       select fn_resolve_control_account(${companyId}, 'AP_CONTROL', ${partnerId}) as a`;
-    journal.push({ accountId: ap[0].a, amount: gross, partnerId });
+    journal.push({ accountId: ap[0].a, amount: gross, partnerId,
+                   ...(fx ? { currency: fx.currency, fcAmount: toFc(gross, fx) } : {}) });
     const ret = await tx`
       select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
     journal.push({ accountId: ret[0].a, amount: -amount });
@@ -6710,7 +6870,24 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
      * which is where a valuation difference belongs — not folded into the
      * clearing account where it reads as goods still awaiting a bill.
      */
-    let lines: Array<ReturnLine & { clearValue?: number }> = input.lines;
+    /* Goods going back against a yuan bill go back at that bill's rate, so
+       the payable comes down at exactly what it was carried at; against a
+       yuan receipt, at the receipt's. With no source, the return's own. */
+    let fx: Fx | null = null;
+    if (input.sourceDocumentId) {
+      const [src] = await tx`
+        select currency, exchange_rate from document where id = ${input.sourceDocumentId}`;
+      if (src && src.currency !== "MMK") fx = { currency: src.currency, rate: Number(src.exchange_rate) };
+      else if (input.currency && input.currency.toUpperCase() !== "MMK") {
+        throw new Error("That purchase was in kyat, so its return is in kyat too.");
+      }
+    } else {
+      fx = await resolveFx(tx, companyId, input.currency, input.exchangeRate, docDate);
+    }
+
+    let lines: Array<ReturnLine & { clearValue?: number }> = fx
+      ? input.lines.map((l) => ({ ...l, unitPrice: toBase(l.unitPrice, fx) }))
+      : input.lines;
 
     if (input.sourceDocumentId) {
       const source = await requireSource(tx, {
@@ -6849,7 +7026,7 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
          net_total, tax_total, gross_total, memo, posted_at, reference, source_document_id)
       values
         (${companyId}, 'PURCHASE_RETURN', ${docNo}, ${fiscalYear}, ${docDate}::date,
-         ${docDate}::date, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
+         ${docDate}::date, ${partnerId}, ${locationId}, ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
          ${netTotal}, ${taxTotal}, ${grossTotal}, ${input.memo ?? null}, now(), ${input.reference ?? null},
          ${input.sourceDocumentId ?? null})
       returning id`;
@@ -6960,7 +7137,8 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
     } else {
       const ap = await tx`
         select fn_resolve_control_account(${companyId}, 'AP_CONTROL', ${partnerId}) as a`;
-      journal.push({ accountId: ap[0].a, amount: grossTotal, partnerId });
+      journal.push({ accountId: ap[0].a, amount: grossTotal, partnerId,
+                     ...(fx ? { currency: fx.currency, fcAmount: toFc(grossTotal, fx) } : {}) });
 
       // The tax asset goes back with the goods: we can no longer claim input
       // tax on a purchase we have returned.
@@ -6999,6 +7177,13 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
 export type Allocation = { invoiceId: string; amount: number };
 
 export type SettlementInput = {
+  /**
+   * The currency the prices are in, and kyat per unit of it. Purchases only:
+   * a yuan bill is entered in yuan and posted in kyat at this rate (or the
+   * rate on file for the day). Left unset, everything is in kyat.
+   */
+  currency?: string | null;
+  exchangeRate?: number | null;
   companyId: string;
   partnerId: string;
   docDate: string;
@@ -7069,12 +7254,25 @@ async function postSettlement(
     throw new Error("Choose which branch is taking this money — an advance has no invoice to follow");
   }
 
-  const total = advance > 0 ? advance : round4(lines.reduce((s, a) => s + a.amount, 0));
   const isPayment = kind === "SUPPLIER_PAYMENT";
   const controlRole = isPayment ? "AP_CONTROL" : "AR_CONTROL";
 
   return inTransaction(outer, async (tx) => {
     const { companyId, partnerId, docDate } = input;
+
+    /* Foreign currency. Amounts arrive in the payment's currency. Each
+       invoice is relieved at the rate it is carried at — what the books say
+       is owed in kyat — and the cash leaves at the rate it actually cost
+       today. What separates the two is exchange gain or loss, and it is
+       recognised now, when the money moves. */
+    const fx = await resolveFx(tx, companyId, input.currency, input.exchangeRate, docDate);
+    /** Kyat leaving the till per allocation, at today's rate. */
+    const paid = new Map<string, number>();
+    for (const a of lines) paid.set(a.invoiceId, toBase(a.amount, fx));
+    const total = advance > 0 ? toBase(advance, fx)
+      : round4([...paid.values()].reduce((s, v) => s + v, 0));
+    /** Kyat taken off each invoice, at the invoice's own rate. */
+    const relieved = new Map<string, number>();
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
     const fiscalYear = fyRows[0]?.fy ?? null;
@@ -7101,6 +7299,7 @@ async function postSettlement(
     for (const a of lines) {
       const [inv] = await tx`
         select d.doc_no, d.doc_type, d.status, d.partner_id, d.gross_total, d.location_id,
+               d.currency, d.exchange_rate,
                -- Only allocations whose payment still stands. A voided
                -- payment must stop reserving room against the invoice, or a
                -- bill whose payment was voided could never be settled again.
@@ -7128,11 +7327,30 @@ async function postSettlement(
       }
 
       const outstanding = round4(Number(inv.gross_total) - Number(inv.allocated));
-      if (a.amount > outstanding) {
+      const invCurrency = inv.currency as string;
+      if ((fx?.currency ?? "MMK") !== invCurrency) {
+        throw new Error(
+          `${inv.doc_no} is owed in ${invCurrency}, so it is settled in ${invCurrency}. `
+          + `Enter what was paid in ${invCurrency} and what it cost.`
+        );
+      }
+      let relief = a.amount;
+      if (fx) {
+        // In the invoice's own money. Paying the last of it clears the kyat
+        // exactly, so rounding never leaves a fraction of a kyat owing.
+        const invRate = Number(inv.exchange_rate);
+        const fcOutstanding = round4(outstanding / invRate);
+        if (a.amount > fcOutstanding + 0.005) {
+          throw new Error(
+            `${inv.doc_no} only has ${fcOutstanding} ${invCurrency} outstanding; ${a.amount} was applied`);
+        }
+        relief = a.amount >= fcOutstanding - 0.005 ? outstanding : round4(a.amount * invRate);
+      } else if (a.amount > outstanding) {
         throw new Error(
           `${inv.doc_no} only has ${outstanding} outstanding; ${a.amount} was applied`
         );
       }
+      relieved.set(a.invoiceId, relief);
 
       // The branch that raised the payable is the branch it has to be
       // relieved in. Clearing a Yangon bill against no branch, or against
@@ -7141,7 +7359,7 @@ async function postSettlement(
       // back. Grouped so one payment covering several bills from the same
       // branch still posts a single control line.
       const key = (inv.location_id as string | null) ?? "";
-      controlByLocation.set(key, round4((controlByLocation.get(key) ?? 0) + a.amount));
+      controlByLocation.set(key, round4((controlByLocation.get(key) ?? 0) + relief));
     }
 
     // Which branch's cash moves. Explicit choice wins; otherwise it follows
@@ -7163,7 +7381,7 @@ async function postSettlement(
          net_total, tax_total, gross_total, memo, reference, payment_type, posted_at)
       values
         (${companyId}, ${kind}, ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date, ${docDate}::date,
-         ${partnerId}, ${cashLocationId}, 'MMK', 1, 'POSTED',
+         ${partnerId}, ${cashLocationId}, ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
          ${total}, 0, ${total}, ${input.memo ?? null}, ${input.reference ?? null},
          'CASH', now())
       returning id`;
@@ -7172,7 +7390,8 @@ async function postSettlement(
       await tx`
         insert into payment_allocation
           (company_id, payment_id, invoice_id, amount, base_amount)
-        values (${companyId}, ${doc.id}, ${a.invoiceId}, ${a.amount}, ${a.amount})`;
+        values (${companyId}, ${doc.id}, ${a.invoiceId},
+                ${relieved.get(a.invoiceId)!}, ${paid.get(a.invoiceId)!})`;
     }
 
     const sign = isPayment ? 1 : -1;
@@ -7188,8 +7407,9 @@ async function postSettlement(
         select fn_system_account(${companyId},
           ${isPayment ? "SUPPLIER_ADVANCE" : "CUSTOMER_ADVANCE"}) as a`;
       journal.push({
-        accountId: holding[0].a, amount: round4(sign * advance), partnerId,
+        accountId: holding[0].a, amount: round4(sign * total), partnerId,
         locationId: cashLocationId,
+        ...(fx ? { currency: fx.currency, fcAmount: round4(sign * advance) } : {}),
       });
     } else {
       const control = await tx`
@@ -7198,11 +7418,37 @@ async function postSettlement(
         journal.push({
           accountId: control[0].a, amount: round4(sign * amount), partnerId,
           locationId: key === "" ? null : key,
+          ...(fx ? { currency: fx.currency, fcAmount: 0 } : {}),
         });
+      }
+      // The foreign figure on each control line is what it relieves, in the
+      // invoices' currency — the amounts entered, grouped as the kyat were.
+      if (fx) {
+        const fcByLocation = new Map<string, number>();
+        for (const a of lines) {
+          const [l] = await tx`select location_id from document where id = ${a.invoiceId}`;
+          const key = (l?.location_id as string | null) ?? "";
+          fcByLocation.set(key, round4((fcByLocation.get(key) ?? 0) + a.amount));
+        }
+        for (const jl of journal) {
+          if (jl.accountId !== control[0].a) continue;
+          jl.fcAmount = round4(sign * (fcByLocation.get(jl.locationId ?? "") ?? 0));
+        }
+        // Relieved at the invoices' rates, paid at today's: the gap is FX.
+        const gap = round4(sign * ([...relieved.values()].reduce((t, v) => t + v, 0) - total));
+        if (gap !== 0) {
+          const role = gap > 0 ? "FX_GAIN" : "FX_LOSS";
+          const [acct] = await tx`select fn_system_account(${companyId}, ${role}) as a`;
+          if (!acct?.a) throw new Error(`No account is set for ${role}. Set it under Settings.`);
+          journal.push({ accountId: acct.a as string, amount: -gap, locationId: cashLocationId });
+        }
       }
     }
     journal.push({
       accountId: input.cashAccountId, amount: round4(-sign * total), locationId: cashLocationId,
+      ...(fx && await isFcAccount(tx, input.cashAccountId, fx)
+        ? { currency: fx.currency, fcAmount: round4(-sign * (advance > 0 ? advance
+              : lines.reduce((t, a) => t + a.amount, 0))) } : {}),
     });
 
     // No default branch is passed. Every line here already states its own,
@@ -7261,7 +7507,8 @@ export async function applyAdvance(input: {
     // Locked, because everything below reads what the invoice still owes and
     // what each advance still has, and then spends both.
     const [inv] = await tx`
-      select id, doc_no, doc_type, partner_id, location_id, status, gross_total
+      select id, doc_no, doc_type, partner_id, location_id, status, gross_total,
+             currency, exchange_rate
         from document
        where id = ${input.invoiceId} and company_id = ${companyId}
          for update`;
@@ -7277,13 +7524,26 @@ export async function applyAdvance(input: {
     const [owed] = await tx`
       select outstanding from v_open_item where document_id = ${inv.id}`;
     const outstanding = Number(owed?.outstanding ?? 0);
-    const total = round4(lines.reduce((t, a) => t + a.amount, 0));
-    if (total > outstanding + 0.0001) {
+    // Amounts are in the invoice's own currency. In kyat that is the same
+    // figure; in yuan, the invoice comes down at its rate and each advance at
+    // the rate it was paid at, and the gap between them is exchange difference.
+    const invFx: Fx | null = inv.currency !== "MMK"
+      ? { currency: inv.currency as string, rate: Number(inv.exchange_rate) } : null;
+    const fcTotal = round4(lines.reduce((t, a) => t + a.amount, 0));
+    const fcOutstanding = invFx ? toFc(outstanding, invFx) : outstanding;
+    if (fcTotal > fcOutstanding + (invFx ? 0.005 : 0.0001)) {
       throw new Error(
-        `${inv.doc_no} has ${outstanding} outstanding, so ${total} cannot be applied to it. ` +
+        `${inv.doc_no} has ${fcOutstanding} outstanding, so ${fcTotal} cannot be applied to it. ` +
         `Whatever is left over stays on account for the next invoice.`
       );
     }
+    // Kyat off the invoice: all of it when the last of it is being settled.
+    const total = invFx
+      ? (fcTotal >= fcOutstanding - 0.005 ? outstanding : toBase(fcTotal, invFx))
+      : fcTotal;
+    /** Per advance: kyat off the advance, and kyat off the invoice. */
+    const split = new Map<string, { adv: number; inv: number }>();
+    let invLeft = total;
 
     // Where each advance was taken, so it can be cleared from there. Kept
     // per advance rather than as one figure: a customer can have paid two
@@ -7293,7 +7553,7 @@ export async function applyAdvance(input: {
     for (const a of lines) {
       const [adv] = await tx`
         select d.doc_no, d.partner_id, d.doc_type, d.location_id,
-               v.available
+               d.currency, d.exchange_rate, v.available
           from document d
           left join v_partner_advance v on v.payment_id = d.id
          where d.id = ${a.paymentId} and d.company_id = ${companyId}
@@ -7314,14 +7574,28 @@ export async function applyAdvance(input: {
           `customer and the other is a bill from a supplier.`
         );
       }
+      if ((adv.currency as string) !== (invFx?.currency ?? "MMK")) {
+        throw new Error(`${adv.doc_no} was paid in ${adv.currency}; ${inv.doc_no} is owed in ${inv.currency}.`);
+      }
       const available = Number(adv.available ?? 0);
-      if (a.amount > available + 0.0001) {
+      const advRate = Number(adv.exchange_rate);
+      const fcAvailable = invFx ? round4(available / advRate) : available;
+      if (a.amount > fcAvailable + (invFx ? 0.005 : 0.0001)) {
         throw new Error(
-          `${adv.doc_no} has ${available} left on account, so ${a.amount} cannot be applied.`
+          `${adv.doc_no} has ${fcAvailable} left on account, so ${a.amount} cannot be applied.`
         );
       }
+      const advSide = invFx
+        ? (a.amount >= fcAvailable - 0.005 ? available : round4(a.amount * advRate))
+        : a.amount;
+      // The last advance takes whatever kyat of the invoice is left, so the
+      // invoice side always sums to exactly what comes off it.
+      const isLast = a === lines[lines.length - 1];
+      const invSide = invFx ? (isLast ? invLeft : toBase(a.amount, invFx)) : a.amount;
+      invLeft = round4(invLeft - invSide);
+      split.set(a.paymentId, { adv: advSide, inv: invSide });
       const branch = (adv.location_id as string) ?? "";
-      takenIn.set(branch, round4((takenIn.get(branch) ?? 0) + a.amount));
+      takenIn.set(branch, round4((takenIn.get(branch) ?? 0) + advSide));
     }
 
     const noRows = await tx`
@@ -7336,7 +7610,7 @@ export async function applyAdvance(input: {
       values
         (${companyId}, 'ADVANCE_APPLICATION', ${docNo}, ${fiscalYear},
          ${docDate}::date, ${docDate}::date, ${inv.partner_id}, ${inv.location_id},
-         'MMK', 1, 'POSTED', ${total}, 0, ${total},
+         ${invFx?.currency ?? "MMK"}, ${invFx?.rate ?? 1}, 'POSTED', ${total}, 0, ${total},
          ${input.memo ?? `Applied to ${inv.doc_no}`}, ${inv.id}, now())
       returning id`;
 
@@ -7347,7 +7621,8 @@ export async function applyAdvance(input: {
         insert into payment_allocation
           (company_id, payment_id, invoice_id, amount, base_amount,
            applied_by_document_id)
-        values (${companyId}, ${a.paymentId}, ${inv.id}, ${a.amount}, ${a.amount},
+        values (${companyId}, ${a.paymentId}, ${inv.id},
+                ${split.get(a.paymentId)!.inv}, ${split.get(a.paymentId)!.adv},
                 ${doc.id})`;
     }
 
@@ -7374,13 +7649,38 @@ export async function applyAdvance(input: {
         accountId: holding[0].a, amount: round4(sign * amount),
         partnerId: inv.partner_id as string,
         locationId: branch === "" ? null : branch,
+        ...(invFx ? { currency: invFx.currency, fcAmount: 0 } : {}),
       });
     }
     journal.push({
       accountId: control[0].a, amount: round4(-sign * total),
       partnerId: inv.partner_id as string,
       locationId: inv.location_id as string | null,
+      ...(invFx ? { currency: invFx.currency, fcAmount: round4(-sign * fcTotal) } : {}),
     });
+    if (invFx) {
+      // The yuan on each advance line is the yuan applied from that branch.
+      const fcByBranch = new Map<string, number>();
+      for (const a of lines) {
+        const [d] = await tx`select location_id from document where id = ${a.paymentId}`;
+        const b = (d?.location_id as string) ?? "";
+        fcByBranch.set(b, round4((fcByBranch.get(b) ?? 0) + a.amount));
+      }
+      for (const jl of journal) {
+        if (jl.accountId === holding[0].a) jl.fcAmount = round4(sign * (fcByBranch.get(jl.locationId ?? "") ?? 0));
+      }
+      const advTotal = round4([...split.values()].reduce((t, v) => t + v.adv, 0));
+      // Lines so far sum to sign*advTotal - sign*total; the gap closes it.
+      // Supplier (sign -1): a debt carried higher than the advance paying it
+      // is a gain (credit).
+      const close = round4(sign * (total - advTotal));
+      if (close !== 0) {
+        const role = close < 0 ? "FX_GAIN" : "FX_LOSS";
+        const [acct] = await tx`select fn_system_account(${companyId}, ${role}) as a`;
+        if (!acct?.a) throw new Error(`No account is set for ${role}. Set it under Settings.`);
+        journal.push({ accountId: acct.a as string, amount: close, locationId: inv.location_id as string | null });
+      }
+    }
 
     const entryId = await writeJournal(
       tx, companyId, docDate, "ADVANCE_APPLICATION", doc.id,
@@ -8496,7 +8796,9 @@ async function voidDocumentIn(
       -- Cost centre and project are deliberately not read: writeJournal has
       -- nowhere to put them, and nothing in this system has ever set one, so
       -- reading them would imply a fidelity the reversal does not have.
-      select account_id, amount, location_id, partner_id
+      -- base_amount, not amount: on a line kept in yuan, amount is the yuan.
+      select account_id, base_amount as amount, location_id, partner_id,
+             currency, amount as fc_amount
         from journal_line where journal_entry_id = ${doc.journal_entry_id}
        order by line_no`;
     if (lines.length === 0) {
@@ -8546,11 +8848,15 @@ async function voidDocumentIn(
       (lines as unknown as {
         account_id: string; amount: string;
         location_id: string | null; partner_id: string | null;
+        currency: string; fc_amount: string;
       }[]).map((l) => ({
         accountId: l.account_id,
         amount: -Number(l.amount),
         locationId: l.location_id,
         partnerId: l.partner_id,
+        // A yuan line reverses in yuan, at the rate it was posted at.
+        currency: l.currency,
+        fcAmount: -Number(l.fc_amount),
       }))
     );
     await tx`update document set journal_entry_id = ${entryId} where id = ${reversal.id}`;

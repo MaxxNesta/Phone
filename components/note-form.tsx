@@ -8,6 +8,8 @@ type Invoice = {
   id: string; doc_no: string; doc_date: string;
   partner_id: string; partner_name: string;
   gross_total: string; outstanding: string;
+  /** A bill owed in a foreign currency is reduced in that currency. */
+  currency?: string; exchange_rate?: number;
 };
 
 const money = (v: string | number) =>
@@ -39,7 +41,11 @@ export function NoteForm({
   const [taxCodeId, setTaxCodeId] = useState("");
   const [category, setCategory] = useState("");
 
-  const owed = Number(invoice.outstanding);
+  // In the bill's own currency: a yuan bill is reduced in yuan, and the
+  // engine takes it off at the bill's rate.
+  const fxRate = invoice.currency && invoice.currency !== "MMK" ? (invoice.exchange_rate ?? 1) : 1;
+  const unit = fxRate !== 1 ? invoice.currency! : "MMK";
+  const owed = Number(invoice.outstanding) / fxRate;
   const net = Number(amount) || 0;
   const rate = Number(taxCodes.find((t) => t.id === taxCodeId)?.rate ?? 0);
   const tax = rate > 0 ? Math.round((net * rate) / 100) : 0;
@@ -96,7 +102,7 @@ export function NoteForm({
         <div className="card-body">
           <div className="row">
             <div className="field">
-              <label htmlFor="amount">Amount before tax</label>
+              <label htmlFor="amount">Amount before tax ({unit})</label>
               <input
                 id="amount" name="amount" type="number" min="0" step="any" required
                 value={amount} onChange={(e) => setAmount(e.target.value)}
@@ -201,7 +207,7 @@ export function NoteForm({
             <span style={{ color: "var(--muted)" }}>
               {isCredit ? "Customer will owe" : "We will owe"}
             </span>
-            <span className="big">{money(Math.max(0, owed - gross))} MMK</span>
+            <span className="big">{money(Math.max(0, owed - gross))} {unit}</span>
           </div>
         </div>
       </div>

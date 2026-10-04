@@ -126,6 +126,7 @@ export default async function NewGoodsReceipt({
         openOrders={Object.fromEntries(ordersBySupplier)}
         collisions={collisions}
         initialInvoiceId={match_invoice_id}
+        fx={d.fx}
       />
     </>
   );

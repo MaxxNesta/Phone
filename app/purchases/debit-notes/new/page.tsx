@@ -20,6 +20,7 @@ export default async function NewDebitNote({
     ? await sql`
         select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as doc_date,
                d.partner_id, p.name as partner_name, d.gross_total,
+               d.currency, d.exchange_rate::float as exchange_rate,
                coalesce((select outstanding from v_open_item where document_id = d.id), 0) as outstanding
           from document d
           join business_partner p on p.id = d.partner_id

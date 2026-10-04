@@ -3,8 +3,9 @@
 import { useActionState, useMemo, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
+import { CurrencyRate, type FxOption } from "./currency-rate";
 
-type Partner = { id: string; code: string; name: string };
+type Partner = { id: string; code: string; name: string; currency?: string | null };
 type CashAccount = { id: string; code: string; name: string };
 type Branch = { id: string; code: string; name: string };
 type Invoice = {
@@ -12,7 +13,13 @@ type Invoice = {
   posting_date: string; due_date: string | null;
   gross_total: string; paid: string; outstanding: string;
   payment_status: string; days_overdue: number | null;
+  /** The bill's own currency, its carrying rate, and what is left in it. */
+  currency?: string; exchange_rate?: number; fc_outstanding?: number;
 };
+
+/** What a bill still owes in the currency it is owed in. */
+const out = (i: Invoice) =>
+  i.currency && i.currency !== "MMK" ? Number(i.fc_outstanding) : Number(i.outstanding);
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 const day = (d: string | null) =>
@@ -33,7 +40,10 @@ export function SettlementForm({
   today,
   initialPartnerId,
   initialInvoiceId,
+  fx,
 }: {
+  /** Currencies and latest rates: a bill owed in yuan is paid in yuan. */
+  fx?: { base: string; options: FxOption[] };
   kind: "pay" | "receive";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   partners: Partner[];
@@ -63,12 +73,23 @@ export function SettlementForm({
     // against somebody else's invoice is not a starting point, it is a
     // mistake waiting to be posted.
     if (!inv || (forPartner && inv.partner_id !== forPartner)) return {};
-    return { [inv.document_id]: String(Number(inv.outstanding)) };
+    return { [inv.document_id]: String(out(inv)) };
   };
 
   const [amounts, setAmounts] = useState<Record<string, string>>(
     () => prefill(initialPartnerId ?? ""));
   const isPay = kind === "pay";
+  const base = fx?.base ?? "MMK";
+  /** The currency this payment is in — the bills it settles are owed in it. */
+  const currencyOf = (id: string) => {
+    const owedIn = invoices.find((i) => i.partner_id === id && i.currency && i.currency !== base)?.currency;
+    return owedIn ?? partners.find((p) => p.id === id)?.currency ?? base;
+  };
+  const [currency, setCurrency] = useState(() => isPay ? currencyOf(initialPartnerId ?? "") : base);
+  const latest = (c: string) => String(fx?.options.find((o) => o.code === c)?.rate ?? "");
+  const [rate, setRate] = useState(() => (currency !== base ? latest(currency) : ""));
+  const foreign = isPay && currency !== base;
+  const unit = foreign ? currency : base;
 
   /**
    * What this money is for. Settling bills, or sitting on the partner's
@@ -83,12 +104,15 @@ export function SettlementForm({
   const [purpose, setPurpose] = useState<"settle" | "advance">("settle");
   const [advance, setAdvance] = useState("");
 
+  // Only the bills owed in this payment's currency: a yuan payment cannot
+  // settle a kyat bill, and the engine refuses it.
   const open = useMemo(
-    () => invoices.filter((i) => i.partner_id === partnerId),
-    [invoices, partnerId]
+    () => invoices.filter((i) => i.partner_id === partnerId
+      && (!isPay || (i.currency ?? base) === currency)),
+    [invoices, partnerId, currency, isPay, base]
   );
 
-  const owed = open.reduce((s, i) => s + Number(i.outstanding), 0);
+  const owed = open.reduce((s, i) => s + out(i), 0);
   const applied = open.reduce((s, i) => s + (Number(amounts[i.document_id]) || 0), 0);
 
   // Every invoice this receipt will touch. The one arrived from is filled in
@@ -98,12 +122,19 @@ export function SettlementForm({
   const settling = open.filter((i) => (Number(amounts[i.document_id]) || 0) > 0);
 
   const overApplied = open.filter(
-    (i) => (Number(amounts[i.document_id]) || 0) > Number(i.outstanding)
+    (i) => (Number(amounts[i.document_id]) || 0) > out(i) + 0.005
   );
+
+  // Kyat leaving the till at today's rate, against kyat the bills are carried
+  // at: the difference is booked as exchange gain or loss when this posts.
+  const kyatPaid = foreign ? applied * (Number(rate) || 0) : applied;
+  const kyatCarried = foreign
+    ? open.reduce((s, i) => s + (Number(amounts[i.document_id]) || 0) * (i.exchange_rate ?? 1), 0)
+    : applied;
 
   function payAll() {
     const next: Record<string, string> = {};
-    for (const i of open) next[i.document_id] = String(Number(i.outstanding));
+    for (const i of open) next[i.document_id] = String(out(i));
     setAmounts(next);
   }
 
@@ -164,7 +195,10 @@ export function SettlementForm({
                 partners={partners as never}
                 value={partnerId}
                 placeholder={isPay ? "Type a supplier…" : "Type a customer…"}
-                onPick={(id) => { setPartnerId(id); setAmounts(prefill(id)); }}
+                onPick={(id) => {
+                  setPartnerId(id); setAmounts(prefill(id));
+                  if (isPay) { const c = currencyOf(id); setCurrency(c); setRate(c !== base ? latest(c) : ""); }
+                }}
               />
             </div>
 
@@ -215,6 +249,11 @@ export function SettlementForm({
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />
             </div>
 
+            {isPay && fx && (
+              <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
+                onChange={(c, r) => { setCurrency(c); setRate(r); setAmounts({}); }} />
+            )}
+
             <div className="field">
               <label htmlFor="reference">Reference</label>
               <input id="reference" name="reference" type="text"
@@ -238,7 +277,7 @@ export function SettlementForm({
                     id="advance" name="advance" type="number" min="0" step="any" required
                     value={advance} onChange={(e) => setAdvance(e.target.value)}
                   />
-                  <span className="amountbox-unit">MMK</span>
+                  <span className="amountbox-unit">{unit}</span>
                 </div>
               </div>
               <div className="field advance-note">
@@ -253,9 +292,9 @@ export function SettlementForm({
 
             <p className="advance-after">
               After posting: <strong>
-                {isPay ? "Advance paid" : "Available advance"} +{fmt(Number(advance) || 0)} MMK
+                {isPay ? "Advance paid" : "Available advance"} +{fmt(Number(advance) || 0)} {unit}
               </strong>
-              {" · "}Allocated to invoices 0 MMK
+              {" · "}Allocated to invoices 0 {unit}
             </p>
           </div>
         </div>
@@ -291,7 +330,7 @@ export function SettlementForm({
               </thead>
               <tbody>
                 {open.map((i) => {
-                  const over = (Number(amounts[i.document_id]) || 0) > Number(i.outstanding);
+                  const over = (Number(amounts[i.document_id]) || 0) > out(i) + 0.005;
                   const late = i.days_overdue !== null && i.days_overdue > 0;
                   return (
                     <tr key={i.document_id}>
@@ -317,9 +356,12 @@ export function SettlementForm({
                             : i.payment_status === "PARTIALLY_PAID" ? "Part paid" : "Open"}
                         </span>
                       </td>
-                      <td className="r">{fmt(Number(i.gross_total))}</td>
-                      <td className="r">{fmt(Number(i.paid))}</td>
-                      <td className="r">{fmt(Number(i.outstanding))}</td>
+                      <td className="r">{fmt(foreign ? Number(i.gross_total) / (i.exchange_rate ?? 1) : Number(i.gross_total))}</td>
+                      <td className="r">{fmt(foreign ? Number(i.paid) / (i.exchange_rate ?? 1) : Number(i.paid))}</td>
+                      <td className="r">
+                        {foreign ? Number(out(i)).toLocaleString("en-US", { maximumFractionDigits: 2 }) : fmt(out(i))}
+                        {foreign && <div className="subline">at {(i.exchange_rate ?? 1).toLocaleString("en-US")}</div>}
+                      </td>
                       <td className="narrow">
                         <input
                           type="number" min="0" step="any"
@@ -338,9 +380,19 @@ export function SettlementForm({
               <tfoot>
                 <tr>
                   <td colSpan={6}>Total {isPay ? "paid" : "received"}</td>
-                  <td className="r">{fmt(owed - applied)} left</td>
-                  <td className="r">{fmt(applied)}</td>
+                  <td className="r">{fmt(owed - applied)} {unit} left</td>
+                  <td className="r">{fmt(applied)} {unit}</td>
                 </tr>
+                {foreign && applied > 0 && (
+                  <tr>
+                    <td colSpan={8} className="r">
+                      {base} paid {fmt(kyatPaid)} · carried at {fmt(kyatCarried)} ·{" "}
+                      <strong className={kyatCarried - kyatPaid >= 0 ? "ok-qty" : "low"}>
+                        exchange {kyatCarried - kyatPaid >= 0 ? "gain" : "loss"} {fmt(Math.abs(kyatCarried - kyatPaid))} {base}
+                      </strong>
+                    </td>
+                  </tr>
+                )}
               </tfoot>
             </table>
           </div>

@@ -28,12 +28,14 @@ export type OpenAdvance = {
  * wrong figure gets applied.
  */
 export function ApplyAdvance({
-  action, invoiceId, invoiceNo, outstanding, advances, sales,
+  action, invoiceId, invoiceNo, outstanding, advances, sales, unit = "MMK",
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   invoiceId: string;
   invoiceNo: string;
   outstanding: number;
+  /** The currency the figures are in — the invoice's own. */
+  unit?: string;
   advances: OpenAdvance[];
   sales: boolean;
 }) {
@@ -87,7 +89,7 @@ export function ApplyAdvance({
       <div className="advbanner">
         <Wallet size={15} aria-hidden="true" />
         <span>
-          Available advance: <strong>{money(total)} MMK</strong>
+          Available advance: <strong>{money(total)} {unit}</strong>
           <span className="advbanner-why">
             {" "}— money {sales ? "this customer has already paid" : "already paid to this supplier"}
           </span>
@@ -158,15 +160,15 @@ export function ApplyAdvance({
                         otherwise be labelled with a figure it has not carried
                         for weeks. */}
                     <dt>Outstanding before this</dt>
-                    <dd>{money(outstanding)} MMK</dd>
+                    <dd>{money(outstanding)} {unit}</dd>
                     <dt>Advance to apply</dt>
-                    <dd>−{money(applying)} MMK</dd>
+                    <dd>−{money(applying)} {unit}</dd>
                     <dt className="strong">
                       Remaining to {sales ? "collect" : "pay"}
                     </dt>
-                    <dd className="strong">{money(outstanding - applying)} MMK</dd>
+                    <dd className="strong">{money(outstanding - applying)} {unit}</dd>
                     <dt>Unused advance remaining</dt>
-                    <dd>{money(total - applying)} MMK</dd>
+                    <dd>{money(total - applying)} {unit}</dd>
                   </dl>
                   <p className="page-sub">
                     Uses money already {sales ? "received" : "paid"}. No new

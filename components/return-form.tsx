@@ -12,7 +12,9 @@ type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
 type Line = { key: number; itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[] };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
-  partner_id: string; rates?: Record<string, number> };
+  partner_id: string; rates?: Record<string, number>;
+  /** A purchase made in a foreign currency, and its rate. */
+  currency?: string; exchange_rate?: number };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 // postgres.js sends `date` columns over as Date objects, not strings.
@@ -93,6 +95,9 @@ export function ReturnForm({
   const byId = (id: string) => items.find((i) => i.id === id);
   const returnableDocs = (salesDocs ?? []).filter((d) => d.partner_id === partnerId);
   const sourceDoc = returnableDocs.find((d) => d.id === sourceDocumentId);
+  /** The purchase was in yuan (or another currency): prices are entered in it. */
+  const sourceFc = !isSales && sourceDoc?.currency && sourceDoc.currency !== "MMK"
+    ? sourceDoc.currency : null;
   const sourceIsReceipt = sourceDoc?.doc_type === "GOODS_RECEIPT";
 
   /**
@@ -104,7 +109,10 @@ export function ReturnForm({
    */
   const receiptRate = (itemId: string): number | null => {
     if (!sourceIsReceipt) return null;
-    const r = sourceDoc?.rates?.[itemId];
+    const r0 = sourceDoc?.rates?.[itemId];
+    // Shown in the purchase's own currency; the engine prices it by the
+    // receipt either way.
+    const r = r0 != null && sourceFc ? Math.round((r0 / (sourceDoc!.exchange_rate ?? 1)) * 10000) / 10000 : r0;
     return r === undefined || r === null ? null : Number(r);
   };
 
@@ -283,7 +291,7 @@ export function ReturnForm({
                 <th>Item</th>
                 <th className="r">{isSales ? "Ref. cost" : "On hand"}</th>
                 <th className="r">Qty</th>
-                <th className="r">Unit price</th>
+                <th className="r">Unit price{sourceFc ? ` (${sourceFc})` : ""}</th>
                 <th className="r">Amount</th>
                 <th />
               </tr>

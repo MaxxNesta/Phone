@@ -1029,7 +1029,9 @@ export default async function DocumentPage({
               action={applyAdvanceAction}
               invoiceId={doc.id}
               invoiceNo={doc.doc_no ?? ""}
-              outstanding={outstanding}
+              // A yuan bill is settled in yuan.
+              outstanding={doc.currency !== "MMK" ? outstanding / Number(doc.exchange_rate) : outstanding}
+              unit={doc.currency}
               sales={doc.doc_type === "SALES_INVOICE"}
               advances={advances.map((a) => ({
                 paymentId: String(a.payment_id),

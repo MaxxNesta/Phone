@@ -179,6 +179,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 )}
                 {may("accounting.view") && <NavLink href="/payables" exact>Payables</NavLink>}
                 {may("accounting.post") && <NavLink href="/payables/pay">Pay supplier</NavLink>}
+                <NavLink href="/settings/currencies">Currencies &amp; rates</NavLink>
               </NavGroup>
             )}
 
@@ -253,6 +254,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/salespersons">Salespersons</NavLink>
                 <NavLink href="/settings/accounts">Chart of Accounts</NavLink>
                 <NavLink href="/settings/tax-codes">Tax codes</NavLink>
+                <NavLink href="/settings/currencies">Currencies &amp; rates</NavLink>
                 <NavLink href="/settings/plan">Package</NavLink>
                 {may("users.manage") && <NavLink href="/settings/users">Users</NavLink>}
               </NavGroup>

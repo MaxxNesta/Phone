@@ -6,6 +6,7 @@ import { sql } from "@/lib/db";
 
 export default async function NewPartner() {
   const [co] = await sql`select id from company order by created_at limit 1`;
+  const currencies = await sql`select code, name from currency order by code`;
   const levels = (await sql`
     select id, name from price_level where company_id = ${co.id} order by sort_order`
   ) as unknown as { id: string; name: string }[];
@@ -74,6 +75,15 @@ export default async function NewPartner() {
           <div className="card-head"><h2>Terms and contact</h2></div>
           <div className="card-body">
             <div className="row">
+              <div className="field">
+                <label htmlFor="currency">Currency</label>
+                <input id="currency" name="currency" list="currency-codes" maxLength={3}
+                  placeholder="MMK" style={{ textTransform: "uppercase" }} />
+                <datalist id="currency-codes">
+                  {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                </datalist>
+                <span className="hint">What they bill or pay in — CNY for a China supplier. Blank is kyat.</span>
+              </div>
               <div className="field">
                 <label htmlFor="payment_terms_days">Payment terms (days)</label>
                 <input id="payment_terms_days" name="payment_terms_days" type="number" min="0" defaultValue={30} />

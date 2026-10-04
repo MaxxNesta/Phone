@@ -11,7 +11,7 @@ export default async function PaySupplier({
   searchParams: Promise<{ partner?: string; invoice?: string }>;
 }) {
   const { partner, invoice } = await searchParams;
-  const { partners, invoices, cashAccounts } = await getSettlementData("pay");
+  const { partners, invoices, cashAccounts, fx } = await getSettlementData("pay");
   const company = await getCompany();
   const branches = company ? await getBranches(company.id) : [];
   const today = new Date().toISOString().slice(0, 10);
@@ -60,6 +60,7 @@ export default async function PaySupplier({
         today={today}
         initialPartnerId={partner}
         initialInvoiceId={invoice}
+        fx={fx}
       />
     </>
   );

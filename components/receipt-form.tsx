@@ -7,11 +7,12 @@ import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
+import { CurrencyRate, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
-type Partner = { id: string; code: string; name: string };
+type Partner = { id: string; code: string; name: string; currency?: string | null };
 type Location = { id: string; code: string; name: string };
 type Line = {
   key: number; itemId: string; qty: string; unitCost: string;
@@ -72,7 +73,10 @@ export function ReceiptForm({
   openOrders,
   collisions = {},
   initialInvoiceId,
+  fx,
 }: {
+  /** Currencies and their latest rates, for goods bought abroad. */
+  fx?: { base: string; options: FxOption[] };
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   suppliers: Partner[];
   items: Item[];
@@ -112,6 +116,10 @@ export function ReceiptForm({
   const [lines, setLines] = useState<Line[]>([
     { key: 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
   const [partnerId, setPartnerId] = useState("");
+  const base = fx?.base ?? "MMK";
+  const [currency, setCurrency] = useState(base);
+  const [rate, setRate] = useState("");
+  const foreign = currency !== base;
   const [docDate, setDocDate] = useState(today);
   const [receivedTime, setReceivedTime] = useState("");
   const [matchedPiId, setMatchedPiId] = useState("");
@@ -310,6 +318,10 @@ export function ReceiptForm({
                   clearMatch(matchedPiId !== "");
                   setUnmatched(false);
                   setPartnerId(id);
+                  // Their currency, at the latest rate on file.
+                  const cur = suppliers.find((s) => s.id === id)?.currency || base;
+                  setCurrency(cur);
+                  setRate(cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
                 }}
               />
             </div>
@@ -341,6 +353,11 @@ export function ReceiptForm({
               <label htmlFor="reference">Reference</label>
               <input id="reference" name="reference" type="text" placeholder="Delivery note no." />
             </div>
+
+            {fx && !matchedPi && (
+              <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
+                onChange={(c, r) => { setCurrency(c); setRate(r); }} />
+            )}
           </div>
         </div>
       </div>
@@ -456,7 +473,8 @@ export function ReceiptForm({
               <tr>
                 <th>Item</th>
                 {matchedPi && <th className="r">Billed</th>}
-                <th>Unit</th><th className="r">Qty</th><th className="r">Unit cost</th>
+                <th>Unit</th><th className="r">Qty</th>
+                <th className="r">Unit cost{foreign && !matchedPi ? ` (${currency})` : ""}</th>
                 <th className="r">Value</th><th />
               </tr>
             </thead>
@@ -625,7 +643,14 @@ export function ReceiptForm({
               </span>
             )}
           </span>
-          <span className="big">{fmt(total)} MMK</span>
+          <span className="big">
+            {foreign && !matchedPi
+              ? <>{fmt(total)} {currency}
+                  {Number(rate) > 0 && <span className="subline" style={{ display: "block" }}>
+                    ≈ {fmt(total * Number(rate))} {base} at {Number(rate).toLocaleString("en-US")}
+                  </span>}</>
+              : <>{fmt(total)} {base}</>}
+          </span>
         </div>
       </div>
 
