@@ -1,0 +1,372 @@
+"use client";
+
+import Link from "next/link";
+import { MaybeSamePurchase, BillAwaitsTheseGoods, type WaitingBill } from "./same-purchase";
+import type { GrirCollisionLine } from "@/lib/queries";
+import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
+import { useActionState, useEffect, useState } from "react";
+import type { ActionResult } from "@/lib/actions";
+
+type Line = {
+  lineId: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+  uomCode?: string;
+  /** The unit the order was written in, where that is a pack rather than
+   *  the item's own unit — "100 PCS" is correct but "ordered as 10 CTN" is
+   *  what the person who placed the order remembers. */
+  enteredUom?: string | null;
+  conversionFactor?: number;
+  remainingQty: number;
+  expectedPrice?: number;
+};
+type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
+
+/**
+ * One order as a card: collapsed shows just the header and a Deliver/Receive
+ * button; expanded shows every open line with an editable quantity — and
+ * cost, on the purchase side — defaulting to the full remainder, since
+ * fulfilling in one go is the common case.
+ */
+export function FulfillOrderForm({
+  kind,
+  orderId,
+  orderNo,
+  partnerName,
+  partnerId,
+  locationId,
+  lines,
+  action,
+  stockByLocation,
+  focReasons = [],
+  collisions = [],
+  openBills = [],
+  defaultOpen = false,
+}: {
+  kind: "sales" | "purchase";
+  orderId: string;
+  orderNo: string;
+  partnerName: string;
+  partnerId: string;
+  locationId: string;
+  lines: Line[];
+  action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
+  /** On-hand per item/location, checked against what's being delivered — receiving isn't limited by it, so purchase call sites can leave this out. */
+  stockByLocation?: StockRow[];
+  /** Why units might go out free. Sales only — a receipt has no giveaway. */
+  focReasons?: { id: string; code: string; name: string }[];
+  /** Goods already in and a bill already raised for the same items from this
+   *  supplier. See getGrirCollisions — purchase only, GR/IR being a purchase
+   *  account. */
+  collisions?: GrirCollisionLine[];
+  /** Bills from this partner still waiting on goods — purchase only. See
+   *  BillAwaitsTheseGoods for why this is asked before the first receipt. */
+  openBills?: WaitingBill[];
+  /** Open on arrival. Set when the page was reached by asking for this one
+   *  order — the reader has already chosen; making them press Receive again
+   *  is a click that decides nothing. */
+  defaultOpen?: boolean;
+}) {
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
+    action as never,
+    null
+  );
+
+  /** See the hidden field below. */
+  const [attemptKey] = useState(() => crypto.randomUUID());
+  const [open, setOpen] = useState(defaultOpen);
+  // Free units per order line, and why. A delivery can carry a giveaway
+  // alongside what was ordered — the goods leave either way, and the reason
+  // is what decides whether the cost is a sale or an expense.
+  const [free, setFree] = useState<Record<string, string>>({});
+  const [freeReason, setFreeReason] = useState<Record<string, string>>({});
+  const [negativeConfirmed, setNegativeConfirmed] = useState(false);
+  const [askNegative, setAskNegative] = useState(false);
+  const [qty, setQty] = useState<Record<string, string>>(
+    Object.fromEntries(lines.map((l) => [l.lineId, String(l.remainingQty)]))
+  );
+  const [cost, setCost] = useState<Record<string, string>>(
+    Object.fromEntries(lines.map((l) => [l.lineId, String(l.expectedPrice ?? 0)]))
+  );
+
+  const onHandHere = (itemId: string) =>
+    Number(stockByLocation?.find((r) => r.item_id === itemId && r.location_id === locationId)?.qty_on_hand ?? 0);
+  // Sum across every location, not just this one — a transfer can only ever
+  // move stock the company already has; it can't cover a line short even
+  // once every warehouse is counted, only purchasing more can.
+  const onHandAnywhere = (itemId: string) =>
+    (stockByLocation ?? [])
+      .filter((r) => r.item_id === itemId)
+      .reduce((s, r) => s + Number(r.qty_on_hand), 0);
+
+  const issuing = (lineId: string) =>
+    (Number(qty[lineId]) || 0) + (Number(free[lineId]) || 0);
+  const shortages = kind === "sales" && stockByLocation
+    ? lines.filter((l) => issuing(l.lineId) > onHandHere(l.itemId))
+    : [];
+  const shortEverywhere = shortages.filter((l) => issuing(l.lineId) > onHandAnywhere(l.itemId));
+
+  // Short at this warehouse is what drives the balance here negative, whether
+  // or not another warehouse has some — delivering from an empty shelf makes
+  // this shelf negative either way. The advice to transfer stock in stays
+  // below, because that is usually the better answer; this is for when the
+  // goods are genuinely here and the paperwork is not.
+  const shortfalls: Shortfall[] = shortages.map((l) => ({
+    itemCode: l.itemCode,
+    itemName: l.itemName,
+    uomCode: l.uomCode ?? "",
+    enteredUom: l.enteredUom ?? null,
+    conversionFactor: l.conversionFactor ?? 1,
+    required: issuing(l.lineId),
+    recorded: onHandHere(l.itemId),
+  }));
+  const shortfallKey = shortfalls
+    .map((s) => `${s.itemCode}:${s.required}:${s.recorded}`).join("|");
+  useEffect(() => { setNegativeConfirmed(false); }, [shortfallKey]);
+
+  const payload = JSON.stringify(
+    lines
+      .filter((l) => Number(qty[l.lineId]) > 0)
+      .map((l) => ({
+        itemId: l.itemId,
+        qty: Number(qty[l.lineId]),
+        unitCost: kind === "purchase" ? Number(cost[l.lineId]) || 0 : undefined,
+        sourceLineId: l.lineId,
+      }))
+      // Free units go as their own zero-price line carrying the reason, the
+      // same shape the sales voucher sends, so both routes post identically.
+      .concat(
+        kind === "sales"
+          ? lines
+              .filter((l) => Number(free[l.lineId]) > 0)
+              .map((l) => ({
+                itemId: l.itemId,
+                qty: Number(free[l.lineId]),
+                unitCost: undefined,
+                sourceLineId: l.lineId,
+                focReasonId: freeReason[l.lineId] || focReasons[0]?.id,
+              })) as never[]
+          : []
+      )
+  );
+
+  return (
+    <div className="card">
+      {/* On a page opened for this one order the heading above already names
+          the order, the partner and what is outstanding, and there is nothing
+          to collapse the form back to — so the row that says all three again
+          is dropped rather than repeated. */}
+      {!defaultOpen && (
+      <div className="card-head">
+        <h2>
+          <Link href={`/documents/${orderId}`} style={{ color: "var(--brand)" }}>{orderNo}</Link>
+          {" · "}{partnerName}
+        </h2>
+        <span className="actions">
+          <span className="page-sub">{lines.length} line{lines.length === 1 ? "" : "s"} open</span>
+          {/* "Cancel" here meant "put this form away", three inches from a
+              "Close remaining" that abandons the rest of the order — two
+              words for two unrelated acts, one of them irreversible. This one
+              only hides a form, so it says so. */}
+          <button type="button" className="ghost tiny" onClick={() => setOpen((v) => !v)}>
+            {open ? "Hide this form" : kind === "sales" ? "Deliver" : "Receive"}
+          </button>
+        </span>
+      </div>
+      )}
+
+      {/* Only once the form is open. Receiving against the order is the right
+          thing to do most of the time; it is wrong only when a bill for these
+          same goods is already sitting there waiting for them, and saying so
+          on every collapsed row would put the warning where no decision is
+          being made. */}
+      {open && (
+        <div style={{ padding: "0 1rem" }}>
+          <BillAwaitsTheseGoods
+            bills={openBills}
+            orderNo={orderNo}
+            itemIds={lines.map((l) => l.itemId)}
+            unitWord={lines[0]?.uomCode ?? null}
+          />
+          <MaybeSamePurchase lines={collisions} />
+        </div>
+      )}
+
+      {open && (
+        <div className="card-body">
+          <form action={formAction} className="form">
+      {/* One submission, one posting. Generated when this form mounts, so a
+          double-click or a resent request carries the same key and is handed
+          the document the first one posted; a new form is a new key. */}
+      <input type="hidden" name="idempotency_key" value={attemptKey} />
+
+            {state && "error" in state && <div className="alert">{state.error}</div>}
+            <input type="hidden" name="partner_id" value={partnerId} />
+            <input type="hidden" name="location_id" value={locationId} />
+            <input type="hidden" name="source_document_id" value={orderId} />
+            <input type="hidden" name="doc_date" value={new Date().toISOString().slice(0, 10)} />
+            <input type="hidden" name="reference" value={`Against ${orderNo}`} />
+            <input type="hidden" name="lines" value={payload} />
+
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th><th className="r">Remaining</th>
+                    {stockByLocation && kind === "sales" && <th className="r">Available here</th>}
+                    <th className="r">{kind === "sales" ? "Deliver now" : "Receive now"}</th>
+                    {kind === "sales" && focReasons.length > 0 && <th className="r">Free</th>}
+                    {kind === "purchase" && <th className="r">Unit cost</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => {
+                    const short = kind === "sales" && stockByLocation && issuing(l.lineId) > onHandHere(l.itemId);
+                    return (
+                      <tr key={l.lineId}>
+                        <td className="wrap"><span className="code">{l.itemCode}</span> {l.itemName}</td>
+                        <td className="r">
+                          {l.remainingQty}
+                          {/* A part-received carton is not a whole number of
+                              cartons, so this is rounded for reading and the
+                              base figure above it stays the one that counts. */}
+                          {(l.conversionFactor ?? 1) > 1 && l.enteredUom && (
+                            <div className="subline">
+                              {Number(
+                                (Number(l.remainingQty) / Number(l.conversionFactor)).toFixed(2),
+                              )} {l.enteredUom}
+                            </div>
+                          )}
+                        </td>
+                        {stockByLocation && kind === "sales" && (
+                          <td className="r" style={{ color: short ? "var(--bad)" : undefined }}>
+                            {onHandHere(l.itemId)}
+                          </td>
+                        )}
+                        <td className="narrow">
+                          <input
+                            type="number" min="0" max={l.remainingQty} step="any"
+                            value={qty[l.lineId]}
+                            style={short ? { borderColor: "var(--bad)" } : undefined}
+                            onChange={(e) => setQty((q) => ({ ...q, [l.lineId]: e.target.value }))}
+                          />
+                        </td>
+                        {/* Given away with this delivery. Not capped by the
+                            order's remaining quantity — a giveaway is extra,
+                            not part of what was ordered. */}
+                        {kind === "sales" && focReasons.length > 0 && (
+                          <td className="narrow">
+                            <input
+                              type="number" min="0" step="any" placeholder="0"
+                              value={free[l.lineId] ?? ""}
+                              aria-label="Free quantity"
+                              onChange={(e) => setFree((f) => ({ ...f, [l.lineId]: e.target.value }))}
+                            />
+                            {Number(free[l.lineId]) > 0 && (
+                              <select
+                                aria-label="Reason free"
+                                style={{ marginTop: "0.2rem" }}
+                                value={freeReason[l.lineId] ?? focReasons[0].id}
+                                onChange={(e) =>
+                                  setFreeReason((r) => ({ ...r, [l.lineId]: e.target.value }))}
+                              >
+                                {focReasons.map((r) => (
+                                  <option key={r.id} value={r.id}>{r.name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                        )}
+                        {kind === "purchase" && (
+                          <td className="narrow">
+                            <input
+                              type="number" min="0" step="any"
+                              value={cost[l.lineId]}
+                              onChange={(e) => setCost((c) => ({ ...c, [l.lineId]: e.target.value }))}
+                            />
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {kind === "sales" && (
+              <div className="field" style={{ maxWidth: 300, marginTop: "0.6rem" }}>
+                {/* The same charge, and so the same name it has on the sales
+                    invoice. One thing with two labels is how it comes to be
+                    entered twice. */}
+                <label htmlFor={`delivery_fee_${orderId}`}>Transport charge to customer</label>
+                <input id={`delivery_fee_${orderId}`} name="delivery_fee"
+                       type="number" min="0" step="0.01" placeholder="0" />
+                <span className="hint">
+                  Charged for carrying these goods. Recorded here and billed on the
+                  invoice for this delivery — it posts to delivery income there, not
+                  when the goods leave.
+                </span>
+              </div>
+            )}
+
+            {shortEverywhere.length > 0 && (
+              <div className="alert">
+                The company doesn&rsquo;t have enough {shortEverywhere.map((l) => l.itemCode).join(", ")} anywhere —
+                transferring stock in can&rsquo;t cover this, only buying more can.{" "}
+                <Link href="/purchases/orders/new" style={{ color: "inherit", textDecoration: "underline" }}>
+                  Create purchase order
+                </Link>{" "}
+                first, or lower the quantity to what the company actually has.
+              </div>
+            )}
+            {shortages.length > 0 && negativeConfirmed && (
+              <div className="alert">
+                <strong>Confirmed:</strong> the goods physically exist though
+                the record shows fewer. This delivery will post negative stock,
+                listed under Inventory &rarr; Negative stock until a receipt
+                covers it.{" "}
+                <button type="button" className="ghost tiny"
+                        onClick={() => setNegativeConfirmed(false)}>Undo</button>
+              </div>
+            )}
+            {shortages.length > shortEverywhere.length && !negativeConfirmed && (
+              <div className="alert">
+                Not enough {shortages.filter((l) => !shortEverywhere.includes(l)).map((l) => l.itemCode).join(", ")}
+                {" "}at this location to deliver that much, though the company has it elsewhere.{" "}
+                <Link href="/inventory/transfer" style={{ color: "inherit", textDecoration: "underline" }}>
+                  Transfer stock in
+                </Link>{" "}
+                first, or lower the quantity to what&rsquo;s available here.
+              </div>
+            )}
+
+            {negativeConfirmed && (
+              <input type="hidden" name="allow_negative_stock" value="true" />
+            )}
+
+            <NegativeStockConfirm
+              open={askNegative}
+              shortfalls={shortfalls}
+              onCancel={() => setAskNegative(false)}
+              onConfirm={() => { setNegativeConfirmed(true); setAskNegative(false); }}
+            />
+
+            <div className="actions" style={{ marginTop: "0.5rem" }}>
+              <button
+                type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
+                onClick={
+                  shortages.length > 0 && !negativeConfirmed
+                    ? () => setAskNegative(true)
+                    : undefined
+                }
+                disabled={pending}>
+                {pending ? "Posting…" : kind === "sales" ? "Post delivery" : "Post goods receipt"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}

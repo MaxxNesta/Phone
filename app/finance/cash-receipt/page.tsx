@@ -1,0 +1,56 @@
+import Link from "next/link";
+import { getFinanceData, peekVoucherNo, createCashVoucher } from "@/lib/actions";
+import { getCompany } from "@/lib/queries";
+import { VoucherForm } from "@/components/voucher-form";
+import { VoucherHelp } from "@/components/voucher-help";
+import { HelpHint } from "@/components/help-hint";
+
+export default async function CashReceipt() {
+  const { accounts, accountTree, cashAccounts, branches } = await getFinanceData();
+  const company = await getCompany();
+  const today = new Date().toISOString().slice(0, 10);
+  const nextNo = await peekVoucherNo("CASH_VOUCHER", "IN");
+
+  if (cashAccounts.length === 0) {
+    return (
+      <>
+        <div className="page-head">
+          <span className="eyebrow">Cash &amp; Bank</span>
+          <h1>Cash receipt</h1>
+        </div>
+        <div className="alert">No cash account is set up. Mark one in the chart of accounts as a till.</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="page-head">
+        <span className="eyebrow">Cash &amp; Bank</span>
+        <h1>Cash receipt</h1>
+        <HelpHint>
+          Money received into the till that isn&rsquo;t against a customer invoice — use{" "}
+          <Link href="/receivables/receive" style={{ color: "var(--brand)" }}>Receive payment</Link> for that.{" "}
+          <Link href="/finance/cash-detail" style={{ color: "var(--brand)" }}>View the cash book</Link>
+        </HelpHint>
+        <Link href="/finance/cash-receipt/import" className="btn ghost">Import from Excel</Link>
+      <span className="actions">
+        <VoucherHelp kind="cash" />
+      </span>
+      </div>
+
+      <VoucherForm
+        kind="cash"
+        action={createCashVoucher}
+        accounts={accounts as never}
+        accountTree={accountTree as never}
+        branches={branches as never}
+        moneyAccounts={cashAccounts as never}
+        today={today}
+        nextNo={nextNo}
+        companyName={company?.name ?? ""}
+        presetDirection="in"
+      />
+    </>
+  );
+}

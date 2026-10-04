@@ -1,0 +1,1002 @@
+// What a partner is already waiting for, before it is ordered again.
+//
+//   npx tsx scripts/test-awaiting-orders.mjs
+//
+// The duplicate order is not carelessness. A blank purchase order says
+// nothing about the one placed nine days ago, so there is nothing to notice
+// — and the goods arrive twice, the money goes out twice, and the shelf
+// holds stock nobody planned to buy.
+//
+// So the new-order form asks, the moment a supplier is chosen, what that
+// supplier already owes. This is the question behind it. Everything here is
+// about what must NOT appear: an order that has been received against, or
+// billed, or closed, or replaced by a corrected version is a different
+// conversation, and a reminder that fires on those is a reminder nobody
+// reads.
+//
+// Outstanding is taken from v_order_outstanding, the same reckoning the
+// dashboard and the receive form use, so the banner cannot disagree with the
+// rest of the app about what is still owed.
+
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import postgres from "postgres";
+
+import { takeTestLock, releaseTestLock } from "./test-lock.mjs";
+import { resetTransactions } from "./test-reset.mjs";
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+if (!process.env.DATABASE_URL && existsSync(join(root, ".env"))) {
+  for (const line of readFileSync(join(root, ".env"), "utf8").split("\n")) {
+    const m = line.match(/^\s*DATABASE_URL\s*=\s*(.+?)\s*$/);
+    if (m) { process.env.DATABASE_URL = m[1].replace(/^["']|["']$/g, ""); break; }
+  }
+}
+const url = process.env.DATABASE_URL;
+const sql = postgres(url, { ssl: url.includes("localhost") ? false : "require",
+  prepare: !url.includes("-pooler."), onnotice: () => {}, max: 1 });
+
+
+// One suite at a time: these share a database and empty it, so a second
+// runner is refused rather than left to collide. See scripts/test-lock.mjs.
+await takeTestLock(sql, "test-awaiting-orders.mjs");
+const P = await import("../lib/posting.ts");
+const Q = await import("../lib/queries.ts");
+
+let bad = 0;
+const check = (label, ok, detail = "") => {
+  if (!ok) bad++;
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${detail ? "  " + detail : ""}`);
+};
+const n = (v) => Number(v ?? 0);
+const near = (a, b) => Math.abs(n(a) - n(b)) < 0.0001;
+
+try {
+  const [co] = await sql`select id, name from company order by created_at limit 1`;
+  const [loc] = await sql`select id from location
+     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+
+  // Its own fixtures rather than whatever master data happens to be there:
+  // this suite needs two suppliers to prove one supplier's orders stay out of
+  // another's reminder, and two items to prove the line flag picks the right
+  // one. Made once and reused, so re-running it is safe.
+  const partner = async (code, name, role) => {
+    const [found] = await sql`select id from business_partner
+       where company_id = ${co.id} and code = ${code}`;
+    if (found) return found;
+    const [made] = await sql`
+      insert into business_partner (company_id, code, name, is_supplier, is_customer)
+      values (${co.id}, ${code}, ${name}, ${role === "supplier"}, ${role === "customer"})
+      returning id`;
+    return made;
+  };
+  // Found by name, not by code: a trigger builds the code from the category
+  // and the serial, so the code this asked for is not the code it gets.
+  const product = async (serial, name) => {
+    const [found] = await sql`select id, code from item
+       where company_id = ${co.id} and name = ${name}`;
+    if (found) return found;
+    const [grp] = await sql`select id from item_group
+       where company_id = ${co.id} order by code limit 1`;
+    const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;
+    const [made] = await sql`
+      insert into item (company_id, item_group_id, serial, name, base_uom_id)
+      values (${co.id}, ${grp.id}, ${serial}, ${name}, ${uom.id})
+      returning id, code`;
+    return made;
+  };
+
+  const itemA = await product("W-A", "Awaiting Test Item A");
+  const itemB = await product("W-B", "Awaiting Test Item B");
+  const supp = await partner("AW-SUP1", "Awaiting Test Supplier", "supplier");
+  const other = await partner("AW-SUP2", "Awaiting Other Supplier", "supplier");
+  const cust = await partner("AW-CUST", "Awaiting Test Customer", "customer");
+
+  console.log(`\n  ${co.name}  ·  ${itemA.code} / ${itemB.code}\n`);
+
+  await resetTransactions(sql);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const po = (partnerId, lines, dueDate = today) =>
+    P.postPurchaseOrder({ companyId: co.id, partnerId, locationId: loc.id,
+      docDate: today, dueDate, lines });
+  const awaiting = (type = "PURCHASE_ORDER") => Q.getUntouchedOpenOrders(co.id, type);
+  // The broader set the bill and delivery forms read: goods still owed,
+  // whether or not some have already arrived.
+  const owed = (type = "PURCHASE_ORDER") => Q.getOpenOrdersAwaitingGoods(co.id, type);
+  const linesFor = (rows, docNo) => rows.filter((r) => r.doc_no === docNo);
+  const orderCount = (rows) => new Set(rows.map((r) => r.doc_no)).size;
+
+  // ---- an order nobody has touched is what the form has to say ------------
+
+  const a = await po(supp.id, [{ itemId: itemA.id, qty: 100, unitPrice: 1200 }]);
+  let rows = await awaiting();
+
+  check("the untouched order is listed", linesFor(rows, a.docNo).length === 1);
+  check("with what is still awaited, not what was ordered",
+    near(linesFor(rows, a.docNo)[0]?.outstanding, 100),
+    `${linesFor(rows, a.docNo)[0]?.outstanding}`);
+  check("named by item, in base units",
+    linesFor(rows, a.docNo)[0]?.item_id === itemA.id
+    && !!linesFor(rows, a.docNo)[0]?.uom_code);
+  check("carrying the partner it belongs to",
+    linesFor(rows, a.docNo)[0]?.partner_id === supp.id);
+  check("and the date it is needed by",
+    linesFor(rows, a.docNo)[0]?.due_date === today,
+    String(linesFor(rows, a.docNo)[0]?.due_date));
+
+  // ---- a second order for the same supplier is a second row --------------
+
+  const b = await po(supp.id, [{ itemId: itemB.id, qty: 20, unitPrice: 800 }]);
+  rows = await awaiting();
+  check("two open orders read as two orders", orderCount(rows) === 2);
+
+  // ---- somebody else's order is not this supplier's problem --------------
+
+  const c = await po(other.id, [{ itemId: itemA.id, qty: 5, unitPrice: 1200 }]);
+  rows = await awaiting();
+  check("another supplier's order is carried separately",
+    rows.filter((r) => r.partner_id === supp.id).length === 2
+    && rows.filter((r) => r.partner_id === other.id).length === 1);
+
+  // ---- a part-received order is a different conversation ------------------
+
+  const [bLine] = await sql`select id from document_line where document_id = ${b.id}`;
+  await P.postGoodsReceipt({
+    companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+    sourceDocumentId: b.id,
+    lines: [{ itemId: itemB.id, qty: 5, unitCost: 800, sourceLineId: bLine.id }],
+  });
+  rows = await awaiting();
+  check("a part-received order drops out — it has a receipt to answer to",
+    linesFor(rows, b.docNo).length === 0);
+  check("and the untouched one is still there", linesFor(rows, a.docNo).length === 1);
+
+  // The bill form asks a different question. Billing outside the order is how
+  // the same purchase gets recorded twice — the voucher raises a receipt of
+  // its own — and that risk does not care whether some goods already landed.
+  let owing = await owed();
+  check("  but the bill form still sees it: goods are owed on it",
+    linesFor(owing, b.docNo).length === 1);
+  check("  showing what is left, not what was ordered",
+    near(linesFor(owing, b.docNo)[0]?.outstanding, 15),
+    `${linesFor(owing, b.docNo)[0]?.outstanding} of 20`);
+
+  // ---- goods linked to it afterwards count as arrived ---------------------
+  // A receipt raised without naming an order, said to answer it later. The
+  // saying is what counts: the goods are on the shelf either way, and an
+  // order whose goods are on the shelf must not be reported as awaiting
+  // them.
+
+  const e = await po(supp.id, [{ itemId: itemB.id, qty: 10, unitPrice: 800 }]);
+  const [eLine] = await sql`select id from document_line where document_id = ${e.id}`;
+  check("a fresh order is awaited before anything answers it",
+    linesFor(await awaiting(), e.docNo).length === 1);
+
+  const loose = await P.postGoodsReceipt({
+    companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+    lines: [{ itemId: itemB.id, qty: 10, unitCost: 800 }],
+  });
+  const [looseLine] = await sql`select id from document_line where document_id = ${loose.id}`;
+  await P.linkFulfilmentToOrder({ companyId: co.id,
+    lines: [{ fulfilmentLineId: looseLine.id, orderLineId: eLine.id, qty: 10 }] });
+  rows = await awaiting();
+  check("goods linked to the order afterwards take it out of the list",
+    linesFor(rows, e.docNo).length === 0);
+
+  // ---- an order closed as no longer expected is not awaited ---------------
+
+  await P.closeOrderRemaining({ companyId: co.id, documentId: c.id,
+    reason: "supplier cannot supply" });
+  rows = await awaiting();
+  check("a closed order is expecting nothing, so it says nothing",
+    linesFor(rows, c.docNo).length === 0);
+
+  // ---- a corrected order appears once, as the version standing now --------
+
+  const amended = await P.amendOrder({
+    companyId: co.id, documentId: a.id, reason: "quantity agreed at 60",
+    order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today,
+      lines: [{ itemId: itemA.id, qty: 60, unitPrice: 1200 }] },
+  });
+  rows = await awaiting();
+  const aRows = rows.filter((r) => r.doc_no === a.docNo);
+  check("a corrected order is listed once, not as both its versions",
+    aRows.length === 1, `${aRows.length} rows`);
+  check("and the quantity awaited is the corrected one",
+    near(aRows[0]?.outstanding, 60), `${aRows[0]?.outstanding}`);
+  check("the superseded version is not separately awaited",
+    !rows.some((r) => r.order_id === a.id),
+    amended?.id === a.id ? "(same id — amend returned the original)" : "");
+
+  // ---- a receipt against the old version still silences the new one -------
+
+  const current = aRows[0]?.order_id;
+  const [curLine] = await sql`select id from document_line where document_id = ${current}`;
+  await P.postGoodsReceipt({
+    companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+    sourceDocumentId: current,
+    lines: [{ itemId: itemA.id, qty: 60, unitCost: 1200, sourceLineId: curLine.id }],
+  });
+  rows = await awaiting();
+  check("once received, the corrected order drops out too",
+    linesFor(rows, a.docNo).length === 0);
+  check("nothing is left awaiting for this supplier",
+    rows.filter((r) => r.partner_id === supp.id).length === 0);
+
+  // ---- the sales side is the same question, asked of a customer -----------
+
+  const so = await P.postSalesOrder({ companyId: co.id, partnerId: cust.id,
+    locationId: loc.id, docDate: today, dueDate: today,
+    lines: [{ itemId: itemA.id, qty: 4, unitPrice: 2000 }] });
+  const sales = await awaiting("SALES_ORDER");
+  check("an open sales order is awaited from the customer",
+    linesFor(sales, so.docNo).length === 1);
+  check("and it is not mixed into the purchase list",
+    (await awaiting()).every((r) => r.doc_no !== so.docNo));
+
+  const [soLine] = await sql`select id from document_line where document_id = ${so.id}`;
+  await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id,
+    docDate: today, sourceDocumentId: so.id,
+    lines: [{ itemId: itemA.id, qty: 4, sourceLineId: soLine.id }] });
+  check("delivered, the customer's order stops being awaited",
+    linesFor(await awaiting("SALES_ORDER"), so.docNo).length === 0);
+
+  // ---- the reminder never disagrees with the receive form ----------------
+  // Both read v_order_outstanding. If they ever diverge, one screen says
+  // goods are coming while the other refuses to receive them.
+
+  const d = await po(supp.id, [{ itemId: itemA.id, qty: 7, unitPrice: 1200 }], null);
+  const open = await Q.getOpenPurchaseOrders(co.id);
+  rows = await awaiting();
+  const mine = linesFor(rows, d.docNo)[0];
+  const theirs = open.filter((o) => o.order_no === d.docNo);
+  check("the same quantity the receive form is prepared to take",
+    near(mine?.outstanding, theirs.reduce((t, o) => t + n(o.remaining_qty), 0)),
+    `${mine?.outstanding} vs ${theirs.reduce((t, o) => t + n(o.remaining_qty), 0)}`);
+  check("an order with no needed-by date is still listed",
+    mine?.due_date === null, String(mine?.due_date));
+
+  // ---- a draft order has not been placed with anyone ---------------------
+
+  await sql`update document set status = 'DRAFT' where id = ${d.id}`;
+  check("a draft order is not awaited — nobody has been asked for anything",
+    linesFor(await awaiting(), d.docNo).length === 0);
+
+  // ---- what the bill and delivery forms are warned about -----------------
+  // The tester's case, exactly: an order placed, nothing received, and a bill
+  // raised straight against the supplier. Nothing links the two — a purchase
+  // invoice can only name a goods receipt — so both doors read "nothing has
+  // happened", each raises its own receipt, and 100 units arrive twice.
+
+  const f = await po(supp.id, [{ itemId: itemA.id, qty: 30, unitPrice: 1200 }]);
+  owing = await owed();
+  check("an untouched order is owed goods, so the bill form warns on it",
+    linesFor(owing, f.docNo).length === 1);
+
+  const [fLine] = await sql`select id from document_line where document_id = ${f.id}`;
+  await P.postGoodsReceipt({
+    companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+    sourceDocumentId: f.id,
+    lines: [{ itemId: itemA.id, qty: 30, unitCost: 1200, sourceLineId: fLine.id }],
+  });
+  check("once the goods are all in, it stops warning — the answer is the receipt",
+    linesFor(await owed(), f.docNo).length === 0);
+
+  const g = await po(supp.id, [{ itemId: itemB.id, qty: 8, unitPrice: 800 }]);
+  await P.closeOrderRemaining({ companyId: co.id, documentId: g.id,
+    reason: "supplier cannot supply" });
+  check("a closed order is owed nothing, so neither form warns",
+    linesFor(await owed(), g.docNo).length === 0
+    && linesFor(await awaiting(), g.docNo).length === 0);
+
+  const h = await po(supp.id, [{ itemId: itemB.id, qty: 9, unitPrice: 800 }]);
+  await sql`update document set status = 'DRAFT' where id = ${h.id}`;
+  check("a draft order is owed nothing either",
+    linesFor(await owed(), h.docNo).length === 0);
+
+  const so2 = await P.postSalesOrder({ companyId: co.id, partnerId: cust.id,
+    locationId: loc.id, docDate: today, dueDate: today,
+    lines: [{ itemId: itemA.id, qty: 3, unitPrice: 2000 }] });
+  check("the sales voucher gets the same warning about its own orders",
+    linesFor(await owed("SALES_ORDER"), so2.docNo).length === 1);
+  check("  and purchase orders stay out of it",
+    (await owed("SALES_ORDER")).every((r) => r.doc_no !== f.docNo));
+
+
+  // ---- a bill filled from an order belongs to that order ------------------
+  //
+  // "Fill from this order" is not only a typing convenience. The voucher it
+  // fills names the order's own lines, which is what amendInvoice and the
+  // correction cascade already read — so the bill stops being a document of
+  // its own and becomes part of that order's chain. The dialog says exactly
+  // that before it happens; these are the three claims it makes.
+
+  console.log("\n  a bill filled from an order\n");
+  {
+    const f = await po(supp.id, [{ itemId: itemA.id, qty: 20, unitPrice: 1500 }]);
+    const [fl] = await sql`select id from document_line where document_id = ${f.id}`;
+
+    // What the form sends once the dialog is confirmed.
+    const bill = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: f.docNo,
+      lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1500, sourceLineId: fl.id }],
+    });
+
+    const [stored] = await sql`select reference from document where id = ${bill.id}`;
+    check("the order number is kept on the bill", stored.reference === f.docNo,
+      `${stored.reference}`);
+
+    const origin = await Q.getTransactionOrigin(co.id, bill.id);
+    check("  the document page calls it an order-based bill, not a direct one",
+      origin?.startedFrom === "ORDER", `${origin?.startedFrom}`);
+    check("  naming the order it came from",
+      origin?.order.state === "USED" && origin.order.doc.doc_no === f.docNo,
+      origin?.order.state === "USED" ? origin.order.doc.doc_no : String(origin?.order.state));
+    check("  and sending corrections there",
+      origin?.correctAt.kind === "ORDER" && origin.correctAt.doc.doc_no === f.docNo);
+
+    // Corrected at the order, not on the bill — the same rule as a bill
+    // raised through that order's receipt.
+    let refused = null;
+    try {
+      await P.amendInvoice({ companyId: co.id, documentId: bill.id, reason: "supplier billed 1,600",
+        invoice: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+          docDate: today, dueDate: today,
+          lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1600 }] } });
+    } catch (e) { refused = e.message; }
+    check("the bill cannot be corrected on its own", !!refused);
+    check("  and the refusal names where to do it",
+      !!refused && refused.includes(f.docNo), refused?.slice(0, 60));
+
+    // And the other half of the dialog's promise: a price changed at the
+    // order carries into the bill it filled.
+    const amended = await P.amendOrder({
+      companyId: co.id, documentId: f.id, reason: "price renegotiated to 1,600",
+      order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1600 }] },
+      cascade: true,
+    });
+    const [billNow] = await sql`
+      select version, gross_total::float g from document
+       where doc_no = ${bill.docNo} and superseded_by_document_id is null`;
+    check("correcting the order carries into the bill it filled",
+      near(billNow?.g, 32000), `${billNow?.g} at v${billNow?.version}`);
+    void amended;
+  }
+
+
+  // ---- filled from an order, and received in the same breath --------------
+  //
+  // The form's "Received now" is ticked by default, so this is the ordinary
+  // way a filled bill is posted — and it refused outright: the bill named the
+  // order's lines, the receipt created alongside it had lines of its own, and
+  // assertSourceLines rejected the bill for naming lines that were not on the
+  // receipt it bills. "Line 1 refers to a line that is not on that document."
+  //
+  // The allocation now moves to where it belongs: the receipt answers the
+  // order, and the bill names the receipt. One posting, and the order is
+  // fulfilled without anybody linking anything by hand.
+
+  console.log("\n  filled from an order, received now\n");
+  {
+    const k = await po(supp.id, [{ itemId: itemA.id, qty: 12, unitPrice: 900 }]);
+    const [kl] = await sql`select id from document_line where document_id = ${k.id}`;
+
+    let posted = null, refusal = null;
+    try {
+      posted = await P.postPurchaseWithReceipt({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today, reference: k.docNo,
+        lines: [{ itemId: itemA.id, qty: 12, unitPrice: 900, sourceLineId: kl.id }],
+      });
+    } catch (e) { refusal = e.message; }
+
+    check("it posts instead of refusing the order's own line ids", !!posted, refusal ?? "");
+
+    if (posted) {
+      const [gr] = await sql`
+        select d.id, d.doc_no, d.source_document_id from document d
+         where d.company_id = ${co.id} and d.doc_type = 'GOODS_RECEIPT'
+         order by d.created_at desc limit 1`;
+      check("  the receipt answers the order", gr?.source_document_id === k.id);
+      check("  so the order is fulfilled with nothing linked by hand",
+        near((await sql`select coalesce(sum(outstanding),0)::float o
+                          from v_order_outstanding where order_id = ${k.id}`)[0].o, 0));
+
+      const [billRow] = await sql`
+        select source_document_id, reference from document where id = ${posted.id}`;
+      check("  the bill names that receipt, not the order",
+        billRow?.source_document_id === gr?.id);
+      check("  and still carries the order number", billRow?.reference === k.docNo);
+
+      const [pair] = await sql`
+        select coalesce(sum(g.balance), 0)::float b from v_grir_balance g
+         where g.company_id = ${co.id} and g.document_id in (${gr.id}, ${posted.id})`;
+      check("  GR/IR closes between them", near(pair?.b, 0), `${pair?.b}`);
+
+      const origin = await Q.getTransactionOrigin(co.id, posted.id);
+      check("  and the bill still reads as raised through the order",
+        origin?.startedFrom === "ORDER"
+        && origin.order.state === "USED" && origin.order.doc.doc_no === k.docNo);
+    }
+
+    // Two orders on one bill cannot both be answered by one receipt line, so
+    // it is refused rather than silently attached to whichever came first.
+    const m1 = await po(supp.id, [{ itemId: itemA.id, qty: 3, unitPrice: 900 }]);
+    const m2 = await po(supp.id, [{ itemId: itemB.id, qty: 4, unitPrice: 700 }]);
+    const [m1l] = await sql`select id from document_line where document_id = ${m1.id}`;
+    const [m2l] = await sql`select id from document_line where document_id = ${m2.id}`;
+    let both = null;
+    try {
+      await P.postPurchaseWithReceipt({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 3, unitPrice: 900, sourceLineId: m1l.id },
+                { itemId: itemB.id, qty: 4, unitPrice: 700, sourceLineId: m2l.id }],
+      });
+    } catch (e) { both = e.message; }
+    check("one bill filled from two orders is refused, not guessed at",
+      !!both && both.includes("more than one order"), both?.slice(0, 60) ?? "posted");
+  }
+
+
+  // ---- filled from an order, billed now, received later -------------------
+  //
+  // The other route, and the one the original complaint came from. The bill
+  // is posted with nothing received; the goods turn up later and are received
+  // against the bill, which is what clears GR/IR. The order they were ordered
+  // on has been answered by those goods, and used to show nothing received
+  // for ever — sitting open and going overdue with the stock already on the
+  // shelf, unless somebody remembered to press "Link existing receipt".
+  //
+  // Now the receipt carries the allocation the bill was filled with, through
+  // the same link and the same checks a person would have made by hand.
+
+  console.log("\n  filled from an order, billed now, received later\n");
+  {
+    // On a clean slate: this section is about what is visible at each step,
+    // and earlier sections leave unbilled goods of their own for this same
+    // supplier and item — which is a collision in its own right, and would
+    // be read here as this scenario's.
+    await resetTransactions(sql);
+
+    const owedOn = async (orderId) =>
+      Number((await sql`select coalesce(sum(outstanding), 0)::float o
+                          from v_order_outstanding where order_id = ${orderId}`)[0].o);
+    const gotOn = async (orderId) =>
+      Number((await sql`select coalesce(sum(fulfilled), 0)::float f
+                          from v_order_outstanding where order_id = ${orderId}`)[0].f);
+
+    const n = await po(supp.id, [{ itemId: itemA.id, qty: 100, unitPrice: 1000 }]);
+    const [nl] = await sql`select id from document_line where document_id = ${n.id}`;
+    const bill = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: n.docNo,
+      lines: [{ itemId: itemA.id, qty: 100, unitPrice: 1000, sourceLineId: nl.id }],
+    });
+    check("billed with nothing received, the order is still owed all of it",
+      near(await owedOn(n.id), 100), `${await owedOn(n.id)}`);
+
+    // What the order's own receive form warns with, before any goods exist:
+    // the collision notice needs both halves and has nothing to say yet.
+    const waiting = async () => (await Q.getOpenPurchaseInvoices(co.id))
+      .filter((b) => b.partner_id === supp.id
+        && b.lines.some((l) => l.itemId === itemA.id));
+    check("  and a bill is on record as already waiting for these goods",
+      (await waiting()).some((b) => b.id === bill.id));
+    // Scoped to this bill: earlier sections leave unbilled goods of their own
+    // lying about, and a global count would be reading their residue.
+    check("  which is the one thing the collision notice cannot see yet",
+      !(await Q.getGrirCollisions(co.id)).some((r) => r.doc_no === bill.docNo));
+
+    const [bl] = await sql`select id from document_line where document_id = ${bill.id}`;
+    const first = await P.postGoodsReceipt({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: bill.id,
+      lines: [{ itemId: itemA.id, qty: 60, unitCost: 1000, sourceLineId: bl.id }],
+    });
+    check("receiving 60 against the bill fulfils 60 of the order",
+      near(await gotOn(n.id), 60), `${await gotOn(n.id)} fulfilled`);
+    check("  leaving 40 still owed", near(await owedOn(n.id), 40), `${await owedOn(n.id)}`);
+    check("  with nobody linking anything by hand",
+      Number((await sql`select count(*)::int n from fulfilment_link
+                          where source = 'POSTING'`)[0].n) > 0);
+
+    await P.postGoodsReceipt({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: bill.id,
+      lines: [{ itemId: itemA.id, qty: 40, unitCost: 1000, sourceLineId: bl.id }],
+    });
+    check("the last 40 closes the order", near(await owedOn(n.id), 0), `${await owedOn(n.id)}`);
+    check("  and the bill stops being listed as waiting for goods",
+      !(await waiting()).some((b) => b.id === bill.id));
+    check("  and the clearing account between bill and goods closes with it",
+      Number((await sql`select coalesce(sum(g.balance), 0)::float b from v_grir_balance g
+                          where g.company_id = ${co.id}
+                            and g.document_id in (${bill.id}, ${first.id})`)[0].b) === 0);
+
+    // A receipt posted twice must not fulfil the order twice. The allocation
+    // is capped at what the order still expects, so the second one carries
+    // nothing rather than taking the order to 140 of 100.
+    //
+    // What it does NOT do is refuse the receipt. Receiving more than was
+    // billed is a real event in this engine — the excess is goods held and
+    // not yet invoiced, which is what the clearing account is for — so the
+    // stock does move, and it is recorded here rather than left to be
+    // discovered. Anyone wanting a second identical submission refused wants
+    // duplicate-submission protection, which no posting path in this app has;
+    // it would be a deliberate feature, not a tightening of this one.
+    const stockOf = async () =>
+      Number((await sql`select coalesce(sum(qty), 0)::float q from stock_movement
+                          where company_id = ${co.id} and item_id = ${itemA.id}`)[0].q);
+    const before = await gotOn(n.id);
+    const stockBefore = await stockOf();
+    const receipts = async () =>
+      Number((await sql`select count(*)::int n from document
+                          where company_id = ${co.id} and doc_type = 'GOODS_RECEIPT'
+                            and source_document_id = ${bill.id}`)[0].n);
+    const receiptsBefore = await receipts();
+
+    let refused = null;
+    try {
+      await P.postGoodsReceipt({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+        sourceDocumentId: bill.id,
+        lines: [{ itemId: itemA.id, qty: 40, unitCost: 1000, sourceLineId: bl.id }],
+      });
+    } catch (e) { refused = e.message; }
+
+    check("receiving the same goods again cannot fulfil the order twice",
+      near(await gotOn(n.id), before), `${await gotOn(n.id)} vs ${before}`);
+    check("  the order is capped, and nothing new is linked to it",
+      near(await gotOn(n.id), 100), `${await gotOn(n.id)} of 100`);
+    check("  but the goods themselves are not refused — they are an over-receipt",
+      refused === null && (await receipts()) === receiptsBefore + 1,
+      refused ? `refused: ${refused.slice(0, 50)}` : `${await receipts()} receipts`);
+    check("  and the stock moves, as an over-receipt does",
+      near(await stockOf(), stockBefore + 40),
+      `${stockBefore} → ${await stockOf()}`);
+  }
+
+
+  // ---- the order's terms are the bill's terms -----------------------------
+  //
+  // Locking the inputs on the form is not enforcement: a request reaching the
+  // action has not been past any form. So the item, the price and the
+  // quantity are checked where every path has to come through, and the
+  // quantity is capped at what that order line still has left to bill —
+  // billing an order in two halves works, billing it twice over does not.
+
+  console.log("\n  the order's terms hold on the server\n");
+  {
+    const q = await po(supp.id, [{ itemId: itemA.id, qty: 50, unitPrice: 2000 }]);
+    const [ql] = await sql`select id from document_line where document_id = ${q.id}`;
+    const bill = (lines) => P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: q.docNo, lines,
+    });
+    const refused = async (lines) => {
+      try { await bill(lines); return null; } catch (e) { return e.message; }
+    };
+
+    const priced = await refused(
+      [{ itemId: itemA.id, qty: 50, unitPrice: 2200, sourceLineId: ql.id }]);
+    check("a price the order did not agree is refused", !!priced,
+      priced?.slice(0, 74) ?? "posted");
+
+    const swapped = await refused(
+      [{ itemId: itemB.id, qty: 50, unitPrice: 2000, sourceLineId: ql.id }]);
+    check("an item the order did not ask for is refused", !!swapped,
+      swapped?.slice(0, 74) ?? "posted");
+
+    const over = await refused(
+      [{ itemId: itemA.id, qty: 60, unitPrice: 2000, sourceLineId: ql.id }]);
+    check("more than the order asked for is refused", !!over,
+      over?.slice(0, 74) ?? "posted");
+
+    // Billing part of it is the sanctioned way to bill less, and what is
+    // left stays billable.
+    const half = await bill([{ itemId: itemA.id, qty: 30, unitPrice: 2000, sourceLineId: ql.id }]);
+    check("billing part of the order is allowed", !!half);
+
+    const tooMuchLeft = await refused(
+      [{ itemId: itemA.id, qty: 25, unitPrice: 2000, sourceLineId: ql.id }]);
+    check("  and the rest is capped at what is left, not at what was ordered",
+      !!tooMuchLeft && tooMuchLeft.includes("20"), tooMuchLeft?.slice(0, 74) ?? "posted");
+
+    const rest = await bill([{ itemId: itemA.id, qty: 20, unitPrice: 2000, sourceLineId: ql.id }]);
+    check("  the remaining 20 bills", !!rest);
+
+    const again = await refused(
+      [{ itemId: itemA.id, qty: 1, unitPrice: 2000, sourceLineId: ql.id }]);
+    check("  and nothing is left to bill after that", !!again,
+      again?.slice(0, 74) ?? "posted");
+
+    // A direct bill is nobody's inheritance and stays editable.
+    const direct = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today,
+      lines: [{ itemId: itemA.id, qty: 7, unitPrice: 9999 }],
+    });
+    check("a direct bill is still free to say what it says", !!direct);
+  }
+
+
+  // ---- an order corrected after it was billed -----------------------------
+  //
+  // A voucher names the line of the version it was raised against, and
+  // correcting an order posts a new version with new lines. Two things read
+  // those names afterwards: the allocation a receipt carries to the order,
+  // and the guard that holds a bill to the order's terms. Both looked only
+  // for the version they were given — so after any correction the goods
+  // quietly stopped fulfilling anything, and the terms stopped being checked.
+
+  console.log("\n  an order corrected after it was billed\n");
+  {
+    const r = await po(supp.id, [{ itemId: itemA.id, qty: 50, unitPrice: 1000 }]);
+    const [rl] = await sql`select id from document_line where document_id = ${r.id}`;
+    const bill = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: r.docNo,
+      lines: [{ itemId: itemA.id, qty: 50, unitPrice: 1000, sourceLineId: rl.id }],
+    });
+
+    await P.amendOrder({
+      companyId: co.id, documentId: r.id, reason: "price renegotiated to 1,100",
+      order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 50, unitPrice: 1100 }] },
+      cascade: true,
+    });
+
+    const [live] = await sql`
+      select id, doc_no from document
+       where doc_no = ${r.docNo} and superseded_by_document_id is null`;
+    const [liveBill] = await sql`
+      select d.id from document d
+       where d.company_id = ${co.id} and d.doc_type = 'PURCHASE_INVOICE'
+         and d.status = 'POSTED' and d.superseded_by_document_id is null
+         and d.doc_no = ${bill.docNo}`;
+    const [lbl] = await sql`select id from document_line where document_id = ${liveBill.id}`;
+
+    await P.postGoodsReceipt({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: liveBill.id,
+      lines: [{ itemId: itemA.id, qty: 50, unitCost: 1100, sourceLineId: lbl.id }],
+    });
+
+    const owedNow = Number((await sql`select coalesce(sum(outstanding), 0)::float o
+       from v_order_outstanding where order_id = ${live.id}`)[0].o);
+    check("goods received against the bill still fulfil the corrected order",
+      near(owedNow, 0), `${owedNow} still owed on ${live.doc_no}`);
+
+    // And the terms are checked against what the order says now, not what it
+    // said when the bill was raised.
+    let atOldPrice = null;
+    try {
+      await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 1, unitPrice: 1000, sourceLineId: rl.id }],
+      });
+    } catch (e) { atOldPrice = e.message; }
+    check("  and a new bill at the old agreed price is refused",
+      !!atOldPrice && atOldPrice.includes("1100"), atOldPrice?.slice(0, 70) ?? "posted");
+  }
+
+
+  // ---- two lines claiming one order line ----------------------------------
+  // Item and price belong to each line; a quantity does not. Checked line by
+  // line, two halves of one claim each passed while together they billed more
+  // than the order asked for.
+
+  console.log("\n  two lines, one order line\n");
+  {
+    const u = await po(supp.id, [{ itemId: itemA.id, qty: 50, unitPrice: 1000 }]);
+    const [ul] = await sql`select id from document_line where document_id = ${u.id}`;
+    let split = null;
+    try {
+      await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 30, unitPrice: 1000, sourceLineId: ul.id },
+                { itemId: itemA.id, qty: 30, unitPrice: 1000, sourceLineId: ul.id }],
+      });
+    } catch (e) { split = e.message; }
+    check("two lines of 30 against an order line of 50 are refused together",
+      !!split && split.includes("60"), split?.slice(0, 70) ?? "posted 60 of 50");
+
+    // Split within the order, though, is ordinary.
+    const ok = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today,
+      lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1000, sourceLineId: ul.id },
+              { itemId: itemA.id, qty: 30, unitPrice: 1000, sourceLineId: ul.id }],
+    });
+    check("  while 20 and 30 on one bill is allowed", !!ok);
+  }
+
+
+  // ---- one item on two lines of one order ---------------------------------
+  //
+  // Twenty at a thousand and thirty at twelve hundred is an ordinary thing to
+  // agree. Resolving an order line by its item alone took the first line with
+  // that item, so a bill for the second was refused for quoting a price the
+  // order plainly agreed — and the allocation a receipt carries would have
+  // fulfilled the wrong half of the order. It needed no correction to happen:
+  // the resolution ran on every voucher.
+
+  console.log("\n  one item, two lines of one order\n");
+  {
+    const v = await po(supp.id, [
+      { itemId: itemA.id, qty: 20, unitPrice: 1000 },
+      { itemId: itemA.id, qty: 30, unitPrice: 1200 },
+    ]);
+    const vl = await sql`select id, line_no, unit_price from document_line
+       where document_id = ${v.id} order by line_no`;
+
+    let second = null, refusal = null;
+    try {
+      second = await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today, reference: v.docNo,
+        lines: [{ itemId: itemA.id, qty: 30, unitPrice: 1200, sourceLineId: vl[1].id }],
+      });
+    } catch (e) { refusal = e.message; }
+    check("a bill for the second line bills at the second line's price",
+      !!second, refusal?.slice(0, 76) ?? "");
+
+    // The first line is untouched by it, and still has its own twenty to bill
+    // at its own price.
+    let first = null, firstRefusal = null;
+    try {
+      first = await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today, reference: v.docNo,
+        lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1000, sourceLineId: vl[0].id }],
+      });
+    } catch (e) { firstRefusal = e.message; }
+    check("  and the first line keeps its own twenty at its own price",
+      !!first, firstRefusal?.slice(0, 76) ?? "");
+
+    // What each line has left is its own business: billing the first line
+    // again is refused even though the other line was never billed.
+    let overFirst = null;
+    try {
+      await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 1, unitPrice: 1000, sourceLineId: vl[0].id }],
+      });
+    } catch (e) { overFirst = e.message; }
+    check("  each line is billed against its own remainder, not the item's",
+      !!overFirst, overFirst?.slice(0, 76) ?? "posted");
+
+    // And the goods received against the second line's bill answer that line.
+    if (second) {
+      const [sl] = await sql`select id from document_line where document_id = ${second.id}`;
+      await P.postGoodsReceipt({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+        sourceDocumentId: second.id,
+        lines: [{ itemId: itemA.id, qty: 30, unitCost: 1200, sourceLineId: sl.id }],
+      });
+      const [link] = await sql`
+        select k.order_line_id, l.line_no from fulfilment_link k
+        join document_line l on l.id = k.order_line_id
+        where l.document_id = ${v.id} order by k.created_at desc limit 1`;
+      check("  and the goods fulfil the line that was billed, not the first one",
+        link?.order_line_id === vl[1].id, `answered line ${link?.line_no}`);
+    }
+  }
+
+
+  // ---- correcting an order with one item on two lines ---------------------
+  //
+  // The cascade priced by item, so the last line of an item overwrote the
+  // earlier ones: twenty at eleven hundred and thirty at twelve hundred
+  // re-priced both at twelve hundred and billed two thousand more than the
+  // corrected order agreed. A line is not its item, and which line replaced
+  // which is now recorded by the correction rather than inferred afterwards.
+
+  console.log("\n  correcting an order with one item on two lines\n");
+  {
+    const w = await po(supp.id, [
+      { itemId: itemA.id, qty: 20, unitPrice: 1000 },
+      { itemId: itemA.id, qty: 30, unitPrice: 1200 },
+    ]);
+    const wl = await sql`select id from document_line where document_id = ${w.id} order by line_no`;
+    const bill = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: w.docNo,
+      lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1000, sourceLineId: wl[0].id },
+              { itemId: itemA.id, qty: 30, unitPrice: 1200, sourceLineId: wl[1].id }],
+    });
+    check("both lines bill at their own agreed prices",
+      near(Number((await sql`select gross_total::float g from document
+                               where id = ${bill.id}`)[0].g), 56000));
+
+    // Corrected the way the form sends it: each line carrying the line it
+    // replaces.
+    await P.amendOrder({
+      companyId: co.id, documentId: w.id, reason: "first line renegotiated to 1,100",
+      order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 20, unitPrice: 1100, supersedesLineId: wl[0].id },
+                { itemId: itemA.id, qty: 30, unitPrice: 1200, supersedesLineId: wl[1].id }] },
+      cascade: true,
+    });
+
+    const after = await sql`
+      select dl.base_qty::float q, dl.unit_price::float p, d.gross_total::float g
+        from document_line dl join document d on d.id = dl.document_id
+       where d.doc_no = ${bill.docNo} and d.superseded_by_document_id is null
+       order by dl.line_no`;
+    check("the corrected order re-prices each line on its own",
+      near(after[0]?.p, 1100) && near(after[1]?.p, 1200),
+      after.map((l) => `${l.q} @ ${l.p}`).join(" · "));
+    check("  so the bill comes to what the corrected order agreed",
+      near(after[0]?.g, 58000), `${after[0]?.g}`);
+
+    // And the lineage is what says so, not the position or the item.
+    const [lineage] = await sql`
+      select count(*)::int n from document_line dl
+       join document d on d.id = dl.document_id
+       where d.doc_no = ${w.docNo} and d.superseded_by_document_id is null
+         and dl.supersedes_line_id is not null`;
+    check("  each corrected line records the line it replaced", lineage.n === 2,
+      `${lineage.n} of 2`);
+  }
+
+
+  // ---- a second correction, and lines that move --------------------------
+  //
+  // A document keeps naming the version it was raised against. Correcting an
+  // order once is easy; correcting it twice found the invoices by the exact
+  // id being corrected, so on v2 becoming v3 a bill still pointing at v1 was
+  // not found at all — it kept the old price for ever while every screen said
+  // it had been corrected.
+
+  console.log("\n  a second correction\n");
+  {
+    const y = await po(supp.id, [{ itemId: itemA.id, qty: 10, unitPrice: 1000 }]);
+    const [y1] = await sql`select id from document_line where document_id = ${y.id}`;
+    const bill = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: y.docNo,
+      lines: [{ itemId: itemA.id, qty: 10, unitPrice: 1000, sourceLineId: y1.id }],
+    });
+
+    const correctTo = async (price) => {
+      const [live] = await sql`select id from document where doc_no = ${y.docNo}
+         and superseded_by_document_id is null`;
+      const [ll] = await sql`select id from document_line where document_id = ${live.id}`;
+      await P.amendOrder({
+        companyId: co.id, documentId: live.id, reason: `to ${price}`,
+        order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+          docDate: today, dueDate: today,
+          lines: [{ itemId: itemA.id, qty: 10, unitPrice: price, supersedesLineId: ll.id }] },
+        cascade: true,
+      });
+    };
+    const billNow = async () => Number((await sql`
+      select gross_total::float g from document
+       where doc_no = ${bill.docNo} and superseded_by_document_id is null`)[0].g);
+
+    await correctTo(1100);
+    check("the first correction reaches the bill", near(await billNow(), 11000),
+      `${await billNow()}`);
+
+    await correctTo(1200);
+    check("and so does the second, though the bill still names v1's line",
+      near(await billNow(), 12000), `${await billNow()}`);
+
+    await correctTo(1300);
+    check("  and the third", near(await billNow(), 13000), `${await billNow()}`);
+  }
+
+  // ---- two lines of one item, swapped ------------------------------------
+  // Position is only a fallback. Where a correction records what replaced
+  // what, that is what counts — otherwise swapping two lines of one item
+  // charges each with the other's billing.
+
+  console.log("\n  two lines of one item, swapped by a correction\n");
+  {
+    const z = await po(supp.id, [
+      { itemId: itemA.id, qty: 10, unitPrice: 1000 },
+      { itemId: itemA.id, qty: 20, unitPrice: 2000 },
+    ]);
+    const zl = await sql`select id from document_line where document_id = ${z.id} order by line_no`;
+
+    // The first line is billed in full.
+    await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id,
+      docDate: today, dueDate: today, reference: z.docNo,
+      lines: [{ itemId: itemA.id, qty: 10, unitPrice: 1000, sourceLineId: zl[0].id }],
+    });
+
+    // Then the order is corrected with the two lines in the other order, each
+    // saying which line it replaces.
+    await P.amendOrder({
+      companyId: co.id, documentId: z.id, reason: "lines reordered",
+      order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 20, unitPrice: 2000, supersedesLineId: zl[1].id },
+                { itemId: itemA.id, qty: 10, unitPrice: 1000, supersedesLineId: zl[0].id }] },
+      cascade: true,
+    });
+
+    const [live] = await sql`select id from document where doc_no = ${z.docNo}
+       and superseded_by_document_id is null`;
+    const ll = await sql`select id, line_no, base_qty::float q, unit_price::float p
+       from document_line where document_id = ${live.id} order by line_no`;
+
+    // The line that is now first is the one that was second, and it has never
+    // been billed — its full twenty is still available.
+    let stillBillable = null;
+    try {
+      await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 20, unitPrice: 2000, sourceLineId: ll[0].id }],
+      });
+      stillBillable = true;
+    } catch (e) { stillBillable = e.message; }
+    check("the swapped line is billed against its own history, not its position",
+      stillBillable === true,
+      typeof stillBillable === "string" ? stillBillable.slice(0, 70) : "");
+
+    // And the line that moved to second is the one already billed in full.
+    let alreadyDone = null;
+    try {
+      await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 1, unitPrice: 1000, sourceLineId: ll[1].id }],
+      });
+    } catch (e) { alreadyDone = e.message; }
+    check("  and the one already billed stays billed", !!alreadyDone,
+      alreadyDone?.slice(0, 70) ?? "posted again");
+  }
+
+  // ---- a line the correction removed --------------------------------------
+
+  console.log("\n  a line the correction removed\n");
+  {
+    const g = await po(supp.id, [
+      { itemId: itemA.id, qty: 5, unitPrice: 100 },
+      { itemId: itemB.id, qty: 5, unitPrice: 200 },
+    ]);
+    const gl = await sql`select id from document_line where document_id = ${g.id} order by line_no`;
+    await P.amendOrder({
+      companyId: co.id, documentId: g.id, reason: "second item dropped",
+      order: { companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemA.id, qty: 5, unitPrice: 100, supersedesLineId: gl[0].id }] },
+      cascade: true,
+    });
+
+    let gone = null;
+    try {
+      await P.postPurchaseInvoice({
+        companyId: co.id, partnerId: supp.id, locationId: loc.id,
+        docDate: today, dueDate: today,
+        lines: [{ itemId: itemB.id, qty: 5, unitPrice: 200, sourceLineId: gl[1].id }],
+      });
+    } catch (e) { gone = e.message; }
+    check("billing a line the correction removed is refused, not ignored",
+      !!gone, gone?.slice(0, 70) ?? "posted");
+  }
+
+  console.log(`\n  ${bad === 0 ? "All good." : `${bad} failed.`}\n`);
+} catch (e) {
+  console.error("\n  ERROR", e.message, "\n");
+  bad++;
+} finally {
+  await releaseTestLock(sql);
+  await sql.end({ timeout: 5 });
+}
+process.exit(bad === 0 ? 0 : 1);

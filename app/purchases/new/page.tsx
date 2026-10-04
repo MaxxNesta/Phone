@@ -1,0 +1,106 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { getFormData, createPurchaseInvoice, saveInvoiceDraft } from "@/lib/actions";
+import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft } from "@/lib/queries";
+import { allCategories } from "@/lib/tree";
+import { sql } from "@/lib/db";
+import { InvoiceForm } from "@/components/invoice-form";
+import { ErpCrumbs } from "@/components/erp-worklist";
+import { HelpHint } from "@/components/help-hint";
+
+export default async function NewPurchaseInvoice({
+  searchParams,
+}: {
+  searchParams: Promise<{ goods_receipt_id?: string; draft?: string }>;
+}) {
+  const { goods_receipt_id, draft: draftId } = await searchParams;
+  const { suppliers, items, locations, uoms, cashAccounts, taxCodes } = await getFormData();
+  const [co] = await sql`select id from company order by created_at limit 1`;
+
+  // Resuming an unfinished bill. A draft deleted meanwhile opens a blank
+  // form rather than an error.
+  const draftRow = draftId ? await getDocumentDraft(co.id, draftId) : null;
+  const draft = draftRow
+    ? {
+        id: draftRow.id as string,
+        state: String((draftRow.payload as Record<string, unknown>)?.draft_state ?? ""),
+      }
+    : null;
+  const categories = await allCategories(co.id);
+  const goodsReceipts = await getOpenGoodsReceipts(co.id);
+  // Raised from one receipt's own page: the crumb names it, so the way back
+  // leads to that document rather than to a list the reader never came from.
+  const from = goods_receipt_id
+    ? (goodsReceipts as { id: string; doc_no: string }[]).find((g) => g.id === goods_receipt_id)
+    : undefined;
+  const awaiting = await getOpenOrdersAwaitingGoods(co.id, "PURCHASE_ORDER");
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Items are deliberately not required: a product can be created from the
+  // voucher itself. A category is, since nothing unclassified may enter stock.
+  if (suppliers.length === 0 || categories.length === 0 || locations.length === 0) {
+    return (
+      <>
+        <ErpCrumbs steps={[
+          { label: "Purchase invoices", href: "/purchases/invoices" },
+          { label: "New purchase invoice" },
+        ]} />
+        <div className="page-head">
+          <h1>New purchase invoice</h1>
+        </div>
+        <div className="alert">
+          {suppliers.length === 0 && <div>No suppliers yet — add one first.</div>}
+          {categories.length === 0 && (
+            <div>
+              No categories yet — add one first, so new items have somewhere to file.
+            </div>
+          )}
+          {locations.length === 0 && <div>No stock location is set up.</div>}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <ErpCrumbs steps={[
+        { label: "Purchase invoices", href: "/purchases/invoices" },
+        ...(from ? [{ label: from.doc_no, href: `/documents/${from.id}` }] : []),
+        { label: "New purchase invoice" },
+      ]} />
+      <div className="page-head">
+        <h1>New purchase invoice</h1>
+        {/* Raised from one receipt: the way back is that document, not the
+            list of every invoice. The crumb above says the same thing; this
+            is the arrow somebody actually aims at. */}
+        {from && (
+          <Link href={`/documents/${from.id}`} className="btn ghost">
+            <ArrowLeft size={14} aria-hidden="true" /> Back to {from.doc_no}
+          </Link>
+        )}
+        <HelpHint>
+          Stock arrives at the price paid and the supplier balance opens. Each
+          receipt becomes its own FIFO cost layer.
+        </HelpHint>
+      </div>
+
+      <InvoiceForm
+        kind="purchase"
+        action={createPurchaseInvoice}
+        saveDraft={saveInvoiceDraft}
+        draft={draft}
+        partners={suppliers as never}
+        items={items as never}
+        locations={locations as never}
+        categories={categories}
+        uoms={uoms as never}
+        today={today}
+        cashAccounts={cashAccounts as never}
+        goodsReceipts={goodsReceipts as never}
+        initialGoodsReceiptId={goods_receipt_id}
+        awaiting={awaiting}
+        taxCodes={taxCodes as never}
+      />
+    </>
+  );
+}

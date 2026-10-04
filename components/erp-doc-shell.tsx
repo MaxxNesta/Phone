@@ -1,0 +1,173 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { ErpCopyNumber, ErpPrintButton } from "@/components/erp-doc-toolbar";
+import { ErpMore } from "@/components/erp-more";
+
+/**
+ * The chrome every document sits in: breadcrumb, action bar with the chevron
+ * pipeline, then a sheet.
+ *
+ * One shell for every document type is the point. Twelve document types
+ * rendering the same frame is what makes a set of screens read as one
+ * product, and it is a bigger win than any individual screen's polish — so
+ * the frame is a component and the differences are props.
+ *
+ * The body is whatever the page puts inside. This deliberately knows nothing
+ * about lines, totals or accounts: it is a frame, and a frame that starts
+ * making decisions about content is how one shell becomes twelve again.
+ */
+
+export type ChainStage = {
+  type: string;
+  label: string;
+  doc: { id: string; doc_no: string } | null;
+  /**
+   * Every document at this stage. A stage can hold more than one — an order
+   * delivered in two runs has two deliveries — and a strip showing the first
+   * of them says the others do not exist.
+   */
+  docs?: { id: string; doc_no: string }[];
+  /**
+   * Where to go to create this stage, when it does not exist yet and this
+   * document is what it would be created from. Set only on the immediate next
+   * step, so the pipeline is walkable forwards as well as backwards — a stage
+   * further down the chain has nothing to be created from yet.
+   */
+  href?: string | null;
+  /**
+   * A stage the chain does not require. A sale can start at a delivery and a
+   * purchase at an invoice, so a missing order is not a gap in the chain —
+   * and a strip that draws it the same as a step still owed says the wrong
+   * thing. Hatched rather than solid: absent by choice, not outstanding.
+   */
+  optional?: boolean;
+};
+
+export function ErpDocShell({
+  docId, docNo, typeLabel, status, listHref, listLabel,
+  chain, actions, menuActions, badges, children, backHref, backLabel,
+  banner, stats, footer,
+}: {
+  docId: string;
+  docNo: string;
+  typeLabel: string;
+  status: string;
+  listHref: string;
+  listLabel: string;
+  /** Where the reader came from, when it was not the list. Arriving from the
+   *  general ledger and being offered only "Purchase invoices" as the way
+   *  back loses both the filters and the place in them. */
+  backHref?: string | null;
+  backLabel?: string | null;
+  chain: ChainStage[];
+  /** Workflow actions — left of the pipeline, where the reference puts them. */
+  actions?: React.ReactNode;
+  /** Rare or irreversible actions, behind the overflow menu in the header —
+   *  the same place an order keeps "Correct order" and "Close remaining", so
+   *  moving between a document and the one it became does not move the
+   *  controls. */
+  menuActions?: React.ReactNode;
+  /** Extra pills beside the number: outstanding, delivered, matched. */
+  badges?: React.ReactNode;
+  /** Whose move it is, when somebody is late. Above the document itself. */
+  banner?: React.ReactNode;
+  /** The two or three figures the document is really about. */
+  stats?: React.ReactNode;
+  /**
+   * What happened and what it is linked to, both of which belong under the
+   * document rather than beside it. Beside it they took a fifth of the width
+   * from the lines — the one part of the page somebody actually reads across
+   * — to hold a history nobody consults until something is wrong.
+   */
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const currentIndex = chain.findIndex((s) => s.doc?.doc_no === docNo);
+
+  return (
+    <div data-density="odoo" className="erp-form">
+      <div className="erp-crumb">
+        {backHref && (
+          <>
+            <Link href={backHref} className="erp-crumb-link backlink">
+              <ArrowLeft size={13} aria-hidden="true" /> {backLabel ?? "Back"}
+            </Link>
+            <span className="erp-crumb-sep">/</span>
+          </>
+        )}
+        <Link href={listHref} className="erp-crumb-link">{listLabel}</Link>
+        <span className="erp-crumb-sep">/</span>
+        <span className="erp-crumb-here">{docNo}</span>
+        <ErpCopyNumber docNo={docNo} />
+        <span style={{ marginLeft: "auto" }} className="erp-head-tools">
+          <ErpPrintButton docId={docId} />
+          {menuActions && <ErpMore>{menuActions}</ErpMore>}
+        </span>
+      </div>
+
+      {chain.length > 0 && (
+        <div className="erp-actionbar">
+          {chain.length > 0 && (
+            <div className="erp-pipeline" role="list" aria-label="Workflow">
+              {chain.map((stage, i) => {
+                const done = !!stage.doc;
+                const here = i === currentIndex;
+                const body = (
+                  <>
+                    {stage.label}
+                    {stage.doc && !here && <span className="erp-stage-no">{stage.doc.doc_no}</span>}
+                    {!stage.doc && stage.href && <span className="erp-stage-no">create</span>}
+                  </>
+                );
+                return (
+                  <div key={stage.type} role="listitem"
+                       className={`erp-stage ${here ? "here" : done ? "done" : "todo"}${
+                         !done && stage.href ? " next" : ""}${
+                         !done && stage.optional ? " optional" : ""}`}
+                       title={!done && stage.optional
+                         ? `${stage.label} is optional — this chain is valid without one`
+                         : undefined}
+                       aria-current={here ? "step" : undefined}>
+                    {stage.doc && !here
+                      ? <Link href={`/documents/${stage.doc.id}`}>{body}</Link>
+                      : !stage.doc && stage.href
+                        ? <Link href={stage.href}>{body}</Link>
+                        : body}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/*
+        One order of sections, the same on every document, and it follows the
+        order the questions are asked in: what is this and how does it stand,
+        how much of it, what can I do, what should I know before doing it,
+        then the detail, then what it is joined to.
+
+        Actions used to sit above all of it, beside the pipeline, so the
+        expanded receiving form — a large thing — opened before the reader had
+        seen the quantities or even the vendor. A decision was being offered
+        before the facts it rests on. It sits after the figures now, and the
+        notice that qualifies it sits directly beneath it rather than above
+        the figures, where it read as a headline about the document rather
+        than as a caution about the action.
+      */}
+      <div className="erp-sheet-page">
+        <div className="erp-doc-title">
+          <span className="erp-doc-type">{typeLabel}</span>
+          <h1>{docNo}</h1>
+          <span className={`pill ${status.toLowerCase()}`}>{status}</span>
+          {badges}
+        </div>
+        {stats}
+        {actions && <div className="erp-actions">{actions}</div>}
+        {banner}
+        {children}
+        {footer}
+      </div>
+    </div>
+  );
+}

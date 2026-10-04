@@ -1,0 +1,1546 @@
+import { Fragment } from "react";
+import { DocumentAttachments } from "@/components/document-attachments";
+import { uploadAttachment, deleteAttachment } from "@/lib/actions";
+import { storageConfigured } from "@/lib/r2";
+import { planVoid } from "@/lib/void";
+import { RelatedDocumentsPanel } from "@/components/related-documents";
+import { ReplaceSettlement } from "@/components/replace-settlement";
+import { VoidDocument } from "@/components/void-document";
+import { LinkToOrder } from "@/components/link-to-order";
+import { LinkFulfilment, OrderActions } from "@/components/link-fulfilment";
+import { TaskBanner } from "@/components/document-rail";
+import { DocumentFooter } from "@/components/document-footer";
+import { DocStats, type DocStat } from "@/components/doc-stats";
+import { InvoiceProgress } from "@/components/invoice-progress";
+import {
+  PackageCheck, FileText, Clock, Wallet, CircleDollarSign, Boxes, Truck, Tags,
+} from "lucide-react";
+import { CloseOrder } from "@/components/close-order";
+import { CorrectOrder, type CorrectableLine } from "@/components/correct-order";
+import { CorrectVoucher } from "@/components/correct-voucher";
+import { CorrectSettlement } from "@/components/correct-settlement";
+import { VersionBadge, VersionTrail, type DocumentVersion }
+  from "@/components/version-history";
+import { TransactionOrigin } from "@/components/transaction-origin";
+import { ApplyAdvance } from "@/components/apply-advance";
+import {
+  voidDocumentAction, linkReceiptToOrder, closeOrderAction,
+  previewOrderCorrection, correctOrder,
+  previewInvoiceCorrection, correctInvoice, applyAdvanceAction,
+  correctVoucher,
+  correctSettlement,
+  getFinanceData,
+} from "@/lib/actions";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { sql, money, qty, shortDate } from "@/lib/db";
+import {
+  getDocument,
+  getDocumentLines,
+  getDocumentBatches,
+  getJournalForDocument,
+  getDownstream,
+  getDocumentOutstanding,
+  getOpenSalesOrders,
+  getOpenPurchaseOrders,
+  getChainDocuments,
+  getDocumentAttachments,
+  getSettlingPayment,
+  isGrirOutstanding,
+  getMatchStatus,
+  getStockByLocation,
+  getOrderProgress,
+  getRelatedDocuments,
+  getDocumentVersions,
+  getTransactionOrigin,
+  getAdvancesFor,
+  getUnsettledConsignment,
+  getLinkableOrders,
+  getOpenDeliveries,
+  getOrderOutstanding,
+  getOrderClosure,
+  getDocumentPeople,
+  getInvoiceProgress,
+  getLinkableFulfilments,
+  getGrirCollisions,
+  getOpenPurchaseInvoices,
+  getBillsRaisedFromOrders,
+  getReturnedAgainst,
+  getOrderCancellation,
+  getVoucherLines,
+  getSettlementForCorrection,
+  getOrderConfirmations,
+} from "@/lib/queries";
+import {
+  createDelivery, createGoodsReceipt, replaceConsignmentSettlement,
+  recordSupplierConfirmation,
+} from "@/lib/actions";
+import { SupplierConfirmations } from "@/components/supplier-confirmations";
+import { FulfillOrderForm } from "@/components/fulfill-order-form";
+import { ReturnedBadge } from "@/components/returned-badge";
+import { ErpOrderForm, type OrderLine as ErpOrderLine } from "@/components/erp-order-form";
+import { ErpDocShell } from "@/components/erp-doc-shell";
+
+// The chain each document type sits in, so the detail page can show where
+// this document falls and what comes next.
+const CHAINS: Record<string, string[]> = {
+  PURCHASE_ORDER:   ["PURCHASE_ORDER", "GOODS_RECEIPT", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT"],
+  GOODS_RECEIPT:    ["PURCHASE_ORDER", "GOODS_RECEIPT", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT"],
+  PURCHASE_INVOICE: ["PURCHASE_ORDER", "GOODS_RECEIPT", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT"],
+  SUPPLIER_PAYMENT: ["PURCHASE_ORDER", "GOODS_RECEIPT", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT"],
+  SALES_ORDER:      ["SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT"],
+  DELIVERY:         ["SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT"],
+  SALES_INVOICE:    ["SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT"],
+  CUSTOMER_RECEIPT: ["SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT"],
+};
+
+const label = (t: string) => t.replace(/_/g, " ").toLowerCase();
+
+// Matches the tab labels on the documents list itself — "delivery" doesn't
+// just take an s.
+const PLURAL: Record<string, string> = {
+  PURCHASE_ORDER: "Purchase orders",
+  GOODS_RECEIPT: "Goods receipts",
+  PURCHASE_INVOICE: "Purchase invoices",
+  SUPPLIER_PAYMENT: "Supplier payments",
+  SALES_ORDER: "Sales orders",
+  DELIVERY: "Deliveries",
+  SALES_INVOICE: "Sales invoices",
+  CUSTOMER_RECEIPT: "Customer receipts",
+};
+
+/** Where an arrow labelled for it leads back to. */
+const BACK_FROM: Record<string, string> = {
+  "/purchases/new": "New purchase invoice",
+  "/sales/new": "New sales voucher",
+  "/purchases/receive/new": "Receive goods",
+  "/purchases/orders/new": "New purchase order",
+  "/sales/orders/new": "New sales order",
+  "/sales/deliver/new": "New delivery",
+  "/finance/general-ledger": "General ledger",
+  "/finance/aging": "AR / AP aging",
+};
+
+export default async function DocumentPage({
+  params, searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ back?: string }>;
+}) {
+  // Where the reader came from, when it was not this document's own list.
+  // Only a path within the app is accepted: a `back` that could be pointed at
+  // another site is an open redirect wearing a breadcrumb.
+  const { back } = await searchParams;
+  const backHref = back && back.startsWith("/") && !back.startsWith("//") ? back : null;
+  // Named, not just "Back": an arrow that says where it goes is the
+  // difference between a way out and a guess. A path this does not know
+  // still gets an arrow, labelled plainly.
+  const backLabel = backHref
+    ? (BACK_FROM[backHref.split("?")[0]]
+       ?? (backHref.startsWith("/finance/general-ledger") ? "General ledger" : "Back"))
+    : null;
+  const { id } = await params;
+  const doc = await getDocument(id);
+  if (!doc) notFound();
+
+  const [lines, docBatches, journal, downstream, chainDocuments, attachments] =
+    await Promise.all([
+      getDocumentLines(id),
+      getDocumentBatches(id),
+      getJournalForDocument(doc.journal_entry_id),
+      getDownstream(id),
+      getChainDocuments(id),
+      getDocumentAttachments(doc.company_id, id),
+    ]);
+
+  // Goods already in and a bill already waiting for them, from this order's
+  // supplier: shown on the receive form this page carries, since receiving
+  // against the order is exactly the move that would double them.
+  const collisions = doc.doc_type === "PURCHASE_ORDER"
+    ? (await getGrirCollisions(doc.company_id)).filter((r) => r.partner_id === doc.partner_id)
+    : [];
+
+  // Bills from this supplier still waiting on goods: asked before the first
+  // receipt, which is the one moment the collision notice cannot speak.
+  const billsAwaiting = doc.doc_type === "PURCHASE_ORDER"
+    ? await (async () => {
+        const [open, raisedFrom] = await Promise.all([
+          getOpenPurchaseInvoices(doc.company_id) as unknown as Promise<Array<{
+            id: string; doc_no: string; doc_date: string; partner_id: string;
+            lines: { itemId: string; itemName: string; qty: number }[];
+          }>>,
+          getBillsRaisedFromOrders(doc.company_id),
+        ]);
+        return open
+          .filter((b) => b.partner_id === doc.partner_id)
+          .map((b) => ({
+            ...b,
+            linked: raisedFrom.some((r) => r.bill_id === b.id && r.order_id === doc.id),
+          }));
+      })()
+    : [];
+
+  const chain = CHAINS[doc.doc_type] ?? [doc.doc_type];
+  const totalDebit = journal.reduce((s: number, l: any) => s + Number(l.debit), 0);
+  const totalCredit = journal.reduce((s: number, l: any) => s + Number(l.credit), 0);
+
+  // What to do next, computed from this document alone — the whole point is
+  // not making the user go find themselves in a separate list.
+  const isOpenOrder = (doc.doc_type === "SALES_ORDER" || doc.doc_type === "PURCHASE_ORDER") && doc.status === "POSTED";
+  const isInvoice = (doc.doc_type === "SALES_INVOICE" || doc.doc_type === "PURCHASE_INVOICE") && doc.status === "POSTED";
+
+  // Real documents behind each stage of the chain, not just the stage's
+  // name — resolved from whatever's actually connected to this one via
+  // source_document_id, in either direction. Payment sits outside that
+  // chain (it allocates against invoices, it isn't sourced from one), so
+  // it gets its own lookup once an invoice is found.
+  /**
+   * Every document at each stage, not the first one found.
+   *
+   * An order delivered in two runs has two deliveries, and .find() showed one
+   * of them — so the strip said DEL…002 and a reader had no way to know a
+   * second existed. Related documents below had them both the whole time,
+   * which is the tell: the data was right and the summary above it was not.
+   */
+  const stageDocs: Record<string, { id: string; doc_no: string }[]> = {};
+  const stageDoc: Record<string, { id: string; doc_no: string } | null> = {};
+  for (const step of chain) {
+    if (step === "SUPPLIER_PAYMENT" || step === "CUSTOMER_RECEIPT") continue;
+    stageDocs[step] = (chainDocuments as any[]).filter((d) => d.doc_type === step);
+    stageDoc[step] = stageDocs[step][0] ?? null;
+  }
+  const invoiceStage = stageDoc["PURCHASE_INVOICE"] ?? stageDoc["SALES_INVOICE"] ?? null;
+  const paymentStep = chain.includes("SUPPLIER_PAYMENT") ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT";
+  if (chain.includes(paymentStep)) {
+    stageDoc[paymentStep] = invoiceStage ? ((await getSettlingPayment(invoiceStage.id)) as any) : null;
+    stageDocs[paymentStep] = stageDoc[paymentStep] ? [stageDoc[paymentStep]!] : [];
+  }
+
+  // Only offer to match this document against its counterpart if it
+  // actually has an outstanding GR/IR clearing balance — not just "no
+  // downstream document yet." A document that never touched GR/IR clearing
+  // in the first place (an old purchase invoice that posted straight to
+  // Inventory, from before this pattern existed) has nothing to clear, and
+  // matching one to a fresh receipt would double-count the stock it already
+  // recorded rather than reconcile anything.
+  const isGr = doc.doc_type === "GOODS_RECEIPT" && doc.status === "POSTED";
+  const isPi = doc.doc_type === "PURCHASE_INVOICE" && doc.status === "POSTED";
+  // The sales mirror: a delivery moves the goods and a sales invoice bills
+  // them, exactly as a receipt and a purchase invoice do. Same two questions,
+  // so the same panel answers them in the sales vocabulary.
+  const isDel = doc.doc_type === "DELIVERY" && doc.status === "POSTED";
+  const isSi = doc.doc_type === "SALES_INVOICE" && doc.status === "POSTED";
+  /** True on the document that moves goods, false on the one that bills. */
+  const movesGoods = isGr || isDel;
+  const goodsWord = isGr || isPi ? "received" : "delivered";
+  const Goods = goodsWord.replace(/^\w/, (c) => c.toUpperCase());
+  const grirOutstanding = (isGr || isPi) ? await isGrirOutstanding(doc.id) : false;
+
+  // Goods that arrived without saying which order they answered, and orders
+  // still waiting for them. Offered on the document that moved the goods,
+  // because that is where someone stands when they notice the order behind it
+  // still reads as never received.
+  const linkable = movesGoods
+    ? await getLinkableOrders(doc.company_id, doc.id)
+    : { lines: [], openLines: [] };
+
+  // Every version of this number. One row for anything never corrected, which
+  // is nearly everything — the trail renders nothing at all in that case.
+  const versions = (await getDocumentVersions(
+    doc.company_id, doc.doc_no)) as unknown as DocumentVersion[];
+  const versionTrail = <VersionTrail versions={versions} currentId={doc.id} />;
+  // How much of a receipt has gone back to the supplier. Its posting status
+  // cannot say this — it posted, and the goods did arrive — so a receipt whose
+  // hundred units were all returned reads exactly like one whose goods are
+  // still on the shelf unless this is shown beside it.
+  const returned = doc.doc_type === "GOODS_RECEIPT"
+    ? await getReturnedAgainst(doc.id)
+    : null;
+
+  const versionBadge = (
+    <>
+      <VersionBadge
+        version={Number(doc.version ?? 1)}
+        superseded={!!doc.superseded_by_document_id}
+      />
+      {returned && (
+        <ReturnedBadge
+          received={returned.received}
+          returned={returned.returned}
+          state={returned.state}
+        />
+      )}
+    </>
+  );
+
+  const isPostedOrder = ["PURCHASE_ORDER", "SALES_ORDER"].includes(doc.doc_type)
+    && doc.status === "POSTED";
+  // Fetched once here rather than inside the order branch below: the
+  // correction dialog sits with the figures, which are built before the page
+  // splits into its two render paths. Every order, not only a standing one —
+  // a superseded version still has to render its own lines, which is the
+  // whole point of keeping it readable.
+  const orderProgress = ["PURCHASE_ORDER", "SALES_ORDER"].includes(doc.doc_type)
+    ? ((await getOrderProgress(doc.id, doc.doc_type)) as Record<string, unknown>[])
+    : [];
+  const orderState = isPostedOrder
+    ? await getOrderOutstanding(doc.company_id, doc.id)
+    : { outstanding: 0, isClosed: false };
+  const closure = isPostedOrder ? await getOrderClosure(doc.id) : null;
+  // What closing or reopening would be deciding about, and what it leaves
+  // alone — read here so the confirmation shows the same figures the engine
+  // will record.
+  const cancellation = isPostedOrder
+    ? await getOrderCancellation(doc.company_id, doc.id)
+    : null;
+
+  // Goods already recorded that could answer this order — offered here,
+  // where somebody is standing when they notice the order is short.
+  const linkableGoods = isPostedOrder
+    ? await getLinkableFulfilments(doc.company_id, doc.id)
+    : { orderLines: [], candidates: [] };
+
+
+
+  // Line-level settlement: how much of this receipt has been invoiced, or of
+  // this invoice received, and by which documents. Replayed through the same
+  // matcher the posting engine uses, so the page cannot claim a line is
+  // settled that the ledger still holds open.
+  const match = (isGr || isPi || isDel || isSi) ? await getMatchStatus(doc.id) : null;
+
+  // What voiding would do, and what stands in the way. The same analysis the
+  // engine re-runs before it writes, so the screen cannot promise something
+  // the action then refuses.
+  const voidPlan = doc.status === "POSTED" ? await planVoid(doc.id) : null;
+
+  /**
+   * What voiding this would put back on the shelf, and therefore whether the
+   * question has to be asked at all.
+   *
+   * Two documents can have units to restore. A counter sale composed the
+   * delivery that took the stock out, so undoing the sale undoes that too.
+   * And a delivery raised on its own issued the stock itself — which the void
+   * rules now allow back while nothing has been issued behind it.
+   *
+   * Either way nobody should be able to do it without saying where the goods
+   * actually are, because the answer decides which document this should be:
+   * a void if they never left, a return if the customer has them.
+   */
+  const [restores] = doc.status === "POSTED"
+    ? (await sql`
+        select coalesce(sum(units), 0)::float as units from (
+          -- stock a document this one composed took out
+          select sum(-sm.qty) as units
+            from stock_movement sm
+            join document child on child.id = sm.document_id
+           where child.lifecycle_owner_id = ${doc.id}
+             and child.status = 'POSTED' and sm.qty < 0
+          union all
+          -- stock this document took out itself
+          select sum(-sm.qty) as units
+            from stock_movement sm
+           where sm.document_id = ${doc.id} and sm.qty < 0
+             and ${doc.doc_type} = 'DELIVERY'
+        ) restorable`) as unknown as { units: number }[]
+    : [{ units: 0 }];
+
+  // What this document is genuinely linked to, in both directions. Shown
+  // alongside the workflow pipeline rather than instead of it: the pipeline
+  // is the shape a sale usually takes and carries the "create the next one"
+  // links, while this states only what exists — including the headings with
+  // nothing under them.
+  const related = await getRelatedDocuments(doc.id);
+
+  /**
+   * Where the next stage of the chain gets created from this document.
+   *
+   * Only the step immediately after this one: a purchase order can be
+   * received, a receipt can be invoiced, and nothing further down has
+   * anything to be made from yet. This is what makes the pipeline walkable
+   * forwards — clicking Delivery on an order takes you to that order's
+   * delivery, carrying the order with it, so the invoice at the end can show
+   * which order it belongs to.
+   */
+  const nextStageHref = (stageType: string): string | null => {
+    if (doc.status !== "POSTED") return null;
+    const from = doc.doc_type;
+    if (from === "PURCHASE_ORDER" && stageType === "GOODS_RECEIPT")
+      return `/purchases/receive?order=${doc.id}`;
+    if (from === "SALES_ORDER" && stageType === "DELIVERY")
+      return `/sales/deliver?order=${doc.id}`;
+    if (from === "GOODS_RECEIPT" && stageType === "PURCHASE_INVOICE")
+      return `/purchases/new?goods_receipt_id=${doc.id}`;
+    if (from === "DELIVERY" && stageType === "SALES_INVOICE")
+      return `/sales/new?delivery_id=${doc.id}`;
+    // An invoice raised "deliver later" still owes the goods. The pending
+    // list is where that delivery is posted, and without this the chain runs
+    // forwards everywhere except the one place it is actually waiting.
+    if (from === "SALES_INVOICE" && stageType === "DELIVERY" && doc.to_deliver)
+      return "/sales/deliver";
+    return null;
+  };
+
+  // A voided document must say so on its face. Finding out only by noticing
+  // the status pill, on a document whose figures all still read normally, is
+  // how someone acts on a number that has already been reversed.
+  // A consigned sale whose settlement was voided: the goods are sold, the
+  // consignor's payable is not standing, and nothing else in the product can
+  // put that right.
+  const unsettledConsignment =
+    doc.doc_type === "SALES_INVOICE" && doc.status === "POSTED" && doc.source_id
+      ? await getUnsettledConsignment(doc.company_id, doc.source_id)
+      : [];
+
+  const voidInfo = doc.status === "REVERSED" ? (await sql`
+    select r.id, r.doc_no, to_char(r.doc_date, 'YYYY-MM-DD') as doc_date,
+           d.void_reason,
+           s.id as replacement_id, s.doc_no as replacement_no
+      from document d
+      left join document r on r.id = d.reversed_by_document_id
+      left join document s on s.supersedes_document_id = d.id
+     where d.id = ${doc.id}`)[0] as unknown as {
+       id: string | null; doc_no: string | null; doc_date: string | null;
+       void_reason: string | null;
+       replacement_id: string | null; replacement_no: string | null;
+     } | undefined : undefined;
+  const openToMatch = match ? match.lines.some((l) => l.remaining > 0) : grirOutstanding;
+  const needsInvoiceMatch = isGr && openToMatch;
+  const needsReceiptMatch = isPi && openToMatch;
+
+  // A delivery with no invoice against it yet — the sales-side mirror of
+  // needsInvoiceMatch, just off the chain link itself rather than a
+  // clearing-account view, since a delivery never touches GR/IR.
+  /**
+   * Where "the goods went back" leads, for a goods receipt.
+   *
+   * Against the receipt while nobody has billed for it: what that receipt
+   * created was an accrual, and the return takes it off. Once a bill exists
+   * the return has to name the bill instead — the supplier has asked for
+   * money, so what goes back is a credit against it, and clearing the accrual
+   * would leave the invoice standing in full for goods that are gone. The
+   * engine refuses the wrong one; this stops the screen offering it.
+   */
+  const returnRoute = await (async () => {
+    if (doc.doc_type !== "GOODS_RECEIPT" || doc.status !== "POSTED") return null;
+    const [billed] = await sql`
+      select d.id, d.doc_no from document d
+       where d.company_id = ${doc.company_id}
+         and d.doc_type = 'PURCHASE_INVOICE' and d.status = 'POSTED'
+         and (fn_current_document(d.source_document_id) = fn_current_document(${doc.id})
+           or fn_current_document(${doc.source_document_id}) = fn_current_document(d.id))
+       limit 1`;
+    return billed
+      ? { href: `/purchases/returns/new?source=${billed.id}`,
+          label: `Records a supplier return against ${billed.doc_no}, the bill for these goods` }
+      : { href: `/purchases/returns/new?source=${doc.id}`,
+          label: "Records a supplier return, filled in from this receipt" };
+  })();
+
+    const needsSalesInvoice = doc.doc_type === "DELIVERY" && doc.status === "POSTED" && !stageDoc["SALES_INVOICE"];
+
+  /**
+   * What the invoice this button opens would actually come to.
+   *
+   * It used to show the delivery's own gross_total, copied from the purchase
+   * side where it is right: a bill owes what the goods cost, so a receipt's
+   * total is the bill's total. A delivery is the opposite — it moves stock out
+   * at cost and charges nobody — so the same expression put COGS on a button
+   * offering to invoice a customer. Twenty-five cartons costing 2,000 and
+   * agreed at 5,000 read as 50,000 next to an invoice that would raise
+   * 125,000.
+   *
+   * Read from getOpenDeliveries, which is what the sales voucher itself
+   * prices from, so the figure on the button and the figure on the form
+   * cannot disagree. Null where no order agreed a price: the voucher falls
+   * back to the price list at billing time, and a number guessed here would
+   * be a different wrong answer rather than no answer.
+   */
+  let salesInvoiceValue: number | null = null;
+  if (needsSalesInvoice) {
+    const open = (await getOpenDeliveries(doc.company_id, null)) as unknown as {
+      id: string; lines: { qty: number; orderPrice: number | null }[];
+    }[];
+    const mine = open.find((d) => d.id === doc.id);
+    if (mine && mine.lines.length > 0 && mine.lines.every((l) => l.orderPrice !== null)) {
+      salesInvoiceValue = mine.lines.reduce((t, l) => t + l.qty * (l.orderPrice ?? 0), 0);
+    }
+  }
+
+  // A delivery and a stock transfer charge nobody: the figure on the line is
+  // what the goods cost leaving inventory, not what anyone is paying. Calling
+  // that "Price" reads as a bill the customer never received — and a
+  // free-of-charge line, which must carry a zero price, would then look like
+  // it cost the company nothing to give away.
+  const valuedAtCost = doc.doc_type === "DELIVERY" || doc.doc_type === "STOCK_TRANSFER";
+  const valueLabel = valuedAtCost ? "Cost" : "Price";
+
+  // On those documents the per-unit figure is derived from the line's value
+  // rather than read from unit_price, because a free-of-charge line is
+  // required to store a zero there. The goods still cost what they cost, and
+  // net_amount is where that is kept.
+  const unitValue = (l: any) => {
+    if (!valuedAtCost) return l.unit_price;
+    const q = Number(l.base_qty ?? 0);
+    return q === 0 ? l.unit_price : Number(l.net_amount ?? 0) / q;
+  };
+
+  // Every line of a posted purchase order, with whatever the supplier has
+  // said about it. Not gated on the order still being open: a supplier's
+  // record of moving a date stays worth reading after the goods are in.
+  const confirmationLines =
+    doc.doc_type === "PURCHASE_ORDER" && doc.status === "POSTED"
+      ? await getOrderConfirmations(doc.id)
+      : [];
+
+  let orderLines: {
+    lineId: string; itemId: string; itemCode: string; itemName: string;
+    remainingQty: number; expectedPrice: number;
+  }[] = [];
+  let stockByLocation: Array<{ item_id: string; location_id: string; qty_on_hand: string }> = [];
+  if (isOpenOrder) {
+    const open = doc.doc_type === "SALES_ORDER"
+      ? await getOpenSalesOrders(doc.company_id)
+      : await getOpenPurchaseOrders(doc.company_id);
+    orderLines = (open as any[])
+      .filter((r) => r.order_id === doc.id)
+      .map((r) => ({
+        lineId: r.line_id, itemId: r.item_id, itemCode: r.item_code, itemName: r.item_name,
+        uomCode: r.uom_code ?? undefined,
+        remainingQty: Number(r.remaining_qty), expectedPrice: Number(r.expected_price ?? 0),
+      }));
+    if (doc.doc_type === "SALES_ORDER") {
+      stockByLocation = (await getStockByLocation(doc.company_id)) as never;
+    }
+  }
+
+  const outstanding = isInvoice ? await getDocumentOutstanding(doc.id) : 0;
+
+  /**
+   * Money this partner already handed over, waiting for a bill. Offered on the
+   * invoice because that is where somebody is standing when they notice the
+   * customer has a deposit — and because the alternative is recording the same
+   * money twice.
+   */
+  const advances = isInvoice && outstanding > 0
+    ? ((await getAdvancesFor(doc.company_id, doc.id)) as Record<string, unknown>[])
+    : [];
+
+  // Who raised it, who posted it, what is still owed on it, and what has
+  // happened since. Every document has this; only the figures beside it
+  // differ by type.
+  const people = await getDocumentPeople(doc.id);
+
+  // A purchase invoice has two things outstanding that move independently.
+  // Shown as two, because one combined status hides whichever is the problem.
+  // Both invoice types: a customer invoice paid in full with nothing shipped
+  // is exactly as wrong as a supplier one, and hides the same way behind a
+  // single status.
+  const isSalesInvoice = doc.doc_type === "SALES_INVOICE";
+
+  /**
+   * Which route this transaction took. Only on invoices, where the question
+   * "why has this no order?" actually gets asked — an order or a receipt is
+   * self-evidently the start of its own chain.
+   */
+  const origin = (doc.doc_type === "PURCHASE_INVOICE" || isSalesInvoice)
+    ? await getTransactionOrigin(doc.company_id, doc.id)
+    : null;
+  const progress = (doc.doc_type === "PURCHASE_INVOICE" || isSalesInvoice)
+    && doc.status === "POSTED"
+    ? await getInvoiceProgress(doc.company_id, doc.id)
+    : null;
+  const tasks = people.tasks as never as Parameters<typeof TaskBanner>[0]["tasks"];
+
+  /**
+   * The two or three numbers this kind of document is about, in the order
+   * they read as a sentence: what arrived, what was billed, what is still
+   * owed. Only the outstanding one is toned, because a tile with a colour is
+   * making a claim and most of these are just facts.
+   */
+  const stats: DocStat[] = [];
+  // The unit these quantities are in, taken from the lines rather than
+  // assumed: "40" means nothing and "40 BOX" means something.
+  const unitWord = (lines[0] as any)?.uom_code ?? undefined;
+  if (movesGoods && match) {
+    const total = match.lines.reduce((t, l) => t + Number(l.qty), 0);
+    const done = match.lines.reduce((t, l) => t + Number(l.settled), 0);
+    const left = Math.max(total - done, 0);
+    stats.push(
+      { icon: PackageCheck, label: `Goods ${goodsWord}`, value: qty(String(total)),
+        unit: unitWord, note: `on ${shortDate(doc.doc_date)}` },
+      { icon: FileText, label: movesGoods && isDel ? "Billed to customer" : "Billed to supplier",
+        value: qty(String(done)), unit: unitWord,
+        note: done === 0 ? "Not yet invoiced" : "Invoiced" },
+      { icon: Clock, label: "Unbilled quantity", value: qty(String(left)), unit: unitWord,
+        note: left > 0 ? "Awaiting supplier invoice" : "Nothing outstanding",
+        tone: left > 0 ? "warn" : "ok" },
+    );
+  } else if (isInvoice && !progress) {
+    stats.push(
+      { icon: CircleDollarSign, label: "Invoice total", value: money(doc.gross_total),
+        // What the total is made of, when some of it is tax. Silent when
+        // there is none, so an untaxed invoice reads exactly as before.
+        note: Number(doc.tax_total) !== 0
+          ? `${money(doc.net_total)} + ${money(doc.tax_total)} tax`
+          : undefined },
+      { icon: Wallet, label: "Paid", value: money(Number(doc.gross_total) - outstanding),
+        tone: outstanding === 0 ? "ok" : undefined },
+      { icon: Clock, label: "Outstanding", value: money(outstanding),
+        note: outstanding > 0 && doc.due_date ? `due ${shortDate(doc.due_date)}` : undefined,
+        tone: outstanding > 0 ? "warn" : "ok" },
+    );
+  } else if (isPostedOrder) {
+    const [totals] = await sql`
+      select coalesce(sum(ordered), 0)::float as ordered,
+             coalesce(sum(fulfilled), 0)::float as fulfilled
+        from v_order_outstanding where order_id = ${doc.id}`;
+    const ordered = Number(totals?.ordered ?? 0);
+    const fulfilled = Number(totals?.fulfilled ?? 0);
+    stats.push(
+      { icon: Boxes, label: "Ordered", value: qty(String(ordered)), unit: unitWord },
+      { icon: Truck, label: doc.doc_type === "SALES_ORDER" ? "Delivered" : "Received",
+        value: qty(String(fulfilled)), unit: unitWord },
+      { icon: Clock, label: "Remaining", value: qty(String(orderState.outstanding)), unit: unitWord,
+        note: orderState.isClosed ? "Closed — not expected" : undefined,
+        tone: orderState.outstanding > 0 ? "warn" : "ok" },
+    );
+  }
+
+  /**
+   * Fulfil the order, or say it already was. Under the figures rather than in
+   * the toolbar, because they answer the number sitting right above them —
+   * and passed with the stats so both render paths get them: the order form
+   * returns long before the generic document body is built.
+   */
+  /**
+   * Correcting an invoice, and where that is allowed to happen.
+   *
+   * The tester's rule, enforced rather than described: an invoice with an
+   * order behind it is corrected at the order, because that is where the
+   * price was agreed and correcting the bill alone would leave the two
+   * disagreeing with nothing saying which is right. An invoice raised on its
+   * own agreed its price on itself, so it is corrected here.
+   *
+   * The quantity is fixed wherever the invoice bills a receipt or a delivery:
+   * those goods moved, and how many moved is not a matter of opinion.
+   */
+  const isLiveInvoice = isInvoice && doc.status === "POSTED"
+    && !doc.superseded_by_document_id;
+  const orderBehind = stageDoc["PURCHASE_ORDER"] ?? stageDoc["SALES_ORDER"] ?? null;
+
+  /**
+   * A voucher is corrected the same way, and can always be: nothing is ever
+   * raised from one, so there is never anything built on top to unwind first.
+   * Offered only while this version is the live one — an older version is a
+   * record of what was, and is corrected by correcting the current one.
+   */
+  const isVoucher = ["CASH_VOUCHER", "BANK_VOUCHER", "JOURNAL_VOUCHER"]
+    .includes(doc.doc_type) && doc.status === "POSTED"
+    && !doc.superseded_by_document_id;
+  const voucherCorrection = isVoucher ? (
+    <CorrectVoucher
+      action={correctVoucher}
+      documentId={doc.id}
+      docNo={doc.doc_no ?? ""}
+      version={Number(doc.version ?? 1)}
+      docType={doc.doc_type}
+      memo={(doc.memo as string) ?? null}
+      accounts={(await getFinanceData()).accounts as never}
+      lines={((await getVoucherLines(doc.journal_entry_id)) as Record<string, unknown>[])
+        .map((l) => ({
+          accountId: String(l.account_id),
+          amount: Number(l.amount),
+          memo: (l.memo as string) ?? null,
+        }))}
+    />
+  ) : null;
+
+  /**
+   * A receipt or a payment, almost always because it went against the wrong
+   * invoice. Not offered for one a sales invoice wrote itself — that money
+   * belongs to the invoice and is corrected there; the engine refuses it too.
+   */
+  const isSettlement = (doc.doc_type === "CUSTOMER_RECEIPT" || doc.doc_type === "SUPPLIER_PAYMENT")
+    && doc.status === "POSTED"
+    && !doc.superseded_by_document_id
+    // A reversal is a posted receipt of its own, carrying negated figures. It
+    // is the record of an undoing, not a payment anybody can re-point.
+    && !doc.reverses_document_id
+    && !doc.source_document_id;
+  const settlementData = isSettlement
+    ? await getSettlementForCorrection(doc.id)
+    : null;
+  const settlementCorrection = settlementData ? (
+    <CorrectSettlement
+      action={correctSettlement}
+      documentId={doc.id}
+      docNo={doc.doc_no ?? ""}
+      version={Number(doc.version ?? 1)}
+      docType={doc.doc_type}
+      partnerName={(settlementData.doc.partner_name as string) ?? null}
+      invoices={settlementData.invoices as never}
+      cashAccounts={settlementData.cashAccounts as never}
+      cashAccountId={null}
+      memo={(doc.memo as string) ?? null}
+      total={Number(doc.gross_total)}
+    />
+  ) : null;
+
+  const correctInvoiceAction = isLiveInvoice && !orderBehind ? (
+    <CorrectOrder
+      noun="invoice"
+      preview={previewInvoiceCorrection}
+      confirm={correctInvoice}
+      documentId={doc.id}
+      docNo={doc.doc_no ?? ""}
+      version={Number(doc.version ?? 1)}
+      sales={doc.doc_type === "SALES_INVOICE"}
+      lines={(lines as Record<string, unknown>[]).map((l): CorrectableLine => ({
+        lineId: String(l.id),
+        itemId: String(l.item_id),
+        itemCode: String(l.item_code),
+        itemName: String(l.item_name),
+        uomCode: (l.uom_code as string) ?? null,
+        ordered: Number(l.base_qty),
+        fulfilled: 0,
+        unitPrice: Number(l.unit_price),
+        lockQty: !!doc.source_document_id,
+      }))}
+    />
+  ) : null;
+
+  const canFulfil = isPostedOrder && orderState.outstanding > 0 && !orderState.isClosed;
+
+  /**
+   * Correcting the order is offered for as long as the order stands, not only
+   * while something is still outstanding. The case that matters most is the
+   * finished one: everything received, the invoice raised, and then the
+   * supplier says the price was wrong. That is precisely when the figure has
+   * to be corrected at the order and carried into the bill — so hiding the
+   * action once the goods are all in would hide it exactly when it is needed.
+   */
+  /* Voidable: the trigger belongs in the overflow menu, beside the order's
+     Correct and Close — rare, irreversible, and not something to sit next
+     to the routine next step. Not voidable: the refusal stays on the page,
+     because "why can I not undo this" is an explanation with links to what
+     is built on top, and a menu is the wrong place to hide it. */
+  const voidNode = voidPlan ? (
+        <VoidDocument
+          action={voidDocumentAction}
+          documentId={doc.id}
+          docNo={doc.doc_no}
+          canVoid={voidPlan.canVoid}
+          blockers={voidPlan.blockers}
+          effects={voidPlan.effects}
+          /* Only a goods receipt is asked the question, because only a goods
+             receipt has the other answer: goods that arrived and went back are
+             a supplier return. Nothing else here has a physical counterpart
+             the reader could confuse a void with. */
+          returnHref={returnRoute?.href ?? null}
+          returnLabel={returnRoute?.label ?? null}
+          restoresUnits={Number(restores?.units ?? 0)}
+          salesReturnHref={`/sales/returns/new?source=${doc.id}`}
+        >
+          {correctInvoiceAction}
+          {voucherCorrection}
+          {settlementCorrection}
+        </VoidDocument>
+  ) : null;
+
+  const correction = isPostedOrder && !doc.superseded_by_document_id ? (
+    <CorrectOrder
+      preview={previewOrderCorrection}
+      confirm={correctOrder}
+      documentId={doc.id}
+      docNo={doc.doc_no ?? ""}
+      version={Number(doc.version ?? 1)}
+      sales={doc.doc_type === "SALES_ORDER"}
+      lines={orderProgress.map((l): CorrectableLine => ({
+        lineId: String(l.id),
+        itemId: String(l.item_id),
+        itemCode: String(l.item_code),
+        itemName: String(l.item_name),
+        uomCode: (l.uom_code as string) ?? null,
+        ordered: Number(l.ordered),
+        fulfilled: Number(l.fulfilled),
+        unitPrice: Number(l.unit_price),
+      }))}
+    />
+  ) : null;
+
+  const orderActions = canFulfil ? (
+    <OrderActions
+      sales={doc.doc_type === "SALES_ORDER"}
+      href={doc.doc_type === "SALES_ORDER"
+        ? `/sales/deliver?order=${doc.id}`
+        : `/purchases/receive?order=${doc.id}`}
+    >
+      <LinkFulfilment
+        action={linkReceiptToOrder}
+        orderLines={linkableGoods.orderLines as never}
+        candidates={linkableGoods.candidates as never}
+        sales={doc.doc_type === "SALES_ORDER"}
+      />
+      {correction}
+    </OrderActions>
+  ) : correction ? (
+    <div className="docactions">{correction}</div>
+  ) : null;
+
+  /* What kind of correction a note is, when it was posted, and by whom.
+     The category is countable and the sentence is the explanation; neither
+     stands in for the other. "Who" reads honestly rather than helpfully:
+     nobody signs in yet, so there is no name to show and inventing a field
+     somebody types their own name into would look like attribution without
+     being it. */
+  const isNote = doc.doc_type === "CREDIT_NOTE" || doc.doc_type === "DEBIT_NOTE";
+  const isCreditNote = doc.doc_type === "CREDIT_NOTE";
+  const NOTE_REASON: Record<string, string> = {
+    RETURN: isCreditNote
+      ? "Goods returned — not coming back to the warehouse"
+      : "Goods rejected — not going back to the supplier",
+    BILLING_ERROR: "Billing error",
+    CANCELLATION: "Cancellation",
+    DISCOUNT: isCreditNote
+      ? "Discount agreed after the invoice"
+      : "Reduction agreed after the bill",
+    OTHER: "Other",
+  };
+
+  /* Which column of the price list filled this document, wherever the
+     stats above came from: a deliver-later invoice and a counter sale take
+     different branches, and the question is the same on both. Silent when
+     nothing filled it — a document raised before price levels were
+     reachable says nothing rather than guessing "wholesale". */
+  if (doc.price_level_name) {
+    stats.push({
+      icon: Tags,
+      label: "Priced at",
+      value: String(doc.price_level_name),
+      note: "the price list column these lines came from",
+    });
+  }
+
+  const statsNode = (
+    <>
+      <DocStats stats={stats} />
+
+      {isNote && (
+        <div className="hintbar">
+          <strong>
+            {NOTE_REASON[String(doc.adjustment_reason ?? "")] ?? "Reason not categorised"}
+          </strong>
+          {doc.memo && <> — {String(doc.memo)}</>}
+          <div className="subline">
+            Posted {people.doc?.posted_at
+              ? new Date(String(people.doc.posted_at)).toLocaleString("en-GB", {
+                  day: "numeric", month: "short", year: "numeric",
+                  hour: "2-digit", minute: "2-digit",
+                })
+              : "—"}
+            {" · "}
+            {people.doc?.posted_by
+              ? <>by {String(people.doc.posted_by)}</>
+              : "no name recorded — nobody signs in to this system yet"}
+          </div>
+        </div>
+      )}
+      {/* Selling past a customer's credit limit is allowed, and permanent.
+          The sentence somebody wrote to justify it belongs on the document
+          itself, where anyone reading the sale later will find it. */}
+      {doc.credit_override_reason && (
+        <div className="hintbar">
+          <strong>Approved over the credit limit.</strong>{" "}
+          {doc.credit_override_reason as string}
+        </div>
+      )}
+      {orderActions}
+    </>
+  );
+
+  const footer = (
+    <DocumentFooter
+      activity={people.activity as never}
+      related={<RelatedDocumentsPanel related={related} />}
+      createdBy={{ name: people.doc?.created_by ?? null, initials: people.doc?.created_initials ?? null }}
+      postedBy={{ name: people.doc?.posted_by ?? null, initials: people.doc?.posted_initials ?? null }}
+      postedAt={people.doc?.posted_at ? String(people.doc.posted_at) : null}
+    />
+  );
+
+  // Orders render on the ERP form. Only the two order types for now: the
+  // shell is adopted screen by screen rather than switched on globally, so
+  // anything not yet moved keeps working exactly as it did.
+  // Which stages this chain can simply do without. The orders are the clear
+  // case — a walk-in sale starts at the delivery and a phoned-in purchase at
+  // the receipt — and drawing them like a step still owed is what made an
+  // ordinary counter sale look unfinished.
+  const OPTIONAL_STAGE = new Set(["SALES_ORDER", "PURCHASE_ORDER"]);
+
+  const isOrder = doc.doc_type === "SALES_ORDER" || doc.doc_type === "PURCHASE_ORDER";
+
+  if (isOrder) {
+    const sales = doc.doc_type === "SALES_ORDER";
+    const progress = orderProgress as any[];
+
+    const erpLines: ErpOrderLine[] = progress.map((l) => ({
+      id: l.id,
+      itemCode: l.item_code,
+      itemName: l.item_name,
+      itemNameMy: l.item_name_my ?? null,
+      uomCode: l.uom_code ?? null,
+      ordered: Number(l.ordered),
+      fulfilled: Number(l.fulfilled),
+      unitPrice: Number(l.unit_price),
+      netAmount: Number(l.net_amount),
+    }));
+
+    return (
+      <ErpOrderForm
+        // Where the supplier's own dates are recorded. On the order because
+        // that is where the acknowledgement is read; a metric whose only
+        // data entry is three screens away stays empty.
+        commitments={
+          doc.doc_type === "PURCHASE_ORDER" && confirmationLines.length > 0 ? (
+            <SupplierConfirmations
+              action={recordSupplierConfirmation}
+              documentId={doc.id}
+              lines={confirmationLines as never}
+            />
+          ) : null
+        }
+        backHref={backHref}
+        backLabel={backLabel}
+        config={{
+          typeLabel: sales ? "Sales Order" : "Purchase Order",
+          partyLabel: sales ? "Customer" : "Vendor",
+          fulfilledLabel: sales ? "Delivered" : "Received",
+          listHref: `/documents?type=${doc.doc_type}`,
+          listLabel: PLURAL[doc.doc_type] ?? label(doc.doc_type),
+        }}
+        docId={doc.id}
+        docNo={doc.doc_no ?? "Draft"}
+        status={doc.status}
+        partnerName={doc.partner_name ?? null}
+        partnerCode={doc.partner_code ?? null}
+        docDate={String(doc.doc_date)}
+        dueDate={doc.due_date ? String(doc.due_date) : null}
+        locationName={doc.location_name ?? null}
+        reference={doc.reference ?? null}
+        memo={doc.memo ?? null}
+        lines={erpLines}
+        netTotal={Number(doc.net_total)}
+        banner={
+          <>
+            {versionTrail}
+            <TaskBanner tasks={tasks.filter((t: any) => !t.aspect)} />
+          </>
+        }
+        badges={versionBadge}
+        footer={footer}
+        unitWord={unitWord ?? null}
+        openLineCount={orderLines.length || undefined}
+        /* Named from the same panel that always had them right, rather than
+           from a second query that could disagree with it. */
+        fulfilments={related.downstream
+          .flatMap((g) => g.docs)
+          .filter((d) => d.docType === (sales ? "DELIVERY" : "GOODS_RECEIPT"))
+          .map((d) => ({ id: d.id, docNo: d.docNo, docDate: d.docDate, qty: d.qty }))}
+        billing={{
+          docs: (stageDocs[sales ? "SALES_INVOICE" : "PURCHASE_INVOICE"] ?? [])
+            .map((d) => ({ id: d.id, docNo: d.doc_no })),
+        }}
+        chain={chain.map((step) => ({
+          type: step,
+          label: label(step).replace(/\b\w/g, (c) => c.toUpperCase()),
+          doc: stageDoc[step] ?? null,
+          docs: stageDocs[step] ?? [],
+          href: stageDoc[step] ? null : nextStageHref(step),
+          optional: OPTIONAL_STAGE.has(step),
+        }))}
+        /* Receiving lives at one door now. The button below already pointed at
+           /purchases/receive?order=, and that page renders the very same
+           FulfillOrderForm this screen used to embed — so the inline copy was
+           a second way into one form, sitting in a row meant for buttons. */
+        fulfilActions={canFulfil ? (
+          <>
+            <LinkFulfilment
+              action={linkReceiptToOrder}
+              orderLines={linkableGoods.orderLines as never}
+              candidates={linkableGoods.candidates as never}
+              sales={sales}
+            />
+            <Link
+              href={sales ? `/sales/deliver?order=${doc.id}` : `/purchases/receive?order=${doc.id}`}
+              className="btn primary"
+            >
+              <Truck size={15} aria-hidden="true" /> {sales ? "Deliver goods" : "Receive goods"}
+            </Link>
+          </>
+        ) : null}
+        /* Correcting an order and giving it up: both rare, one irreversible.
+           Behind the overflow menu rather than beside the routine action. */
+        menuActions={
+          <>
+            {correction}
+            {isPostedOrder && (
+              <CloseOrder
+                action={closeOrderAction}
+                documentId={doc.id}
+                docNo={doc.doc_no}
+                orderKind={sales ? "sales" : "purchase"}
+                isClosed={orderState.isClosed}
+                ordered={cancellation?.ordered ?? 0}
+                fulfilled={cancellation?.fulfilled ?? 0}
+                outstanding={orderState.outstanding}
+                reopensTo={cancellation?.reopensTo ?? 0}
+                documents={(cancellation?.documents ?? []) as never}
+                unitWord={(orderProgress[0] as any)?.uom_code as string | undefined}
+              />
+            )}
+          </>
+        }
+      />
+    );
+  }
+
+  return (
+    <ErpDocShell
+      backHref={backHref}
+      backLabel={backLabel}
+      docId={doc.id}
+      docNo={doc.doc_no ?? "Draft"}
+      typeLabel={label(doc.doc_type).replace(/\b\w/g, (c) => c.toUpperCase())}
+      status={doc.status}
+      listHref={`/documents?type=${doc.doc_type}`}
+      listLabel={PLURAL[doc.doc_type] ?? label(doc.doc_type)}
+      chain={chain.map((step) => ({
+        type: step,
+        label: label(step).replace(/\b\w/g, (c) => c.toUpperCase()),
+        doc: stageDoc[step] ?? null,
+        href: stageDoc[step] ? null : nextStageHref(step),
+        optional: OPTIONAL_STAGE.has(step),
+      }))}
+      banner={
+        <>
+          {versionTrail}
+          {advances.length > 0 && (
+            <ApplyAdvance
+              action={applyAdvanceAction}
+              invoiceId={doc.id}
+              invoiceNo={doc.doc_no ?? ""}
+              outstanding={outstanding}
+              sales={doc.doc_type === "SALES_INVOICE"}
+              advances={advances.map((a) => ({
+                paymentId: String(a.payment_id),
+                docNo: String(a.doc_no),
+                docDate: String(a.doc_date),
+                available: Number(a.available),
+              }))}
+            />
+          )}
+          {origin && <TransactionOrigin origin={origin} docNo={doc.doc_no ?? ""} />}
+          {/* Tasks about one half of an invoice are shown in that half, with
+              the figure they are about. Banner them as well and the same
+              sentence appears twice, six inches apart. */}
+          <TaskBanner tasks={tasks.filter((t: any) => !t.aspect)} />
+          {progress && (
+            <InvoiceProgress
+              sales={isSalesInvoice}
+              goods={progress.goods as never}
+              payment={progress.payment as never}
+              unit={progress.unit}
+              receiveHref={isSalesInvoice
+                ? `/sales/deliver?invoice=${doc.id}`
+                : `/purchases/receive/new?match_invoice_id=${doc.id}`}
+              payHref={isSalesInvoice
+                ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
+                // The supplier travels with the invoice. Without it the
+                // settlement screen opens with nobody chosen, so it lists no
+                // bills at all — and the amount it had filled in is thrown
+                // away the moment somebody picks the supplier by hand.
+                : `/payables/pay?partner=${doc.partner_id}&invoice=${doc.id}`}
+            />
+          )}
+        </>
+      }
+      stats={statsNode}
+      menuActions={voidPlan?.canVoid ? voidNode : undefined}
+      footer={footer}
+      badges={
+        <>
+          {versionBadge}
+          {isInvoice && outstanding > 0 && (
+            <span className="pill warn">{money(outstanding)} outstanding</span>
+          )}
+          {isInvoice && outstanding === 0 && <span className="pill ok">Settled</span>}
+          {match && (
+            <span className={`pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : ""}`}>
+              {match.state === "FULL" ? (movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`)
+                : match.state === "PARTIAL" ? (movesGoods ? "Partly invoiced" : `Partly ${goodsWord}`)
+                : (movesGoods ? "Not invoiced" : `Not ${goodsWord}`)}
+            </span>
+          )}
+        </>
+      }
+    >
+
+      {unsettledConsignment.length > 0 && (
+        <ReplaceSettlement
+          action={replaceConsignmentSettlement}
+          invoiceId={doc.id}
+          unsettled={unsettledConsignment}
+        />
+      )}
+
+      {voidInfo && (
+        <div className="alert" style={{ marginTop: "0.75rem" }}>
+          <strong>This document has been voided.</strong>{" "}
+          Its figures below are what it said when posted; they no longer
+          affect any account.
+          {voidInfo.doc_no && (
+            <>
+              {" "}Reversed by{" "}
+              <a href={`/documents/${voidInfo.id}`} style={{ color: "var(--brand)" }}>
+                {voidInfo.doc_no}
+              </a>
+              {voidInfo.doc_date ? ` on ${voidInfo.doc_date}` : ""}.
+            </>
+          )}
+          {voidInfo.replacement_no && (
+            <>
+              {" "}Replaced by{" "}
+              <a href={`/documents/${voidInfo.replacement_id}`} style={{ color: "var(--brand)" }}>
+                {voidInfo.replacement_no}
+              </a>.
+            </>
+          )}
+          {voidInfo.void_reason && <> Reason: {voidInfo.void_reason}.</>}
+          {" "}
+          <a href="/documents/history" style={{ color: "var(--brand)" }}>History log</a>
+        </div>
+      )}
+
+      {/* Voiding sits with the document rather than on the list, because it
+          needs the whole picture — what it would reverse, and what has been
+          built on top of it — and that is only assembled here. */}
+      {voidPlan && !voidPlan.canVoid && voidNode}
+
+      {movesGoods && (
+        <LinkToOrder
+          action={linkReceiptToOrder}
+          sales={isDel}
+          lines={linkable.lines as never}
+          openLines={linkable.openLines as never}
+        />
+      )}
+
+      {isPostedOrder && (
+        <>
+          {closure && !closure.is_open && (
+            <div className="alert" style={{
+              borderColor: "var(--warn)", color: "var(--warn)",
+              background: "color-mix(in srgb, var(--warn) 8%, transparent)",
+            }}>
+              <strong>The remainder of this order is not expected.</strong>{" "}
+              {closure.reason} — closed {shortDate(closure.closed_at)}. What was
+              received stays as it was; only the outstanding quantity is written
+              off.
+            </div>
+          )}
+          <CloseOrder
+            action={closeOrderAction}
+            documentId={doc.id}
+            docNo={doc.doc_no}
+            orderKind={doc.doc_type === "SALES_ORDER" ? "sales" : "purchase"}
+            isClosed={orderState.isClosed}
+            ordered={cancellation?.ordered ?? 0}
+            fulfilled={cancellation?.fulfilled ?? 0}
+            outstanding={orderState.outstanding}
+            reopensTo={cancellation?.reopensTo ?? 0}
+            documents={(cancellation?.documents ?? []) as never}
+            unitWord={unitWord}
+          />
+        </>
+      )}
+
+      {(needsInvoiceMatch || needsReceiptMatch) && (
+        <div className="docactions">
+          <Link
+            href={
+              needsInvoiceMatch
+                ? `/purchases/new?goods_receipt_id=${doc.id}`
+                : `/purchases/receive/new?match_invoice_id=${doc.id}`
+            }
+            className="btn"
+          >
+            {match?.state === "PARTIAL"
+              ? needsInvoiceMatch ? "Invoice the rest" : "Receive the rest"
+              : needsInvoiceMatch ? "Create purchase invoice" : "Create goods receipt"}
+            {match?.state === "PARTIAL" ? "" : ` — ${money(doc.gross_total)}`}
+          </Link>
+          <span className="page-sub">
+            {match?.state === "PARTIAL"
+              ? needsInvoiceMatch
+                ? "Part of this receipt has been billed. The rest is listed below."
+                : "Part of this invoice has arrived. The rest is listed below."
+              : needsInvoiceMatch
+                ? "Nothing has billed for this receipt yet."
+                : "Nothing has recorded these goods arriving yet."}
+          </span>
+        </div>
+      )}
+
+      {match && match.lines.length > 0 && (
+        <div className="card" style={{ marginBottom: "1.5rem" }}>
+          <div className="card-head">
+            <h2>{movesGoods ? "Invoiced" : Goods}</h2>
+            <span className={`pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : ""}`}>
+              {match.state === "FULL"
+                ? movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`
+                : match.state === "PARTIAL"
+                  ? movesGoods ? "Partly invoiced" : `Partly ${goodsWord}`
+                  : movesGoods ? "Not invoiced" : `Not ${goodsWord}`}
+            </span>
+          </div>
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th className="r">{movesGoods ? Goods : "Invoiced"}</th>
+                  <th className="r">{movesGoods ? "Invoiced" : Goods}</th>
+                  <th className="r">Remaining</th>
+                </tr>
+              </thead>
+              <tbody>
+                {match.lines.map((l) => (
+                  <Fragment key={l.lineId}>
+                    <tr>
+                      <td className="wrap">
+                        <span className="code">{l.itemCode}</span> {l.itemName}
+                      </td>
+                      <td className="r">{qty(l.qty)}</td>
+                      <td className="r">{l.settled > 0 ? qty(l.settled) : "—"}</td>
+                      <td className="r">
+                        {l.remaining > 0
+                          ? <strong>{qty(l.remaining)}</strong>
+                          : <span style={{ color: "var(--muted)" }}>—</span>}
+                      </td>
+                    </tr>
+                    {l.matchedBy.map((m) => (
+                      <tr key={`${l.lineId}-${m.docId}`} className="subrow">
+                        <td className="wrap">
+                          <Link href={`/documents/${m.docId}`}>{m.docNo}</Link>
+                          {" · "}{shortDate(m.docDate)}
+                        </td>
+                        <td className="r">—</td>
+                        <td className="r">{qty(m.qty)}</td>
+                        <td className="r">—</td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Reducing an invoice without goods moving. Offered only while
+          something is still owed on it: a note against a settled invoice
+          would drive it below nothing, and what that customer needs is a
+          refund. Sat next to the correction actions because it is one —
+          the other kind, for when their printed copy has to stay true. */}
+      {isInvoice && doc.status === "POSTED" && outstanding > 0 && (
+        <div className="docactions">
+          <Link
+            href={doc.doc_type === "SALES_INVOICE"
+              ? `/sales/credit-notes/new?invoice=${doc.id}`
+              : `/purchases/debit-notes/new?bill=${doc.id}`}
+            className="btn ghost"
+          >
+            {doc.doc_type === "SALES_INVOICE" ? "Credit note" : "Debit note"}
+          </Link>
+          <span className="page-sub">
+            {doc.doc_type === "SALES_INVOICE"
+              ? "Take something off what this customer owes, without goods coming back."
+              : "Take something off what you owe here, without goods going back."}
+          </span>
+        </div>
+      )}
+
+      {needsSalesInvoice && (
+        <div className="docactions">
+          <Link href={`/sales/new?delivery_id=${doc.id}`} className="btn">
+            Create sales invoice
+            {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
+          </Link>
+          <span className="page-sub">
+            {salesInvoiceValue !== null
+              ? "Nothing has billed for this delivery yet. At the price its order agreed."
+              : "Nothing has billed for this delivery yet. No order set a price, so the "
+                + "price list decides it on the invoice."}
+          </span>
+        </div>
+      )}
+
+
+      {isOpenOrder && orderLines.length > 0 && (
+        <FulfillOrderForm
+          kind={doc.doc_type === "SALES_ORDER" ? "sales" : "purchase"}
+          orderId={doc.id}
+          orderNo={doc.doc_no}
+          partnerName={doc.partner_name}
+          partnerId={doc.partner_id}
+          locationId={doc.location_id}
+          lines={orderLines}
+          action={doc.doc_type === "SALES_ORDER" ? createDelivery : createGoodsReceipt}
+          stockByLocation={doc.doc_type === "SALES_ORDER" ? stockByLocation : undefined}
+          collisions={doc.doc_type === "PURCHASE_ORDER" ? collisions : []}
+          openBills={billsAwaiting}
+        />
+      )}
+
+      {/* What the invoice is worth, what has come in, and what is still
+          owed — the three figures anyone opening an invoice is looking for,
+          side by side rather than inferred from a pill and a journal.
+          Paid is derived here for display; only the total and the
+          outstanding balance are ever read from the ledger.
+
+          Not shown where the two halves are: they carry the same three
+          figures and the same action, and saying it twice on one screen is
+          what made this page feel cluttered rather than thorough. */}
+      {isInvoice && !progress && (
+        <div className="erp-settle">
+          <div className="erp-settle-figs">
+            <div className="erp-settle-fig">
+              <span className="erp-settle-label">Total</span>
+              <span className="erp-settle-value">{money(doc.gross_total)}</span>
+            </div>
+            <div className="erp-settle-fig">
+              <span className="erp-settle-label">Paid</span>
+              <span className="erp-settle-value">
+                {money(Math.max(0, Number(doc.gross_total) - outstanding))}
+              </span>
+            </div>
+            <div className="erp-settle-fig">
+              <span className="erp-settle-label">Outstanding</span>
+              <span className={`erp-settle-value ${outstanding > 0 ? "due" : "clear"}`}>
+                {money(outstanding)}
+              </span>
+            </div>
+          </div>
+          {outstanding > 0 && (
+            <Link
+              href={
+                doc.doc_type === "SALES_INVOICE"
+                  ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
+                  : `/payables/pay?partner=${doc.partner_id}&invoice=${doc.id}`
+              }
+              className="erp-btn erp-btn-primary erp-settle-act"
+            >
+              {doc.doc_type === "SALES_INVOICE" ? "Receive payment" : "Pay supplier"}
+            </Link>
+          )}
+        </div>
+      )}
+
+      <div className="grid2">
+        <div className="card">
+          <div className="card-head"><h2>Document</h2><span className={`pill ${doc.status.toLowerCase()}`}>{doc.status}</span></div>
+          <div className="card-body">
+            {/* Pairs rather than a flat list of dt/dd.
+                Flat, the value column took whatever the card was wide — a
+                document number sat in a thousand pixels of nothing, and the
+                eye had to travel the width of the screen to read a date. In
+                pairs the panel fills the space it occupies, and each value
+                sits on a rule that says where the field ends. */}
+            <dl className="kv ruled">
+              <div><dt>Number</dt><dd className="m">{doc.doc_no ?? "—"}</dd></div>
+              <div><dt>Partner</dt><dd>{doc.partner_name ? `${doc.partner_code} · ${doc.partner_name}` : "—"}</dd></div>
+              <div><dt>Date</dt><dd>{shortDate(doc.doc_date)}</dd></div>
+              <div><dt>Location</dt><dd>{doc.location_code ? `${doc.location_code} · ${doc.location_name}` : "—"}</dd></div>
+              <div><dt>Posting</dt><dd>{shortDate(doc.posting_date)}</dd></div>
+              <div><dt>Currency</dt><dd className="m">{doc.currency} @ {Number(doc.exchange_rate)}</dd></div>
+              <div><dt>Due</dt><dd>{doc.due_date ? shortDate(doc.due_date) : "—"}</dd></div>
+              {doc.payment_type
+                ? <div><dt>Payment</dt><dd><span className="pill">{doc.payment_type}</span></dd></div>
+                : <div><dt>Payment</dt><dd>—</dd></div>}
+              {doc.salesman_name && (
+                <div><dt>Salesman</dt><dd>{doc.salesman_code} · {doc.salesman_name}</dd></div>
+              )}
+              {doc.reference && (
+                <div><dt>Reference</dt><dd className="m">{doc.reference}</dd></div>
+              )}
+              {isSi && (
+                <div>
+                  <dt>Fulfilment</dt>
+                  <dd>
+                    {/* Which way this invoice was raised, and whether the
+                        goods have gone. "Take now" and "Deliver later" are
+                        two different promises to the customer, and an invoice
+                        that has not shipped yet should say so on its face
+                        rather than in the absence of a delivery link. */}
+                    {doc.to_deliver ? (
+                      <span className={`pill ${stageDoc["DELIVERY"] ? "ok" : "warn"}`}>
+                        {stageDoc["DELIVERY"] ? "Delivered" : "Delivery pending"}
+                      </span>
+                    ) : (
+                      <span className="pill ok">Taken now</span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              <div>
+                <dt>Source</dt>
+                <dd>
+                  {doc.source_doc_no
+                    ? <Link href={`/documents/${doc.source_id}`} className="m" style={{ color: "var(--brand)" }}>{doc.source_doc_no}</Link>
+                    : "—"}
+                </dd>
+              </div>
+              {/* Last and across both columns: a remark is a sentence, not a
+                  field, and squeezing it into half the width wraps it into a
+                  column of three-word lines. */}
+              {doc.memo && (
+                <div className="kv-wide"><dt>Remark</dt><dd className="wrap">{doc.memo}</dd></div>
+              )}
+            </dl>
+          </div>
+        </div>
+
+        {/* The old Downstream card lived here. It is gone because the
+            Related Documents panel above says the same thing and more: both
+            directions, and the headings that have nothing under them. Two
+            lists of the same links, disagreeing about which ones count, is
+            worse than either. */}
+      </div>
+
+      {lines.length > 0 && (
+        <section>
+          <div className="card">
+            <div className="card-head"><h2>Lines</h2></div>
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>Item</th><th>Description</th><th>Unit</th>
+                    <th className="r">Qty</th><th className="r">{valueLabel}</th><th className="r">Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l: any) => {
+                    /* Which lots this line actually moved. On the way in it
+                       is what was typed; on the way out it is whichever
+                       layers the engine drew, which is the only record of
+                       what the customer was handed — and the thing a recall
+                       asks for. */
+                    const batches = (docBatches as any[])
+                      .filter((b) => b.item_id === l.item_id);
+                    return (
+                      <Fragment key={l.id}>
+                        <tr>
+                          <td className="code">{l.line_no}</td>
+                          <td className="code">{l.item_code ?? "—"}</td>
+                          <td className="wrap">
+                            {l.item_name ?? l.description ?? "—"}
+                            {l.foc_reason && <> <span className="pill warn">{l.foc_reason}</span></>}
+                          </td>
+                          <td className="code">{l.uom_code ?? "—"}</td>
+                          <td className="r">{qty(l.entered_qty)}</td>
+                          <td className="r">{money(unitValue(l))}</td>
+                          <td className="r">{money(l.net_amount)}</td>
+                        </tr>
+                        {batches.length > 0 && (
+                          <tr className="batchtrail">
+                            <td />
+                            <td colSpan={6}>
+                              {batches.map((b, i) => (
+                                <span key={`${b.batch_no}-${i}`} className="batchtrail-item">
+                                  <span className="code">{b.batch_no}</span>
+                                  {" "}{qty(Math.abs(Number(b.qty)))}
+                                  {b.expiry_date && (
+                                    <span className="batchtrail-exp"> · expires {b.expiry_date}</span>
+                                  )}
+                                </span>
+                              ))}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={6}>Total</td>
+                    <td className="r">{money(doc.gross_total)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* The paper that came from outside, kept with the record it is about
+          — above the posting, because somebody checking a bill against its
+          scan is doing that before they read the journal lines. */}
+      <DocumentAttachments
+        documentId={doc.id}
+        attachments={attachments as never}
+        upload={uploadAttachment}
+        remove={deleteAttachment}
+        storageReady={storageConfigured()}
+      />
+
+      <section>
+        <div className="card">
+          <div className="card-head">
+            <h2>Posting</h2>
+            <span className="m" style={{ color: "var(--muted)" }}>
+              {doc.entry_no ? `Journal ${doc.entry_no}` : "This document type posts nothing"}
+            </span>
+          </div>
+          {journal.length > 0 ? (
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>Account</th><th>Name</th>
+                    <th className="r">Debit</th><th className="r">Credit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {journal.map((l: any) => (
+                    <tr key={l.line_no}>
+                      <td className="code">{l.line_no}</td>
+                      <td className="code">{l.account_code}</td>
+                      <td className="wrap">{l.account_name}</td>
+                      <td className="r dr">{Number(l.debit) ? money(l.debit) : ""}</td>
+                      <td className="r cr">{Number(l.credit) ? money(l.credit) : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={3}>
+                      {totalDebit === totalCredit ? "Balanced" : "OUT OF BALANCE"}
+                    </td>
+                    <td className="r dr">{money(totalDebit)}</td>
+                    <td className="r cr">{money(totalCredit)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          ) : (
+            <div className="empty">
+              Orders commit nothing to the ledger — they exist to be fulfilled and reported against.
+            </div>
+          )}
+        </div>
+      </section>
+    </ErpDocShell>
+  );
+}

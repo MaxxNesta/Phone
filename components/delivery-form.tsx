@@ -1,0 +1,547 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import type { ActionResult, PickerItem } from "@/lib/actions";
+import { ItemPicker } from "./item-picker";
+import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
+import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
+import { PartnerPicker } from "./partner-picker";
+
+type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
+type Uom = { id: string; code: string; name: string };
+type Partner = { id: string; code: string; name: string };
+type Location = { id: string; code: string; name: string };
+type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
+type FocReason = { id: string; code: string; name: string };
+type OpenOrderLine = {
+  order_id: string; order_no: string; partner_id: string; location_id: string;
+  line_id: string; item_id: string; item_code: string; item_name: string;
+  remaining_qty: string;
+};
+
+type Line = {
+  key: number; itemId: string; qty: string;
+  focQty: string; focReasonId: string;
+  /** "OWNED" or a consignor's id. Which shelf these goods actually came off
+   *  — the warehouse cannot tell you, and the accounts differ entirely. */
+  source: string;
+  /** Set when the line came from an order, so the delivery credits that line. */
+  sourceLineId?: string | null;
+};
+
+const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+
+/**
+ * A delivery raised on its own.
+ *
+ * Goods leave for reasons that have no invoice and no order behind them —
+ * stock dropped at a shop to be billed at month end, samples given to a
+ * customer, promotional stock. Requiring an order or an invoice to move them
+ * would mean inventing a document describing a sale that did not happen, in
+ * order to record goods that did leave.
+ *
+ * So the source order is optional, and left blank the delivery simply stands
+ * on its own. Choosing one prefills what it still owes and credits the
+ * delivery to those lines, which is what keeps an order's outstanding
+ * quantity right.
+ */
+export function DeliveryForm({
+  action, customers, items: initialItems, locations, categories, uoms,
+  stockByLocation, focReasons, openOrders, today, ownership = [],
+  pickLayers = [],
+}: {
+  action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
+  customers: Partner[];
+  items: PickerItem[];
+  /** Open layers in the order the engine draws them, so the form can say
+   *  which batches a quantity would take. */
+  pickLayers?: {
+    item_id: string; location_id: string;
+    batch_no: string | null; expiry_date: string | null; qty: string;
+  }[];
+  locations: Location[];
+  categories: Node[];
+  uoms: Uom[];
+  stockByLocation: StockRow[];
+  focReasons: FocReason[];
+  openOrders: OpenOrderLine[];
+  today: string;
+  /** Consigned stock on hand, per item, warehouse and consignor. */
+  ownership?: {
+    item_id: string; location_id: string; consignor_id: string;
+    consignor_code: string; consignor_name: string; qty: string;
+  }[];
+}) {
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
+    action as never, null
+  );
+
+  /** See the hidden field below. */
+  const [attemptKey] = useState(() => crypto.randomUUID());
+
+  const [items, setItems] = useState(initialItems);
+  const [partnerId, setPartnerId] = useState("");
+  const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
+
+  /**
+   * Which lots a quantity would take, worked out the way the engine will.
+   *
+   * Same order, same arithmetic: earliest expiry first, untracked layers
+   * before dated ones. A preview ordered any other way would show the picker
+   * one batch and hand the customer another, which is worse than showing
+   * nothing at all.
+   */
+  const drawFor = (itemId: string, want: number) => {
+    let left = want;
+    const taken: { batch: string | null; expiry: string | null; qty: number }[] = [];
+    for (const lot of (pickLayers ?? []).filter(
+      (p) => p.item_id === itemId && p.location_id === locationId)) {
+      if (left <= 0.0001) break;
+      const take = Math.min(left, Number(lot.qty));
+      taken.push({ batch: lot.batch_no, expiry: lot.expiry_date, qty: take });
+      left -= take;
+    }
+    return { taken, short: left > 0.0001 ? left : 0 };
+  };
+  const [orderId, setOrderId] = useState("");
+  const [lines, setLines] = useState<Line[]>([
+    { key: 1, itemId: "", qty: "", focQty: "", focReasonId: "", source: "OWNED" },
+  ]);
+  const [negativeConfirmed, setNegativeConfirmed] = useState(false);
+  // The engine requires a reason alongside the confirmation. Confirming
+  // without one used to post; now it is refused, and a form that offered the
+  // confirmation and not the reason could not complete the move at all.
+  const [negativeReason, setNegativeReason] = useState("");
+  const [askNegative, setAskNegative] = useState(false);
+
+  const byId = (id: string) => items.find((i) => i.id === id);
+  const setLine = (key: number, patch: Partial<Line>) =>
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const addLine = () =>
+    setLines((ls) => [...ls, {
+      key: Math.max(0, ...ls.map((l) => l.key)) + 1,
+      itemId: "", qty: "", focQty: "", focReasonId: "", source: "OWNED",
+    }]);
+  const removeLine = (key: number) =>
+    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+
+  const onHandHere = (itemId: string) =>
+    Number(stockByLocation.find((r) => r.item_id === itemId && r.location_id === locationId)
+      ?.qty_on_hand ?? 0);
+
+  /** Orders still owing goods to the customer chosen, newest grouping first. */
+  const ordersFor = Array.from(
+    openOrders
+      .filter((o) => !partnerId || o.partner_id === partnerId)
+      .reduce((m, o) => {
+        if (!m.has(o.order_id)) m.set(o.order_id, { no: o.order_no, lines: [] as OpenOrderLine[] });
+        m.get(o.order_id)!.lines.push(o);
+        return m;
+      }, new Map<string, { no: string; lines: OpenOrderLine[] }>())
+  );
+
+  /** Picking an order fills in what it still owes, and credits each line to
+   *  the order line it satisfies — otherwise the order never closes. */
+  function pickOrder(id: string) {
+    setOrderId(id);
+    const found = ordersFor.find(([oid]) => oid === id);
+    if (!found) return;
+    const [, o] = found;
+    setPartnerId(o.lines[0].partner_id);
+    setLocationId(o.lines[0].location_id);
+    setLines(o.lines.map((l, i) => ({
+      key: i + 1, itemId: l.item_id, qty: String(Number(l.remaining_qty)),
+      focQty: "", focReasonId: "", source: "OWNED", sourceLineId: l.line_id,
+    })));
+  }
+
+  // What each item has on hand at the chosen warehouse, split by owner. The
+  // owned figure comes from the same stock map the shortage check uses, so
+  // the two can never disagree about how much is ours.
+  const splitFor = (itemId: string): OwnershipSplit => ({
+    owned: Number(
+      stockByLocation.find((s) => s.item_id === itemId && s.location_id === locationId)
+        ?.qty_on_hand ?? 0),
+    consigned: ownership
+      .filter((o) => o.item_id === itemId && o.location_id === locationId)
+      .map((o) => ({
+        consignorId: o.consignor_id, code: o.consignor_code,
+        name: o.consignor_name, qty: Number(o.qty),
+      })),
+  });
+
+  const [sourceFor, setSourceFor] = useState<number | null>(null);
+
+  const issuing = (l: Line) => (Number(l.qty) || 0) + (Number(l.focQty) || 0);
+
+  // Only owned stock can be issued short. Consigned stock is somebody else's
+  // and the negative-stock confirmation does not apply to it: you cannot
+  // decide on their behalf that goods they own are on the shelf, so the
+  // engine refuses it outright and the form says so before it is tried.
+  const shortages = lines.filter((l) => {
+    if (!l.itemId || l.source !== "OWNED") return false;
+    return byId(l.itemId)?.is_stocked && issuing(l) > onHandHere(l.itemId);
+  });
+  const overConsigned = lines.filter((l) => {
+    if (!l.itemId || l.source === "OWNED") return false;
+    const have = splitFor(l.itemId).consigned
+      .find((c) => c.consignorId === l.source)?.qty ?? 0;
+    return issuing(l) > have;
+  });
+  const shortfalls: Shortfall[] = shortages.map((l) => {
+    const item = byId(l.itemId);
+    return {
+      itemCode: item?.code ?? "", itemName: item?.name ?? "", uomCode: item?.uom_code ?? "",
+      required: issuing(l), recorded: onHandHere(l.itemId),
+    };
+  });
+  const shortfallKey = shortfalls.map((s) => `${s.itemCode}:${s.required}:${s.recorded}`).join("|");
+  useEffect(() => { setNegativeConfirmed(false); }, [shortfallKey]);
+
+  /* No default reason, deliberately.
+     This used to fill in focReasons[0] the moment a free quantity was
+     typed. The list is ordered by code, so the first one is "Damaged or
+     expired" — and its cost goes to Inventory Adjustment. Anyone giving
+     stock away without opening the dropdown booked it as damage: on
+     pilot, three promotional units at 15,000 each went to 5300 as 45,000
+     of write-off, and nothing on screen said so.
+     The reason decides which expense carries the cost, so it is the
+     person's to give, not the form's to guess. */
+
+  // Charged and free go as separate lines, the free one carrying its reason,
+  // so its cost lands in that expense instead of cost of sales.
+  const payload = JSON.stringify(
+    lines.flatMap((l) => {
+      const out: unknown[] = [];
+      if (l.itemId && Number(l.qty) > 0) {
+        out.push({
+          itemId: l.itemId, qty: Number(l.qty), sourceLineId: l.sourceLineId ?? null,
+          source: l.source === "OWNED" ? "OWNED" : "CONSIGNMENT",
+          consignorId: l.source === "OWNED" ? null : l.source,
+        });
+      }
+      if (l.itemId && Number(l.focQty) > 0) {
+        out.push({
+          itemId: l.itemId, qty: Number(l.focQty),
+          // Flagged as well as reasoned, so the server can tell a free line
+          // that lost its reason from an ordinary one.
+          free: true,
+          focReasonId: l.focReasonId || null,
+          sourceLineId: null,
+          source: l.source === "OWNED" ? "OWNED" : "CONSIGNMENT",
+          consignorId: l.source === "OWNED" ? null : l.source,
+        });
+      }
+      return out;
+    })
+  );
+
+  const nothingToPost = lines.every((l) => !l.itemId || issuing(l) <= 0);
+
+  /* A free line with no reason cannot be costed anywhere, and guessing is
+     what put a giveaway into the write-off account. Named here rather than
+     refused by the engine after the fact. */
+  const unexplainedFree = lines.filter(
+    (l) => l.itemId && Number(l.focQty) > 0 && !l.focReasonId);
+
+  return (
+    /* wide, like every other voucher. This one was the only line-entry
+       form left at the 760px .form cap, which is what squeezed its
+       columns until the free-reason select ran under Remove. */
+    <form action={formAction} className="form wide">
+      {/* One submission, one posting. Generated when this form mounts, so a
+          double-click or a resent request carries the same key and is handed
+          the document the first one posted; a new form is a new key. */}
+      <input type="hidden" name="idempotency_key" value={attemptKey} />
+
+      <input type="hidden" name="lines" value={payload} />
+      <input type="hidden" name="source_document_id" value={orderId} />
+      {negativeConfirmed && <input type="hidden" name="allow_negative_stock" value="true" />}
+      {negativeConfirmed && (
+        <input type="hidden" name="negative_stock_reason" value={negativeReason} />
+      )}
+
+      {state && "error" in state && <div className="alert">{state.error}</div>}
+
+      <div className="card">
+        <div className="card-body">
+          <div className="row">
+            <div className="field">
+              <label htmlFor="partner_id">Customer</label>
+              <PartnerPicker
+                partners={customers as never}
+                value={partnerId}
+                placeholder="Type a customer…"
+                onPick={(id) => { setPartnerId(id); setOrderId(""); }}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="location_id">From warehouse</label>
+              <select id="location_id" name="location_id" value={locationId} required
+                      onChange={(e) => setLocationId(e.target.value)}>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="doc_date">Date</label>
+              <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />
+            </div>
+            <div className="field">
+              <label htmlFor="reference">Ref / order ID</label>
+              <input id="reference" name="reference" type="text" placeholder="Delivery note no." />
+            </div>
+          </div>
+
+          {/* Optional on purpose. Blank is the ordinary case for this screen —
+              goods leaving with nothing raised beforehand. */}
+          <div className="row">
+            <div className="field">
+              <label htmlFor="order">Against a sales order</label>
+              <select id="order" value={orderId} onChange={(e) => pickOrder(e.target.value)}>
+                <option value="">None — deliver without an order</option>
+                {ordersFor.map(([id, o]) => (
+                  <option key={id} value={id}>{o.no}</option>
+                ))}
+              </select>
+              <span className="hint">
+                Choosing one fills in what it still owes and credits the delivery
+                to it, so the order closes properly.
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head"><h2>Items</h2></div>
+        <div className="tablewrap">
+          {/* linetable, like every other voucher's line table: this one was
+              a bare <table>, so the column sizing the others get never
+              applied and the free-reason select ran under the Remove
+              button. */}
+          <table className="linetable">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Stock source</th>
+                <th className="r">On hand</th>
+                <th className="r">Deliver</th>
+                {focReasons.length > 0 && <th className="r">Free</th>}
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l) => {
+                const item = byId(l.itemId);
+                const short = item?.is_stocked && issuing(l) > onHandHere(l.itemId);
+                return (
+                  <tr key={l.key}>
+                    <td style={{ minWidth: 240 }}>
+                      <ItemPicker
+                        mode="sales" items={items} categories={categories} uoms={uoms}
+                        value={l.itemId}
+                        onPick={(id) => setLine(l.key, { itemId: id })}
+                        onCreated={(it) => { setItems((xs) => [...xs, it]); }}
+                      />
+                    </td>
+                    {/* Which shelf. Only asked where there is a choice: an
+                        item nobody has consigned to you has one pool, and a
+                        picker offering one option is a question with one
+                        answer. */}
+                    <td style={{ minWidth: 190 }}>
+                      {(() => {
+                        if (!l.itemId || !item?.is_stocked) return <span style={{ color: "var(--muted)" }}>—</span>;
+                        const split = splitFor(l.itemId);
+                        if (split.consigned.length === 0) {
+                          return (
+                            <span className="sourcebtn" style={{ cursor: "default", border: 0 }}>
+                              <span className="pooldot owned" /> Company-owned
+                            </span>
+                          );
+                        }
+                        const pools = poolsFor(split);
+                        const chosen = pools.find((p) => p.key === l.source) ?? pools[0];
+                        return (
+                          <button type="button" className="sourcebtn"
+                                  onClick={() => setSourceFor(l.key)}>
+                            <span className={`pooldot ${l.source === "OWNED" ? "owned" : "consigned"}`} />
+                            <span>{chosen.label.replace("Consignment — ", "")}</span>
+                            <span className="avail">{chosen.qty} pcs</span>
+                          </button>
+                        );
+                      })()}
+                    </td>
+                    <td className="r" style={{ color: short ? "var(--bad)" : undefined }}>
+                      {!item ? "—" : item.is_stocked
+                        ? fmt(l.source === "OWNED"
+                            ? onHandHere(item.id)
+                            : (splitFor(item.id).consigned.find((c) => c.consignorId === l.source)?.qty ?? 0))
+                        : "service"}
+                    </td>
+                    <td className="narrow">
+                      <input type="number" min="0" step="any" value={l.qty} aria-label="Deliver quantity"
+                             onChange={(e) => setLine(l.key, { qty: e.target.value })} />
+                    </td>
+                    {focReasons.length > 0 && (
+                      <td className="focqty">
+                        <input type="number" min="0" step="any" value={l.focQty} placeholder="0"
+                               aria-label="Free quantity"
+                               onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
+                        {Number(l.focQty) > 0 && (
+                          <select value={l.focReasonId} aria-label="Reason free"
+                                  required
+                                  style={{ marginTop: "0.2rem",
+                                           borderColor: l.focReasonId ? undefined : "var(--bad)" }}
+                                  onChange={(e) => setLine(l.key, { focReasonId: e.target.value })}>
+                            {/* Empty and first, so the reason is chosen
+                                rather than inherited from whichever one
+                                happens to sort first. */}
+                            <option value="">Why is it free?</option>
+                            {focReasons.map((r) => (
+                              <option key={r.id} value={r.id}>{r.name}</option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                    )}
+                    <td className="tight">
+                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}>
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {/* What each tracked line would actually take off the shelf.
+                  Shown before posting because the picker is the person who
+                  has to find it, and "24 of B-SHORT" is a different errand
+                  from "24 units". */}
+              {lines.filter((l) => byId(l.itemId)?.tracks_batch && issuing(l) > 0).map((l) => {
+                const item = byId(l.itemId)!;
+                const { taken, short } = drawFor(l.itemId, issuing(l));
+                return (
+                  <tr key={`draw-${l.key}`} className="batchrow">
+                    <td colSpan={focReasons.length > 0 ? 6 : 5}>
+                      <span className="batchrow-label">{item.code} will take</span>
+                      {taken.length === 0 ? (
+                        <span className="hint">nothing on hand here</span>
+                      ) : (
+                        taken.map((t, i) => (
+                          <span key={i} className="batchtrail-item">
+                            <span className="code">{t.batch ?? "no batch"}</span>{" "}
+                            {fmt(t.qty)}
+                            {t.expiry && <span className="batchtrail-exp"> · expires {t.expiry}</span>}
+                          </span>
+                        ))
+                      )}
+                      {short > 0 && (
+                        <span className="hint" style={{ color: "var(--bad)" }}>
+                          {fmt(short)} short of what is on the shelf
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="card-body">
+          <button type="button" className="ghost" onClick={addLine}>+ Line</button>
+        </div>
+      </div>
+
+      {shortages.length > 0 && !negativeConfirmed && (
+        <div className="alert">
+          <strong>Recorded stock is insufficient</strong> for{" "}
+          {shortages.map((l) => byId(l.itemId)?.code).join(", ")}. Reduce the
+          quantity, or confirm the goods physically exist &mdash; posting will
+          ask before recording negative stock.
+        </div>
+      )}
+      {shortages.length > 0 && negativeConfirmed && (
+        <div className="alert">
+          <strong>Confirmed:</strong> the goods physically exist though the
+          record shows fewer.{" "}
+          <button type="button" className="ghost tiny"
+                  onClick={() => setNegativeConfirmed(false)}>Undo</button>
+          {/* Required by the engine, so it is asked here rather than refused
+              after the fact. A confirmation without a reason records that
+              somebody clicked, not what they knew. */}
+          <div className="field" style={{ marginTop: "0.5rem" }}>
+            <label htmlFor="neg_reason">Why the books are short</label>
+            <input id="neg_reason" type="text" required
+                   placeholder="e.g. supplier delivery not yet entered"
+                   value={negativeReason}
+                   onChange={(e) => setNegativeReason(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {sourceFor !== null && (() => {
+        const line = lines.find((x) => x.key === sourceFor);
+        const item = line ? byId(line.itemId) : null;
+        return (
+          <StockSourceDialog
+            open
+            itemLabel={item ? `${item.code} · ${item.name}` : "item"}
+            pools={poolsFor(line ? splitFor(line.itemId) : undefined)}
+            value={line?.source ?? "OWNED"}
+            onPick={(key) => setLine(sourceFor, { source: key })}
+            onClose={() => setSourceFor(null)}
+          />
+        );
+      })()}
+
+      <NegativeStockConfirm
+        open={askNegative} shortfalls={shortfalls}
+        onCancel={() => setAskNegative(false)}
+        onConfirm={() => { setNegativeConfirmed(true); setAskNegative(false); }}
+      />
+
+      <div className="field">
+        <label htmlFor="memo">Note</label>
+        <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
+      </div>
+
+      {unexplainedFree.length > 0 && (
+        <div className="alert">
+          <strong>Say why the free units are free</strong> for{" "}
+          {unexplainedFree.map((l) => byId(l.itemId)?.code).join(", ")}. The
+          reason decides which expense carries their cost &mdash; a giveaway
+          goes to promotion, damage goes to the write-off account &mdash; and
+          they are not the same thing on the income statement.
+        </div>
+      )}
+
+      {overConsigned.length > 0 && (
+        <div className="alert">
+          More consigned stock is being issued than the consignor has here.
+          Consigned goods cannot go negative — they are not yours to owe.
+        </div>
+      )}
+
+      <div className="actions">
+        <button
+          type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
+          onClick={shortages.length > 0 && !negativeConfirmed
+            ? () => setAskNegative(true) : undefined}
+          disabled={pending || !partnerId || nothingToPost || overConsigned.length > 0
+            || unexplainedFree.length > 0
+            || (shortages.length > 0 && negativeConfirmed && !negativeReason.trim())}>
+          {pending ? "Posting…" : "Post delivery"}
+        </button>
+        <span className="page-sub">
+          {lines.some((l) => l.source !== "OWNED")
+            ? "Owned stock leaves at its FIFO cost. Consigned stock is not yours, "
+              + "so your inventory does not move — what you owe the consignor is "
+              + "recognised when the sale is invoiced."
+            : "Stock leaves at its FIFO cost and the cost is recognised. No revenue "
+              + "and no receivable — those belong to the invoice, whenever it is raised."}
+        </span>
+      </div>
+    </form>
+  );
+}

@@ -1,0 +1,56 @@
+import Link from "next/link";
+import { getFinanceData, peekVoucherNo, createBankVoucher } from "@/lib/actions";
+import { getCompany } from "@/lib/queries";
+import { VoucherForm } from "@/components/voucher-form";
+import { VoucherHelp } from "@/components/voucher-help";
+import { HelpHint } from "@/components/help-hint";
+
+export default async function BankReceipt() {
+  const { accounts, accountTree, bankAccounts, branches } = await getFinanceData();
+  const company = await getCompany();
+  const today = new Date().toISOString().slice(0, 10);
+  const nextNo = await peekVoucherNo("BANK_VOUCHER", "IN");
+
+  if (bankAccounts.length === 0) {
+    return (
+      <>
+        <div className="page-head">
+          <span className="eyebrow">Cash &amp; Bank</span>
+          <h1>Bank receipt</h1>
+        </div>
+        <div className="alert">No bank account is set up in the chart of accounts.</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="page-head">
+        <span className="eyebrow">Cash &amp; Bank</span>
+        <h1>Bank receipt</h1>
+        <HelpHint>
+          Money received into a bank account that isn&rsquo;t against a customer invoice — use{" "}
+          <Link href="/receivables/receive" style={{ color: "var(--brand)" }}>Receive payment</Link> for that.{" "}
+          <Link href="/finance/bank-detail" style={{ color: "var(--brand)" }}>View the bank book</Link>
+        </HelpHint>
+        <Link href="/finance/bank-receipt/import" className="btn ghost">Import from Excel</Link>
+      <span className="actions">
+        <VoucherHelp kind="bank" />
+      </span>
+      </div>
+
+      <VoucherForm
+        kind="bank"
+        action={createBankVoucher}
+        accounts={accounts as never}
+        accountTree={accountTree as never}
+        branches={branches as never}
+        moneyAccounts={bankAccounts as never}
+        today={today}
+        nextNo={nextNo}
+        companyName={company?.name ?? ""}
+        presetDirection="in"
+      />
+    </>
+  );
+}

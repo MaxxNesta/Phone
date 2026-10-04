@@ -1,0 +1,7040 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { sanitizeAxes } from "./supplier-metrics";
+import { redirect } from "next/navigation";
+import { money, sql } from "./db";
+import { parseCsv, planImport, type MasterData } from "./import-items";
+import { xlsxToRows, type UploadFormat } from "./read-spreadsheet";
+import { planVoucherImport, voucherColumns, type VoucherMasterData, type VoucherKind }
+  from "./import-vouchers";
+import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines } from "./queries";
+import { scaffoldCompany } from "./setup";
+import { encodeItemPhoto } from "./item-photo";
+import { putObject, deleteObject, newKey } from "./r2";
+import { asRegion } from "./regions";
+import {
+  postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postPurchaseWithReceipt,
+  postCreditNote, postDebitNote,
+  postSalesOrder, postPurchaseOrder, postDelivery, postGoodsReceipt,
+  postSupplierPayment, postCustomerReceipt,
+  postCashVoucher, postBankVoucher, postJournalVoucher,
+  linkFulfilmentToOrder, closeOrderRemaining, reopenOrder,
+  amendOrder, planOrderAmendment, amendInvoice, planInvoiceAmendment,
+  amendmentFingerprint, StalePlan, applyAdvance,
+  type AmendmentPlan,
+  postCashTransfer, postAccountOpening, postOpeningBatch, resettleConsignmentSale,
+  amendVoucher, amendSettlement,
+  postStockAdjustment, postStockTransfer,
+  importItems, importVouchers, voidDocument, reconcileNegativeStock,
+  postSalesReturn, postPurchaseReturn, postConsignmentReceipt,
+  type InvoiceLine, type OrderLine, type FulfillmentLine, type Allocation, type VoucherLine,
+  type AdjustmentLine, type ReturnLine, type TransferLine, type ConsignmentReceiptLine,
+  postYearEndClose,
+  saveDocumentDraft, deleteDocumentDraft,
+  reopenFiscalYear,
+} from "./posting";
+import { postOnce, alreadyPosted } from "./idempotency";
+
+export type ActionResult =
+  | { error: string }
+  // draftId comes back so a form that saves twice updates one row instead of
+  // leaving a trail of half-written copies. Optional, so every existing
+  // caller that only asks whether "ok" is in the result is unaffected.
+  | { ok: true; draftId?: string };
+
+function str(fd: FormData, key: string): string {
+  return String(fd.get(key) ?? "").trim();
+}
+
+function num(fd: FormData, key: string): number {
+  const v = Number(fd.get(key));
+  return Number.isFinite(v) ? v : 0;
+}
+
+/** Combines a date field with an optional time-of-day field into one ISO
+ *  timestamp — blank time falls back to midnight, same as before either
+ *  existed. Used for stock-in events, where FIFO ordering wants to know
+ *  when stock actually arrived, not just what date it's dated. */
+function dateTime(fd: FormData, dateKey: string, timeKey: string): string {
+  const date = str(fd, dateKey);
+  const time = str(fd, timeKey);
+  return time ? `${date}T${time}` : date;
+}
+
+async function companyId(): Promise<string> {
+  const [c] = await sql`select id from company order by created_at limit 1`;
+  if (!c) throw new Error("No company is set up");
+  return c.id;
+}
+
+/**
+ * What the photo picker asked for, if anything.
+ *
+ * Three states, and the third is the common one: a new picture, an explicit
+ * removal, or a form that never touched the field. Only the first two write,
+ * so saving a name never disturbs a photo that was already there.
+ */
+type PhotoChange = { set: { key: string } } | { clear: true } | null;
+
+async function photoFrom(fd: FormData): Promise<PhotoChange> {
+  const data = str(fd, "photo_data");
+  if (data) {
+    // Re-encoded first and uploaded second, so what reaches the bucket is
+    // always a WebP this app produced — never the file as it arrived. The
+    // upload happens before the row is written, which means a transaction
+    // that then fails leaves an object nobody references. That is the same
+    // trade the delete makes in the other direction: an orphan costs a
+    // fraction of a cent, and the alternative is a row pointing at bytes
+    // that were never stored.
+    const encoded = await encodeItemPhoto(data);
+    const key = newKey("item", "photo.webp");
+    await putObject({
+      bucket: "public", key, body: encoded.bytes, contentType: encoded.mime,
+    });
+    return { set: { key } };
+  }
+  if (str(fd, "photo_remove") === "1") return { clear: true };
+  return null;
+}
+
+/** Redirects with a one-shot confirmation the destination page pops as a toast. */
+function redirectWithToast(path: string, message: string): never {
+  const sep = path.includes("?") ? "&" : "?";
+  redirect(`${path}${sep}toast=${encodeURIComponent(message)}`);
+}
+
+// ------------------------------------------------------------ first run --
+
+export async function setupCompany(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Company set up";
+
+  try {
+    const name = str(fd, "name");
+    const code = str(fd, "code").toUpperCase();
+    const month = num(fd, "fiscal_year_start_month");
+    const start = str(fd, "fiscal_year_start");
+
+    if (!name) return { error: "Company name is required" };
+    if (!code) return { error: "A short code is required" };
+    if (!start) return { error: "Choose when the financial year starts" };
+    if (month < 1 || month > 12) return { error: "Financial year start month must be 1 to 12" };
+
+    await scaffoldCompany({
+      code,
+      name,
+      nameMy: str(fd, "name_my") || null,
+      baseCurrency: str(fd, "base_currency") || "MMK",
+      fiscalYearStartMonth: month,
+      fiscalYearStart: start,
+      officeName: str(fd, "office_name") || "Head Office",
+      warehouseName: str(fd, "warehouse_name") || "Main Warehouse",
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/", "layout");
+  redirectWithToast("/items/categories", toastMsg);
+}
+
+export async function companyExists(): Promise<boolean> {
+  const rows = await sql`select 1 from company limit 1`;
+  return rows.length > 0;
+}
+
+// --------------------------------------------------------------- partners --
+
+export async function createPartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Partner added";
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+
+    const name = str(fd, "name");
+    const isCustomer = fd.get("is_customer") === "on";
+    const isSupplier = fd.get("is_supplier") === "on";
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (!isCustomer && !isSupplier) return { error: "Choose customer, supplier, or both" };
+
+    const dup = await sql`
+      select 1 from business_partner where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      insert into business_partner
+        (company_id, code, name, name_my, company_name, is_customer, is_supplier,
+         region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
+         category_id, supplier_category_id)
+      values
+        (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
+         ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier},
+         ${asRegion(str(fd, "region"))}, ${str(fd, "township") || null},
+         ${str(fd, "address") || null},
+         ${str(fd, "phone") || null}, ${num(fd, "payment_terms_days")},
+         ${fd.get("credit_limit") ? num(fd, "credit_limit") : null},
+         -- Which column of the price list this customer buys from. Null
+         -- means the first level, which is what every customer had before
+         -- anyone could choose.
+         ${str(fd, "price_level_id") || null},
+         -- What kind of shop it is. Classification only; it changes
+         -- nothing about what they are charged or allowed to owe.
+         ${str(fd, "category_id") || null},
+         ${str(fd, "supplier_category_id") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/partners");
+  // Back to the list they were looking at. Editing a supplier and being
+  // returned to the unfiltered list — reading customers — loses the filter
+  // and the place in it, which on a long partner list is the whole search
+  // again.
+  redirectWithToast(listPath(fd), toastMsg);
+}
+
+/** The partner list as it was being viewed, so a save returns to it. */
+function listPath(fd: FormData): string {
+  const role = String(fd.get("role") ?? "");
+  return role === "customer" || role === "supplier"
+    ? `/partners?role=${role}`
+    : "/partners";
+}
+
+export async function updatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Partner updated";
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+    const isCustomer = fd.get("is_customer") === "on";
+    const isSupplier = fd.get("is_supplier") === "on";
+
+    if (!id) return { error: "Choose a partner" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (!isCustomer && !isSupplier) return { error: "Choose customer, supplier, or both" };
+
+    const dup = await sql`
+      select 1 from business_partner where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      update business_partner set
+        code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
+        company_name = ${str(fd, "company_name") || null},
+        is_customer = ${isCustomer}, is_supplier = ${isSupplier},
+        region = ${asRegion(str(fd, "region"))},
+        township = ${str(fd, "township") || null}, address = ${str(fd, "address") || null},
+        phone = ${str(fd, "phone") || null}, payment_terms_days = ${num(fd, "payment_terms_days")},
+        -- Blank means "measure it", not zero: an empty override falls back
+        -- to what the receipts say, and nought would claim same-day supply.
+        lead_time_days = ${fd.get("lead_time_days") ? num(fd, "lead_time_days") : null},
+        credit_limit = ${fd.get("credit_limit") ? num(fd, "credit_limit") : null},
+        price_level_id = ${str(fd, "price_level_id") || null},
+        category_id = ${str(fd, "category_id") || null},
+        supplier_category_id = ${str(fd, "supplier_category_id") || null},
+        is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/partners");
+  // Back to the list they were looking at. Editing a supplier and being
+  // returned to the unfiltered list — reading customers — loses the filter
+  // and the place in it, which on a long partner list is the whole search
+  // again.
+  redirectWithToast(listPath(fd), toastMsg);
+}
+
+/** Deactivates a partner without touching any document already against them. */
+export async function deactivatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a partner" };
+
+    await sql`update business_partner set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/partners");
+  redirectWithToast("/partners", "Partner deactivated");
+}
+
+/** Puts back what deactivatePartner retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose partner" };
+
+    await sql`update business_partner set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/partners");
+  redirectWithToast("/partners", "Partner reactivated");
+}
+
+/** Hard delete only succeeds for a partner with no documents against them. Deactivating is the way to retire one. */
+export async function deletePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a partner" };
+
+    await sql`delete from business_partner where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This partner has documents against them — deactivate instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/partners");
+  redirectWithToast("/partners", "Partner deleted");
+}
+
+// ------------------------------------------------------ categories & items --
+
+export async function createCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let returnTo: string | null = null;
+  let composedCode: string | null = null;
+  const toastMsg = "Category added";
+
+  try {
+    const co = await companyId();
+
+    const segment = str(fd, "segment").toUpperCase();
+    const name = str(fd, "name");
+    const parentId = str(fd, "parent_id") || null;
+    returnTo = str(fd, "return_to") || null;
+
+    if (!segment) return { error: "Code segment is required" };
+    if (!name) return { error: "Name is required" };
+
+    if (parentId) {
+      const [parent] = await sql`
+        select parent_id from item_group where id = ${parentId} and company_id = ${co}`;
+      if (!parent) return { error: "That category no longer exists" };
+      if (parent.parent_id) {
+        return { error: "Categories only nest two levels deep: Category → Sub category" };
+      }
+    }
+
+    // The full code is the parent chain plus this segment, composed by
+    // trigger. Two siblings sharing a segment would compose to the same
+    // code, so check the composed value rather than the segment alone.
+    const [composed] = await sql`
+      select fn_compose_group_code(${parentId}::uuid, ${segment}) as code`;
+    composedCode = composed.code;
+
+    const dup = await sql`
+      select name from item_group where company_id = ${co} and code = ${composed.code}`;
+    if (dup.length) {
+      return { error: `Code ${composed.code} is already used by ${dup[0].name}` };
+    }
+
+    await sql`
+      insert into item_group (company_id, parent_id, segment, code, name, name_my)
+      values (${co}, ${parentId}, ${segment}, ${composed.code}, ${name},
+              ${str(fd, "name_my") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${composedCode} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  revalidatePath("/items/new");
+  redirectWithToast(returnTo || "/items/categories", toastMsg);
+}
+
+/**
+ * Name only — not segment, parent, or code. Segment drives this category's
+ * own composed code and every descendant's, and parent is a tree move; both
+ * already have dedicated flows (createCategory's segment at creation time,
+ * moveCategory/insertCategoryAbove for restructuring). This is the quick
+ * "fix a typo" / "retire it" edit, not a restructure.
+ */
+export async function updateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Category updated";
+  const returnTo = str(fd, "return_to") || "/items/categories";
+  const id = str(fd, "id");
+
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+
+    if (!id) return { error: "Choose a category" };
+    if (!name) return { error: "Name is required" };
+
+    await sql`
+      update item_group set
+        name = ${name}, name_my = ${str(fd, "name_my") || null},
+        is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  revalidatePath(`/items/categories/${id}`);
+  redirectWithToast(returnTo, toastMsg);
+}
+
+/** Deactivates a category without touching any item or sub category already filed under it. */
+export async function deactivateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const returnTo = str(fd, "return_to") || "/items/categories";
+  const id = str(fd, "id");
+
+  try {
+    const co = await companyId();
+    if (!id) return { error: "Choose a category" };
+
+    await sql`update item_group set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  revalidatePath(`/items/categories/${id}`);
+  redirectWithToast(returnTo, "Category deactivated");
+}
+
+/** Puts back what deactivateCategory retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const returnTo = str(fd, "return_to") || "/items/categories";
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a category" };
+
+    await sql`update item_group set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  revalidatePath("/items/subcategories");
+  redirectWithToast(returnTo, "Category reactivated");
+}
+
+/**
+ * Hard delete only succeeds for a category with nothing filed under it —
+ * no items, no sub categories. Deactivating is the way to retire one that
+ * has history.
+ */
+export async function deleteCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const returnTo = str(fd, "return_to") || "/items/categories";
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a category" };
+
+    await sql`delete from item_group where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This category has items or sub categories under it — deactivate it instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  redirectWithToast(returnTo, "Category deleted");
+}
+
+/**
+ * Inserts a new category directly above an existing one: the new category
+ * takes the target's place in the tree, and the target moves underneath it.
+ * The whole branch below the target comes along, since it hangs off the
+ * target rather than off its parent.
+ */
+export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Category inserted";
+
+  try {
+    const co = await companyId();
+
+    const targetId = str(fd, "target_id");
+    const segment = str(fd, "segment").toUpperCase();
+    const name = str(fd, "name");
+
+    if (!targetId) return { error: "Choose which category to lift" };
+    if (!segment) return { error: "Code segment is required" };
+    if (!name) return { error: "Name is required" };
+
+    await sql.begin(async (tx) => {
+      const [target] = await tx`
+        select id, parent_id from item_group
+         where id = ${targetId} and company_id = ${co}`;
+      if (!target) throw new Error("That category no longer exists");
+      if (target.parent_id) {
+        throw new Error("This is already a sub category — inserting above it would nest three levels deep");
+      }
+
+      const [kid] = await tx`
+        select 1 from item_group where parent_id = ${target.id} limit 1`;
+      if (kid) {
+        throw new Error("This category already has sub categories inside it — they'd end up nested too deep");
+      }
+
+      const [composed] = await tx`
+        select fn_compose_group_code(${target.parent_id}::uuid, ${segment}) as code`;
+
+      const [created] = await tx`
+        insert into item_group (company_id, parent_id, segment, code, name, name_my)
+        values (${co}, ${target.parent_id}, ${segment}, ${composed.code}, ${name},
+                ${str(fd, "name_my") || null})
+        returning id`;
+
+      await tx`
+        update item_group set parent_id = ${created.id} where id = ${target.id}`;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  revalidatePath("/items/new");
+  redirectWithToast("/items/categories", toastMsg);
+}
+
+/** Re-parents a category. Refuses moves that would make the tree cyclic. */
+export async function moveCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+
+    const id = str(fd, "id");
+    const newParent = str(fd, "new_parent_id") || null;
+
+    if (!id) return { error: "Choose a category to move" };
+    if (id === newParent) return { error: "A category cannot sit under itself" };
+
+    if (newParent) {
+      // Moving a category under one of its own descendants would detach the
+      // branch from the tree entirely and loop forever when walking it.
+      const cycle = await sql`
+        with recursive descendants as (
+          select id from item_group where id = ${id} and company_id = ${co}
+          union all
+          select g.id from item_group g join descendants d on g.parent_id = d.id
+        )
+        select 1 from descendants where id = ${newParent}`;
+      if (cycle.length) {
+        return { error: "That would put the category inside its own branch" };
+      }
+
+      // Categories only nest two levels deep, so the new parent must itself
+      // be a top-level category, and a branch with sub categories of its own
+      // can only move to the top level (its children would land too deep).
+      const [np] = await sql`
+        select parent_id from item_group where id = ${newParent} and company_id = ${co}`;
+      if (!np) return { error: "That category no longer exists" };
+      if (np.parent_id) {
+        return { error: "Categories only nest two levels deep: Category → Sub category" };
+      }
+
+      const [kid] = await sql`
+        select 1 from item_group where parent_id = ${id} and company_id = ${co} limit 1`;
+      if (kid) {
+        return { error: "This category has sub categories of its own — move it to the top level instead" };
+      }
+    }
+
+    await sql`
+      update item_group set parent_id = ${newParent}
+       where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/categories");
+  revalidatePath("/items/new");
+  redirectWithToast("/items/categories", "Category moved");
+}
+
+export async function createItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let returnTo: string | null = null;
+  let fullCode: string | null = null;
+  const toastMsg = "Item added";
+
+  try {
+    const co = await companyId();
+    returnTo = str(fd, "return_to") || null;
+
+    const serial = str(fd, "serial").toUpperCase();
+    const name = str(fd, "name");
+    const groupId = str(fd, "item_group_id");
+    const uomId = str(fd, "base_uom_id");
+    const brandId = str(fd, "brand_id") || null;
+
+    /* The packs this item is bought and sold in, named at creation rather
+       than discovered later on the edit panel. Same shape the edit path
+       reads, so one component serves both. */
+    let newPacks: { uomId: string; factor: number }[] = [];
+    const rawNewPacks = str(fd, "packs");
+    if (rawNewPacks) {
+      try {
+        newPacks = (JSON.parse(rawNewPacks) as any[])
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
+          .filter((p) => p.uomId && p.factor > 0);
+      } catch {
+        return { error: "Could not read the pack sizes" };
+      }
+      if (newPacks.some((p) => p.uomId === uomId)) {
+        return { error: "A pack has to be a different unit from the base unit" };
+      }
+      const seen = new Set<string>();
+      for (const p of newPacks) {
+        if (seen.has(p.uomId)) return { error: "The same unit is listed twice" };
+        seen.add(p.uomId);
+      }
+    }
+    const salePrice = num(fd, "sale_price");
+    const nameMy = str(fd, "name_my") || null;
+    /**
+     * Which attributes this product varies by and which of their values it
+     * uses. Absent for the overwhelming majority of items, which are one
+     * thing and not twelve.
+     */
+    /**
+     * What this product varies by, and which combinations of it exist.
+     *
+     * The two travel separately because they are different facts. The
+     * attributes are recorded against the parent and stay true even for a
+     * combination nobody stocks — a shirt varies by size whether or not it
+     * is sold in XL. The combinations are the items to create, and the form
+     * decides them: a shop selling Black in S/M/L and White only in M asks
+     * for four, not the six the grid would produce.
+     */
+    const variantPlan: { attributes: string[]; combos: string[][] } = (() => {
+      const empty = { attributes: [] as string[], combos: [] as string[][] };
+      const raw = str(fd, "variant_plan");
+      if (!raw) return empty;
+      try {
+        const parsed = JSON.parse(raw);
+        const attributes: string[] = Array.isArray(parsed?.attributes)
+          ? parsed.attributes.map(String).filter(Boolean) : [];
+        const combos: string[][] = Array.isArray(parsed?.combos)
+          ? parsed.combos
+              .map((c: any) => (Array.isArray(c) ? c.map(String).filter(Boolean) : []))
+              .filter((c: string[]) => c.length > 0)
+          : [];
+        // Neither half means anything alone: attributes with no combinations
+        // build nothing, and combinations with no attributes leave the parent
+        // unable to say what it varies by. Either way it is an ordinary item.
+        return attributes.length > 0 && combos.length > 0 ? { attributes, combos } : empty;
+      } catch { return empty; }
+    })();
+
+    if (!serial) return { error: "Serial is required" };
+    if (!name) return { error: "Name is required" };
+    if (!groupId) return { error: "Choose a category" };
+    if (!uomId) return { error: "Choose a unit" };
+
+    const [grp] = await sql`
+      select code from item_group where id = ${groupId} and company_id = ${co}`;
+    if (!grp) return { error: "That category no longer exists" };
+
+    fullCode = `${grp.code}${serial}`;
+    const dup = await sql`
+      select name from item where company_id = ${co} and code = ${fullCode}`;
+    if (dup.length) {
+      return { error: `Code ${fullCode} is already used by ${dup[0].name}` };
+    }
+
+
+    // Before the transaction: re-encoding is the slow part and the part most
+    // likely to be refused, and an unreadable file should fail the save rather
+    // than hold a write open while sharp works.
+    const photo = await photoFrom(fd);
+
+    await sql.begin(async (tx) => {
+      const [item] = await tx`
+        insert into item
+          (company_id, item_group_id, brand_id, serial, code, name, name_my, base_uom_id, is_stocked,
+           tracks_batch, tracks_expiry)
+        values
+          (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${name}, ${str(fd, "name_my") || null},
+           ${uomId}, ${fd.get("is_stocked") !== null},
+           -- Expiry without batches is a date attached to nothing, so the
+           -- second is only honoured when the first is on.
+           ${fd.get("tracks_batch") !== null},
+           ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null})
+        returning id`;
+
+      for (const p of newPacks) {
+        await tx`
+          insert into item_uom (company_id, item_id, uom_id, factor)
+          values (${co}, ${item.id}, ${p.uomId}, ${p.factor})`;
+      }
+
+      if (photo && "set" in photo) {
+        await tx`
+          update item
+             set photo_key = ${photo.set.key}, photo_mime = ${"image/webp"},
+                 photo_updated_at = now()
+           where id = ${item.id}`;
+      }
+
+      if (salePrice > 0) {
+        const [level] = await tx`
+          select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+        if (level) {
+          await tx`
+            insert into item_price
+              (company_id, item_id, price_level_id, uom_id, currency, price)
+            values (${co}, ${item.id}, ${level.id}, ${uomId}, 'MMK', ${salePrice})`;
+        }
+      }
+
+      /**
+       * The combinations, if this product varies.
+       *
+       * Every combination becomes an ordinary item with the row just created
+       * as its parent, which is what lets stock, cost, price and barcode work
+       * with no change anywhere: a variant is an item, so everything that
+       * knows about items already knows about it.
+       *
+       * Generated here rather than typed, because four sizes and three
+       * colours is twelve rows and nobody should enter twelve rows by hand
+       * to sell one shirt — and the form has already dropped the ones this
+       * shop does not sell, so what arrives is the list, not a grid to
+       * expand.
+       */
+      if (variantPlan.combos.length > 0) {
+        for (const [order, attributeId] of variantPlan.attributes.entries()) {
+          await tx`
+            insert into item_variant_attribute (item_id, attribute_id, sort_order)
+            values (${item.id}, ${attributeId}, ${order})`;
+        }
+
+        const optionRows = await tx`
+          select id, code, name, attribute_id from variant_option
+           where id = any(${[...new Set(variantPlan.combos.flat())]})`;
+        const byId = new Map(optionRows.map((o: any) => [o.id, o]));
+
+        // The declared order of the attributes, so a shirt is "M / Red" and
+        // never "Red / M" however the form happened to send it.
+        const rank = new Map(variantPlan.attributes.map((a, i) => [a, i]));
+        const ordered = (combo: string[]) => [...combo].sort((x, y) =>
+          (rank.get(byId.get(x)?.attribute_id) ?? 0) -
+          (rank.get(byId.get(y)?.attribute_id) ?? 0));
+
+        for (const raw of variantPlan.combos) {
+          // An option id the form invented, or one deleted between loading
+          // the page and saving it, would otherwise become "undefined" in
+          // the middle of a code.
+          if (raw.some((id) => !byId.has(id))) {
+            throw new Error("One of the chosen variant values no longer exists");
+          }
+          const combo = ordered(raw);
+          const parts = combo.map((id) => byId.get(id));
+          const suffix = parts.map((p: any) => p.code).join("-");
+          const label = parts.map((p: any) => p.name).join(" / ");
+          const [child] = await tx`
+            insert into item
+              (company_id, item_group_id, parent_item_id, serial, name, name_my,
+               base_uom_id, valuation_method, is_stocked, brand_id,
+               tracks_batch, tracks_expiry)
+            values
+              (${co}, ${groupId}, ${item.id}, ${serial + "-" + suffix},
+               ${name + " " + label}, ${nameMy ? nameMy + " " + label : null},
+               ${uomId}, 'FIFO', ${fd.get("is_stocked") !== null}, ${brandId},
+               ${fd.get("tracks_batch") !== null},
+               ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null})
+            returning id`;
+          for (const id of combo) {
+            await tx`insert into item_variant_option (item_id, option_id)
+                     values (${child.id}, ${id})`;
+          }
+          /* The variants are what is actually bought and sold, so they
+             inherit the packs as they already inherit the base unit and
+             the price. A carton of shirts is a carton of each size; a
+             pack left only on the parent would apply to nothing. */
+          for (const pk of newPacks) {
+            await tx`
+              insert into item_uom (company_id, item_id, uom_id, factor)
+              values (${co}, ${child.id}, ${pk.uomId}, ${pk.factor})`;
+          }
+          if (salePrice > 0) {
+            const [level] = await tx`
+              select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+            if (level) {
+              await tx`
+                insert into item_price
+                  (company_id, item_id, price_level_id, uom_id, currency, price)
+                values (${co}, ${child.id}, ${level.id}, ${uomId}, 'MMK', ${salePrice})`;
+            }
+          }
+        }
+      }
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${fullCode} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items");
+  revalidatePath("/items/categories");
+  revalidatePath("/items/stock");
+  redirectWithToast(returnTo || "/items", toastMsg);
+}
+
+/**
+ * Name, brand, unit, stocked/active — not code or category. The code is the
+ * item's identity (composed from the category's own code plus a serial at
+ * creation time); reclassifying it into a different category is a bigger,
+ * rarer operation than this quick edit is for.
+ */
+export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Item updated";
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+    const uomId = str(fd, "base_uom_id");
+
+    if (!id) return { error: "Choose an item" };
+    if (!name) return { error: "Name is required" };
+    if (!uomId) return { error: "Choose a unit" };
+
+    /* The packs this item can be bought and sold in. Never a row for the
+       item's own unit: that is the base, its factor is 1 by definition, and
+       storing it would be a second answer to a settled question.
+
+       Replacing the list cannot disturb a posted document — every line
+       carries the factor it used, so a carton that becomes 20s next year
+       leaves last year's receipts saying 24. */
+    let packs: { uomId: string; factor: number }[] = [];
+    const rawPacks = str(fd, "packs");
+    if (rawPacks) {
+      try {
+        packs = (JSON.parse(rawPacks) as any[])
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
+          .filter((p) => p.uomId && p.uomId !== uomId && p.factor > 0);
+      } catch {
+        return { error: "Could not read the pack sizes" };
+      }
+      const seen = new Set<string>();
+      for (const p of packs) {
+        if (seen.has(p.uomId)) return { error: "The same unit is listed twice" };
+        seen.add(p.uomId);
+        if (p.factor === 1) {
+          return { error: "A pack holding one base unit is the base unit — leave it off the list" };
+        }
+      }
+    }
+
+    const photo = await photoFrom(fd);
+    /** The object the old picture lived in, removed once the row is safely
+     *  saved. Set inside the transaction, acted on after it. */
+    let replaced: string | null = null;
+
+    await sql.begin(async (tx) => {
+      await tx`
+        update item set
+          name = ${name}, name_my = ${str(fd, "name_my") || null},
+          brand_id = ${str(fd, "brand_id") || null}, base_uom_id = ${uomId},
+          is_stocked = ${fd.get("is_stocked") !== null},
+          is_active = ${fd.get("is_active") === "on"}
+        where id = ${id} and company_id = ${co}`;
+
+      // Only when the form actually carried the field, so a caller that
+      // does not know about packs cannot wipe them.
+      if (rawPacks) {
+        await tx`delete from item_uom where item_id = ${id}`;
+        for (const p of packs) {
+          await tx`
+            insert into item_uom (company_id, item_id, uom_id, factor)
+            values (${co}, ${id}, ${p.uomId}, ${p.factor})`;
+        }
+      }
+
+      // Left alone unless the picker said otherwise. A form submitted with
+      // the field untouched carries neither key, and the photo stays put.
+      if (photo) {
+        // The picture being replaced, read before it is overwritten so the
+        // object it points at can be removed afterwards. Collected rather
+        // than deleted here: a bucket is not part of this transaction, and
+        // deleting inside one that then rolls back would take away the
+        // picture of an item that still claims to have it.
+        const [old] = await tx`
+          select photo_key from item where id = ${id} and company_id = ${co}`;
+        if (old?.photo_key) replaced = old.photo_key as string;
+      }
+
+      if (photo && "set" in photo) {
+        await tx`
+          update item
+             set photo_key = ${photo.set.key}, photo_mime = ${"image/webp"},
+                 photo_updated_at = now()
+           where id = ${id} and company_id = ${co}`;
+      } else if (photo) {
+        await tx`
+          update item
+             set photo_key = null, photo = null, photo_mime = null,
+                 photo_updated_at = null
+           where id = ${id} and company_id = ${co}`;
+      }
+    });
+
+    // After the commit, and best effort. An object that outlives its row is
+    // unreachable and costs almost nothing; a failed delete that undid the
+    // save would cost the edit.
+    if (replaced) await deleteObject("public", replaced);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items");
+  revalidatePath("/items/categories");
+  revalidatePath("/items/stock");
+  redirectWithToast("/items", toastMsg);
+}
+
+/** Deactivates an item without touching any document or stock history against it. */
+export async function deactivateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose an item" };
+
+    await sql`update item set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast("/items", "Item deactivated");
+}
+
+/** Puts back what deactivateItem retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose an item" };
+
+    await sql`update item set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast("/items", "Item reactivated");
+}
+
+/** Hard delete only succeeds for an item nothing has ever touched. Deactivating is the way to retire one. */
+export async function deleteItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose an item" };
+
+    await sql`delete from item where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This item has documents or stock history against it — deactivate it instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast("/items", "Item deleted");
+}
+
+// ------------------------------------------------------------- brands --
+
+// --------------------------------------------------- credit / debit notes --
+
+async function postNote(
+  kind: "CREDIT_NOTE" | "DEBIT_NOTE", fd: FormData,
+): Promise<ActionResult> {
+  const isCredit = kind === "CREDIT_NOTE";
+  let docId: string;
+  try {
+    const co = await companyId();
+    const sourceDocumentId = str(fd, "source_document_id");
+    const partnerId = str(fd, "partner_id");
+    const amount = num(fd, "amount");
+    const reason = str(fd, "reason");
+    const docDate = str(fd, "doc_date");
+
+    if (!sourceDocumentId) {
+      return { error: isCredit ? "Choose the invoice to credit" : "Choose the bill to debit" };
+    }
+    if (!(amount > 0)) return { error: "Enter how much to take off" };
+    if (!reason.trim()) return { error: "Say why — the note is read by people who were not here" };
+    if (!str(fd, "category")) return { error: "Say which kind of correction this is" };
+
+    const input = {
+      companyId: co,
+      partnerId,
+      docDate,
+      sourceDocumentId,
+      amount,
+      taxCodeId: str(fd, "tax_code_id") || null,
+      category: (str(fd, "category") || "OTHER") as never,
+      reason,
+      reference: str(fd, "reference") || null,
+    };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) =>
+      isCredit ? postCreditNote(input, tx) : postDebitNote(input, tx));
+
+    revalidatePath("/documents");
+    revalidatePath(`/documents/${sourceDocumentId}`);
+    docId = (result as { id: string }).id;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // Outside the try, as every posting action here does: redirect() throws to
+  // do its work, and catching it would turn a success into an error message.
+  redirectWithToast(`/documents/${docId}`, `${isCredit ? "Credit" : "Debit"} note posted`);
+}
+
+/** The customer owes less, and no goods came back. */
+export async function createCreditNote(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  return postNote("CREDIT_NOTE", fd);
+}
+
+/** We owe the supplier less, and no goods went back. */
+export async function createDebitNote(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  return postNote("DEBIT_NOTE", fd);
+}
+
+// ------------------------------------------------------------- tax codes --
+//
+// A rate and the two accounts it posts to. The accounts are not editable
+// here on purpose: they come from the OUTPUT_TAX and INPUT_TAX roles, so
+// every code posts to the same pair and a company that re-charts cannot end
+// up with one code pointing at a deleted account.
+
+export async function createTaxCode(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+    const rate = num(fd, "rate");
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (rate < 0 || rate > 100) return { error: "A rate is a percentage between 0 and 100" };
+
+    const dup = await sql`select 1 from tax_code where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    // A zero-rate code needs no accounts: nothing posts. A charging one does,
+    // and both sides come from the roles rather than being chosen per code.
+    //
+    // The rate is a dated row from the start. Its first one runs from the
+    // day given, or from before any document this company holds when none is
+    // — a code whose rate began yesterday cannot tax last month's invoice.
+    const from = str(fd, "valid_from") || "1900-01-01";
+    const [created] = await sql`
+      insert into tax_code (company_id, code, name, output_account_id, input_account_id)
+      values (${co}, ${code}, ${name},
+        case when ${rate} > 0 then (select account_id from system_account
+          where company_id = ${co} and role = 'OUTPUT_TAX') end,
+        case when ${rate} > 0 then (select account_id from system_account
+          where company_id = ${co} and role = 'INPUT_TAX') end)
+      returning id`;
+    await sql`
+      insert into tax_rate (company_id, tax_code_id, rate, valid_from)
+      values (${co}, ${created.id}, ${rate}, ${from}::date)`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/tax-codes");
+  redirectWithToast("/settings/tax-codes", "Tax code added");
+}
+
+export async function updateTaxCode(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+
+    if (!id) return { error: "Choose a tax code" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    /* The rate is not editable here — it is a dated series, changed by
+       adding the next one. What this edits is the code's name, its code and
+       whether it can still be chosen. */
+    const dup = await sql`
+      select 1 from tax_code where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      update tax_code set
+        code = ${code}, name = ${name},
+        is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/tax-codes");
+  redirectWithToast("/settings/tax-codes", "Tax code updated");
+}
+
+/**
+ * The next rate this code will charge, from the day it starts.
+ *
+ * Not an edit of the last one. A rate that changed in September is two
+ * facts — 5% until then, 6% after — and an invoice raised in March is still
+ * a 5% invoice. Backdating is allowed because notifications arrive after
+ * the date they take effect; what it cannot do is change a document already
+ * posted, since the tax on those lines was written when they posted.
+ */
+export async function addTaxRate(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "tax_code_id");
+    const rate = num(fd, "rate");
+    const from = str(fd, "valid_from");
+
+    if (!id) return { error: "Choose a tax code" };
+    if (!from) return { error: "Say which date the new rate starts from" };
+    if (rate < 0 || rate > 100) return { error: "A rate is a percentage between 0 and 100" };
+
+    const [code] = await sql`
+      select id, code from tax_code where id = ${id} and company_id = ${co}`;
+    if (!code) return { error: "That tax code does not belong to this company" };
+
+    const dup = await sql`
+      select rate from tax_rate where tax_code_id = ${id} and valid_from = ${from}::date`;
+    if (dup.length) {
+      return { error: `${code.code} already has a rate starting ${from} — `
+        + `${Number(dup[0].rate)}%. Two rates cannot start the same day.` };
+    }
+
+    await sql`
+      insert into tax_rate (company_id, tax_code_id, rate, valid_from)
+      values (${co}, ${id}, ${rate}, ${from}::date)`;
+
+    // A code that charges now needs the accounts for it, even if its first
+    // rate was zero.
+    if (rate > 0) {
+      await sql`
+        update tax_code set
+          output_account_id = coalesce(output_account_id, (select account_id from system_account
+            where company_id = ${co} and role = 'OUTPUT_TAX')),
+          input_account_id = coalesce(input_account_id, (select account_id from system_account
+            where company_id = ${co} and role = 'INPUT_TAX'))
+        where id = ${id}`;
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/tax-codes");
+  redirectWithToast("/settings/tax-codes", "Rate change scheduled");
+}
+
+// ----------------------------------------------------------- price list --
+//
+// A price belongs to a level, a unit and a date. Changing what something
+// sells for is adding the next price from the day it applies, never
+// overwriting the last one: an invoice raised in March was raised at March's
+// price, and the line already stores what was charged, so the list is free
+// to move on without dragging history with it.
+
+export async function setItemPrice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const itemId = str(fd, "item_id");
+    const levelId = str(fd, "price_level_id");
+    const uomId = str(fd, "uom_id");
+    const price = num(fd, "price");
+    const from = str(fd, "valid_from") || new Date().toISOString().slice(0, 10);
+
+    if (!itemId) return { error: "Choose an item" };
+    if (!levelId) return { error: "Choose a price level" };
+    if (!uomId) return { error: "Choose the unit this price is per" };
+    if (!(price >= 0)) return { error: "A price cannot be negative" };
+
+    const [item] = await sql`
+      select id, code from item where id = ${itemId} and company_id = ${co}`;
+    if (!item) return { error: "That item does not belong to this company" };
+
+    /* One price per item, level, unit and day. Asked for twice on the same
+       day, the later answer wins — which is what somebody correcting a typo
+       means, and a second row for the same morning would leave the two
+       arguing. */
+    await sql`
+      insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
+      values (${co}, ${itemId}, ${levelId}, ${uomId}, 'MMK', ${price}, ${from}::date)
+      on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
+      do update set price = excluded.price`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/prices");
+  revalidatePath("/sales/new");
+  redirectWithToast("/items/prices", "Price set");
+}
+
+export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Brand added";
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+
+    const name = str(fd, "name");
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`select 1 from brand where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      insert into brand (company_id, code, name, name_my)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/brands");
+  revalidatePath("/items/new");
+  redirectWithToast("/items/brands", toastMsg);
+}
+
+export async function updateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Brand updated";
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+
+    if (!id) return { error: "Choose a brand" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`
+      select 1 from brand where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      update brand set
+        code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
+        is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/brands");
+  redirectWithToast("/items/brands", toastMsg);
+}
+
+/** Deactivates a brand without touching any item that already uses it. */
+export async function deactivateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a brand" };
+
+    await sql`update brand set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/brands");
+  redirectWithToast("/items/brands", "Brand deactivated");
+}
+
+/** Puts back what deactivateBrand retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a brand" };
+
+    await sql`update brand set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/brands");
+  redirectWithToast("/items/brands", "Brand reactivated");
+}
+
+/** Hard delete only succeeds for a brand no item has ever used. Deactivating is the way to retire one. */
+export async function deleteBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a brand" };
+
+    await sql`delete from brand where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This brand is used by one or more items — deactivate it instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/brands");
+  redirectWithToast("/items/brands", "Brand deleted");
+}
+
+export type NewBrandInput = { name: string; nameMy?: string };
+export type PickerBrand = { id: string; code: string; name: string };
+
+/** Quick-add from inside the item form, same shape as createItemInline. */
+export async function createBrandInline(
+  input: NewBrandInput
+): Promise<{ ok: true; brand: PickerBrand } | { ok: false; error: string }> {
+  try {
+    const co = await companyId();
+
+    const name = input.name.trim();
+    if (!name) return { ok: false, error: "Name is required" };
+
+    // Auto-code from the name — BRAKE PADS -> BRAKEPADS, deduped with a
+    // numeric suffix if that code is already taken.
+    const base = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "BRAND";
+    let code = base;
+    let n = 1;
+    while ((await sql`select 1 from brand where company_id = ${co} and code = ${code}`).length) {
+      code = `${base}${++n}`;
+    }
+
+    const [brand] = await sql`
+      insert into brand (company_id, code, name, name_my)
+      values (${co}, ${code}, ${name}, ${input.nameMy?.trim() || null})
+      returning id, code, name`;
+
+    revalidatePath("/items/brands");
+    return { ok: true, brand: { id: brand.id, code: brand.code, name: brand.name } };
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: false, error: "That brand code was just taken — try again" };
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// --------------------------------------------------------------- units --
+
+/**
+ * Units of measure — Piece, Box, Carton, Kilogram.
+ *
+ * Small, but not cosmetic: a unit is what every quantity of an item is
+ * counted in, so changing one after stock exists changes what the numbers
+ * mean without changing the numbers. That is why an item's base unit is set
+ * once when the item is created and the sheet importer refuses to guess
+ * "Btl" into "Bottle" — and why a unit in use is retired rather than deleted.
+ */
+export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`select 1 from uom where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      insert into uom (company_id, code, name, name_my)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/units");
+  revalidatePath("/items/new");
+  redirectWithToast("/items/units", "Unit added");
+}
+
+export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+
+    if (!id) return { error: "Choose a unit" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`
+      select 1 from uom where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      update uom set
+        code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
+        is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/units");
+  redirectWithToast("/items/units", "Unit updated");
+}
+
+/**
+ * Retires a unit without touching a single item that already counts in it.
+ *
+ * Deactivating takes it off the pickers and out of what an import will
+ * accept; everything historic keeps reading exactly as it did, which is the
+ * whole reason this is not a delete.
+ */
+export async function deactivateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a unit" };
+
+    await sql`update uom set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/units");
+  redirectWithToast("/items/units", "Unit deactivated");
+}
+
+/** Puts back what deactivateUnit retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a unit" };
+
+    await sql`update uom set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/units");
+  redirectWithToast("/items/units", "Unit reactivated");
+}
+
+/** Hard delete only succeeds for a unit nothing has ever been counted in.
+ *  Deactivating is the way to retire one that has. */
+export async function deleteUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a unit" };
+
+    await sql`delete from uom where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return {
+        error: "This unit is in use by an item, a price or a document line — " +
+               "deactivate it instead of deleting",
+      };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/units");
+  redirectWithToast("/items/units", "Unit deleted");
+}
+
+// ------------------------------------------------- inline item creation --
+
+export type NewItemInput = {
+  name: string;
+  nameMy?: string;
+  groupId: string;
+  serial?: string;
+  uomId: string;
+  price?: number;
+  isStocked: boolean;
+};
+
+export type PickerItem = {
+  id: string; code: string; name: string; is_stocked: boolean;
+  item_group_id: string; on_hand: string; sale_price: string; next_cost: string;
+  uom_code: string;
+  base_uom_id?: string;
+  /** The packs this item is bought and sold in. Empty for an item handled
+   *  only in its own unit, which is most of a catalogue. */
+  packs?: { uomId: string; code: string; factor: string | number }[];
+  /** Whether goods of this item arrive in identifiable lots, and whether
+   *  those lots have a shelf life. A receipt form asks for what these say. */
+  tracks_batch?: boolean; tracks_expiry?: boolean;
+  /** Which size, which colour — `[{a: "Colour", o: "Red"}]`. Null for an
+   *  ordinary item, which is most of a catalogue. Typed loosely because it
+   *  arrives as json; asVariant() in variant-tags is what checks it. */
+  variant?: unknown;
+  /** What a scanner reads off the packet. */
+  barcode?: string | null;
+};
+
+/**
+ * Creates an item from inside a voucher and hands it straight back, so the
+ * line it was needed for can select it without leaving the page. Returns a
+ * result rather than redirecting — the caller is mid-entry.
+ */
+export async function createItemInline(
+  input: NewItemInput
+): Promise<{ ok: true; item: PickerItem } | { ok: false; error: string }> {
+  let fullCode: string | null = null;
+
+  try {
+    const co = await companyId();
+
+    const name = input.name.trim();
+    if (!name) return { ok: false, error: "Name is required" };
+    if (!input.groupId) return { ok: false, error: "Choose a category" };
+    if (!input.uomId) return { ok: false, error: "Choose a unit" };
+    // Read here rather than returned from the insert, because the picker
+    // quotes quantities in it and only has the code to show.
+    const [uomRow] = await sql`select code from uom where id = ${input.uomId}`;
+    const uomCode: string | null = uomRow?.code ?? null;
+
+    const [grp] = await sql`
+      select code from item_group where id = ${input.groupId} and company_id = ${co}`;
+    if (!grp) return { ok: false, error: "That category no longer exists" };
+
+    // Auto-number within the category unless the user typed a serial. Only
+    // numeric serials count toward the next value; a hand-typed "A1" is left
+    // alone rather than breaking the sequence.
+    let serial = (input.serial ?? "").trim().toUpperCase();
+    if (!serial) {
+      const [next] = await sql`
+        select coalesce(max(serial::int), 0) + 1 as n
+          from item
+         where company_id = ${co} and item_group_id = ${input.groupId}
+           and serial ~ '^[0-9]+$'`;
+      serial = String(next.n).padStart(3, "0");
+    }
+
+    fullCode = `${grp.code}${serial}`;
+    const dup = await sql`
+      select name from item where company_id = ${co} and code = ${fullCode}`;
+    if (dup.length) {
+      return { ok: false, error: `Code ${fullCode} is already used by ${dup[0].name}` };
+    }
+
+    const created = await sql.begin(async (tx) => {
+      const [item] = await tx`
+        insert into item
+          (company_id, item_group_id, serial, code, name, name_my, base_uom_id, is_stocked)
+        values
+          (${co}, ${input.groupId}, ${serial}, ${fullCode}, ${name},
+           ${input.nameMy?.trim() || null}, ${input.uomId}, ${input.isStocked})
+        returning id, code, name, is_stocked, item_group_id, base_uom_id`;
+
+      if (input.price && input.price > 0) {
+        const [level] = await tx`
+          select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+        if (level) {
+          await tx`
+            insert into item_price
+              (company_id, item_id, price_level_id, uom_id, currency, price)
+            values (${co}, ${item.id}, ${level.id}, ${input.uomId}, 'MMK', ${input.price})`;
+        }
+      }
+      return item;
+    });
+
+    // The row is already committed. Cache revalidation is a hint, and letting
+    // it throw here would report failure for an item that exists — the user
+    // would retry and hit "code already used" for their own creation.
+    try {
+      revalidatePath("/items");
+      revalidatePath("/items/categories");
+    } catch {
+      // Outside a request context (scripts, tests). Nothing to revalidate.
+    }
+
+    return {
+      ok: true,
+      item: {
+        id: created.id,
+        code: created.code,
+        name: created.name,
+        is_stocked: created.is_stocked,
+        item_group_id: created.item_group_id,
+        on_hand: "0",
+        sale_price: String(input.price ?? 0),
+        next_cost: "0",
+        // The unit it was just created in — the picker needs it to quote a
+        // quantity back, and this item is not in the list that was loaded
+        // with the page.
+        uom_code: uomCode ?? "",
+      },
+    };
+  } catch (e) {
+    if (isUniqueViolation(e)) return { ok: false, error: `Code ${fullCode} is already used` };
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// --------------------------------------------------------------- invoices --
+
+function parseLines(fd: FormData): InvoiceLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the invoice lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the invoice lines");
+
+  const lines = parsed
+    .map((l: any) => ({
+      itemId: String(l.itemId ?? ""),
+      qty: Number(l.qty),
+      unitPrice: Number(l.unitPrice),
+      discountPct: Number(l.discountPct) || 0,
+      // Which commercial tax this line carries. A blank means the form did
+      // not ask, and the engine falls back to the company's zero-rate code —
+      // which is what every document posted before tax existed carries.
+      taxCodeId: l.taxCodeId || null,
+      focReasonId: l.focReasonId || null,
+      sourceLineId: l.sourceLineId || null,
+      // The lot, where a bill receives the goods itself. Meaningless on the
+      // sales side and on a bill that receives nothing, and the engine
+      // ignores it there; dropping it here instead is what stopped a
+      // batch-tracked item being buyable through the purchase voucher.
+      batchNo: l.batchNo || null,
+      expiryDate: l.expiryDate || null,
+      // Which pool the goods came out of, and whose. A parser that drops
+      // these turns a deliberate choice on the form into owned stock leaving
+      // the building — silently, because the entry still balances.
+      source: l.source === "CONSIGNMENT" ? "CONSIGNMENT" as const : "OWNED" as const,
+      consignorId: l.consignorId || null,
+    }))
+    .filter((l) => l.itemId && l.qty > 0);
+
+  // Blank rows are dropped above; a negative price is a mistake, not a
+  // blank, so it is named rather than passed down to the posting engine.
+  const bad = lines.findIndex((l) => l.unitPrice !== undefined && Number(l.unitPrice) < 0);
+  if (bad >= 0) throw new Error(`Line ${bad + 1}: price cannot be negative`);
+  return lines;
+}
+
+export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Sales invoice posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a customer" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const paymentType: "CASH" | "CREDIT" = str(fd, "payment_type") === "CASH" ? "CASH" : "CREDIT";
+    const dueDate = str(fd, "due_date") || null;
+    const cashIn = num(fd, "cash_in");
+    const toDeliver = fd.get("to_deliver") !== null;
+    const deliveryId = str(fd, "delivery_id") || null;
+    const deliveryFee = num(fd, "delivery_fee");
+    // Counted toward what the customer owes, so an invoice that is only a
+    // carriage charge still gets the due date it needs to age.
+    const roughTotal = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0) + deliveryFee;
+
+    // An invoice left with no due date can never be flagged overdue no
+    // matter how large or how old its balance gets — v_open_item buckets a
+    // null due_date as permanently CURRENT. Going on the actual remaining
+    // balance rather than the payment-type label, since "Cash" doesn't
+    // guarantee cash_in covers the total — the field stays freely editable.
+    if (cashIn < roughTotal && !dueDate) return { error: "This invoice leaves a balance owing — add a due date" };
+
+    const input = {
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      dueDate,
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      salesmanId: str(fd, "salesman_id") || null,
+      paymentType,
+      // Prices as typed already contain the tax. The counter price in a shop
+      // usually does; a wholesale quote usually does not.
+      priceIncludesTax: fd.get("price_includes_tax") !== null,
+      // Which column of the price list filled the lines, kept as a record of
+      // what was applied rather than as a control over what was charged.
+      priceLevelId: str(fd, "price_level_id") || null,
+      toDeliver,
+      cashIn,
+      cashAccountId: str(fd, "cash_account_id") || null,
+      deliveryFee,
+      // Present only when the confirmation dialog was answered. The engine
+      // refuses to issue stock it has no record of without it, so a form
+      // that never asked cannot post negative stock by omission.
+      allowNegativeStock: fd.get("allow_negative_stock") !== null,
+      negativeStockReason: str(fd, "negative_stock_reason") || null,
+      // Selling past what a customer may owe: a decision somebody makes and
+      // signs, never a default. The engine requires the reason whenever the
+      // limit is actually breached.
+      allowOverCreditLimit: fd.get("allow_over_credit_limit") !== null,
+      creditOverrideReason: str(fd, "credit_override_reason") || null,
+      lines,
+    };
+
+    // Three ways this can go, mirroring purchases: matched to a delivery
+    // that already moved the stock (nothing should move it again); deferred
+    // (revenue only, a real delivery fulfils it later); or "take now"
+    // (delivery and invoice post together). Matching and deferring are
+    // mutually exclusive — the form only shows one at a time.
+    const result = await postOnce(co, attemptKey(fd), (tx) =>
+      deliveryId
+        ? postSalesInvoice({
+            ...input, deliveryId,
+            // Blank means "whatever the delivery charged" — the field is only
+            // shown when composing a new delivery, so leaving it empty here
+            // must not wipe a fee entered when the goods went out.
+            deliveryFee: fd.get("delivery_fee") === null ? undefined : deliveryFee,
+          }, tx)
+        : toDeliver
+          ? postSalesInvoice(input, tx)
+          : postSaleWithDelivery(input, tx));
+
+    docId = result.id;
+    toastMsg = `Invoice ${result.docNo} posted`;
+
+    // The draft has become an invoice, so it stops being a draft. Outside
+    // the posting transaction on purpose: a delete that fails must not undo
+    // a posting that succeeded. The worst case is a draft left behind, which
+    // the list lets somebody throw away.
+    const fromDraft = str(fd, "draft_id");
+    if (fromDraft) await deleteDocumentDraft(co, fromDraft);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/documents");
+  revalidatePath("/receivables");
+  revalidatePath("/ledger");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Purchase invoice posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const goodsReceiptId = str(fd, "goods_receipt_id") || null;
+    const cashOut = num(fd, "cash_out");
+    const dueDate = str(fd, "due_date") || null;
+    const roughTotal = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+
+    // Same reasoning as createSalesInvoice: a null due_date reads as
+    // permanently CURRENT in v_partner_balance/v_open_item, so an invoice
+    // left with a balance owing and no due date could never surface as
+    // overdue on the Payables page no matter how old it got.
+    if (cashOut < roughTotal && !dueDate) return { error: "This invoice leaves a balance owing — add a due date" };
+
+    const input = {
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      dueDate,
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      cashOut,
+      cashAccountId: str(fd, "cash_account_id") || null,
+      // Supplier invoices from Myanmar wholesalers are usually quoted with
+      // the tax already inside the price.
+      priceIncludesTax: fd.get("price_includes_tax") !== null,
+      lines,
+    };
+
+    // Three ways this can go: matched to a receipt that already exists (the
+    // goods are already in the warehouse, so nothing should create a second
+    // one); received now (composes a fresh receipt in the same breath); or
+    // deferred (only the GR/IR-clearing side posts, a receipt clears it
+    // later). "Received now" and "match an existing receipt" are mutually
+    // exclusive — the form only shows one at a time.
+    const receivedNow = !goodsReceiptId && fd.get("received_now") !== null;
+    const result = await postOnce(co, attemptKey(fd), (tx) =>
+      goodsReceiptId
+        ? postPurchaseInvoice({ ...input, goodsReceiptId }, tx)
+        : receivedNow
+          ? postPurchaseWithReceipt(input, tx)
+          : postPurchaseInvoice(input, tx));
+
+    docId = result.id;
+    toastMsg = `Invoice ${result.docNo} posted`;
+
+    // The draft has become an invoice, so it stops being a draft. Outside
+    // the posting transaction on purpose: a delete that fails must not undo
+    // a posting that succeeded. The worst case is a draft left behind, which
+    // the list lets somebody throw away.
+    const fromDraft = str(fd, "draft_id");
+    if (fromDraft) await deleteDocumentDraft(co, fromDraft);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/documents");
+  revalidatePath("/payables");
+  revalidatePath("/ledger");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+// -------------------------------------------------------------- returns --
+
+export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Sales return posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a customer" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) => postSalesReturn({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      receivedAt: dateTime(fd, "doc_date", "received_time"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      sourceDocumentId: str(fd, "source_document_id") || null,
+      lines,
+    }, tx));
+
+    docId = result.id;
+    toastMsg = `Return ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/documents");
+  revalidatePath("/receivables");
+  revalidatePath("/ledger");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Purchase return posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseReturn({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      sourceDocumentId: str(fd, "source_document_id") || null,
+      lines,
+    }, tx));
+
+    docId = result.id;
+    toastMsg = `Return ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/documents");
+  revalidatePath("/payables");
+  revalidatePath("/ledger");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+// -------------------------------------------------- orders & fulfilment --
+
+function parseOrderLines(fd: FormData): OrderLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the order lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the order lines");
+
+  const lines = parsed
+    .map((l: any) => ({
+      itemId: String(l.itemId ?? ""),
+      qty: Number(l.qty),
+      unitPrice: l.unitPrice ? Number(l.unitPrice) : undefined,
+      // Empty means the item's own unit; the engine resolves the factor and
+      // refuses a unit the item has no pack for.
+      uomId: l.uomId ? String(l.uomId) : null,
+    }))
+    .filter((l) => l.itemId && l.qty > 0);
+
+  // Blank rows are dropped above; a negative price is a mistake, not a
+  // blank, so it is named rather than passed down to the posting engine.
+  const bad = lines.findIndex((l) => l.unitPrice !== undefined && Number(l.unitPrice) < 0);
+  if (bad >= 0) throw new Error(`Line ${bad + 1}: price cannot be negative`);
+  return lines;
+}
+
+function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the lines");
+
+  const lines = parsed
+    .map((l: any) => ({
+      itemId: String(l.itemId ?? ""),
+      qty: Number(l.qty),
+      unitCost: l.unitCost ? Number(l.unitCost) : undefined,
+      // The lot these goods arrived under. The engine requires it for an
+      // item that tracks batches and ignores it for one that does not.
+      batchNo: l.batchNo || null,
+      expiryDate: l.expiryDate || null,
+      // The engine has always accepted this; the parser dropped it, so a
+      // delivery raised anywhere but the sales voucher could not mark units
+      // free and their cost went to cost of sales instead of the expense the
+      // reason names.
+      focReasonId: l.focReasonId || null,
+      /* Carried only so the check below can see it. A line given away
+         without a reason has nowhere to put its cost: the engine would
+         charge it to cost of sales, which says the goods were sold. */
+      free: !!l.free,
+      sourceLineId: l.sourceLineId || null,
+      // Same again, and it matters most here: the delivery is the document
+      // that actually takes the goods off the shelf.
+      source: l.source === "CONSIGNMENT" ? "CONSIGNMENT" as const : "OWNED" as const,
+      consignorId: l.consignorId || null,
+    }))
+    .filter((l) => l.itemId && l.qty > 0);
+
+  // Blank rows are dropped above; a negative cost is a mistake, not a
+  // blank, so it is named rather than passed down to the posting engine.
+  const bad = lines.findIndex((l) => l.unitCost !== undefined && Number(l.unitCost) < 0);
+  if (bad >= 0) throw new Error(`Line ${bad + 1}: cost cannot be negative`);
+
+  /* A giveaway must say why it was given. The reason decides which expense
+     carries the cost, and without one the engine charges cost of sales —
+     which records the goods as sold. The screen asks for it; this is here
+     so no other caller can skip the question. */
+  if (lines.some((l) => l.free && !l.focReasonId)) {
+    throw new Error(
+      "A free line needs a reason — it decides which expense carries its cost."
+    );
+  }
+  return lines;
+}
+
+export async function createSalesOrder(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Sales order saved";
+
+  try {
+    const co = await companyId();
+    const lines = parseOrderLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a customer" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) => postSalesOrder({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      dueDate: str(fd, "due_date") || null,
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      lines,
+    }, tx));
+
+    docId = result.id;
+    toastMsg = `Order ${result.docNo} saved`;
+
+    // The draft has become an order, so it stops being a draft.
+    const fromDraft = str(fd, "draft_id");
+    if (fromDraft) await deleteDocumentDraft(co, fromDraft);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/sales/orders");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Purchase order saved";
+
+  try {
+    const co = await companyId();
+    const lines = parseOrderLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseOrder({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      dueDate: str(fd, "due_date") || null,
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      lines,
+    }, tx));
+
+    docId = result.id;
+    toastMsg = `Order ${result.docNo} saved`;
+
+    // The draft has become an order, so it stops being a draft.
+    const fromDraft = str(fd, "draft_id");
+    if (fromDraft) await deleteDocumentDraft(co, fromDraft);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/purchases/orders");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function createDelivery(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Delivery posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseFulfillmentLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a customer" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const delivery = await postOnce(co, attemptKey(fd), (tx) => postDelivery({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      sourceDocumentId: str(fd, "source_document_id") || null,
+      // Recorded here, billed by the invoice that follows this delivery.
+      deliveryFee: num(fd, "delivery_fee"),
+      // Present only when the confirmation dialog was answered — the same
+      // rule the sales voucher follows, so the two routes to moving stock
+      // cannot disagree about whether someone had to be asked.
+      allowNegativeStock: fd.get("allow_negative_stock") !== null,
+      negativeStockReason: str(fd, "negative_stock_reason") || null,
+      // Selling past what a customer may owe: a decision somebody makes and
+      // signs, never a default. The engine requires the reason whenever the
+      // limit is actually breached.
+      allowOverCreditLimit: fd.get("allow_over_credit_limit") !== null,
+      creditOverrideReason: str(fd, "credit_override_reason") || null,
+      lines,
+    }, tx));
+
+    docId = delivery.id;
+    toastMsg = `Delivery ${delivery.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+/**
+ * One click from the "pending deliveries" list: delivers exactly what a
+ * to_deliver invoice already billed, no re-keying. Service lines on that
+ * invoice have nothing to deliver and are skipped.
+ */
+export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Delivery posted";
+
+  try {
+    const co = await companyId();
+    const invoiceId = str(fd, "invoice_id");
+    if (!invoiceId) return { error: "Choose an invoice" };
+
+    // What is still to go, not what was invoiced. Shipping the invoiced
+    // quantity again after a partial delivery sends the whole order twice —
+    // and the second one posts, because a delivery is free to move stock the
+    // invoice has already been billed for.
+    const pending = await getPendingDeliveryLines(co);
+    const invoice = pending.find((d: any) => d.id === invoiceId) as any;
+    if (!invoice) {
+      const [exists] = await sql`
+        select id from document
+         where id = ${invoiceId} and company_id = ${co} and doc_type = 'SALES_INVOICE'`;
+      return { error: exists
+        ? "Everything on this invoice has been delivered"
+        : "That invoice no longer exists" };
+    }
+
+    const result = await postOnce(co, attemptKey(fd), (tx) => postDelivery({
+      companyId: co,
+      partnerId: invoice.partner_id,
+      locationId: invoice.location_id,
+      docDate: new Date().toISOString().slice(0, 10),
+      reference: `Against invoice`,
+      sourceDocumentId: invoice.id,
+      // Each line says which invoice line it answers, so the next delivery
+      // reads what is left rather than inferring it.
+      lines: invoice.lines.map((l: any) => ({
+        itemId: l.itemId, qty: l.qty, focReasonId: l.focReasonId,
+        sourceLineId: l.lineId,
+      })),
+    }, tx));
+
+    docId = result.id;
+    toastMsg = `Delivery ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/sales/deliver");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Goods receipt posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseFulfillmentLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) => postGoodsReceipt({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      receivedAt: dateTime(fd, "doc_date", "received_time"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      sourceDocumentId: str(fd, "source_document_id") || null,
+      lines,
+    }, tx));
+
+    docId = result.id;
+    toastMsg = `Goods receipt ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+// ------------------------------------------------------------- settlement --
+
+function parseAllocations(fd: FormData): Allocation[] {
+  const raw = String(fd.get("allocations") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the allocations");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the allocations");
+
+  return parsed
+    .map((a: any) => ({ invoiceId: String(a.invoiceId ?? ""), amount: Number(a.amount) }))
+    .filter((a) => a.invoiceId && a.amount > 0);
+}
+
+async function settle(
+  fd: FormData,
+  kind: "pay" | "receive"
+): Promise<{ error: string } | { id: string; docNo: string }> {
+  const co = await companyId();
+  const allocations = parseAllocations(fd);
+
+  // Money taken with no invoice to put it against. Kept apart from the
+  // allocations rather than mixed with them: a receipt is either settling
+  // bills or sitting on account, and the engine refuses anything that tries
+  // to be both.
+  const advance = str(fd, "purpose") === "advance" ? num(fd, "advance") : 0;
+
+  if (advance <= 0 && allocations.length === 0) {
+    return { error: "Enter an amount against at least one invoice, or record it as an advance" };
+  }
+  if (advance > 0 && !str(fd, "location_id")) {
+    return {
+      error: "Choose which branch is taking this money — an advance has no invoice to follow",
+    };
+  }
+  if (!str(fd, "partner_id")) {
+    return { error: kind === "pay" ? "Choose a supplier" : "Choose a customer" };
+  }
+  if (!str(fd, "cash_account_id")) {
+    return { error: "Choose which cash or bank account to use" };
+  }
+
+  const input = {
+    companyId: co,
+    partnerId: str(fd, "partner_id"),
+    docDate: str(fd, "doc_date"),
+    cashAccountId: str(fd, "cash_account_id"),
+    reference: str(fd, "reference") || null,
+    memo: str(fd, "memo") || null,
+    // Blank means "follow the invoices being settled", which postSettlement
+    // resolves. Only worth setting when a payment spans branches, or when the
+    // cash leaves a different branch from the one that raised the bill.
+    locationId: str(fd, "location_id") || null,
+    allocations: advance > 0 ? [] : allocations,
+    advance,
+  };
+
+  const result = await postOnce(co, attemptKey(fd), (tx) =>
+    kind === "pay" ? postSupplierPayment(input, tx) : postCustomerReceipt(input, tx));
+
+  return { id: result.id, docNo: result.docNo };
+}
+
+export async function createSupplierPayment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Payment posted";
+  try {
+    const r = await settle(fd, "pay");
+    if ("error" in r) return { error: r.error };
+    docId = r.id;
+    toastMsg = `Payment ${r.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/payables");
+  revalidatePath("/documents");
+  revalidatePath("/ledger");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function createCustomerReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Receipt posted";
+  try {
+    const r = await settle(fd, "receive");
+    if ("error" in r) return { error: r.error };
+    docId = r.id;
+    toastMsg = `Receipt ${r.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/receivables");
+  revalidatePath("/documents");
+  revalidatePath("/ledger");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+/** Open invoices for one partner, for the settlement screens. */
+export async function getSettlementData(kind: "pay" | "receive") {
+  const co = await companyId();
+  const docType = kind === "pay" ? "PURCHASE_INVOICE" : "SALES_INVOICE";
+  const role = kind === "pay" ? "is_supplier" : "is_customer";
+
+  const [partners, invoices, cashAccounts] = await Promise.all([
+    kind === "pay"
+      ? sql`select id, code, name from business_partner
+             where company_id = ${co} and is_supplier and is_active order by code`
+      : sql`select id, code, name from business_partner
+             where company_id = ${co} and is_customer and is_active order by code`,
+    sql`select document_id, doc_no, partner_id, posting_date, due_date,
+                gross_total, paid, outstanding, payment_status, days_overdue
+           from v_invoice_status
+          where company_id = ${co} and doc_type = ${docType} and outstanding <> 0
+          order by due_date nulls last, posting_date`,
+    sql`select id, code, name from account
+         where company_id = ${co} and is_cash_account and is_active order by code`,
+  ]);
+
+  return { partners, invoices, cashAccounts, role };
+}
+
+// ------------------------------------------------------ finance vouchers --
+
+function parseVoucherLines(fd: FormData): VoucherLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the voucher lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the voucher lines");
+
+  return parsed
+    .map((l: any) => ({
+      accountId: String(l.accountId ?? ""),
+      amount: Number(l.amount),
+      memo: l.memo ? String(l.memo) : null,
+    }))
+    .filter((l) => l.accountId && Number.isFinite(l.amount) && l.amount !== 0);
+}
+
+/**
+ * Which branch a manual posting happened at.
+ *
+ * Money moves somewhere. A ledger line with no branch is real activity
+ * belonging to none of them: it lands in the company total and in no branch
+ * view, so adding the branches up never reaches the company figure and the
+ * reports look broken rather than incomplete. The forms ask; this is what
+ * stops it arriving without one anyway, since a required attribute is a
+ * client-side courtesy and not a rule.
+ *
+ * A company with exactly one branch is never asked a question with one
+ * answer — it is filled in here instead.
+ *
+ * Returns the branch id, or the error result the caller should return.
+ */
+async function resolveBranch(
+  co: string,
+  given: string,
+  msg: { none: string; choose: string }
+): Promise<string | { error: string }> {
+  if (given) return given;
+  const branches = await sql`
+    select id from location
+     where company_id = ${co} and parent_id is null and is_active
+     order by code`;
+  if (branches.length === 0) return { error: msg.none };
+  if (branches.length > 1) return { error: msg.choose };
+  return branches[0].id as string;
+}
+
+async function postVoucherFrom(
+  fd: FormData,
+  kind: "cash" | "bank" | "journal"
+): Promise<{ error: string } | { id: string; docNo: string }> {
+  const co = await companyId();
+  const lines = parseVoucherLines(fd);
+
+  if (lines.length < 2) {
+    return { error: "A voucher needs at least two lines that balance" };
+  }
+
+  const locationId = await resolveBranch(co, str(fd, "location_id"), {
+    none: "Set up a branch before posting a voucher",
+    choose: "Choose the branch this voucher happened at",
+  });
+  if (typeof locationId !== "string") return locationId;
+
+  const input = {
+    companyId: co,
+    docDate: str(fd, "doc_date"),
+    memo: str(fd, "memo") || null,
+    reference: str(fd, "reference") || null,
+    locationId,
+    lines,
+  };
+
+  const r =
+    kind === "cash" ? await postCashVoucher(input)
+      : kind === "bank" ? await postBankVoucher(input)
+      : await postJournalVoucher(input);
+
+  return { id: r.id, docNo: r.docNo };
+}
+
+/**
+ * Link goods that have already arrived to the order they answered.
+ *
+ * The repair for a receipt that named an invoice, or named nothing: the order
+ * behind it stays at zero received and goes overdue with the stock on the
+ * shelf. This changes what the order says it is owed, and nothing else — no
+ * stock moves, no journal is written, no invoice or payment is touched. The
+ * engine checks every allocation against what the order still expects and
+ * what the receipt has not already given away.
+ */
+export async function linkReceiptToOrder(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const raw = String(fd.get("allocations") ?? "[]");
+    let parsed: { fulfilmentLineId: string; orderLineId: string; qty: number }[];
+    try { parsed = JSON.parse(raw); } catch { return { error: "Could not read the allocation" }; }
+
+    const lines = (Array.isArray(parsed) ? parsed : [])
+      .map((l) => ({
+        fulfilmentLineId: String(l.fulfilmentLineId ?? ""),
+        orderLineId: String(l.orderLineId ?? ""),
+        qty: Number(l.qty),
+      }))
+      .filter((l) => l.fulfilmentLineId && l.orderLineId && l.qty > 0);
+    if (lines.length === 0) return { error: "Choose an order line and a quantity" };
+
+    await linkFulfilmentToOrder({
+      companyId: co,
+      lines,
+      reason: str(fd, "reason") || null,
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents", "layout");
+  revalidatePath("/purchases/orders");
+  revalidatePath("/sales/orders");
+  revalidatePath("/purchases/receive");
+  revalidatePath("/");
+  return { ok: true } as ActionResult;
+}
+
+/** The remainder is not coming — a different statement from "it arrived". */
+export async function closeOrderAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const documentId = str(fd, "document_id");
+    const reason = str(fd, "reason");
+    if (!documentId) return { error: "No order named" };
+    if (!reason.trim()) return { error: "Say why the rest is not expected" };
+    // What the panel had on screen when the button was pressed. The engine
+    // checks its own reading against these and refuses if the order moved in
+    // between, so a confirmation never promises one thing and records another.
+    const saw = fd.get("saw_outstanding") === null ? null : {
+      fulfilled: num(fd, "saw_fulfilled"),
+      outstanding: num(fd, "saw_outstanding"),
+    };
+    if (fd.get("reopen") !== null) {
+      await reopenOrder({ companyId: co, documentId, reason, saw });
+    } else {
+      await closeOrderRemaining({ companyId: co, documentId, reason, saw });
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents", "layout");
+  revalidatePath("/purchases/orders");
+  revalidatePath("/sales/orders");
+  revalidatePath("/");
+  return { ok: true } as ActionResult;
+}
+
+export type PreviewResult =
+  | { error: string }
+  | { ok: true; plan: AmendmentPlan; fingerprint: string };
+
+/**
+ * What the confirmation returns when the world moved under it: the plan as it
+ * is now, for the reader to look at before deciding again.
+ */
+export type CorrectionResult =
+  | ActionResult
+  | { stale: true; plan: AmendmentPlan; fingerprint: string };
+
+/**
+ * The corrected order, assembled once.
+ *
+ * Built here rather than twice, because the preview and the confirmation have
+ * to be posting the same thing. Two builders drift, and a preview that shows a
+ * figure the confirmation does not post is worse than no preview.
+ */
+async function orderCorrection(co: string, fd: FormData) {
+  const documentId = str(fd, "document_id");
+  const [order] = await sql`
+    select partner_id, location_id,
+           to_char(doc_date, 'YYYY-MM-DD') as doc_date,
+           to_char(due_date, 'YYYY-MM-DD') as due_date,
+           memo, reference
+      from document where id = ${documentId} and company_id = ${co}`;
+  if (!order) throw new Error("That order no longer exists");
+
+  const edits = correctionLines(fd);
+  if (edits.length === 0) throw new Error("An order needs at least one line");
+
+  return {
+    documentId,
+    order: {
+      companyId: co,
+      partnerId: order.partner_id as string,
+      locationId: order.location_id as string,
+      docDate: order.doc_date as string,
+      dueDate: (order.due_date as string) ?? null,
+      memo: order.memo as string | null,
+      reference: order.reference as string | null,
+      lines: await correctedLines(documentId, edits),
+    },
+  };
+}
+
+/** The corrected invoice, assembled once — same reason as above. */
+async function invoiceCorrection(co: string, fd: FormData) {
+  const documentId = str(fd, "document_id");
+  const [inv] = await sql`
+    select doc_type, partner_id, location_id, source_document_id, to_deliver,
+           salesman_id, payment_type, delivery_fee,
+           to_char(doc_date, 'YYYY-MM-DD') as doc_date,
+           to_char(due_date, 'YYYY-MM-DD') as due_date,
+           memo, reference
+      from document where id = ${documentId} and company_id = ${co}`;
+  if (!inv) throw new Error("That invoice no longer exists");
+
+  const edits = correctionLines(fd);
+  if (edits.length === 0) throw new Error("An invoice needs at least one line");
+
+  // Whatever it was raised from, it stays raised from — the correction is
+  // about price, not about which goods it bills. The source keeps GR/IR
+  // clearing against the same receipt or delivery it always did.
+  const [src] = inv.source_document_id
+    ? await sql`select doc_type from document where id = ${inv.source_document_id}`
+    : [null];
+
+  return {
+    documentId,
+    invoice: {
+      companyId: co,
+      partnerId: inv.partner_id as string,
+      locationId: inv.location_id as string,
+      docDate: inv.doc_date as string,
+      dueDate: (inv.due_date as string) ?? null,
+      memo: inv.memo as string | null,
+      reference: inv.reference as string | null,
+      toDeliver: !!inv.to_deliver,
+      deliveryId: src?.doc_type === "DELIVERY" ? (inv.source_document_id as string) : null,
+      goodsReceiptId:
+        src?.doc_type === "GOODS_RECEIPT" ? (inv.source_document_id as string) : null,
+      salesmanId: (inv.salesman_id as string) ?? null,
+      paymentType: (inv.payment_type as "CASH" | "CREDIT") ?? undefined,
+      // The charge for carrying the goods is not revenue on them and is not
+      // what is being corrected. Carried across unchanged, or a correction
+      // would hand the customer their delivery back for nothing.
+      deliveryFee: inv.delivery_fee === null || inv.delivery_fee === undefined
+        ? undefined
+        : Number(inv.delivery_fee),
+      lines: await correctedLines(documentId, edits),
+    },
+  };
+}
+
+/**
+ * What correcting this order would change — read-only, for the screen that
+ * asks before doing it.
+ *
+ * Returned rather than rendered so the confirmation can show the real
+ * consequence: the order's own total before and after, which invoices inherit
+ * from it, what each of those would become, and which of them cannot be
+ * carried because something has settled against it.
+ */
+export async function previewOrderCorrection(
+  _prev: unknown, fd: FormData,
+): Promise<PreviewResult> {
+  try {
+    const co = await companyId();
+    const { documentId, order } = await orderCorrection(co, fd);
+    const plan = await planOrderAmendment({
+      companyId: co, documentId, order, reason: str(fd, "reason"),
+    });
+    return {
+      ok: true,
+      plan,
+      fingerprint: amendmentFingerprint(plan),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * What the document already said, with the edit laid over it.
+ *
+ * A correction changes a quantity or a price. It does not change the discount
+ * that was agreed, the reason goods were given free, which receipt line a bill
+ * settles, or anything else the line carries — but rebuilding a line from an
+ * item and a price silently drops all of it, so a corrected invoice quietly
+ * lost a 10% discount and billed the customer more than the original did.
+ * That is the opposite of what correcting is for.
+ *
+ * So the stored line is the starting point and the edit is applied to it. A
+ * line the form did not send is one the user removed, and is dropped; a line
+ * it sent that no longer exists is ignored rather than invented.
+ */
+async function correctedLines(
+  documentId: string,
+  edits: { lineId: string | null; itemId: string; qty: number; unitPrice: number }[],
+) {
+  const stored = await sql`
+    select id, item_id, base_qty, unit_price, discount_pct, foc_reason_id,
+           source_line_id, is_consignment, batch_no, expiry_date
+      from document_line where document_id = ${documentId} order by line_no`;
+
+  // Consigned goods are somebody else's until they sell, and which consignor's
+  // is recorded in the consumption rather than on the line. Re-posting the
+  // line without it would settle the sale against owned stock and quietly
+  // change whose goods were sold, so this refuses rather than guesses.
+  if ((stored as Record<string, unknown>[]).some((l) => l.is_consignment)) {
+    // No route is offered because none is correct yet. Voiding is not blocked
+    // — a consigned line writes no stock movement, so the void guards never
+    // fire — but nothing releases consignment_lot_consumption on the way out,
+    // so the consignor's goods would stay drawn down against a document that
+    // no longer exists. Pointing somebody at that would be worse than saying
+    // it cannot be done.
+    throw new Error(
+      "This document sells consigned goods, which cannot be corrected yet: the " +
+      "correction would have to restate whose goods were sold. Voiding it will " +
+      "not help either — the consignor's stock stays drawn down. Leave it and " +
+      "record the difference separately until consignment corrections are built."
+    );
+  }
+
+  const byId = new Map(
+    (stored as Record<string, unknown>[]).map((l) => [String(l.id), l]));
+
+  return edits
+    .map((e) => {
+      const was = e.lineId ? byId.get(e.lineId) : undefined;
+      return {
+        itemId: e.itemId,
+        qty: e.qty,
+        unitPrice: e.unitPrice,
+        discountPct: was ? Number(was.discount_pct ?? 0) : 0,
+        focReasonId: was ? ((was.foc_reason_id as string) ?? null) : null,
+        sourceLineId: was ? ((was.source_line_id as string) ?? null) : null,
+        // Which line this one replaces. The form has always sent it and this
+        // has always thrown it away, leaving everything downstream to infer
+        // the pairing from the item or the position — wrong the moment one
+        // item sits on two lines, or a line is inserted.
+        supersedesLineId: was ? String(was.id) : null,
+      };
+    });
+}
+
+/**
+ * The key this submission carries, if any.
+ *
+ * Generated by the form when it mounts, so a double-click, a browser
+ * resending a request it could not confirm, or a platform retry all carry the
+ * same one — and a deliberately new document is a new form and a new key.
+ */
+function attemptKey(fd: FormData): string | null {
+  const k = str(fd, "idempotency_key");
+  return k && k.length <= 100 ? k : null;
+}
+
+/** The edited lines, as the correction form sends them. */
+function correctionLines(fd: FormData) {
+  let parsed: { lineId?: string; itemId?: string; qty?: number; unitPrice?: number }[];
+  try {
+    parsed = JSON.parse(String(fd.get("lines") ?? "[]"));
+  } catch {
+    throw new Error("Could not read the corrected lines");
+  }
+  return parsed
+    .map((l) => ({
+      lineId: l.lineId ? String(l.lineId) : null,
+      itemId: String(l.itemId ?? ""),
+      qty: Number(l.qty),
+      unitPrice: Number(l.unitPrice ?? 0),
+    }))
+    .filter((l) => l.itemId && Number.isFinite(l.qty) && l.qty > 0);
+}
+
+/**
+ * Correct a posted order, and everything that inherited from it.
+ *
+ * One confirmation, one transaction: the order becomes its next version, the
+ * invoices raised through it become theirs, and the accounts follow. If any
+ * part is blocked — a payment against one of those invoices — nothing moves
+ * and the message names the document in the way.
+ */
+export async function correctOrder(
+  _prev: unknown, fd: FormData,
+): Promise<CorrectionResult> {
+  let landOn: string;
+  const co = await companyId();
+  const reason = str(fd, "reason");
+  if (!reason.trim()) return { error: "Say why this is being corrected" };
+
+  try {
+    const { documentId, order } = await orderCorrection(co, fd);
+
+    // A retry of a confirmation that already went through is handed what it
+    // did, before anything compares plans: by now the order is on its next
+    // version, and that is this retry's own doing.
+    //
+    // Only the destination is decided here. Redirecting from inside this
+    // block would be caught by the catch below — a Next redirect is thrown,
+    // not returned — and the reader would be shown an error for a correction
+    // that had worked.
+    const replayed = await alreadyPosted(co, attemptKey(fd));
+
+    if (replayed) {
+      landOn = replayed.id;
+    } else {
+      // What the reader was shown, checked against what the correction
+      // actually does — inside the transaction that does it, so there is no
+      // window between the two and no second run of the whole thing.
+      const shown = str(fd, "fingerprint") || null;
+
+      // A correction is a posting too: a resent confirmation must not correct
+      // the same order twice, each version chaining onto the last.
+      //
+      // Read as `id`, which every answer carries. A duplicate is answered
+      // from the recorded attempt and has no replacementId of its own —
+      // destructuring that sent the reader to /documents/undefined, on the
+      // one path this was written to make reliable.
+      const posted = await postOnce(co, attemptKey(fd), async (tx) => {
+        const done = await amendOrder(
+          { companyId: co, documentId, reason, cascade: true, order, expect: shown }, tx);
+        return { ...done, id: done.replacementId, docNo: done.docNo ?? "" };
+      });
+
+      // The reader is sent to the version that now stands, not the one they
+      // were reading — which the correction has just retired. Landing back on
+      // v1 shows the old figure under a "Superseded" banner and reads as
+      // though the correction had not taken.
+      landOn = posted.id;
+    }
+  } catch (e) {
+    // Not an error: the world moved, nothing was posted, and the reader gets
+    // the revised plan to look at before deciding again.
+    if (e instanceof StalePlan) {
+      const again = await orderCorrection(co, fd);
+      const now = await planOrderAmendment({
+        companyId: co, documentId: again.documentId, order: again.order, reason });
+      return { stale: true, plan: now, fingerprint: amendmentFingerprint(now) };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents", "layout");
+  revalidatePath("/purchases/orders");
+  revalidatePath("/sales/orders");
+  revalidatePath("/");
+  redirectWithToast(`/documents/${landOn}`, "Correction posted");
+}
+
+/**
+ * What correcting this invoice would change.
+ *
+ * Shorter than the order's plan by nature: an invoice raised outside an order
+ * carries nothing downstream that inherits from it, so the only questions are
+ * what its total becomes and whether anything has settled against it.
+ */
+export async function previewInvoiceCorrection(
+  _prev: unknown, fd: FormData,
+): Promise<PreviewResult> {
+  try {
+    const co = await companyId();
+    const { documentId, invoice } = await invoiceCorrection(co, fd);
+    const plan = await planInvoiceAmendment({
+      companyId: co, documentId, invoice: invoice as never, reason: str(fd, "reason"),
+    });
+    return {
+      ok: true,
+      plan,
+      fingerprint: amendmentFingerprint(plan),
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Correct an invoice that was raised on its own.
+ *
+ * The tester's second workflow. An invoice with an order behind it is
+ * corrected at the order — that is where the price was agreed, and editing
+ * the bill alone would leave the two disagreeing with nothing recording which
+ * is right. An invoice raised directly agreed its price here, so here is
+ * where it is corrected.
+ */
+/**
+ * Correct a voucher — cash, bank or journal.
+ *
+ * The date and the branch are the original's and are not offered for editing.
+ * Moving a correction to another date would put the reversal and its
+ * replacement in different periods, which is a different operation from
+ * fixing a figure and should not be reachable by accident; the branch decides
+ * which books carry it, and changing it silently would move money between
+ * branches under the same document number.
+ */
+export async function correctVoucher(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  let landOn: string;
+  try {
+    const co = await companyId();
+    const documentId = str(fd, "document_id");
+    if (!documentId) return { error: "No voucher given" };
+    const reason = str(fd, "reason");
+    if (!reason.trim()) return { error: "Say why this is being corrected" };
+
+    const lines = parseVoucherLines(fd);
+    if (lines.length < 2) return { error: "A voucher needs at least two lines that balance" };
+    const net = lines.reduce((t, l) => t + l.amount, 0);
+    if (Math.abs(net) > 0.0001) {
+      return { error: `Debits and credits differ by ${Math.abs(net).toLocaleString()}` };
+    }
+
+    const [orig] = await sql`
+      select to_char(doc_date, 'YYYY-MM-DD') as doc_date, location_id, reference
+        from document where id = ${documentId} and company_id = ${co}`;
+    if (!orig) return { error: "That voucher no longer exists" };
+
+    const posted = await postOnce(co, attemptKey(fd), (tx) =>
+      amendVoucher({
+        companyId: co,
+        documentId,
+        reason,
+        voucher: {
+          docDate: String(orig.doc_date),
+          locationId: (orig.location_id as string) ?? null,
+          memo: str(fd, "memo") || null,
+          reference: str(fd, "reference") || (orig.reference as string) || null,
+          lines,
+        },
+      }, tx).then((done) => ({ ...done, id: done.replacementId, docNo: done.docNo ?? "" })));
+    landOn = posted.id;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  revalidatePath("/documents", "layout");
+  redirectWithToast(`/documents/${landOn}`, "Correction posted");
+}
+
+/**
+ * Correct a receipt or a payment — in practice, move it to the right invoice.
+ *
+ * The date, the branch and the partner are the original's. A correction that
+ * changed the partner would be a different payment from a different person
+ * wearing this one's number, and moving the date would split the reversal and
+ * its replacement across periods.
+ */
+export async function correctSettlement(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  let landOn: string;
+  try {
+    const co = await companyId();
+    const documentId = str(fd, "document_id");
+    if (!documentId) return { error: "No receipt given" };
+    const reason = str(fd, "reason");
+    if (!reason.trim()) return { error: "Say why this is being corrected" };
+
+    const allocations = parseAllocations(fd);
+    if (allocations.length === 0) {
+      return { error: "Put the money against at least one invoice" };
+    }
+
+    const [orig] = await sql`
+      select partner_id, location_id, reference,
+             to_char(doc_date, 'YYYY-MM-DD') as doc_date
+        from document where id = ${documentId} and company_id = ${co}`;
+    if (!orig) return { error: "That document no longer exists" };
+
+    const posted = await postOnce(co, attemptKey(fd), (tx) =>
+      amendSettlement({
+        companyId: co,
+        documentId,
+        reason,
+        settlement: {
+          partnerId: orig.partner_id as string,
+          docDate: String(orig.doc_date),
+          cashAccountId: str(fd, "cash_account_id"),
+          locationId: (orig.location_id as string) ?? null,
+          memo: str(fd, "memo") || null,
+          reference: (orig.reference as string) ?? null,
+          allocations,
+        },
+      }, tx).then((done) => ({ ...done, id: done.replacementId, docNo: done.docNo ?? "" })));
+    landOn = posted.id;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  revalidatePath("/documents", "layout");
+  revalidatePath("/receivables");
+  revalidatePath("/payables");
+  redirectWithToast(`/documents/${landOn}`, "Correction posted");
+}
+
+export async function correctInvoice(
+  _prev: unknown, fd: FormData,
+): Promise<CorrectionResult> {
+  let landOn: string;
+  try {
+    const co = await companyId();
+    const reason = str(fd, "reason");
+    if (!reason.trim()) return { error: "Say why this is being corrected" };
+
+    const { documentId, invoice } = await invoiceCorrection(co, fd);
+
+    // A retry of the confirmation that already went through. Asked before the
+    // staleness check, because that check compares what the reader was shown
+    // against what the document says now — and what it says now is the result
+    // of the correction this retry is repeating. Left in the other order, a
+    // resent confirmation is told it is out of date rather than handed what
+    // it did.
+    //
+    // Only the destination is decided here: a Next redirect is thrown, not
+    // returned, so redirecting from inside this block would be caught below
+    // and shown to the reader as a failure of a correction that worked.
+    const replayed = await alreadyPosted(co, attemptKey(fd));
+
+    if (replayed) {
+      landOn = replayed.id;
+    } else {
+      const shown = str(fd, "fingerprint");
+      if (shown) {
+        const now = await planInvoiceAmendment({
+          companyId: co, documentId, invoice: invoice as never, reason,
+        });
+        const fingerprint = amendmentFingerprint(now);
+        if (fingerprint !== shown) {
+          return { stale: true, plan: now, fingerprint };
+        }
+      }
+
+      // Read as `id`: a duplicate is answered from the recorded attempt and
+      // carries no replacementId of its own.
+      const posted = await postOnce(co, attemptKey(fd), async (tx) => {
+        const done = await amendInvoice(
+          { companyId: co, documentId, reason, invoice: invoice as never }, tx);
+        return { ...done, id: done.replacementId, docNo: done.docNo ?? "" };
+      });
+      landOn = posted.id;
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents", "layout");
+  revalidatePath("/sales/invoices");
+  revalidatePath("/purchases/invoices");
+  revalidatePath("/");
+  redirectWithToast(`/documents/${landOn}`, "Correction posted");
+}
+/**
+ * Put money already received against this invoice.
+ *
+ * No cash moves — the money came in when the advance was taken. All this does
+ * is stop it being owed back and start it settling a bill, which is the whole
+ * reason it exists: somebody who took a deposit and then invoiced the goods is
+ * otherwise one keystroke from recording the same money twice.
+ */
+export async function applyAdvanceAction(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  let invoiceId: string;
+  try {
+    const co = await companyId();
+    invoiceId = str(fd, "invoice_id");
+    if (!invoiceId) return { error: "Which invoice is this for?" };
+
+    let parsed: { paymentId?: string; amount?: number }[];
+    try {
+      parsed = JSON.parse(String(fd.get("allocations") ?? "[]"));
+    } catch {
+      return { error: "Could not read which advances to apply" };
+    }
+    const allocations = parsed
+      .map((a) => ({ paymentId: String(a.paymentId ?? ""), amount: Number(a.amount) }))
+      .filter((a) => a.paymentId && Number.isFinite(a.amount) && a.amount > 0);
+    if (allocations.length === 0) return { error: "Choose an advance to apply" };
+
+    await applyAdvance({
+      companyId: co,
+      invoiceId,
+      allocations,
+      docDate: new Date().toISOString().slice(0, 10),
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents", "layout");
+  revalidatePath("/receivables");
+  revalidatePath("/payables");
+  revalidatePath("/");
+  redirectWithToast(`/documents/${invoiceId}`, "Advance applied");
+}
+
+function financeRevalidate() {
+  revalidatePath("/");
+  revalidatePath("/documents");
+  revalidatePath("/ledger");
+  revalidatePath("/finance/cash-detail");
+  revalidatePath("/finance/bank-detail");
+}
+
+export async function createCashVoucher(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let id: string;
+  let toastMsg = "Cash voucher posted";
+  try {
+    const r = await postVoucherFrom(fd, "cash");
+    if ("error" in r) return { error: r.error };
+    id = r.id;
+    toastMsg = `Voucher ${r.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  redirectWithToast(`/documents/${id}`, toastMsg);
+}
+
+export async function createBankVoucher(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let id: string;
+  let toastMsg = "Bank voucher posted";
+  try {
+    const r = await postVoucherFrom(fd, "bank");
+    if ("error" in r) return { error: r.error };
+    id = r.id;
+    toastMsg = `Voucher ${r.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  redirectWithToast(`/documents/${id}`, toastMsg);
+}
+
+export async function createJournalVoucher(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let id: string;
+  let toastMsg = "Journal voucher posted";
+  try {
+    const r = await postVoucherFrom(fd, "journal");
+    if ("error" in r) return { error: r.error };
+    id = r.id;
+    toastMsg = `Voucher ${r.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  redirectWithToast(`/documents/${id}`, toastMsg);
+}
+
+export async function createCashTransfer(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let id: string;
+  let toastMsg = "Transfer posted";
+  try {
+    const co = await companyId();
+    const from = str(fd, "from_account_id");
+    const to = str(fd, "to_account_id");
+    const amount = num(fd, "amount");
+
+    if (!from || !to) return { error: "Choose both accounts" };
+    if (from === to) return { error: "Choose two different accounts" };
+    if (!(amount > 0)) return { error: "Enter an amount" };
+
+    // Both ends. A transfer whose far end has no branch moves money out of a
+    // branch and into the company at large, which is the same hole as a
+    // branchless voucher with an extra step.
+    const fromLocationId = await resolveBranch(co, str(fd, "from_location_id"), {
+      none: "Set up a branch before transferring money",
+      choose: "Choose the branch the money is leaving",
+    });
+    if (typeof fromLocationId !== "string") return fromLocationId;
+    const toLocationId = await resolveBranch(co, str(fd, "to_location_id"), {
+      none: "Set up a branch before transferring money",
+      choose: "Choose the branch the money is going to",
+    });
+    if (typeof toLocationId !== "string") return toLocationId;
+
+    const r = await postCashTransfer({
+      companyId: co,
+      docDate: str(fd, "doc_date"),
+      fromAccountId: from,
+      toAccountId: to,
+      fromLocationId,
+      toLocationId,
+      amount,
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+    });
+    id = r.id;
+    toastMsg = `Transfer ${r.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  redirectWithToast(`/documents/${id}`, toastMsg);
+}
+
+export async function createAccountOpening(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let id: string;
+  let toastMsg = "Opening balances posted";
+  try {
+    const co = await companyId();
+    const lines = parseVoucherLines(fd);
+    if (lines.length === 0) return { error: "Enter at least one opening balance" };
+
+    // The same rule the voucher action enforces, and for a sharper reason:
+    // an opening balance with no branch is the figure every later balance is
+    // built on, so a branch that opens with nothing never catches up and the
+    // branch reports are wrong from day one rather than drifting.
+    const locationId = await resolveBranch(co, str(fd, "location_id"), {
+      none: "Set up a branch before posting opening balances",
+      choose: "Choose the branch these opening balances belong to",
+    });
+    if (typeof locationId !== "string") return locationId;
+
+    const r = await postAccountOpening({
+      companyId: co,
+      docDate: str(fd, "doc_date"),
+      memo: str(fd, "memo") || null,
+      locationId,
+      lines: lines.map((l) => ({ accountId: l.accountId, amount: l.amount })),
+    });
+    id = r.id;
+    toastMsg = "Opening balances posted";
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  redirectWithToast(`/documents/${id}`, toastMsg);
+}
+
+/** Accounts and locations for the finance voucher screens. */
+/**
+ * The number the next voucher of this kind will carry, asked of the database
+ * rather than spelled out on the page.
+ *
+ * The five voucher screens each printed a literal prefix — "CV-", "BV-",
+ * "JV-" — which stopped being true when numbering moved to type + date +
+ * daily sequence in migration 0035. They showed "No. CV-" with no number at
+ * all, next to a form that posts P20260905001.
+ *
+ * Read-only on purpose: fn_peek_document_no takes no lock and consumes
+ * nothing, so opening a screen never burns a number.
+ */
+export async function peekVoucherNo(
+  type: "CASH_VOUCHER" | "BANK_VOUCHER" | "JOURNAL_VOUCHER",
+  direction?: "IN" | "OUT",
+): Promise<string> {
+  const co = await companyId();
+  const [row] = await sql`
+    select fn_peek_document_no(${co}, ${type}, current_date, ${direction ?? null}) as no`;
+  return (row?.no as string) ?? "";
+}
+
+export async function getFinanceData() {
+  const co = await companyId();
+
+  const [accounts, accountTree, cashAccounts, bankAccounts, branches, costCenters] = await Promise.all([
+    sql`select id, code, name, parent_id, account_type, is_control, is_cash_account,
+               is_bank_account, subledger
+          from account
+         where company_id = ${co} and is_postable and is_active
+         order by code`,
+    // Every account including the non-postable section headings, which the
+    // list above deliberately excludes. Grouping a picker the way the chart
+    // groups itself means walking up to the section an account sits under —
+    // that is where the finer distinctions live, since the stored
+    // account_type has six members and the chart draws eight (a tax payable
+    // is a LIABILITY underneath and reads as Tax on screen).
+    sql`select id, code, name, parent_id, is_postable from account where company_id = ${co}`,
+    sql`select id, code, name from account
+         where company_id = ${co} and is_cash_account and not is_bank_account and is_active
+         order by code`,
+    sql`select id, code, name from account
+         where company_id = ${co} and is_bank_account and is_active order by code`,
+    // Branches only, not every location. A voucher happens at a branch — a
+    // receipt is taken at an office, money is transferred between them — and
+    // a warehouse is where stock sits, which is a different question. Listing
+    // warehouses under a control labelled "Branch" invited someone to file a
+    // cash receipt into a shed.
+    sql`select id, code, name from location
+         where company_id = ${co} and parent_id is null and is_active order by code`,
+    sql`select id, code, name from cost_center
+         where company_id = ${co} and is_active order by code`,
+  ]);
+
+  return { accounts, accountTree, cashAccounts, bankAccounts, branches, costCenters };
+}
+
+/** Movements on one account with its running balance. */
+export async function getAccountLedger(accountId: string, from?: string, to?: string) {
+  const co = await companyId();
+  return sql`
+    select entry_no, entry_date, memo, source_type, doc_no, doc_type,
+           partner_name, location_code, debit, credit, running_balance,
+           -- The ids behind the two numbers on screen. Without them the
+           -- entry and document columns were text a reader could see and not
+           -- follow, which on a ledger is the one thing they want to do.
+           journal_entry_id, source_id
+      from v_account_ledger
+     where company_id = ${co} and account_id = ${accountId}
+       ${from ? sql`and entry_date >= ${from}::date` : sql``}
+       ${to ? sql`and entry_date <= ${to}::date` : sql``}
+     order by entry_date, entry_no`;
+}
+
+/**
+ * Every movement across a set of accounts — the cash book read as one list
+ * rather than one account at a time.
+ *
+ * No running balance, deliberately. A balance that ran across two tills
+ * would be the sum of things nobody holds together, and the number people
+ * check a cash book against is the balance of *an* account. Closing
+ * balances are reported per account beside the list instead.
+ */
+export async function getAccountsLedger(accountIds: string[], from?: string, to?: string) {
+  const co = await companyId();
+  if (accountIds.length === 0) return [];
+  return sql`
+    select entry_no, entry_date, memo, source_type, doc_no, doc_type,
+           partner_name, location_code, debit, credit,
+           account_id, account_code, account_name,
+           journal_entry_id, source_id
+      from v_account_ledger
+     where company_id = ${co} and account_id = any(${accountIds})
+       ${from ? sql`and entry_date >= ${from}::date` : sql``}
+       ${to ? sql`and entry_date <= ${to}::date` : sql``}
+     order by entry_date, entry_no`;
+}
+
+// ------------------------------------------------------------- form lookups --
+
+export async function getFormData() {
+  const co = await companyId();
+
+  const [
+    customers, suppliers, items, locations, volumeDiscounts, groups, uoms,
+    salesmen, promotions, cashAccounts, focReasons, itemPrices, priceLevels,
+    openInvoices, nextNo, stockByLocation, moneyScale, taxCodes, customerCredit,
+  ] = await Promise.all([
+    sql`select id, code, name, payment_terms_days, price_level_id from business_partner
+         where company_id = ${co} and is_customer and is_active order by code`,
+    sql`select id, code, name, payment_terms_days from business_partner
+         where company_id = ${co} and is_supplier and is_active order by code`,
+    sql`select i.id, i.code, i.name, i.is_stocked, i.item_group_id,
+                i.tracks_batch, i.tracks_expiry,
+                -- What a scanner types. Without it the one moment
+                -- scanning exists for — putting a line on a document —
+                -- could not find the item it had just read.
+                i.barcode,
+                -- What a variant is, so the line says "Colour Red, Size M"
+                -- rather than leaving it buried in a name the picker has
+                -- already truncated. Null for an ordinary item.
+                (select json_agg(json_build_object('a', attr.name, 'o', o.name)
+                                 order by coalesce(iva.sort_order, 0), attr.name)
+                   from item_variant_option ivo
+                   join variant_option o on o.id = ivo.option_id
+                   join variant_attribute attr on attr.id = o.attribute_id
+                   left join item_variant_attribute iva
+                          on iva.item_id = i.parent_item_id and iva.attribute_id = attr.id
+                  where ivo.item_id = i.id) as variant,
+                -- The unit every quantity of this item is counted in, so a
+                -- figure quoted back to the user can carry it rather than
+                -- being a bare number.
+                u.code as uom_code,
+                i.base_uom_id,
+                -- The packs this item can be bought and sold in, so a line
+                -- can offer them without a second round trip per item.
+                coalesce((
+                  select json_agg(json_build_object(
+                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor)
+                         order by iu.factor)
+                    from item_uom iu join uom pu on pu.id = iu.uom_id
+                   where iu.item_id = i.id
+                ), '[]'::json) as packs,
+                coalesce(s.qty, 0) as on_hand,
+                coalesce((
+                  select unit_cost from v_stock_lot_open
+                   where company_id = ${co} and item_id = i.id
+                   order by received_date, created_at limit 1
+                ), 0) as next_cost,
+                0 as sale_price
+           from item i
+           join uom u on u.id = i.base_uom_id
+           left join (select item_id, sum(qty_on_hand) as qty
+                        from v_stock_on_hand group by item_id) s on s.item_id = i.id
+          where i.company_id = ${co} and i.is_active
+            -- A product with variants is a name for a group, not a thing on
+            -- a shelf, and fn_document_line_not_parent refuses it at posting.
+            -- Leaving it in the list only lets somebody fill in a whole
+            -- voucher before being told the first line was never possible.
+            and not exists (select 1 from item c where c.parent_item_id = i.id)
+          order by i.code`,
+    sql`select id, code, name from location
+         where company_id = ${co} and is_stock_location and is_active order by code`,
+    // Volume bands in force today, so the voucher previews the same discounts
+    // the engine will apply.
+    sql`select id, code, name, basis, item_id, item_group_id,
+               min_value, max_value, discount_pct
+          from volume_discount
+         where company_id = ${co} and is_active
+           and valid_from <= current_date
+           and (valid_to is null or valid_to >= current_date)
+         order by basis, min_value`,
+    sql`select g.id, g.code, g.name, g.name_my, g.parent_id, p.name as parent_name
+           from item_group g
+           left join item_group p on p.id = g.parent_id
+          where g.company_id = ${co} order by g.code`,
+    sql`select id, code, name from uom where company_id = ${co} and is_active order by code`,
+
+    sql`select id, code, name, name_my, commission_pct from salesman
+         where company_id = ${co} and is_active order by code`,
+
+    sql`select p.id, p.code, p.name, p.discount_pct, p.buy_qty, p.free_qty,
+                p.valid_from, p.valid_to, p.item_id, p.item_group_id,
+                i.code as item_code, g.name as group_name
+           from promotion p
+           left join item i on i.id = p.item_id
+           left join item_group g on g.id = p.item_group_id
+          where p.company_id = ${co} and p.is_active
+            and p.valid_from <= current_date
+            and (p.valid_to is null or p.valid_to >= current_date)
+          order by p.code`,
+
+    sql`select id, code, name from account
+         where company_id = ${co} and is_cash_account and is_active order by code`,
+
+    sql`select id, code, name from foc_reason where company_id = ${co} order by code`,
+
+    // Every price at every level. The voucher picks the one matching the
+    // customer, so a wholesale buyer is not quoted the retail price.
+    sql`select ip.item_id, ip.price_level_id, ip.price
+           from item_price ip
+          where ip.company_id = ${co}`,
+
+    sql`select id, code, name, sort_order from price_level
+         where company_id = ${co} order by sort_order`,
+
+    sql`select document_id, doc_no, partner_id, posting_date, due_date,
+                gross_total, outstanding, aging_bucket
+           from v_open_item
+          where company_id = ${co} and doc_type = 'SALES_INVOICE'
+          order by posting_date desc`,
+
+    // Shown on the voucher before posting. The real number is taken under a
+    // row lock at posting time, so this is a preview and may move if someone
+    // else posts first.
+    //
+    // Asked of the database rather than assembled here: the number carries
+    // the date and a daily sequence, and a second hand-written copy of that
+    // format is how the two drift apart.
+    sql`select fn_peek_document_no(${co}, 'SALES_INVOICE', current_date) as no`,
+
+    // Per item, per location — what the company-wide on_hand above can't
+    // show: whether the specific warehouse making this sale actually has it.
+    sql`select item_id, location_id, qty_on_hand from v_stock_on_hand where company_id = ${co}`,
+    // What the money can express, so a voucher previews the figure that will
+    // post rather than one four decimal places finer.
+    sql`select c.decimal_places from company co
+          join currency c on c.code = co.base_currency where co.id = ${co}`,
+    // Commercial tax codes with every dated rate they carry, so a form can
+    // show what a code charges on the date the document is dated rather than
+    // on the date the page was opened.
+    sql`select t.id, t.code, t.name,
+               coalesce((
+                 select json_agg(json_build_object(
+                          'rate', r.rate, 'validFrom', to_char(r.valid_from, 'YYYY-MM-DD'))
+                        order by r.valid_from)
+                   from tax_rate r where r.tax_code_id = t.id
+               ), '[]'::json) as rates
+          from tax_code t
+         where t.company_id = ${co} and t.is_active
+         order by t.code`,
+    // What each customer may owe and what they already do, so a voucher can
+    // say so before the posting engine refuses.
+    sql`select partner_id, credit_limit, outstanding, unbilled_deliveries, exposure, available
+          from v_customer_credit
+         where company_id = ${co} and credit_limit is not null`,
+  ]);
+
+  return {
+    customers, suppliers, items, locations, volumeDiscounts, groups, uoms,
+    salesmen, promotions, cashAccounts, focReasons, itemPrices, priceLevels, openInvoices,
+    // Null until the first invoice of the year exists, since the format
+    // depends on a series that has not been created yet.
+    nextInvoiceNo: (nextNo[0]?.no as string | null) ?? null,
+    stockByLocation,
+    taxCodes,
+    customerCredit,
+    currencyScale: Number(moneyScale[0]?.decimal_places ?? 2),
+  };
+}
+
+// ---------------------------------------------------------- warehouses --
+
+/** True (23503) when a delete failed because something still references the row. */
+function isForeignKeyViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "23503";
+}
+
+/**
+ * True (23505) when a create raced another request for the same code. Every
+ * master-data create already pre-checks for a duplicate before inserting, so
+ * this only ever fires on an actual race — but without it, that rare case
+ * would surface Postgres's raw constraint-violation text instead of a
+ * message someone entering data can actually act on.
+ */
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === "object" && e !== null && (e as { code?: string }).code === "23505";
+}
+
+export async function createLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Warehouse added";
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+
+    const name = str(fd, "name");
+    const parentId = str(fd, "parent_id") || null;
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`select 1 from location where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      insert into location (company_id, parent_id, code, name, name_my, is_stock_location)
+      values (${co}, ${parentId}, ${code}, ${name}, ${str(fd, "name_my") || null},
+              ${fd.get("is_stock_location") === "on"})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/warehouses");
+  redirectWithToast("/warehouses", toastMsg);
+}
+
+export async function updateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Warehouse updated";
+
+  try {
+    const co = await companyId();
+
+    const id = str(fd, "id");
+    const code = str(fd, "code").toUpperCase();
+    const name = str(fd, "name");
+    const parentId = str(fd, "parent_id") || null;
+
+    if (!id) return { error: "Choose a warehouse" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (parentId === id) return { error: "A warehouse cannot sit under itself" };
+
+    if (parentId) {
+      const cycle = await sql`
+        with recursive descendants as (
+          select id from location where id = ${id} and company_id = ${co}
+          union all
+          select l.id from location l join descendants d on l.parent_id = d.id
+        )
+        select 1 from descendants where id = ${parentId}`;
+      if (cycle.length) return { error: "That would put it inside its own branch" };
+    }
+
+    const dup = await sql`
+      select 1 from location where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      update location set
+        code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
+        parent_id = ${parentId}, is_stock_location = ${fd.get("is_stock_location") === "on"},
+        is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/warehouses");
+  redirectWithToast("/warehouses", toastMsg);
+}
+
+/** Deactivates a warehouse without touching any history that points at it. */
+export async function deactivateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a warehouse" };
+
+    await sql`update location set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/warehouses");
+  redirectWithToast("/warehouses", "Warehouse deactivated");
+}
+
+/** Puts back what deactivateLocation retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a warehouse" };
+
+    await sql`update location set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/warehouses");
+  redirectWithToast("/warehouses", "Warehouse reactivated");
+}
+
+/**
+ * Hard delete only succeeds for a warehouse nothing has ever touched —
+ * transactions are append-only, so a warehouse with history stays as a
+ * foreign key everywhere it was used. Deactivating is the way to retire one.
+ */
+export async function deleteLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a warehouse" };
+
+    await sql`delete from location where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This warehouse has documents or stock history against it — deactivate it instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/warehouses");
+  redirectWithToast("/warehouses", "Warehouse deleted");
+}
+
+// ------------------------------------------------------- salespersons --
+
+// ---------------------------------------------------------------- package --
+
+/**
+ * Which package this company is sold on.
+ *
+ * Switchable rather than set once, because the tiers have to be testable:
+ * the whole point of gating is that Starter looks different from
+ * Enterprise, and that cannot be checked from a column somebody set at
+ * install time and never touched again.
+ *
+ * Changing it is a commercial fact, not an accounting one — it moves no
+ * money and posts nothing. There is no sign-in yet, so nothing restricts who
+ * may change it; when roles arrive this is one of the first actions that
+ * should be behind one.
+ */
+export async function setCompanyPlan(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const plan = str(fd, "plan");
+    if (!["STARTER", "BUSINESS", "ENTERPRISE"].includes(plan)) {
+      return { error: "Not a package" };
+    }
+    await sql`update company set plan = ${plan} where id = ${co}`;
+    revalidatePath("/settings/plan");
+    revalidatePath("/", "layout");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+// -------------------------------------------------------------- variants --
+
+/**
+ * The ways products vary, and the values each way can take.
+ *
+ * Master data rather than text typed on each product, so that Red is one
+ * colour instead of four spellings of one, and so that "which colours sold"
+ * is a question with an answer.
+ */
+export async function createVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    await sql`
+      insert into variant_attribute (company_id, code, name, name_my, sort_order)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
+              coalesce((select max(sort_order) + 1 from variant_attribute
+                         where company_id = ${co}), 0))`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  redirectWithToast("/items/attributes", `${code} added`);
+}
+
+export async function updateVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+    if (!id) return { error: "Which attribute?" };
+    if (!name) return { error: "Name is required" };
+    await sql`
+      update variant_attribute
+         set name = ${name}, name_my = ${str(fd, "name_my") || null},
+             is_active = ${fd.get("is_active") !== null}
+       where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  return { ok: true };
+}
+
+/**
+ * Removing one, which is only allowed while nothing is built on it.
+ *
+ * A product already varying by Size cannot have Size taken away underneath
+ * it — its variants would stop meaning anything. Deactivating is the answer
+ * there: it disappears from the pickers and leaves what exists alone.
+ */
+export async function deleteVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const users = await sql`
+      select i.code, i.name from item_variant_attribute iva
+        join item i on i.id = iva.item_id
+       where iva.attribute_id = ${id}
+       order by i.code`;
+    if (users.length > 0) {
+      const named = users.slice(0, 3).map((u: any) => `${u.code} ${u.name}`).join(", ");
+      const rest = users.length > 3 ? ` and ${users.length - 3} more` : "";
+      return {
+        error: `${users.length} product${users.length === 1 ? " uses" : "s use"} this — `
+             + `${named}${rest}. Switch it off instead — that hides it from new products `
+             + `and leaves the existing ones as they are.`,
+      };
+    }
+    await sql`delete from variant_attribute where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  return { ok: true };
+}
+
+export async function createVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code");
+  try {
+    const co = await companyId();
+    const attributeId = str(fd, "attribute_id");
+    if (!attributeId) return { error: "Which attribute?" };
+    if (!code) return { error: "A value is required" };
+
+    // Appended rather than sorted in: S, M, L, XL is the order somebody
+    // means, and it is not the order a computer would choose.
+    await sql`
+      insert into variant_option (company_id, attribute_id, code, name, name_my, sort_order)
+      values (${co}, ${attributeId}, ${code}, ${str(fd, "name") || code},
+              ${str(fd, "name_my") || null},
+              coalesce((select max(sort_order) + 1 from variant_option
+                         where attribute_id = ${attributeId}), 0))`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `${code} is already on this list` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  return { ok: true };
+}
+
+/**
+ * A picture of one variant.
+ *
+ * A red shirt and a black shirt are two things on a shelf and two pictures.
+ * Hanging one photograph on the parent would put the black one beside the
+ * red row in every list that shows it, which is worse than showing none —
+ * a picker exists so somebody can recognise what they are choosing.
+ *
+ * Its own action rather than updateItem because a variant row has no form
+ * behind it: there is nothing else on it to save, and asking the caller to
+ * send a name, a unit and a category to change a photograph is how one of
+ * them eventually gets sent blank.
+ */
+/**
+ * Carrying a replenishment list into a purchase order.
+ *
+ * The order form already knows how to open a saved draft — that is what
+ * "Save as draft" writes and `?draft=` reads — so the suggestions travel as
+ * one, rather than needing the form to learn a second way of being filled
+ * in from a query string.
+ *
+ * One draft per supplier, reused. Pressing the button four times used to
+ * mean four half-written orders on the purchases page, none of which anyone
+ * asked for; the marker in the payload is what tells this page's drafts
+ * apart from one somebody wrote by hand, which must never be overwritten.
+ */
+/**
+ * An item that does not come at its supplier's usual speed.
+ *
+ * Upsert rather than separate create and update: there is one row per
+ * supplier-and-item by definition, and asking the caller to know whether
+ * it exists yet is asking it to race itself.
+ */
+/**
+ * A product's variants, saved together.
+ *
+ * Barcode and selling price for every size and colour in one submission,
+ * because entering them one row at a time is twelve page loads to do one
+ * job — and it is the only practical way to get barcodes onto a product
+ * that comes in twelve.
+ *
+ * Duplicates are caught before anything is written. item_barcode_unique
+ * (0033) already refuses them at the boundary, but a constraint violation
+ * arrives as a message about an index, and the person holding the scanner
+ * needs to know which two rows clash.
+ */
+export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const parentId = str(fd, "parent_id");
+    if (!parentId) return { error: "Which product?" };
+
+    const rows = JSON.parse(str(fd, "rows") || "[]") as {
+      id: string; barcode: string; price: string; isActive: boolean;
+    }[];
+    if (rows.length === 0) return { error: "Nothing to save" };
+
+    // Only this product's variants, so a crafted form cannot reach elsewhere.
+    const mine = await sql`
+      select id, code from item
+       where company_id = ${co} and parent_item_id = ${parentId}`;
+    const byId = new Map((mine as any[]).map((r) => [r.id as string, r.code as string]));
+    for (const r of rows) {
+      if (!byId.has(r.id)) return { error: "That variant does not belong to this product" };
+    }
+
+    // Within the batch first: two rows here can clash with each other
+    // before either reaches the table.
+    const seen = new Map<string, string>();
+    for (const r of rows) {
+      const bc = r.barcode.trim();
+      if (!bc) continue;
+      const already = seen.get(bc);
+      if (already) {
+        return { error: `${byId.get(r.id)} and ${already} both have barcode ${bc}. `
+                      + `A barcode names one thing on a shelf.` };
+      }
+      seen.set(bc, byId.get(r.id)!);
+    }
+
+    // Then against everything else in the company.
+    const codes = [...seen.keys()];
+    if (codes.length > 0) {
+      const clash = await sql`
+        select code, barcode from item
+         where company_id = ${co} and barcode = any(${codes})
+           and id <> all(${rows.map((r) => r.id)})`;
+      if ((clash as any[]).length > 0) {
+        const c = (clash as any[])[0];
+        return { error: `Barcode ${c.barcode} is already on ${c.code}. `
+                      + `Scanning it would find two different things.` };
+      }
+    }
+
+    const [level] = await sql`
+      select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+
+    await sql.begin(async (tx) => {
+      for (const r of rows) {
+        const bc = r.barcode.trim();
+        await tx`
+          update item set barcode = ${bc || null}, is_active = ${r.isActive}
+           where id = ${r.id} and company_id = ${co}`;
+
+        if (!level) continue;
+        const price = r.price.trim() === "" ? null : Number(r.price);
+        if (price === null) {
+          await tx`delete from item_price
+                    where item_id = ${r.id} and price_level_id = ${level.id}`;
+          continue;
+        }
+        if (!Number.isFinite(price) || price < 0) continue;
+        const [uom] = await tx`select base_uom_id from item where id = ${r.id}`;
+        await tx`
+          insert into item_price
+            (company_id, item_id, price_level_id, uom_id, currency, price)
+          values (${co}, ${r.id}, ${level.id}, ${uom.base_uom_id}, 'MMK', ${price})
+          on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
+            do update set price = excluded.price`;
+      }
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) {
+      return { error: "Two of those share a barcode, or one is already used elsewhere." };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  return { ok: true };
+}
+
+export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const supplierId = str(fd, "supplier_id");
+    const itemId = str(fd, "item_id");
+    if (!supplierId) return { error: "Choose a supplier" };
+    if (!itemId) return { error: "Choose an item" };
+
+    // Blank means "no exception" and falls back to the supplier's own
+    // figure. Nought would be a claim that this arrives the day it is
+    // ordered, which is a different thing entirely.
+    const raw = str(fd, "lead_time_days");
+    const lead = raw === "" ? null : Number(raw);
+    if (lead !== null && (!Number.isFinite(lead) || lead < 0 || lead > 365)) {
+      return { error: "Lead time must be between 0 and 365 days, or blank" };
+    }
+
+    await sql`
+      insert into supplier_item
+        (company_id, supplier_id, item_id, lead_time_days, supplier_sku, note)
+      values (${co}, ${supplierId}, ${itemId}, ${lead},
+              ${str(fd, "supplier_sku") || null}, ${str(fd, "note") || null})
+      on conflict (company_id, supplier_id, item_id) do update
+         set lead_time_days = excluded.lead_time_days,
+             supplier_sku = excluded.supplier_sku,
+             note = excluded.note,
+             updated_at = now()`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/purchasing");
+  revalidatePath("/inventory/replenishment");
+  return { ok: true };
+}
+
+export async function deleteSupplierItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    await sql`delete from supplier_item
+               where id = ${str(fd, "id")} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/purchasing");
+  revalidatePath("/inventory/replenishment");
+  return { ok: true };
+}
+
+export async function draftOrderFromReplenishment(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  let target = "";
+  try {
+    const co = await companyId();
+    const supplierId = str(fd, "supplier_id") || null;
+
+    const raw = JSON.parse(str(fd, "suggestions") || "[]") as {
+      itemId: string; qty: number; unitPrice?: number;
+      leadDays?: number; leadSource?: string;
+    }[];
+    const lines = raw.filter((l) => l.itemId && Number(l.qty) > 0);
+    if (lines.length === 0) return { error: "Nothing on this list to order" };
+
+    const today = new Date().toISOString().slice(0, 10);
+    const plus = (days: number) =>
+      new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+
+    /*
+     * The assumptions, frozen onto the lines.
+     *
+     * A lead time is a setting, and settings change. Without a snapshot,
+     * editing a supplier's lead time next month would silently restate
+     * what this order was expecting when it was drafted — and nobody could
+     * say why it had been placed for that quantity on that date.
+     *
+     * Per line, not per header, because three items on one order can each
+     * have come from a different level of the hierarchy: this one from an
+     * item exception, that one from the supplier, the third from the
+     * company default. A single header field would lose which was which.
+     *
+     * These ride in the draft's editor state. The order form keeps keys it
+     * does not recognise, and what it posts is built explicitly from item,
+     * quantity and price — so the snapshot survives editing and never
+     * reaches the posting engine.
+     */
+    const snapped = lines.map((l, i) => ({
+      key: i + 1,
+      itemId: l.itemId,
+      qty: String(l.qty),
+      unitPrice: l.unitPrice ? String(l.unitPrice) : "",
+      leadDays: l.leadDays ?? null,
+      leadSource: l.leadSource ?? null,
+      expectedArrival: l.leadDays === undefined ? null : plus(Number(l.leadDays)),
+    }));
+
+    // The header date is the last of them: the order is not fully answered
+    // until its slowest line has landed.
+    const arrivals = snapped.map((l) => l.expectedArrival).filter(Boolean) as string[];
+    const dueDate = arrivals.length > 0 ? arrivals.sort().at(-1)! : "";
+
+    const draftState = JSON.stringify({
+      lines: snapped,
+      partnerId: supplierId ?? "",
+      docDate: today,
+      dueDate,
+    });
+
+    const [existing] = await sql`
+      select id from document_draft
+       where company_id = ${co} and doc_type = 'PURCHASE_ORDER'
+         and partner_id is not distinct from ${supplierId}
+         and payload->>'from_replenishment' = '1'
+       order by updated_at desc limit 1`;
+
+    const total = lines.reduce((t, l) => t + Number(l.qty) * Number(l.unitPrice ?? 0), 0);
+    const { id } = await saveDocumentDraft({
+      companyId: co,
+      draftId: (existing?.id as string) ?? null,
+      docType: "PURCHASE_ORDER",
+      partnerId: supplierId,
+      docDate: today,
+      payload: {
+        draft_state: draftState,
+        draft_doc_type: "PURCHASE_ORDER",
+        from_replenishment: "1",
+        // What the page believed when it handed this over, so the order can
+        // still explain itself after the settings move on.
+        replenishment_generated_at: new Date().toISOString(),
+        replenishment_expected_arrival: dueDate,
+      },
+      total,
+      lineCount: lines.length,
+    });
+    target = `/purchases/orders/new?draft=${id}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/purchases/orders");
+  // Outside the try: redirect works by throwing, and catching it here would
+  // turn a successful handoff into an error message.
+  redirect(target);
+}
+
+export async function setVariantPhoto(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Which variant?" };
+
+    const [target] = await sql`
+      select parent_item_id from item where id = ${id} and company_id = ${co}`;
+    if (!target) return { error: "That item no longer exists" };
+
+    const photo = await photoFrom(fd);
+    if (!photo) return { error: "No picture was sent" };
+
+    let replaced: string | null = null;
+    await sql.begin(async (tx) => {
+      // Read before overwriting, removed after the commit — a bucket is not
+      // part of this transaction. Same trade updateItem makes.
+      const [old] = await tx`
+        select photo_key from item where id = ${id} and company_id = ${co}`;
+      if (old?.photo_key) replaced = old.photo_key as string;
+
+      if ("set" in photo) {
+        await tx`
+          update item set photo_key = ${photo.set.key}, photo_mime = 'image/webp',
+                          photo_updated_at = now()
+           where id = ${id} and company_id = ${co}`;
+      } else {
+        await tx`
+          update item set photo_key = null, photo = null, photo_mime = null,
+                          photo_updated_at = null
+           where id = ${id} and company_id = ${co}`;
+      }
+    });
+    if (replaced) await deleteObject("public", replaced);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  return { ok: true };
+}
+
+/**
+ * Renaming a value.
+ *
+ * The name is free to change: "Blk" becoming "Black" is a correction, and
+ * every screen reads the name live.
+ *
+ * The code is not, once anything is using it. It was pasted into the
+ * variant's own code when the item was made — APPAREL001-BLK is a stored
+ * string, not a view — so editing it here would not rename those and the
+ * next variant created would be APPAREL001-BLACK beside them. Two spellings
+ * of one colour is the exact thing this table exists to prevent, so the
+ * code is fixed from the moment the first variant carries it.
+ */
+export async function updateVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code");
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+    if (!id) return { error: "Which value?" };
+    if (!name) return { error: "A name is required" };
+
+    const [current] = await sql`
+      select code from variant_option where id = ${id} and company_id = ${co}`;
+    if (!current) return { error: "That value no longer exists" };
+
+    if (code && code !== current.code) {
+      const [used] = await sql`
+        select count(*)::int as n from item_variant_option where option_id = ${id}`;
+      if (Number(used.n) > 0) {
+        return {
+          error: `The code cannot change once variants carry it — ${used.n} `
+               + `already ${Number(used.n) === 1 ? "does" : "do"}, and their own codes `
+               + `were built from ${current.code}. The name can be changed freely.`,
+        };
+      }
+    }
+
+    await sql`
+      update variant_option
+         set name = ${name}, name_my = ${str(fd, "name_my") || null},
+             code = ${code || current.code}
+       where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `${code} is already on this list` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  return { ok: true };
+}
+
+export async function deleteVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    /**
+     * What is standing in the way, by name.
+     *
+     * "3 variants are this value" tells somebody there is a problem and
+     * nothing about what to do next. The codes are what they need: which
+     * three, and whether any of them is real stock rather than a row made
+     * by mistake ten minutes ago and safe to delete.
+     */
+    const blockers = await sql`
+      select i.code, i.name,
+             coalesce(s.qty, 0) as on_hand,
+             (select count(*)::int from document_line dl where dl.item_id = i.id) as lines
+        from item_variant_option ivo
+        join item i on i.id = ivo.item_id
+        left join (select item_id, sum(qty_on_hand) as qty
+                     from v_stock_on_hand group by item_id) s on s.item_id = i.id
+       where ivo.option_id = ${id}
+       order by coalesce(s.qty, 0) desc, i.code`;
+
+    if (blockers.length > 0) {
+      const named = blockers.slice(0, 3).map((b: any) => b.code).join(", ");
+      const rest = blockers.length > 3 ? ` and ${blockers.length - 3} more` : "";
+      const held = blockers.filter((b: any) => Number(b.on_hand) !== 0);
+      const onDocs = blockers.filter((b: any) => Number(b.lines) > 0);
+
+      const why = held.length > 0
+        ? ` ${held.length === 1 ? "One of them holds" : `${held.length} of them hold`} stock`
+          + ` (${held.slice(0, 2).map((b: any) =>
+                `${b.code}: ${Number(b.on_hand).toLocaleString("en-US",
+                   { maximumFractionDigits: 2 })}`).join(", ")}).`
+        : onDocs.length > 0
+          ? ` ${onDocs.length === 1 ? "One of them appears" : `${onDocs.length} of them appear`}`
+            + ` on posted documents.`
+          : " None of them holds stock or appears on a document, so deleting those"
+            + " variants first would free this value.";
+
+      return {
+        error: `${blockers.length} variant${blockers.length === 1 ? " is" : "s are"} this `
+             + `value — ${named}${rest}.${why}`,
+      };
+    }
+    await sql`delete from variant_option where id = ${id}
+               and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  return { ok: true };
+}
+
+/** Moves one value up or down its list, since the order is meaningful. */
+export async function moveVariantOption(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const dir = str(fd, "direction") === "up" ? -1 : 1;
+
+    await sql.begin(async (tx) => {
+      const [me] = await tx`
+        select id, attribute_id, sort_order from variant_option
+         where id = ${id} and company_id = ${co}`;
+      if (!me) throw new Error("That value is gone");
+      const [swap] = dir < 0
+        ? await tx`select id, sort_order from variant_option
+                    where attribute_id = ${me.attribute_id} and sort_order < ${me.sort_order}
+                    order by sort_order desc limit 1`
+        : await tx`select id, sort_order from variant_option
+                    where attribute_id = ${me.attribute_id} and sort_order > ${me.sort_order}
+                    order by sort_order asc limit 1`;
+      if (!swap) return;
+      await tx`update variant_option set sort_order = ${swap.sort_order} where id = ${me.id}`;
+      await tx`update variant_option set sort_order = ${me.sort_order} where id = ${swap.id}`;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/attributes");
+  return { ok: true };
+}
+
+// ----------------------------------------------------------- attachments --
+
+/**
+ * What may be kept beside a document.
+ *
+ * A deliberately short list. Everything here is either a scan or a
+ * photograph of one — the paper that arrived from outside — and an
+ * attachment feature that accepts anything is a file share with an ERP
+ * bolted to it. Checked against the browser's claim and then again against
+ * the extension, because both are the uploader's word and agreeing with each
+ * other is the least they can do.
+ */
+const ATTACHMENT_TYPES: Record<string, string[]> = {
+  "application/pdf": [".pdf"],
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/webp": [".webp"],
+  "image/heic": [".heic"],
+};
+
+/** Matches next.config's bodySizeLimit with room for the rest of the form. */
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const documentId = str(fd, "document_id");
+    if (!documentId) return { error: "Which document?" };
+
+    const file = fd.get("file");
+    if (!(file instanceof File) || file.size === 0) return { error: "Choose a file" };
+
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      return {
+        error: `${file.name} is ${(file.size / 1024 / 1024).toFixed(1)}MB — the limit is `
+             + `${ATTACHMENT_MAX_BYTES / 1024 / 1024}MB. Scan it at a lower resolution, or `
+             + `photograph the page instead.`,
+      };
+    }
+
+    const allowedExts = ATTACHMENT_TYPES[file.type];
+    const ext = file.name.includes(".")
+      ? "." + file.name.split(".").pop()!.toLowerCase() : "";
+    if (!allowedExts || !allowedExts.includes(ext)) {
+      return {
+        error: `${file.name} is not a kind of file that can be attached. `
+             + `A PDF or a photograph — JPG, PNG, WebP or HEIC.`,
+      };
+    }
+
+    // The document has to exist and belong to this company before anything
+    // reaches the bucket: an upload against a bad id would otherwise leave an
+    // object with no row to find it by.
+    const [doc] = await sql`
+      select id from document where id = ${documentId} and company_id = ${co}`;
+    if (!doc) return { error: "That document does not exist" };
+
+    const key = newKey("attach", file.name);
+    const body = Buffer.from(await file.arrayBuffer());
+
+    await putObject({
+      bucket: "private", key, body, contentType: file.type, downloadName: file.name,
+    });
+
+    try {
+      await sql`
+        insert into document_attachment
+          (company_id, document_id, r2_key, filename, mime, size_bytes, note)
+        values
+          (${co}, ${documentId}, ${key}, ${file.name}, ${file.type}, ${file.size},
+           ${str(fd, "note") || null})`;
+    } catch (e) {
+      // The row is what makes the object findable. Without it the upload is
+      // just litter, so it goes rather than being left behind.
+      await deleteObject("private", key);
+      throw e;
+    }
+
+    revalidatePath(`/documents/${documentId}`);
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Removes the row, then the object. Nothing here is posted, so nothing is reversed. */
+export async function deleteAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "attachment_id");
+    if (!id) return { error: "Which file?" };
+
+    const [row] = await sql`
+      delete from document_attachment
+       where id = ${id} and company_id = ${co}
+       returning r2_key, document_id`;
+    if (!row) return { error: "That file is already gone" };
+
+    await deleteObject("private", row.r2_key as string);
+    revalidatePath(`/documents/${row.document_id}`);
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// --------------------------------------------------------------- drafts --
+
+/**
+ * Keep an unfinished voucher.
+ *
+ * Stores the form exactly as submitted rather than a parsed subset, so a
+ * field added to the voucher next month is kept without this function
+ * learning about it. Nothing is validated: the whole point is to hold work
+ * that is not yet good enough to post.
+ */
+export async function saveInvoiceDraft(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    // Whatever the form says it is, checked against the four the draft table
+    // accepts rather than trusted — a hidden field is a suggestion.
+    const KINDS = ["SALES_INVOICE", "PURCHASE_INVOICE",
+                   "SALES_ORDER", "PURCHASE_ORDER"] as const;
+    const asked = str(fd, "draft_doc_type") as (typeof KINDS)[number];
+    const docType = KINDS.includes(asked) ? asked : "SALES_INVOICE";
+
+    const payload: Record<string, string> = {};
+    for (const [k, v] of fd.entries()) {
+      // Files have no place in a draft, and draft_id is the row's identity
+      // rather than part of the form it holds.
+      if (typeof v === "string" && k !== "draft_id") payload[k] = v;
+    }
+
+    // Indicative only, for the list. Tax is not applied — working it out
+    // needs rate lookups the draft has no reason to do, and the real totals
+    // are computed by the posting engine when it eventually posts.
+    let total = num(fd, "delivery_fee");
+    let lineCount = 0;
+    try {
+      const parsed = JSON.parse(String(fd.get("lines") ?? "[]"));
+      if (Array.isArray(parsed)) {
+        for (const l of parsed as Array<Record<string, unknown>>) {
+          const qty = Number(l.qty) || 0;
+          if (qty <= 0) continue;
+          lineCount += 1;
+          const price = Number(l.unitPrice) || 0;
+          const disc = Number(l.discountPct) || 0;
+          total += qty * price * (1 - disc / 100);
+        }
+      }
+    } catch {
+      // A payload we cannot read is still worth keeping; it just lists as nil.
+    }
+
+    if (!str(fd, "partner_id") && lineCount === 0) {
+      return { error: "Nothing to save yet — choose a partner or enter a line" };
+    }
+
+    const { id } = await saveDocumentDraft({
+      companyId: co,
+      draftId: str(fd, "draft_id") || null,
+      docType,
+      partnerId: str(fd, "partner_id") || null,
+      docDate: str(fd, "doc_date") || null,
+      payload,
+      total,
+      lineCount,
+    });
+
+    revalidatePath({
+      SALES_INVOICE: "/sales/invoices", PURCHASE_INVOICE: "/purchases/invoices",
+      SALES_ORDER: "/sales/orders",     PURCHASE_ORDER: "/purchases/orders",
+    }[docType]);
+    return { ok: true, draftId: id };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Throw a draft away. Nothing was posted, so nothing is reversed. */
+export async function discardInvoiceDraft(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "draft_id");
+    if (!id) return { error: "Which draft?" };
+    await deleteDocumentDraft(co, id);
+    for (const path of ["/sales/invoices", "/purchases/invoices",
+                        "/sales/orders", "/purchases/orders"]) revalidatePath(path);
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// -------------------------------------------------------------- year end --
+
+export async function closeFiscalYear(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let moved: string;
+  try {
+    const co = await companyId();
+    const fiscalYearId = str(fd, "fiscal_year_id");
+    if (!fiscalYearId) return { error: "Choose a year" };
+
+    const result = await postOnce(co, attemptKey(fd), (tx) =>
+      postYearEndClose({ companyId: co, fiscalYearId, memo: str(fd, "memo") || null }, tx));
+    const closed = result as { id: string; profit: number };
+    docId = closed.id;
+    // What the close did, not that it happened. "Year closed" left the reader
+    // to go and find where the profit went.
+    moved = `${closed.profit < 0 ? "Loss" : "Profit"} transferred to Retained `
+          + `Earnings: ${money(Math.abs(closed.profit))}`;
+    revalidatePath("/finance/year-end");
+    revalidatePath("/documents");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  redirectWithToast(`/documents/${docId}`, moved);
+}
+
+export async function reopenYear(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const fiscalYearId = str(fd, "fiscal_year_id");
+    const reason = str(fd, "reason").trim();
+    if (!fiscalYearId) return { error: "Choose a year" };
+    // A reopened year is a fact somebody has to justify later. The void
+    // carries the sentence, so it is on the document rather than in a memory.
+    if (!reason) {
+      return { error: "Say why the year is being reopened — it goes on the reversal for good" };
+    }
+    await reopenFiscalYear({ companyId: co, fiscalYearId, reason });
+    revalidatePath("/finance/year-end");
+    revalidatePath("/documents");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+// ------------------------------------------------------ bank reconciliation --
+//
+// None of this posts, and none of it writes to journal_line. A match is its
+// own row joining a statement line to a ledger line; unreconciling deletes
+// that row. A charge on the statement that is missing from the books is not
+// fixed here — it wants a bank payment voucher, which posts, and the match
+// then points at that voucher's own line.
+
+export async function previewBankStatement(
+  content: string, filename: string, format: UploadFormat,
+) {
+  await companyId();
+  const { planBankStatement } = await import("./read-bank-statement");
+  const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
+  return { plan: planBankStatement(rows), filename };
+}
+
+export async function importBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let statementId: string;
+  try {
+    const co = await companyId();
+    const accountId = str(fd, "account_id");
+    const content = str(fd, "file");
+    const filename = str(fd, "filename") || "statement.csv";
+    const format = (str(fd, "format") === "xlsx" ? "xlsx" : "csv") as UploadFormat;
+    if (!accountId) return { error: "Choose which bank account this statement is for" };
+    if (!content) return { error: "No file was uploaded" };
+
+    const [acc] = await sql`
+      select id from account
+       where id = ${accountId} and company_id = ${co} and is_bank_account`;
+    if (!acc) return { error: "That is not a bank account" };
+
+    const { planBankStatement } = await import("./read-bank-statement");
+    const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
+    const plan = planBankStatement(rows);
+
+    if (plan.rows.length === 0) {
+      return {
+        error: plan.skipped[0]?.why
+          ?? "No transaction rows could be read from that file",
+      };
+    }
+
+    const from = plan.from!;
+    const to = plan.to!;
+    const opening = fd.get("opening_balance") ? num(fd, "opening_balance") : null;
+    const closing = fd.get("closing_balance") ? num(fd, "closing_balance") : null;
+
+    statementId = await sql.begin(async (tx) => {
+      const [{ n }] = await tx`
+        select fn_next_document_no(${co}, 'BANK_STATEMENT', ${to}::date) as n`;
+      const [st] = await tx`
+        insert into bank_statement
+          (company_id, account_id, statement_no, from_date, to_date,
+           opening_balance, closing_balance, filename)
+        values (${co}, ${accountId}, ${n}, ${from}::date, ${to}::date,
+                ${opening}, ${closing}, ${filename})
+        returning id`;
+      for (const r of plan.rows) {
+        await tx`
+          insert into bank_statement_line
+            (statement_id, line_no, txn_date, description, reference, amount, balance)
+          values (${st.id}, ${r.lineNo}, ${r.txnDate}::date, ${r.description},
+                  ${r.reference}, ${r.amount}, ${r.balance})`;
+      }
+      return st.id as string;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/finance/bank-reconciliation");
+  redirectWithToast(`/finance/bank-reconciliation/${statementId}`, "Statement imported");
+}
+
+export async function matchBankLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const statementLineId = str(fd, "statement_line_id");
+    const journalLineId = str(fd, "journal_line_id");
+    if (!statementLineId || !journalLineId) return { error: "Choose both sides of the match" };
+
+    const [line] = await sql`
+      select l.id, l.statement_id, l.status, s.account_id
+        from bank_statement_line l
+        join bank_statement s on s.id = l.statement_id
+       where l.id = ${statementLineId} and s.company_id = ${co}`;
+    if (!line) return { error: "That statement line no longer exists" };
+    if (line.status === "MATCHED") return { error: "That line is already matched" };
+
+    // The ledger line has to belong to the same bank account. Matching a
+    // statement against a movement on a different account would reconcile
+    // one account using another's money.
+    const [ledger] = await sql`
+      select journal_line_id, account_id, match_id from v_bank_ledger_line
+       where journal_line_id = ${journalLineId} and company_id = ${co}`;
+    if (!ledger) return { error: "That ledger line no longer exists" };
+    if (ledger.account_id !== line.account_id) {
+      return { error: "That entry is on a different bank account" };
+    }
+    if (ledger.match_id) return { error: "That entry is already reconciled" };
+
+    await sql.begin(async (tx) => {
+      await tx`
+        insert into bank_reconciliation_match
+          (company_id, statement_line_id, journal_line_id, note)
+        values (${co}, ${statementLineId}, ${journalLineId}, ${str(fd, "note") || null})`;
+      await tx`
+        update bank_statement_line set status = 'MATCHED', ignore_reason = null
+         where id = ${statementLineId}`;
+    });
+    revalidatePath(`/finance/bank-reconciliation/${line.statement_id}`);
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: "One of those lines is already matched" };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function unmatchBankLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const statementLineId = str(fd, "statement_line_id");
+    if (!statementLineId) return { error: "Choose a line" };
+
+    const [line] = await sql`
+      select l.id, l.statement_id from bank_statement_line l
+        join bank_statement s on s.id = l.statement_id
+       where l.id = ${statementLineId} and s.company_id = ${co}`;
+    if (!line) return { error: "That statement line no longer exists" };
+
+    await sql.begin(async (tx) => {
+      await tx`delete from bank_reconciliation_match
+                where statement_line_id = ${statementLineId} and company_id = ${co}`;
+      await tx`update bank_statement_line set status = 'UNMATCHED'
+                where id = ${statementLineId}`;
+    });
+    revalidatePath(`/finance/bank-reconciliation/${line.statement_id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/** Set aside a line that is not ours to match — and say why. */
+export async function ignoreBankLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const statementLineId = str(fd, "statement_line_id");
+    const unignore = str(fd, "unignore") === "1";
+    if (!statementLineId) return { error: "Choose a line" };
+    const reason = str(fd, "reason").trim();
+    if (!unignore && !reason) {
+      return { error: "Say why this line is being set aside — otherwise it just disappears" };
+    }
+
+    const [line] = await sql`
+      select l.id, l.statement_id, l.status from bank_statement_line l
+        join bank_statement s on s.id = l.statement_id
+       where l.id = ${statementLineId} and s.company_id = ${co}`;
+    if (!line) return { error: "That statement line no longer exists" };
+    if (line.status === "MATCHED") {
+      return { error: "That line is matched — unmatch it first" };
+    }
+
+    await sql`
+      update bank_statement_line
+         set status = ${unignore ? "UNMATCHED" : "IGNORED"},
+             ignore_reason = ${unignore ? null : reason}
+       where id = ${statementLineId}`;
+    revalidatePath(`/finance/bank-reconciliation/${line.statement_id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/**
+ * Match everything that can only mean one thing.
+ *
+ * Deliberately conservative: same amount to the kyat, within seven days, and
+ * exactly one candidate on each side. Two ledger lines of 500,000 in the
+ * same week are left alone — a wrong automatic match is worse than no
+ * automatic match, because nobody re-checks the ones the machine did.
+ */
+export async function autoMatchBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const statementId = str(fd, "statement_id");
+    if (!statementId) return { error: "Choose a statement" };
+
+    const [st] = await sql`
+      select id, account_id, from_date, to_date from bank_statement
+       where id = ${statementId} and company_id = ${co}`;
+    if (!st) return { error: "That statement no longer exists" };
+
+    const lines = await sql`
+      select id, txn_date, amount from bank_statement_line
+       where statement_id = ${statementId} and status = 'UNMATCHED'
+       order by line_no`;
+
+    const candidates = await sql`
+      select journal_line_id, entry_date, amount from v_bank_ledger_line
+       where company_id = ${co} and account_id = ${st.account_id}
+         and match_id is null
+         and entry_date >= (${st.from_date}::date - interval '45 days')
+         and entry_date <= (${st.to_date}::date + interval '15 days')`;
+
+    const used = new Set<string>();
+    let matched = 0;
+
+    for (const l of lines) {
+      const near = candidates.filter((c: Record<string, unknown>) => {
+        if (used.has(String(c.journal_line_id))) return false;
+        if (Math.abs(Number(c.amount) - Number(l.amount)) > 0.0001) return false;
+        const days = Math.abs(
+          (new Date(String(c.entry_date)).getTime()
+            - new Date(String(l.txn_date)).getTime()) / 86_400_000);
+        return days <= 7;
+      });
+      if (near.length !== 1) continue;
+
+      const jl = String(near[0].journal_line_id);
+      await sql.begin(async (tx) => {
+        await tx`
+          insert into bank_reconciliation_match
+            (company_id, statement_line_id, journal_line_id, note)
+          values (${co}, ${l.id}, ${jl}, 'Matched automatically: same amount, within 7 days')`;
+        await tx`update bank_statement_line set status = 'MATCHED' where id = ${l.id}`;
+      });
+      used.add(jl);
+      matched += 1;
+    }
+
+    revalidatePath(`/finance/bank-reconciliation/${statementId}`);
+    return matched === 0
+      ? { error: "Nothing could be matched without a judgement call — match by hand below." }
+      : { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function setBankStatementStatus(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const statementId = str(fd, "statement_id");
+    const status = str(fd, "status");
+    if (!statementId) return { error: "Choose a statement" };
+    if (!["OPEN", "RECONCILED"].includes(status)) return { error: "Not a statement status" };
+
+    const [st] = await sql`
+      select s.id,
+             (select count(*) from bank_statement_line l
+               where l.statement_id = s.id and l.status = 'UNMATCHED') as unmatched
+        from bank_statement s
+       where s.id = ${statementId} and s.company_id = ${co}`;
+    if (!st) return { error: "That statement no longer exists" };
+
+    if (status === "RECONCILED" && Number(st.unmatched) > 0) {
+      return {
+        error: `${st.unmatched} line${Number(st.unmatched) === 1 ? " is" : "s are"} still `
+             + `unexplained. Match each one, or set it aside with a reason, before `
+             + `calling the statement reconciled.`,
+      };
+    }
+
+    await sql`update bank_statement set status = ${status}
+               where id = ${statementId} and company_id = ${co}`;
+    revalidatePath(`/finance/bank-reconciliation/${statementId}`);
+    revalidatePath("/finance/bank-reconciliation");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function deleteBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const statementId = str(fd, "statement_id");
+    if (!statementId) return { error: "Choose a statement" };
+    // Cascades to its lines and their matches. Nothing in the ledger moves,
+    // which is exactly why deleting an imported statement is safe: it was
+    // never a financial record, only a comparison against one.
+    await sql`delete from bank_statement where id = ${statementId} and company_id = ${co}`;
+    revalidatePath("/finance/bank-reconciliation");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  redirectWithToast("/finance/bank-reconciliation", "Statement deleted");
+}
+
+// ------------------------------------------------------- partner categories --
+//
+// What kind of shop a customer is. Classification only: it sets no price, no
+// credit limit and no terms, because those were agreed with the shop and
+// live on the shop.
+
+export async function createPartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    await sql`
+      insert into partner_category (company_id, code, name, name_my, note, sort_order, kind)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
+              ${str(fd, "note") || null}, ${num(fd, "sort_order")},
+              ${str(fd, "kind") === "SUPPLIER" ? "SUPPLIER" : "CUSTOMER"})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/partners/categories");
+  redirectWithToast("/partners/categories", "Category added");
+}
+
+export async function updatePartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+    if (!id) return { error: "Choose a category" };
+    if (!name) return { error: "Name is required" };
+
+    await sql`
+      update partner_category
+         set name = ${name}, name_my = ${str(fd, "name_my") || null},
+             note = ${str(fd, "note") || null},
+             sort_order = ${num(fd, "sort_order")}
+       where id = ${id} and company_id = ${co}`;
+    revalidatePath("/partners/categories");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function setPartnerCategoryActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a category" };
+    await sql`update partner_category set is_active = ${str(fd, "active") === "1"}
+               where id = ${id} and company_id = ${co}`;
+    revalidatePath("/partners/categories");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/**
+ * Hard delete, and only for a category nothing is filed under.
+ *
+ * Deleting one that customers sit in would blank their classification
+ * silently — the foreign key is nullable, so nothing would complain. A
+ * category in use is deactivated instead, which takes it off the pickers and
+ * leaves the customers who are in it still saying what they are.
+ */
+export async function deletePartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a category" };
+
+    const [inUse] = await sql`
+      select count(*)::int as n from business_partner
+       where category_id = ${id} and company_id = ${co}`;
+    if (Number(inUse.n) > 0) {
+      return {
+        error: `${inUse.n} partner${Number(inUse.n) === 1 ? " is" : "s are"} filed under `
+             + `this category — deactivate it instead of deleting it.`,
+      };
+    }
+    await sql`delete from partner_category where id = ${id} and company_id = ${co}`;
+    revalidatePath("/partners/categories");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+// -------------------------------------------------------------------- routes --
+//
+// A beat: the same shops, on the same days, normally with the same people.
+// Nothing here posts and nothing here fires by itself — a route is a
+// template somebody presses a button against on the morning of the run.
+
+function weekdaysFrom(fd: FormData): number[] {
+  return fd.getAll("weekday").map((d) => Number(d)).filter((d) => d >= 1 && d <= 7);
+}
+
+export async function createRoute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  let routeId: string;
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const [r] = await sql`
+      insert into route (company_id, code, name, location_id, salesman_id,
+                         driver_id, vehicle_id, weekdays, note)
+      values (${co}, ${code}, ${name}, ${str(fd, "location_id") || null},
+              ${str(fd, "salesman_id") || null}, ${str(fd, "driver_id") || null},
+              ${str(fd, "vehicle_id") || null}, ${weekdaysFrom(fd)},
+              ${str(fd, "note") || null})
+      returning id`;
+    routeId = r.id as string;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/routes");
+  redirectWithToast(`/logistics/routes/${routeId}`, "Route created");
+}
+
+export async function updateRoute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+    if (!id) return { error: "Choose a route" };
+    if (!name) return { error: "Name is required" };
+
+    await sql`
+      update route
+         set name = ${name}, location_id = ${str(fd, "location_id") || null},
+             salesman_id = ${str(fd, "salesman_id") || null},
+             driver_id = ${str(fd, "driver_id") || null},
+             vehicle_id = ${str(fd, "vehicle_id") || null},
+             weekdays = ${weekdaysFrom(fd)},
+             note = ${str(fd, "note") || null}
+       where id = ${id} and company_id = ${co}`;
+    revalidatePath(`/logistics/routes/${id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function setRouteActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a route" };
+    await sql`update route set is_active = ${str(fd, "active") === "1"}
+               where id = ${id} and company_id = ${co}`;
+    revalidatePath("/logistics/routes");
+    revalidatePath(`/logistics/routes/${id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function addRouteStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const routeId = str(fd, "route_id");
+    const partnerIds = fd.getAll("partner_id").map(String).filter(Boolean);
+    if (!routeId) return { error: "Choose a route" };
+    if (partnerIds.length === 0) return { error: "Tick at least one customer" };
+
+    const [route] = await sql`
+      select id from route where id = ${routeId} and company_id = ${co}`;
+    if (!route) return { error: "That route no longer exists" };
+
+    await sql.begin(async (tx) => {
+      const [{ n }] = await tx`
+        select coalesce(max(seq), 0) as n from route_stop where route_id = ${routeId}`;
+      let seq = Number(n);
+      for (const partnerId of partnerIds) {
+        seq += 1;
+        await tx`
+          insert into route_stop (route_id, seq, partner_id)
+          values (${routeId}, ${seq}, ${partnerId})
+          on conflict (route_id, partner_id) do nothing`;
+      }
+    });
+    revalidatePath(`/logistics/routes/${routeId}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function removeRouteStop(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const stopId = str(fd, "stop_id");
+    if (!stopId) return { error: "Choose a stop" };
+    const [stop] = await sql`
+      select rs.id, rs.route_id from route_stop rs
+        join route r on r.id = rs.route_id
+       where rs.id = ${stopId} and r.company_id = ${co}`;
+    if (!stop) return { error: "That stop no longer exists" };
+
+    // Taking a shop off the beat changes the plan, never a trip already
+    // generated from it — those are records of journeys that happened.
+    await sql`delete from route_stop where id = ${stopId}`;
+    revalidatePath(`/logistics/routes/${stop.route_id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function reorderRouteStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const routeId = str(fd, "route_id");
+    const order = fd.getAll("stop_id").map(String).filter(Boolean);
+    if (!routeId || order.length === 0) return { error: "Nothing to reorder" };
+    const [route] = await sql`
+      select id from route where id = ${routeId} and company_id = ${co}`;
+    if (!route) return { error: "That route no longer exists" };
+
+    await sql.begin(async (tx) => {
+      for (const [i, stopId] of order.entries()) {
+        await tx`update route_stop set seq = ${i + 1}
+                  where id = ${stopId} and route_id = ${routeId}`;
+      }
+    });
+    revalidatePath(`/logistics/routes/${routeId}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/**
+ * Today's trip, from the standing beat.
+ *
+ * Each shop on the route becomes a stop. Where goods are already waiting for
+ * that shop — a posted delivery not on any running trip — each delivery
+ * becomes its own stop at that shop's position, because the driver hands
+ * over one document at a time and the shop signs for each. A shop with
+ * nothing waiting still gets a stop: on a pre-sale round the whole point of
+ * the call is to come back with an order.
+ *
+ * The route's people and truck are copied on to the trip rather than read
+ * through it. The beat says who usually goes; the trip records who went, and
+ * changing the beat next month must not rewrite last Tuesday.
+ */
+export async function generateTripFromRoute(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let tripId: string;
+  try {
+    const co = await companyId();
+    const routeId = str(fd, "route_id");
+    const tripDate = str(fd, "trip_date");
+    if (!routeId) return { error: "Choose a route" };
+    if (!tripDate) return { error: "Choose the day it runs" };
+
+    const [route] = await sql`
+      select * from route where id = ${routeId} and company_id = ${co}`;
+    if (!route) return { error: "That route no longer exists" };
+    if (!route.is_active) return { error: "That route is retired" };
+
+    const stops = await sql`
+      select rs.partner_id from route_stop rs
+       where rs.route_id = ${routeId} order by rs.seq`;
+    if (stops.length === 0) {
+      return { error: "That route has no shops on it yet" };
+    }
+
+    const [already] = await sql`
+      select trip_no from delivery_trip
+       where route_id = ${routeId} and trip_date = ${tripDate}::date
+         and status <> 'CANCELLED'`;
+    if (already) {
+      return { error: `${already.trip_no} already runs this route on that day` };
+    }
+
+    tripId = await sql.begin(async (tx) => {
+      const [{ n }] = await tx`
+        select fn_next_document_no(${co}, 'DELIVERY_TRIP', ${tripDate}::date) as n`;
+      const [t] = await tx`
+        insert into delivery_trip
+          (company_id, trip_no, trip_date, location_id, vehicle_id, driver_id,
+           salesman_id, route_id, note)
+        values (${co}, ${n}, ${tripDate}::date, ${route.location_id},
+                ${route.vehicle_id}, ${route.driver_id}, ${route.salesman_id},
+                ${routeId}, ${route.note})
+        returning id`;
+
+      let seq = 0;
+      for (const rs of stops) {
+        const waiting = await tx`
+          select d.id from document d
+           where d.company_id = ${co}
+             and d.doc_type = 'DELIVERY' and d.status = 'POSTED'
+             and d.partner_id = ${rs.partner_id}
+             and d.reverses_document_id is null
+             and not exists (
+                   select 1 from delivery_trip_stop s2
+                     join delivery_trip t2 on t2.id = s2.trip_id
+                    where s2.document_id = d.id
+                      and t2.status in ('PLANNED','DISPATCHED'))
+           order by d.doc_date, d.doc_no`;
+
+        if (waiting.length === 0) {
+          seq += 1;
+          await tx`
+            insert into delivery_trip_stop (trip_id, seq, partner_id)
+            values (${t.id}, ${seq}, ${rs.partner_id})`;
+        } else {
+          for (const w of waiting) {
+            seq += 1;
+            await tx`
+              insert into delivery_trip_stop (trip_id, seq, partner_id, document_id)
+              values (${t.id}, ${seq}, ${rs.partner_id}, ${w.id})`;
+          }
+        }
+      }
+      return t.id as string;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/trips");
+  redirectWithToast(`/logistics/trips/${tripId}`, "Trip generated from the route");
+}
+
+// ------------------------------------------------------------ delivery trips --
+//
+// None of this posts. A trip records who carried goods that already left the
+// warehouse, so every action below writes to the trip tables and nothing
+// else — no journal, no stock, no document status. That is the whole reason
+// it lives here rather than in posting.ts.
+
+export async function createVehicle(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const plate = str(fd, "plate_no");
+    if (!code) return { error: "Code is required" };
+    if (!plate) return { error: "Plate number is required — it is what the yard calls it" };
+
+    await sql`
+      insert into vehicle (company_id, code, plate_no, name, capacity_note)
+      values (${co}, ${code}, ${plate}, ${str(fd, "name") || null},
+              ${str(fd, "capacity_note") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/vehicles");
+  redirectWithToast("/logistics/vehicles", "Vehicle added");
+}
+
+export async function updateVehicle(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a vehicle" };
+    const plate = str(fd, "plate_no");
+    if (!plate) return { error: "Plate number is required" };
+    await sql`
+      update vehicle
+         set plate_no = ${plate}, name = ${str(fd, "name") || null},
+             capacity_note = ${str(fd, "capacity_note") || null}
+       where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/vehicles");
+  return { ok: true };
+}
+
+export async function setVehicleActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a vehicle" };
+    await sql`update vehicle set is_active = ${str(fd, "active") === "1"}
+               where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/vehicles");
+  return { ok: true };
+}
+
+export async function createDriver(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    await sql`
+      insert into driver (company_id, code, name, name_my, phone, licence_no)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
+              ${str(fd, "phone") || null}, ${str(fd, "licence_no") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/drivers");
+  redirectWithToast("/logistics/drivers", "Driver added");
+}
+
+export async function updateDriver(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a driver" };
+    const name = str(fd, "name");
+    if (!name) return { error: "Name is required" };
+    await sql`
+      update driver
+         set name = ${name}, name_my = ${str(fd, "name_my") || null},
+             phone = ${str(fd, "phone") || null},
+             licence_no = ${str(fd, "licence_no") || null}
+       where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/drivers");
+  return { ok: true };
+}
+
+export async function setDriverActive(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a driver" };
+    await sql`update driver set is_active = ${str(fd, "active") === "1"}
+               where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/drivers");
+  return { ok: true };
+}
+
+/** A trip, with the deliveries ticked on the form as its first stops. */
+export async function createTrip(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let tripId: string;
+  try {
+    const co = await companyId();
+    const tripDate = str(fd, "trip_date");
+    if (!tripDate) return { error: "A trip needs a date" };
+
+    const documentIds = fd.getAll("document_id").map(String).filter(Boolean);
+
+    tripId = await sql.begin(async (tx) => {
+      const [{ n }] = await tx`
+        select fn_next_document_no(${co}, 'DELIVERY_TRIP', ${tripDate}::date) as n`;
+      const [t] = await tx`
+        insert into delivery_trip
+          (company_id, trip_no, trip_date, location_id, vehicle_id, driver_id,
+           salesman_id, note)
+        values (${co}, ${n}, ${tripDate}::date, ${str(fd, "location_id") || null},
+                ${str(fd, "vehicle_id") || null}, ${str(fd, "driver_id") || null},
+                ${str(fd, "salesman_id") || null}, ${str(fd, "note") || null})
+        returning id`;
+      for (const [i, docId] of documentIds.entries()) {
+        await tx`
+          insert into delivery_trip_stop (trip_id, seq, document_id)
+          values (${t.id}, ${i + 1}, ${docId})`;
+      }
+      return t.id as string;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/logistics/trips");
+  redirectWithToast(`/logistics/trips/${tripId}`, "Trip created");
+}
+
+export async function addTripStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const tripId = str(fd, "trip_id");
+    const documentIds = fd.getAll("document_id").map(String).filter(Boolean);
+    if (!tripId) return { error: "Choose a trip" };
+    if (documentIds.length === 0) return { error: "Tick at least one delivery" };
+
+    const [trip] = await sql`
+      select status from delivery_trip where id = ${tripId} and company_id = ${co}`;
+    if (!trip) return { error: "That trip no longer exists" };
+    if (trip.status === "CLOSED" || trip.status === "CANCELLED") {
+      return { error: `A ${String(trip.status).toLowerCase()} trip cannot take new stops` };
+    }
+
+    await sql.begin(async (tx) => {
+      const [{ n }] = await tx`
+        select coalesce(max(seq), 0) as n from delivery_trip_stop where trip_id = ${tripId}`;
+      let seq = Number(n);
+      for (const docId of documentIds) {
+        seq += 1;
+        await tx`
+          insert into delivery_trip_stop (trip_id, seq, document_id)
+          values (${tripId}, ${seq}, ${docId})
+          on conflict (trip_id, document_id) do nothing`;
+      }
+    });
+    revalidatePath(`/logistics/trips/${tripId}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function removeTripStop(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const stopId = str(fd, "stop_id");
+    if (!stopId) return { error: "Choose a stop" };
+
+    const [stop] = await sql`
+      select s.id, s.trip_id, s.status, t.status as trip_status
+        from delivery_trip_stop s
+        join delivery_trip t on t.id = s.trip_id
+       where s.id = ${stopId} and t.company_id = ${co}`;
+    if (!stop) return { error: "That stop no longer exists" };
+    // A stop that has an answer is a record of what happened, not a plan.
+    if (stop.status !== "PENDING") {
+      return { error: "That stop has already been answered — it is a record of the journey now" };
+    }
+
+    await sql`delete from delivery_trip_stop where id = ${stopId}`;
+    revalidatePath(`/logistics/trips/${stop.trip_id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/**
+ * The running order, rewritten from a list of stop ids.
+ *
+ * Every seq is set inside one transaction, which the deferred unique on
+ * (trip_id, seq) exists for: an immediate check fails halfway through a swap
+ * because two stops briefly share a number.
+ */
+export async function reorderTripStops(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const tripId = str(fd, "trip_id");
+    const order = fd.getAll("stop_id").map(String).filter(Boolean);
+    if (!tripId || order.length === 0) return { error: "Nothing to reorder" };
+
+    const [trip] = await sql`
+      select id from delivery_trip where id = ${tripId} and company_id = ${co}`;
+    if (!trip) return { error: "That trip no longer exists" };
+
+    await sql.begin(async (tx) => {
+      for (const [i, stopId] of order.entries()) {
+        await tx`
+          update delivery_trip_stop set seq = ${i + 1}
+           where id = ${stopId} and trip_id = ${tripId}`;
+      }
+    });
+    revalidatePath(`/logistics/trips/${tripId}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/** What happened at one stop. Proof of delivery, not a posting. */
+export async function answerTripStop(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const stopId = str(fd, "stop_id");
+    const status = str(fd, "status");
+    if (!stopId) return { error: "Choose a stop" };
+    if (!["PENDING", "DELIVERED", "FAILED"].includes(status)) {
+      return { error: "A stop is pending, delivered, or failed" };
+    }
+    const reason = str(fd, "failure_reason");
+    if (status === "FAILED" && !reason.trim()) {
+      return { error: "Say why it failed — shop shut, money not ready, nobody there" };
+    }
+
+    const [stop] = await sql`
+      select s.trip_id from delivery_trip_stop s
+        join delivery_trip t on t.id = s.trip_id
+       where s.id = ${stopId} and t.company_id = ${co}`;
+    if (!stop) return { error: "That stop no longer exists" };
+
+    await sql`
+      update delivery_trip_stop
+         set status = ${status},
+             delivered_at = ${status === "DELIVERED" ? sql`now()` : null},
+             failure_reason = ${status === "FAILED" ? reason.trim() : null}
+       where id = ${stopId}`;
+    revalidatePath(`/logistics/trips/${stop.trip_id}`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/**
+ * Where the trip is in its journey.
+ *
+ * Closing is refused while a stop is still pending, because the evening
+ * question is exactly the one a half-answered trip cannot answer. Cancelling
+ * is for a trip that never left; one that went out and went badly is closed
+ * with failed stops, which is a truer record.
+ */
+export async function setTripStatus(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const tripId = str(fd, "trip_id");
+    const status = str(fd, "status");
+    if (!tripId) return { error: "Choose a trip" };
+    if (!["PLANNED", "DISPATCHED", "CLOSED", "CANCELLED"].includes(status)) {
+      return { error: "Not a trip status" };
+    }
+
+    const [trip] = await sql`
+      select t.status,
+             (select count(*) from delivery_trip_stop s
+               where s.trip_id = t.id and s.status = 'PENDING') as pending,
+             (select count(*) from delivery_trip_stop s where s.trip_id = t.id) as stops
+        from delivery_trip t
+       where t.id = ${tripId} and t.company_id = ${co}`;
+    if (!trip) return { error: "That trip no longer exists" };
+
+    if (status === "DISPATCHED" && Number(trip.stops) === 0) {
+      return { error: "A trip with no stops has nowhere to go" };
+    }
+    if (status === "CLOSED" && Number(trip.pending) > 0) {
+      return {
+        error: `${trip.pending} stop${Number(trip.pending) === 1 ? " is" : "s are"} still `
+             + `unanswered. Mark each one delivered or failed before closing the trip.`,
+      };
+    }
+    if (status === "CANCELLED" && trip.status === "CLOSED") {
+      return { error: "A closed trip is a record of a journey that happened" };
+    }
+
+    await sql`
+      update delivery_trip
+         set status = ${status},
+             departed_at = ${status === "DISPATCHED" ? sql`now()` : sql`departed_at`},
+             closed_at = ${status === "CLOSED" ? sql`now()` : sql`closed_at`}
+       where id = ${tripId} and company_id = ${co}`;
+    revalidatePath(`/logistics/trips/${tripId}`);
+    revalidatePath("/logistics/trips");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+export async function createSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Salesperson added";
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+
+    const name = str(fd, "name");
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`select 1 from salesman where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      insert into salesman (company_id, code, name, name_my, phone, location_id, commission_pct)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null}, ${str(fd, "phone") || null},
+              ${str(fd, "location_id") || null}, ${num(fd, "commission_pct")})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/salespersons");
+  redirectWithToast("/salespersons", toastMsg);
+}
+
+export async function updateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Salesperson updated";
+
+  try {
+    const co = await companyId();
+
+    const id = str(fd, "id");
+    const code = str(fd, "code").toUpperCase();
+    const name = str(fd, "name");
+
+    if (!id) return { error: "Choose a salesperson" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`
+      select 1 from salesman where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    await sql`
+      update salesman set
+        code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
+        phone = ${str(fd, "phone") || null}, location_id = ${str(fd, "location_id") || null},
+        commission_pct = ${num(fd, "commission_pct")}, is_active = ${fd.get("is_active") === "on"}
+      where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/salespersons");
+  redirectWithToast("/salespersons", toastMsg);
+}
+
+export async function deactivateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a salesperson" };
+
+    await sql`update salesman set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/salespersons");
+  redirectWithToast("/salespersons", "Salesperson deactivated");
+}
+
+/** Puts back what deactivateSalesman retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a salesperson" };
+
+    await sql`update salesman set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/salespersons");
+  redirectWithToast("/salespersons", "Salesperson reactivated");
+}
+
+export async function deleteSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a salesperson" };
+
+    await sql`delete from salesman where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This salesperson has documents against them — deactivate instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/salespersons");
+  redirectWithToast("/salespersons", "Salesperson deleted");
+}
+
+// ------------------------------------------------------ stock adjustments --
+
+function parseAdjustmentLines(fd: FormData): AdjustmentLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the lines");
+
+  return parsed
+    .map((l: any) => ({
+      itemId: String(l.itemId ?? ""),
+      qty: Number(l.qty),
+      unitCost: l.unitCost !== "" && l.unitCost != null ? Number(l.unitCost) : undefined,
+      // The lot found stock belongs to. Dropped for a loss, which consumes
+      // layers FIFO already chose, and dropped here rather than trusted from
+      // the form — the engine refuses a tracked increase without one.
+      batchNo: l.batchNo ? String(l.batchNo) : null,
+      expiryDate: l.expiryDate ? String(l.expiryDate) : null,
+    }))
+    .filter((l) => l.itemId && l.qty !== 0);
+}
+
+export async function createStockAdjustment(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Stock adjustment posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseAdjustmentLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postStockAdjustment({
+      companyId: co,
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      receivedAt: dateTime(fd, "doc_date", "received_time"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      lines,
+    });
+
+    docId = result.id;
+    toastMsg = `Adjustment ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  revalidatePath("/inventory/movements");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+// -------------------------------------------------------- stock transfers --
+
+function parseTransferLines(fd: FormData): TransferLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the lines");
+
+  return parsed
+    .map((l: any) => ({ itemId: String(l.itemId ?? ""), qty: Number(l.qty) }))
+    .filter((l) => l.itemId && l.qty > 0);
+}
+
+export async function createStockTransfer(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Transfer posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseTransferLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    const fromLocationId = str(fd, "from_location_id");
+    const toLocationId = str(fd, "to_location_id");
+    if (!fromLocationId) return { error: "Choose a source warehouse" };
+    if (!toLocationId) return { error: "Choose a destination warehouse" };
+    if (fromLocationId === toLocationId) return { error: "Choose two different warehouses" };
+
+    const result = await postStockTransfer({
+      companyId: co,
+      fromLocationId,
+      toLocationId,
+      docDate: str(fd, "doc_date"),
+      receivedAt: dateTime(fd, "doc_date", "received_time"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      // Same rule as a delivery: present only when the dialog was answered.
+      allowNegativeStock: fd.get("allow_negative_stock") !== null,
+      negativeStockReason: str(fd, "negative_stock_reason") || null,
+      lines,
+    });
+
+    docId = result.id;
+    toastMsg = `Transfer ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  revalidatePath("/inventory/movements");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+// ------------------------------------------------------------ reorder points --
+
+export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const itemId = str(fd, "item_id");
+    const locationId = str(fd, "location_id");
+    const minQty = num(fd, "min_qty");
+
+    if (!itemId) return { error: "Choose an item" };
+    if (!locationId) return { error: "Choose a location" };
+    if (minQty <= 0) return { error: "Reorder point must be greater than zero" };
+
+    const dup = await sql`
+      select 1 from item_reorder where company_id = ${co} and item_id = ${itemId} and location_id = ${locationId}`;
+    if (dup.length) return { error: "This item and location already has a reorder point — edit it instead" };
+
+    await sql`
+      insert into item_reorder (company_id, item_id, location_id, min_qty)
+      values (${co}, ${itemId}, ${locationId}, ${minQty})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: "This item and location already has a reorder point — edit it instead" };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/stock");
+  redirectWithToast("/items/stock", "Reorder point added");
+}
+
+export async function updateReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const minQty = num(fd, "min_qty");
+
+    if (!id) return { error: "Choose a reorder point" };
+    if (minQty <= 0) return { error: "Reorder point must be greater than zero" };
+
+    await sql`update item_reorder set min_qty = ${minQty} where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/stock");
+  redirectWithToast("/items/stock", "Reorder point updated");
+}
+
+export async function deleteReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a reorder point" };
+
+    await sql`delete from item_reorder where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/stock");
+  redirectWithToast("/items/stock", "Reorder point removed");
+}
+
+// --------------------------------------------------- chart of accounts --
+
+const ACCOUNT_TYPES = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "COGS", "EXPENSE"];
+
+/**
+ * Why an account must not be retired. The posting engine resolves some
+ * accounts by role and the ledger refuses postings to an inactive account,
+ * so deactivating one of these turns a routine sale into a runtime error.
+ * Better to refuse here, naming the role, than to break posting later.
+ */
+async function accountLock(co: string, id: string): Promise<string | null> {
+  const sys = await sql`
+    select role from system_account where company_id = ${co} and account_id = ${id} order by role`;
+  if (sys.length) {
+    const roles = sys.map((r: any) => r.role.replace(/_/g, " ").toLowerCase()).join(", ");
+    return `The posting engine uses this account for ${roles}. Point that role at another account before retiring this one.`;
+  }
+
+  const rules = await sql`
+    select distinct role from account_determination
+     where company_id = ${co} and account_id = ${id} order by role`;
+  if (rules.length) {
+    const roles = rules.map((r: any) => r.role.replace(/_/g, " ").toLowerCase()).join(", ");
+    return `Posting rules send ${roles} to this account. Change those rules before retiring it.`;
+  }
+
+  return null;
+}
+
+/** Bank accounts are a subset of cash accounts — see migration 0014. */
+function moneyFlags(kind: string): { cash: boolean; bank: boolean } {
+  if (kind === "bank") return { cash: true, bank: true };
+  if (kind === "cash") return { cash: true, bank: false };
+  return { cash: false, bank: false };
+}
+
+export async function createAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Account added";
+  const code = str(fd, "code");
+
+  try {
+    const co = await companyId();
+
+    const name = str(fd, "name");
+    const type = str(fd, "account_type");
+    const parentId = str(fd, "parent_id") || null;
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (!ACCOUNT_TYPES.includes(type)) return { error: "Choose an account type" };
+
+    const dup = await sql`select 1 from account where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    if (parentId) {
+      const [p] = await sql`
+        select code, name, account_type from account where id = ${parentId} and company_id = ${co}`;
+      if (!p) return { error: "That parent account no longer exists" };
+      if (p.account_type !== type) {
+        return {
+          error: `${p.code} ${p.name} is ${String(p.account_type).toLowerCase()}, so anything filed under it has to be too`,
+        };
+      }
+
+      // An account that has been posted to cannot become a heading: the
+      // ledger refuses postings to headings, so its own history would sit on
+      // an account nothing is allowed to post to any more.
+      const [posted] = await sql`
+        select count(*)::int as n from journal_line
+         where company_id = ${co} and account_id = ${parentId}`;
+      if (posted.n > 0) {
+        return {
+          error: `${p.code} ${p.name} already has ${posted.n} posting${posted.n === 1 ? "" : "s"} against it and cannot become a heading. File this account alongside it instead.`,
+        };
+      }
+    }
+
+    const money = moneyFlags(str(fd, "money_kind"));
+
+    await sql.begin(async (tx) => {
+      await tx`
+        insert into account
+          (company_id, parent_id, code, name, name_my, account_type,
+           currency, is_cash_account, is_bank_account)
+        values
+          (${co}, ${parentId}, ${code}, ${name}, ${str(fd, "name_my") || null}, ${type},
+           ${str(fd, "currency") || null}, ${money.cash}, ${money.bank})`;
+
+      // Gaining a child makes the parent a heading, and headings are not postable.
+      if (parentId) {
+        await tx`
+          update account set is_postable = false
+           where id = ${parentId} and company_id = ${co}`;
+      }
+    });
+
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/accounts");
+  redirectWithToast("/settings/accounts", toastMsg);
+}
+
+export async function updateAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const toastMsg = "Account updated";
+
+  try {
+    const co = await companyId();
+
+    const id = str(fd, "id");
+    const code = str(fd, "code");
+    const name = str(fd, "name");
+    const type = str(fd, "account_type");
+    const parentId = str(fd, "parent_id") || null;
+    const isActive = fd.get("is_active") !== null;
+
+    if (!id) return { error: "Choose an account" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (!ACCOUNT_TYPES.includes(type)) return { error: "Choose an account type" };
+    if (parentId === id) return { error: "An account cannot sit under itself" };
+
+    const [current] = await sql`
+      select account_type, is_active, parent_id from account
+       where id = ${id} and company_id = ${co}`;
+    if (!current) return { error: "That account no longer exists" };
+
+    const dup = await sql`
+      select 1 from account where company_id = ${co} and code = ${code} and id <> ${id}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    const [posted] = await sql`
+      select count(*)::int as n from journal_line
+       where company_id = ${co} and account_id = ${id}`;
+
+    // Retyping a posted account silently moves its history between the
+    // balance sheet and the income statement.
+    if (type !== current.account_type && posted.n > 0) {
+      return {
+        error: `This account has ${posted.n} posting${posted.n === 1 ? "" : "s"} against it, so its type can no longer change — that would move settled history between the balance sheet and the income statement.`,
+      };
+    }
+
+    if (!isActive && current.is_active) {
+      const lock = await accountLock(co, id);
+      if (lock) return { error: lock };
+    }
+
+    if (parentId) {
+      const cycle = await sql`
+        with recursive descendants as (
+          select id from account where id = ${id} and company_id = ${co}
+          union all
+          select a.id from account a join descendants d on a.parent_id = d.id
+        )
+        select 1 from descendants where id = ${parentId}`;
+      if (cycle.length) return { error: "That would put the account inside its own branch" };
+
+      const [p] = await sql`
+        select code, name, account_type from account where id = ${parentId} and company_id = ${co}`;
+      if (!p) return { error: "That parent account no longer exists" };
+      if (p.account_type !== type) {
+        return {
+          error: `${p.code} ${p.name} is ${String(p.account_type).toLowerCase()}, so anything filed under it has to be too`,
+        };
+      }
+    }
+
+    const money = moneyFlags(str(fd, "money_kind"));
+
+    await sql.begin(async (tx) => {
+      await tx`
+        update account set
+          code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
+          account_type = ${type}, parent_id = ${parentId},
+          currency = ${str(fd, "currency") || null},
+          is_cash_account = ${money.cash}, is_bank_account = ${money.bank},
+          is_active = ${isActive}
+        where id = ${id} and company_id = ${co}`;
+
+      if (parentId) {
+        await tx`update account set is_postable = false where id = ${parentId} and company_id = ${co}`;
+      }
+
+      // Moving out of a branch can leave the old parent childless. A heading
+      // with nothing under it and nothing allowed to post to it is dead, so
+      // hand it back its postability.
+      if (current.parent_id && current.parent_id !== parentId) {
+        const [left] = await tx`
+          select 1 from account where parent_id = ${current.parent_id} limit 1`;
+        if (!left) {
+          await tx`update account set is_postable = true where id = ${current.parent_id}`;
+        }
+      }
+    });
+
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/accounts");
+  redirectWithToast("/settings/accounts", toastMsg);
+}
+
+export async function deactivateAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose an account" };
+
+    const lock = await accountLock(co, id);
+    if (lock) return { error: lock };
+
+    await sql`update account set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/accounts");
+  redirectWithToast("/settings/accounts", "Account deactivated");
+}
+
+/** Puts back what deactivateAccount retired. Reactivating is always safe, so
+ *  unlike deactivation it carries no guard. */
+export async function activateAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose an account" };
+
+    await sql`update account set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/accounts");
+  redirectWithToast("/settings/accounts", "Account reactivated");
+}
+
+/**
+ * Only ever succeeds for an account nothing has touched. Anything with
+ * postings, rules, or a partner override behind it is held by a foreign key,
+ * which is the answer we want — history stays intact and the account gets
+ * deactivated instead.
+ */
+export async function deleteAccount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose an account" };
+
+    const lock = await accountLock(co, id);
+    if (lock) return { error: lock };
+
+    const [kid] = await sql`
+      select 1 from account where parent_id = ${id} and company_id = ${co} limit 1`;
+    if (kid) return { error: "This account has accounts filed under it. Move or remove those first." };
+
+    const [target] = await sql`
+      select parent_id from account where id = ${id} and company_id = ${co}`;
+
+    await sql.begin(async (tx) => {
+      await tx`delete from account where id = ${id} and company_id = ${co}`;
+
+      // A heading that just lost its last child is postable again — otherwise
+      // it is left as an account nothing can post to and nothing sits under.
+      if (target?.parent_id) {
+        const [left] = await tx`
+          select 1 from account where parent_id = ${target.parent_id} limit 1`;
+        if (!left) {
+          await tx`update account set is_postable = true where id = ${target.parent_id}`;
+        }
+      }
+    });
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      return { error: "This account has postings or rules against it — deactivate it instead of deleting" };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/settings/accounts");
+  redirectWithToast("/settings/accounts", "Account deleted");
+}
+
+// ---------------------------------------------------------- consignment --
+
+export async function createConsignmentAgreement(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const partnerId = str(fd, "partner_id");
+    if (!partnerId) return { error: "Choose a consignor" };
+
+    const [existing] = await sql`
+      select id from consignment_agreement where company_id = ${co} and partner_id = ${partnerId}`;
+    if (existing) return { error: "This supplier already has a consignment agreement" };
+
+    await sql`insert into consignment_agreement (company_id, partner_id, memo)
+      values (${co}, ${partnerId}, ${str(fd, "memo") || null})`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/inventory/consignment");
+  redirectWithToast("/inventory/consignment", "Consignment agreement created");
+}
+
+export async function addConsignmentAgreementLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const agreementId = str(fd, "agreement_id");
+    const itemId = str(fd, "item_id");
+    const method = str(fd, "pricing_method");
+    const value = Number(fd.get("pricing_value"));
+
+    if (!agreementId || !itemId) return { error: "Choose an item" };
+    if (method !== "PERCENTAGE" && method !== "FIXED") return { error: "Choose a settlement method" };
+    if (!Number.isFinite(value) || value <= 0) return { error: "Enter a settlement value" };
+    if (method === "PERCENTAGE" && value > 100) return { error: "A percentage cannot exceed 100" };
+
+    await sql`
+      insert into consignment_agreement_line (company_id, agreement_id, item_id, pricing_method, pricing_value)
+      values (${co}, ${agreementId}, ${itemId}, ${method}, ${value})`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/inventory/consignment");
+  redirectWithToast("/inventory/consignment", "Item added to the agreement");
+}
+
+function parseConsignmentReceiptLines(fd: FormData): ConsignmentReceiptLine[] {
+  const raw = String(fd.get("lines") ?? "[]");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Could not read the receipt lines");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Could not read the receipt lines");
+
+  return parsed
+    .map((l: any) => ({
+      itemId: String(l.itemId ?? ""),
+      qty: Number(l.qty),
+      // Blank for an item this consignor has not sent before, which arrives
+      // with its terms instead and is added to the agreement as it is
+      // received. The filter used to require one, so such a line vanished.
+      agreementLineId: l.agreementLineId ? String(l.agreementLineId) : null,
+      pricingMethod: l.pricingMethod === "FIXED" ? "FIXED" as const
+                   : l.pricingMethod === "PERCENTAGE" ? "PERCENTAGE" as const : null,
+      pricingValue: l.pricingValue != null ? Number(l.pricingValue) : null,
+    }))
+    .filter((l) => l.itemId && l.qty > 0);
+}
+
+export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Consignment receipt posted";
+
+  try {
+    const co = await companyId();
+    const lines = parseConsignmentReceiptLines(fd);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a consignor" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const result = await postConsignmentReceipt({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate: str(fd, "doc_date"),
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      lines,
+    });
+
+    docId = result.id;
+    toastMsg = `Consignment receipt ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/inventory/consignment");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+/**
+ * A consignment sale is a normal sale whose lines are all forced to draw
+ * consigned stock — a dedicated form rather than a checkbox buried in the
+ * general sales voucher, because the settlement math (consignor, rate,
+ * amount owed, margin) is the entire point of this screen and deserves to
+ * be shown plainly rather than tucked away.
+ */
+export async function createConsignmentSale(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let docId: string;
+  let toastMsg = "Consignment sale posted";
+
+  try {
+    const co = await companyId();
+    const raw = String(fd.get("lines") ?? "[]");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { error: "Could not read the sale lines" };
+    }
+    if (!Array.isArray(parsed)) return { error: "Could not read the sale lines" };
+
+    const lines: InvoiceLine[] = parsed
+      .map((l: any) => ({
+        itemId: String(l.itemId ?? ""),
+        qty: Number(l.qty),
+        unitPrice: Number(l.unitPrice),
+        source: "CONSIGNMENT" as const,
+      }))
+      .filter((l) => l.itemId && l.qty > 0);
+
+    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    if (!str(fd, "partner_id")) return { error: "Choose a customer" };
+    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+
+    const dueDays = Number(fd.get("due_days") ?? 0);
+    const docDate = str(fd, "doc_date");
+    const dueDate = dueDays > 0
+      ? new Date(new Date(docDate).getTime() + dueDays * 86400000).toISOString().slice(0, 10)
+      : null;
+
+    const result = await postSaleWithDelivery({
+      companyId: co,
+      partnerId: str(fd, "partner_id"),
+      locationId: str(fd, "location_id"),
+      docDate,
+      dueDate,
+      memo: str(fd, "memo") || null,
+      reference: str(fd, "reference") || null,
+      lines,
+    });
+
+    docId = result.id;
+    toastMsg = `Consignment sale ${result.docNo} posted`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath("/inventory/consignment");
+  revalidatePath("/purchases/invoices");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+// -------------------------------------------------------- volume discount --
+
+/**
+ * A discount band: a quantity range, or an invoice-total range, and the
+ * percentage it earns.
+ *
+ * Bands are not validated against each other for overlap. Two that both cover
+ * 100 units is a legitimate configuration — a general rule and an exception
+ * for one product — and the pricing resolves it by taking the narrowest
+ * scope, then the larger discount. Refusing overlaps here would forbid the
+ * ordinary case in order to prevent a confusion that does not arise.
+ */
+export async function createVolumeDiscount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+  try {
+    const co = await companyId();
+    const basis = str(fd, "basis") === "INVOICE_TOTAL" ? "INVOICE_TOTAL" : "QUANTITY";
+    const name = str(fd, "name");
+    const minValue = num(fd, "min_value");
+    const maxRaw = str(fd, "max_value");
+    const maxValue = maxRaw === "" ? null : Number(maxRaw);
+    const pct = num(fd, "discount_pct");
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+    if (pct <= 0 || pct > 100) return { error: "Discount must be between 0 and 100 percent" };
+    if (maxValue !== null && maxValue < minValue) {
+      return { error: "The upper bound cannot be below the lower one" };
+    }
+
+    // An invoice-total band applies to the whole bill, so scoping it to an
+    // item would describe a rule that could never be evaluated. The database
+    // refuses it too; this says so in words first.
+    const itemId = basis === "QUANTITY" ? str(fd, "item_id") || null : null;
+    const groupId = basis === "QUANTITY" ? str(fd, "item_group_id") || null : null;
+    if (itemId && groupId) {
+      return { error: "Scope a band to an item or a category, not both" };
+    }
+
+    await sql`
+      insert into volume_discount
+        (company_id, code, name, basis, item_id, item_group_id,
+         min_value, max_value, discount_pct, valid_from, valid_to)
+      values (${co}, ${code}, ${name}, ${basis}, ${itemId}, ${groupId},
+              ${minValue}, ${maxValue}, ${pct},
+              ${str(fd, "valid_from") || new Date().toISOString().slice(0, 10)},
+              ${str(fd, "valid_to") || null})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/sales/discounts");
+  redirectWithToast("/sales/discounts", "Discount band added");
+}
+
+export async function deactivateVolumeDiscount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a band" };
+    // Retired rather than deleted: invoices point at the band that priced
+    // them, and an invoice unable to say which rule gave its discount is the
+    // thing this feature exists to prevent.
+    await sql`update volume_discount set is_active = false where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/sales/discounts");
+  redirectWithToast("/sales/discounts", "Band retired");
+}
+
+export async function activateVolumeDiscount(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a band" };
+    await sql`update volume_discount set is_active = true where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/sales/discounts");
+  redirectWithToast("/sales/discounts", "Band reinstated");
+}
+
+// ------------------------------------------------ negative stock --
+
+/**
+ * Brings recorded stock back up to what is physically on the shelf.
+ *
+ * Takes only which shortfalls to clear — no price. The figure was decided
+ * when the goods left and is stored with the shortfall; asking for it again
+ * here would let the correction and the cost of sale disagree.
+ */
+export async function reconcileNegativeStockAction(
+  _prev: unknown, fd: FormData
+): Promise<ActionResult> {
+  let msg: string;
+  try {
+    const co = await companyId();
+    const ids = fd.getAll("negative_stock_id").map(String).filter(Boolean);
+    if (ids.length === 0) return { error: "Choose at least one line to reconcile" };
+
+    const done = await reconcileNegativeStock({
+      companyId: co,
+      negativeStockIds: ids,
+      docDate: str(fd, "doc_date") || new Date().toISOString().slice(0, 10),
+      memo: str(fd, "memo") || null,
+    });
+    msg = `${done.units} unit${done.units === 1 ? "" : "s"} reconciled — ${done.documents.join(", ")}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/inventory/negative-stock");
+  revalidatePath("/items/stock");
+  revalidatePath("/documents");
+  financeRevalidate();
+  redirectWithToast("/inventory/negative-stock", msg);
+}
+
+// ------------------------------------------------------------------ void --
+
+/**
+ * Voids a posted document.
+ *
+ * The confirmation screen has already shown what this would do, but the
+ * engine re-checks against the database as it is now: something can be built
+ * on top of a document between looking at it and pressing the button, and a
+ * half-undone chain is worse than a refusal.
+ */
+export async function voidDocumentAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let msg: string;
+  let docId: string;
+  try {
+    const co = await companyId();
+    docId = str(fd, "id");
+    if (!docId) return { error: "Choose a document" };
+
+    const [owned] = await sql`
+      select id from document where id = ${docId} and company_id = ${co}`;
+    if (!owned) return { error: "That document no longer exists" };
+
+    // A void is a posting: it writes a reversal document, a journal entry and,
+    // for a receipt, the stock coming back off the shelf. A resent
+    // confirmation must not do all of that twice.
+    const done = await postOnce(co, attemptKey(fd), async (tx) => {
+      const out = await voidDocument({
+        documentId: docId,
+        reason: str(fd, "reason") || null,
+        // Answered on the screen, where somebody who can see the shelf is
+        // standing. The engine refuses without it wherever stock would come
+        // back, so a form that never asked cannot restore goods by omission —
+        // the same shape as the negative-stock confirmation.
+        goodsBack: fd.get("goods_back") !== null,
+      }, tx);
+      return { ...out, id: out.id, docNo: out.docNo };
+    });
+    msg = done.reversalNo
+      ? `${done.docNo} voided — reversed by ${done.reversalNo}`
+      : `${done.docNo} is already voided`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/documents");
+  revalidatePath(`/documents/${docId}`);
+  revalidatePath("/documents/history");
+  revalidatePath("/");
+  financeRevalidate();
+  redirectWithToast(`/documents/${docId}`, msg);
+}
+
+// --------------------------------------------------- item/stock import --
+
+/**
+ * Reads a spreadsheet and reports what it would do, changing nothing.
+ *
+ * Deliberately a separate call from the import itself, and deliberately the
+ * same validator: the preview a person approves has to be produced by the
+ * code that later acts, or they are approving one thing and getting another.
+ */
+/** Rows from whichever kind of file was uploaded. */
+async function readUpload(content: string, format: UploadFormat): Promise<string[][]> {
+  return format === "xlsx" ? xlsxToRows(content) : parseCsv(content);
+}
+
+export async function previewItemImport(
+  content: string, filename: string, format: UploadFormat = "csv"
+) {
+  const co = await companyId();
+  const master = (await getImportMasterData(co)) as unknown as MasterData;
+  const plan = planImport(await readUpload(content, format), master);
+  return { plan, filename };
+}
+
+export async function runItemImport(
+  _prev: unknown, fd: FormData
+): Promise<ActionResult> {
+  let done: { ref: string; itemsCreated: number; itemsMatched: number };
+  try {
+    const co = await companyId();
+    const content = str(fd, "csv");
+    const filename = str(fd, "filename") || "import.csv";
+    const format = (str(fd, "format") === "xlsx" ? "xlsx" : "csv") as UploadFormat;
+    if (!content) return { error: "No file was uploaded" };
+
+    // Re-validated here, against the database as it is now rather than as it
+    // was when the preview was drawn. Master data can be edited, or another
+    // import run, between the two — and the check that matters most (stock
+    // already present) is exactly the kind that changes underneath you.
+    const master = (await getImportMasterData(co)) as unknown as MasterData;
+    const plan = planImport(await readUpload(content, format), master);
+
+    if (plan.errors.length > 0) {
+      return {
+        error:
+          `${plan.errors.length} problem${plan.errors.length === 1 ? "" : "s"} found on re-checking the ` +
+          `file — the first is row ${plan.errors[0].row}: ${plan.errors[0].message}`,
+      };
+    }
+    if (plan.rows.length === 0) return { error: "There is nothing to import" };
+
+    done = await importItems({
+      companyId: co,
+      filename,
+      rowCount: plan.summary.rows,
+      rows: plan.rows,
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items");
+  redirectWithToast(
+    "/items/import",
+    `${done.ref}: ${done.itemsCreated} item${done.itemsCreated === 1 ? "" : "s"} created` +
+    (done.itemsMatched > 0 ? `, ${done.itemsMatched} already existed` : "")
+  );
+}
+
+/**
+ * The blank workbook to fill in.
+ *
+ * Built server-side and handed back as bytes, so the Barcode column can be
+ * formatted as Text before anyone types in it. That is the whole point: the
+ * barcode damage happens in Excel, before any file reaches us, and a template
+ * that arrives already formatted is the only fix that works by default rather
+ * than by the user remembering.
+ */
+export async function itemImportTemplate(): Promise<{ base64: string }> {
+  const { buildImportTemplate } = await import("./read-spreadsheet");
+  return { base64: await buildImportTemplate() };
+}
+
+// ------------------------------------------ cash / bank receipt import --
+
+export async function previewVoucherImport(
+  content: string, filename: string, format: UploadFormat, kind: VoucherKind
+) {
+  const co = await companyId();
+  const master = (await getVoucherImportMasterData(co)) as unknown as VoucherMasterData;
+  const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
+  return { plan: planVoucherImport(rows, master, kind), filename };
+}
+
+/** The blank workbook for a receipt import, columns matching the screen. */
+export async function voucherImportTemplate(kind: VoucherKind): Promise<{ base64: string }> {
+  const { buildVoucherTemplate } = await import("./read-spreadsheet");
+  return { base64: await buildVoucherTemplate(voucherColumns(kind), kind) };
+}
+
+export async function runVoucherImport(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let done: { ref: string; posted: number; total: number };
+  let kind: VoucherKind = "cash";
+  try {
+    const co = await companyId();
+    const content = str(fd, "csv");
+    const filename = str(fd, "filename") || "receipts.xlsx";
+    const format = (str(fd, "format") === "xlsx" ? "xlsx" : "csv") as UploadFormat;
+    kind = str(fd, "kind") === "bank" ? "bank" : "cash";
+    if (!content) return { error: "No file was uploaded" };
+
+    // Re-checked against the database as it is now, not as it was when the
+    // preview was drawn — a period can be closed, or an account deactivated,
+    // between looking and confirming.
+    const master = (await getVoucherImportMasterData(co)) as unknown as VoucherMasterData;
+    const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
+    const plan = planVoucherImport(rows, master, kind);
+
+    if (plan.errors.length > 0) {
+      return {
+        error:
+          `${plan.errors.length} problem${plan.errors.length === 1 ? "" : "s"} found on re-checking the ` +
+          `file — the first is row ${plan.errors[0].row}: ${plan.errors[0].message}`,
+      };
+    }
+    if (plan.rows.length === 0) return { error: "There is nothing to import" };
+
+    done = await importVouchers({
+      companyId: co, kind, filename, rowCount: plan.summary.rows,
+      rows: plan.rows.map((r) => ({
+        docDate: r.docDate,
+        moneyAccountId: r.moneyAccountId,
+        otherAccountId: r.otherAccountId,
+        amount: r.amount,
+        locationId: r.locationId,
+        reference: r.reference,
+        memo: r.memo,
+      })),
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  financeRevalidate();
+  redirectWithToast(
+    kind === "cash" ? "/finance/cash-receipt/import" : "/finance/bank-receipt/import",
+    `${done.ref}: ${done.posted} receipt${done.posted === 1 ? "" : "s"} posted, ${done.total.toLocaleString()} total`
+  );
+}
+
+/**
+ * Registers brands an import file named that the brand master does not have.
+ *
+ * Deliberately its own action with its own button rather than something the
+ * import does on its way past. Auto-creating master data from a spreadsheet
+ * is how a chart ends up holding Coca-Cola, Coca Cola and COKE as three
+ * brands, each with a share of the sales — a typo becomes a permanent record
+ * and nobody sees it happen. Asking first costs one click and makes the
+ * decision visible, which is the whole difference.
+ *
+ * The code is derived from the name, since a brand code is an internal handle
+ * rather than something the trade recognises, and a person invited to invent
+ * one for each of forty brands will not enjoy it.
+ */
+export type MissingEntry = {
+  kind: "brand" | "category" | "subcategory";
+  name: string;
+  /** For a sub category: the name of the category it belongs under. */
+  parent?: string;
+};
+
+/**
+ * Registers names an import sheet used that this database does not have.
+ *
+ * Categories first, then sub categories, then brands — a sub category cannot
+ * be created before the category it hangs off, and the same call may be
+ * asked to create both. Within one transaction, so a partial registration
+ * cannot leave a sub category orphaned by a category that failed.
+ *
+ * Nothing here decides that two names mean the same thing. "Coca Cola" and
+ * "Coca-Cola" are registered as two brands if that is what is asked for; the
+ * preview is where the resemblance is pointed out, and choosing is the
+ * user's. Guessing would silently merge two real products, which is worse
+ * than the duplicate it avoids.
+ */
+export async function createMissingMasterData(
+  entries: MissingEntry[]
+): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+  try {
+    const co = await companyId();
+
+    // A generated code, letters and digits only so it stays typeable, with a
+    // numeric suffix settling the rare collision between two similar names.
+    const codeFor = async (
+      tx: typeof sql, table: "brand" | "item_group", column: "code" | "segment",
+      name: string, fallback: string
+    ) => {
+      const base = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || fallback;
+      let code = base;
+      for (let i = 2; ; i++) {
+        const clash = await tx.unsafe(
+          `select 1 from ${table} where company_id = $1 and ${column} = $2`, [co, code]);
+        if (clash.length === 0) break;
+        code = `${base.slice(0, 12 - String(i).length)}${i}`;
+      }
+      return code;
+    };
+
+    const order = { category: 0, subcategory: 1, brand: 2 } as const;
+    const wanted = entries
+      .filter((e) => e.name?.trim())
+      .map((e) => ({ ...e, name: e.name.trim(), parent: e.parent?.trim() }))
+      .sort((a, b) => order[a.kind] - order[b.kind]);
+    if (wanted.length === 0) return { ok: true, created: 0 };
+
+    let created = 0;
+    await sql.begin(async (tx) => {
+      for (const e of wanted) {
+        if (e.kind === "brand") {
+          const [existing] = await tx`
+            select id from brand where company_id = ${co} and lower(name) = ${e.name.toLowerCase()}`;
+          if (existing) continue;   // added by someone else since the preview
+          const code = await codeFor(tx as never, "brand", "code", e.name, "BRAND");
+          await tx`insert into brand (company_id, code, name) values (${co}, ${code}, ${e.name})`;
+          created++;
+          continue;
+        }
+
+        let parentId: string | null = null;
+        if (e.kind === "subcategory") {
+          if (!e.parent) throw new Error(`"${e.name}" needs the category it belongs under`);
+          const [parent] = await tx`
+            select id from item_group
+             where company_id = ${co} and parent_id is null
+               and lower(name) = ${e.parent.toLowerCase()}`;
+          if (!parent) {
+            // Either the category was not in this batch, or it failed. Saying
+            // so beats creating a second root category with the sub's name.
+            throw new Error(`Category "${e.parent}" does not exist, so "${e.name}" cannot go under it`);
+          }
+          parentId = parent.id;
+        }
+
+        const [existing] = await tx`
+          select id from item_group
+           where company_id = ${co} and lower(name) = ${e.name.toLowerCase()}
+             and parent_id is not distinct from ${parentId}`;
+        if (existing) continue;
+
+        const segment = await codeFor(tx as never, "item_group", "segment", e.name, "CAT");
+        // Composed the same way createCategory does it. A trigger maintains
+        // `code` from the parent chain and this segment, but the composed
+        // value is written here too so the row is right the moment it exists.
+        const [composed] = await tx`
+          select fn_compose_group_code(${parentId}::uuid, ${segment}) as code`;
+        await tx`
+          insert into item_group (company_id, parent_id, segment, code, name)
+          values (${co}, ${parentId}, ${segment}, ${composed.code}, ${e.name})`;
+        created++;
+      }
+    });
+
+    // Already committed. Revalidation is a hint, and letting it throw here
+    // would report failure for master data that now exists — the caller would
+    // show an error and the user would go and find it there.
+    try {
+      revalidatePath("/items/brands");
+      revalidatePath("/items/categories");
+      revalidatePath("/items/subcategories");
+      revalidatePath("/items");
+    } catch {
+      // Outside a request context (scripts, tests). Nothing to revalidate.
+    }
+    return { ok: true, created };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function createMissingBrands(
+  names: string[]
+): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+  try {
+    const co = await companyId();
+    const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
+    if (wanted.length === 0) return { ok: true, created: 0 };
+
+    let created = 0;
+    await sql.begin(async (tx) => {
+      for (const name of wanted) {
+        const [existing] = await tx`
+          select id from brand where company_id = ${co} and lower(name) = ${name.toLowerCase()}`;
+        if (existing) continue;   // added by someone else since the preview
+
+        // Letters and digits only, so the code stays typeable; a numeric
+        // suffix settles the rare collision between two similar names.
+        const base = (name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "BRAND");
+        let code = base;
+        for (let i = 2; ; i++) {
+          const [clash] = await tx`select 1 from brand where company_id = ${co} and code = ${code}`;
+          if (!clash) break;
+          code = `${base.slice(0, 12 - String(i).length)}${i}`;
+        }
+
+        await tx`insert into brand (company_id, code, name) values (${co}, ${code}, ${name})`;
+        created++;
+      }
+    });
+
+    // The brands are already committed. Cache revalidation is a hint, and
+    // letting it throw here would report failure for brands that now exist —
+    // the caller would show an error, the user would look in Master data and
+    // find them there. Same guard as createItemInline, for the same reason.
+    try {
+      revalidatePath("/items/brands");
+      revalidatePath("/items");
+    } catch {
+      // Outside a request context (scripts, tests). Nothing to revalidate.
+    }
+    return { ok: true, created };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+
+/**
+ * The cutover, from the opening setup screen.
+ *
+ * The whole position arrives as one JSON payload rather than as flat form
+ * fields: it is four differently-shaped tables, and flattening them into
+ * `stock[0][qty]` names would only mean parsing the same structure back out
+ * again on this side.
+ */
+export async function createOpeningBatch(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  let id: string;
+  try {
+    const co = await companyId();
+    const raw = str(fd, "payload");
+    if (!raw) return { error: "Nothing to post" };
+
+    let parsed: {
+      cutoverDate?: string;
+      stock?: { itemId: string; locationId: string; qty: number; unitCost: number }[];
+      receivables?: { partnerId: string; reference: string; amount: number; dueDate: string | null; locationId?: string | null }[];
+      payables?: { partnerId: string; reference: string; amount: number; dueDate: string | null; locationId?: string | null }[];
+      accounts?: { accountId: string; amount: number; locationId?: string | null }[];
+    };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { error: "The opening figures could not be read" };
+    }
+
+    if (!parsed.cutoverDate) return { error: "Choose the date you start using the system" };
+
+    // A debt belongs to the branch that made the sale or bought the goods.
+    // The screen asks per row once there is more than one branch; this fills
+    // in the only answer when there is one, and refuses rather than posting
+    // to nowhere when a row still has none.
+    const partnerRows = [
+      ...(parsed.receivables ?? []).map((r) => [r, "opening receivable"] as const),
+      ...(parsed.payables ?? []).map((r) => [r, "opening payable"] as const),
+    ];
+    if (partnerRows.some(([r]) => !r.locationId)) {
+      const branches = await sql`
+        select id from location
+         where company_id = ${co} and parent_id is null and is_active
+         order by code`;
+      if (branches.length === 0) {
+        return { error: "Set up a branch before posting opening balances" };
+      }
+      if (branches.length > 1) {
+        const [, what] = partnerRows.find(([r]) => !r.locationId)!;
+        return { error: `Choose the branch each ${what} belongs to` };
+      }
+      for (const [r] of partnerRows) r.locationId ??= branches[0].id as string;
+    }
+
+    const r = await postOpeningBatch({
+      companyId: co,
+      cutoverDate: parsed.cutoverDate,
+      memo: "Opening balances",
+      stock: parsed.stock ?? [],
+      receivables: (parsed.receivables ?? []) as never,
+      payables: (parsed.payables ?? []) as never,
+      accounts: parsed.accounts ?? [],
+    });
+    id = r.documents[0]?.id ?? "";
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  revalidatePath("/", "layout");
+  redirectWithToast(id ? `/documents/${id}` : "/finance/opening", "Opening balances posted");
+}
+
+/**
+ * Raise a settlement again for a sale whose first one was voided.
+ *
+ * Deliberate rather than automatic. Voiding a settlement is a decision, and
+ * the replacement is another one — a posting that quietly re-ran on its own
+ * would make the void look like it had not worked.
+ */
+export async function replaceConsignmentSettlement(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  const invoiceId = str(fd, "invoice_id");
+  try {
+    const co = await companyId();
+    if (!invoiceId) return { error: "No invoice given" };
+    const raised = await resettleConsignmentSale({ companyId: co, salesInvoiceId: invoiceId });
+    if (raised.length === 0) return { error: "Nothing was left to settle" };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  financeRevalidate();
+  revalidatePath(`/documents/${invoiceId}`);
+  redirectWithToast(`/documents/${invoiceId}`, "Replacement settlement posted");
+}
+
+/**
+ * Record what a supplier said about when an order line will arrive.
+ *
+ * Append-only: there is no edit and no delete, because the history is the
+ * point. A supplier who confirms the 10th, rings to say the 17th, and
+ * delivers on the 17th has missed a commitment, and that is only visible
+ * while the first row still exists.
+ *
+ * `kind` is required from the caller rather than inferred. The obvious
+ * inference — first row is INITIAL, the rest are revisions — would quietly
+ * file every buyer-agreed change as a supplier failure, which is the one
+ * mistake this whole design exists to avoid.
+ */
+export async function recordSupplierConfirmation(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  let orderId = "";
+  try {
+    const co = await companyId();
+    const lineId = str(fd, "order_line_id");
+    const date = str(fd, "confirmed_date");
+    const kind = str(fd, "kind");
+    orderId = str(fd, "document_id");
+
+    if (!lineId) return { error: "Which line is being confirmed?" };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Give a date" };
+    if (!["INITIAL", "SUPPLIER_REVISION", "BUYER_AGREED"].includes(kind)) {
+      return { error: "Say who moved the date" };
+    }
+
+    const qty = Number(str(fd, "qty"));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return { error: "Confirmed quantity must be more than nought" };
+    }
+
+    // The line has to belong to this company as well as to a purchase
+    // order — the trigger checks the second, nothing else checks the first.
+    const [line] = await sql`
+      select dl.id, dl.base_qty
+        from document_line dl
+        join document d on d.id = dl.document_id
+       where dl.id = ${lineId} and d.company_id = ${co}
+         and d.doc_type = 'PURCHASE_ORDER' and d.status = 'POSTED'`;
+    if (!line) return { error: "That purchase order line is not available" };
+
+    if (qty > Number(line.base_qty)) {
+      return {
+        error: `The line is for ${Number(line.base_qty)}; a supplier cannot `
+          + `confirm ${qty}`,
+      };
+    }
+
+    await sql`
+      insert into purchase_confirmation
+        (company_id, order_line_id, qty, confirmed_date, kind, source, note)
+      values (${co}, ${lineId}, ${qty}, ${date}::date, ${kind},
+              ${str(fd, "source") || null}, ${str(fd, "note") || null})`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  if (orderId) revalidatePath(`/documents/${orderId}`);
+  revalidatePath("/purchases/supplier-performance");
+  return { ok: true };
+}
+
+/**
+ * Save this company's normalization boundaries and business targets.
+ *
+ * Both go in one form because they belong to one conversation, and both
+ * are stored as partial objects: a blank field means "no opinion, use the
+ * default", which is not the same as a zero. Only fields actually filled
+ * in are written, so a later change to a default still reaches a company
+ * that never had a view on it.
+ */
+export async function saveSupplierPerformanceSettings(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+
+    const thresholds: Record<string, number> = {};
+    for (const key of ["cvLimit", "premiumCeiling", "deviationCeiling",
+                       "varianceCeiling"]) {
+      const raw = str(fd, `t_${key}`);
+      if (raw === "") continue;
+      const v = Number(raw);
+      // Zero would score every supplier zero on that axis, which is a
+      // mistake worth refusing rather than quietly rounding up.
+      if (!Number.isFinite(v) || v <= 0) {
+        return { error: `${key} must be more than nought, or left blank` };
+      }
+      thresholds[key] = v;
+    }
+
+    const targets: Record<string, number | null> = {};
+    for (const [k] of fd.entries()) {
+      if (!k.startsWith("g_")) continue;
+      const id = k.slice(2);
+      const raw = str(fd, k);
+      if (raw === "") { targets[id] = null; continue; }
+      const v = Number(raw);
+      if (!Number.isFinite(v) || v < 0) {
+        return { error: `The target for ${id} must be nought or more` };
+      }
+      targets[id] = v;
+    }
+
+    await sql`
+      insert into supplier_performance_setting (company_id, thresholds, targets)
+      values (${co}, ${sql.json(thresholds)}, ${sql.json(targets)})
+      on conflict (company_id) do update
+         set thresholds = excluded.thresholds,
+             targets = excluded.targets,
+             updated_at = now()`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/purchases/supplier-performance");
+  revalidatePath("/purchases/supplier-performance/settings");
+  return { ok: true };
+}
+
+/**
+ * Save the axes currently on screen under a name.
+ *
+ * Order is stored with the selection, because a radar's shape changes
+ * entirely with the order of its spokes and two people comparing charts
+ * need the same sequence.
+ */
+export async function saveRadarPreset(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const name = str(fd, "name").trim();
+    if (!name) return { error: "Give the preset a name" };
+
+    const axes = sanitizeAxes(str(fd, "axes").split(",").filter(Boolean));
+    if (!axes) {
+      return { error: "A preset needs between three and six measurable metrics" };
+    }
+
+    const makeDefault = str(fd, "is_default") === "on";
+    await sql.begin(async (tx) => {
+      // One default per company, enforced by a partial unique index — so
+      // the old one has to stand down in the same transaction rather than
+      // the insert failing on a constraint the user never sees.
+      if (makeDefault) {
+        await tx`update supplier_radar_preset set is_default = false
+                  where company_id = ${co} and is_default`;
+      }
+      await tx`
+        insert into supplier_radar_preset (company_id, name, axes, is_default)
+        values (${co}, ${name}, ${sql.json(axes)}, ${makeDefault})
+        on conflict (company_id, name) do update
+           set axes = excluded.axes,
+               is_default = excluded.is_default,
+               updated_at = now()`;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/purchases/supplier-performance");
+  return { ok: true };
+}
+
+export async function deleteRadarPreset(
+  _prev: unknown, fd: FormData,
+): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Which preset?" };
+    await sql`delete from supplier_radar_preset
+               where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/purchases/supplier-performance");
+  return { ok: true };
+}
+
+// --------------------------------------------------------- price levels --
+
+/**
+ * A price level is a column on the price list: Wholesale, Retail, and
+ * whatever else a business sells at. Setup creates the first two and, until
+ * now, that was the end of it — a shop with a third kind of customer had no
+ * way to say so.
+ *
+ * Levels are ordered rather than ranked. sort_order decides which column
+ * comes first on the price list and, more consequentially, which price a
+ * customer on no level at all is quoted: the first one. So the order is a
+ * real decision, not decoration.
+ */
+export async function createPriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+    const name = str(fd, "name");
+
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const dup = await sql`
+      select 1 from price_level where company_id = ${co} and code = ${code}`;
+    if (dup.length) return { error: `Code ${code} is already used` };
+
+    // Last by default. A new level should not quietly become the one that
+    // customers on no level get quoted.
+    const [last] = await sql`
+      select coalesce(max(sort_order), 0) + 1 as next
+        from price_level where company_id = ${co}`;
+
+    await sql`
+      insert into price_level (company_id, code, name, sort_order)
+      values (${co}, ${code}, ${name}, ${Number(last.next)})`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/prices");
+  revalidatePath("/partners/new");
+  redirectWithToast("/items/prices", "Price level added");
+}
+
+export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const code = str(fd, "code").toUpperCase();
+
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const name = str(fd, "name");
+
+    if (!id) return { error: "Choose a price level" };
+    if (!code) return { error: "Code is required" };
+    if (!name) return { error: "Name is required" };
+
+    const order = Number(str(fd, "sort_order"));
+    if (!Number.isFinite(order) || order < 1) return { error: "Order must be 1 or more" };
+
+    await sql`
+      update price_level
+         set code = ${code}, name = ${name}, sort_order = ${order}
+       where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/prices");
+  revalidatePath("/partners");
+  redirectWithToast("/items/prices", "Price level saved");
+}
+
+export async function deletePriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    if (!id) return { error: "Choose a price level" };
+
+    const [last] = await sql`
+      select count(*)::int as n from price_level where company_id = ${co}`;
+    if (Number(last.n) <= 1) {
+      return { error: "This is the only price level — every item needs somewhere to be priced" };
+    }
+
+    await sql`delete from price_level where id = ${id} and company_id = ${co}`;
+  } catch (e) {
+    if (isForeignKeyViolation(e)) {
+      // There is no is_active on price_level to fall back on, so say what
+      // actually has to happen rather than offering a retire that does not
+      // exist.
+      return {
+        error: "This level is in use by a price, a customer or a posted document. " +
+               "Clear those first — a document keeps the level it was priced at.",
+      };
+    }
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  revalidatePath("/items/prices");
+  redirectWithToast("/items/prices", "Price level deleted");
+}
+
+/**
+ * Define a pack for one item, from the voucher being typed.
+ *
+ * The posting engine refuses a line in a unit the item has no pack for,
+ * which is correct — guessing 1:1 is how stock quietly stops matching the
+ * shelf. But refusing mid-document meant leaving the document to go and
+ * edit the item, and an abandoned entry is its own kind of data loss.
+ *
+ * Returns the pack rather than redirecting: the caller is a voucher that
+ * must stay exactly where it is, with everything already typed into it.
+ */
+export async function addItemPack(
+  itemId: string, uomId: string, factor: number,
+): Promise<ActionResult | { pack: true; uomId: string; code: string; factor: number }> {
+  try {
+    const co = await companyId();
+    if (!itemId || !uomId) return { error: "Choose an item and a unit" };
+    if (!(factor > 0)) return { error: "A pack has to hold more than nothing" };
+
+    const [item] = await sql`
+      select base_uom_id from item where id = ${itemId} and company_id = ${co}`;
+    if (!item) return { error: "Item not found" };
+    if (item.base_uom_id === uomId) {
+      return { error: "That is the item's own unit — a pack has to be a different one" };
+    }
+
+    const [uom] = await sql`select code from uom where id = ${uomId} and company_id = ${co}`;
+    if (!uom) return { error: "Unit not found" };
+
+    await sql`
+      insert into item_uom (company_id, item_id, uom_id, factor)
+      values (${co}, ${itemId}, ${uomId}, ${factor})
+      on conflict (item_id, uom_id) do update set factor = ${factor}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+
+  // No redirect: the voucher stays open. These are the screens that read
+  // packs, so they pick it up on their next load.
+  revalidatePath("/items");
+  revalidatePath("/items/prices");
+  // Tagged `pack` rather than `ok`: ActionResult already has an ok-shape,
+  // so a caller could not tell the two apart by narrowing.
+  const [u] = await sql`select code from uom where id = ${uomId}`;
+  return { pack: true as const, uomId, code: u.code as string, factor };
+}

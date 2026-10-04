@@ -1,0 +1,43 @@
+# Reference material — competitor manuals, client documents.
+# Kept out of version control: large binaries, third-party copyright.
+*.pdf
+reference/
+scratch/
+scratchpad/
+
+# Browser snapshots the Playwright CLI writes beside whatever it inspects.
+.playwright-cli/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+*.egg-info/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Next.js
+.next/
+next-env.d.ts
+
+.vercel
+tsconfig.tsbuildinfo
