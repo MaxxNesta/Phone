@@ -147,3 +147,53 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 .page-head:has(> .head-actions) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--s3); }
 .page-head:has(> .head-actions) > :not(.head-actions) { grid-column: 1; }
 .page-head > .head-actions { grid-column: 2; grid-row: 1 / span 3; align-self: center; margin: 0; }
+
+/* Mockup-style heading on the retail screens: large title, subtitle below. */
+.page-head.hero { display: block; border-bottom: 0; padding: 0; margin-bottom: var(--s4); min-height: 0; }
+.page-head.hero h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.2rem; }
+.page-head.hero .page-sub { border-left: 0; padding-left: 0; font-size: var(--t-base); }
+.page-head.hero:has(> .head-actions) { display: grid; }
+
+.stat-value { font-size: clamp(1.25rem, 1.6vw + 0.4rem, 1.75rem); white-space: nowrap; }
+.stats { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.section-grid > .card { min-width: 0; overflow-x: auto; }
+
+/* Global form and button rules outrank the plain class selectors above. */
+.pos2 .pos2-search input { flex: 1 1 auto; width: auto; min-width: 0; border: 0; box-shadow: none; background: none; padding: 1rem 0; }
+.pos2 .pos2-search select { flex: 0 0 auto; width: auto; max-width: 40%; border: 0; border-left: 1px solid var(--line); border-radius: 0; padding-left: var(--s3); }
+.pcards .pcard { align-items: stretch; text-align: left; justify-content: flex-start; height: auto; white-space: normal; }
+.pcards .pcard-img { display: grid; width: 100%; }
+.page-head.hero + * { margin-top: 0; }
+
+/* ---- vertical rhythm: content starts near the top, as in the mockups ---- */
+/* Search and avatar share the title's row instead of taking one of their own. */
+.main { position: relative; padding-top: var(--s3); }
+.main > .topbar {
+  position: absolute; top: var(--s3); right: var(--s4); z-index: 20;
+  padding: 0; width: min(420px, 45%);
+}
+.main > .topbar .topsearch { width: auto; flex: 1; }
+.main .inner { gap: var(--s3); }
+.page-head.hero { margin-bottom: 0; min-height: 44px; }
+.page-head.hero h1 { padding-right: min(440px, 46%); }
+.page-head.hero h1 { font-size: 1.7rem; line-height: 1.25; }
+.page-head.hero:has(> .head-actions) { row-gap: 0; align-content: start; }
+/* The page's own button sits under the search, at the right of the subtitle. */
+.page-head.hero > .head-actions { grid-row: 2; align-self: end; }
+.stats { margin-bottom: 0; }
+.filters { margin-bottom: 0; }
+.section-grid { margin-bottom: 0; }
+.filter-row input, .filter-row select { min-height: 38px; }
+.filter-row .field label { margin-bottom: 0; }
+
+/* Narrow screens: the bar goes back above the page, where there is room. */
+@media (max-width: 900px) {
+  .main > .topbar { position: static; width: auto; margin-bottom: var(--s2); }
+  .page-head.hero h1 { padding-right: 0; }
+}
+
+/* Line editing stays one compact row under the item. */
+.salepanel .saleline-edit label { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; font-size: var(--t-sm); text-transform: none; letter-spacing: 0; color: var(--muted); }
+.salepanel .saleline-edit input { width: 6.5em; min-height: 32px; padding: 0.2rem 0.4rem; }
+.salepanel .saleline-edit input.sm { width: 3.8em; }
+.salepanel .saleline-edit select { width: auto; min-height: 32px; padding: 0.2rem 1.6rem 0.2rem 0.4rem; }

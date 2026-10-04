@@ -40,7 +40,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>Inventory</h1>
         <p className="page-sub">Stock summary across all stores and warehouses</p>
       </div>

@@ -40,7 +40,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>IMEI / Serial Inventory</h1>
         <p className="page-sub">Track every handset as an individual physical unit</p>
         {can(user, "inventory.manage") && (

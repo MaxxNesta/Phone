@@ -17,7 +17,7 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>Warranty lookup</h1>
         <p className="page-sub">By IMEI, maker&apos;s serial, invoice number or customer name</p>
       </div>

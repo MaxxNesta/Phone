@@ -387,6 +387,8 @@ export async function retailDashboard(companyId: string) {
             join business_partner bp on bp.id = d.partner_id
             left join v_open_item o on o.document_id = d.id
            where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
+             -- A void's reversal is bookkeeping, not a sale.
+             and d.reverses_document_id is null
            order by d.posted_at desc limit 6`,
       sql`select count(*)::int as n from v_stock_serial
            where company_id = ${companyId} and status = 'SOLD'

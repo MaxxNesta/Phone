@@ -41,7 +41,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>Products</h1>
         <p className="page-sub">Manage models, accessories, prices, and stock settings</p>
         <div className="head-actions"><Link className="btn" href="/items/new"><Plus size={14} /> New Product</Link></div>

@@ -35,7 +35,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <div className="page-head"><h1>Search</h1><p className="page-sub">“{q}”</p></div>
+      <div className="page-head hero"><h1>Search</h1><p className="page-sub">“{q}”</p></div>
       {units.length + docs.length + partners.length === 0 && <p className="page-sub">Nothing matches.</p>}
       {units.length > 0 && (
         <div className="card" style={{ marginBottom: "var(--s3)" }}>

@@ -10,7 +10,13 @@ const PUBLIC = ["/login", "/setup"];
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  if (PUBLIC.some((p) => path === p || path.startsWith(p + "/"))) return NextResponse.next();
+  // The layout needs the path to know which shell to draw; headers are the
+  // only channel from here to a server component.
+  const headers = new Headers(req.headers);
+  headers.set("x-pathname", path);
+  if (PUBLIC.some((p) => path === p || path.startsWith(p + "/"))) {
+    return NextResponse.next({ request: { headers } });
+  }
 
   const user = await userForToken(req.cookies.get(SESSION_COOKIE)?.value);
   if (!user) {
@@ -28,10 +34,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(to);
   }
 
-  // The layout needs the path to know which shell to draw; headers are the
-  // only channel from here to a server component.
-  const headers = new Headers(req.headers);
-  headers.set("x-pathname", path);
   return NextResponse.next({ request: { headers } });
 }
 

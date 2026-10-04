@@ -28,7 +28,7 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>Sales &amp; margin</h1>
         <p className="page-sub">
           Posted invoices less customer returns. Cost of sales is the exact cost each invoice posted —

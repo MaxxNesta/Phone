@@ -14,8 +14,19 @@ const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const initialsOf = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 
-/** Only a relative path, so ?next= cannot send someone to another site. */
-const safeNext = (v: string) => (v.startsWith("/") && !v.startsWith("//") ? v : "/");
+/**
+ * Only a path on this site, so ?next= cannot send someone elsewhere. Resolved
+ * the way a browser would: "/\evil.com" and "//evil.com" both leave the
+ * origin and are refused, which a prefix check alone misses.
+ */
+const safeNext = (v: string) => {
+  try {
+    const u = new URL(v, "http://this.site");
+    return u.origin === "http://this.site" && v.startsWith("/") ? u.pathname + u.search : "/";
+  } catch {
+    return "/";
+  }
+};
 
 export async function signIn(_prev: Result, fd: FormData): Promise<Result> {
   const email = str(fd, "email").toLowerCase();

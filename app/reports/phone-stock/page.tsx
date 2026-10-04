@@ -20,7 +20,7 @@ export default async function PhoneStockReport() {
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>Phone stock &amp; aging</h1>
         <p className="page-sub">Handsets on the shelf by model and branch, how long they have waited, and how fast each model sells</p>
       </div>

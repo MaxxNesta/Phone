@@ -22,7 +22,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head hero">
         <h1>Dashboard</h1>
         <p className="page-sub">{date}</p>
       </div>
