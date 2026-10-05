@@ -3,13 +3,17 @@
 @import "./erp/components.css";
 @import "./erp/retail.css";
 :root {
-  --ground:    #F4F6F8;
+  /* Apple's neutrals: no blue cast, so a product photo of a Titanium or
+     Desert iPhone is the only colour in the room. --muted is 5.1:1 on
+     --surface and 4.7:1 on --ground (HIG accessibility.md: 4.5:1 up to
+     17pt). */
+  --ground:    #F5F5F7;
   --surface:   #FFFFFF;
-  --ink:       #12161C;
-  --ink-soft:  #414B59;
-  --muted:     #6B7686;
-  --line:      #DCE1E7;
-  --line-soft: #EAEEF2;
+  --ink:       #1D1D1F;
+  --ink-soft:  #424245;
+  --muted:     #6E6E73;
+  --line:      #D2D2D7;
+  --line-soft: #EDEDF0;
   --dr:        #5E6AD2;
   --cr:        #A8571F;
 
@@ -40,7 +44,7 @@
      Latin face has Myanmar glyphs, so Burmese falls through to the Noto face
      rather than to whatever the OS happens to ship. Order matters: Latin
      resolves in DM Sans first, Burmese in Noto. */
-  --sans: var(--font-ui), var(--font-myanmar), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, var(--font-ui), var(--font-myanmar), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* One face across the product (2026-10-01).
      --------------------------------------------
      The dashboard was the only screen already built entirely in DM Sans,
@@ -65,7 +69,7 @@
      there is no longer a webfont bundled for it, so that means adding the
      import in app/layout.tsx as well, or falling back to the system mono:
        --mono: var(--font-myanmar), ui-monospace, "SF Mono", Menlo, monospace; */
-  --mono: var(--font-ui), var(--font-myanmar), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: -apple-system, BlinkMacSystemFont, var(--font-ui), var(--font-myanmar), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --s1: 0.35rem; --s2: 0.65rem; --s3: 1rem; --s4: 1.5rem; --s5: 2.25rem; --s6: 3.25rem;
 
@@ -98,7 +102,7 @@
   /* Small elements (pills, tiny buttons) stay crisp; containers (cards,
      toast, dropdowns) get more rounding — that contrast is what reads as
      "considered" rather than "every corner is the same radius." */
-  --r-sm: 4px; --r-md: 6px; --r-lg: 10px;
+  --r-sm: 6px; --r-md: 10px; --r-lg: 16px;
 
   /* The browser draws the insides of a date field, a select arrow and a
      scrollbar itself, and without this it picks light or dark from the
@@ -111,13 +115,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --ground:    #0E1116;
-    --surface:   #161B22;
-    --ink:       #E4E8EE;
-    --ink-soft:  #B4BDCA;
-    --muted:     #8B95A5;
-    --line:      #2A313B;
-    --line-soft: #212831;
+    --ground:    #000000;
+    --surface:   #1C1C1E;
+    --ink:       #F5F5F7;
+    --ink-soft:  #D1D1D6;
+    --muted:     #98989D;
+    --line:      #38383A;
+    --line-soft: #2C2C2E;
     --dr:        #8D93F5;
     --cr:        #E09C55;
     /* A dark surface needs a lighter green, not a tint of the same one:
@@ -3159,14 +3163,14 @@ table:not(.linetable) tbody tr.stmt-group > td {
    it, so nothing about where a click goes has changed. */
 
 .sidebar {
-  --rail: #101613;
-  --rail-ink: #E7EDE9;
-  --rail-muted: #8C9B93;
+  --rail: #1D1D1F;
+  --rail-ink: #F5F5F7;
+  --rail-muted: #A1A1A6;
   width: 232px;
   background: var(--rail);
   border-right: 0;
   color: var(--rail-ink);
-  font-family: var(--font-ui), var(--font-myanmar), system-ui, sans-serif;
+  font-family: var(--sans);
   padding: var(--s4) 0.65rem;
   gap: var(--s4);
 }
@@ -4527,3 +4531,96 @@ main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(
 .receipt h1 { font-size: 1.2rem; margin: 0 0 var(--s1); }
 .receipt p { margin: 0 0 var(--s1); }
 @media print { .receipt { max-width: none; } }
+
+
+/* ===================================================== Apple layer ======
+   This shop sells only Apple products, so the till and the back office are
+   built on Apple's foundations (HIG, via the apple-design skill):
+
+   - the system face, SF, on every Apple device; Inter elsewhere
+   - Apple's neutral greys (tokens above), continuous 16px card corners
+   - titles that carry hierarchy by weight and size, tracked tighter as they
+     grow (typography.md › Conveying hierarchy)
+   - quiet sentence-case table headers instead of spaced capitals
+   - capsule buttons with feedback on press, not on release
+   - 44pt targets wherever a finger is the pointer (accessibility.md ›
+     Mobility: "iOS, iPadOS 44x44 pt")
+   - answers for increased contrast, reduced motion, reduced transparency
+
+   Green stays the accent and is spent on primary actions and status only
+   (branding.md: "use it intentionally for primary actions or status
+   indicators"). Loaded last so it wins without !important. */
+
+body { -webkit-font-smoothing: antialiased; font-optical-sizing: auto; }
+
+h1 { font-size: 1.625rem; font-weight: 700; letter-spacing: -0.022em; line-height: 1.15; }
+h2 { font-weight: 600; letter-spacing: -0.012em; }
+
+/* Figures in the system face, still lined up. */
+.num, .kpi-value, input[type="number"], td.r, th.r { font-variant-numeric: tabular-nums; }
+
+/* A header names the column; it is not another row of data shouting. */
+thead th {
+  font-family: var(--sans); text-transform: none; letter-spacing: 0;
+  font-size: var(--t-sm); font-weight: 600; color: var(--muted);
+  background: var(--surface);
+}
+/* Labels in sentence case, the way Apple writes them. Spaced capitals stay
+   on the printed sheets, where they are a convention of paper. */
+.field label, .kv dt, .kpi-label, .eyebrow, .navlabel, .trackbox > legend, .dash-flow-label, .pill {
+  font-family: var(--sans); text-transform: none; letter-spacing: 0;
+}
+.field label, .kv dt { font-size: var(--t-sm); font-weight: 500; color: var(--ink-soft); }
+.pill { border-radius: 980px; font-weight: 500; }
+
+.card, .stat { border-radius: var(--r-lg); border-color: var(--line-soft);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+
+/* Capsule buttons, the shape of every control on apple.com. The nav's
+   section toggles and the inline text links that happen to be buttons
+   keep their own shape. */
+button:not([class]), button.ghost, button.warn, button.danger, button.tiny, button.btn,
+a.btn, .btn {
+  border-radius: 980px; padding-inline: 1.1rem; min-height: 32px; font-weight: 500;
+}
+button.tiny, .btn.tiny { padding-inline: 0.8rem; min-height: 26px; }
+
+/* Feedback lives on the press. */
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled), a.btn, .btn, .chip { transition: transform 100ms ease-out, background-color 150ms, border-color 150ms, color 150ms; }
+  button:not(:disabled):active, a.btn:active, .btn:active, .chip:active { transform: scale(0.97); }
+}
+
+input[type="text"], input[type="number"], input[type="date"], input[type="time"],
+input[type="email"], input[type="password"], input[type="tel"], select, textarea {
+  border-radius: var(--r-md);
+}
+input:focus, select:focus, textarea:focus {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 22%, transparent);
+}
+a:focus-visible, summary:focus-visible, .chip:focus-visible {
+  outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px;
+}
+
+/* The rail: Apple's graphite, the selected place filled with the accent. */
+nav.sidebar .navlink { border-radius: 8px; }
+
+/* Where a finger is the pointer — the till on an iPad — every control is
+   at least 44pt. */
+@media (pointer: coarse) {
+  button:not(.linkish), a.btn, .btn, .chip,
+  input[type="text"], input[type="number"], input[type="search"], select { min-height: 44px; }
+  nav.sidebar .navlink { min-height: 44px; display: flex; align-items: center; }
+}
+
+/* Increase Contrast: darker secondary text and real borders. */
+@media (prefers-contrast: more) {
+  :root { --muted: #48484A; --ink-soft: #1D1D1F; --line: #86868B; --line-soft: #C7C7CC; }
+  .card, .stat { border-color: var(--line); box-shadow: none; }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --muted: #C7C7CC; --ink-soft: #F5F5F7; --line: #8E8E93; --line-soft: #48484A; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .usermenu-pop, .toast { backdrop-filter: none; }
+}
