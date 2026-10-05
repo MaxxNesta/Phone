@@ -4748,3 +4748,20 @@ nav.sidebar .navlink[data-active="true"] { background: rgb(255 255 255 / 0.14); 
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04);
 }
 .pos-pay { border-radius: var(--field-r); }
+
+/* Consecutive rows of fields keep the same rhythm as fields within a row. */
+.row + .row, .row + .field, .field + .row { margin-top: 20px; }
+
+/* The voucher header (sales voucher, purchase invoice) is a form like any
+   other: same labels, same fields, same spacing. It used to shrink all
+   three to fit more on one line. */
+.doc-meta .card-body { padding: 20px; }
+.doc-meta .row { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px 16px; }
+.doc-meta .field { gap: 6px; }
+.doc-meta .field label { font-size: var(--t-sm); }
+.doc-meta .field .hint { font-size: var(--t-sm); line-height: 1.4; }
+.doc-meta input[type="text"], .doc-meta input[type="number"],
+.doc-meta input[type="date"], .doc-meta input[type="time"], .doc-meta select {
+  height: var(--field-h); min-height: var(--field-h); padding: 0 var(--field-px); font-size: 1rem;
+}
+.doc-meta select { padding-right: 2.25rem; background-position: right 0.85rem center; }
