@@ -4,6 +4,7 @@ import { uploadAttachment, deleteAttachment } from "@/lib/actions";
 import { storageConfigured } from "@/lib/r2";
 import { planVoid } from "@/lib/void";
 import { RelatedDocumentsPanel } from "@/components/related-documents";
+import { serialsOnDocument } from "@/lib/phone";
 import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
@@ -42,7 +43,7 @@ import {
   getDownstream,
   getDocumentOutstanding,
   getOpenSalesOrders,
-  getOpenPurchaseOrders,
+  getOpenPurchaseOrders, getReceiptDraftForOrder,
   getChainDocuments,
   getDocumentAttachments,
   getSettlingPayment,
@@ -72,7 +73,7 @@ import {
   getOrderConfirmations,
 } from "@/lib/queries";
 import {
-  createDelivery, createGoodsReceipt, replaceConsignmentSettlement,
+  createDelivery, createGoodsReceipt, saveReceiptDraft, replaceConsignmentSettlement,
   recordSupplierConfirmation,
 } from "@/lib/actions";
 import { SupplierConfirmations } from "@/components/supplier-confirmations";
@@ -143,7 +144,7 @@ export default async function DocumentPage({
   const doc = await getDocument(id);
   if (!doc) notFound();
 
-  const [lines, docBatches, journal, downstream, chainDocuments, attachments] =
+  const [lines, docBatches, journal, downstream, chainDocuments, attachments, docSerials] =
     await Promise.all([
       getDocumentLines(id),
       getDocumentBatches(id),
@@ -151,6 +152,7 @@ export default async function DocumentPage({
       getDownstream(id),
       getChainDocuments(id),
       getDocumentAttachments(doc.company_id, id),
+      serialsOnDocument(id),
     ]);
 
   // Goods already in and a bill already waiting for them, from this order's
@@ -494,7 +496,7 @@ export default async function DocumentPage({
 
   let orderLines: {
     lineId: string; itemId: string; itemCode: string; itemName: string;
-    remainingQty: number; expectedPrice: number;
+    remainingQty: number; expectedPrice: number; tracksSerial?: boolean;
   }[] = [];
   let stockByLocation: Array<{ item_id: string; location_id: string; qty_on_hand: string }> = [];
   if (isOpenOrder) {
@@ -507,6 +509,7 @@ export default async function DocumentPage({
         lineId: r.line_id, itemId: r.item_id, itemCode: r.item_code, itemName: r.item_name,
         uomCode: r.uom_code ?? undefined,
         remainingQty: Number(r.remaining_qty), expectedPrice: Number(r.expected_price ?? 0),
+        tracksSerial: !!r.tracks_serial,
       }));
     if (doc.doc_type === "SALES_ORDER") {
       stockByLocation = (await getStockByLocation(doc.company_id)) as never;
@@ -1304,6 +1307,8 @@ export default async function DocumentPage({
           locationId={doc.location_id}
           lines={orderLines}
           action={doc.doc_type === "SALES_ORDER" ? createDelivery : createGoodsReceipt}
+          saveDraft={doc.doc_type === "PURCHASE_ORDER" ? saveReceiptDraft : undefined}
+          draft={doc.doc_type === "PURCHASE_ORDER" ? await getReceiptDraftForOrder(doc.company_id, doc.id) : null}
           stockByLocation={doc.doc_type === "SALES_ORDER" ? stockByLocation : undefined}
           collisions={doc.doc_type === "PURCHASE_ORDER" ? collisions : []}
           openBills={billsAwaiting}
@@ -1490,6 +1495,20 @@ export default async function DocumentPage({
             </div>
           </div>
         </section>
+      )}
+
+      {docSerials.length > 0 && (
+        <div className="card">
+          <div className="card-head"><h2>IMEIs</h2><span className="page-sub">{docSerials.length} handset{docSerials.length === 1 ? "" : "s"}</span></div>
+          <div className="card-body imei-chips">
+            {(docSerials as any[]).map((s) => (
+              <Link key={s.serial_id} href={`/inventory/phones/${s.serial_id}`} className="chip m"
+                title={`${s.item_code}${s.imei2 ? ` · IMEI 2 ${s.imei2}` : ""}`}>
+                {s.imei}
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* The paper that came from outside, kept with the record it is about

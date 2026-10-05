@@ -355,31 +355,6 @@ try {
   check("net revenue in the ledger = posted invoice lines less returns",
     r2(-((await bal("4000")) + (await bal("4020")) + (await bal("4010")))) === r2(n(rev.v) - 1_260_000),
     `${r2(-((await bal("4000")) + (await bal("4020")) + (await bal("4010"))))} vs ${r2(n(rev.v) - 1_260_000)}`);
-
-  console.log("\n  IMEIs for stock already on the shelf");
-  const { nameUnits } = await import("../lib/phone.ts");
-  const old = await ensureItem("PH-OLD-128", "Old stock phone", { tracks_serial: false });
-  await sql`update item set tracks_serial = false where id = ${old.id}`;
-  await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
-    lines: [{ itemId: old.id, qty: 3, unitCost: 800_000 }] });
-  await refuses("more IMEIs than unnamed units refused",
-    () => nameUnits(co.id, null, old.id, wh.id, ["O1", "O2", "O3", "O4"].map((serial) => ({ serial, imei2: null }))),
-    /only 3/);
-  await refuses("an IMEI already recorded refused",
-    () => nameUnits(co.id, null, old.id, wh.id, [{ serial: "IMEI-A1", imei2: null }]), /already/);
-  await nameUnits(co.id, null, old.id, wh.id, [{ serial: "OLD-1", imei2: "OLD-1-2" }, { serial: "OLD-2", imei2: null }]);
-  check("named units are on the shelf at their layer's cost",
-    (await unit("OLD-1"))?.status === "IN_STOCK" && n((await unit("OLD-2"))?.unit_cost) === 800_000
-    && (await unit("OLD-1"))?.imei2 === "OLD-1-2");
-  check("naming turns IMEI tracking on",
-    (await sql`select tracks_serial from item where id = ${old.id}`)[0].tracks_serial === true);
-  await refuses("only the one unnamed unit is left",
-    () => nameUnits(co.id, null, old.id, wh.id, [{ serial: "OLD-3", imei2: null }, { serial: "OLD-4", imei2: null }]),
-    /only 1/);
-  const oldSale = await sell([{ itemId: old.id, qty: 1, unitPrice: 1_000_000, serials: ["OLD-2"] }]);
-  check("a named unit sells by IMEI at its cost",
-    (await unit("OLD-2"))?.status === "SOLD" && (await entryOf(oldSale.id, "5000")) === 800_000,
-    `cogs ${await entryOf(oldSale.id, "5000")}`);
 } catch (e) {
   failures++;
   console.error("\n  ERROR", e);

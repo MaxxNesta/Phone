@@ -201,6 +201,8 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 /* IMEI entry under a form line. */
 .serialentry { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0; }
 .serialentry-head { display: flex; justify-content: space-between; font-size: var(--t-sm); font-weight: 500; }
+.serialentry-csv { padding-left: var(--s3); cursor: pointer; color: var(--brand); }
+.serialentry-head > span:first-child { margin-right: auto; }
 .serialentry textarea { width: 100%; resize: vertical; min-height: 40px; font-family: var(--mono); }
 .serialentry-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s1); }
 .serialentry-list li { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.5rem;
@@ -220,7 +222,16 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 .main:has(.page-head.hero) > .topbar { margin: 0; }
 .main > .topbar .topsearch { max-width: 420px; }
 
-/* IMEIs for units already on the shelf */
-.name-units { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); align-items: start; }
-.name-units textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); }
-.name-units .hint { grid-column: 1 / -1; margin: 0; }
+/* A device's life, oldest first. */
+.timeline { list-style: none; margin: 0; padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) + 14px); }
+.timeline li { position: relative; padding: 0 0 var(--s3) var(--s3); border-left: 2px solid var(--line); }
+.timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.timeline li::before { content: ""; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px;
+  border-radius: 50%; background: var(--surface, #fff); border: 2px solid var(--brand); }
+.timeline .tl-what { font-weight: 600; }
+.timeline .tl-detail { color: var(--muted); font-size: var(--t-sm); }
+.timeline .tl-sold::before { background: var(--brand); }
+.timeline .tl-customer_return::before, .timeline .tl-supplier_return::before,
+.timeline .tl-written_off::before, .timeline .tl-hold::before { border-color: var(--warn); }
+.timeline .tl-voided { opacity: 0.6; }
+.imei-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }

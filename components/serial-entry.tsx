@@ -40,6 +40,17 @@ export function SerialEntry({ qty, value, onChange, withImei2 = false, label, su
     setDraft("");
   };
 
+  /* A CSV from the supplier's packing list: one phone per row, IMEI first
+     (IMEI 2 second, where the form takes it). Rows with no digit in the
+     first cell are headers and are skipped. */
+  const importCsv = async (file: File) => {
+    const rows = (await file.text()).split(/\r?\n/)
+      .map((r) => r.split(/[,;\t]/).map((c) => c.trim().replace(/^"|"$/g, "")))
+      .filter((c) => /\d/.test(c[0] ?? ""))
+      .map((c) => (withImei2 && c[1] ? `${c[0]} ${c[1]}` : c[0]));
+    add(rows.join("\n"));
+  };
+
   const remove = (serial: string) => onChange(value.filter((s) => s.serial !== serial));
   const short = qty > 0 && value.length !== qty;
   const offered = (suggestions ?? []).filter((s) => !value.some((v) => v.serial === s));
@@ -51,6 +62,11 @@ export function SerialEntry({ qty, value, onChange, withImei2 = false, label, su
         <span className={short ? "low" : "ok-qty"} aria-live="polite">
           {value.length} of {qty || 0} scanned
         </span>
+        <label className="linkish serialentry-csv">
+          Import CSV
+          <input type="file" accept=".csv,.txt,text/csv,text/plain" hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
+        </label>
       </div>
       <textarea
         rows={1}

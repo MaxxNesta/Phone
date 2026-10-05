@@ -8610,7 +8610,7 @@ export async function reopenFiscalYear(
 
 /** The document kinds a draft may hold — mirrors document_draft's check. */
 export type DraftDocType =
-  | "SALES_INVOICE" | "PURCHASE_INVOICE" | "SALES_ORDER" | "PURCHASE_ORDER";
+  | "SALES_INVOICE" | "PURCHASE_INVOICE" | "SALES_ORDER" | "PURCHASE_ORDER" | "GOODS_RECEIPT";
 
 export type DraftInput = {
   companyId: string;

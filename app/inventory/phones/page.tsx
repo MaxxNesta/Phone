@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requirePermission, can } from "@/lib/auth";
 import { phoneStock, phoneStockFacets, stripCost, serialKpis } from "@/lib/phone";
 import { Stat, compact } from "@/components/stat";
@@ -19,13 +20,17 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
     q: sp.q || undefined, locationId: sp.location || undefined, brand: sp.brand || undefined,
     model: sp.model || undefined, storage: sp.storage || undefined, colour: sp.colour || undefined,
     // In stock unless asked otherwise: what is on the shelf is the usual question.
-    status: sp.status === "ALL" ? undefined : (sp.status || "IN_STOCK"),
+    // A search is about one phone, wherever it is now; browsing is about the shelf.
+    status: sp.status === "ALL" ? undefined : (sp.status || (sp.q ? undefined : "IN_STOCK")),
     supplierId: sp.supplier || undefined,
   };
   const showCost = can(user, "cost.view");
   const [rows, facets, k] = await Promise.all([
     phoneStock(user.companyId, f), phoneStockFacets(user.companyId), serialKpis(user.companyId)]);
   const units = stripCost(rows as Record<string, any>[], showCost);
+  // A scanned IMEI that names one phone opens that phone.
+  const exact = sp.q ? units.filter((u: any) => u.imei === sp.q!.trim() || u.imei2 === sp.q!.trim()) : [];
+  if (exact.length === 1) redirect(`/inventory/phones/${exact[0].serial_id}`);
   const value = showCost ? rows.reduce((s, r: any) => s + Number(r.unit_cost ?? 0), 0) : 0;
 
   const select = (name: string, options: { v: string; l: string }[], current?: string, all = "All") => (
@@ -41,13 +46,10 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head hero">
-        <h1>IMEI / Serial Inventory</h1>
-        <p className="page-sub">Track every handset as an individual physical unit</p>
+        <h1>IMEI / Serial Tracking</h1>
+        <p className="page-sub">Scan or search an IMEI to see that phone’s whole life</p>
         {can(user, "inventory.manage") && (
-          <div className="head-actions">
-            <Link className="btn ghost" href="/inventory/phones/name">+ Add IMEIs to stock on hand</Link>{" "}
-            <Link className="btn" href="/purchases/receive/new">+ Receive Stock</Link>
-          </div>
+          <div className="head-actions"><Link className="btn" href="/purchases/receive/new">+ Receive Stock</Link></div>
         )}
       </div>
 
@@ -77,7 +79,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
           {select("colour", facets.colours.map((v) => ({ v, l: v })), sp.colour)}
           <div className="field">
             <label htmlFor="f-status">Status</label>
-            <select id="f-status" name="status" defaultValue={sp.status ?? "IN_STOCK"}>
+            <select id="f-status" name="status" defaultValue={sp.status ?? (sp.q ? "ALL" : "IN_STOCK")}>
               <option value="ALL">All</option>
               {STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
             </select>
@@ -121,12 +123,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
               </tr>
             ))}
             {units.length === 0 && (
-              <tr><td colSpan={9} className="page-sub">
-                No handsets match. IMEIs are typed or scanned when you{" "}
-                <Link href="/purchases/receive/new" style={{ color: "var(--brand)" }}>receive stock</Link>; phones
-                already on the shelf without one get theirs on{" "}
-                <Link href="/inventory/phones/name" style={{ color: "var(--brand)" }}>Add IMEIs to stock on hand</Link>.
-              </td></tr>
+              <tr><td colSpan={9} className="page-sub">No handsets match.</td></tr>
             )}
           </tbody>
         </table>

@@ -4,8 +4,9 @@ import Link from "next/link";
 import { MaybeSamePurchase, BillAwaitsTheseGoods, type WaitingBill } from "./same-purchase";
 import type { GrirCollisionLine } from "@/lib/queries";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
-import { useActionState, useEffect, useState } from "react";
+import { Fragment, useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
 
 type Line = {
   lineId: string;
@@ -20,6 +21,8 @@ type Line = {
   conversionFactor?: number;
   remainingQty: number;
   expectedPrice?: number;
+  /** A phone: each unit received is named by its IMEI before the receipt posts. */
+  tracksSerial?: boolean;
 };
 type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
 
@@ -43,7 +46,13 @@ export function FulfillOrderForm({
   collisions = [],
   openBills = [],
   defaultOpen = false,
+  saveDraft,
+  draft,
 }: {
+  /** Keeps a half-scanned receipt. Purchase only. */
+  saveDraft?: (prev: unknown, fd: FormData) => Promise<ActionResult>;
+  /** A receipt draft for this order being resumed. */
+  draft?: { id: string; state: string } | null;
   kind: "sales" | "purchase";
   orderId: string;
   orderNo: string;
@@ -83,12 +92,30 @@ export function FulfillOrderForm({
   const [freeReason, setFreeReason] = useState<Record<string, string>>({});
   const [negativeConfirmed, setNegativeConfirmed] = useState(false);
   const [askNegative, setAskNegative] = useState(false);
+  // A resumed draft puts back what was typed and scanned.
+  const saved = (() => {
+    try { return draft?.state ? JSON.parse(draft.state) : null; } catch { return null; }
+  })() as { qty?: Record<string, string>; cost?: Record<string, string>;
+            serials?: Record<string, ScannedSerial[]> } | null;
   const [qty, setQty] = useState<Record<string, string>>(
-    Object.fromEntries(lines.map((l) => [l.lineId, String(l.remainingQty)]))
+    { ...Object.fromEntries(lines.map((l) => [l.lineId, String(l.remainingQty)])), ...saved?.qty }
   );
   const [cost, setCost] = useState<Record<string, string>>(
-    Object.fromEntries(lines.map((l) => [l.lineId, String(l.expectedPrice ?? 0)]))
+    { ...Object.fromEntries(lines.map((l) => [l.lineId, String(l.expectedPrice ?? 0)])), ...saved?.cost }
   );
+  const [serials, setSerials] = useState<Record<string, ScannedSerial[]>>(saved?.serials ?? {});
+  const [draftId, setDraftId] = useState(draft?.id ?? "");
+  const [draftResult, draftAction, savingDraft] = useActionState<ActionResult | null, FormData>(
+    (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useEffect(() => {
+    if (draftResult && "ok" in draftResult && draftResult.draftId) setDraftId(draftResult.draftId);
+  }, [draftResult]);
+
+  // A phone line cannot post until every unit on it is named.
+  const serialShort = kind === "purchase"
+    ? lines.filter((l) => l.tracksSerial && Number(qty[l.lineId]) > 0
+        && (serials[l.lineId]?.length ?? 0) !== Number(qty[l.lineId]))
+    : [];
 
   const onHandHere = (itemId: string) =>
     Number(stockByLocation?.find((r) => r.item_id === itemId && r.location_id === locationId)?.qty_on_hand ?? 0);
@@ -133,6 +160,11 @@ export function FulfillOrderForm({
         qty: Number(qty[l.lineId]),
         unitCost: kind === "purchase" ? Number(cost[l.lineId]) || 0 : undefined,
         sourceLineId: l.lineId,
+        ...(l.tracksSerial ? {
+          serials: (serials[l.lineId] ?? []).map((x) => x.serial),
+          unitDetails: (serials[l.lineId] ?? []).filter((x) => x.imei2)
+            .map((x) => ({ serial: x.serial, imei2: x.imei2 })),
+        } : {}),
       }))
       // Free units go as their own zero-price line carrying the reason, the
       // same shape the sales voucher sends, so both routes post identically.
@@ -208,6 +240,13 @@ export function FulfillOrderForm({
             <input type="hidden" name="doc_date" value={new Date().toISOString().slice(0, 10)} />
             <input type="hidden" name="reference" value={`Against ${orderNo}`} />
             <input type="hidden" name="lines" value={payload} />
+            {saveDraft && (
+              <>
+                <input type="hidden" name="draft_id" value={draftId} />
+                <input type="hidden" name="draft_order_id" value={orderId} />
+                <input type="hidden" name="draft_state" value={JSON.stringify({ qty, cost, serials })} />
+              </>
+            )}
 
             <div className="tablewrap">
               <table>
@@ -224,7 +263,8 @@ export function FulfillOrderForm({
                   {lines.map((l) => {
                     const short = kind === "sales" && stockByLocation && issuing(l.lineId) > onHandHere(l.itemId);
                     return (
-                      <tr key={l.lineId}>
+                      <Fragment key={l.lineId}>
+                      <tr>
                         <td className="wrap"><span className="code">{l.itemCode}</span> {l.itemName}</td>
                         <td className="r">
                           {l.remainingQty}
@@ -288,6 +328,20 @@ export function FulfillOrderForm({
                           </td>
                         )}
                       </tr>
+                      {kind === "purchase" && l.tracksSerial && Number(qty[l.lineId]) > 0 && (
+                        <tr className="batchrow">
+                          <td colSpan={4}>
+                            <SerialEntry
+                              qty={Number(qty[l.lineId])}
+                              value={serials[l.lineId] ?? []}
+                              onChange={(v) => setSerials((s) => ({ ...s, [l.lineId]: v }))}
+                              withImei2
+                              label={`${l.itemCode} IMEIs`}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -352,7 +406,14 @@ export function FulfillOrderForm({
               onConfirm={() => { setNegativeConfirmed(true); setAskNegative(false); }}
             />
 
+            {draftResult && "error" in draftResult && <div className="alert">{draftResult.error}</div>}
             <div className="actions" style={{ marginTop: "0.5rem" }}>
+              {serialShort.length > 0 && (
+                <span className="low" role="status">
+                  Scan one IMEI per phone before posting:{" "}
+                  {serialShort.map((l) => `${l.itemCode} ${serials[l.lineId]?.length ?? 0}/${qty[l.lineId]}`).join(", ")}
+                </span>
+              )}
               <button
                 type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
                 onClick={
@@ -360,9 +421,18 @@ export function FulfillOrderForm({
                     ? () => setAskNegative(true)
                     : undefined
                 }
-                disabled={pending}>
+                disabled={pending || serialShort.length > 0}>
                 {pending ? "Posting…" : kind === "sales" ? "Post delivery" : "Post goods receipt"}
               </button>
+              {saveDraft && (
+                <button type="submit" formAction={draftAction} formNoValidate className="btn ghost"
+                  disabled={savingDraft || pending}>
+                  {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
+                </button>
+              )}
+              {draftResult && "ok" in draftResult && !savingDraft && (
+                <span className="page-sub" role="status">Draft saved — nothing is in stock until it posts.</span>
+              )}
             </div>
           </form>
         </div>

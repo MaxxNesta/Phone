@@ -74,7 +74,13 @@ export function ReceiptForm({
   collisions = {},
   initialInvoiceId,
   fx,
+  saveDraft,
+  draft,
 }: {
+  /** Keeps a half-scanned receipt; nothing moves until it posts. */
+  saveDraft?: (prev: unknown, fd: FormData) => Promise<ActionResult>;
+  /** A receipt draft being resumed. */
+  draft?: { id: string; state: string } | null;
   /** Currencies and their latest rates, for goods bought abroad. */
   fx?: { base: string; options: FxOption[] };
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -113,17 +119,28 @@ export function ReceiptForm({
   const [items, setItems] = useState<Item[]>(initialItems);
   const addItem = (i: Item) => setItems((xs) => [...xs, i]);
 
-  const [lines, setLines] = useState<Line[]>([
+  // A resumed draft: the editor as it was left. A matched bill is not put
+  // back — it may have been received since — so it is chosen again.
+  const [saved] = useState(() => {
+    try { return draft?.state ? JSON.parse(draft.state) : null; } catch { return null; }
+  });
+  const [lines, setLines] = useState<Line[]>(saved?.lines?.length ? saved.lines : [
     { key: 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
-  const [partnerId, setPartnerId] = useState("");
+  const [partnerId, setPartnerId] = useState<string>(saved?.partnerId ?? "");
   const base = fx?.base ?? "MMK";
-  const [currency, setCurrency] = useState(base);
-  const [rate, setRate] = useState("");
+  const [currency, setCurrency] = useState<string>(saved?.currency ?? base);
+  const [rate, setRate] = useState<string>(saved?.rate ?? "");
   const foreign = currency !== base;
-  const [docDate, setDocDate] = useState(today);
+  const [docDate, setDocDate] = useState<string>(saved?.docDate ?? today);
+  const [draftId, setDraftId] = useState(draft?.id ?? "");
+  const [draftResult, draftAction, savingDraft] = useActionState<ActionResult | null, FormData>(
+    (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useEffect(() => {
+    if (draftResult && "ok" in draftResult && draftResult.draftId) setDraftId(draftResult.draftId);
+  }, [draftResult]);
   const [receivedTime, setReceivedTime] = useState("");
   const [matchedPiId, setMatchedPiId] = useState("");
-  const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
+  const [locationId, setLocationId] = useState<string>(saved?.locationId ?? locations[0]?.id ?? "");
   // Chose "not matched" deliberately, as opposed to not having answered yet.
   // Only distinguishable while more than one invoice is waiting; with one it
   // is picked for you and this is how you say no to it.
@@ -299,6 +316,15 @@ export function ReceiptForm({
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
       <input type="hidden" name="lines" value={payload} />
+      {saveDraft && (
+        <>
+          <input type="hidden" name="draft_id" value={draftId} />
+          <input type="hidden" name="draft_state"
+            value={JSON.stringify({ lines: lines.map((l) => ({ ...l, sourceLineId: null })),
+              partnerId, currency, rate, docDate, locationId })} />
+        </>
+      )}
+      {draftResult && "error" in draftResult && <div className="alert">{draftResult.error}</div>}
 
       <div className="card">
         <div className="card-head">
@@ -726,6 +752,15 @@ export function ReceiptForm({
         <button type="submit" disabled={pending || total === 0 || serialShort.length > 0}>
           {pending ? "Posting…" : "Post goods receipt"}
         </button>
+        {saveDraft && (
+          <button type="submit" formAction={draftAction} formNoValidate className="btn ghost"
+            disabled={savingDraft || pending}>
+            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
+          </button>
+        )}
+        {draftResult && "ok" in draftResult && !savingDraft && (
+          <span className="page-sub" role="status">Draft saved — nothing is in stock until it posts.</span>
+        )}
         <span className="page-sub">
           Stock arrives now, at this cost — Dr Inventory / Cr GR/IR Clearing.
           Post the supplier&rsquo;s invoice separately whenever it arrives.

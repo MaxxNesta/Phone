@@ -2312,6 +2312,8 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
 
     docId = result.id;
     toastMsg = `Goods receipt ${result.docNo} posted`;
+    const fromDraft = str(fd, "draft_id");
+    if (fromDraft) await deleteDocumentDraft(co, fromDraft);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -4547,6 +4549,56 @@ export async function discardInvoiceDraft(_prev: unknown, fd: FormData): Promise
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/**
+ * Keep a goods receipt half-scanned. A box of fifty phones is not always
+ * scanned in one sitting, and the receipt cannot post until every unit has
+ * its IMEI — so the work in hand is kept, as the form holds it, and nothing
+ * moves until it posts.
+ */
+export async function saveReceiptDraft(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
+  try {
+    const co = await companyId();
+    const payload: Record<string, string> = {};
+    for (const [k, v] of fd.entries()) {
+      if (typeof v === "string" && k !== "draft_id" && k !== "idempotency_key") payload[k] = v;
+    }
+    let total = 0;
+    let lineCount = 0;
+    try {
+      for (const l of JSON.parse(String(fd.get("lines") ?? "[]")) as Array<Record<string, unknown>>) {
+        if (!(Number(l.qty) > 0)) continue;
+        lineCount += 1;
+        total += Number(l.qty) * (Number(l.unitCost) || 0);
+      }
+    } catch {
+      // Kept regardless; it just lists as nil.
+    }
+    if (!str(fd, "partner_id") && lineCount === 0) {
+      return { error: "Nothing to save yet — choose a supplier or enter a line" };
+    }
+    const { id } = await saveDocumentDraft({
+      companyId: co,
+      draftId: str(fd, "draft_id") || null,
+      docType: "GOODS_RECEIPT",
+      partnerId: str(fd, "partner_id") || null,
+      docDate: str(fd, "doc_date") || null,
+      payload, total, lineCount,
+    });
+    revalidatePath("/purchases/receive");
+    return { ok: true, draftId: id };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function discardReceiptDraft(fd: FormData): Promise<void> {
+  await requirePermission("inventory.manage");
+  const id = str(fd, "draft_id");
+  if (id) await deleteDocumentDraft(await companyId(), id);
+  revalidatePath("/purchases/receive");
 }
 
 // -------------------------------------------------------------- year end --

@@ -397,11 +397,22 @@ export async function getDocumentDrafts(
 ) {
   return sql`
     select dd.id, dd.doc_date, dd.total, dd.line_count, dd.updated_at,
+           dd.payload->>'draft_order_id' as source_id,
            p.name as partner_name, p.code as partner_code
       from document_draft dd
       left join business_partner p on p.id = dd.partner_id
      where dd.company_id = ${companyId} and dd.doc_type = ${docType}
      order by dd.updated_at desc`;
+}
+
+/** The half-scanned receipt kept for this order, if any — one per order. */
+export async function getReceiptDraftForOrder(companyId: string, orderId: string) {
+  const [d] = await sql`
+    select id, payload->>'draft_state' as state from document_draft
+     where company_id = ${companyId} and doc_type = 'GOODS_RECEIPT'
+       and payload->>'draft_order_id' = ${orderId}
+     order by updated_at desc limit 1`;
+  return d ? { id: d.id as string, state: String(d.state ?? "") } : null;
 }
 
 /** One draft's payload, to put back on the form it came from. */
@@ -2241,6 +2252,7 @@ export async function getOpenPurchaseOrders(companyId: string) {
            o.location_id, o.due_date,
            l.code as location_code, l.name as location_name,
            ol.id as line_id, ol.item_id, i.code as item_code, i.name as item_name,
+           i.tracks_serial,
            -- The uom table was already joined and never read from. "40" means
            -- nothing next to a bill awaiting goods; "40 CTN" means something.
            u.code as uom_code,

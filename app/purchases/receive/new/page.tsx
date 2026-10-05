@@ -1,7 +1,7 @@
-import { getFormData, createGoodsReceipt } from "@/lib/actions";
+import { getFormData, createGoodsReceipt, saveReceiptDraft } from "@/lib/actions";
 import {
   getOpenPurchaseInvoices, getOpenPurchaseOrders, getGrirCollisions,
-  getBillReceiptContext, getRelatedDocuments,
+  getBillReceiptContext, getRelatedDocuments, getDocumentDraft,
 } from "@/lib/queries";
 import { ReceiveAgainstBill } from "@/components/receive-against-bill";
 import { RelatedDocumentsPanel } from "@/components/related-documents";
@@ -14,9 +14,9 @@ import { HelpHint } from "@/components/help-hint";
 export default async function NewGoodsReceipt({
   searchParams,
 }: {
-  searchParams: Promise<{ match_invoice_id?: string }>;
+  searchParams: Promise<{ match_invoice_id?: string; draft?: string }>;
 }) {
-  const { match_invoice_id } = await searchParams;
+  const { match_invoice_id, draft: draftId } = await searchParams;
   const d = await getFormData();
   const [co] = await sql`select id from company order by created_at limit 1`;
 
@@ -49,6 +49,7 @@ export default async function NewGoodsReceipt({
     }
   }
   const categories = await allCategories(co.id);
+  const draftRow = draftId ? await getDocumentDraft(co.id, draftId) : null;
   const purchaseInvoices = await getOpenPurchaseInvoices(co.id);
 
   // Goods waiting on a bill and a bill waiting on goods for the same items:
@@ -127,6 +128,11 @@ export default async function NewGoodsReceipt({
         collisions={collisions}
         initialInvoiceId={match_invoice_id}
         fx={d.fx}
+        saveDraft={saveReceiptDraft}
+        draft={draftRow?.doc_type === "GOODS_RECEIPT" ? {
+          id: draftRow.id as string,
+          state: String((draftRow.payload as Record<string, unknown>)?.draft_state ?? ""),
+        } : null}
       />
     </>
   );

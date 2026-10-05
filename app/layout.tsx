@@ -10,7 +10,7 @@ import { SidebarCollapse } from "@/components/sidebar-collapse";
 import { Toast } from "@/components/toast";
 import {
   LayoutDashboard, ShoppingCart, Package, BookOpen, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
-  Smartphone, Barcode, FileText, Search,
+  Smartphone, FileText, Search,
 } from "lucide-react";
 import { headers } from "next/headers";
 import { currentUser, can, ROLE_LABEL, authRequired, type Permission } from "@/lib/auth";
@@ -150,17 +150,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             )}
 
             {may("inventory.view") && (
-              <NavLink href="/inventory/phones"><Barcode size={15} /> IMEI / Serial</NavLink>
-            )}
-
-            {may("inventory.view") && (
               <NavGroup label="Inventory" icon={<Boxes size={15} />} match={["/inventory", "/items/stock"]}>
                 <NavLink href="/inventory" exact>Summary</NavLink>
+                <NavLink href="/items/stock">Stock</NavLink>
+                <NavLink href="/inventory/phones">IMEI / Serial Tracking</NavLink>
+                {may("inventory.manage") && <NavLink href="/inventory/transfer">Stock transfers</NavLink>}
+                {may("inventory.manage") && <NavLink href="/inventory/adjustments">Stock count &amp; adjustments</NavLink>}
+                <NavLink href="/reports/phone-stock">Inventory aging</NavLink>
                 <NavLink href="/inventory/warranty">Warranty lookup</NavLink>
-                <NavLink href="/items/stock">Stock by location</NavLink>
                 <NavLink href="/inventory/movements">Stock movements</NavLink>
-                {may("inventory.manage") && <NavLink href="/inventory/transfer">Transfer</NavLink>}
-                {may("inventory.manage") && <NavLink href="/inventory/adjustments">Adjustments</NavLink>}
                 <NavLink href="/inventory/replenishment">Replenishment</NavLink>
                 <NavLink href="/inventory/negative-stock">Negative stock</NavLink>
                 {wholesale && <NavLink href="/inventory/consignment" exact>Consignment</NavLink>}

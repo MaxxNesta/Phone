@@ -191,6 +191,17 @@ export async function serialDetail(companyId: string, serialId: string) {
   return { unit, events, holds };
 }
 
+/** Every handset a document touched: received, sold, returned or moved by it. */
+export async function serialsOnDocument(documentId: string) {
+  return sql`
+    select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code, e.event
+      from stock_serial_event e
+      join stock_serial s on s.id = e.serial_id
+      join item i on i.id = s.item_id
+     where e.document_id = ${documentId}
+     order by s.id, e.created_at`;
+}
+
 /** IMEI, maker's serial, invoice number or customer name. */
 export async function warrantyLookup(companyId: string, q: string) {
   const term = q.trim();
@@ -517,69 +528,4 @@ export async function recentMovements(companyId: string, limit = 8) {
        -- A transfer is two movements; show the leg that left.
        and not (d.doc_type = 'STOCK_TRANSFER' and sm.qty > 0)
      order by sm.created_at desc limit ${limit}`;
-}
-
-/**
- * Gives IMEIs to phones already on a shelf without one: each joins an open
- * layer of that product at that branch with unnamed units, oldest first, and
- * keeps the cost it arrived at. Nothing moves and nothing is posted. Naming
- * turns IMEI tracking on for the product, so a later sale asks which unit.
- */
-export async function nameUnits(companyId: string, userId: string | null, itemId: string,
-  locationId: string, units: { serial: string; imei2: string | null }[]) {
-  const all = units.flatMap((u) => [u.serial, u.imei2].filter((x): x is string => !!x));
-  await sql.begin(async (tx) => {
-    const [item] = await tx`
-      select id, code from item where id = ${itemId} and company_id = ${companyId}`;
-    if (!item) throw new Error("That product does not exist");
-    // The same lock an issue takes, so a sale cannot draw these layers meanwhile.
-    await tx`
-      select id from stock_lot
-       where company_id = ${companyId} and item_id = ${itemId} and location_id = ${locationId}
-       order by received_date, created_at for update`;
-    const lots = await tx`
-      select l.id, l.stock_movement_id, sm.document_id,
-             l.qty_received
-               - coalesce((select sum(c.qty) from stock_lot_consumption c where c.lot_id = l.id), 0)
-               - (select count(*) from stock_serial s
-                   where s.stock_lot_id = l.id
-                     and not exists (select 1 from stock_serial_issue si
-                                      where si.serial_id = s.id
-                                        and coalesce(si.lot_id, s.stock_lot_id) = s.stock_lot_id
-                                        and fn_serial_issue_stands(si.stock_movement_id))) as unnamed
-        from stock_lot l
-        left join stock_movement sm on sm.id = l.stock_movement_id
-       where l.company_id = ${companyId} and l.item_id = ${itemId} and l.location_id = ${locationId}
-       order by l.received_date, l.created_at`;
-    const open = (lots as unknown as { id: string; stock_movement_id: string | null;
-      document_id: string | null; unnamed: string }[])
-      .map((l) => ({ ...l, unnamed: Math.floor(Number(l.unnamed)) }))
-      .filter((l) => l.unnamed > 0 && l.stock_movement_id);
-    const free = open.reduce((s, l) => s + l.unnamed, 0);
-    if (units.length > free) {
-      throw new Error(`${units.length} IMEIs but only ${free} ${item.code} on this shelf without one.`);
-    }
-    const clash = await tx`
-      select serial_no from stock_serial
-       where company_id = ${companyId}
-         and (serial_no = any(${all}) or imei2 = any(${all}) or device_serial = any(${all}))`;
-    if (clash.length) throw new Error(`${clash[0].serial_no} is already recorded against a unit.`);
-
-    await tx`update item set tracks_serial = true where id = ${itemId}`;
-    let i = 0;
-    for (const lot of open) {
-      for (let n = 0; n < lot.unnamed && i < units.length; n++, i++) {
-        const u = units[i];
-        const [unit] = await tx`
-          insert into stock_serial (company_id, item_id, serial_no, stock_lot_id, stock_movement_id, imei2)
-          values (${companyId}, ${itemId}, ${u.serial}, ${lot.id}, ${lot.stock_movement_id}, ${u.imei2})
-          returning id`;
-        await tx`
-          insert into stock_serial_event
-            (company_id, serial_id, event, document_id, to_location_id, lot_id, note, acted_by)
-          values (${companyId}, ${unit.id}, 'RECEIVED', ${lot.document_id}, ${locationId}, ${lot.id},
-                  'Named on the shelf', ${userId})`;
-      }
-    }
-  });
 }

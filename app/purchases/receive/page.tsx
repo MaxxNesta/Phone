@@ -4,9 +4,9 @@ import { money, shortDate } from "@/lib/db";
 import {
   getCompany, getOpenPurchaseOrders, getGoodsReceiptHistory, getGrirPositions,
   getOpenGoodsReceipts, getGrirCollisions, getOpenPurchaseInvoices,
-  getBillsRaisedFromOrders,
+  getBillsRaisedFromOrders, getReceiptDraftForOrder, getDocumentDrafts,
 } from "@/lib/queries";
-import { createGoodsReceipt } from "@/lib/actions";
+import { createGoodsReceipt, saveReceiptDraft, discardReceiptDraft } from "@/lib/actions";
 import { FulfillOrderForm } from "@/components/fulfill-order-form";
 import { DataTable, type DataRow } from "@/components/data-table";
 import {
@@ -69,7 +69,7 @@ export default async function Receive({
     locationId: string; locationCode: string | null; locationName: string | null;
     dueDate: string | null;
     lines: { lineId: string; itemId: string; itemCode: string; itemName: string;
-             uomCode: string; remainingQty: number; expectedPrice: number;
+             uomCode: string; remainingQty: number; expectedPrice: number; tracksSerial: boolean;
              enteredUom: string | null; conversionFactor: number }[];
   }>();
   for (const r of openLines as any[]) {
@@ -85,6 +85,7 @@ export default async function Receive({
     orders.get(r.order_id)!.lines.push({
       lineId: r.line_id, itemId: r.item_id, itemCode: r.item_code, itemName: r.item_name,
       uomCode: r.uom_code, remainingQty: Number(r.remaining_qty), expectedPrice: Number(r.expected_price ?? 0),
+      tracksSerial: !!r.tracks_serial,
       enteredUom: r.entered_uom_code ?? null, conversionFactor: Number(r.conversion_factor ?? 1),
     });
   }
@@ -137,6 +138,8 @@ export default async function Receive({
               locationId={chosen.locationId}
               lines={chosen.lines}
               action={createGoodsReceipt}
+              saveDraft={saveReceiptDraft}
+              draft={await getReceiptDraftForOrder(company.id, chosen.orderId)}
               collisions={collisions.get(chosen.partnerId) ?? []}
               openBills={openBills
                 .filter((b) => b.partner_id === chosen.partnerId)
@@ -262,6 +265,11 @@ export default async function Receive({
     };
   });
 
+  // Half-scanned receipts: nothing in stock until each one posts.
+  const drafts = (await getDocumentDrafts(company.id, "GOODS_RECEIPT")) as unknown as Array<{
+    id: string; source_id: string | null; partner_name: string | null; line_count: number;
+    total: string; updated_at: string }>;
+
   const summary: Summary[] = [
     {
       icon: Package,
@@ -291,6 +299,33 @@ export default async function Receive({
         title="Goods receipts"
         lead="Record goods arriving at your warehouse."
       />
+
+      {drafts.length > 0 && (
+        <ErpSection title="Draft receipts" count={drafts.length}
+          lead="Saved before every IMEI was scanned. Nothing is in stock until a draft is posted.">
+          <table>
+            <thead><tr><th>Supplier</th><th className="r">Lines</th><th>Saved</th><th></th></tr></thead>
+            <tbody>
+              {drafts.map((d) => (
+                <tr key={d.id}>
+                  <td className="wrap">{d.partner_name ?? "—"}</td>
+                  <td className="r">{d.line_count}</td>
+                  <td className="code">{shortDate(d.updated_at)}</td>
+                  <td className="tight">
+                    <Link className="btn primary" href={d.source_id
+                      ? `/purchases/receive?order=${d.source_id}`
+                      : `/purchases/receive/new?draft=${d.id}`}>Continue</Link>{" "}
+                    <form action={discardReceiptDraft} style={{ display: "inline" }}>
+                      <input type="hidden" name="draft_id" value={d.id} />
+                      <button className="btn ghost">Discard</button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ErpSection>
+      )}
 
       <ErpSection
         title="Purchase orders awaiting receipt"
