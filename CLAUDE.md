@@ -33,6 +33,17 @@ why: [docs/06-phone-retail.md](docs/06-phone-retail.md). Read it first.
 A separate Neon project from the trading ERP, with its own branches (dev,
 pilot, production). **Never point this app at the trading ERP's database.**
 
+| Neon branch | Endpoint | Company name (sidebar) | Used by |
+| --- | --- | --- | --- |
+| dev | `ep-winter-leaf` | MTK — DEV | local `.env`, Vercel **Preview** (`dev`, feature branches) |
+| pilot | `ep-billowing-boat` | MTK | not on Vercel yet — a tester site would be a second project |
+| production | `ep-flat-cloud` | My Company | Vercel **Production** (`main`) |
+
+Vercel project: `phone` (`prj_An3yNI7CyId5eWUApfKkPqvVmTD4`) in team
+"Kaung Htet's projects", linked to `MaxxNesta/Phone`. `DATABASE_URL` is set per
+environment there. The sidebar company name is how to tell which database is
+on screen; keep the three distinct.
+
 - Local `.env` points at **dev**. Test suites under `scripts/` empty
   transactions on whatever `DATABASE_URL` points at — never run them against
   pilot or production.
