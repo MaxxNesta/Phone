@@ -557,6 +557,25 @@ export function ReceiptForm({
                   </tr>
                 );
               })}
+              {lines.filter((l) => {
+                const it = byId(l.itemId);
+                return it && !it.tracks_serial && it.variant;
+              }).map((l) => {
+                const item = byId(l.itemId)!;
+                return (
+                  <tr key={`noserial-${l.key}`} className="batchrow">
+                    <td colSpan={matchedPi ? 8 : 7}>
+                      <span className="hint">
+                        {item.code} is not tracked by IMEI, so no IMEI box appears.{" "}
+                        <Link href={`/items/${item.id}`} target="_blank" style={{ color: "var(--brand)" }}>
+                          Turn on IMEI tracking
+                        </Link>{" "}
+                        (Phone settings, at the bottom of the product page), then reload this form.
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
               {lines.filter((l) => byId(l.itemId)?.tracks_serial).map((l) => {
                 const item = byId(l.itemId)!;
                 return (

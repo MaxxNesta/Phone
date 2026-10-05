@@ -291,7 +291,7 @@ export function ItemForm({
             <legend>Traceability</legend>
 
             <label className="trackbox-opt" htmlFor="tracks_serial">
-              <input id="tracks_serial" name="tracks_serial" type="checkbox" />
+              <input id="tracks_serial" name="tracks_serial" type="checkbox" defaultChecked />
               <span>
                 <strong>Track each unit by IMEI / serial</strong>
                 <span className="trackbox-note">

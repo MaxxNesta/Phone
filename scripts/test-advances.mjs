@@ -62,8 +62,10 @@ try {
      order by tracks_batch, code limit 1`;
   const [cust] = await sql`select id from business_partner
      where company_id = ${co.id} and is_customer order by code limit 1`;
+  // A different partner from the customer: one that is both would carry the
+  // customer's deposits into every supplier figure below.
   const [supp] = await sql`select id from business_partner
-     where company_id = ${co.id} and is_supplier order by code limit 1`;
+     where company_id = ${co.id} and is_supplier and id <> ${cust.id} order by code limit 1`;
   const [bank] = await sql`select id from account
      where company_id = ${co.id} and is_bank_account and is_active order by code limit 1`;
   console.log(`\n  ${co.name}\n`);

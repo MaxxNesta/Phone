@@ -43,7 +43,12 @@ const suites = readdirSync("scripts")
 
 const run = (name) => new Promise((resolve) => {
   const started = Date.now();
-  const child = spawn("npx", ["tsx", `scripts/${name}.mjs`], { shell: process.platform === "win32" });
+  // The runner has already refused anything but a DEV database, which is the
+  // permission the inherited suites ask for by this variable.
+  const child = spawn("npx", ["tsx", `scripts/${name}.mjs`], {
+    shell: process.platform === "win32",
+    env: { ...process.env, ALLOW_DESTRUCTIVE_TESTS: "1" },
+  });
   let out = "", last = Date.now();
   const take = (b) => { out += b; last = Date.now(); };
   child.stdout.on("data", take);

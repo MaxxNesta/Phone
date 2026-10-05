@@ -168,7 +168,7 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 /* ---- vertical rhythm: content starts near the top, as in the mockups ---- */
 /* Search and avatar share the title's row instead of taking one of their own. */
 .main { position: relative; padding-top: var(--s3); }
-.main > .topbar {
+.main:has(.page-head.hero) > .topbar {
   position: absolute; top: var(--s3); right: var(--s4); z-index: 20;
   padding: 0; width: min(420px, 45%);
 }
@@ -213,3 +213,9 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 .fx-form > .alert, .fx-form > button { grid-column: 1 / -1; justify-self: start; }
 .fx-form .field { min-width: 0; }
 .fx-form input, .fx-form select { width: 100%; }
+
+/* Pages with their own toolbar (documents, the inherited screens): the search
+   and avatar sit on a row of their own above it, never over it. */
+.main > .topbar { margin: 0 0 var(--s3); padding: 0; }
+.main:has(.page-head.hero) > .topbar { margin: 0; }
+.main > .topbar .topsearch { max-width: 420px; }

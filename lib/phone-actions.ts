@@ -59,11 +59,19 @@ export async function setItemPhoneSettings(fd: FormData) {
       from item i where i.id = ${id} and i.company_id = ${user.companyId}`;
   if (!item) throw new Error("That item does not exist");
   const wanted = fd.get("tracks_serial") !== null;
-  const tracks = item.moved ? item.tracks_serial : wanted;
+  const warranty = monthsOf(fd, "warranty_months");
+  const supplierWarranty = monthsOf(fd, "supplier_warranty_months");
+  // The product and every variant of it: "iPhone 16" is tracked by IMEI as a
+  // whole, not one colour at a time. A variant whose stock has already moved
+  // keeps what it had — its units on the shelf were never named.
   await sql`
-    update item set tracks_serial = ${tracks},
-           warranty_months = ${monthsOf(fd, "warranty_months")},
-           supplier_warranty_months = ${monthsOf(fd, "supplier_warranty_months")}
-     where id = ${id}`;
+    update item i set
+           tracks_serial = case
+             when exists (select 1 from stock_movement m where m.item_id = i.id) then i.tracks_serial
+             else ${wanted} end,
+           warranty_months = ${warranty},
+           supplier_warranty_months = ${supplierWarranty}
+     where i.company_id = ${user.companyId} and (i.id = ${id} or i.parent_item_id = ${id})`;
   revalidatePath(`/items/${id}`);
+  revalidatePath("/products");
 }

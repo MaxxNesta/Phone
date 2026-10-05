@@ -695,6 +695,10 @@ export default async function DocumentPage({
       docNo={doc.doc_no ?? ""}
       version={Number(doc.version ?? 1)}
       sales={doc.doc_type === "SALES_INVOICE"}
+      // A yuan bill is corrected in yuan: the engine reads the prices in the
+      // document's own currency, and showing kyat here multiplied them by the
+      // rate a second time.
+      currency={doc.currency !== "MMK" ? (doc.currency as string) : null}
       lines={(lines as Record<string, unknown>[]).map((l): CorrectableLine => ({
         lineId: String(l.id),
         itemId: String(l.item_id),
@@ -703,7 +707,9 @@ export default async function DocumentPage({
         uomCode: (l.uom_code as string) ?? null,
         ordered: Number(l.base_qty),
         fulfilled: 0,
-        unitPrice: Number(l.unit_price),
+        unitPrice: doc.currency !== "MMK"
+          ? Math.round((Number(l.unit_price) / Number(doc.exchange_rate)) * 10000) / 10000
+          : Number(l.unit_price),
         lockQty: !!doc.source_document_id,
       }))}
     />

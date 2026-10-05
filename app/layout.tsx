@@ -183,7 +183,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            <NavGroup label="Customers" icon={<Users size={15} />} match={["/partners"]}>
+            <NavGroup label="Partners" icon={<Users size={15} />} match={["/partners"]}>
               <NavLink href="/partners?role=customer">Customers</NavLink>
               <NavLink href="/partners?role=supplier">Suppliers</NavLink>
               <NavLink href="/partners/categories" exact>Partner categories</NavLink>

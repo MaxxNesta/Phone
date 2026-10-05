@@ -376,7 +376,14 @@ export function ReturnForm({
 
         <div className="totalbar">
           <span style={{ color: "var(--muted)" }}>Total</span>
-          <span className="big">{fmt(total)} MMK</span>
+          <span className="big">
+            {fmt(total)} {sourceFc ?? "MMK"}
+            {sourceFc && sourceDoc?.exchange_rate && (
+              <span className="subline" style={{ display: "block" }}>
+                ≈ {fmt(total * sourceDoc.exchange_rate)} MMK at {sourceDoc.exchange_rate.toLocaleString("en-US")}
+              </span>
+            )}
+          </span>
         </div>
       </div>
 

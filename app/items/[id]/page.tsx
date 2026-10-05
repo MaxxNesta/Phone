@@ -37,6 +37,10 @@ export default async function ItemPage({
            i.valuation_method, i.tracks_batch, i.tracks_expiry,
            i.tracks_serial, i.warranty_months, i.supplier_warranty_months,
            exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
+           (select count(*)::int from item c where c.parent_item_id = i.id) as variant_count,
+           (select count(*)::int from item c where c.parent_item_id = i.id and c.tracks_serial) as variants_tracked,
+           (select count(*)::int from item c where c.parent_item_id = i.id
+              and exists (select 1 from stock_movement m where m.item_id = c.id)) as variants_moved,
            i.parent_item_id,
            to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS') as photo_version,
            u.code as uom_code,

@@ -79,8 +79,10 @@ const TYPE_WORD: Record<string, string> = {
  * engine, which is the one that counts.
  */
 export function CorrectOrder({
-  preview, confirm, documentId, docNo, version, sales, lines, noun = "order",
+  preview, confirm, documentId, docNo, version, sales, lines, noun = "order", currency,
 }: {
+  /** The document's own currency, where it is not kyat: prices are in it. */
+  currency?: string | null;
   preview: (prev: unknown, fd: FormData) => Promise<PreviewState>;
   confirm: (prev: unknown, fd: FormData) => Promise<ConfirmState>;
   documentId: string;
@@ -209,7 +211,7 @@ export function CorrectOrder({
                       <th className="r">{sales ? "Delivered" : "Received"}</th>
                     )}
                     <th className="r">Quantity</th>
-                    <th className="r">Unit price</th>
+                    <th className="r">Unit price{currency ? ` (${currency})` : ""}</th>
                     <th className="r">Amount</th>
                   </tr>
                 </thead>
