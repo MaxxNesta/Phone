@@ -61,7 +61,7 @@ export default async function DiscountsGiven({
       <tr className="link">
         <td className="code">{shortDate(l.posting_date)}</td>
         <td className="code">
-          <Link href={`/documents/${l.document_id}`} style={{ color: "var(--brand)" }}>
+          <Link href={`/documents/${l.document_id}`} style={{ color: "var(--link)" }}>
             {l.doc_no}
           </Link>
         </td>

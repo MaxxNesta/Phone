@@ -111,7 +111,7 @@ export function AccountBook({
                   {perAccount.map((a) => (
                     <tr key={a.id}>
                       <td className="wrap">
-                        <Link href={`${basePath}?account=${a.id}`} style={{ color: "var(--brand)" }}>
+                        <Link href={`${basePath}?account=${a.id}`} style={{ color: "var(--link)" }}>
                           {a.code} · {a.name}
                         </Link>
                       </td>
@@ -170,7 +170,7 @@ export function AccountBook({
                       <td className="code">
                         {r.journal_entry_id ? (
                           <Link href={`/finance/general-ledger/${r.journal_entry_id}`}
-                                style={{ color: "var(--brand)" }}>
+                                style={{ color: "var(--link)" }}>
                             {r.entry_no}
                           </Link>
                         ) : r.entry_no}
@@ -178,7 +178,7 @@ export function AccountBook({
                       <td className="code">
                         {r.doc_no && r.source_id ? (
                           <Link href={`/documents/${r.source_id}`}
-                                style={{ color: "var(--brand)" }}>
+                                style={{ color: "var(--link)" }}>
                             {r.doc_no}
                           </Link>
                         ) : (r.doc_no ?? "—")}

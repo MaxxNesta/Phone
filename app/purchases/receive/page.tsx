@@ -153,7 +153,7 @@ export default async function Receive({
         ) : (
           <div className="empty">
             That order has nothing left to receive.{" "}
-            <Link href="/purchases/receive" style={{ color: "var(--brand)" }}>
+            <Link href="/purchases/receive" style={{ color: "var(--link)" }}>
               See what is still open
             </Link>
           </div>
@@ -180,7 +180,7 @@ export default async function Receive({
         <tr>
           <td>
             <Link href={`/documents/${o.orderId}`} className="code"
-                  style={{ color: "var(--brand)" }}>{o.orderNo}</Link>
+                  style={{ color: "var(--link)" }}>{o.orderNo}</Link>
             <span className="erp-row-sub">
               {o.lines.length} order line{o.lines.length === 1 ? "" : "s"} awaiting receipt
             </span>
@@ -232,7 +232,7 @@ export default async function Receive({
       node: (
         <tr className="link">
           <td className="code">
-            <Link href={`/documents/${r.id}`} style={{ color: "var(--brand)" }}>
+            <Link href={`/documents/${r.id}`} style={{ color: "var(--link)" }}>
               {r.doc_no ?? "draft"}
             </Link>
           </td>
@@ -345,10 +345,10 @@ export default async function Receive({
         {orders.size === 0 ? (
           <div className="empty">
             No open purchase order to receive against.{" "}
-            <Link href="/purchases/orders/new" style={{ color: "var(--brand)" }}>New purchase order</Link>
+            <Link href="/purchases/orders/new" style={{ color: "var(--link)" }}>New purchase order</Link>
             {" "}to start one. If the goods have already arrived with no order
             behind them, use{" "}
-            <Link href="/purchases/receive/new" style={{ color: "var(--brand)" }}>Receive without purchase order</Link>
+            <Link href="/purchases/receive/new" style={{ color: "var(--link)" }}>Receive without purchase order</Link>
             {" "}above instead.
           </div>
         ) : (

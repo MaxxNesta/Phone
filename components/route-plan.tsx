@@ -306,7 +306,7 @@ export function RoutePlan({
                     <tr key={s.id}>
                       <td className="code">{s.seq}</td>
                       <td className="wrap">
-                        <Link href={`/partners?role=customer`} style={{ color: "var(--brand)" }}>
+                        <Link href={`/partners?role=customer`} style={{ color: "var(--link)" }}>
                           {s.partner_name}
                         </Link>
                         <div className="subline">{s.partner_code}</div>
@@ -418,7 +418,7 @@ export function RoutePlan({
                   {runs.map((r) => (
                     <tr key={r.id}>
                       <td className="code">
-                        <Link href={`/logistics/trips/${r.id}`} style={{ color: "var(--brand)" }}>
+                        <Link href={`/logistics/trips/${r.id}`} style={{ color: "var(--link)" }}>
                           {r.trip_no}
                         </Link>
                       </td>

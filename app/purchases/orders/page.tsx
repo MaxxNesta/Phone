@@ -94,7 +94,7 @@ export default async function PurchaseOrders({
           {/* A draft has no document to open — the link goes back to the
               form it came out of. */}
           <Link href={o.draft_id ? `/purchases/orders/new?draft=${o.draft_id}` : `/documents/${o.document_id}`}
-                style={{ color: "var(--brand)" }}>
+                style={{ color: "var(--link)" }}>
             {o.doc_no ?? "Resume"}
           </Link>
         </td>

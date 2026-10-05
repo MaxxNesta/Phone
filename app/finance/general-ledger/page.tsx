@@ -418,7 +418,7 @@ async function AccountView({
         <div className="hint" style={{ margin: "0 0 0.75rem" }}>
           Showing {branchName ?? "one branch"} only — the running balance is
           this branch&rsquo;s.{" "}
-          <Link href={carry({ location: undefined })} style={{ color: "var(--brand)" }}>
+          <Link href={carry({ location: undefined })} style={{ color: "var(--link)" }}>
             Show every branch
           </Link>
         </div>

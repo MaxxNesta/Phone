@@ -67,7 +67,7 @@ export function NoteForm({
             <div className="field">
               <label>{isCredit ? "Invoice being credited" : "Bill being debited"}</label>
               <span className="fixedfield">
-                <Link href={`/documents/${invoice.id}`} style={{ color: "var(--brand)" }}>
+                <Link href={`/documents/${invoice.id}`} style={{ color: "var(--link)" }}>
                   {invoice.doc_no}
                 </Link>
               </span>

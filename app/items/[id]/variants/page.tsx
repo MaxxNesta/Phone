@@ -41,7 +41,7 @@ export default async function VariantsOfProduct({
         <div className="empty">
           {parent.code} has no variants. A product only has them if it was
           created with sizes or colours.{" "}
-          <Link href="/items" style={{ color: "var(--brand)" }}>Back to items</Link>
+          <Link href="/items" style={{ color: "var(--link)" }}>Back to items</Link>
         </div>
       </>
     );

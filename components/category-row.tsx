@@ -92,7 +92,7 @@ export function CategoryRow({
   return (
     <tr className="link">
       <td className="code">
-        <Link href={`/items/categories/${category.id}`} style={{ color: "var(--brand)" }}>
+        <Link href={`/items/categories/${category.id}`} style={{ color: "var(--link)" }}>
           {category.code}
         </Link>
       </td>

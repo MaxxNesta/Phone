@@ -30,8 +30,8 @@ export default async function BankReceipt() {
         <h1>Bank receipt</h1>
         <HelpHint>
           Money received into a bank account that isn&rsquo;t against a customer invoice — use{" "}
-          <Link href="/receivables/receive" style={{ color: "var(--brand)" }}>Receive payment</Link> for that.{" "}
-          <Link href="/finance/bank-detail" style={{ color: "var(--brand)" }}>View the bank book</Link>
+          <Link href="/receivables/receive" style={{ color: "var(--link)" }}>Receive payment</Link> for that.{" "}
+          <Link href="/finance/bank-detail" style={{ color: "var(--link)" }}>View the bank book</Link>
         </HelpHint>
         <Link href="/finance/bank-receipt/import" className="btn ghost">Import from Excel</Link>
       <span className="actions">

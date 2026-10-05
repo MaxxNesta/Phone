@@ -187,7 +187,7 @@ export function ConsignmentHub({
               {suppliers.length === 0 && (
                 <div style={{ fontSize: "var(--erp-text-xs)", color: "var(--warn)", marginTop: "0.25rem", maxWidth: 260 }}>
                   Every supplier already has an agreement. Add a supplier under{" "}
-                  <a href="/partners?role=supplier" style={{ color: "var(--brand)" }}>Master data → Suppliers</a>{" "}
+                  <a href="/partners?role=supplier" style={{ color: "var(--link)" }}>Master data → Suppliers</a>{" "}
                   to make another.
                 </div>
               )}

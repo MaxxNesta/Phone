@@ -410,7 +410,7 @@ export default async function Stock({
       <div className="kpis kpis-tiled">
         <div className="kpi">
           <span className="kpi-icon" style={{
-            color: "var(--brand)",
+            color: "var(--link)",
             background: "color-mix(in srgb, var(--brand) 12%, transparent)",
           }}>
             <Boxes size={17} aria-hidden="true" />
@@ -609,7 +609,7 @@ export default async function Stock({
                 <>
                   Nothing in stock. An item appears here once goods are received
                   against it.{" "}
-                  <Link href="/items/stock?zeros=1" style={{ color: "var(--brand)" }}>
+                  <Link href="/items/stock?zeros=1" style={{ color: "var(--link)" }}>
                     Show all items
                   </Link>
                 </>
@@ -617,7 +617,7 @@ export default async function Stock({
                 <>
                   Nothing held, reserved or on its way at this warehouse.{" "}
                   <Link href={`/items/stock?location=${selectedLocationId}&zeros=1`}
-                        style={{ color: "var(--brand)" }}>Show all items</Link>
+                        style={{ color: "var(--link)" }}>Show all items</Link>
                 </>
               )}
             </div>

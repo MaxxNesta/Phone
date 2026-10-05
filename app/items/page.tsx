@@ -219,12 +219,12 @@ export default async function Items({
           {all.length === 0 ? (
             <div className="empty">
               Nothing yet. Start with a category, then add products inside it.{" "}
-              <Link href="/items/categories" style={{ color: "var(--brand)" }}>Add a category</Link>
+              <Link href="/items/categories" style={{ color: "var(--link)" }}>Add a category</Link>
             </div>
           ) : items.length === 0 ? (
             <div className="empty">
               No item matches these filters.{" "}
-              <Link href="/items" style={{ color: "var(--brand)" }}>Clear them</Link>
+              <Link href="/items" style={{ color: "var(--link)" }}>Clear them</Link>
             </div>
           ) : (
             <DataTable

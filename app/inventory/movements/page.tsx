@@ -113,7 +113,7 @@ export default async function StockMovements({
         )}
         <td className="code">
           {r.document_id ? (
-            <Link href={`/documents/${r.document_id}`} style={{ color: "var(--brand)" }}>
+            <Link href={`/documents/${r.document_id}`} style={{ color: "var(--link)" }}>
               {r.doc_no ?? label(r.doc_type)}
             </Link>
           ) : (

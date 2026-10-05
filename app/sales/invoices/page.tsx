@@ -98,7 +98,7 @@ export default async function SalesInvoices({
               form it came out of, which is the only thing you can do with
               one. */}
           <Link href={i.draft_id ? `/sales/new?draft=${i.draft_id}` : `/documents/${i.document_id}`}
-                style={{ color: "var(--brand)" }}>
+                style={{ color: "var(--link)" }}>
             {i.doc_no ?? "Resume"}
           </Link>
         </td>
@@ -146,7 +146,7 @@ export default async function SalesInvoices({
           {customerName ? (
             <>
               Filtered to <strong>{customerName}</strong>.{" "}
-              <Link href="/sales/invoices" style={{ color: "var(--brand)" }}>Clear</Link>
+              <Link href="/sales/invoices" style={{ color: "var(--link)" }}>Clear</Link>
             </>
           ) : (
             "Manage sales invoices."

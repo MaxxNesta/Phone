@@ -38,7 +38,7 @@ export default async function Trips() {
     node: (
       <tr className="link">
         <td className="code">
-          <Link href={`/logistics/trips/${t.id}`} style={{ color: "var(--brand)" }}>
+          <Link href={`/logistics/trips/${t.id}`} style={{ color: "var(--link)" }}>
             {t.trip_no}
           </Link>
         </td>

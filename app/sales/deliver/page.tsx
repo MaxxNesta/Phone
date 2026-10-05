@@ -144,7 +144,7 @@ export default async function Deliver({
         ) : (
           <div className="empty">
             That order has nothing left to deliver.{" "}
-            <Link href="/sales/deliver" style={{ color: "var(--brand)" }}>
+            <Link href="/sales/deliver" style={{ color: "var(--link)" }}>
               See what is still open
             </Link>
           </div>
@@ -171,7 +171,7 @@ export default async function Deliver({
         <tr>
           <td>
             <Link href={`/documents/${o.orderId}`} className="code"
-                  style={{ color: "var(--brand)" }}>{o.orderNo}</Link>
+                  style={{ color: "var(--link)" }}>{o.orderNo}</Link>
             <span className="erp-row-sub">
               {o.lines.length} order line{o.lines.length === 1 ? "" : "s"} awaiting delivery
             </span>
@@ -224,7 +224,7 @@ export default async function Deliver({
       node: (
         <tr className="link">
           <td className="code">
-            <Link href={`/documents/${d.id}`} style={{ color: "var(--brand)" }}>
+            <Link href={`/documents/${d.id}`} style={{ color: "var(--link)" }}>
               {d.doc_no ?? "draft"}
             </Link>
           </td>
@@ -308,9 +308,9 @@ export default async function Deliver({
           {orders.size === 0 ? (
             <div className="empty">
               Nothing outstanding.{" "}
-              <Link href="/sales/orders/new" style={{ color: "var(--brand)" }}>New sales order</Link>
+              <Link href="/sales/orders/new" style={{ color: "var(--link)" }}>New sales order</Link>
               {" "}to start one, or{" "}
-              <Link href="/sales/deliver/new" style={{ color: "var(--brand)" }}>deliver without one</Link>
+              <Link href="/sales/deliver/new" style={{ color: "var(--link)" }}>deliver without one</Link>
               {" "}if the goods have already gone.
             </div>
           ) : (
@@ -356,7 +356,7 @@ export default async function Deliver({
                 {(pending as any[]).map((p) => (
                   <tr key={p.id}>
                     <td className="code">
-                      <Link href={`/documents/${p.id}`} style={{ color: "var(--brand)" }}>{p.doc_no}</Link>
+                      <Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.doc_no}</Link>
                     </td>
                     <td className="wrap">{p.partner_name}</td>
                     <td className="code">{shortDate(p.doc_date)}</td>

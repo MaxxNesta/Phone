@@ -27,9 +27,9 @@
      7.70:1 on white as link text, and the same as a fill under white button
      text. Dark mode needs its own value — this one drops to unreadable on a
      #161B22 surface — so --erp-brand is re-pointed below rather than tinted. */
-  --erp-green:      #1B5E43;
+  --erp-green:      var(--brand);
   --erp-brand:      var(--erp-green);
-  --erp-brand-fg:   #fff;
+  --erp-brand-fg:   var(--brand-fg);
   --erp-brand-weak: color-mix(in srgb, var(--erp-green) 12%, transparent);
 
   /* semantic: this palette is already darkened for AA, so fill and text
@@ -65,17 +65,17 @@
     --erp-fg:             var(--ink);
     --erp-fg-strong:      var(--ink);
     --erp-fg-muted:       var(--muted);
-    --erp-green:      #5FCB98;   /* 8.63:1 on the dark surface */
+    --erp-green:      var(--brand);
     --erp-brand:      var(--erp-green);
-    --erp-brand-fg:   #0E1116;
+    --erp-brand-fg:   var(--brand-fg);
     --erp-brand-weak: color-mix(in srgb, var(--erp-green) 16%, transparent);
   }
 }
 
 [data-theme="dark"] {
-  --erp-green:      #5FCB98;
+  --erp-green:      var(--brand);
   --erp-brand:      var(--erp-green);
-  --erp-brand-fg:   #0E1116;
+  --erp-brand-fg:   var(--brand-fg);
   --erp-brand-weak: color-mix(in srgb, var(--erp-green) 16%, transparent);
   --erp-bg:             var(--ground);
   --erp-surface:        var(--surface);

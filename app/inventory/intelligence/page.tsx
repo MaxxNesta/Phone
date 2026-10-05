@@ -54,7 +54,7 @@ const asDate = (v: string | undefined) =>
 function ItemLink({ id, code }: { id: string; code: string }) {
   return (
     <Link href={`/inventory/movements?item=${id}`} className="m"
-          style={{ color: "var(--brand)" }} title="Stock movements for this item">
+          style={{ color: "var(--link)" }} title="Stock movements for this item">
       {code}
     </Link>
   );

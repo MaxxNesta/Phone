@@ -200,7 +200,7 @@ export function BankReconcile({
                               ↔{" "}
                               {l.document_id ? (
                                 <Link href={`/documents/${l.document_id}`}
-                                      style={{ color: "var(--brand)" }}>
+                                      style={{ color: "var(--link)" }}>
                                   {l.doc_no ?? l.entry_no}
                                 </Link>
                               ) : l.entry_no}
@@ -299,7 +299,7 @@ export function BankReconcile({
                 Nothing unreconciled on this account. If the statement line is a
                 real transaction the books have never seen — a bank charge, say —
                 raise a{" "}
-                <Link href="/finance/bank-payment" style={{ color: "var(--brand)" }}>
+                <Link href="/finance/bank-payment" style={{ color: "var(--link)" }}>
                   bank payment
                 </Link>{" "}
                 for it, then match against that.
@@ -322,7 +322,7 @@ export function BankReconcile({
                           <td className="wrap">
                             {c.document_id ? (
                               <Link href={`/documents/${c.document_id}`}
-                                    style={{ color: "var(--brand)" }}>
+                                    style={{ color: "var(--link)" }}>
                                 {c.doc_no ?? c.entry_no}
                               </Link>
                             ) : c.entry_no}

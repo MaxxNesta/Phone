@@ -44,7 +44,7 @@ export default async function NewSalesReturn() {
         <HelpHint>
           Goods come back and the customer owes less — one document for
           both.{" "}
-          <Link href="/documents?type=SALES_RETURN" style={{ color: "var(--brand)" }}>Past returns</Link>
+          <Link href="/documents?type=SALES_RETURN" style={{ color: "var(--link)" }}>Past returns</Link>
         </HelpHint>
       </div>
 

@@ -87,7 +87,7 @@ export default async function PurchaseInvoices({
           {/* A draft has no document to open — the link goes back to the
               form it came out of. */}
           <Link href={i.draft_id ? `/purchases/new?draft=${i.draft_id}` : `/documents/${i.document_id}`}
-                style={{ color: "var(--brand)" }}>
+                style={{ color: "var(--link)" }}>
             {i.doc_no ?? "Resume"}
           </Link>
         </td>
@@ -135,7 +135,7 @@ export default async function PurchaseInvoices({
           {supplierName ? (
             <>
               Filtered to <strong>{supplierName}</strong>.{" "}
-              <Link href="/purchases/invoices" style={{ color: "var(--brand)" }}>Clear</Link>
+              <Link href="/purchases/invoices" style={{ color: "var(--link)" }}>Clear</Link>
             </>
           ) : (
             "Manage purchase invoices."

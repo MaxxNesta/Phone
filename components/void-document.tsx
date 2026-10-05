@@ -97,7 +97,7 @@ export function VoidDocument({
                 <li key={i}>
                   {b.docId ? (
                     <>
-                      <a href={`/documents/${b.docId}`} style={{ color: "var(--brand)" }}>{b.docNo}</a>
+                      <a href={`/documents/${b.docId}`} style={{ color: "var(--link)" }}>{b.docNo}</a>
                       {b.reason.replace(b.docNo ?? "", "")}
                     </>
                   ) : b.reason}

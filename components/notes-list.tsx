@@ -56,7 +56,7 @@ export function NotesList({
     node: (
       <tr className="link">
         <td className="code">
-          <Link href={`/documents/${n.id}`} style={{ color: "var(--brand)" }}>
+          <Link href={`/documents/${n.id}`} style={{ color: "var(--link)" }}>
             {n.doc_no}
           </Link>
         </td>
@@ -74,7 +74,7 @@ export function NotesList({
         </td>
         <td className="code">
           {n.source_id
-            ? <Link href={`/documents/${n.source_id}`} style={{ color: "var(--brand)" }}>
+            ? <Link href={`/documents/${n.source_id}`} style={{ color: "var(--link)" }}>
                 {n.source_doc_no}
               </Link>
             : "—"}

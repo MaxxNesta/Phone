@@ -129,7 +129,7 @@ export function AgingRow({
                                 the document says where it came from rather than
                                 just "Back". */}
                             <Link href={`/documents/${inv.documentId}?back=${encodeURIComponent(backTo)}`}
-                                  style={{ color: "var(--brand)" }}>
+                                  style={{ color: "var(--link)" }}>
                               {inv.docNo}
                             </Link>
                           </td>

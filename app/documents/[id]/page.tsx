@@ -1112,7 +1112,7 @@ export default async function DocumentPage({
           {voidInfo.doc_no && (
             <>
               {" "}Reversed by{" "}
-              <a href={`/documents/${voidInfo.id}`} style={{ color: "var(--brand)" }}>
+              <a href={`/documents/${voidInfo.id}`} style={{ color: "var(--link)" }}>
                 {voidInfo.doc_no}
               </a>
               {voidInfo.doc_date ? ` on ${voidInfo.doc_date}` : ""}.
@@ -1121,14 +1121,14 @@ export default async function DocumentPage({
           {voidInfo.replacement_no && (
             <>
               {" "}Replaced by{" "}
-              <a href={`/documents/${voidInfo.replacement_id}`} style={{ color: "var(--brand)" }}>
+              <a href={`/documents/${voidInfo.replacement_id}`} style={{ color: "var(--link)" }}>
                 {voidInfo.replacement_no}
               </a>.
             </>
           )}
           {voidInfo.void_reason && <> Reason: {voidInfo.void_reason}.</>}
           {" "}
-          <a href="/documents/history" style={{ color: "var(--brand)" }}>History log</a>
+          <a href="/documents/history" style={{ color: "var(--link)" }}>History log</a>
         </div>
       )}
 
@@ -1409,7 +1409,7 @@ export default async function DocumentPage({
                 <dt>Source</dt>
                 <dd>
                   {doc.source_doc_no
-                    ? <Link href={`/documents/${doc.source_id}`} className="m" style={{ color: "var(--brand)" }}>{doc.source_doc_no}</Link>
+                    ? <Link href={`/documents/${doc.source_id}`} className="m" style={{ color: "var(--link)" }}>{doc.source_doc_no}</Link>
                     : "—"}
                 </dd>
               </div>

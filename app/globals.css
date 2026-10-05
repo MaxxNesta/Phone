@@ -23,18 +23,24 @@
      also doing duty as the link and button colour, so recolouring the
      product would have recoloured every debit in the ledger with it.
      --brand is the chrome; --dr stays accounting. */
-  --brand:      #1B5E43;
+  /* Black, like the Apple Store: primary actions and the selected place.
+     Links and focus are Apple blue, so "you can go there" never looks like
+     "this is the main thing to do". Status uses Apple's accessible system
+     colours. */
+  --brand:      #1D1D1F;
   --brand-fg:   #FFFFFF;
-  --brand-weak: color-mix(in srgb, var(--brand) 10%, transparent);
-  --ok:        #1F7A4D;
-  --warn:      #B4691A;
-  --bad:       #B4283C;
+  --brand-weak: color-mix(in srgb, var(--brand) 7%, transparent);
+  --link:       #0066CC;
+  --focus:      #0071E3;
+  --ok:        #248A3D;
+  --warn:      #C93400;
+  --bad:       #D70015;
   --ghost:     #6E7787;
   /* A fifth semantic colour, alongside ok/warn/bad: "open and on track" is
      not good news or bad news, it is simply in progress, which is what the
      other three don't say. Added for the order status pills, not scoped to
      them — anywhere else that needs the same distinction can use it too. */
-  --info:      #1D5FA8;
+  --info:      #0066CC;
 
   /* DM Sans carries the interface, Plex Mono every figure and document
      number. The dashboard was built on DM Sans and the rest of the product on
@@ -44,7 +50,7 @@
      Latin face has Myanmar glyphs, so Burmese falls through to the Noto face
      rather than to whatever the OS happens to ship. Order matters: Latin
      resolves in DM Sans first, Burmese in Noto. */
-  --sans: -apple-system, BlinkMacSystemFont, var(--font-ui), var(--font-myanmar), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --sans: var(--font-ui), var(--font-myanmar), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* One face across the product (2026-10-01).
      --------------------------------------------
      The dashboard was the only screen already built entirely in DM Sans,
@@ -69,7 +75,7 @@
      there is no longer a webfont bundled for it, so that means adding the
      import in app/layout.tsx as well, or falling back to the system mono:
        --mono: var(--font-myanmar), ui-monospace, "SF Mono", Menlo, monospace; */
-  --mono: -apple-system, BlinkMacSystemFont, var(--font-ui), var(--font-myanmar), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: var(--font-ui), var(--font-myanmar), system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   --s1: 0.35rem; --s2: 0.65rem; --s3: 1rem; --s4: 1.5rem; --s5: 2.25rem; --s6: 3.25rem;
 
@@ -126,14 +132,16 @@
     --cr:        #E09C55;
     /* A dark surface needs a lighter green, not a tint of the same one:
        #1B5E43 on #161B22 is unreadable. Measured at 8.63:1. */
-    --brand:      #5FCB98;
-    --brand-fg:   #0E1116;
-    --brand-weak: color-mix(in srgb, var(--brand) 16%, transparent);
-    --ok:        #4FB784;
-    --warn:      #DDA24E;
-    --bad:       #E8697C;
+    --brand:      #F5F5F7;
+    --brand-fg:   #000000;
+    --brand-weak: color-mix(in srgb, var(--brand) 12%, transparent);
+    --link:       #2997FF;
+    --focus:      #0A84FF;
+    --ok:        #30D158;
+    --warn:      #FF9F0A;
+    --bad:       #FF453A;
     --ghost:     #7A8494;
-    --info:      #5B9FE0;
+    --info:      #409CFF;
   }
 }
 
@@ -4537,7 +4545,8 @@ main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(
    This shop sells only Apple products, so the till and the back office are
    built on Apple's foundations (HIG, via the apple-design skill):
 
-   - the system face, SF, on every Apple device; Inter elsewhere
+   - one face, Inter, on every device (SF may not be served off Apple's
+     platforms, and the laptop has to match the iPad)
    - Apple's neutral greys (tokens above), continuous 16px card corners
    - titles that carry hierarchy by weight and size, tracked tighter as they
      grow (typography.md › Conveying hierarchy)
@@ -4547,7 +4556,7 @@ main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(
      Mobility: "iOS, iPadOS 44x44 pt")
    - answers for increased contrast, reduced motion, reduced transparency
 
-   Green stays the accent and is spent on primary actions and status only
+   Black is the accent, spent on primary actions and the selected place
    (branding.md: "use it intentionally for primary actions or status
    indicators"). Loaded last so it wins without !important. */
 
@@ -4624,3 +4633,118 @@ nav.sidebar .navlink { border-radius: 8px; }
 @media (prefers-reduced-transparency: reduce) {
   .usermenu-pop, .toast { backdrop-filter: none; }
 }
+
+
+/* ======================================================= Apple forms ======
+   One field, everywhere. Every text box, date, time, number, select,
+   picker, search bar and line-item cell is the same 44pt tall, 12pt
+   rounded, 14pt inset, 16px text (16px also stops iOS zooming into a field
+   on focus). Labels sit above in one style; hints sit below in one style.
+   Fields live on a fixed column grid, so a row of two and a row of five
+   line up instead of each row stretching its fields to fill.
+   (accessibility.md > Mobility: 44x44 pt; entering-data.md.) */
+
+:root { --field-h: 44px; --field-r: 12px; --field-px: 14px; }
+
+input[type="text"], input[type="number"], input[type="date"], input[type="time"],
+input[type="email"], input[type="password"], input[type="tel"], input[type="search"],
+input[type="datetime-local"], input[type="month"], input:not([type]), select,
+.linetable input, .linetable select, .filter-row input, .filter-row select,
+.salepanel .saleline-edit input, .salepanel .saleline-edit select, .stmt-level select,
+.doc-meta input[type="date"], .doc-meta input[type="time"] {
+  height: var(--field-h); min-height: var(--field-h);
+  border-radius: var(--field-r);
+  padding: 0 var(--field-px);
+  font-size: 1rem; line-height: 1.25;
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+select, .linetable select, .salepanel .saleline-edit select, .stmt-level select {
+  padding-right: 2.25rem; background-position: right 0.85rem center;
+}
+textarea, .serialentry textarea {
+  min-height: 88px; border-radius: var(--field-r);
+  padding: 0.7rem var(--field-px); font-size: 1rem; line-height: 1.45;
+  border: 1px solid var(--line); background: var(--surface);
+}
+.serialentry textarea { min-height: var(--field-h); }
+
+input:hover:not(:focus):not(:disabled), select:hover:not(:focus):not(:disabled),
+textarea:hover:not(:focus):not(:disabled) { border-color: color-mix(in srgb, var(--line) 50%, var(--muted)); }
+
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--focus);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+input:disabled, select:disabled, textarea:disabled { background: var(--ground); color: var(--muted); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+
+/* Search is a field like the others, not an underline. */
+input[type="search"], .searchbox input, .card-head input[type="text"] {
+  border: 1px solid var(--line); border-radius: var(--field-r); padding: 0 var(--field-px);
+}
+
+/* The two search bars are a field drawn by their wrapper. */
+.topsearch, .pos2-search {
+  min-height: var(--field-h); border-radius: var(--field-r);
+  border: 1px solid var(--line); background: var(--surface);
+}
+.topsearch:focus-within, .pos2-search:focus-within {
+  border-color: var(--focus); box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 22%, transparent);
+}
+.topsearch input, .pos2-search input, .pos2-search select {
+  height: auto; min-height: 0; border: 0; border-radius: 0; box-shadow: none;
+  background-color: transparent; padding-left: 0;
+}
+.topsearch input:focus, .pos2-search input:focus, .pos2-search select:focus { box-shadow: none; }
+
+/* Labels and hints: one style each. */
+.field { gap: 6px; min-width: 0; }
+.field label { font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); }
+.field:has(:required) label::after { color: var(--muted); }
+.field .hint, .hint, .subline { font-size: var(--t-sm); color: var(--muted); line-height: 1.4; }
+
+/* The grid: columns of one width, so rows line up with each other. */
+.row { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 16px; row-gap: 20px; }
+.filter-row { column-gap: 16px; row-gap: 16px; }
+.form { gap: 20px; }
+
+/* Sections grouped like Settings: a title, then one rounded group. */
+.card-head { border-bottom-color: var(--line-soft); }
+.form .card-body { padding: 20px; }
+
+/* Buttons share the field height, so a button beside a field lines up. */
+button:not([class]), button.ghost, button.warn, button.danger, button.btn, a.btn, .btn {
+  min-height: var(--field-h); padding-inline: 1.35rem; font-size: 0.9375rem;
+}
+button.tiny, .btn.tiny { min-height: 32px; padding-inline: 0.9rem; font-size: var(--t-sm); }
+.filter-go { align-self: end; }
+
+input[type="checkbox"], input[type="radio"] { accent-color: var(--brand); width: 18px; height: 18px; }
+
+/* Links are blue; text is not. */
+td a:not(.btn), .facts a, .page-sub a, .hint a, .eyebrow a { color: var(--link); }
+
+/* The rail: the selected place reads white on graphite, not black on black. */
+nav.sidebar .navlink[data-active="true"] { background: rgb(255 255 255 / 0.14); color: #fff; }
+.sidebar .brand::before { background: #F5F5F7; color: #1D1D1F; }
+
+/* Every page title the same size, whichever header drew it. */
+.erp-pagehead h1, .erp-doc-title h1, .page-head h1, .erp-page h1 {
+  font-size: 1.625rem; font-weight: 700; letter-spacing: -0.022em; line-height: 1.15;
+}
+.erp-crumb-link { color: var(--link); }
+
+/* Payment method as a segmented control: one track, the chosen segment
+   lifted out of it (segmented-controls.md). */
+.paymodes { gap: 2px; padding: 2px; background: var(--line-soft); border-radius: var(--field-r); }
+.paymode {
+  min-height: 40px; border: 0; border-radius: 10px; background: transparent;
+  color: var(--ink); font-weight: 500; justify-content: center; text-align: center;
+}
+.paymode[aria-pressed="true"] {
+  background: var(--surface); color: var(--ink); border: 0;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+}
+.pos-pay { border-radius: var(--field-r); }

@@ -31,7 +31,7 @@ export default async function NegativeStock() {
       {rows.length === 0 ? (
         <div className="empty">
           Nothing is pending. Recorded stock matches what has been issued.{" "}
-          <Link href="/items/stock" style={{ color: "var(--brand)" }}>See stock on hand</Link>
+          <Link href="/items/stock" style={{ color: "var(--link)" }}>See stock on hand</Link>
         </div>
       ) : (
         <>

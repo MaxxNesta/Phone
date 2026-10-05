@@ -49,7 +49,7 @@ export function FileDrop({
   if (picked) {
     return (
       <div className="row" style={{ alignItems: "center", gap: "0.6rem" }}>
-        <FileSpreadsheet size={18} style={{ color: "var(--brand)", flexShrink: 0 }} />
+        <FileSpreadsheet size={18} style={{ color: "var(--link)", flexShrink: 0 }} />
         <span style={{ fontWeight: 500 }}>{picked}</span>
         {onClear && (
           <button type="button" className="ghost tiny" onClick={() => {

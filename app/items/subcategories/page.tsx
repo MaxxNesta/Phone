@@ -76,7 +76,7 @@ export default async function Subcategories() {
           {subs.length === 0 ? (
             <div className="empty">
               None yet. Open a category and add a sub category inside it.{" "}
-              <Link href="/items/categories" style={{ color: "var(--brand)" }}>Go to categories</Link>
+              <Link href="/items/categories" style={{ color: "var(--link)" }}>Go to categories</Link>
             </div>
           ) : (
             <DataTable

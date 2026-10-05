@@ -31,7 +31,7 @@ export default async function BankReconciliation() {
     node: (
       <tr className="link">
         <td className="code">
-          <Link href={`/finance/bank-reconciliation/${s.id}`} style={{ color: "var(--brand)" }}>
+          <Link href={`/finance/bank-reconciliation/${s.id}`} style={{ color: "var(--link)" }}>
             {s.statement_no}
           </Link>
         </td>

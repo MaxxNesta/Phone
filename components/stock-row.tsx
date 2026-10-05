@@ -136,7 +136,7 @@ export function StockRow(
         </td>
 
         <td className="code codecell">
-          <Link href={`/items/categories/${item.itemGroupId}`} style={{ color: "var(--brand)" }}>
+          <Link href={`/items/categories/${item.itemGroupId}`} style={{ color: "var(--link)" }}>
             {item.code}
           </Link>
         </td>
@@ -195,7 +195,7 @@ export function StockRow(
         {showConsigned && (
           <td className="r">
             {item.consignedQty > 0 ? (
-              <Link href="/inventory/consignment" style={{ color: "var(--brand)" }}>
+              <Link href="/inventory/consignment" style={{ color: "var(--link)" }}>
                 {qty(item.consignedQty)}
               </Link>
             ) : DASH}
@@ -438,7 +438,7 @@ export function StockRow(
                       {item.lastCostDocNo
                         ? (item.lastCostDocId
                             ? <Link href={`/documents/${item.lastCostDocId}`}
-                                    style={{ color: "var(--brand)" }}>{item.lastCostDocNo}</Link>
+                                    style={{ color: "var(--link)" }}>{item.lastCostDocNo}</Link>
                             : item.lastCostDocNo)
                         : DASH}
                     </dd>

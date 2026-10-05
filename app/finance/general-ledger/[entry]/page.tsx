@@ -155,7 +155,7 @@ export default async function JournalEntryDetail({
                       <td>{d.label}</td>
                       <td>
                         <Link href={`/documents/${d.id}?back=${encodeURIComponent(backHref)}`}
-                              className="code" style={{ color: "var(--brand)" }}>
+                              className="code" style={{ color: "var(--link)" }}>
                           {d.docNo}
                         </Link>
                       </td>

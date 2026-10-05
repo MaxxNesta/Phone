@@ -117,7 +117,7 @@ export function PartnerCategoryRow({
         <td className="r">
           {Number(category.customers) > 0 ? (
             <Link href={`/partners?role=customer&category=${category.id}`}
-                  style={{ color: "var(--brand)" }}>
+                  style={{ color: "var(--link)" }}>
               {String(category.customers)}
             </Link>
           ) : "—"}
@@ -125,7 +125,7 @@ export function PartnerCategoryRow({
         <td className="r">
           {Number(category.suppliers) > 0 ? (
             <Link href={`/partners?role=supplier&category=${category.id}`}
-                  style={{ color: "var(--brand)" }}>
+                  style={{ color: "var(--link)" }}>
               {String(category.suppliers)}
             </Link>
           ) : "—"}

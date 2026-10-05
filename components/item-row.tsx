@@ -189,7 +189,7 @@ export function ItemRow({
                           style={{ transform: open ? "rotate(90deg)" : "none" }} />
           </button>
         )}
-        <Link href={`/items/categories/${item.item_group_id}`} style={{ color: "var(--brand)" }}>
+        <Link href={`/items/categories/${item.item_group_id}`} style={{ color: "var(--link)" }}>
           {item.code}
         </Link>
       </td>

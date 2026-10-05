@@ -131,7 +131,7 @@ export function TripStops({
                       <td className="code">
                         {s.document_id ? (
                           <Link href={`/documents/${s.document_id}`}
-                                style={{ color: "var(--brand)" }}>
+                                style={{ color: "var(--link)" }}>
                             {s.doc_no}
                           </Link>
                         ) : (

@@ -155,13 +155,13 @@ export function JournalEntryList({ entries, backQuery = "" }:
                       <td className="m">{e.entryDate}</td>
                       <td className="code">
                         <Link href={href(`/finance/general-ledger/${e.id}`)}
-                              style={{ color: "var(--brand)" }}>
+                              style={{ color: "var(--link)" }}>
                           {e.entryNo}
                         </Link>
                       </td>
                       <td className="code">
                         {e.documentId
-                          ? <Link href={docHref(e.documentId)} style={{ color: "var(--brand)" }}>
+                          ? <Link href={docHref(e.documentId)} style={{ color: "var(--link)" }}>
                               {e.docNo ?? "—"}
                             </Link>
                           : "—"}

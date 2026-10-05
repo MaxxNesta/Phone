@@ -73,7 +73,7 @@ export default async function DocumentHistory() {
                         </span>
                       </td>
                       <td className="code">
-                        <Link href={`/documents/${r.document_id}`} style={{ color: "var(--brand)" }}>
+                        <Link href={`/documents/${r.document_id}`} style={{ color: "var(--link)" }}>
                           {r.document_no}
                         </Link>
                         <div className="subline" style={{ color: "var(--muted)" }}>
@@ -84,7 +84,7 @@ export default async function DocumentHistory() {
                       <td className="r">{money(r.gross_total)}</td>
                       <td className="code">
                         {r.related_document_id ? (
-                          <Link href={`/documents/${r.related_document_id}`} style={{ color: "var(--brand)" }}>
+                          <Link href={`/documents/${r.related_document_id}`} style={{ color: "var(--link)" }}>
                             {r.related_no}
                           </Link>
                         ) : "—"}

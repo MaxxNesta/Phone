@@ -66,7 +66,7 @@ export function RelatedDocumentsPanel({
                   g.docs.map((d) => (
                     <div key={d.id + g.label} className="reldoc-doc">
                       <Link href={`/documents/${d.id}`} className="code"
-                            style={{ color: "var(--brand)" }}>
+                            style={{ color: "var(--link)" }}>
                         {d.docNo}
                       </Link>
                       <span style={{ color: "var(--muted)" }}>

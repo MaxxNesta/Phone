@@ -52,13 +52,13 @@ export function ActivityFeed({ docs }: { docs: ActivityDoc[] }) {
             <span style={{
               display: "flex", alignItems: "center", justifyContent: "center",
               width: "28px", height: "28px", borderRadius: "999px", flexShrink: 0,
-              background: "var(--line-soft)", color: "var(--brand)",
+              background: "var(--line-soft)", color: "var(--link)",
             }}>
               <Icon size={14} />
             </span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "block" }}>
-                <span className="m" style={{ color: "var(--brand)" }}>{d.doc_no ?? "—"}</span>
+                <span className="m" style={{ color: "var(--link)" }}>{d.doc_no ?? "—"}</span>
                 {" "}
                 <span style={{ color: "var(--muted)" }}>{label(d.doc_type)}</span>
                 {d.partner_name && <> · {d.partner_name}</>}

@@ -192,7 +192,7 @@ export function FulfillOrderForm({
       {!defaultOpen && (
       <div className="card-head">
         <h2>
-          <Link href={`/documents/${orderId}`} style={{ color: "var(--brand)" }}>{orderNo}</Link>
+          <Link href={`/documents/${orderId}`} style={{ color: "var(--link)" }}>{orderNo}</Link>
           {" · "}{partnerName}
         </h2>
         <span className="actions">

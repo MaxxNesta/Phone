@@ -275,7 +275,7 @@ export default async function ItemPage({
                   {variants.map((v) => (
                     <tr key={v.id}>
                       <td className="code">
-                        <Link href={`/items/${v.id}`} style={{ color: "var(--brand)" }}>
+                        <Link href={`/items/${v.id}`} style={{ color: "var(--link)" }}>
                           {v.code}
                         </Link>
                       </td>
@@ -310,7 +310,7 @@ export default async function ItemPage({
                       <td>{String(m.movement_date).slice(0, 10)}</td>
                       <td>
                         <Link href={`/documents/${m.document_id}`}
-                              style={{ color: "var(--brand)" }}>
+                              style={{ color: "var(--link)" }}>
                           {m.doc_no}
                         </Link>
                         <div className="subline">{m.doc_type}</div>

@@ -254,12 +254,12 @@ export default async function TrialBalance({
                       return (
                         <tr key={r.id} className={r.id === p.account ? "tb-selected" : undefined}>
                           <td className="code">
-                            <Link href={keep({ account: r.id })} style={{ color: "var(--brand)" }}>
+                            <Link href={keep({ account: r.id })} style={{ color: "var(--link)" }}>
                               {r.code}
                             </Link>
                           </td>
                           <td>
-                            <Link href={keep({ account: r.id })} style={{ color: "var(--brand)" }}>
+                            <Link href={keep({ account: r.id })} style={{ color: "var(--link)" }}>
                               {r.name}
                             </Link>
                           </td>

@@ -713,7 +713,7 @@ export default async function Dashboard({
           {regions.length === 1 && regions[0].id === "none" ? (
             <div className="empty">
               No customer has a state or region yet.{" "}
-              <Link href="/partners" style={{ color: "var(--brand)" }}>
+              <Link href="/partners" style={{ color: "var(--link)" }}>
                 Set one on a customer
               </Link>{" "}
               to see where revenue comes from.

@@ -63,7 +63,7 @@ export default async function OpeningSetupPage() {
                   {(documents as any[]).map((d) => (
                     <tr key={d.id}>
                       <td className="code">
-                        <Link href={`/documents/${d.id}`} style={{ color: "var(--brand)" }}>
+                        <Link href={`/documents/${d.id}`} style={{ color: "var(--link)" }}>
                           {d.doc_no}
                         </Link>
                       </td>

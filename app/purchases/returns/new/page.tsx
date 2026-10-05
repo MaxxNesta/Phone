@@ -90,7 +90,7 @@ export default async function NewPurchaseReturn({
         <h1>Supplier return</h1>
         <HelpHint>
           Goods go back and what&rsquo;s owed drops — one document for both.{" "}
-          <Link href="/documents?type=PURCHASE_RETURN" style={{ color: "var(--brand)" }}>Past returns</Link>
+          <Link href="/documents?type=PURCHASE_RETURN" style={{ color: "var(--link)" }}>Past returns</Link>
         </HelpHint>
       </div>
 

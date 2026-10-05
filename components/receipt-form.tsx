@@ -593,7 +593,7 @@ export function ReceiptForm({
                     <td colSpan={matchedPi ? 8 : 7}>
                       <span className="hint">
                         {item.code} is not tracked by IMEI, so no IMEI box appears.{" "}
-                        <Link href={`/items/${item.id}`} target="_blank" style={{ color: "var(--brand)" }}>
+                        <Link href={`/items/${item.id}`} target="_blank" style={{ color: "var(--link)" }}>
                           Turn on IMEI tracking
                         </Link>{" "}
                         (Phone settings, at the bottom of the product page), then reload this form.
@@ -705,7 +705,7 @@ export function ReceiptForm({
           bill is what these goods cost, and a figure typed over it would land
           in the profit and loss as a gain or loss on buying stock. If the bill
           itself is wrong,{" "}
-          <Link href={`/documents/${matchedPi.id}`} style={{ color: "var(--brand)" }}>
+          <Link href={`/documents/${matchedPi.id}`} style={{ color: "var(--link)" }}>
             correct {matchedPi.doc_no}
           </Link>
           {" "}and receive against the corrected one. Freight and duties belong
