@@ -40,9 +40,11 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   // Agreed 2026-09-23: a small shop is one place with a few stores in it.
   STARTER: { branches: 1, warehouses: 3, users: null },
 
-  // Not decided. Null is "nobody has said", deliberately distinct from a
-  // large number standing in for "plenty".
-  BUSINESS: { branches: null, warehouses: null, users: null },
+  // Agreed 2026-10-05: Business is two to four branches. Its warehouse
+  // count is not decided. Null is "nobody has said", deliberately distinct
+  // from a large number standing in for "plenty".
+  BUSINESS: { branches: 4, warehouses: null, users: null },
+  // Five branches and up.
   ENTERPRISE: { branches: null, warehouses: null, users: null },
 };
 

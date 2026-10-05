@@ -31,10 +31,10 @@ export default async function PlanSettings() {
           different from Enterprise, and that cannot be checked from a value
           set once at install.
           <br /><br />
-          <strong>Starter is enforced:</strong> one branch and three
-          warehouses. A company already over that keeps what it has and is
-          refused only when it adds more. Business and Enterprise limits are
-          not decided yet, so they refuse nothing.
+          <strong>Enforced:</strong> Starter is one branch and three
+          warehouses; Business is up to four branches; Enterprise has no
+          limit. A company already over its limit keeps what it has and is
+          refused only when it adds more.
         </HelpHint>
       </div>
 
