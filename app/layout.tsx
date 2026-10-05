@@ -13,7 +13,7 @@ import {
   Smartphone, Barcode, FileText, Search,
 } from "lucide-react";
 import { headers } from "next/headers";
-import { currentUser, can, ROLE_LABEL, type Permission } from "@/lib/auth";
+import { currentUser, can, ROLE_LABEL, authRequired, type Permission } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { DatePickerFix } from "@/components/date-picker-fix";
 
@@ -276,7 +276,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <div className="usermenu-pop">
                     <strong>{user.name}</strong>
                     <span>{ROLE_LABEL[user.role]}</span>
-                    <form action={signOut}><button className="linkish">Sign out</button></form>
+                    {authRequired()
+                      ? <form action={signOut}><button className="linkish">Sign out</button></form>
+                      : <span>Sign-in is off</span>}
                   </div>
                 </details>
               </header>

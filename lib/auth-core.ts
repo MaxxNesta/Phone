@@ -95,6 +95,30 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
            email: u.email, role: u.role as Role };
 }
 
+/**
+ * Whether anyone has to sign in. Off unless AUTH_REQUIRED=true: a single shop
+ * where everyone is trusted runs without logins, and every request acts as
+ * the owner. Turning it on brings back sign-in, roles and the per-role checks
+ * unchanged — nothing below needs to know which mode it is in.
+ */
+export const authRequired = () => process.env.AUTH_REQUIRED === "true";
+
+/**
+ * The owner, for when sign-in is off: an administrator row in app_user,
+ * made the first time it is needed, so documents still say who posted them.
+ */
+export async function ownerUser(): Promise<SessionUser | null> {
+  const [co] = await sql`select id from company order by created_at limit 1`;
+  if (!co) return null;
+  const [u] = await sql`
+    insert into app_user (company_id, name, initials, role)
+    values (${co.id}, 'Owner', 'OW', 'ADMIN')
+    on conflict (company_id, name) do update set role = 'ADMIN', is_active = true
+    returning id, company_id, name, initials, email, role`;
+  return { id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
+           email: u.email ?? "", role: u.role as Role };
+}
+
 // ------------------------------------------------------- page gating ----
 //
 // First match wins, so narrower prefixes come first. A path not listed needs

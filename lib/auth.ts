@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { sql } from "./db";
 import {
-  can, userForToken, tokenHash, SESSION_COOKIE, ROLE_LABEL,
+  can, userForToken, tokenHash, SESSION_COOKIE, ROLE_LABEL, authRequired, ownerUser,
   type Permission, type SessionUser,
 } from "./auth-core";
 
@@ -39,6 +39,8 @@ export async function endSession() {
 
 /** Who is asking, once per request. */
 export const currentUser = cache(async (): Promise<SessionUser | null> => {
+  // Sign-in off: everyone is the owner.
+  if (!authRequired()) return ownerUser();
   return userForToken((await cookies()).get(SESSION_COOKIE)?.value);
 });
 

@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { userForToken, permissionForPath, can, SESSION_COOKIE } from "@/lib/auth-core";
+import { userForToken, permissionForPath, can, SESSION_COOKIE, authRequired } from "@/lib/auth-core";
 
 // Every request is signed in or sent to /login, and every page is checked
 // against the role's permissions here, on the server, before it renders.
@@ -14,6 +14,11 @@ export async function middleware(req: NextRequest) {
   // only channel from here to a server component.
   const headers = new Headers(req.headers);
   headers.set("x-pathname", path);
+  // Sign-in switched off: no login page, everyone acts as the owner.
+  if (!authRequired()) {
+    if (path === "/login") return NextResponse.redirect(new URL("/", req.url));
+    return NextResponse.next({ request: { headers } });
+  }
   if (PUBLIC.some((p) => path === p || path.startsWith(p + "/"))) {
     return NextResponse.next({ request: { headers } });
   }

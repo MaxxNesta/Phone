@@ -57,7 +57,11 @@ on screen; keep the three distinct.
 
 ## Auth
 
-Sign-in is required everywhere except `/login` and `/setup`. Roles and
+**Sign-in is off by default** (owner's request, 2026-10-05): every request acts
+as an administrator called "Owner". Set `AUTH_REQUIRED=true` in the
+environment to turn logins and roles back on; nothing else changes.
+
+With it on, sign-in is required everywhere except `/login` and `/setup`. Roles and
 permissions live in `lib/auth-core.ts`; `middleware.ts` gates pages by path and
 every server action in `lib/actions.ts` calls `requirePermission` first. A new
 server action must do the same — the menu hiding a link is not access control.
