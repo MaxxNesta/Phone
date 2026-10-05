@@ -10,6 +10,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
   from "./import-vouchers";
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines } from "./queries";
 import { scaffoldCompany } from "./setup";
+import { limitFor, type Plan } from "./plans";
 import { requirePermission, requireUser } from "./auth";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
@@ -3614,6 +3615,40 @@ function isUniqueViolation(e: unknown): boolean {
   return typeof e === "object" && e !== null && (e as { code?: string }).code === "23505";
 }
 
+/**
+ * Refuses a branch or warehouse the company's package does not include
+ * (lib/plans.ts: Starter is one branch and three warehouses). Asked only
+ * when a location starts counting — created, reactivated, moved to the top
+ * level or made to hold stock — so a company already over its limit keeps
+ * what it has and is refused only when it adds more.
+ *
+ * ponytail: two people adding the last allowed warehouse in the same second
+ * could both pass. Lock the company row here if that ever matters.
+ */
+async function assertLocationAllowed(
+  co: string, adds: { branch: boolean; warehouse: boolean }, excludeId: string | null,
+) {
+  if (!adds.branch && !adds.warehouse) return;
+  const [c] = await sql`select plan from company where id = ${co}`;
+  const plan = c.plan as Plan;
+  const [n] = await sql`
+    select count(*) filter (where parent_id is null)::int as branches,
+           count(*) filter (where is_stock_location)::int as warehouses
+      from location
+     where company_id = ${co} and is_active and id is distinct from ${excludeId}`;
+  const name = plan.charAt(0) + plan.slice(1).toLowerCase();
+  const branches = limitFor(plan, "branches");
+  if (adds.branch && branches != null && n.branches >= branches) {
+    throw new Error(`The ${name} package includes ${branches} branch${branches === 1 ? "" : "es"}. `
+      + "Upgrade the package to open another branch.");
+  }
+  const warehouses = limitFor(plan, "warehouses");
+  if (adds.warehouse && warehouses != null && n.warehouses >= warehouses) {
+    throw new Error(`The ${name} package includes ${warehouses} warehouse${warehouses === 1 ? "" : "s"}. `
+      + "Deactivate one, or upgrade the package to add more.");
+  }
+}
+
 export async function createLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
   const toastMsg = "Warehouse added";
@@ -3630,6 +3665,9 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
 
     const dup = await sql`select 1 from location where company_id = ${co} and code = ${code}`;
     if (dup.length) return { error: `Code ${code} is already used` };
+
+    await assertLocationAllowed(co,
+      { branch: !parentId, warehouse: fd.get("is_stock_location") === "on" }, null);
 
     await sql`
       insert into location (company_id, parent_id, code, name, name_my, is_stock_location)
@@ -3676,6 +3714,16 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
       select 1 from location where company_id = ${co} and code = ${code} and id <> ${id}`;
     if (dup.length) return { error: `Code ${code} is already used` };
 
+    const [was] = await sql`
+      select parent_id, is_stock_location, is_active from location where id = ${id} and company_id = ${co}`;
+    if (fd.get("is_active") === "on") {
+      const counted = (b: boolean) => was?.is_active && b;
+      await assertLocationAllowed(co, {
+        branch: !parentId && !counted(was?.parent_id == null),
+        warehouse: fd.get("is_stock_location") === "on" && !counted(was?.is_stock_location),
+      }, id);
+    }
+
     await sql`
       update location set
         code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
@@ -3707,14 +3755,19 @@ export async function deactivateLocation(_prev: unknown, fd: FormData): Promise<
   redirectWithToast("/warehouses", "Warehouse deactivated");
 }
 
-/** Puts back what deactivateLocation retired. Reactivating is always safe, so
- *  unlike deactivation it carries no guard. */
+/** Puts back what deactivateLocation retired, within what the package allows. */
 export async function activateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
   try {
     const co = await companyId();
     const id = str(fd, "id");
     if (!id) return { error: "Choose a warehouse" };
+
+    const [l] = await sql`
+      select parent_id, is_stock_location, is_active from location where id = ${id} and company_id = ${co}`;
+    if (l && !l.is_active) {
+      await assertLocationAllowed(co, { branch: l.parent_id == null, warehouse: l.is_stock_location }, id);
+    }
 
     await sql`update location set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {

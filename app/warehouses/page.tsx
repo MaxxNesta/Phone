@@ -3,6 +3,7 @@ import { createLocation, updateLocation, deleteLocation, deactivateLocation, act
 import { AddLocationForm } from "@/components/location-form";
 import { LocationRow } from "@/components/location-row";
 import { HelpHint } from "@/components/help-hint";
+import { limitFor, type Plan } from "@/lib/plans";
 
 export type Location = {
   id: string; code: string; name: string; name_my: string | null;
@@ -66,6 +67,24 @@ export default async function Warehouses() {
           what the branch-by-branch financial reports are grouped by.
         </HelpHint>
       </div>
+
+      {(() => {
+        const active = locations.filter((l) => l.is_active);
+        const branches = active.filter((l) => !l.parent_id).length;
+        const warehouses = active.filter((l) => l.is_stock_location).length;
+        const plan = ((company as { plan?: Plan }).plan ?? "STARTER") as Plan;
+        const maxB = limitFor(plan, "branches"), maxW = limitFor(plan, "warehouses");
+        const of = (n: number, max: number | null, one: string, many: string) =>
+          max == null ? `${n} ${n === 1 ? one : many}` : `${n} of ${max} ${max === 1 ? one : many}`;
+        return (
+          <p className="page-sub" style={{ marginBottom: "var(--s3)" }}>
+            <strong>{plan.charAt(0) + plan.slice(1).toLowerCase()} package</strong>
+            {" · "}{of(branches, maxB, "branch", "branches")}
+            {" · "}{of(warehouses, maxW, "warehouse", "warehouses")} in use.
+            {maxB != null && branches >= maxB && " More branches come with an upgrade."}
+          </p>
+        );
+      })()}
 
       <AddLocationForm action={createLocation} locations={nodes} />
 

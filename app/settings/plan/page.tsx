@@ -31,10 +31,10 @@ export default async function PlanSettings() {
           different from Enterprise, and that cannot be checked from a value
           set once at install.
           <br /><br />
-          <strong>Nothing is enforced yet.</strong> Only Starter&rsquo;s limits
-          are agreed; Business and Enterprise are undecided, and a limit
-          enforced against half a decision would have to be loosened later.
-          Changing the package today changes no screen and refuses nothing.
+          <strong>Starter is enforced:</strong> one branch and three
+          warehouses. A company already over that keeps what it has and is
+          refused only when it adds more. Business and Enterprise limits are
+          not decided yet, so they refuse nothing.
         </HelpHint>
       </div>
 

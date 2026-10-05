@@ -5,12 +5,13 @@
  * number to change rather than a condition written into whichever screen
  * happened to need it first.
  *
- * **Nothing reads this yet.** `company.plan` exists (migration 0100) and no
- * code consults it. Only Starter's limits are agreed; the rest are null,
- * which means "not decided" and not "unlimited" — writing Infinity here
- * would look like a decision nobody made.
+ * Branches and warehouses are enforced (2026-10-05) by
+ * assertLocationAllowed in lib/actions.ts, on create, edit and reactivate.
+ * Only Starter's limits are agreed; the rest are null, which means "not
+ * decided" and never refuses — writing Infinity here would look like a
+ * decision nobody made.
  *
- * When enforcement does arrive, two rules matter more than the numbers:
+ * Two rules matter more than the numbers:
  *
  * 1. **Existing data is grandfathered.** Both live databases already hold
  *    two branches. A company over its limit keeps what it has and is
