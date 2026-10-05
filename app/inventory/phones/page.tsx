@@ -44,7 +44,10 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
         <h1>IMEI / Serial Inventory</h1>
         <p className="page-sub">Track every handset as an individual physical unit</p>
         {can(user, "inventory.manage") && (
-          <div className="head-actions"><Link className="btn" href="/purchases/receive/new">+ Receive Stock</Link></div>
+          <div className="head-actions">
+            <Link className="btn ghost" href="/inventory/phones/name">+ Add IMEIs to stock on hand</Link>{" "}
+            <Link className="btn" href="/purchases/receive/new">+ Receive Stock</Link>
+          </div>
         )}
       </div>
 
@@ -118,7 +121,12 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
               </tr>
             ))}
             {units.length === 0 && (
-              <tr><td colSpan={9} className="page-sub">No handsets match.</td></tr>
+              <tr><td colSpan={9} className="page-sub">
+                No handsets match. IMEIs are typed or scanned when you{" "}
+                <Link href="/purchases/receive/new" style={{ color: "var(--brand)" }}>receive stock</Link>; phones
+                already on the shelf without one get theirs on{" "}
+                <Link href="/inventory/phones/name" style={{ color: "var(--brand)" }}>Add IMEIs to stock on hand</Link>.
+              </td></tr>
             )}
           </tbody>
         </table>

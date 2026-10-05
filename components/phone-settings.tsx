@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { setItemPhoneSettings } from "@/lib/phone-actions";
 
 /** IMEI tracking and warranty for one item, on its detail page. */
@@ -36,13 +37,15 @@ export function PhoneSettings({ item }: {
       {variants > 0 && (
         <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
           {item.variants_tracked} of {variants} variants are tracked by IMEI.
-          {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting — void their receipts and receive them again to name the units.`}
+          {(item.variants_moved ?? 0) > 0 && <> {item.variants_moved} already have stock: give those units their IMEIs on{" "}
+            <Link href="/inventory/phones/name" style={{ color: "var(--brand)" }}>Add IMEIs to stock on hand</Link>.</>}
         </p>
       )}
       {variants === 0 && item.has_moved && (
         <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
-          IMEI tracking is fixed once stock has moved: units already on the shelf have no IMEIs to follow.
-          Void the receipt and receive the phones again to name them.
+          This product already has stock. Give the units on the shelf their IMEIs on{" "}
+          <Link href="/inventory/phones/name" style={{ color: "var(--brand)" }}>Add IMEIs to stock on hand</Link>{" "}
+          — that turns tracking on.
         </p>
       )}
     </form>
