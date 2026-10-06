@@ -506,7 +506,7 @@ export async function inventorySummary(companyId: string, f: {
         from qty group by item_id
     )
     select i.id, i.name, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
-           g.name as category, b.name as brand, i.tracks_serial,
+           g.name as category, b.name as brand, i.tracks_serial, i.identity,
            coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
            (select count(*)::int from stock_serial_hold h join stock_serial s on s.id = h.serial_id
              where s.item_id = i.id and h.released_at is null) as reserved,

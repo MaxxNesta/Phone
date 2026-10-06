@@ -1,6 +1,8 @@
 import { sql } from "./db";
 
 export type Node = {
+  /** How products in this category are tracked by default: IMEI, SERIAL or NONE. */
+  identity?: string;
   id: string;
   code: string;
   segment: string;
@@ -15,7 +17,7 @@ export type Crumb = { id: string; name: string };
 /** Every category for a company, cheap enough to fetch whole and walk in memory. */
 export async function allCategories(companyId: string): Promise<Node[]> {
   return (await sql`
-    select id, code, segment, name, name_my, parent_id, is_active
+    select id, code, segment, name, name_my, parent_id, is_active, identity
       from item_group
      where company_id = ${companyId}
      order by code`) as unknown as Node[];

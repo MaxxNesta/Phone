@@ -35,7 +35,7 @@ export default async function ItemPage({
   const [item] = (await sql`
     select i.id, i.code, i.name, i.name_my, i.barcode, i.is_stocked, i.is_active,
            i.valuation_method, i.tracks_batch, i.tracks_expiry,
-           i.tracks_serial, i.warranty_months, i.supplier_warranty_months,
+           i.tracks_serial, i.identity, i.warranty_months, i.supplier_warranty_months,
            exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
            (select count(*)::int from item c where c.parent_item_id = i.id) as variant_count,
            (select count(*)::int from item c where c.parent_item_id = i.id and c.tracks_serial) as variants_tracked,

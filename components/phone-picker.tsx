@@ -3,16 +3,19 @@
 import { useMemo, useState } from "react";
 import type { CatalogModel } from "@/lib/queries";
 
-export type VariantCatalog = { brands: { id: string; name: string }[]; models: CatalogModel[] };
-
-const NO_BRAND = "__none__";
+export type VariantCatalog = {
+  brands: { id: string; name: string }[];
+  types: { id: string; name: string }[];
+  models: CatalogModel[];
+};
 
 /**
- * A phone picked the way it is sold: brand, model, then one choice per
- * attribute the model varies by (Storage, Colour, SIM). Each list offers
- * only what some variant of the model carries, and the last choice names the
- * item. All of it is master data: brands, models and the option lists are
- * kept under Settings > Catalogue.
+ * A product picked the way it is sold: type (iPhone, iPad, Mac…), model,
+ * then one choice per attribute the model varies by — Storage, Colour, SIM
+ * for an iPhone; Chip, Memory, Storage for a Mac. Each list offers only what
+ * some variant of the model carries, and the last choice names the item. All
+ * of it is master data: types are the top categories, and the option lists
+ * are kept under Settings > Catalogue.
  */
 export function PhonePicker({ catalog, value, onPick }: {
   catalog: VariantCatalog;
@@ -24,18 +27,17 @@ export function PhonePicker({ catalog, value, onPick }: {
   const start = useMemo(() => {
     for (const m of catalog.models) {
       const v = m.variants.find((x) => x.itemId === value);
-      if (v) return { brand: m.brandId ?? NO_BRAND, model: m.id, opts: v.opts };
+      if (v) return { type: m.typeId, model: m.id, opts: v.opts };
     }
-    return { brand: "", model: "", opts: {} as Record<string, string> };
+    return { type: "", model: "", opts: {} as Record<string, string> };
   }, [catalog, value]);
 
-  const [brand, setBrand] = useState(start.brand);
+  const [type, setType] = useState(start.type);
   const [modelId, setModelId] = useState(start.model);
   const [opts, setOpts] = useState<Record<string, string>>(start.opts);
 
-  const brandsInUse = catalog.brands.filter((b) => catalog.models.some((m) => m.brandId === b.id));
-  const hasUnbranded = catalog.models.some((m) => !m.brandId);
-  const models = catalog.models.filter((m) => (brand === NO_BRAND ? !m.brandId : m.brandId === brand));
+  const typesInUse = catalog.types.filter((t) => catalog.models.some((m) => m.typeId === t.id));
+  const models = catalog.models.filter((m) => m.typeId === type);
   const model = catalog.models.find((m) => m.id === modelId);
 
   // Options still possible given the choices made before this attribute.
@@ -88,17 +90,16 @@ export function PhonePicker({ catalog, value, onPick }: {
   return (
     <div className="vpick">
       <label className="vpick-field">
-        <span>Brand</span>
-        <select value={brand} onChange={(e) => { setBrand(e.target.value); setModelId(""); setOpts({}); }}>
+        <span>Type</span>
+        <select value={type} onChange={(e) => { setType(e.target.value); setModelId(""); setOpts({}); }}>
           <option value="">Choose…</option>
-          {brandsInUse.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          {hasUnbranded && <option value={NO_BRAND}>No brand</option>}
+          {typesInUse.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </label>
       <label className="vpick-field">
         <span>Model</span>
-        <select value={modelId} disabled={!brand} onChange={(e) => chooseModel(e.target.value)}>
-          <option value="">{brand ? "Choose…" : "Brand first"}</option>
+        <select value={modelId} disabled={!type} onChange={(e) => chooseModel(e.target.value)}>
+          <option value="">{type ? "Choose…" : "Type first"}</option>
           {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
       </label>

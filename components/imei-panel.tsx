@@ -18,6 +18,7 @@ export function imeiCheckOk(v: string) {
 }
 
 type Status = { ok: boolean; label: string };
+export type UnitMode = "IMEI" | "SERIAL";
 
 /**
  * What one row says about itself. A fifteen-digit number whose check digit
@@ -25,18 +26,20 @@ type Status = { ok: boolean; label: string };
  * digits is taken as a serial number — an iPad without cellular has a serial
  * and no IMEI, and it is still one unit with one name.
  */
-function statusOf(row: UnitRow, all: UnitRow[]): Status | null {
+function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI"): Status | null {
   const v = row.serial.trim();
   if (!v) return null;
   const twice = all.filter((r) => r.serial.trim() === v || r.imei2?.trim() === v).length > 1;
   if (twice) return { ok: false, label: "Repeated" };
+  // A Mac or AirPods: the serial is the identity, and has no check digit.
+  if (mode === "SERIAL") return { ok: true, label: "Valid" };
   if (/^\d{15}$/.test(v)) return imeiCheckOk(v) ? { ok: true, label: "Valid" } : { ok: false, label: "Check digit wrong" };
   if (/^\d+$/.test(v)) return { ok: false, label: `${v.length} digits, IMEI has 15` };
   return { ok: true, label: "Serial" };
 }
 
-export function rowsProblem(rows: UnitRow[]) {
-  return rows.some((r) => statusOf(r, rows)?.ok === false)
+export function rowsProblem(rows: UnitRow[], mode: UnitMode = "IMEI") {
+  return rows.some((r) => statusOf(r, rows, mode)?.ok === false)
     || rows.some((r) => r.imei2 && /^\d{15}$/.test(r.imei2.trim()) && !imeiCheckOk(r.imei2.trim()));
 }
 
@@ -46,7 +49,9 @@ export function rowsProblem(rows: UnitRow[]) {
  * Enter, which moves to the next empty row), Paste list (one phone per line,
  * "IMEI1 IMEI2 serial") and a CSV in the same column order.
  */
-export function ImeiPanel({ title, qty, rows, onChange }: {
+export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI" }: {
+  /** IMEI: IMEI 1, IMEI 2 and serial per unit. SERIAL: the serial alone. */
+  mode?: UnitMode;
   title: string;
   qty: number;
   rows: UnitRow[];
@@ -83,7 +88,8 @@ export function ImeiPanel({ title, qty, rows, onChange }: {
     for (const c of parsed) {
       while (at < next.length && next[at].serial.trim()) at++;
       if (at >= next.length) break;
-      next[at] = { serial: c[0], imei2: c[1] ?? "", deviceSerial: c[2] ?? "" };
+      next[at] = mode === "SERIAL" ? { serial: c[0], imei2: "", deviceSerial: "" }
+        : { serial: c[0], imei2: c[1] ?? "", deviceSerial: c[2] ?? "" };
     }
     onChange(next);
   };
@@ -92,7 +98,7 @@ export function ImeiPanel({ title, qty, rows, onChange }: {
     <div className="imeipanel">
       <div className="imeipanel-head">
         <div>
-          <h3>IMEI entry — {title}</h3>
+          <h3>{mode === "SERIAL" ? "Serial numbers" : "IMEI entry"} — {title}</h3>
           <span className="subline">
             Receive quantity: <strong className={filled === qty && qty > 0 ? "ok-qty" : "low"}>{filled} / {qty} entered</strong>
             {filled === qty && qty > 0 && <CheckCircle2 size={15} className="ok-qty" aria-hidden="true" />}
@@ -114,7 +120,8 @@ export function ImeiPanel({ title, qty, rows, onChange }: {
       {pasting && (
         <div className="imeipanel-paste">
           <textarea value={paste} onChange={(e) => setPaste(e.target.value)} rows={4}
-            placeholder={"One phone per line: IMEI 1, IMEI 2, serial\n356789123456789 356789123456797 C6KJ2A1234"} />
+            placeholder={mode === "SERIAL" ? "One serial number per line\nC02XG2JHJGH5"
+              : "One phone per line: IMEI 1, IMEI 2, serial\n356789123456789 356789123456797 C6KJ2A1234"} />
           <div className="actions">
             <button type="button" onClick={() => { take(paste); setPaste(""); setPasting(false); }}>Add to list</button>
             <button type="button" className="ghost" onClick={() => setPasting(false)}>Cancel</button>
@@ -126,30 +133,37 @@ export function ImeiPanel({ title, qty, rows, onChange }: {
         <div className="tablewrap">
           <table className="imeitable">
             <thead>
-              <tr><th className="r">#</th><th>IMEI 1</th><th>IMEI 2</th><th>Serial no.</th><th>Status</th><th /></tr>
+              {mode === "SERIAL"
+                ? <tr><th className="r">#</th><th>Serial no.</th><th>Status</th><th /></tr>
+                : <tr><th className="r">#</th><th>IMEI 1</th><th>IMEI 2</th><th>Serial no.</th><th>Status</th><th /></tr>}
             </thead>
             <tbody ref={table}>
               {padded.map((r, i) => {
-                const st = statusOf(r, padded);
+                const st = statusOf(r, padded, mode);
                 const imei2Bad = !!r.imei2 && /^\d{15}$/.test(r.imei2.trim()) && !imeiCheckOk(r.imei2.trim());
                 return (
                   <tr key={i}>
                     <td className="r subline">{i + 1}</td>
                     <td>
-                      <input type="text" inputMode="numeric" value={r.serial} data-row={i} data-col={0}
-                        aria-label={`IMEI 1, unit ${i + 1}`} autoComplete="off"
+                      <input type="text" inputMode={mode === "SERIAL" ? "text" : "numeric"} value={r.serial}
+                        data-row={i} data-col={0} autoComplete="off"
+                        aria-label={mode === "SERIAL" ? `Serial number, unit ${i + 1}` : `IMEI 1, unit ${i + 1}`}
                         onChange={(e) => set(i, { serial: e.target.value })}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); focusCell(i + 1); } }} />
                     </td>
-                    <td>
-                      <input type="text" inputMode="numeric" value={r.imei2 ?? ""} aria-label={`IMEI 2, unit ${i + 1}`}
-                        autoComplete="off" onChange={(e) => set(i, { imei2: e.target.value })}
-                        style={imei2Bad ? { borderColor: "var(--bad)" } : undefined} />
-                    </td>
-                    <td>
-                      <input type="text" value={r.deviceSerial ?? ""} aria-label={`Serial number, unit ${i + 1}`}
-                        autoComplete="off" onChange={(e) => set(i, { deviceSerial: e.target.value })} />
-                    </td>
+                    {mode === "IMEI" && (
+                      <>
+                        <td>
+                          <input type="text" inputMode="numeric" value={r.imei2 ?? ""} aria-label={`IMEI 2, unit ${i + 1}`}
+                            autoComplete="off" onChange={(e) => set(i, { imei2: e.target.value })}
+                            style={imei2Bad ? { borderColor: "var(--bad)" } : undefined} />
+                        </td>
+                        <td>
+                          <input type="text" value={r.deviceSerial ?? ""} aria-label={`Serial number, unit ${i + 1}`}
+                            autoComplete="off" onChange={(e) => set(i, { deviceSerial: e.target.value })} />
+                        </td>
+                      </>
+                    )}
                     <td>
                       {st ? <span className={`pill ${st.ok && !imei2Bad ? "ok" : "overdue"}`}>{imei2Bad ? "IMEI 2 check digit" : st.label}</span>
                         : <span className="subline">—</span>}
@@ -167,7 +181,7 @@ export function ImeiPanel({ title, qty, rows, onChange }: {
           </table>
         </div>
       ) : (
-        <p className="subline" style={{ padding: "0 16px 16px" }}>Enter the receive quantity first — one row appears per phone.</p>
+        <p className="subline" style={{ padding: "0 16px 16px" }}>Enter the receive quantity first — one row appears per unit.</p>
       )}
     </div>
   );

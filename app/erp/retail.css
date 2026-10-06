@@ -235,6 +235,7 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 .timeline .tl-written_off::before, .timeline .tl-hold::before { border-color: var(--warn); }
 .timeline .tl-voided { opacity: 0.6; }
 .imei-chips { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.paymodes.tracking { grid-template-columns: repeat(3, 1fr); }
 
 /* Two cards a row on the dashboard (the donuts); one on a narrow screen. */
 .section-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--s3); margin-bottom: var(--s3); }

@@ -177,8 +177,9 @@ export async function scaffoldCompany(input: SetupInput) {
         (${co.id}, 'CTN', 'Carton'),
         (${co.id}, 'KG',  'Kilogram')`;
 
-    // Storage, Colour and SIM: how a phone is picked (migration 0121).
-    await tx`select fn_seed_phone_attributes(${co.id})`;
+    // Apple types (iPhone, iPad, Mac…) with their tracking, and the variant
+    // lists they are picked by (migrations 0121, 0122).
+    await tx`select fn_seed_apple_catalogue(${co.id})`;
 
     await tx`
       insert into price_level (company_id, code, name, sort_order) values

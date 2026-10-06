@@ -7808,6 +7808,8 @@ export async function getShippedNotInvoicedBalance(companyId: string) {
 export type CatalogAttr = { id: string; name: string; options: { id: string; name: string }[] };
 export type CatalogModel = {
   id: string; code: string; name: string; brandId: string | null;
+  /** The type it is — iPhone, iPad, Mac: its top category. */
+  typeId: string;
   /** The attributes this model varies by, in its own order. Empty for an
    *  item with no variants: the model is the thing on the shelf. */
   attrs: CatalogAttr[];
@@ -7821,11 +7823,13 @@ export type CatalogModel = {
  * model actually carries are offered, so every path ends at a real item.
  */
 export async function getVariantCatalog(companyId: string) {
-  const [brands, models, links] = await Promise.all([
+  const [brands, types, models, links] = await Promise.all([
     sql`select id, name from brand where company_id = ${companyId} order by name`,
+    // Categories are two deep at most, so the top one is the parent or itself.
+    sql`select id, name from item_group where company_id = ${companyId} and parent_id is null and is_active order by name`,
     sql`
-      select i.id, i.code, i.name, i.brand_id
-        from item i
+      select i.id, i.code, i.name, i.brand_id, coalesce(g.parent_id, g.id) as type_id
+        from item i join item_group g on g.id = i.item_group_id
        where i.company_id = ${companyId} and i.parent_item_id is null and i.is_active
          and (i.is_stocked or exists (select 1 from item c where c.parent_item_id = i.id))
        order by i.name`,
@@ -7842,8 +7846,8 @@ export async function getVariantCatalog(companyId: string) {
        order by attr_order, o.sort_order`,
   ]);
   const byModel = new Map<string, CatalogModel>();
-  for (const m of models as unknown as { id: string; code: string; name: string; brand_id: string | null }[]) {
-    byModel.set(m.id, { id: m.id, code: m.code, name: m.name, brandId: m.brand_id, attrs: [], variants: [] });
+  for (const m of models as unknown as { id: string; code: string; name: string; brand_id: string | null; type_id: string }[]) {
+    byModel.set(m.id, { id: m.id, code: m.code, name: m.name, brandId: m.brand_id, typeId: m.type_id, attrs: [], variants: [] });
   }
   for (const r of links as unknown as {
     model_id: string; item_id: string; attr_id: string; attr_name: string; opt_id: string; opt_name: string;
@@ -7861,6 +7865,7 @@ export async function getVariantCatalog(companyId: string) {
   for (const m of byModel.values()) if (m.attrs.length === 0) m.variants = [{ itemId: m.id, opts: {} }];
   return {
     brands: brands as unknown as { id: string; name: string }[],
+    types: types as unknown as { id: string; name: string }[],
     models: [...byModel.values()].filter((m) => m.variants.length > 0),
   };
 }

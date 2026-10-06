@@ -697,11 +697,16 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     // than hold a write open while sharp works.
     const photo = await photoFrom(fd);
 
+    // How each unit is named: IMEI, serial number, or not at all. The older
+    // yes/no switch still means IMEI where a form sends only that.
+    const identity = (["IMEI", "SERIAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
+      ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
+
     await sql.begin(async (tx) => {
       const [item] = await tx`
         insert into item
           (company_id, item_group_id, brand_id, serial, code, name, name_my, base_uom_id, is_stocked,
-           tracks_batch, tracks_expiry, tracks_serial, warranty_months, supplier_warranty_months)
+           tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months)
         values
           (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${name}, ${str(fd, "name_my") || null},
            ${uomId}, ${fd.get("is_stocked") !== null},
@@ -709,7 +714,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            -- second is only honoured when the first is on.
            ${fd.get("tracks_batch") !== null},
            ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
-           ${fd.get("tracks_serial") !== null}, ${months(fd, "warranty_months")},
+           ${identity}, ${months(fd, "warranty_months")},
            ${months(fd, "supplier_warranty_months")})
         returning id`;
 
@@ -782,18 +787,22 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           const parts = combo.map((id) => byId.get(id));
           const suffix = parts.map((p: any) => p.code).join("-");
           const label = parts.map((p: any) => p.name).join(" / ");
+          // A cellular iPad or Watch has an IMEI where the Wi-Fi one has
+          // only a serial: the variant says which.
+          const childIdentity = identity === "SERIAL"
+            && parts.some((p: any) => /cellular/i.test(p.name)) ? "IMEI" : identity;
           const [child] = await tx`
             insert into item
               (company_id, item_group_id, parent_item_id, serial, name, name_my,
                base_uom_id, valuation_method, is_stocked, brand_id,
-               tracks_batch, tracks_expiry, tracks_serial, warranty_months, supplier_warranty_months)
+               tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months)
             values
               (${co}, ${groupId}, ${item.id}, ${serial + "-" + suffix},
                ${name + " " + label}, ${nameMy ? nameMy + " " + label : null},
                ${uomId}, 'FIFO', ${fd.get("is_stocked") !== null}, ${brandId},
                ${fd.get("tracks_batch") !== null},
                ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
-               ${fd.get("tracks_serial") !== null}, ${months(fd, "warranty_months")},
+               ${childIdentity}, ${months(fd, "warranty_months")},
                ${months(fd, "supplier_warranty_months")})
             returning id`;
           for (const id of combo) {
@@ -1561,6 +1570,8 @@ export type PickerItem = {
   tracks_batch?: boolean; tracks_expiry?: boolean;
   /** Each unit is named by IMEI / serial: the form asks for one per unit. */
   tracks_serial?: boolean;
+  /** IMEI, SERIAL or NONE: how each unit is named on a receipt. */
+  identity?: "IMEI" | "SERIAL" | "NONE";
   /** Which size, which colour — `[{a: "Colour", o: "Red"}]`. Null for an
    *  ordinary item, which is most of a catalogue. Typed loosely because it
    *  arrives as json; asVariant() in variant-tags is what checks it. */
@@ -3441,7 +3452,7 @@ export async function getFormData() {
           from business_partner
          where company_id = ${co} and is_supplier and is_active order by code`,
     sql`select i.id, i.code, i.name, i.is_stocked, i.item_group_id,
-                i.tracks_batch, i.tracks_expiry, i.tracks_serial,
+                i.tracks_batch, i.tracks_expiry, i.tracks_serial, i.identity,
                 -- What a scanner types. Without it the one moment
                 -- scanning exists for — putting a line on a document —
                 -- could not find the item it had just read.

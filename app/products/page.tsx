@@ -117,7 +117,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     </td>
                     <td><div>{r.brand ?? "—"}</div><div className="prod-sub">{r.model}</div></td>
                     <td>{r.category}</td>
-                    <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.tracks_serial ? "Serialized" : "Quantity"}</span></td>
+                    <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? "Serial" : r.tracks_serial ? "IMEI" : "Quantity"}</span></td>
                     <td className="num">{r.price != null ? money(r.price) : "—"}</td>
                     <td className={`num ${r.status === "HEALTHY" ? "ok-qty" : "low"}`}>{r.available} units</td>
                     <td>

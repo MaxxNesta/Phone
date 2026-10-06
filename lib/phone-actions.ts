@@ -58,16 +58,22 @@ export async function setItemPhoneSettings(fd: FormData) {
     select i.tracks_serial, exists (select 1 from stock_movement m where m.item_id = i.id) as moved
       from item i where i.id = ${id} and i.company_id = ${user.companyId}`;
   if (!item) throw new Error("That item does not exist");
-  const wanted = fd.get("tracks_serial") !== null;
+  const asked = String(fd.get("identity") ?? "");
+  const wanted = ["IMEI", "SERIAL", "NONE"].includes(asked) ? asked
+    : fd.get("tracks_serial") !== null ? "IMEI" : "NONE";
   const warranty = monthsOf(fd, "warranty_months");
   const supplierWarranty = monthsOf(fd, "supplier_warranty_months");
-  // The product and every variant of it: "iPhone 16" is tracked by IMEI as a
-  // whole, not one colour at a time. A variant whose stock has already moved
-  // keeps what it had — its units on the shelf were never named.
+  // The product and every variant of it: "iPhone 16" is tracked as a whole,
+  // not one colour at a time. A variant whose stock has already moved keeps
+  // what it had — its units on the shelf were never named. A cellular variant
+  // of a serial-number product (iPad, Watch) has an IMEI.
   await sql`
     update item i set
-           tracks_serial = case
-             when exists (select 1 from stock_movement m where m.item_id = i.id) then i.tracks_serial
+           identity = case
+             when exists (select 1 from stock_movement m where m.item_id = i.id) then i.identity
+             when ${wanted} = 'SERIAL' and exists (
+               select 1 from item_variant_option ivo join variant_option o on o.id = ivo.option_id
+                where ivo.item_id = i.id and o.name ilike '%cellular%') then 'IMEI'
              else ${wanted} end,
            warranty_months = ${warranty},
            supplier_warranty_months = ${supplierWarranty}

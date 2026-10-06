@@ -6,7 +6,7 @@ import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
-import { ImeiPanel, rowsProblem, type UnitRow } from "./imei-panel";
+import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode } from "./imei-panel";
 import { PhonePicker, type VariantCatalog } from "./phone-picker";
 import { ArrowLeft, ClipboardList, Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, type FxOption } from "./currency-rate";
@@ -334,8 +334,11 @@ export function ReceiptForm({
   // A phone line whose IMEI count is not its quantity cannot post; saying so
   // here saves a round trip to be told.
   const entered = (l: Line) => (l.serials ?? []).filter((x) => x.serial.trim()).length;
+  // IMEI for phones and cellular devices; a serial number for Macs, AirPods
+  // and Wi-Fi iPads.
+  const modeOf = (l: Line): UnitMode => (byId(l.itemId)?.identity === "SERIAL" ? "SERIAL" : "IMEI");
   const serialShort = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
-    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [])));
+    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l))));
   const tracked = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0);
   const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
   const supplier = suppliers.find((s) => s.id === partnerId) ?? null;
@@ -394,7 +397,7 @@ export function ReceiptForm({
       )}
       {serialShort.length > 0 && (
         <div className="hint low" role="status">
-          Every phone needs a valid IMEI before posting:{" "}
+          Every unit needs a valid IMEI or serial number before posting:{" "}
           {serialShort.map((l) => `${byId(l.itemId)?.name ?? ""} ${entered(l)}/${l.qty}`).join(", ")}
         </div>
       )}
@@ -677,11 +680,11 @@ export function ReceiptForm({
                       <td>
                         {item?.tracks_serial ? (
                           <span className="gr-imei">
-                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? []) ? "ok" : "warn"}`}>
+                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? [], modeOf(l)) ? "ok" : "warn"}`}>
                               {n} / {q} entered
                             </span>
                             <button type="button" className="dt-tool" onClick={() => setImeiKey(l.key)}
-                              disabled={q === 0}>View IMEIs</button>
+                              disabled={q === 0}>{modeOf(l) === "SERIAL" ? "View serials" : "View IMEIs"}</button>
                           </span>
                         ) : item?.variant ? (
                           <Link href={`/items/${item.id}`} target="_blank" className="subline">Not tracked — turn on</Link>
@@ -832,6 +835,7 @@ export function ReceiptForm({
         <div className="card">
           {imeiLine ? (
             <ImeiPanel
+              mode={modeOf(imeiLine)}
               title={byId(imeiLine.itemId)?.name ?? ""}
               qty={Number(imeiLine.qty) || 0}
               rows={imeiLine.serials ?? []}
@@ -839,7 +843,7 @@ export function ReceiptForm({
             />
           ) : (
             <div className="card-body subline">
-              IMEI entry opens here for any phone tracked by IMEI — one row per phone received.
+              IMEI or serial entry opens here for any item tracked unit by unit — one row per unit received.
             </div>
           )}
         </div>

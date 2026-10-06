@@ -10,7 +10,14 @@ import { ItemPhotoField } from "./item-photo-field";
 type Node = {
   id: string; code: string; segment: string; name: string;
   parent_id: string | null;
+  identity?: string;
 };
+
+const TRACKING = [
+  { v: "IMEI", label: "IMEI", note: "iPhone, cellular iPad and Watch. IMEI 2 and serial kept beside it." },
+  { v: "SERIAL", label: "Serial number", note: "Mac, Wi-Fi iPad, AirPods. One serial per unit." },
+  { v: "NONE", label: "Quantity only", note: "Cases, cables, chargers. Counted, not named." },
+] as const;
 type Uom = { id: string; code: string; name: string };
 type Brand = { id: string; code: string; name: string };
 
@@ -113,6 +120,11 @@ export function ItemForm({
 
   const selectedId = chain.length > 0 ? chain[chain.length - 1] : "";
   const selected = nodes.find((n) => n.id === selectedId);
+  // The type (top category) says how its products are tracked, until the
+  // person filling this in says otherwise for this one product.
+  const typeIdentity = nodes.find((n) => n.id === chain[0])?.identity ?? "NONE";
+  const [trackOverride, setTrackOverride] = useState<{ root: string; v: string } | null>(null);
+  const tracking = trackOverride?.root === chain[0] ? trackOverride.v : typeIdentity;
   const groupCode = selected?.code ?? "";
   const preview = groupCode && serial ? `${groupCode}${serial}` : "";
 
@@ -290,16 +302,21 @@ export function ItemForm({
           <fieldset className="trackbox">
             <legend>Traceability</legend>
 
-            <label className="trackbox-opt" htmlFor="tracks_serial">
-              <input id="tracks_serial" name="tracks_serial" type="checkbox" defaultChecked />
-              <span>
-                <strong>Track each unit by IMEI / serial</strong>
-                <span className="trackbox-note">
-                  For handsets and anything with its own identity. Every receipt names each
-                  unit, and every sale says exactly which one left — at that unit&apos;s cost.
-                </span>
-              </span>
-            </label>
+            <div className="field" style={{ marginBottom: "0.75rem" }}>
+              <label>Tracked by</label>
+              <div className="paymodes tracking" role="radiogroup" aria-label="Tracked by">
+                {TRACKING.map((t) => (
+                  <button key={t.v} type="button" className="paymode" role="radio"
+                    aria-pressed={tracking === t.v} aria-checked={tracking === t.v}
+                    onClick={() => setTrackOverride({ root: chain[0] ?? "", v: t.v })}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <input type="hidden" name="identity" value={tracking} />
+              <span className="hint">{TRACKING.find((t) => t.v === tracking)?.note}
+                {" "}Every receipt names each unit, and every sale says which one left.</span>
+            </div>
             <div className="row" style={{ marginBottom: "0.75rem" }}>
               <div className="field">
                 <label htmlFor="warranty_months">Customer warranty (months)</label>
