@@ -49,7 +49,7 @@ export function SupplierRadar({
     return row;
   }), [axes, suppliers]);
 
-  const colours = ["var(--brand)", "var(--accent-2, #B4691A)"];
+  const colours = ["var(--chart-1)", "var(--chart-2)"];
 
   // How much of the chart is actually drawable. A radar whose points are
   // all absent is a bare web, which reads as a broken chart rather than as
@@ -81,7 +81,7 @@ export function SupplierRadar({
     <div>
       <ResponsiveContainer width="100%" height={340}>
         <RadarChart data={data} outerRadius="72%">
-          <PolarGrid stroke="var(--line)" />
+          <PolarGrid stroke="var(--line-soft)" />
           <PolarAngleAxis
             dataKey="axis"
             tick={{ fill: "var(--muted)", fontSize: 11 }}

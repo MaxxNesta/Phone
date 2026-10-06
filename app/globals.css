@@ -4765,3 +4765,72 @@ nav.sidebar .navlink[data-active="true"] { background: rgb(255 255 255 / 0.14); 
   height: var(--field-h); min-height: var(--field-h); padding: 0 var(--field-px); font-size: 1rem;
 }
 .doc-meta select { padding-right: 2.25rem; background-position: right 0.85rem center; }
+
+
+/* ===================================================== Apple controls =====
+   Buttons, in Apple's three weights (buttons.md > Style: "use a button that
+   has a prominent visual style for the most likely action in a view"):
+     - filled: the one primary action, black
+     - gray: a secondary action, a soft fill and no outline
+     - plain: small actions in a row or a header, text in the tint colour
+   Destructive actions are red text, not a red slab. */
+button.ghost, a.btn.ghost, .btn.ghost, button.warn {
+  background: var(--line-soft); border-color: transparent; color: var(--ink);
+}
+button.ghost:hover:not(:disabled), a.btn.ghost:hover, .btn.ghost:hover, button.warn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--line-soft) 80%, var(--ink) 8%); border-color: transparent;
+}
+button.tiny.ghost, a.btn.tiny.ghost, .btn.tiny.ghost, button.linkish {
+  background: transparent; border-color: transparent; color: var(--link); padding-inline: 0.5rem;
+}
+button.tiny.ghost:hover:not(:disabled), a.btn.tiny.ghost:hover, .btn.tiny.ghost:hover {
+  background: color-mix(in srgb, var(--link) 8%, transparent);
+}
+button.danger, .btn.danger { background: transparent; border-color: transparent; color: var(--bad); }
+button.danger:hover:not(:disabled), .btn.danger:hover { background: color-mix(in srgb, var(--bad) 8%, transparent); color: var(--bad); }
+
+/* Toggles. A checkbox that switches a setting (it submits a named field)
+   is an iOS switch; one that picks rows or columns stays a checkbox, as on
+   the Mac (toggles.md). */
+input[type="checkbox"][name]:not(td *):not(th *),
+.billpart input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 44px; height: 26px; flex: none; margin: 0; position: relative; cursor: pointer;
+  border-radius: 13px; background: var(--line); border: 0;
+  vertical-align: middle; transition: background-color 200ms ease;
+}
+input[type="checkbox"][name]:not(td *):not(th *)::before,
+.billpart input[type="checkbox"]::before {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.18), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+  transition: transform 200ms ease;
+}
+input[type="checkbox"][name]:not(td *):not(th *):checked,
+.billpart input[type="checkbox"]:checked { background: var(--brand); }
+input[type="checkbox"][name]:not(td *):not(th *):checked::before,
+.billpart input[type="checkbox"]:checked::before { transform: translateX(18px); }
+input[type="checkbox"][name]:not(td *):not(th *):focus-visible,
+.billpart input[type="checkbox"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+input[type="checkbox"][name]:not(td *):not(th *):disabled { opacity: 0.4; cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  input[type="checkbox"]::before { transition: none; }
+}
+
+/* Charts: Apple's system hues, kept apart from the black of the controls.
+   Blue leads; the rest follow in the order Swift Charts assigns them. */
+:root {
+  --chart-1: #0071E3; --chart-2: #FF9500; --chart-3: #5856D6;
+  --chart-4: #30B0C7; --chart-5: #FF2D55; --chart-6: #34C759;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-1: #0A84FF; --chart-2: #FF9F0A; --chart-3: #5E5CE6;
+    --chart-4: #40C8E0; --chart-5: #FF375F; --chart-6: #30D158;
+  }
+}
+.recharts-default-tooltip, .chart-tip {
+  border-radius: 12px !important; border: 0 !important;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.06) !important;
+}
+.recharts-cartesian-axis-tick text, .recharts-polar-angle-axis-tick text { font-family: var(--sans); }

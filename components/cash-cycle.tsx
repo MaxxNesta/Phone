@@ -33,10 +33,10 @@ const d0 = (v: number | null) => (v === null ? "—" : Math.round(v).toString())
  * thing.
  */
 const SERIES = [
-  { key: "dio", name: "DIO", colour: "#3D7FE8" },
-  { key: "dso", name: "DSO", colour: "#E8A33D" },
-  { key: "dpo", name: "DPO", colour: "#7FBF9B" },
-  { key: "ccc", name: "CCC", colour: "var(--brand)" },
+  { key: "dio", name: "DIO", colour: "var(--chart-3)" },
+  { key: "dso", name: "DSO", colour: "var(--chart-2)" },
+  { key: "dpo", name: "DPO", colour: "var(--chart-6)" },
+  { key: "ccc", name: "CCC", colour: "var(--chart-1)" },
 ] as const;
 
 type SeriesKey = (typeof SERIES)[number]["key"];
@@ -95,7 +95,7 @@ function Delta({ now, before, betterWhenLower = true }: {
   if (Math.abs(diff) < 0.5) return <span className="subline">unchanged</span>;
   const better = betterWhenLower ? diff < 0 : diff > 0;
   return (
-    <span className="subline" style={{ color: better ? "var(--brand)" : "var(--warn)" }}>
+    <span className="subline" style={{ color: better ? "var(--chart-1)" : "var(--warn)" }}>
       {diff < 0 ? "▼" : "▲"} {Math.abs(Math.round(diff))} days vs previous period
     </span>
   );
@@ -109,7 +109,7 @@ function Ratio({ now, before }: { now: number | null; before: number | null }) {
   const diff = now - before;
   if (Math.abs(diff) < 0.005) return <span className="subline">unchanged</span>;
   return (
-    <span className="subline" style={{ color: diff > 0 ? "var(--brand)" : "var(--warn)" }}>
+    <span className="subline" style={{ color: diff > 0 ? "var(--chart-1)" : "var(--warn)" }}>
       {diff > 0 ? "▲" : "▼"} {Math.abs(diff).toFixed(2)} vs previous period
     </span>
   );
@@ -159,16 +159,16 @@ export function CashCycle({
   const afterDpo = afterDso - dpo;
   const waterfall = [
     { key: "dio" as SeriesKey, name: "DIO", sub: "Inventory", delta: dio,
-      range: [0, afterDio], colour: "#3D7FE8", on: "#FFFFFF" },
+      range: [0, afterDio], colour: "var(--chart-3)", on: "#FFFFFF" },
     { key: "dso" as SeriesKey, name: "DSO", sub: "Receivable", delta: dso,
-      range: [afterDio, afterDso], colour: "#E8A33D", on: "#12161C" },
+      range: [afterDio, afterDso], colour: "var(--chart-2)", on: "#12161C" },
     { key: "dpo" as SeriesKey, name: "DPO", sub: "Payable", delta: -dpo,
-      range: [afterDpo, afterDso], colour: "#7FBF9B", on: "#12161C" },
+      range: [afterDpo, afterDso], colour: "var(--chart-6)", on: "#12161C" },
     // --brand is dark on a light theme and light on a dark one; --surface
     // inverts with it, so the figure stays legible in both.
     { key: "ccc" as SeriesKey, name: "CCC", sub: "Days", delta: ccc,
       range: [Math.min(0, ccc), Math.max(0, ccc)],
-      colour: "var(--brand)", on: "var(--surface)" },
+      colour: "var(--chart-1)", on: "var(--surface)" },
   ];
   const off = (k: SeriesKey) => !!hidden[k];
 
@@ -226,7 +226,7 @@ export function CashCycle({
               <>
                 <div style={{
                   fontSize: "2.2rem", fontWeight: 700, lineHeight: 1.1,
-                  color: c.ccc! < 0 ? "var(--brand)" : "var(--ink)",
+                  color: c.ccc! < 0 ? "var(--chart-1)" : "var(--ink)",
                 }}>
                   {d0(c.ccc)} days
                 </div>
@@ -319,15 +319,15 @@ export function CashCycle({
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={trend} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+                <CartesianGrid stroke="var(--line-soft)" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--muted)" />
                 <Tooltip content={<Tip />} />
                 <ReferenceLine y={0} stroke="var(--muted)" />
-                <Line type="monotone" dataKey="dio" name="DIO" hide={!!hidden.dio} stroke="#3D7FE8" dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="dso" name="DSO" hide={!!hidden.dso} stroke="#E8A33D" dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="dpo" name="DPO" hide={!!hidden.dpo} stroke="#7FBF9B" dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="ccc" name="CCC" hide={!!hidden.ccc} stroke="var(--brand)"
+                <Line type="monotone" dataKey="dio" name="DIO" hide={!!hidden.dio} stroke="var(--chart-3)" dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="dso" name="DSO" hide={!!hidden.dso} stroke="var(--chart-2)" dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="dpo" name="DPO" hide={!!hidden.dpo} stroke="var(--chart-6)" dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="ccc" name="CCC" hide={!!hidden.ccc} stroke="var(--chart-1)"
                       strokeWidth={2.2} dot={{ r: 2.5 }} />
               </LineChart>
             </ResponsiveContainer>
@@ -345,7 +345,7 @@ export function CashCycle({
             </div>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={waterfall} margin={{ top: 18, right: 8, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+                <CartesianGrid stroke="var(--line-soft)" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="var(--muted)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--muted)" />
                 <ReferenceLine y={0} stroke="var(--muted)" />

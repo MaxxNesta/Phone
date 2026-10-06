@@ -119,7 +119,11 @@ export function SalesVoucher({
   customerCredit = [],
   ownership = [],
   awaiting = [],
+  retail = false,
 }: {
+  /** Counter retail: the invoice hands the goods over, so there is no
+   *  delivery choice to make (docs/06-phone-retail.md, D-P1). */
+  retail?: boolean;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   /** Keeps the voucher without posting it. Absent where drafts do not apply. */
   saveDraft?: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -911,6 +915,7 @@ export function SalesVoucher({
           are typed — and worded as the situation rather than the mechanism.
           Somebody billing a sale knows whether the goods have gone; they do
           not necessarily know what a delivery document is. */}
+      {!retail && (
       <div className="card receive-mode">
         <div className="card-head">
           <h2>Fulfilment</h2>
@@ -1060,6 +1065,7 @@ export function SalesVoucher({
           )}
         </div>
       </div>
+      )}
 
       <div className="card">
         <div className="card-head">
@@ -1371,6 +1377,8 @@ export function SalesVoucher({
                   it: measured, a delivery carrying 7,500 billed at 10,000 with
                   a fee of 0. */}
               {(() => {
+                // A counter sale carries nothing anywhere, so there is no charge to ask about.
+                if (retail) return null;
                 const noCharge = fulfilMode === "counter" || fulfilMode === "match";
                 return (
               <div className="field">

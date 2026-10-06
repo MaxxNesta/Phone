@@ -44,8 +44,8 @@ export function RevenueTrendChart({ data }: { data: { month: string; revenue: nu
       <AreaChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--brand)" stopOpacity={0.35} />
-            <stop offset={`${zero * 100}%`} stopColor="var(--brand)" stopOpacity={0.02} />
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.35} />
+            <stop offset={`${zero * 100}%`} stopColor="var(--chart-1)" stopOpacity={0.02} />
             {anyNegative && (
               <>
                 <stop offset={`${zero * 100}%`} stopColor={NEGATIVE} stopOpacity={0.05} />
@@ -54,11 +54,11 @@ export function RevenueTrendChart({ data }: { data: { month: string; revenue: nu
             )}
           </linearGradient>
           <linearGradient id="revenueLine" x1="0" y1="0" x2="0" y2="1">
-            <stop offset={`${zero * 100}%`} stopColor="var(--brand)" />
-            <stop offset={`${zero * 100}%`} stopColor={anyNegative ? NEGATIVE : "var(--brand)"} />
+            <stop offset={`${zero * 100}%`} stopColor="var(--chart-1)" />
+            <stop offset={`${zero * 100}%`} stopColor={anyNegative ? NEGATIVE : "var(--chart-1)"} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+        <CartesianGrid stroke="var(--line-soft)" vertical={false} />
         <XAxis
           dataKey="month" axisLine={false} tickLine={false}
           tick={{ fill: "var(--muted)", fontSize: 11, fontFamily: "var(--mono)" }}
@@ -89,10 +89,10 @@ export function RankedBarChart({
   compact?: boolean;
 }) {
   const rows = data.map((d) => ({ label: d.label, value: Number(d.value) }));
-  const bar = compact ? 8 : 16;
-  const tick = compact ? 10 : 12;
-  const axis = compact ? 96 : 110;
-  const cut = compact ? 14 : 16;
+  const bar = compact ? 10 : 18;
+  const tick = compact ? 11 : 12;
+  const axis = compact ? 140 : 160;
+  const cut = compact ? 20 : 24;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} layout="vertical"
@@ -104,15 +104,15 @@ export function RankedBarChart({
           tickFormatter={(v: string) => (v.length > cut ? `${v.slice(0, cut - 1)}…` : v)}
         />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--line-soft)" }} />
-        <Bar dataKey="value" fill="var(--brand)" radius={[0, 4, 4, 0]} barSize={bar}>
+        <Bar dataKey="value" fill="var(--chart-1)" radius={[0, bar / 2, bar / 2, 0]} barSize={bar}>
           {rows.map((r, i) => (
-            <Cell key={i} fill={signed(r.value, "var(--brand)")} />
+            <Cell key={i} fill={signed(r.value, "var(--chart-1)")} />
           ))}
           <LabelList
             dataKey="value"
             position="right"
             formatter={(v: unknown) => money(v as number)}
-            style={{ fill: "var(--muted)", fontSize: compact ? 10 : 11, fontFamily: "var(--mono)" }}
+            style={{ fill: "var(--muted)", fontSize: compact ? 11 : 12, fontFamily: "var(--sans)", fontVariantNumeric: "tabular-nums" }}
           />
         </Bar>
       </BarChart>
@@ -162,7 +162,7 @@ export function RevenueBars({
           dy={6}
         />
         <Tooltip
-          cursor={{ fill: "color-mix(in srgb, var(--brand) 6%, transparent)" }}
+          cursor={{ fill: "color-mix(in srgb, var(--chart-1) 6%, transparent)" }}
           content={<ChartTooltip />}
         />
         {/* A bar is the way to ask for that month on its own — the whole
@@ -183,8 +183,8 @@ export function RevenueBars({
               fill={rows[i].revenue < 0
                 ? (i === lit ? NEGATIVE : "color-mix(in srgb, var(--bad) 26%, transparent)")
                 : i === lit
-                  ? "var(--brand)"
-                  : "color-mix(in srgb, var(--brand) 22%, transparent)"}
+                  ? "var(--chart-1)"
+                  : "color-mix(in srgb, var(--chart-1) 22%, transparent)"}
             />
           ))}
         </Bar>
@@ -219,12 +219,12 @@ export const NEGATIVE = "var(--bad)";
 const signed = (value: number, colour: string) => (value < 0 ? NEGATIVE : colour);
 
 const SLICE_COLOURS = [
-  "var(--brand)",   // the app's green, for the biggest share
-  "#E8A33D",        // amber
-  "#3D7FE8",        // blue
-  "#7A5CD6",        // violet
-  "#2FA8A0",        // teal
-  "#C25B7C",        // rose
+  "var(--chart-1)",   // Apple blue, for the biggest share
+  "var(--chart-2)",        // amber
+  "var(--chart-3)",        // blue
+  "var(--chart-4)",        // violet
+  "var(--chart-5)",        // teal
+  "var(--chart-6)",        // rose
 ];
 
 function SliceTooltip({ active, payload, total }: any) {
@@ -334,7 +334,7 @@ export function TwoSeriesBars({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+        <CartesianGrid stroke="var(--line-soft)" vertical={false} />
         <XAxis dataKey="month" axisLine={false} tickLine={false}
                tick={{ fill: "var(--muted)", fontSize: 11, fontFamily: "var(--mono)" }} />
         <YAxis axisLine={false} tickLine={false} width={46}
@@ -393,7 +393,7 @@ export function MeasureBars({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={rows} margin={{ top: 22, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+        <CartesianGrid stroke="var(--line-soft)" vertical={false} />
         <XAxis dataKey="label" axisLine={false} tickLine={false}
                tick={{ fill: "var(--muted)", fontSize: 11 }}
                tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)} />

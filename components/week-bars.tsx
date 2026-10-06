@@ -15,7 +15,7 @@ export function WeekBars({ data }: { data: { label: string; revenue: number }[] 
         <Bar dataKey="revenue" radius={[8, 8, 8, 8]} maxBarSize={56}>
           {data.map((d, i) => (
             <Cell key={d.label + i}
-              fill={i === data.length - 1 ? "var(--brand)" : "color-mix(in srgb, var(--brand) 22%, transparent)"} />
+              fill={i === data.length - 1 ? "var(--chart-1)" : "color-mix(in srgb, var(--chart-1) 22%, transparent)"} />
           ))}
         </Bar>
       </BarChart>

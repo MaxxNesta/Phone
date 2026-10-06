@@ -5,6 +5,7 @@ import { sql } from "@/lib/db";
 import { SalesVoucher } from "@/components/sales-voucher";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { redirect } from "next/navigation";
 
 export default async function NewSalesInvoice({
   searchParams,
@@ -13,7 +14,11 @@ export default async function NewSalesInvoice({
 }) {
   const { delivery_id, draft: draftId } = await searchParams;
   const d = await getFormData();
-  const [co] = await sql`select id, base_currency from company order by created_at limit 1`;
+  const [co] = await sql`select id, base_currency, retail_mode from company order by created_at limit 1`;
+  // Retail: the till is the sales invoice. A new sale starts there; the
+  // voucher stays only for finishing a saved draft or billing consigned
+  // goods that left on a delivery.
+  if (co.retail_mode && !delivery_id && !draftId) redirect("/pos");
   const categories = await allCategories(co.id);
   const deliveries = await getOpenDeliveries(co.id);
   // Same as the purchase side: billed from one delivery, the crumb names it.
@@ -81,6 +86,7 @@ export default async function NewSalesInvoice({
       </div>
 
       <SalesVoucher
+        retail={Boolean((co as { retail_mode?: boolean }).retail_mode)}
         action={createSalesInvoice}
         saveDraft={saveInvoiceDraft}
         draft={draft}

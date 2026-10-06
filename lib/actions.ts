@@ -1796,6 +1796,11 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // still go through the delivery, which is the only path that settles them.
     const [mode] = await sql`select retail_mode from company where id = ${co}`;
     const retail = Boolean(mode?.retail_mode) && !lines.some((l) => l.source === "CONSIGNMENT");
+    // Deliver-later is revenue now and stock later: deferred revenue and a
+    // delivery that a counter shop does not have.
+    if (retail && toDeliver) {
+      return { error: "This shop sells at the counter: the invoice hands the goods over, so there is no deliver-later." };
+    }
     const result = await postOnce(co, attemptKey(fd), (tx) =>
       deliveryId
         ? postSalesInvoice({

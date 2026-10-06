@@ -61,8 +61,8 @@ export function CycleGauge({
 
   // Green → amber → red, reversed where a longer span is the good one.
   const bands = invert
-    ? [["#D9566B", 0, 0.34], ["#E8A33D", 0.34, 0.67], ["#2E7D55", 0.67, 1]]
-    : [["#2E7D55", 0, 0.34], ["#E8A33D", 0.34, 0.67], ["#D9566B", 0.67, 1]];
+    ? [["var(--bad)", 0, 0.34], ["var(--chart-2)", 0.34, 0.67], ["var(--ok)", 0.67, 1]]
+    : [["var(--ok)", 0, 0.34], ["var(--chart-2)", 0.34, 0.67], ["var(--bad)", 0.67, 1]];
 
   // Short, and the figure sits high in the dial above its reach. The needle
   // pivots at the centre, so anything drawn near that centre is crossed by

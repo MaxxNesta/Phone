@@ -40,7 +40,7 @@ export function SupplierTrend({ data, name }: { data: TrendPoint[]; name: string
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+        <CartesianGrid stroke="var(--line-soft)" vertical={false} />
         <XAxis
           dataKey="month" tickFormatter={label} axisLine={false} tickLine={false}
           tick={{ fill: "var(--muted)", fontSize: 11, fontFamily: "var(--mono)" }}
@@ -57,7 +57,7 @@ export function SupplierTrend({ data, name }: { data: TrendPoint[]; name: string
         <Legend wrapperStyle={{ fontSize: "0.75rem", color: "var(--muted)" }} />
         <Line
           yAxisId="pct" dataKey="onTimePct" name="On-time %"
-          stroke="var(--brand)" strokeWidth={2} dot={{ r: 2 }}
+          stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 2 }}
           connectNulls={false} isAnimationActive={false}
         />
         <Line
@@ -67,7 +67,7 @@ export function SupplierTrend({ data, name }: { data: TrendPoint[]; name: string
         />
         <Line
           yAxisId="days" dataKey="leadDays" name="Lead time (days)"
-          stroke="#B4691A" strokeWidth={1.5} dot={{ r: 2 }}
+          stroke="var(--chart-2)" strokeWidth={1.5} dot={{ r: 2 }}
           connectNulls={false} isAnimationActive={false}
         />
       </LineChart>
