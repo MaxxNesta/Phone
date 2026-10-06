@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
-import { Columns3, ChevronLeft, ChevronRight } from "lucide-react";
+import { Columns3, ChevronLeft, ChevronRight, Search, Download } from "lucide-react";
 
 export type Column = {
   key: string;
@@ -277,14 +277,16 @@ export function DataTable({
       )}
 
       <div className="dt-bar">
-        <input
-          type="text"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={searchPlaceholder}
-          aria-label="Search"
-          style={{ maxWidth: 320 }}
-        />
+        <label className="dt-search">
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label="Search"
+          />
+        </label>
         {filters
           .filter((f) => f.options.length > 1)
           .map((f) => (
@@ -293,7 +295,7 @@ export function DataTable({
               aria-label={f.allLabel}
               value={picked[f.key] ?? ""}
               onChange={(e) => setPicked((p) => ({ ...p, [f.key]: e.target.value }))}
-              style={{ width: "auto" }}
+              className="dt-filter"
             >
               <option value="">{f.allLabel}</option>
               {f.options.map((o) => (
@@ -305,7 +307,8 @@ export function DataTable({
         <span className="dt-spacer" />
 
         {canExport && (
-          <button type="button" className="ghost" onClick={exportCsv} disabled={sorted.length === 0}>
+          <button type="button" className="dt-tool" onClick={exportCsv} disabled={sorted.length === 0}>
+            <Download size={15} aria-hidden="true" />
             Export {sorted.length !== rows.length ? `${sorted.length} of ${rows.length}` : ""}
           </button>
         )}
@@ -314,11 +317,11 @@ export function DataTable({
           <div className="dt-cols">
             <button
               type="button"
-              className="ghost"
+              className="dt-tool"
               aria-expanded={pickerOpen}
               onClick={() => setPickerOpen(!pickerOpen)}
             >
-              <Columns3 size={14} aria-hidden="true" /> Columns
+              <Columns3 size={15} aria-hidden="true" /> Columns
               {hidden.length > 0 && <span className="dt-cols-n">{hidden.length} hidden</span>}
             </button>
             {pickerOpen && (
@@ -422,12 +425,12 @@ export function DataTable({
 
           {pageCount > 1 && (
             <span className="dt-pager-nav">
-              <button type="button" className="ghost tiny" aria-label="Previous page"
+              <button type="button" className="dt-step" aria-label="Previous page"
                       disabled={current === 1} onClick={() => setPage(current - 1)}>
                 <ChevronLeft size={14} aria-hidden="true" />
               </button>
               <span className="dt-pager-page">{current} / {pageCount}</span>
-              <button type="button" className="ghost tiny" aria-label="Next page"
+              <button type="button" className="dt-step" aria-label="Next page"
                       disabled={current === pageCount} onClick={() => setPage(current + 1)}>
                 <ChevronRight size={14} aria-hidden="true" />
               </button>

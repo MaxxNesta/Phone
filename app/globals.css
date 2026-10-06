@@ -4842,3 +4842,107 @@ input[type="checkbox"][name]:not(td *):not(th *):disabled { opacity: 0.4; cursor
   font-size: var(--t-xs); font-weight: 600; color: var(--rail-muted);
 }
 .sidebar .navsection:first-child { padding-top: 0.25rem; }
+
+
+/* ================================================= Apple data tables ======
+   The toolbar of every list: a search field like Finder's and Mail's (a
+   filled field with the glass inside it, no outline), filters as compact
+   pop-up buttons, Columns and Export as plain tinted buttons, the columns
+   menu with checkmarks like a Mac menu, all of it inset inside the card
+   over a hairline. The pager below follows the same quiet rules. */
+
+.dt-bar {
+  gap: 8px; margin: 0; padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft); align-items: center;
+}
+.card > .dt-bar:first-child, .card-head + .dt-bar { border-top: 0; }
+
+.dt-search {
+  display: flex; align-items: center; gap: 6px;
+  flex: 0 1 320px; min-width: 180px; height: 36px; padding: 0 10px;
+  border-radius: 10px; background: var(--line-soft); color: var(--muted);
+  cursor: text;
+}
+.dt-search:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); }
+.dt-search input[type="search"], .dt-search input {
+  flex: 1; min-width: 0; height: auto; min-height: 0; padding: 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  font-size: 0.9375rem; color: var(--ink);
+}
+.dt-search input:focus { box-shadow: none; outline: none; }
+.dt-search input::-webkit-search-cancel-button { cursor: pointer; }
+
+select.dt-filter, .dt-pager-size select {
+  width: auto; height: 36px; min-height: 36px; padding: 0 2rem 0 12px;
+  border: 0; border-radius: 10px; background-color: var(--line-soft);
+  font-size: 0.875rem; font-weight: 500; color: var(--ink);
+  background-position: right 0.7rem center;
+}
+select.dt-filter:focus, .dt-pager-size select:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent);
+}
+
+button.dt-tool {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; min-height: 36px; padding: 0 10px; border-radius: 10px;
+  background: transparent; border: 0; color: var(--link);
+  font-size: 0.875rem; font-weight: 500;
+}
+button.dt-tool:hover:not(:disabled) { background: color-mix(in srgb, var(--link) 8%, transparent); }
+button.dt-tool[aria-expanded="true"] { background: color-mix(in srgb, var(--link) 12%, transparent); }
+.dt-cols-n { background: color-mix(in srgb, var(--link) 14%, transparent); color: var(--link); font-weight: 600; }
+
+/* The columns menu: a Mac menu, with a checkmark beside what is shown. */
+.dt-cols-menu {
+  padding: 6px; border: 0; border-radius: 12px; min-width: 14rem;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.08);
+}
+.dt-cols-item { padding: 6px 8px; border-radius: 6px; font-size: 0.875rem; gap: 8px; }
+.dt-cols-item:hover { background: var(--focus); color: #fff; }
+.dt-cols-item input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 14px; height: 14px; margin: 0; border: 0; background: none; flex: none;
+  display: grid; place-items: center; cursor: pointer;
+}
+.dt-cols-item input[type="checkbox"]:checked::after {
+  content: "\2713"; font-size: 13px; font-weight: 700; line-height: 1; color: currentColor;
+}
+
+.dt-pager { padding: 12px 16px; gap: 10px; border-top: 1px solid var(--line-soft); }
+button.dt-step {
+  width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  background: var(--line-soft); border: 0; color: var(--ink);
+}
+button.dt-step:disabled { opacity: 0.35; }
+
+/* The document lists (invoices, orders) use the ERP toolbar; same rules. */
+.erp-panel { padding: 12px 16px; gap: 10px; border-bottom-color: var(--line-soft); background: var(--surface); }
+input.erp-search {
+  height: 36px; min-height: 36px; padding: 0 12px 0 34px; border: 0; border-radius: 10px;
+  background: var(--line-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 11px center;
+  font-size: 0.9375rem; box-shadow: none;
+}
+input.erp-search:focus { border: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); }
+.erp-btn { height: 36px; padding: 0 14px; border-radius: 980px; border: 0; background: var(--line-soft); font-size: 0.875rem; }
+.erp-btn:hover { background: color-mix(in srgb, var(--line-soft) 80%, var(--ink) 8%); }
+.erp-btn-primary { background: var(--brand); color: var(--brand-fg); }
+.erp-btn-primary:hover { background: color-mix(in srgb, var(--brand) 88%, var(--surface)); }
+.erp-facet { height: 26px; border-radius: 980px; padding: 0 6px 0 10px; }
+
+/* Status tabs above a list (All, Draft, Posted, Paid…) are a segmented
+   control: one track, the chosen segment lifted out of it. The same .flow
+   with arrows in it is a document chain and keeps its own look. */
+.flow:not(:has(.flow-arrow)) {
+  display: inline-flex; gap: 2px; padding: 2px; margin-bottom: 16px;
+  background: var(--line-soft); border-radius: 10px; width: fit-content; max-width: 100%; overflow-x: auto;
+}
+.flow:not(:has(.flow-arrow)) > .flow-node {
+  border: 0; border-radius: 8px; padding: 6px 14px; white-space: nowrap;
+  font-size: 0.875rem; font-weight: 500; color: var(--ink); background: transparent;
+}
+.flow:not(:has(.flow-arrow)) > .flow-node:hover:not(.here) { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.flow:not(:has(.flow-arrow)) > .flow-node.here {
+  background: var(--surface); color: var(--ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+}
