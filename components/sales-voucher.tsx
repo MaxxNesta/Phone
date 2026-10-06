@@ -120,7 +120,10 @@ export function SalesVoucher({
   ownership = [],
   awaiting = [],
   retail = false,
+  initialOrderId = null,
 }: {
+  /** Opened from a sales order ("Create invoice"): its customer and lines fill in. */
+  initialOrderId?: string | null;
   /** Counter retail: the invoice hands the goods over, so there is no
    *  delivery choice to make (docs/06-phone-retail.md, D-P1). */
   retail?: boolean;
@@ -440,7 +443,23 @@ export function SalesVoucher({
       sourceQty: String(r.outstanding),
     })));
     setReference(rows[0].doc_no);
+    // The goods leave from where the order said they would.
+    const at = (rows[0] as { location_id?: string | null }).location_id;
+    if (at && locations.some((l) => l.id === at)) setLocationId(at);
   }
+
+  // Opened on an order: choose its customer, then, once the open orders for
+  // that customer are in view, fill the lines from it — once.
+  const [orderOpened, setOrderOpened] = useState(false);
+  useEffect(() => {
+    if (!initialOrderId || orderOpened) return;
+    const row = (awaiting ?? []).find((a) => a.order_id === initialOrderId);
+    if (!row) { setOrderOpened(true); return; }
+    if (customerId !== row.partner_id) { pickCustomer(row.partner_id); return; }
+    fillFromOrder(initialOrderId);
+    setOrderOpened(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOrderId, customerId, orderOpened]);
 
   function billWholeDelivery(part: boolean) {
     setBillPart(part);
@@ -909,6 +928,7 @@ export function SalesVoucher({
         backTo="/sales/new"
         onUse={fillFromOrder}
         usedOrderId={fromOrderId}
+        retail={retail}
       />
 
       {/* Above the lines, because the situation is decided before the items

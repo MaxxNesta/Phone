@@ -27,8 +27,10 @@ import type { AwaitingLine } from "@/lib/queries";
  * why a part-received or already billed order is deliberately left out.
  */
 export function AwaitingOrders({
-  lines, sales, purpose = "order", backTo, onUse, usedOrderId,
+  lines, sales, purpose = "order", backTo, onUse, usedOrderId, retail = false,
 }: {
+  /** Counter retail: an order is billed straight on the invoice, never delivered first. */
+  retail?: boolean;
   lines: AwaitingLine[];
   sales: boolean;
   /**
@@ -93,13 +95,16 @@ export function AwaitingOrders({
         <div>
           <strong>
             This {sales ? "customer" : "supplier"} has {orders.length} open{" "}
-            {sales ? "sales" : "purchase"} order{one ? "" : "s"} awaiting{" "}
-            {sales ? "delivery" : "goods"}.
+            {sales ? "sales" : "purchase"} order{one ? "" : "s"}
+            {retail && sales ? "" : <> awaiting {sales ? "delivery" : "goods"}</>}.
           </strong>
           <span className="page-sub">
             {purpose === "order"
               ? <>Review {one ? "it" : "them"} before{" "}
                   {sales ? "promising" : "ordering"} the same goods again.</>
+              : sales && retail
+                ? <>If this sale is for {one ? "it" : "one of them"}, fill this invoice from
+                    the order: the invoice hands the goods over and the order is closed by it.</>
               : sales
                 ? <>If this invoice is for {one ? "it" : "one of them"}, deliver
                     against the order first and bill that delivery. Invoicing

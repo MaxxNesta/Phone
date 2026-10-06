@@ -29,8 +29,12 @@ const PAYMENT_WORD = {
  * button of its own.
  */
 export function TransactionOrigin({
-  origin, docNo,
-}: { origin: TransactionOrigin; docNo: string }) {
+  origin, docNo, handedOver = false,
+}: {
+  origin: TransactionOrigin; docNo: string;
+  /** A counter sale: the invoice itself handed the goods over. */
+  handedOver?: boolean;
+}) {
   const { order, fulfilment, payment, correctAt, sales } = origin;
   const fulfilmentDocs = [...origin.fulfilmentBefore, ...origin.fulfilmentAfter];
 
@@ -99,9 +103,11 @@ export function TransactionOrigin({
         </div>
 
         <div>
-          <dt>{moveWord}</dt>
+          <dt>{handedOver ? "Goods" : moveWord}</dt>
           <dd>
-            {fulfilment.state === "NOT_REQUIRED" ? (
+            {handedOver ? (
+              <span className="origin-why">Handed over with this invoice</span>
+            ) : fulfilment.state === "NOT_REQUIRED" ? (
               <span className="origin-skip">
                 Not required
                 <span className="origin-why"> — nothing physical to {sales ? "deliver" : "receive"}</span>

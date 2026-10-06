@@ -71,6 +71,7 @@ import {
   getVoucherLines,
   getSettlementForCorrection,
   getOrderConfirmations,
+  getCompany,
 } from "@/lib/queries";
 import {
   createDelivery, createGoodsReceipt, saveReceiptDraft, replaceConsignmentSettlement,
@@ -182,7 +183,10 @@ export default async function DocumentPage({
       })()
     : [];
 
-  const chain = CHAINS[doc.doc_type] ?? [doc.doc_type];
+  // Counter retail has no delivery: an order is billed, and the invoice
+  // hands the goods over (docs/06-phone-retail.md, D-P1).
+  const retail = Boolean((await getCompany())?.retail_mode);
+  const chain = (CHAINS[doc.doc_type] ?? [doc.doc_type]).filter((s) => !(retail && s === "DELIVERY"));
   const totalDebit = journal.reduce((s: number, l: any) => s + Number(l.debit), 0);
   const totalCredit = journal.reduce((s: number, l: any) => s + Number(l.credit), 0);
 
@@ -308,7 +312,10 @@ export default async function DocumentPage({
   // this invoice received, and by which documents. Replayed through the same
   // matcher the posting engine uses, so the page cannot claim a line is
   // settled that the ledger still holds open.
-  const match = (isGr || isPi || isDel || isSi) ? await getMatchStatus(doc.id) : null;
+  // A counter sale handed the goods over itself: there is no delivery to
+  // match it against, so no "not delivered" to report.
+  const match = (isGr || isPi || isDel || (isSi && !(retail && !doc.to_deliver)))
+    ? await getMatchStatus(doc.id) : null;
 
   // What voiding would do, and what stands in the way. The same analysis the
   // engine re-runs before it writes, so the screen cannot promise something
@@ -370,6 +377,8 @@ export default async function DocumentPage({
       return `/purchases/receive?order=${doc.id}`;
     if (from === "SALES_ORDER" && stageType === "DELIVERY")
       return `/sales/deliver?order=${doc.id}`;
+    if (retail && from === "SALES_ORDER" && stageType === "SALES_INVOICE")
+      return `/sales/new?order=${doc.id}`;
     if (from === "GOODS_RECEIPT" && stageType === "PURCHASE_INVOICE")
       return `/purchases/new?goods_receipt_id=${doc.id}`;
     if (from === "DELIVERY" && stageType === "SALES_INVOICE")
@@ -971,7 +980,11 @@ export default async function DocumentPage({
            /purchases/receive?order=, and that page renders the very same
            FulfillOrderForm this screen used to embed — so the inline copy was
            a second way into one form, sitting in a row meant for buttons. */
-        fulfilActions={canFulfil ? (
+        fulfilActions={canFulfil && sales && retail ? (
+          <Link href={`/sales/new?order=${doc.id}`} className="btn primary">
+            <Truck size={15} aria-hidden="true" /> Create invoice
+          </Link>
+        ) : canFulfil ? (
           <>
             <LinkFulfilment
               action={linkReceiptToOrder}
@@ -1050,7 +1063,8 @@ export default async function DocumentPage({
               }))}
             />
           )}
-          {origin && <TransactionOrigin origin={origin} docNo={doc.doc_no ?? ""} />}
+          {origin && <TransactionOrigin origin={origin} docNo={doc.doc_no ?? ""}
+                                        handedOver={retail && isSalesInvoice && !doc.to_deliver} />}
           {/* Tasks about one half of an invoice are shown in that half, with
               the figure they are about. Banner them as well and the same
               sentence appears twice, six inches apart. */}
@@ -1058,6 +1072,7 @@ export default async function DocumentPage({
           {progress && (
             <InvoiceProgress
               sales={isSalesInvoice}
+              handedOver={retail && isSalesInvoice && !doc.to_deliver}
               goods={progress.goods as never}
               payment={progress.payment as never}
               unit={progress.unit}

@@ -26,8 +26,10 @@ type Half = {
 };
 
 export function InvoiceProgress({
-  goods, payment, unit, receiveHref, payHref, linkReceiptHref, sales = false,
+  goods, payment, unit, receiveHref, payHref, linkReceiptHref, sales = false, handedOver = false,
 }: {
+  /** A counter sale: the invoice handed the goods over, so only payment is left to follow. */
+  handedOver?: boolean;
   goods: Half & {
     expectedDate: string | null; expectedFrom: string | null;
     billed?: number; arrived?: number; unmatched?: boolean;
@@ -41,11 +43,12 @@ export function InvoiceProgress({
   /** The same two halves read the other way: goods going out, money coming in. */
   sales?: boolean;
 }) {
-  const settled = goods.outstanding <= 0 && payment.outstanding <= 0;
+  const settled = (handedOver || goods.outstanding <= 0) && payment.outstanding <= 0;
   if (settled) return null;
 
   return (
     <div className="halves">
+      {!handedOver && (
       <Half
         icon={Package}
         title="Goods / Delivery"
@@ -82,6 +85,7 @@ export function InvoiceProgress({
           </>
         ) : null}
       />
+      )}
 
       <Half
         icon={Wallet}

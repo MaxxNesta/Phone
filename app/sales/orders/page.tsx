@@ -130,9 +130,9 @@ export default async function SalesOrders({
               page can only answer with "nothing left to deliver". The order
               number beside it was always right because it uses the same
               field this now does. */}
-          {(o.display === "OPEN" || o.display === "PARTIALLY_FULFILLED") && (
-            <Link href={`/sales/deliver?order=${o.document_id}`} className="btn ghost tiny">Deliver</Link>
-          )}
+          {(o.display === "OPEN" || o.display === "PARTIALLY_FULFILLED") && (company.retail_mode
+            ? <Link href={`/sales/new?order=${o.document_id}`} className="btn ghost tiny">Invoice</Link>
+            : <Link href={`/sales/deliver?order=${o.document_id}`} className="btn ghost tiny">Deliver</Link>)}
         </td>
       </tr>
     ),
@@ -157,7 +157,7 @@ export default async function SalesOrders({
               not the awaiting-delivery chip is present, rather than shifting
               position depending on the day's data. */}
           <div className="actions">
-            {openCount > 0 && (
+            {openCount > 0 && !company.retail_mode && (
               <Link href="/sales/deliver" className="btn ghost">{openCount} awaiting delivery</Link>
             )}
             <Link href="/sales/orders/new" className="btn">+ New Sales Order</Link>

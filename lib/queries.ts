@@ -2375,7 +2375,7 @@ async function ordersStillAwaited(
            and c.status = 'POSTED'
            and s.source_document_id is not null
     )
-    select v.order_id, o.doc_no, o.partner_id,
+    select v.order_id, o.doc_no, o.partner_id, o.location_id,
            to_char(o.posting_date, 'YYYY-MM-DD') as posting_date,
            to_char(o.due_date, 'YYYY-MM-DD') as due_date,
            v.item_id, i.code as item_code, i.name as item_name,
