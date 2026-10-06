@@ -5259,3 +5259,64 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 /* The line menu opens over whatever is below; its card must not clip it. */
 .card:has(.vlines), .card:has(.vlines) .tablewrap { overflow: visible; }
 .vlines td.narrow input[aria-label="Unit price"] { min-width: 140px; }
+
+/* The voucher's header: five fields on one row, the rest folded. */
+.row.row-head { grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(150px, 1fr)); }
+@media (max-width: 1100px) { .row.row-head { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
+.moredetails { margin-top: 16px; }
+.moredetails > summary { cursor: pointer; font-size: 0.875rem; font-weight: 600; color: var(--ink); list-style: none; display: inline-flex; gap: 6px; align-items: center; }
+.moredetails > summary::-webkit-details-marker { display: none; }
+.moredetails > summary::before { content: "›"; display: inline-block; transition: transform 150ms; color: var(--muted); }
+.moredetails[open] > summary::before { transform: rotate(90deg); }
+.moredetails > .row { margin-top: 12px; }
+
+/* Figures on an invoice line: room for a seven-figure kyat amount. */
+.vlines td.narrow input[aria-label="Quantity"] { min-width: 110px; }
+.vlines td.narrow input[aria-label="Unit price"] { min-width: 170px; }
+.vlines .discrow input { min-width: 120px; }
+
+
+/* ====================================================== filter bars ====
+   One look for every filter above a list: a card, fields of one width
+   (the search a little wider) aligned on their inputs, toggles as a
+   segmented control, and Filter as a secondary button — never the page's
+   main action, which lives top right. */
+
+.filter-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.filter-row > .field { flex: 1 1 170px; max-width: 240px; min-width: 150px; }
+.filter-row > .field:first-child { flex: 2 1 260px; max-width: 380px; }
+.filter-row > .filter-go, .filter-row > button, .filter-row > .btn { flex: 0 0 auto; }
+.filter-row .filter-go button { width: auto; }
+
+.filterbar {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px;
+  padding: 16px 20px; margin: 0 0 16px; max-width: none;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+.filterbar > .field, .filterbar .daterange > .field { flex: 0 1 220px; min-width: 160px; margin: 0; }
+.filterbar .daterange { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin: 0; }
+.filterbar .field > label { margin-bottom: 0; }
+
+/* Toggle links (In stock / All items, 30 / 60 / 90 days, List / Grouped /
+   Matrix) are a segmented control, like the status tabs. */
+.scopetabs {
+  display: inline-flex; gap: 2px; padding: 2px; width: fit-content; max-width: 100%;
+  background: var(--line-soft); border-radius: 10px; flex-wrap: wrap;
+}
+.scopetab {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--ink);
+  font-size: 0.875rem; font-weight: 500; text-decoration: none; box-shadow: none;
+}
+.scopetab:hover:not([data-active="true"]) { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.scopetab[data-active="true"] {
+  background: var(--surface); color: var(--ink); border: 0;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+}
+/* A field holding a segmented control is as wide as its segments. */
+.filterbar > .field:has(.scopetabs) { flex: 0 0 auto; }
+.filterbar .scopetabs { flex-wrap: nowrap; }
+/* The date range stays one piece beside the item, Apply on the same line. */
+.filterbar .daterange { flex: 0 1 auto; flex-wrap: nowrap; }
+.filterbar .daterange > .field { flex: 0 0 180px; min-width: 0; }

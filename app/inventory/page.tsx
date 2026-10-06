@@ -46,6 +46,9 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       <div className="page-head hero">
         <h1>Inventory</h1>
         <p className="page-sub">Stock summary across all stores and warehouses</p>
+        {can(user, "inventory.manage") && (
+          <div className="head-actions"><Link className="btn" href="/inventory/adjustments">+ Stock Adjustment</Link></div>
+        )}
       </div>
 
       <div className="stats">
@@ -93,7 +96,6 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             </select>
           </div>
           <button className="btn ghost">Filter</button>
-          {can(user, "inventory.manage") && <Link className="btn" href="/inventory/adjustments">+ Stock Adjustment</Link>}
         </div>
       </form>
 

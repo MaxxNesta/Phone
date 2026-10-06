@@ -375,7 +375,7 @@ export default async function Stock({
 
       {/* Both filters on one line: each narrows the same list, and a warehouse
           chosen here must not silently discard the other one. */}
-      <div className="row" style={{ maxWidth: 640, alignItems: "flex-end" }}>
+      <div className="filterbar">
         {reorderableLocations.length > 1 && (
           <AccountPicker
             accounts={[{ id: "all", code: "—", name: "All warehouses" }, ...reorderableLocations]}

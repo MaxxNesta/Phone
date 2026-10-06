@@ -940,13 +940,9 @@ export function SalesVoucher({
           </span>
         </div>
         <div className="card-body">
-          <div className="row">
-            <div className="field">
-              <label htmlFor="doc_date">Date</label>
-              <input id="doc_date" name="doc_date" type="date" value={docDate}
-                onChange={(e) => setDocDate(e.target.value)} required />
-            </div>
-
+          {/* The five things every invoice is about, on one line; the rest
+              folded away until somebody needs it. */}
+          <div className="row row-head">
             <div className="field">
               <label htmlFor="partner_id">Customer</label>
               <PartnerPicker
@@ -955,7 +951,38 @@ export function SalesVoucher({
                 onPick={pickCustomer}
               />
             </div>
-
+            <div className="field">
+              <label htmlFor="doc_date">Invoice date</label>
+              <input id="doc_date" name="doc_date" type="date" value={docDate}
+                onChange={(e) => setDocDate(e.target.value)} required />
+            </div>
+            <div className="field">
+              <label htmlFor="location_id">Warehouse</label>
+              <select id="location_id" name="location_id" value={locationId}
+                onChange={(e) => setLocationId(e.target.value)} required>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="payment_select">Payment</label>
+              <select id="payment_select" value={paymentType}
+                onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT")}>
+                <option value="CREDIT">Credit</option>
+                <option value="CASH">Cash</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="due_date">Due date</label>
+              <input id="due_date" name="due_date" type="date" value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                disabled={balance <= 0} required={balance > 0} />
+            </div>
+          </div>
+          <details className="moredetails">
+            <summary>Additional details <span className="page-sub">(salesman, reference)</span></summary>
+            <div className="row">
             <div className="field">
               <label htmlFor="salesman_id">Salesman</label>
               <select id="salesman_id" name="salesman_id" defaultValue="">
@@ -967,18 +994,6 @@ export function SalesVoucher({
                 ))}
               </select>
             </div>
-
-            <div className="field">
-              <label htmlFor="location_id">Location</label>
-              <select id="location_id" name="location_id" value={locationId}
-                onChange={(e) => setLocationId(e.target.value)} required>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
-              <span className="hint">Stock leaves from here</span>
-            </div>
-
             <div className="field">
               <label htmlFor="reference">Ref / order ID</label>
               <input id="reference" name="reference" type="text"
@@ -990,26 +1005,8 @@ export function SalesVoucher({
                 </span>
               )}
             </div>
-
-            <div className="field">
-              <label htmlFor="payment_select">Payment</label>
-              <select id="payment_select" value={paymentType}
-                onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT")}>
-                <option value="CREDIT">Credit</option>
-                <option value="CASH">Cash</option>
-              </select>
             </div>
-
-            <div className="field">
-              <label htmlFor="due_date">Due date</label>
-              <input id="due_date" name="due_date" type="date" value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                disabled={balance <= 0} required={balance > 0} />
-              <span className="hint">
-                {balance > 0 ? "From payment terms — required so this can be tracked as overdue" : "From payment terms"}
-              </span>
-            </div>
-          </div>
+          </details>
         </div>
       </div>
 

@@ -88,7 +88,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             </select>
           </div>
           {select("supplier", facets.suppliers.map((s: any) => ({ v: s.id, l: s.name })), sp.supplier)}
-          <div className="field filter-go"><button className="btn">Filter</button></div>
+          <div className="filter-go"><button className="btn ghost">Filter</button></div>
         </div>
       </form>
 

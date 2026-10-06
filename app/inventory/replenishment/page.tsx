@@ -130,7 +130,7 @@ export default async function Replenishment({
         </HelpHint>
       </div>
 
-      <div className="row movefilters">
+      <div className="filterbar">
         {stockLocations.length > 1 && (
           <AccountPicker
             accounts={[{ id: "all", code: "—", name: "All warehouses" }, ...stockLocations]}

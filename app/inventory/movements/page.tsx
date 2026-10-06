@@ -170,7 +170,7 @@ export default async function StockMovements({
         <div className="empty">No stocked items yet.</div>
       ) : (
         <>
-          <div className="row movefilters">
+          <div className="filterbar">
             <AccountPicker
               accounts={[{ id: "all", code: "—", name: "All items" }, ...items]}
               selectedId={selected?.id ?? "all"}
