@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getCompany, getDocumentHistory } from "@/lib/queries";
 import { money, shortDate, dateTime } from "@/lib/format";
 import { HelpHint } from "@/components/help-hint";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 /** Same shape the document pages use — a local one-liner rather than a
  *  shared import, which is how the other pages here do it too. */
@@ -16,7 +18,8 @@ type Row = {
   related_document_id: string | null; related_no: string | null; related_type: string | null;
 };
 
-export default async function DocumentHistory() {
+export default async function DocumentHistory({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -24,6 +27,7 @@ export default async function DocumentHistory() {
   const voids = rows.filter((r) => r.action === "VOID").length;
   const edits = rows.filter((r) => r.action === "AMEND").length;
 
+  const pg = paginate(rows, sp.page);
   return (
     <>
       <div className="page-head">
@@ -64,7 +68,7 @@ export default async function DocumentHistory() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {pg.rows.map((r) => (
                     <tr key={r.id}>
                       <td style={{ whiteSpace: "nowrap" }}>{dateTime(r.acted_at)}</td>
                       <td>
@@ -98,6 +102,7 @@ export default async function DocumentHistory() {
                   ))}
                 </tbody>
               </table>
+              <Pager p={pg} params={sp} />
             </div>
           )}
 

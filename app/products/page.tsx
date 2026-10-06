@@ -5,6 +5,8 @@ import { requirePermission } from "@/lib/auth";
 import { inventorySummary } from "@/lib/phone";
 import { money, shortDate } from "@/lib/format";
 import { Stat } from "@/components/stat";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Products" };
 
@@ -39,6 +41,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const serialized = rows.filter((r: any) => r.tracks_serial).length;
   const low = rows.filter((r: any) => r.status !== "HEALTHY").length;
 
+  const pg = paginate(list, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -98,7 +101,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 </tr>
               </thead>
               <tbody>
-                {list.map((r: any) => (
+                {pg.rows.map((r: any) => (
                   <tr key={r.id}>
                     <td>
                       <span className="prod">
@@ -123,6 +126,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 {list.length === 0 && <tr><td colSpan={9} className="page-sub">No products match.</td></tr>}
               </tbody>
             </table>
+            <Pager p={pg} params={sp} />
           </div>
         </div>
 

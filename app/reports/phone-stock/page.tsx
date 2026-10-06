@@ -1,6 +1,8 @@
 import { requirePermission, can } from "@/lib/auth";
 import { phoneStockSummary } from "@/lib/phone";
 import { money } from "@/lib/format";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Stock & aging" };
 
@@ -13,11 +15,13 @@ function pace(units: number, sold30: number) {
   return [`Slow · ${days} d cover`, "warn"] as const;
 }
 
-export default async function PhoneStockReport() {
+export default async function PhoneStockReport({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
   const user = await requirePermission("reports.view");
   const seeCost = can(user, "cost.view");
   const rows = await phoneStockSummary(user.companyId);
 
+  const pg = paginate(rows, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -36,7 +40,7 @@ export default async function PhoneStockReport() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r: any, i: number) => {
+            {pg.rows.map((r: any, i: number) => {
               const [label, tone] = pace(r.units, r.sold_30);
               return (
                 <tr key={i}>
@@ -54,6 +58,7 @@ export default async function PhoneStockReport() {
             {rows.length === 0 && <tr><td colSpan={13} className="page-sub">No phones on the shelf.</td></tr>}
           </tbody>
         </table>
+        <Pager p={pg} params={sp} />
       </div>
     </>
   );

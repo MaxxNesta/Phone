@@ -12,6 +12,8 @@ import { AccountMultiPicker } from "@/components/account-multi-picker";
 import { JournalEntryList, type Entry } from "@/components/journal-entry-list";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 /**
  * One ledger, read two ways.
@@ -330,6 +332,7 @@ async function AccountView({
     ? "no branch"
     : locations.find((l) => l.id === p.location)?.name;
 
+  const pg = paginate(rows, p.page);
   return (
     <>
       <AccountMultiPicker accounts={list} tree={tree} selectedIds={ids}
@@ -488,7 +491,7 @@ async function AccountView({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r: any, i: number) => (
+                  {pg.rows.map((r: any, i: number) => (
                     <tr key={i}>
                       <td className="code">
                         {new Date(r.entry_date).toLocaleDateString("en-GB",
@@ -519,6 +522,7 @@ async function AccountView({
                   </tr>
                 </tfoot>
               </table>
+              <Pager p={pg} params={p} />
             </div>
           )}
         </div>

@@ -5,6 +5,8 @@ import { requirePermission, can } from "@/lib/auth";
 import { inventorySummary, recentMovements } from "@/lib/phone";
 import { money, dateTime } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Inventory" };
 
@@ -38,6 +40,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const reserved = rows.reduce((s, r: any) => s + Number(r.reserved), 0);
   const low = rows.filter((r: any) => r.status !== "HEALTHY");
 
+  const pg = paginate(rows, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -107,7 +110,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             </tr>
           </thead>
           <tbody>
-            {rows.map((r: any) => (
+            {pg.rows.map((r: any) => (
               <tr key={r.id}>
                 <td>
                   <span className="prod">
@@ -136,6 +139,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             {rows.length === 0 && <tr><td colSpan={9} className="page-sub">No products match.</td></tr>}
           </tbody>
         </table>
+        <Pager p={pg} params={sp} />
       </div>
 
       <div className="section-grid">

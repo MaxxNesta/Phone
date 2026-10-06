@@ -11,6 +11,8 @@ import {
 } from "@/lib/queries";
 import { getFinanceData } from "@/lib/actions";
 import { HelpHint } from "@/components/help-hint";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 /**
  * The trial balance: every account that moved, and the two columns agreeing.
@@ -42,6 +44,7 @@ export default async function TrialBalance({
   searchParams: Promise<{
     asOf?: string; location?: string; type?: string; account?: string; back?: string;
     voided?: string;
+    page?: string;
   }>;
 }) {
   const p = await searchParams;
@@ -89,6 +92,7 @@ export default async function TrialBalance({
 
   const selected = p.account ? rows.find((r) => r.id === p.account) : null;
 
+  const pg = paginate(rows, p.page);
   return (
     <>
       <div className="page-head">
@@ -248,7 +252,7 @@ export default async function TrialBalance({
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => {
+                    {pg.rows.map((r) => {
                       const bal = Number(r.balance);
                       const side = bal > 0 ? "Dr" : "Cr";
                       return (
@@ -287,6 +291,7 @@ export default async function TrialBalance({
                     </tr>
                   </tfoot>
                 </table>
+                <Pager p={pg} params={p} />
               </div>
             )}
           </div>

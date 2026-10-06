@@ -2,6 +2,8 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
 import { warrantyLookup, warrantiesEnding } from "@/lib/phone";
 import { shortDate } from "@/lib/format";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Warranty" };
 
@@ -9,12 +11,14 @@ const STATE: Record<string, [string, string]> = {
   ACTIVE: ["Active", "ok"], ENDING: ["Ending soon", "warn"], EXPIRED: ["Expired", "reversed"],
 };
 
-export default async function Warranty({ searchParams }: { searchParams: Promise<{ q?: string; ending?: string }> }) {
+export default async function Warranty({ searchParams }: { searchParams: Promise<{ q?: string; ending?: string; page?: string }> }) {
   const user = await requirePermission("inventory.view");
-  const { q, ending } = await searchParams;
+  const sp = await searchParams;
+  const { q, ending } = sp;
   const rows = q ? await warrantyLookup(user.companyId, q)
     : await warrantiesEnding(user.companyId, Number(ending) || 30);
 
+  const pg = paginate(rows, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -40,7 +44,7 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
             <tr><th>IMEI</th><th>Model</th><th>Customer</th><th>Invoice</th><th>Sold</th><th>Warranty</th><th>Expires</th><th>Status</th></tr>
           </thead>
           <tbody>
-            {rows.map((r: any) => {
+            {pg.rows.map((r: any) => {
               const st = r.warranty_state ? STATE[r.warranty_state] : null;
               return (
                 <tr key={r.serial_id}>
@@ -58,6 +62,7 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
             {rows.length === 0 && <tr><td colSpan={8} className="page-sub">{q ? "Nothing found." : "None ending soon."}</td></tr>}
           </tbody>
         </table>
+        <Pager p={pg} params={sp} />
       </div>
       <p className="page-sub">
         Repairs and warranty claims are not built yet. A unit sent for repair is marked from its own page (Hold → Send to repair).

@@ -5,6 +5,8 @@ import { phoneStock, phoneStockFacets, stripCost, serialKpis } from "@/lib/phone
 import { Stat, compact } from "@/components/stat";
 import { Smartphone, Lock, TrendingUp, Wallet } from "lucide-react";
 import { money, shortDate } from "@/lib/format";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Phone stock" };
 
@@ -43,6 +45,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
     </div>
   );
 
+  const pg = paginate(units, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -99,7 +102,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             </tr>
           </thead>
           <tbody>
-            {units.map((u: any) => (
+            {pg.rows.map((u: any) => (
               <tr key={u.serial_id} className="link">
                 <td>
                   <span className="prod">
@@ -127,6 +130,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             )}
           </tbody>
         </table>
+        <Pager p={pg} params={sp} />
       </div>
     </>
   );

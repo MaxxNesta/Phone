@@ -5039,3 +5039,10 @@ input.erp-search:focus { border: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var
 .grlines td.narrow input { min-width: 104px; }
 .grlines .prod-name { white-space: normal; }
 .grlines td:nth-child(2) { white-space: normal; min-width: 220px; }
+
+/* The pager's steps as links (server-rendered pages), matching the buttons. */
+a.dt-step, span.dt-step {
+  width: 32px; height: 32px; border-radius: 50%; display: inline-grid; place-items: center;
+  background: var(--line-soft); color: var(--ink);
+}
+span.dt-step[aria-disabled="true"] { opacity: 0.35; }

@@ -2,6 +2,8 @@ import { getCompany, getItems, getPartners, getSupplierItems } from "@/lib/queri
 import { saveSupplierItem, deleteSupplierItem } from "@/lib/actions";
 import { SupplierItemForm, SupplierItemRow } from "@/components/supplier-item-form";
 import { HelpHint } from "@/components/help-hint";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 /**
  * Purchasing terms, recorded only where they are unusual.
@@ -17,7 +19,8 @@ import { HelpHint } from "@/components/help-hint";
  *   this supplier generally       → Partners, on the supplier
  *   knowing nothing               → the company default
  */
-export default async function PurchasingTerms() {
+export default async function PurchasingTerms({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -36,6 +39,7 @@ export default async function PurchasingTerms() {
     .filter((i) => i.is_stocked && i.variant_count === 0)
     .map((i) => ({ id: i.id, code: i.code, name: i.name }));
 
+  const pg = paginate(rows, sp.page);
   return (
     <>
       <div className="page-head">
@@ -89,7 +93,7 @@ export default async function PurchasingTerms() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {pg.rows.map((r) => (
                     <SupplierItemRow
                       key={r.id}
                       row={r}
@@ -99,6 +103,7 @@ export default async function PurchasingTerms() {
                   ))}
                 </tbody>
               </table>
+              <Pager p={pg} params={sp} />
             </div>
           </div>
         </section>

@@ -5,10 +5,12 @@ import { money } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
 import { RankedBarChart } from "@/components/charts";
 import { Banknote, TrendingUp, Percent, Smartphone } from "lucide-react";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Sales & margin" };
 
-type Search = { from?: string; to?: string; by?: string; scope?: string };
+type Search = { from?: string; to?: string; by?: string; scope?: string; page?: string };
 
 export default async function PhoneSalesReport({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("reports.view");
@@ -26,6 +28,7 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
   const revenue = sum("revenue"), cost = sum("cost"), units = sum("units");
   const href = (b: string) => `/reports/phone-sales?${new URLSearchParams({ from, to, by: b, scope: sp.scope ?? "" })}`;
 
+  const pg = paginate(rows, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -76,7 +79,7 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
               </tr>
             </thead>
             <tbody>
-              {rows.map((r: any) => (
+              {pg.rows.map((r: any) => (
                 <tr key={r.key}>
                   <td className={by === "imei" ? "m" : undefined}>{r.key}</td>
                   <td className="num">{r.units}</td>
@@ -91,6 +94,7 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
               {rows.length === 0 && <tr><td colSpan={6} className="page-sub">No sales in this period.</td></tr>}
             </tbody>
           </table>
+          <Pager p={pg} params={sp} />
         </div>
         <div className="card">
           <div className="card-head"><h2>Revenue by {SALES_DIMENSIONS[by].toLowerCase()}</h2></div>

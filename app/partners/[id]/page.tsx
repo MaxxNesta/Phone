@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { money, shortDate } from "@/lib/format";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
 export const metadata = { title: "Partner" };
 
@@ -13,7 +15,10 @@ const EVENT: Record<string, string> = {
 };
 
 /** One customer or supplier: their documents, and every phone that passed between us. */
-export default async function Partner({ params }: { params: Promise<{ id: string }> }) {
+export default async function Partner({ params, searchParams }: {
+  params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const sp = await searchParams;
   const user = await requirePermission("sales.view");
   const { id } = await params;
   const [p] = await sql`
@@ -38,6 +43,8 @@ export default async function Partner({ params }: { params: Promise<{ id: string
        order by posting_date desc nulls last, created_at desc limit 100`,
   ]);
 
+  const pgUnits = paginate((phones as any[]), sp.units);
+  const pgDocs = paginate((docs as any[]), sp.docs);
   return (
     <>
       <div className="page-head">
@@ -55,7 +62,7 @@ export default async function Partner({ params }: { params: Promise<{ id: string
           <table>
             <thead><tr><th>IMEI</th><th>Model</th><th>What</th><th>Document</th><th>Date</th><th>Now</th></tr></thead>
             <tbody>
-              {(phones as any[]).map((r, i) => (
+              {pgUnits.rows.map((r, i) => (
                 <tr key={i}>
                   <td className="m"><Link href={`/inventory/phones/${r.serial_id}`}>{r.imei}</Link></td>
                   <td>{r.item_name}</td>
@@ -68,6 +75,7 @@ export default async function Partner({ params }: { params: Promise<{ id: string
               {phones.length === 0 && <tr><td colSpan={6} className="page-sub">No phones yet.</td></tr>}
             </tbody>
           </table>
+          <Pager p={pgUnits} params={sp} name="units" />
         </div>
       </div>
 
@@ -77,7 +85,7 @@ export default async function Partner({ params }: { params: Promise<{ id: string
           <table>
             <thead><tr><th>No.</th><th>Type</th><th>Date</th><th>Status</th><th className="r">Total</th></tr></thead>
             <tbody>
-              {(docs as any[]).map((d) => (
+              {pgDocs.rows.map((d) => (
                 <tr key={d.id}>
                   <td><Link href={`/documents/${d.id}`}>{d.doc_no ?? "draft"}</Link></td>
                   <td>{String(d.doc_type).replace(/_/g, " ").toLowerCase()}</td>
@@ -88,6 +96,7 @@ export default async function Partner({ params }: { params: Promise<{ id: string
               ))}
             </tbody>
           </table>
+          <Pager p={pgDocs} params={sp} name="docs" />
         </div>
       </div>
     </>

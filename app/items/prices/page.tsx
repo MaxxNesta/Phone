@@ -4,8 +4,11 @@ import { setItemPrice, createPriceLevel, updatePriceLevel, deletePriceLevel } fr
 import { AddPriceLevelForm, PriceLevelRow } from "@/components/price-level-form";
 import { PriceRow } from "@/components/price-row";
 import { HelpHint } from "@/components/help-hint";
+import { paginate } from "@/lib/paging";
+import { Pager } from "@/components/pager";
 
-export default async function Prices() {
+export default async function Prices({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -67,6 +70,7 @@ export default async function Prices() {
   const today = new Date().toISOString().slice(0, 10);
   const priced = items.filter((i) => i.levels.some((l) => l.price !== null)).length;
 
+  const pg = paginate(items, sp.page);
   return (
     <>
       <div className="page-head">
@@ -155,11 +159,12 @@ export default async function Prices() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((row) => (
+                  {pg.rows.map((row) => (
                     <PriceRow key={row.itemId} row={row} today={today} action={setItemPrice} />
                   ))}
                 </tbody>
               </table>
+              <Pager p={pg} params={sp} />
             </div>
           )}
         </div>

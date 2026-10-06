@@ -65,16 +65,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let company: Awaited<ReturnType<typeof getCompany>> = null;
   let dbError: string | null = null;
 
-  try {
-    company = await getCompany();
-  } catch (e) {
-    dbError = e instanceof Error ? e.message : String(e);
-  }
-
   // Sign-in and first-run screens draw without the application around them.
   const path = (await headers()).get("x-pathname") ?? "";
   const bare = path === "/login" || path.startsWith("/setup");
-  const user = bare || dbError ? null : await currentUser();
+
+  // Asked together: the user lookup shares the request's cached company, so
+  // neither waits on the other beyond that one query.
+  const [companyResult, userResult] = await Promise.allSettled([
+    getCompany(),
+    bare ? Promise.resolve(null) : currentUser(),
+  ]);
+  if (companyResult.status === "fulfilled") company = companyResult.value;
+  else dbError = companyResult.reason instanceof Error ? companyResult.reason.message : String(companyResult.reason);
+  const user = bare || dbError || userResult.status === "rejected" ? null : userResult.value;
   const may = (p: Permission) => can(user, p);
   // Distribution screens (orders, deliveries, routes) only in the trading flow.
   const wholesale = company ? !company.retail_mode : false;

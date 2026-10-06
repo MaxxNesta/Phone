@@ -106,17 +106,32 @@ export const authRequired = () => process.env.AUTH_REQUIRED === "true";
 /**
  * The owner, for when sign-in is off: an administrator row in app_user,
  * made the first time it is needed, so documents still say who posted them.
+ *
+ * Read first: the row exists on every request but the first, so the upsert —
+ * a write, and an extra round trip — runs only when the row is missing or no
+ * longer an active administrator, which is exactly when it changes anything.
  */
 export async function ownerUser(): Promise<SessionUser | null> {
+  const toUser = (u: Record<string, any>): SessionUser => ({
+    id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
+    email: u.email ?? "", role: u.role as Role });
+  // The company is found inside the same statement, with no parameters: one
+  // round trip, and it need not wait for the layout's own company lookup.
+  const [found] = await sql`
+    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.is_active
+      from app_user u
+     where u.name = 'Owner'
+       and u.company_id = (select id from company order by created_at limit 1)`;
+  if (found && found.role === "ADMIN" && found.is_active) return toUser(found);
   const [co] = await sql`select id from company order by created_at limit 1`;
   if (!co) return null;
+  const coId = co.id;
   const [u] = await sql`
     insert into app_user (company_id, name, initials, role)
-    values (${co.id}, 'Owner', 'OW', 'ADMIN')
+    values (${coId}, 'Owner', 'OW', 'ADMIN')
     on conflict (company_id, name) do update set role = 'ADMIN', is_active = true
     returning id, company_id, name, initials, email, role`;
-  return { id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
-           email: u.email ?? "", role: u.role as Role };
+  return toUser(u);
 }
 
 // ------------------------------------------------------- page gating ----

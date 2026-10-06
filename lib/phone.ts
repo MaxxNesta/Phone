@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { sql } from "./db";
 
 // Read side of phone retail: what the POS searches, the serial stock views,
@@ -145,23 +146,51 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter) {
      limit 500`;
 }
 
+/**
+ * The phone-stock filters and KPI tiles, from one statement. v_stock_serial
+ * derives each unit's status row by row, and the filters and the tiles used
+ * to ask it five separate times — five scans and five connections for one
+ * page. Here it is read once (the CTE is materialised because it is used more
+ * than once) and every list is aggregated from that single read. Each list
+ * keeps the order and the null handling of the query it replaced.
+ * Once per request, so phoneStockFacets and serialKpis share it.
+ */
+const phoneStockOverview = cache(async (companyId: string) => {
+  const [r] = await sql`
+    with v as materialized (
+      select brand_name, model_name, supplier_id, supplier_name, status,
+             received_date, out_date, unit_cost
+        from v_stock_serial where company_id = ${companyId}
+    ), opt as (
+      select ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour
+        from item i where i.company_id = ${companyId} and i.tracks_serial
+    )
+    select
+      coalesce((select array_agg(x order by x) from (select distinct brand_name as x from v where brand_name is not null) s), '{}') as brands,
+      coalesce((select array_agg(x order by x) from (select distinct model_name as x from v) s), '{}') as models,
+      coalesce((select array_agg(x order by x) from (select distinct storage as x from opt where storage is not null) s), '{}') as storages,
+      coalesce((select array_agg(x order by x) from (select distinct colour as x from opt where colour is not null) s), '{}') as colours,
+      coalesce((select json_agg(json_build_object('id', id, 'name', name) order by name)
+                  from (select distinct supplier_id as id, supplier_name as name from v where supplier_id is not null) s), '[]') as suppliers,
+      coalesce((select json_agg(json_build_object('id', id, 'name', name, 'parent_id', parent_id,
+                                                  'is_stock_location', is_stock_location) order by code)
+                  from location where company_id = ${companyId} and is_active), '[]') as locations,
+      (select count(*) filter (where status = 'IN_STOCK') from v)::int as available,
+      (select count(*) filter (where status = 'IN_STOCK' and received_date > current_date - 7) from v)::int as received_week,
+      (select count(*) filter (where status = 'RESERVED') from v)::int as reserved,
+      (select count(*) filter (where status = 'REPAIR') from v)::int as repair,
+      (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date)) from v)::int as sold_month,
+      (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date) - interval '1 month'
+                                 and out_date < date_trunc('month', current_date)) from v)::int as sold_last_month,
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0) from v)::float as value`;
+  return r;
+});
+
 /** The choices the phone-stock filters offer, from what is actually held. */
 export async function phoneStockFacets(companyId: string) {
-  const [brands, models, storages, colours, suppliers, locations] = await Promise.all([
-    sql`select distinct brand_name as v from v_stock_serial where company_id = ${companyId} and brand_name is not null order by 1`,
-    sql`select distinct model_name as v from v_stock_serial where company_id = ${companyId} order by 1`,
-    sql`select distinct ${optionMatching(STORAGE_RE)} as v from item i
-         where i.company_id = ${companyId} and i.tracks_serial and ${optionMatching(STORAGE_RE)} is not null order by 1`,
-    sql`select distinct ${optionMatching(COLOUR_RE)} as v from item i
-         where i.company_id = ${companyId} and i.tracks_serial and ${optionMatching(COLOUR_RE)} is not null order by 1`,
-    sql`select distinct supplier_id as id, supplier_name as name from v_stock_serial
-         where company_id = ${companyId} and supplier_id is not null order by 2`,
-    sql`select id, name, parent_id, is_stock_location from location
-         where company_id = ${companyId} and is_active order by code`,
-  ]);
-  const vals = (rows: any[]) => rows.map((r) => r.v as string);
-  return { brands: vals(brands), models: vals(models), storages: vals(storages),
-           colours: vals(colours), suppliers, locations };
+  const r = await phoneStockOverview(companyId);
+  return { brands: r.brands as string[], models: r.models as string[], storages: r.storages as string[],
+           colours: r.colours as string[], suppliers: r.suppliers as any[], locations: r.locations as any[] };
 }
 
 /** Everything that happened to one unit, newest last. */
@@ -433,19 +462,12 @@ function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnTyp
        and d.posting_date between ${from} and ${to}`;
 }
 
-/** The four figures over the IMEI / Serial list. */
+/** The IMEI page's tiles: units by status, sales this month, value on hand. */
 export async function serialKpis(companyId: string) {
-  const [k] = await sql`
-    select count(*) filter (where status = 'IN_STOCK')::int as available,
-           count(*) filter (where status = 'IN_STOCK' and received_date > current_date - 7)::int as received_week,
-           count(*) filter (where status = 'RESERVED')::int as reserved,
-           count(*) filter (where status = 'REPAIR')::int as repair,
-           count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date))::int as sold_month,
-           count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date) - interval '1 month'
-                              and out_date < date_trunc('month', current_date))::int as sold_last_month,
-           coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0)::float as value
-      from v_stock_serial where company_id = ${companyId}`;
-  return k;
+  const r = await phoneStockOverview(companyId);
+  return { available: r.available as number, received_week: r.received_week as number,
+           reserved: r.reserved as number, repair: r.repair as number, sold_month: r.sold_month as number,
+           sold_last_month: r.sold_last_month as number, value: r.value as number };
 }
 
 /**
