@@ -4834,3 +4834,11 @@ input[type="checkbox"][name]:not(td *):not(th *):disabled { opacity: 0.4; cursor
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.06) !important;
 }
 .recharts-cartesian-axis-tick text, .recharts-polar-angle-axis-tick text { font-family: var(--sans); }
+
+/* Section headings inside a nav group (Settings: Catalogue, Company,
+   Accounting, Account) — quiet labels, not more things to click. */
+.sidebar .navsection {
+  display: block; padding: 0.85rem 0.65rem 0.2rem 2.15rem;
+  font-size: var(--t-xs); font-weight: 600; color: var(--rail-muted);
+}
+.sidebar .navsection:first-child { padding-top: 0.25rem; }

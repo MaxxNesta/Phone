@@ -65,6 +65,7 @@ export function NavGroup({
   label,
   icon,
   match,
+  except = [],
   children,
   defaultOpen,
 }: {
@@ -73,11 +74,14 @@ export function NavGroup({
   icon?: React.ReactNode;
   /** Path prefixes that belong to this group. */
   match: string[];
+  /** Prefixes inside `match` that belong to another group instead. */
+  except?: string[];
   children: React.ReactNode;
   defaultOpen?: boolean;
 }) {
   const pathname = usePathname();
-  const contains = match.some((m) => (m === "/" ? pathname === "/" : pathname.startsWith(m)));
+  const contains = match.some((m) => (m === "/" ? pathname === "/" : pathname.startsWith(m)))
+    && !except.some((m) => pathname.startsWith(m));
   const [open, setOpen] = useState<boolean | null>(null);
   const collapsed = useSidebarCollapsed();
 

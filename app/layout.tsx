@@ -136,16 +136,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             )}
 
             {may("items.manage") && (
-              <NavGroup label="Products" icon={<Smartphone size={15} />} match={["/products", "/items"]}>
+              <NavGroup label="Products" icon={<Smartphone size={15} />} match={["/products", "/items"]}
+                except={["/items/categories", "/items/subcategories", "/items/brands", "/items/attributes",
+                         "/items/units", "/items/purchasing", "/items/stock"]}>
                 <NavLink href="/products" exact>All products</NavLink>
                 <NavLink href="/items" exact>Edit catalogue</NavLink>
-                <NavLink href="/items/categories">Categories</NavLink>
-                <NavLink href="/items/subcategories">Sub Categories</NavLink>
-                <NavLink href="/items/brands">Brands</NavLink>
-                <NavLink href="/items/attributes">Variants (storage, colour)</NavLink>
                 <NavLink href="/items/prices">Price levels</NavLink>
-                <NavLink href="/items/units">Units</NavLink>
-                <NavLink href="/items/purchasing">Purchasing terms</NavLink>
               </NavGroup>
             )}
 
@@ -246,13 +242,30 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {may("settings.manage") && (
               <NavGroup label="Settings" icon={<Settings size={15} />} match={[
-                "/warehouses", "/salespersons", "/settings",
+                "/warehouses", "/salespersons", "/settings", "/items/categories", "/items/subcategories",
+                "/items/brands", "/items/attributes", "/items/units", "/items/purchasing",
               ]}>
+                {/* Set once, read everywhere: the lists the rest of the app
+                    is built from, grouped the way the iPhone's Settings is. */}
+                {may("items.manage") && (
+                  <>
+                    <span className="navsection">Catalogue</span>
+                    <NavLink href="/items/categories">Categories</NavLink>
+                    <NavLink href="/items/subcategories">Sub categories</NavLink>
+                    <NavLink href="/items/brands">Brands</NavLink>
+                    <NavLink href="/items/attributes">Variants (storage, colour)</NavLink>
+                    <NavLink href="/items/units">Units</NavLink>
+                    <NavLink href="/items/purchasing">Purchasing terms</NavLink>
+                  </>
+                )}
+                <span className="navsection">Company</span>
                 <NavLink href="/warehouses">Branches &amp; warehouses</NavLink>
                 <NavLink href="/salespersons">Salespersons</NavLink>
+                <span className="navsection">Accounting</span>
                 <NavLink href="/settings/accounts">Chart of Accounts</NavLink>
                 <NavLink href="/settings/tax-codes">Tax codes</NavLink>
                 <NavLink href="/settings/currencies">Currencies &amp; rates</NavLink>
+                <span className="navsection">Account</span>
                 <NavLink href="/settings/plan">Package</NavLink>
                 {may("users.manage") && <NavLink href="/settings/users">Users</NavLink>}
               </NavGroup>
