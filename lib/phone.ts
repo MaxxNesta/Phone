@@ -46,6 +46,10 @@ export type SellableItem = {
   model: string; brand: string | null; variant: string | null;
   tracks_serial: boolean; on_hand: number; price: number | null; warranty_months: number | null;
   photo: string | null;
+  /** Its type — iPhone, Mac, Accessories: the top category. */
+  type: string | null;
+  /** Its options by attribute name — { Storage: "256 GB", Colour: "Black" }. */
+  opts: Record<string, string> | null;
 };
 
 export type ScannedUnit = {
@@ -78,6 +82,13 @@ async function sellable(companyId: string, locationId: string, term: string | nu
            b.name as brand, ${VARIANT_LABEL} as variant, i.tracks_serial,
            fn_qty_on_hand(${companyId}, i.id, ${locationId})::float as on_hand,
            ${RETAIL_PRICE}::float as price, i.warranty_months,
+           (select t.name from item_group g join item_group t on t.id = coalesce(g.parent_id, g.id)
+             where g.id = i.item_group_id) as type,
+           (select json_object_agg(a.name, o.name order by a.sort_order)
+              from item_variant_option ivo
+              join variant_option o on o.id = ivo.option_id
+              join variant_attribute a on a.id = o.attribute_id
+             where ivo.item_id = i.id) as opts,
            case when i.photo_updated_at is not null
                   then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
                 when p.photo_updated_at is not null

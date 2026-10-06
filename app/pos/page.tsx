@@ -8,7 +8,7 @@ export default async function PosPage() {
   const user = await requirePermission("pos.sell");
   const co = user.companyId;
 
-  const [locations, customers, salesmen, accounts, taxCodes] = await Promise.all([
+  const [locations, customers, salesmen, accounts, taxCodes, focReasons] = await Promise.all([
     sql`select l.id, l.name, p.name as branch from location l
           left join location p on p.id = l.parent_id
          where l.company_id = ${co} and l.is_stock_location and l.is_active
@@ -22,6 +22,7 @@ export default async function PosPage() {
          where company_id = ${co} and is_cash_account and is_active order by code`,
     sql`select t.id, t.code, t.name, fn_tax_rate_on(t.id, current_date)::float as rate
           from tax_code t where t.company_id = ${co} order by t.code`,
+    sql`select id, name from foc_reason where company_id = ${co} order by name`,
   ]);
 
   return (
@@ -36,6 +37,7 @@ export default async function PosPage() {
         salesmen={salesmen as never}
         accounts={accounts as never}
         taxCodes={taxCodes as never}
+        focReasons={focReasons as never}
         showCost={can(user, "cost.view")}
         discountCeiling={can(user, "discount.unlimited") ? null : DISCOUNT_CEILING_PCT}
         defaultSalesman={null}

@@ -13,6 +13,8 @@ import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
 import { PackageCheck, Truck, Clock, ShoppingBag, Check } from "lucide-react";
 import type { AwaitingLine } from "@/lib/queries";
+import { SerialEntry, type ScannedSerial } from "./serial-entry";
+import { posSearchAction, posUnitsAction } from "@/lib/pos-actions";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -90,6 +92,8 @@ type Line = {
   orderNo?: string | null;
   /** Given away on this line, on top of anything a promotion earns. */
   focQty: string;
+  /** The exact phones on this line, for an item tracked by IMEI or serial. */
+  serials?: ScannedSerial[];
   /** Why they are free — promotion, sample, office use, damaged. Blank
    *  defaults to the promotional reason. */
   focReasonId: string;
@@ -468,6 +472,53 @@ export function SalesVoucher({
     }
   }
 
+  // The phones on the shelf here for each IMEI-tracked item on the voucher,
+  // offered as one-tap suggestions under its line.
+  const [shelf, setShelf] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    const want = [...new Set(lines.map((l) => l.itemId)
+      .filter((id) => id && items.find((i) => i.id === id)?.tracks_serial && !shelf[`${id}@${locationId}`]))];
+    for (const id of want) {
+      posUnitsAction(id, locationId)
+        .then((units) => setShelf((m) => ({ ...m, [`${id}@${locationId}`]: units
+          .filter((u) => u.status === "IN_STOCK" && u.location_id === locationId).map((u) => u.imei) })))
+        .catch(() => setShelf((m) => ({ ...m, [`${id}@${locationId}`]: [] })));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, locationId]);
+
+  // Scan an IMEI to add that exact phone: onto its product's line if there
+  // is one, otherwise a new line at the customer's price.
+  const [scan, setScan] = useState("");
+  const [scanMsg, setScanMsg] = useState<string | null>(null);
+  async function scanImei(term: string) {
+    const t = term.trim();
+    if (!t) return;
+    setScanMsg(null);
+    const r = await posSearchAction(locationId, t);
+    const u = r.units[0];
+    if (!u) return setScanMsg(`${t} is not a phone this shop holds.`);
+    if (u.status !== "IN_STOCK") return setScanMsg(`${u.imei} is ${u.status.toLowerCase().replace(/_/g, " ")}.`);
+    if (u.location_id !== locationId) return setScanMsg(`${u.imei} is at ${u.location_name}, not this location.`);
+    if (lines.some((l) => l.serials?.some((x) => x.serial === u.imei))) return setScanMsg(`${u.imei} is already on this voucher.`);
+    setLines((ls) => {
+      const at = ls.find((l) => l.itemId === u.item_id && !l.orderLineId && !l.sourceLineId);
+      if (at) {
+        const serials = [...(at.serials ?? []), { serial: u.imei }];
+        return ls.map((l) => (l === at ? { ...l, serials, qty: String(serials.length) } : l));
+      }
+      const p = priceFor(u.item_id);
+      const blank = ls.find((l) => !l.itemId);
+      const line: Line = {
+        key: blank?.key ?? Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: u.item_id, qty: "1",
+        unitPrice: p > 0 ? String(p) : "", discountPct: "", focQty: "", focReasonId: "", source: "OWNED",
+        serials: [{ serial: u.imei }],
+      };
+      return blank ? ls.map((l) => (l === blank ? line : l)) : [...ls, line];
+    });
+    setScan("");
+  }
+
   const addLine = () =>
     setLines((ls) => [
       ...ls,
@@ -669,6 +720,10 @@ export function SalesVoucher({
   });
   const anyConsigned = (ownership ?? []).some((o) => o.location_id === locationId);
 
+  const imeiShort = toDeliver || matchedDeliveryId ? [] : lines.filter((l) =>
+    l.itemId && Number(l.qty) > 0 && items.find((i) => i.id === l.itemId)?.tracks_serial
+    && (l.serials ?? []).length !== Number(l.qty));
+
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
@@ -697,6 +752,7 @@ export function SalesVoucher({
           // posted line records both however the typist thought about it.
           discountAmount: l.discountMode === "AMT" ? Number(l.discountAmt) || 0 : null,
           taxCodeId: taxCodeId || null,
+          ...((l.serials ?? []).length ? { serials: (l.serials ?? []).map((x) => x.serial) } : {}),
           // Which delivery line this bills, so the engine can hold it to what
           // went out. Free lines carry no source: a giveaway is not part of
           // what the delivery is owed billing for.
@@ -1108,6 +1164,17 @@ export function SalesVoucher({
             written off.
           </p>
         )}
+        {!toDeliver && !matchedDeliveryId && (
+          // Not a <form>: it sits inside the voucher's own form, and a nested
+          // form is dropped by the browser — Enter would post the voucher.
+          <div className="voucher-scan">
+            <input value={scan} onChange={(e) => setScan(e.target.value)} autoComplete="off"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); scanImei(scan); } }}
+              placeholder="Scan or type an IMEI to add that phone…" aria-label="Scan IMEI" />
+            <button type="button" className="ghost" onClick={() => scanImei(scan)}>Add phone</button>
+            {scanMsg && <span className="hint low" role="status">{scanMsg}</span>}
+          </div>
+        )}
         <div className="tablewrap">
           <table className="linetable">
             <thead>
@@ -1361,6 +1428,19 @@ export function SalesVoucher({
                         onClick={() => removeLine(l.key)} disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>,
+                  item?.tracks_serial && !toDeliver && !matchedDeliveryId ? (
+                    <tr key={`${l.key}-imei`} className="batchrow">
+                      <td colSpan={12}>
+                        <SerialEntry
+                          label={`${item.code} — IMEI of each phone`}
+                          qty={Number(l.qty) || 0}
+                          value={l.serials ?? []}
+                          suggestions={shelf[`${l.itemId}@${locationId}`]}
+                          onChange={(v) => setLine(l.key, { serials: v, qty: String(v.length) })}
+                        />
+                      </td>
+                    </tr>
+                  ) : null,
                   freeRow,
                 ];
               })}
@@ -1726,6 +1806,12 @@ export function SalesVoucher({
         onConfirm={() => { setNegativeConfirmed(true); setAskNegative(false); }}
       />
 
+      {imeiShort.length > 0 && (
+        <p className="hint low" role="status">
+          Choose the IMEI of each phone before posting:{" "}
+          {imeiShort.map((l) => `${items.find((i) => i.id === l.itemId)?.code} ${(l.serials ?? []).length}/${l.qty}`).join(", ")}
+        </p>
+      )}
       <div className="actions form-commit">
         <button
           type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
@@ -1734,7 +1820,7 @@ export function SalesVoucher({
               ? () => setAskNegative(true)
               : undefined
           }
-          disabled={pending || total === 0 || cashTooMuch}>
+          disabled={pending || total === 0 || cashTooMuch || imeiShort.length > 0}>
           {pending ? "Posting…" : "Post voucher"}
         </button>
         {saveDraft && (

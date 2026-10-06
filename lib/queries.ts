@@ -367,7 +367,12 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
     select document_id, doc_no, posting_date, due_date,
            partner_id, partner_code, partner_name,
            gross_total, paid, outstanding, 'POSTED' as doc_status,
-           payment_status, days_overdue
+           payment_status, days_overdue,
+           -- Which channel made the sale. The till stamps its own reference
+           -- (POS:<attempt>, how it recognises a resent sale), so the channel
+           -- is read from that rather than stored twice.
+           (select case when d.reference like 'POS:%' then 'POS' else 'INVOICE' end
+              from document d where d.id = v_invoice_status.document_id) as channel
       from v_invoice_status
      where company_id = ${companyId} and doc_type = ${docType}
 
@@ -376,7 +381,8 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
      select d.id as document_id, d.doc_no, d.posting_date, d.due_date,
             d.partner_id, p.code as partner_code, p.name as partner_name,
             d.gross_total, 0::numeric as paid, 0::numeric as outstanding,
-            d.status as doc_status, null as payment_status, null::int as days_overdue
+            d.status as doc_status, null as payment_status, null::int as days_overdue,
+            'INVOICE' as channel
        from document d
        join business_partner p on p.id = d.partner_id
       -- Drafts only. This half used to admit anything not POSTED, which in

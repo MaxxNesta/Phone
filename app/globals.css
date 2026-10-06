@@ -5046,3 +5046,135 @@ a.dt-step, span.dt-step {
   background: var(--line-soft); color: var(--ink);
 }
 span.dt-step[aria-disabled="true"] { opacity: 0.35; }
+
+/* ============================================================ POS till ====
+   Shelf on the left, cart on the right: compact product tiles, filters as
+   pop-up menus, a cart of rows with a stepper and a bin, and a slip that
+   says what is charged, discounted and given free. */
+
+.pos3 { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
+.pos3-shelf { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.pos3-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pos3-filters select {
+  width: auto; height: 34px; min-height: 34px; padding: 0 2rem 0 12px;
+  border: 0; border-radius: 980px; background-color: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line); font-size: 0.8125rem; font-weight: 500;
+}
+.pos3-instock { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8125rem; color: var(--ink-soft); }
+.pos3-instock input { width: 16px; height: 16px; accent-color: var(--brand); }
+
+.pos3-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.pos3-card {
+  position: relative; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 10px; border-radius: 14px; background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-soft); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  min-height: 0; font: inherit; cursor: pointer;
+  transition: transform 120ms ease-out, box-shadow 150ms, border-color 150ms;
+}
+.pos3-card:hover:not(:disabled) { border-color: var(--line); box-shadow: 0 6px 18px rgb(0 0 0 / 0.07); }
+.pos3-card:active:not(:disabled) { transform: scale(0.97); }
+.pos3-card:disabled { opacity: 0.45; cursor: not-allowed; }
+.pos3-img {
+  display: grid; place-items: center; aspect-ratio: 4 / 3; margin-bottom: 6px;
+  border-radius: 10px; background: var(--ground); color: var(--muted); overflow: hidden;
+}
+.pos3-img img { width: 100%; height: 100%; object-fit: contain; }
+.pos3-name { font-size: 0.8125rem; font-weight: 600; line-height: 1.25; }
+.pos3-sub { font-size: 0.75rem; color: var(--muted); line-height: 1.3; min-height: 1.3em; }
+.pos3-foot { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; gap: 6px; }
+.pos3-price { font-size: 0.8125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pos3-stock { font-size: 0.6875rem; color: var(--ok); white-space: nowrap; }
+.pos3-stock.low { color: var(--warn); }
+.pos3-stock.none { color: var(--bad); }
+.pos3-badge {
+  position: absolute; top: 8px; right: 8px; z-index: 1; min-width: 22px; height: 22px; padding: 0 6px;
+  border-radius: 11px; background: var(--brand); color: var(--brand-fg);
+  font-size: 0.75rem; font-weight: 700; display: grid; place-items: center;
+}
+
+.pos3-units { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; padding: 12px; }
+.pos3-units-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.875rem; }
+.pos3-unit-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.pos3-unit {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 0;
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink); font-size: 0.8125rem; cursor: pointer;
+}
+.pos3-unit:hover { border-color: var(--brand); }
+
+.pos3-cart {
+  position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px;
+  max-height: calc(100vh - 24px); padding: 16px; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--line-soft);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.05);
+}
+.pos3-cart-head { display: flex; justify-content: space-between; align-items: baseline; }
+.pos3-cart-head h2 { display: flex; align-items: center; gap: 8px; font-size: 1.0625rem; }
+.pos3-customer { height: 38px; min-height: 38px; font-size: 0.875rem; }
+.pos3-lines { display: flex; flex-direction: column; overflow-y: auto; min-height: 80px; margin: 0 -4px; padding: 0 4px; }
+.pos3-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 24px 0; color: var(--muted); font-size: 0.8125rem; }
+.pos3-line { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+.pos3-line:last-child { border-bottom: 0; }
+.pos3-line-img {
+  width: 44px; height: 44px; border-radius: 10px; background: var(--ground); color: var(--muted);
+  display: grid; place-items: center; overflow: hidden;
+}
+.pos3-line-img img { width: 100%; height: 100%; object-fit: contain; }
+.pos3-line-name { font-size: 0.8125rem; font-weight: 600; line-height: 1.25; }
+.pos3-line-sub { font-size: 0.75rem; color: var(--muted); }
+.pos3-line-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.pos3-line-price { font-size: 0.8125rem; font-variant-numeric: tabular-nums; text-align: right; }
+.pos3-line-price s { color: var(--muted); font-size: 0.75rem; }
+.pos3-free { color: var(--ok); letter-spacing: 0.02em; }
+.pos3-qty-one { font-size: 0.75rem; color: var(--muted); }
+.pos3-stepper {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  border-radius: 980px; background: var(--line-soft);
+}
+.pos3-stepper button {
+  width: 26px; height: 26px; min-height: 26px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: var(--surface); color: var(--ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.pos3-stepper button:disabled { opacity: 0.35; }
+.pos3-stepper span { min-width: 22px; text-align: center; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pos3-line-tools { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.pos3-tool {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 26px; height: 26px; padding: 0 8px;
+  border: 0; border-radius: 980px; background: transparent; color: var(--link); font-size: 0.75rem; font-weight: 500;
+}
+.pos3-tool:hover:not(:disabled) { background: color-mix(in srgb, var(--link) 8%, transparent); }
+.pos3-tool.on { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.pos3-bin {
+  margin-left: auto; width: 28px; height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: transparent; color: var(--muted);
+}
+.pos3-bin:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad); }
+.pos3-line.free .pos3-line-img { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ok) 50%, transparent); }
+.pos3-reason { margin-top: 6px; height: 32px; min-height: 32px; font-size: 0.75rem; }
+.pos3-edit { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; padding: 10px; border-radius: 10px; background: var(--ground); }
+.pos3-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 0.6875rem; font-weight: 600; color: var(--ink-soft); }
+.pos3-edit input, .pos3-edit select { height: 32px; min-height: 32px; font-size: 0.8125rem; padding: 0 8px; }
+
+.pos3-slip { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 0.8125rem; }
+.pos3-slip dt { color: var(--ink-soft); }
+.pos3-slip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.pos3-slip dd.neg { color: var(--ok); }
+.pos3-slip .grand { font-size: 1.125rem; font-weight: 700; color: var(--ink); padding-top: 4px; }
+.pos3-slip dd.grand small { font-size: 0.6875rem; font-weight: 600; color: var(--muted); }
+.pos3-more { display: flex; justify-content: space-between; align-items: flex-start; font-size: 0.8125rem; }
+.pos3-more details { text-align: right; }
+.pos3-more .pos-stack { text-align: left; margin-top: 8px; }
+.pos3-cart .complete { min-height: 48px; border-radius: 14px; font-size: 1rem; }
+
+@media (max-width: 1100px) {
+  .pos3 { grid-template-columns: 1fr; }
+  .pos3-cart { position: static; max-height: none; }
+}
+.voucher-scan { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.voucher-scan input { flex: 0 1 360px; }
+
+/* Quantity and price stay readable however wide the item cell grows. */
+.linetable input[type="number"] { min-width: 84px; }
+.linetable td.r input[type="number"], .linetable .price input { min-width: 120px; }

@@ -81,9 +81,11 @@ export default async function SalesInvoices({
   const rows: DataRow[] = invoices.map((i) => ({
     key: i.document_id,
     searchText: [i.doc_no, i.partner_name].filter(Boolean).join(" "),
+    facet: { channel: i.channel ?? "INVOICE" },
     sort: {
       doc_no: i.doc_no ?? "",
       posting_date: toTime(i.posting_date),
+      channel: i.channel ?? "INVOICE",
       due_date: toTime(i.due_date),
       partner_name: i.partner_name ?? "",
       gross_total: Number(i.gross_total),
@@ -103,6 +105,11 @@ export default async function SalesInvoices({
           </Link>
         </td>
         <td className="code">{shortDate(i.posting_date)}</td>
+        <td>
+          <span className={`pill ${i.channel === "POS" ? "posted" : "draft"}`}>
+            {i.channel === "POS" ? "POS" : "Sales invoice"}
+          </span>
+        </td>
         <td className="code">{i.due_date ? shortDate(i.due_date) : "—"}</td>
         <td className="wrap">
           {i.draft_id ? (
@@ -155,7 +162,8 @@ export default async function SalesInvoices({
       </div>
 
       <div className="actions">
-        <Link href="/pos" className="btn">+ New sale</Link>
+        <Link href="/sales/new" className="btn">+ New sales invoice</Link>
+        <Link href="/pos" className="btn ghost">Open POS</Link>
       </div>
 
       <div className="kpis">
@@ -205,9 +213,12 @@ export default async function SalesInvoices({
             emptyLabel="No sales invoices"
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}
+            filters={[{ key: "channel", allLabel: "All channels",
+                        options: [{ value: "POS", label: "POS" }, { value: "INVOICE", label: "Sales invoice" }] }]}
             columns={[
               { key: "doc_no", label: "Invoice #", sortable: true },
               { key: "posting_date", label: "Date", sortable: true },
+              { key: "channel", label: "Channel", sortable: true },
               { key: "due_date", label: "Due Date", sortable: true },
               { key: "partner_name", label: "Customer", sortable: true },
               { key: "gross_total", label: "Total", sortable: true, align: "r" },

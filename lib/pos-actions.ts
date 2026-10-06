@@ -30,6 +30,8 @@ export type PosSale = {
   lines: Array<{
     itemId: string; qty: number; unitPrice: number; discountPct: number;
     taxCodeId: string | null; serials: string[]; warrantyMonths: number | null;
+    /** Given free: not charged, still leaves stock; the reason names the expense. */
+    focReasonId?: string | null;
   }>;
   payments: Array<{ accountId: string; amount: number }>;
   /** A key the till generated for this attempt, so a double click posts once. */
@@ -62,6 +64,7 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
         discountPct: Number(l.discountPct) || 0, taxCodeId: l.taxCodeId || null,
         serials: l.serials.length ? l.serials : undefined,
         warrantyMonths: l.warrantyMonths,
+        focReasonId: l.focReasonId || null,
       }));
     if (lines.length === 0) return { ok: false, error: "The sale has no lines." };
 
