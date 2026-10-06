@@ -1297,7 +1297,19 @@ export default async function DocumentPage({
       )}
 
 
-      {isOpenOrder && orderLines.length > 0 && (
+      {isOpenOrder && orderLines.length > 0 && doc.doc_type === "PURCHASE_ORDER" && (
+        <div className="card">
+          <div className="card-body" style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+            <span className="page-sub" style={{ flex: 1 }}>
+              {orderLines.length} line{orderLines.length === 1 ? "" : "s"} still to receive.
+              Phones are scanned in on the goods receipt before it posts.
+            </span>
+            <Link href={`/purchases/receive/new?order=${doc.id}`} className="btn">Receive goods</Link>
+          </div>
+        </div>
+      )}
+
+      {isOpenOrder && orderLines.length > 0 && doc.doc_type === "SALES_ORDER" && (
         <FulfillOrderForm
           kind={doc.doc_type === "SALES_ORDER" ? "sales" : "purchase"}
           orderId={doc.id}

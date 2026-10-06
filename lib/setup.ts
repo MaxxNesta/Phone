@@ -177,6 +177,9 @@ export async function scaffoldCompany(input: SetupInput) {
         (${co.id}, 'CTN', 'Carton'),
         (${co.id}, 'KG',  'Kilogram')`;
 
+    // Storage, Colour and SIM: how a phone is picked (migration 0121).
+    await tx`select fn_seed_phone_attributes(${co.id})`;
+
     await tx`
       insert into price_level (company_id, code, name, sort_order) values
         (${co.id}, 'WHOLE',  'Wholesale', 1),

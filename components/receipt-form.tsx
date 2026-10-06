@@ -1,18 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { Fragment, useActionState, useEffect, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
-import { SerialEntry, type ScannedSerial } from "./serial-entry";
+import { ImeiPanel, rowsProblem, type UnitRow } from "./imei-panel";
+import { PhonePicker, type VariantCatalog } from "./phone-picker";
+import { ArrowLeft, ClipboardList, Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
-type Partner = { id: string; code: string; name: string; currency?: string | null };
+type Partner = {
+  id: string; code: string; name: string; currency?: string | null;
+  company_name?: string | null; address?: string | null; phone?: string | null;
+  township?: string | null; region?: string | null; payment_terms_days?: number | null;
+};
+/** A purchase order being received: its supplier, and what is still owed. */
+export type OrderToReceive = {
+  id: string; docNo: string; partnerId: string; locationId: string | null;
+  lines: { lineId: string; itemId: string; qty: number; unitCost: number }[];
+};
 type Location = { id: string; code: string; name: string };
 type Line = {
   key: number; itemId: string; qty: string; unitCost: string;
@@ -31,7 +42,9 @@ type Line = {
   /** The order line behind the bill line, where the bill came from an order. */
   orderLineId?: string | null;
   /** The handsets in the box, for an item tracked by IMEI. */
-  serials?: ScannedSerial[];
+  serials?: UnitRow[];
+  /** What the purchase order still owes on this line, when receiving one. */
+  ordered?: number;
 };
 type MatchLine = {
   lineId: string; itemId: string; itemCode: string; itemName: string;
@@ -76,7 +89,13 @@ export function ReceiptForm({
   fx,
   saveDraft,
   draft,
+  catalog,
+  order,
 }: {
+  /** Brand, model and variant lists, so a phone is picked the way it is sold. */
+  catalog?: VariantCatalog;
+  /** Receiving a purchase order: its lines arrive filled in, against it. */
+  order?: OrderToReceive | null;
   /** Keeps a half-scanned receipt; nothing moves until it posts. */
   saveDraft?: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   /** A receipt draft being resumed. */
@@ -124,9 +143,18 @@ export function ReceiptForm({
   const [saved] = useState(() => {
     try { return draft?.state ? JSON.parse(draft.state) : null; } catch { return null; }
   });
-  const [lines, setLines] = useState<Line[]>(saved?.lines?.length ? saved.lines : [
-    { key: 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
-  const [partnerId, setPartnerId] = useState<string>(saved?.partnerId ?? "");
+  const [lines, setLines] = useState<Line[]>(saved?.lines?.length ? saved.lines
+    : order ? order.lines.map((l, i) => ({
+        key: i + 1, itemId: l.itemId, qty: String(l.qty), unitCost: l.unitCost ? String(l.unitCost) : "",
+        sourceLineId: l.lineId, ordered: l.qty }))
+    : [{ key: 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
+  const [partnerId, setPartnerId] = useState<string>(saved?.partnerId ?? order?.partnerId ?? "");
+  /** The line whose IMEIs are open below the table. */
+  const [imeiKey, setImeiKey] = useState<number | null>(null);
+  /** Lines being picked by name rather than brand and model. */
+  const [byName, setByName] = useState<number[]>([]);
+  /** A line whose phone is being changed. */
+  const [changing, setChanging] = useState<number | null>(null);
   const base = fx?.base ?? "MMK";
   const [currency, setCurrency] = useState<string>(saved?.currency ?? base);
   const [rate, setRate] = useState<string>(saved?.rate ?? "");
@@ -140,7 +168,8 @@ export function ReceiptForm({
   }, [draftResult]);
   const [receivedTime, setReceivedTime] = useState("");
   const [matchedPiId, setMatchedPiId] = useState("");
-  const [locationId, setLocationId] = useState<string>(saved?.locationId ?? locations[0]?.id ?? "");
+  const [locationId, setLocationId] = useState<string>(
+    saved?.locationId ?? order?.locationId ?? locations[0]?.id ?? "");
   // Chose "not matched" deliberately, as opposed to not having answered yet.
   // Only distinguishable while more than one invoice is waiting; with one it
   // is picked for you and this is how you say no to it.
@@ -224,7 +253,7 @@ export function ReceiptForm({
    * asked; one is answered.
    */
   useEffect(() => {
-    if (initialInvoiceId) return;
+    if (initialInvoiceId || order) return;
     if (!partnerId) return;
     if (matchedPiId && openInvoices.some((d) => d.id === matchedPiId)) return;
     const hadMatch = matchedPiId !== "";
@@ -296,132 +325,181 @@ export function ReceiptForm({
         sourceLineId: l.sourceLineId ?? null,
         batchNo: l.batchNo?.trim() || null,
         expiryDate: l.expiryDate || null,
-        serials: (l.serials ?? []).map((x) => x.serial),
-        unitDetails: (l.serials ?? []).filter((x) => x.imei2).map((x) => ({ serial: x.serial, imei2: x.imei2 })),
+        serials: (l.serials ?? []).map((x) => x.serial.trim()).filter(Boolean),
+        unitDetails: (l.serials ?? []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
+          .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
       }))
   );
 
   // A phone line whose IMEI count is not its quantity cannot post; saying so
   // here saves a round trip to be told.
+  const entered = (l: Line) => (l.serials ?? []).filter((x) => x.serial.trim()).length;
   const serialShort = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
-    && (l.serials?.length ?? 0) !== Number(l.qty));
+    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [])));
+  const tracked = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0);
+  const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
+  const supplier = suppliers.find((s) => s.id === partnerId) ?? null;
+  const units = lines.reduce((s, l) => s + (l.itemId ? Number(l.qty) || 0 : 0), 0);
+  const baseTotal = foreign && !matchedPi && Number(rate) > 0 ? total * Number(rate) : total;
+  const lineCols = 8 + (order ? 1 : 0) + (matchedPi ? 1 : 0);
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide gr">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
-
-      {state && "error" in state && <div className="alert">{state.error}</div>}
-
       <input type="hidden" name="lines" value={payload} />
+      <input type="hidden" name="source_document_id" value={matchedPiId || order?.id || ""} />
       {saveDraft && (
         <>
           <input type="hidden" name="draft_id" value={draftId} />
+          {order && <input type="hidden" name="draft_order_id" value={order.id} />}
           <input type="hidden" name="draft_state"
-            value={JSON.stringify({ lines: lines.map((l) => ({ ...l, sourceLineId: null })),
+            value={JSON.stringify({ lines: lines.map((l) => ({ ...l, sourceLineId: order ? l.sourceLineId : null })),
               partnerId, currency, rate, docDate, locationId })} />
         </>
       )}
-      {draftResult && "error" in draftResult && <div className="alert">{draftResult.error}</div>}
 
-      <div className="card">
-        <div className="card-head">
-          <h2>Supplier and warehouse</h2>
+      {/* The document's own header: what it is, where it stands, and the two
+          things to do with it — kept in view rather than at the foot. */}
+      <div className="gr-head">
+        <Link href="/purchases/receive" className="gr-back" aria-label="Back to goods receipts">
+          <ArrowLeft size={18} aria-hidden="true" />
+        </Link>
+        <div className="gr-title">
+          <h1>Goods Receipt <span className="pill draft">{draftId ? "Draft" : "New"}</span></h1>
+          <p className="page-sub">
+            {order ? <>Receiving against <Link href={`/documents/${order.id}`}>{order.docNo}</Link></>
+              : "Receive goods from a supplier"}
+          </p>
         </div>
-        <div className="card-body">
-          <div className="row">
-            <div className="field">
-              <label htmlFor="partner_id">Supplier</label>
-              <PartnerPicker
-                partners={suppliers as never}
-                value={partnerId}
-                placeholder="Type a supplier…"
-                onPick={(id) => {
-                  // Their invoice, and the lines it filled in, belong to the
-                  // old supplier. Both go.
-                  clearMatch(matchedPiId !== "");
-                  setUnmatched(false);
-                  setPartnerId(id);
-                  // Their currency, at the latest rate on file.
-                  const cur = suppliers.find((s) => s.id === id)?.currency || base;
-                  setCurrency(cur);
-                  setRate(cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
-                }}
-              />
-            </div>
+        <div className="gr-actions">
+          {saveDraft && (
+            <button type="submit" formAction={draftAction} formNoValidate className="ghost"
+              disabled={savingDraft || pending}>
+              {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
+            </button>
+          )}
+          <button type="submit" disabled={pending || total === 0 || serialShort.length > 0}>
+            {pending ? "Posting…" : "Post GR"}
+          </button>
+        </div>
+      </div>
 
-            <div className="field">
-              <label htmlFor="location_id">Warehouse</label>
-              <select id="location_id" name="location_id" value={locationId}
-                      onChange={(e) => setLocationId(e.target.value)} required>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
-            </div>
+      {state && "error" in state && <div className="alert">{state.error}</div>}
+      {draftResult && "error" in draftResult && <div className="alert">{draftResult.error}</div>}
+      {draftResult && "ok" in draftResult && !savingDraft && (
+        <div className="hint" role="status">Draft saved — nothing is in stock until it posts.</div>
+      )}
+      {serialShort.length > 0 && (
+        <div className="hint low" role="status">
+          Every phone needs a valid IMEI before posting:{" "}
+          {serialShort.map((l) => `${byId(l.itemId)?.name ?? ""} ${entered(l)}/${l.qty}`).join(", ")}
+        </div>
+      )}
 
-            <div className="field">
-              <label htmlFor="doc_date">Received date</label>
-              <input id="doc_date" name="doc_date" type="date" value={docDate}
-                onChange={(e) => setDocDate(e.target.value)} required />
+      <div className="gr-top">
+        <div className="card">
+          <div className="card-head"><h2><ClipboardList size={18} aria-hidden="true" /> GR information</h2></div>
+          <div className="card-body">
+            <div className="row">
+              <div className="field">
+                <label htmlFor="partner_id">Supplier</label>
+                {order ? (
+                  <>
+                    <input type="hidden" name="partner_id" value={partnerId} />
+                    <input type="text" value={supplier?.name ?? ""} readOnly aria-label="Supplier" />
+                  </>
+                ) : (
+                  <PartnerPicker
+                    partners={suppliers as never}
+                    value={partnerId}
+                    placeholder="Type a supplier…"
+                    onPick={(id) => {
+                      // Their invoice, and the lines it filled in, belong to the
+                      // old supplier. Both go.
+                      clearMatch(matchedPiId !== "");
+                      setUnmatched(false);
+                      setPartnerId(id);
+                      // Their currency, at the latest rate on file.
+                      const cur = suppliers.find((s) => s.id === id)?.currency || base;
+                      setCurrency(cur);
+                      setRate(cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
+                    }}
+                  />
+                )}
+              </div>
+              <div className="field">
+                <label htmlFor="location_id">Warehouse</label>
+                <select id="location_id" name="location_id" value={locationId}
+                        onChange={(e) => setLocationId(e.target.value)} required>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="doc_date">GR date</label>
+                <input id="doc_date" name="doc_date" type="date" value={docDate}
+                  onChange={(e) => setDocDate(e.target.value)} required />
+              </div>
+              <div className="field">
+                <label htmlFor="received_time">Time</label>
+                <input id="received_time" name="received_time" type="time" value={receivedTime}
+                  onChange={(e) => setReceivedTime(e.target.value)} />
+              </div>
+              <div className="field">
+                <label htmlFor="reference">Reference</label>
+                <input id="reference" name="reference" type="text"
+                  defaultValue={order ? `Against ${order.docNo}` : ""} placeholder="Delivery note no." />
+              </div>
+              {fx && !matchedPi && (
+                <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
+                  onChange={(c, r) => { setCurrency(c); setRate(r); }} />
+              )}
             </div>
-
-            <div className="field">
-              <label htmlFor="received_time">Time</label>
-              <input id="received_time" name="received_time" type="time" value={receivedTime}
-                onChange={(e) => setReceivedTime(e.target.value)} />
-              <span className="hint">Orders same-day receipts correctly for FIFO</span>
+            <div className="field" style={{ marginTop: 20 }}>
+              <label htmlFor="memo">Remarks</label>
+              <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
             </div>
+          </div>
+        </div>
 
-            <div className="field">
-              <label htmlFor="reference">Reference</label>
-              <input id="reference" name="reference" type="text" placeholder="Delivery note no." />
-            </div>
-
-            {fx && !matchedPi && (
-              <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
-                onChange={(c, r) => { setCurrency(c); setRate(r); }} />
+        <div className="card gr-supplier">
+          <div className="card-head"><h2><Building2 size={18} aria-hidden="true" /> Supplier info</h2></div>
+          <div className="card-body">
+            {supplier ? (
+              <>
+                <div className="gr-supplier-name">{supplier.name}</div>
+                {supplier.company_name && <div className="subline">{supplier.company_name}</div>}
+                <dl className="facts">
+                  {(supplier.address || supplier.township || supplier.region) && (
+                    <><dt>Address</dt><dd>{[supplier.address, supplier.township, supplier.region].filter(Boolean).join(", ")}</dd></>
+                  )}
+                  {supplier.phone && <><dt>Phone</dt><dd>{supplier.phone}</dd></>}
+                  <dt>Currency</dt><dd>{supplier.currency || base}</dd>
+                  {supplier.payment_terms_days != null && <><dt>Terms</dt><dd>{supplier.payment_terms_days} days</dd></>}
+                </dl>
+                <Link href={`/partners/${supplier.id}`} className="btn ghost" style={{ width: "100%", justifyContent: "center" }}>
+                  View supplier
+                </Link>
+              </>
+            ) : (
+              <p className="subline">Choose a supplier to see their details.</p>
             )}
           </div>
         </div>
       </div>
 
-      {waitingOrders.length > 0 && (
-        <div className="alert" style={{
-          marginBottom: "1rem",
-          borderColor: "var(--warn)", color: "var(--warn)",
-          background: "color-mix(in srgb, var(--warn) 8%, transparent)",
-        }}>
-          <strong>
-            This supplier has {waitingOrders.length === 1 ? "an open purchase order" :
-              `${waitingOrders.length} open purchase orders`} for goods that have not arrived.
-          </strong>{" "}
-          Receiving here records the stock but answers no order, so it stays
-          outstanding — and overdue once its Needed-by date passes — with the
-          goods already on your shelf.
-          <div className="actions" style={{ marginTop: "0.6rem", flexWrap: "wrap" }}>
-            {waitingOrders.map((o) => (
-              <Link key={o.orderId} href={`/purchases/receive?order=${o.orderId}`}
-                    className="btn ghost tiny">
-                Receive against {o.orderNo} ({o.lines.map((l) => `${l.itemCode} ${fmt(l.qty)}`).join(", ")})
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
       <MaybeSamePurchase lines={sameTwice} />
 
-      <div className="card">
-        <div className="card-head">
-          <h2>Matching</h2>
-        </div>
-        <div className="card-body">
-          <div className="field">
-            <label htmlFor="source_document_id">Match existing supplier invoice</label>
-            <input type="hidden" name="source_document_id" value={matchedPiId} />
+      {!order && partnerId && openInvoices.length > 0 && (
+        <div className="card">
+          <div className="card-head"><h2>Supplier invoice</h2></div>
+          <div className="card-body">
+            <div className="field">
+              <label htmlFor="source_document_id">Match an invoice waiting on these goods</label>
             <select id="source_document_id"
               value={matchedPiId || (unmatched ? NONE : "")}
               onChange={(e) => {
@@ -479,149 +557,180 @@ export function ReceiptForm({
           </div>
         </div>
       </div>
+      )}
 
       <div className="card">
         <div className="card-head">
-          <h2>Lines</h2>
+          <h2><Package size={18} aria-hidden="true" /> Items</h2>
           <span className="actions">
-            {matchedPi && (
-              <span className="page-sub">
-                filled from {matchedPi.doc_no}
-              </span>
+            {matchedPi && <span className="page-sub">filled from {matchedPi.doc_no}</span>}
+            {!order && waitingOrders.length > 0 && (
+              <details className="gr-frompo">
+                <summary className="btn ghost">Add from PO <ChevronDown size={14} aria-hidden="true" /></summary>
+                <div className="gr-frompo-menu">
+                  {waitingOrders.map((o) => (
+                    <Link key={o.orderId} href={`/purchases/receive/new?order=${o.orderId}`}>
+                      <strong>{o.orderNo}</strong>
+                      <span className="subline">{o.lines.map((l) => `${l.itemCode} ${fmt(l.qty)}`).join(", ")}</span>
+                    </Link>
+                  ))}
+                </div>
+              </details>
             )}
-            <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
+            <button type="button" onClick={addLine}><Plus size={15} aria-hidden="true" /> Add item</button>
           </span>
         </div>
+        {!order && waitingOrders.length > 0 && (
+          <p className="hint" style={{ padding: "10px 16px 0", margin: 0 }}>
+            This supplier has {waitingOrders.length === 1 ? "an open purchase order" : `${waitingOrders.length} open purchase orders`}.
+            Receiving without one leaves it open — use Add from PO if these goods answer it.
+          </p>
+        )}
 
         <div className="tablewrap">
-          <table className="linetable">
+          <table className="linetable grlines">
             <thead>
               <tr>
+                <th className="r">#</th>
                 <th>Item</th>
+                {order && <th className="r">Ordered</th>}
                 {matchedPi && <th className="r">Billed</th>}
-                <th>Unit</th><th className="r">Qty</th>
+                <th className="r">Receive qty</th>
+                <th>Unit</th>
                 <th className="r">Unit cost{foreign && !matchedPi ? ` (${currency})` : ""}</th>
-                <th className="r">Value</th><th />
+                <th>IMEI / serial</th>
+                <th className="r">Subtotal</th>
+                <th />
               </tr>
             </thead>
             <tbody>
-              {lines.map((l) => {
+              {lines.map((l, idx) => {
                 const item = byId(l.itemId);
                 const billedLine = matchedPi?.lines.find(
                   (pl) => pl.lineId === l.sourceLineId || pl.itemId === l.itemId);
                 const qtyMismatch = matchedPi && billedLine && Number(l.qty) !== billedLine.qty;
+                const picking = !l.itemId || changing === l.key;
+                const n = entered(l);
+                const q = Number(l.qty) || 0;
                 return (
-                  <tr key={l.key}>
-                    <td style={{ minWidth: 240 }}>
-                      <ItemPicker
-                        mode="purchase"
-                        items={items}
-                        categories={categories}
-                        uoms={uoms}
-                        value={l.itemId}
-                        onPick={(id) => pickItem(l.key, id)}
-                        onCreated={addItem}
-                      />
-                    </td>
-                    {matchedPi && (
-                      <td className="r" style={{ color: qtyMismatch || (l.itemId && !billedLine) ? "var(--warn)" : undefined }}>
-                        {billedLine ? fmt(billedLine.qty)
-                          : l.itemId ? <span className="subline" style={{ color: "inherit" }}>not on this bill</span>
-                            : "—"}
+                  <Fragment key={l.key}>
+                    <tr className={imeiLine?.key === l.key ? "gr-current" : undefined}>
+                      <td className="r subline">{idx + 1}</td>
+                      <td style={{ minWidth: 240 }}>
+                        {item && !picking ? (
+                          <span className="prod">
+                            <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
+                            <span>
+                              <span className="prod-name">{item.name}</span>
+                              <span className="prod-sub" style={{ display: "block" }}>
+                                {item.code}
+                                {!l.sourceLineId && (
+                                  <> · <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button></>
+                                )}
+                              </span>
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="subline">Choose below</span>
+                        )}
                       </td>
-                    )}
-                    {/* Which unit this quantity is in. Only where the item
-                        has packs — an item bought only in its own unit has
-                        one answer, and a picker with one option is a
-                        question already answered. */}
-                    <td className="narrow">
-                      {(item?.packs ?? []).length > 0 ? (
-                        <select
-                          value={l.uomId ?? ""}
-                          onChange={(e) => setLine(l.key, { uomId: e.target.value })}
-                          aria-label={`Unit for ${item?.code ?? "line"}`}
-                        >
-                          <option value="">{item?.uom_code}</option>
-                          {(item?.packs ?? []).map((p) => (
-                            <option key={p.uomId} value={p.uomId}>
-                              {p.code} ({Number(p.factor)})
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="code" style={{ color: "var(--muted)" }}>
-                          {item?.uom_code ?? "—"}
-                        </span>
+                      {order && <td className="r">{l.ordered != null ? fmt(l.ordered) : "—"}</td>}
+                      {matchedPi && (
+                        <td className="r" style={{ color: qtyMismatch || (l.itemId && !billedLine) ? "var(--warn)" : undefined }}>
+                          {billedLine ? fmt(billedLine.qty)
+                            : l.itemId ? <span className="subline" style={{ color: "inherit" }}>not on this bill</span>
+                              : "—"}
+                        </td>
                       )}
-                    </td>
-                    <td className="narrow">
-                      <input type="number" min="0" step="any" value={l.qty}
-                        onChange={(e) => setLine(l.key, { qty: e.target.value })}
-                        aria-label="Quantity"
-                        style={qtyMismatch ? { borderColor: "var(--warn)" } : undefined} />
-                    </td>
-                    <td className="narrow">
-                      {/* The bill is the cost of these goods, so it is not
-                          typed over here. Quantity stays the receiver's to
-                          state: what arrived is what arrived. */}
-                      <input type="number" min="0" step="any" value={l.unitCost}
-                        onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
-                        aria-label="Unit cost"
-                        readOnly={!!billedLine}
-                        title={billedLine
-                          ? `Billed at ${fmt(billedLine.unitPrice)} on ${matchedPi?.doc_no}`
-                          : undefined}
-                        style={billedLine
-                          ? { background: "var(--surface-2, #f4f4f5)", cursor: "not-allowed" }
-                          : undefined} />
-                    </td>
-                    <td className="r">{fmt(amount(l))}</td>
-                    <td className="tight">
-                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label="Remove line" disabled={lines.length === 1}>×</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {lines.filter((l) => {
-                const it = byId(l.itemId);
-                return it && !it.tracks_serial && it.variant;
-              }).map((l) => {
-                const item = byId(l.itemId)!;
-                return (
-                  <tr key={`noserial-${l.key}`} className="batchrow">
-                    <td colSpan={matchedPi ? 8 : 7}>
-                      <span className="hint">
-                        {item.code} is not tracked by IMEI, so no IMEI box appears.{" "}
-                        <Link href={`/items/${item.id}`} target="_blank" style={{ color: "var(--link)" }}>
-                          Turn on IMEI tracking
-                        </Link>{" "}
-                        (Phone settings, at the bottom of the product page), then reload this form.
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              {lines.filter((l) => byId(l.itemId)?.tracks_serial).map((l) => {
-                const item = byId(l.itemId)!;
-                return (
-                  <tr key={`serial-${l.key}`} className="batchrow">
-                    <td colSpan={matchedPi ? 8 : 7}>
-                      <SerialEntry
-                        label={`${item.code} — IMEI of each unit`}
-                        qty={Number(l.qty) || 0}
-                        value={l.serials ?? []}
-                        withImei2
-                        onChange={(v) => setLine(l.key, {
-                          serials: v,
-                          // Scanning drives the quantity until somebody types a
-                          // different one; then the count is checked against it.
-                          ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
-                            ? { qty: String(v.length) } : {}),
-                        })}
-                      />
-                    </td>
-                  </tr>
+                      <td className="narrow">
+                        <input type="number" min="0" step="any" value={l.qty}
+                          onChange={(e) => setLine(l.key, { qty: e.target.value })}
+                          aria-label="Receive quantity"
+                          style={qtyMismatch ? { borderColor: "var(--warn)" } : undefined} />
+                      </td>
+                      {/* Which unit this quantity is in. Only where the item
+                          has packs — one option is a question already answered. */}
+                      <td className="narrow">
+                        {(item?.packs ?? []).length > 0 ? (
+                          <select value={l.uomId ?? ""} onChange={(e) => setLine(l.key, { uomId: e.target.value })}
+                            aria-label={`Unit for ${item?.code ?? "line"}`}>
+                            <option value="">{item?.uom_code}</option>
+                            {(item?.packs ?? []).map((p) => (
+                              <option key={p.uomId} value={p.uomId}>{p.code} ({Number(p.factor)})</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="subline">{item?.uom_code ?? "—"}</span>
+                        )}
+                      </td>
+                      <td className="narrow">
+                        {/* The bill is the cost of these goods, so it is not
+                            typed over here. Quantity stays the receiver's to
+                            state: what arrived is what arrived. */}
+                        <input type="number" min="0" step="any" value={l.unitCost}
+                          onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
+                          aria-label="Unit cost"
+                          readOnly={!!billedLine}
+                          title={billedLine ? `Billed at ${fmt(billedLine.unitPrice)} on ${matchedPi?.doc_no}` : undefined}
+                          style={billedLine ? { background: "var(--ground)", cursor: "not-allowed" } : undefined} />
+                      </td>
+                      <td>
+                        {item?.tracks_serial ? (
+                          <span className="gr-imei">
+                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? []) ? "ok" : "warn"}`}>
+                              {n} / {q} entered
+                            </span>
+                            <button type="button" className="dt-tool" onClick={() => setImeiKey(l.key)}
+                              disabled={q === 0}>View IMEIs</button>
+                          </span>
+                        ) : item?.variant ? (
+                          <Link href={`/items/${item.id}`} target="_blank" className="subline">Not tracked — turn on</Link>
+                        ) : (
+                          <span className="subline">—</span>
+                        )}
+                      </td>
+                      <td className="r">{fmt(amount(l))}</td>
+                      <td className="tight">
+                        <button type="button" className="danger tiny" onClick={() => removeLine(l.key)}
+                          aria-label="Remove line" disabled={lines.length === 1}>
+                          <Trash2 size={15} aria-hidden="true" />
+                        </button>
+                      </td>
+                    </tr>
+                    {picking && (
+                      <tr className="gr-pickrow">
+                        <td colSpan={lineCols}>
+                          {catalog && !byName.includes(l.key) ? (
+                            <div className="gr-pick">
+                              <PhonePicker catalog={catalog} value={l.itemId}
+                                onPick={(id) => { pickItem(l.key, id); setChanging(null); }} />
+                              <button type="button" className="linkish" onClick={() => setByName((k) => [...k, l.key])}>
+                                Search by name instead
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="gr-pick">
+                              <ItemPicker
+                                mode="purchase"
+                                items={items}
+                                categories={categories}
+                                uoms={uoms}
+                                value={l.itemId}
+                                onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
+                                onCreated={addItem}
+                              />
+                              {catalog && (
+                                <button type="button" className="linkish"
+                                  onClick={() => setByName((k) => k.filter((x) => x !== l.key))}>
+                                  Pick by brand and model
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
               {/* The lot, for items that keep one. On its own row beneath the
@@ -632,7 +741,7 @@ export function ReceiptForm({
                 const item = byId(l.itemId)!;
                 return (
                   <tr key={`batch-${l.key}`} className="batchrow">
-                    <td colSpan={matchedPi ? 8 : 7}>
+                    <td colSpan={lineCols}>
                       <span className="batchrow-label">
                         {item.code} — which lot?
                       </span>
@@ -677,26 +786,6 @@ export function ReceiptForm({
             </tbody>
           </table>
         </div>
-
-        <div className="totalbar">
-          <span style={{ color: "var(--muted)" }}>
-            Received value
-            {matchedPi && unbilledValue > 0 && (
-              <span className="subline" style={{ display: "block" }}>
-                {fmt(total - unbilledValue)} against {matchedPi.doc_no} ·{" "}
-                {fmt(unbilledValue)} not on that bill, arriving unbilled
-              </span>
-            )}
-          </span>
-          <span className="big">
-            {foreign && !matchedPi
-              ? <>{fmt(total)} {currency}
-                  {Number(rate) > 0 && <span className="subline" style={{ display: "block" }}>
-                    ≈ {fmt(total * Number(rate))} {base} at {Number(rate).toLocaleString("en-US")}
-                  </span>}</>
-              : <>{fmt(total)} {base}</>}
-          </span>
-        </div>
       </div>
 
       {matchedPi && (
@@ -722,11 +811,6 @@ export function ReceiptForm({
         </div>
       )}
 
-      <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
-      </div>
-
       {freeLines.length > 0 && (
         <div className="alert" style={{ marginBottom: "0.75rem" }}>
           <strong>
@@ -743,28 +827,67 @@ export function ReceiptForm({
         </div>
       )}
 
-      <div className="actions">
-        {serialShort.length > 0 && (
-          <span className="low" role="status">
-            Scan one IMEI per unit: {serialShort.map((l) => `${byId(l.itemId)?.code} ${l.serials?.length ?? 0}/${l.qty}`).join(", ")}
-          </span>
-        )}
-        <button type="submit" disabled={pending || total === 0 || serialShort.length > 0}>
-          {pending ? "Posting…" : "Post goods receipt"}
-        </button>
-        {saveDraft && (
-          <button type="submit" formAction={draftAction} formNoValidate className="btn ghost"
-            disabled={savingDraft || pending}>
-            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
-          </button>
-        )}
-        {draftResult && "ok" in draftResult && !savingDraft && (
-          <span className="page-sub" role="status">Draft saved — nothing is in stock until it posts.</span>
-        )}
-        <span className="page-sub">
-          Stock arrives now, at this cost — Dr Inventory / Cr GR/IR Clearing.
-          Post the supplier&rsquo;s invoice separately whenever it arrives.
-        </span>
+
+      <div className="gr-bottom">
+        <div className="card">
+          {imeiLine ? (
+            <ImeiPanel
+              title={byId(imeiLine.itemId)?.name ?? ""}
+              qty={Number(imeiLine.qty) || 0}
+              rows={imeiLine.serials ?? []}
+              onChange={(rows) => setLine(imeiLine.key, { serials: rows })}
+            />
+          ) : (
+            <div className="card-body subline">
+              IMEI entry opens here for any phone tracked by IMEI — one row per phone received.
+            </div>
+          )}
+        </div>
+
+        <div className="gr-side">
+          <div className="card">
+            <div className="card-head"><h2>Summary{foreign && !matchedPi ? ` (${currency})` : ` (${base})`}</h2></div>
+            <div className="card-body">
+              <dl className="gr-sum">
+                <dt>Lines</dt><dd>{lines.filter((l) => l.itemId).length}</dd>
+                <dt>Units</dt><dd>{fmt(units)}</dd>
+                {matchedPi && unbilledValue > 0 && (
+                  <><dt>Not on {matchedPi.doc_no}</dt><dd>{fmt(unbilledValue)}</dd></>
+                )}
+              </dl>
+              <div className="gr-total">
+                <span>Total</span>
+                <span>
+                  {fmt(total)}
+                  {foreign && !matchedPi && Number(rate) > 0 && (
+                    <span className="subline" style={{ display: "block", textAlign: "right" }}>
+                      ≈ {fmt(baseTotal)} {base} at {Number(rate).toLocaleString("en-US")}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <details className="card gr-preview">
+            <summary className="card-head">
+              <h2>Posting preview</h2>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div className="card-body">
+              <table>
+                <thead><tr><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
+                <tbody>
+                  <tr><td>Inventory</td><td className="r">{fmt(baseTotal)}</td><td /></tr>
+                  <tr><td>GR/IR clearing{matchedPi ? ` (clears ${matchedPi.doc_no})` : ""}</td><td /><td className="r">{fmt(baseTotal)}</td></tr>
+                </tbody>
+              </table>
+              <p className="subline" style={{ marginTop: 8 }}>
+                Stock arrives at this cost. The supplier&rsquo;s invoice posts separately and clears GR/IR.
+              </p>
+            </div>
+          </details>
+        </div>
       </div>
     </form>
   );

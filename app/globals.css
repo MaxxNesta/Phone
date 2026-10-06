@@ -4946,3 +4946,96 @@ input.erp-search:focus { border: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var
   background: var(--surface); color: var(--ink);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04);
 }
+
+/* ======================================================= goods receipt ====
+   The receipt as one document: a header with what it is and what to do,
+   GR information beside the supplier, the items, then IMEI entry for the
+   chosen line beside the summary and the posting preview. */
+
+.gr { gap: 16px; }
+.gr .card { margin: 0; }
+.gr-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.gr-back {
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--line-soft); color: var(--ink);
+}
+.gr-back:hover { background: var(--line-soft); }
+.gr-title { flex: 1; min-width: 220px; }
+.gr-title h1 { display: flex; align-items: center; gap: 10px; }
+.gr-title h1 .pill { font-size: var(--t-sm); font-weight: 600; letter-spacing: 0; }
+.gr-title .page-sub { margin: 2px 0 0; }
+.gr-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.gr .card-head h2 { display: flex; align-items: center; gap: 8px; }
+.gr .card-head h2 svg { color: var(--ink-soft); }
+
+.gr-top { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.gr-supplier-name { font-weight: 600; font-size: 1rem; }
+.gr-supplier .facts { margin: 12px 0 16px; }
+
+.gr-frompo { position: relative; }
+.gr-frompo > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.gr-frompo > summary::-webkit-details-marker { display: none; }
+.gr-frompo-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 280px;
+  background: var(--surface); border-radius: 12px; padding: 6px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.08);
+  display: flex; flex-direction: column;
+}
+.gr-frompo-menu a { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 8px; }
+.gr-frompo-menu a:hover { background: var(--line-soft); }
+
+.grlines td { vertical-align: middle; }
+.grlines tr.gr-current > td { background: color-mix(in srgb, var(--focus) 5%, transparent); }
+.gr-imei { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.gr-pick { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; padding: 4px 0; }
+
+/* Brand, model and one choice per attribute, side by side. */
+.vpick { display: flex; flex-wrap: wrap; gap: 12px; flex: 1; }
+.vpick-field { display: flex; flex-direction: column; gap: 6px; min-width: 150px; flex: 1 1 150px; max-width: 220px; }
+.vpick-field > span { font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); }
+
+.gr-bottom { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.gr-side { display: flex; flex-direction: column; gap: 16px; }
+.gr-sum { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 0 0 12px; }
+.gr-sum dt { color: var(--muted); }
+.gr-sum dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.gr-total {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 14px 16px; border-radius: 12px; background: var(--ground);
+  font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.gr-preview > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+.gr-preview > summary::-webkit-details-marker { display: none; }
+.gr-preview[open] > summary svg { transform: rotate(180deg); }
+
+/* IMEI entry: one row per phone. */
+.imeipanel-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap;
+  padding: 16px; border-bottom: 1px solid var(--line-soft);
+}
+.imeipanel-head h3 { margin: 0 0 4px; font-size: var(--t-lg); font-weight: 600; }
+.imeipanel-head .subline { display: inline-flex; align-items: center; gap: 6px; }
+.imeipanel-tools { display: flex; gap: 4px; flex-wrap: wrap; }
+.imeipanel-tools label.dt-tool { cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 10px; border-radius: 10px; color: var(--link); font-size: 0.875rem; font-weight: 500; }
+.imeipanel-tools label.dt-tool:hover { background: color-mix(in srgb, var(--link) 8%, transparent); }
+.imeipanel-paste { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--line-soft); }
+.imeitable td { padding: 6px 8px; }
+.imeitable input { height: 38px; min-height: 38px; font-family: var(--sans); font-variant-numeric: tabular-nums; }
+.ok-qty { color: var(--ok); }
+.low { color: var(--warn); }
+
+@media (max-width: 1100px) {
+  .gr-top, .gr-bottom { grid-template-columns: 1fr; }
+}
+.grlines tr.gr-pickrow > td { padding: 4px 16px 16px; background: var(--surface); }
+.grlines tr.gr-pickrow .vpick-field { max-width: 240px; }
+.imeitable input { min-width: 172px; padding: 0 10px; font-size: 0.9375rem; }
+.imeitable td:nth-child(4) input { min-width: 130px; }
+.grlines td.narrow { width: 150px; }
+.grlines td.narrow input { min-width: 120px; }
+.grlines td.narrow { width: 128px; }
+.grlines td.narrow input { min-width: 104px; }
+.grlines .prod-name { white-space: normal; }
+.grlines td:nth-child(2) { white-space: normal; min-width: 220px; }

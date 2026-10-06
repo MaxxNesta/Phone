@@ -1,7 +1,8 @@
 import { getFormData, createGoodsReceipt, saveReceiptDraft } from "@/lib/actions";
 import {
   getOpenPurchaseInvoices, getOpenPurchaseOrders, getGrirCollisions,
-  getBillReceiptContext, getRelatedDocuments, getDocumentDraft,
+  getBillReceiptContext, getRelatedDocuments, getDocumentDraft, getVariantCatalog,
+  getReceiptDraftForOrder,
 } from "@/lib/queries";
 import { ReceiveAgainstBill } from "@/components/receive-against-bill";
 import { RelatedDocumentsPanel } from "@/components/related-documents";
@@ -14,9 +15,9 @@ import { HelpHint } from "@/components/help-hint";
 export default async function NewGoodsReceipt({
   searchParams,
 }: {
-  searchParams: Promise<{ match_invoice_id?: string; draft?: string }>;
+  searchParams: Promise<{ match_invoice_id?: string; draft?: string; order?: string }>;
 }) {
-  const { match_invoice_id, draft: draftId } = await searchParams;
+  const { match_invoice_id, draft: draftId, order: orderId } = await searchParams;
   const d = await getFormData();
   const [co] = await sql`select id from company order by created_at limit 1`;
 
@@ -81,6 +82,21 @@ export default async function NewGoodsReceipt({
   }
   const today = new Date().toISOString().slice(0, 10);
 
+  // Receiving a purchase order: its open lines, at the price it was ordered.
+  const orderRows = orderId ? (openOrders as unknown as Array<{
+    order_id: string; order_no: string; partner_id: string; location_id: string | null;
+    line_id: string; item_id: string; remaining_qty: string; expected_price: string | null;
+  }>).filter((r) => r.order_id === orderId && Number(r.remaining_qty) > 0) : [];
+  const toReceive = orderRows.length ? {
+    id: orderRows[0].order_id, docNo: orderRows[0].order_no, partnerId: orderRows[0].partner_id,
+    locationId: orderRows[0].location_id,
+    lines: orderRows.map((r) => ({ lineId: r.line_id, itemId: r.item_id,
+      qty: Number(r.remaining_qty), unitCost: Number(r.expected_price ?? 0) })),
+  } : null;
+  const catalog = await getVariantCatalog(co.id);
+  // A half-scanned receipt for this order comes back as it was left.
+  const orderDraft = toReceive && !draftRow ? await getReceiptDraftForOrder(co.id, toReceive.id) : null;
+
   if (d.suppliers.length === 0 || categories.length === 0 || d.locations.length === 0) {
     return (
       <>
@@ -104,18 +120,14 @@ export default async function NewGoodsReceipt({
     <>
       <ErpCrumbs steps={[
         { label: "Goods receipts", href: "/purchases/receive" },
+        ...(toReceive ? [{ label: toReceive.docNo, href: `/documents/${toReceive.id}` }] : []),
         { label: "Receive goods" },
       ]} />
-      <div className="page-head">
-        <h1>Receive goods</h1>
-        <HelpHint>
-          For stock that arrived with no purchase order behind it. If there
-          is an open order, receive against it instead — it keeps track of
-          what&rsquo;s still outstanding.
-        </HelpHint>
-      </div>
 
       <ReceiptForm
+        key={toReceive?.id ?? "free"}
+        catalog={catalog}
+        order={toReceive}
         action={createGoodsReceipt}
         suppliers={d.suppliers as never}
         items={d.items as never}
@@ -132,7 +144,7 @@ export default async function NewGoodsReceipt({
         draft={draftRow?.doc_type === "GOODS_RECEIPT" ? {
           id: draftRow.id as string,
           state: String((draftRow.payload as Record<string, unknown>)?.draft_state ?? ""),
-        } : null}
+        } : orderDraft}
       />
     </>
   );

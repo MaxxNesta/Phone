@@ -3437,7 +3437,8 @@ export async function getFormData() {
   ] = await Promise.all([
     sql`select id, code, name, payment_terms_days, price_level_id from business_partner
          where company_id = ${co} and is_customer and is_active order by code`,
-    sql`select id, code, name, payment_terms_days, currency from business_partner
+    sql`select id, code, name, payment_terms_days, currency, company_name, address, phone, township, region
+          from business_partner
          where company_id = ${co} and is_supplier and is_active order by code`,
     sql`select i.id, i.code, i.name, i.is_stocked, i.item_group_id,
                 i.tracks_batch, i.tracks_expiry, i.tracks_serial,

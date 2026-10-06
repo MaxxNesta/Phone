@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Package, FileText, FileClock, Plus } from "lucide-react";
 import { money, shortDate } from "@/lib/db";
 import {
@@ -29,6 +30,8 @@ export default async function Receive({
   searchParams: Promise<{ order?: string }>;
 }) {
   const { order } = await searchParams;
+  // A purchase order is received on the goods receipt form, like any other.
+  if (order) redirect(`/purchases/receive/new?order=${encodeURIComponent(order)}`);
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -196,7 +199,7 @@ export default async function Receive({
             {oneUnit ? `${money(remaining)}${unit ? ` ${unit}` : ""}` : `${o.lines.length} lines`}
           </td>
           <td className="tight">
-            <Link href={`/purchases/receive?order=${o.orderId}`} className="btn primary">
+            <Link href={`/purchases/receive/new?order=${o.orderId}`} className="btn primary">
               Receive goods
             </Link>
           </td>
@@ -313,7 +316,7 @@ export default async function Receive({
                   <td className="code">{shortDate(d.updated_at)}</td>
                   <td className="tight">
                     <Link className="btn primary" href={d.source_id
-                      ? `/purchases/receive?order=${d.source_id}`
+                      ? `/purchases/receive/new?order=${d.source_id}`
                       : `/purchases/receive/new?draft=${d.id}`}>Continue</Link>{" "}
                     <form action={discardReceiptDraft} style={{ display: "inline" }}>
                       <input type="hidden" name="draft_id" value={d.id} />
