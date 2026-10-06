@@ -1578,6 +1578,10 @@ export type PickerItem = {
   variant?: unknown;
   /** What a scanner reads off the packet. */
   barcode?: string | null;
+  /** The product a variant belongs to — "iPhone 18 Pro Max". Null for an item with no variants. */
+  model?: string | null;
+  /** Its picture, or its product's. */
+  photo?: string | null;
 };
 
 /**
@@ -3457,6 +3461,15 @@ export async function getFormData() {
                 -- scanning exists for — putting a line on a document —
                 -- could not find the item it had just read.
                 i.barcode,
+                -- The model a variant belongs to, and its picture, so a line
+                -- can show "iPhone 18 Pro Max" over its options.
+                (select p.name from item p where p.id = i.parent_item_id) as model,
+                case when i.photo_updated_at is not null
+                       then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
+                     when (select p.photo_updated_at from item p where p.id = i.parent_item_id) is not null
+                       then '/items/' || i.parent_item_id || '/photo?v=' ||
+                            to_char((select p.photo_updated_at from item p where p.id = i.parent_item_id), 'YYYYMMDDHH24MISSMS')
+                end as photo,
                 -- What a variant is, so the line says "Colour Red, Size M"
                 -- rather than leaving it buried in a name the picker has
                 -- already truncated. Null for an ordinary item.

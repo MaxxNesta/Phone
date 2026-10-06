@@ -5178,3 +5178,84 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 /* Quantity and price stay readable however wide the item cell grows. */
 .linetable input[type="number"] { min-width: 84px; }
 .linetable td.r input[type="number"], .linetable .price input { min-width: 120px; }
+
+/* ======================================================= invoice lines ====
+   A line reads like a receipt: the product, its options underneath, how
+   many are on the shelf; then quantity, price, discount and amount. What a
+   line can also carry (unit, stock source, free units) sits behind its
+   menu. A phone line says its IMEI, or how many of its phones are chosen. */
+
+.voucher-scan { position: relative; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.voucher-scan-icon {
+  width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+  display: grid; place-items: center; color: var(--ink-soft); flex: none;
+}
+.voucher-scan input { flex: 1 1 320px; max-width: 560px; }
+.voucher-hits {
+  position: absolute; left: 68px; top: calc(100% - 6px); z-index: 30; width: min(520px, calc(100% - 84px));
+  display: flex; flex-direction: column; padding: 6px; border-radius: 12px; background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.08);
+}
+.voucher-hits button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-height: 0; height: auto;
+  padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left;
+}
+.voucher-hits button:hover { background: var(--line-soft); }
+.voucher-hits strong { font-size: 0.875rem; }
+.voucher-hits span { font-size: 0.75rem; color: var(--muted); }
+
+.vlines td { vertical-align: middle; }
+.vlines tr.vline > td { padding-top: 12px; padding-bottom: 12px; }
+.vprod { display: flex; align-items: center; gap: 12px; }
+.vthumb {
+  width: 52px; height: 52px; flex: none; border-radius: 10px; overflow: hidden;
+  display: grid; place-items: center; background: var(--ground); color: var(--muted);
+}
+.vthumb img { width: 100%; height: 100%; object-fit: contain; }
+.vname { display: block; font-size: 0.9375rem; font-weight: 600; line-height: 1.25; }
+.vopts { display: block; font-size: 0.8125rem; color: var(--ink-soft); }
+.vavail { display: block; font-size: 0.75rem; color: var(--muted); }
+.vavail.short { color: var(--bad); }
+.vpick { display: flex; align-items: center; gap: 8px; }
+.vpick > :first-child { flex: 1; }
+.vamount { font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.vlines tr.vline-sub > td { padding-top: 0; padding-bottom: 10px; border-top: 0; }
+.vimei { display: inline-flex; align-items: center; gap: 6px; padding-left: 64px; font-size: 0.8125rem; color: var(--ink-soft); }
+.vicon {
+  width: 26px; height: 26px; min-height: 26px; padding: 0; border: 0; border-radius: 6px;
+  display: inline-grid; place-items: center; background: transparent; color: var(--link);
+}
+.vicon:hover { background: color-mix(in srgb, var(--link) 8%, transparent); }
+.vsep { color: var(--line); padding: 0 2px; }
+.vimei-sum {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; height: auto; margin-left: 64px;
+  width: calc(100% - 64px); padding: 6px 10px; border: 0; border-radius: 8px;
+  background: var(--ground); color: var(--warn); font-size: 0.8125rem; font-weight: 500; text-align: left;
+}
+.vimei-sum.ok { color: var(--ok); }
+.vimei-sum .linkish { color: var(--link); }
+.vimei-sum svg.open { transform: rotate(90deg); }
+.vline-sub .serialentry { margin-left: 64px; }
+.vfree { display: inline-flex; align-items: center; gap: 6px; padding-left: 64px; font-size: 0.8125rem; color: var(--ink-soft); }
+
+.linemenu { position: relative; }
+.linemenu > summary {
+  list-style: none; cursor: pointer; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--ink-soft);
+}
+.linemenu > summary::-webkit-details-marker { display: none; }
+.linemenu > summary:hover, .linemenu[open] > summary { background: var(--line-soft); }
+.linemenu-pop {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; width: 260px;
+  display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.08); white-space: normal;
+}
+.linemenu-pop label { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; font-weight: 600; color: var(--ink-soft); }
+.linemenu-label { font-size: 0.75rem; color: var(--muted); }
+.linemenu-pop button.danger { align-self: flex-start; }
+
+.vcount { color: var(--muted); font-size: 0.875rem; margin-right: auto; }
+/* The line menu opens over whatever is below; its card must not clip it. */
+.card:has(.vlines), .card:has(.vlines) .tablewrap { overflow: visible; }
+.vlines td.narrow input[aria-label="Unit price"] { min-width: 140px; }

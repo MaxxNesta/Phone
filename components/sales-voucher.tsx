@@ -11,7 +11,8 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Smartphone, Copy, MoreVertical, ScanLine, ChevronRight } from "lucide-react";
+import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { posSearchAction, posUnitsAction } from "@/lib/pos-actions";
@@ -491,13 +492,50 @@ export function SalesVoucher({
   // is one, otherwise a new line at the customer's price.
   const [scan, setScan] = useState("");
   const [scanMsg, setScanMsg] = useState<string | null>(null);
+  // Products a typed name or SKU matched, to pick from.
+  const [scanHits, setScanHits] = useState<{ id: string; label: string; sub: string }[]>([]);
+  // A line whose product is being changed, and the lines whose IMEI list is open.
+  const [changing, setChanging] = useState<number | null>(null);
+  const [imeiOpen, setImeiOpen] = useState<number[]>([]);
+  const toggleImei = (key: number) =>
+    setImeiOpen((k) => (k.includes(key) ? k.filter((x) => x !== key) : [...k, key]));
+
+  // A product chosen from the search: its own row if it is already on the
+  // voucher (one more of it), otherwise a new row at the customer's price.
+  function addProduct(itemId: string) {
+    setScanHits([]);
+    setScan("");
+    setLines((ls) => {
+      const it = items.find((i) => i.id === itemId);
+      const at = ls.find((l) => l.itemId === itemId && !l.orderLineId && !l.sourceLineId);
+      if (at && !it?.tracks_serial) return ls.map((l) => (l === at ? { ...l, qty: String((Number(l.qty) || 0) + 1) } : l));
+      if (at) return ls;
+      const p = priceFor(itemId);
+      const blank = ls.find((l) => !l.itemId);
+      const line: Line = {
+        key: blank?.key ?? Math.max(0, ...ls.map((l) => l.key)) + 1, itemId,
+        qty: it?.tracks_serial ? "0" : "1",
+        unitPrice: p > 0 ? String(p) : "", discountPct: "", focQty: "", focReasonId: "", source: "OWNED",
+      };
+      if (it?.tracks_serial) setImeiOpen((k) => [...k, line.key]);
+      return blank ? ls.map((l) => (l === blank ? line : l)) : [...ls, line];
+    });
+  }
   async function scanImei(term: string) {
     const t = term.trim();
     if (!t) return;
     setScanMsg(null);
     const r = await posSearchAction(locationId, t);
     const u = r.units[0];
-    if (!u) return setScanMsg(`${t} is not a phone this shop holds.`);
+    if (!u) {
+      // Not an IMEI: a name, SKU or barcode. One exact match goes straight on.
+      const exact = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase());
+      if (exact.length === 1) return addProduct(exact[0].id);
+      const hits = r.items.filter((i) => items.some((x) => x.id === i.id)).slice(0, 8)
+        .map((i) => ({ id: i.id, label: i.model, sub: [i.variant, `${i.on_hand} available`].filter(Boolean).join(" · ") }));
+      if (hits.length === 0) return setScanMsg(`Nothing matches ${t}.`);
+      return setScanHits(hits);
+    }
     if (u.status !== "IN_STOCK") return setScanMsg(`${u.imei} is ${u.status.toLowerCase().replace(/_/g, " ")}.`);
     if (u.location_id !== locationId) return setScanMsg(`${u.imei} is at ${u.location_name}, not this location.`);
     if (lines.some((l) => l.serials?.some((x) => x.serial === u.imei))) return setScanMsg(`${u.imei} is already on this voucher.`);
@@ -517,6 +555,7 @@ export function SalesVoucher({
       return blank ? ls.map((l) => (l === blank ? line : l)) : [...ls, line];
     });
     setScan("");
+    setScanHits([]);
   }
 
   const addLine = () =>
@@ -1168,27 +1207,32 @@ export function SalesVoucher({
           // Not a <form>: it sits inside the voucher's own form, and a nested
           // form is dropped by the browser — Enter would post the voucher.
           <div className="voucher-scan">
-            <input value={scan} onChange={(e) => setScan(e.target.value)} autoComplete="off"
+            <span className="voucher-scan-icon" aria-hidden="true"><ScanLine size={18} /></span>
+            <input value={scan} onChange={(e) => { setScan(e.target.value); setScanHits([]); }} autoComplete="off"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); scanImei(scan); } }}
-              placeholder="Scan or type an IMEI to add that phone…" aria-label="Scan IMEI" />
-            <button type="button" className="ghost" onClick={() => scanImei(scan)}>Add phone</button>
+              placeholder="Scan IMEI or search by name / SKU…" aria-label="Scan IMEI or search products" />
+            <button type="button" onClick={() => scanImei(scan)}>Add</button>
             {scanMsg && <span className="hint low" role="status">{scanMsg}</span>}
+            {scanHits.length > 0 && (
+              <div className="voucher-hits" role="listbox" aria-label="Matching products">
+                {scanHits.map((h) => (
+                  <button type="button" role="option" aria-selected={false} key={h.id} onClick={() => addProduct(h.id)}>
+                    <strong>{h.label}</strong><span>{h.sub}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         <div className="tablewrap">
-          <table className="linetable">
+          <table className="linetable vlines">
             <thead>
               <tr>
                 <th>Item</th>
-                {!toDeliver && !matchedDeliveryId && anyConsigned && <th>Stock source</th>}
-                <th className="r">On hand</th>
-                <th>Unit</th>
                 <th className="r">Qty</th>
-                <th className="r">Price</th>
-                {/* Not "Disc %" any more: the column takes a rate or a sum. */}
+                <th className="r">Unit price{currency ? ` (${currency})` : ""}</th>
                 <th>Discount</th>
-                <th className="r">Free</th>
-                <th className="r">Amount</th>
+                <th className="r">Amount{currency ? ` (${currency})` : ""}</th>
                 <th />
               </tr>
             </thead>
@@ -1216,42 +1260,68 @@ export function SalesVoucher({
 
                 const freeRow =
                   free > 0 && item ? (
-                    <tr key={`${l.key}-free`}>
-                      <td style={{ paddingLeft: "1.6rem" }}>
-                        <span style={{ color: "var(--ghost)" }}>└ </span>
-                        <span className="m">{item.code}</span>{" "}
-                        <span className="pill warn">{freeBadge}</span>
+                    <tr key={`${l.key}-free`} className="vline-sub">
+                      <td>
+                        <span className="vfree">
+                          <span className="pill warn">{freeBadge}</span> {fmt(free)} free · {item.model ?? item.name}
+                        </span>
                       </td>
-                      {!toDeliver && !matchedDeliveryId && anyConsigned && <td />}
-                      <td className="r" style={{ color: "var(--muted)" }}>free</td>
                       <td className="r">{fmt(free)}</td>
-                      <td className="r" style={{ color: "var(--muted)" }}>0</td>
+                      <td className="r subline">0</td>
                       <td />
-                      <td />
-                      <td className="r" style={{ color: "var(--muted)" }}>0</td>
+                      <td className="r subline">0</td>
                       <td />
                     </tr>
                   ) : null;
 
+                const parts = asVariant(item?.variant) ?? [];
+                const picking = !item || changing === l.key;
+                const serials = l.serials ?? [];
+                const q = Number(l.qty) || 0;
+                const tracked = !!item?.tracks_serial && !toDeliver && !matchedDeliveryId;
+                const imeiDone = tracked && q > 0 && serials.length === q;
+                const showInline = tracked && q === 1 && serials.length === 1 && !imeiOpen.includes(l.key);
+
                 return [
-                  <tr key={l.key}>
-                    <td style={{ minWidth: 240 }}>
-                      {/* An order line's item is the order's: changing what is
-                          being sold starts there. */}
+                  <tr key={l.key} className="vline">
+                    <td style={{ minWidth: 280 }}>
                       {l.orderLineId ? (
-                        <span className="readout" title="On the order — change it there">
-                          {item ? `${item.code} · ${item.name}` : "—"}
+                        <span className="vprod" title="On the order — change it there">
+                          <span className="vthumb">{item?.photo ? <img src={item.photo} alt="" /> : <Smartphone size={20} aria-hidden="true" />}</span>
+                          <span>
+                            <span className="vname">{item?.model ?? item?.name ?? "—"}</span>
+                            <span className="vopts">{parts.map((x) => x.o).join(" · ") || "On the order"}</span>
+                          </span>
                         </span>
+                      ) : picking ? (
+                        <div className="vpick">
+                          <ItemPicker
+                            mode="sales"
+                            items={items}
+                            categories={categories}
+                            uoms={uoms}
+                            value={l.itemId}
+                            onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
+                            onCreated={addItem}
+                          />
+                          {changing === l.key && (
+                            <button type="button" className="linkish" onClick={() => setChanging(null)}>Cancel</button>
+                          )}
+                        </div>
                       ) : (
-                        <ItemPicker
-                          mode="sales"
-                          items={items}
-                          categories={categories}
-                          uoms={uoms}
-                          value={l.itemId}
-                          onPick={(id) => pickItem(l.key, id)}
-                          onCreated={addItem}
-                        />
+                        <span className="vprod">
+                          <span className="vthumb">{item.photo ? <img src={item.photo} alt="" /> : <Smartphone size={20} aria-hidden="true" />}</span>
+                          <span>
+                            <span className="vname">{item.model ?? item.name}</span>
+                            {parts.length > 0 && <span className="vopts">{parts.map((x) => x.o).join(" · ")}</span>}
+                            <span className={`vavail${short ? " short" : ""}`}>
+                              {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}
+                              {!l.sourceLineId && (
+                                <> · <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button></>
+                              )}
+                            </span>
+                          </span>
+                        </span>
                       )}
                       {/* These are the goods an open order is waiting for. */}
                       <AlreadyAwaited
@@ -1260,70 +1330,7 @@ export function SalesVoucher({
                         backTo="/sales/new"
                       />
                     </td>
-                    {!toDeliver && !matchedDeliveryId && anyConsigned && (
-                      <td style={{ minWidth: 170 }}>
-                        {(() => {
-                          if (!l.itemId || !item?.is_stocked)
-                            return <span style={{ color: "var(--muted)" }}>—</span>;
-                          const split = splitFor(l.itemId);
-                          if (split.consigned.length === 0) {
-                            return (
-                              <span className="sourcebtn" style={{ cursor: "default", border: 0 }}>
-                                <span className="pooldot owned" /> Company-owned
-                              </span>
-                            );
-                          }
-                          const pools = poolsFor(split);
-                          const chosen = pools.find((p) => p.key === l.source) ?? pools[0];
-                          return (
-                            <button type="button" className="sourcebtn"
-                                    onClick={() => setSourceFor(l.key)}>
-                              <span className={`pooldot ${l.source === "OWNED" ? "owned" : "consigned"}`} />
-                              <span>{chosen.label.replace("Consignment — ", "")}</span>
-                              <span className="avail">{chosen.qty}</span>
-                            </button>
-                          );
-                        })()}
-                      </td>
-                    )}
-                    <td className="r" style={{ color: short ? "var(--bad)" : undefined }}>
-                      {!item ? "—" : item.is_stocked ? (
-                        <>
-                          {fmt(onHandHere(item.id))}
-                          <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--muted)" }}>
-                            {fmt(Number(item.on_hand))} total
-                          </div>
-                        </>
-                      ) : "service"}
-                    </td>
-                    {/* Which unit this line is sold in. Only a picker where
-                        the item has packs; otherwise the item's own unit,
-                        stated rather than chosen. A line billing a delivery
-                        cannot change it — the goods left in whatever they
-                        left in. */}
                     <td className="narrow">
-                      {!item ? (
-                        <span className="code" style={{ color: "var(--muted)" }}>&mdash;</span>
-                      ) : (
-                        <UnitToggle
-                          base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
-                          packs={(item.packs ?? []).map((p) => ({
-                            uomId: p.uomId, code: p.code, factor: Number(p.factor),
-                          }))}
-                          value={l.uomId ?? ""}
-                          onChange={(id: string | null) => setLine(l.key, { uomId: id ?? undefined })}
-                          disabled={!!l.sourceLineId}
-                          label={`Unit for ${item.code}`}
-                          qty={Number(l.qty) || 0}
-                        />
-                      )}
-                    </td>
-                    <td className="narrow">
-                      {/* What went out, went out. A line billing a delivery
-                          takes its quantity from that delivery: 100 delivered
-                          bills 100, and neither 90 nor 110. The price is still
-                          yours to set — it is your price list, not a fact
-                          about the goods. */}
                       <input type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
                         max={(l.sourceLineId || l.orderLineId) && billPart
                           ? l.sourceQty : undefined}
@@ -1341,13 +1348,6 @@ export function SalesVoucher({
                       )}
                     </td>
                     <td className="narrow">
-                      {/* An agreed price is not a suggestion. A line billing a
-                          delivery that came out of an order carries the price
-                          that order agreed, and typing over it here would put
-                          the invoice and the order at odds with nothing
-                          recording which is right. Correcting the agreement is
-                          done at the order, where it is versioned and reasoned
-                          — and from there it carries into this bill. */}
                       <input type="number" min="0" step="any" value={l.unitPrice} aria-label="Unit price"
                         readOnly={l.agreedPrice !== null && l.agreedPrice !== undefined}
                         title={l.agreedPrice != null
@@ -1358,15 +1358,7 @@ export function SalesVoucher({
                           : undefined}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
                     </td>
-                    {/* A rate or a sum. Typing "20,000 off" and having to
-                        work out that it is ten per cent is arithmetic the
-                        form can do, and the one place it will be got wrong
-                        is on the invoice in front of a customer. */}
                     <td className="disccell">
-                      {/* Toggle and field on one line, so this input sits
-                          on the same baseline as Qty, Price and Free.
-                          Stacked, it pushed the number half a row down and
-                          the line read as misaligned — because it was. */}
                       <div className="discrow">
                       <span className="unittoggle">
                         <button type="button"
@@ -1393,29 +1385,8 @@ export function SalesVoucher({
                       )}
                       </div>
                     </td>
-                    {/* Given away on this line. Not a discount: these units
-                        are charged at nothing and still leave the warehouse,
-                        so they need a reason of their own to cost against. */}
-                    <td className="focqty">
-                      <input type="number" min="0" step="any" value={l.focQty} aria-label="Free quantity"
-                        placeholder="0"
-                        onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
-                      {givenFree(l) > 0 && (
-                        <select value={l.focReasonId} aria-label="Reason free"
-                                style={{ marginTop: "0.2rem" }}
-                                onChange={(e) => setLine(l.key, { focReasonId: e.target.value })}>
-                          {focReasons.map((r) => (
-                            <option key={r.id} value={r.id}>{r.name}</option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td className="r">
+                    <td className="r vamount">
                       {fmt(amount(l))}
-                      {/* What came off, and — where it was typed as money —
-                          the rate it works out to. Both belong beside the
-                          figure they were taken off, not under the field,
-                          where the row clipped them. */}
                       {discountOn(l) > 0 && (
                         <div className="subline">
                           &minus;{fmt(discountOn(l))}
@@ -1424,20 +1395,105 @@ export function SalesVoucher({
                       )}
                     </td>
                     <td className="tight">
-                      <button type="button" className="ghost tiny" aria-label="Remove line"
-                        onClick={() => removeLine(l.key)} disabled={lines.length === 1}>×</button>
+                      {/* Everything a line can carry beyond the four figures —
+                          the pack it is sold in, whose stock it is, units given
+                          free — kept out of the row until it is wanted. */}
+                      <details className="linemenu">
+                        <summary aria-label="More for this line"><MoreVertical size={16} /></summary>
+                        <div className="linemenu-pop">
+                          {item && (item.packs ?? []).length > 0 && (
+                            <label>Unit
+                              <UnitToggle
+                                base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
+                                packs={(item.packs ?? []).map((p) => ({
+                                  uomId: p.uomId, code: p.code, factor: Number(p.factor),
+                                }))}
+                                value={l.uomId ?? ""}
+                                onChange={(id: string | null) => setLine(l.key, { uomId: id ?? undefined })}
+                                disabled={!!l.sourceLineId}
+                                label={`Unit for ${item.code}`}
+                                qty={Number(l.qty) || 0}
+                              />
+                            </label>
+                          )}
+                          {!toDeliver && !matchedDeliveryId && anyConsigned && (
+                            <div>
+                              <span className="linemenu-label">Stock source</span>
+                        {(() => {
+                          if (!l.itemId || !item?.is_stocked)
+                            return <span style={{ color: "var(--muted)" }}>—</span>;
+                          const split = splitFor(l.itemId);
+                          if (split.consigned.length === 0) {
+                            return (
+                              <span className="sourcebtn" style={{ cursor: "default", border: 0 }}>
+                                <span className="pooldot owned" /> Company-owned
+                              </span>
+                            );
+                          }
+                          const pools = poolsFor(split);
+                          const chosen = pools.find((p) => p.key === l.source) ?? pools[0];
+                          return (
+                            <button type="button" className="sourcebtn"
+                                    onClick={() => setSourceFor(l.key)}>
+                              <span className={`pooldot ${l.source === "OWNED" ? "owned" : "consigned"}`} />
+                              <span>{chosen.label.replace("Consignment — ", "")}</span>
+                              <span className="avail">{chosen.qty}</span>
+                            </button>
+                          );
+                        })()}
+                            </div>
+                          )}
+                          <label>Free quantity
+                            <input type="number" min="0" step="any" value={l.focQty} aria-label="Free quantity"
+                              placeholder="0" onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
+                          </label>
+                          {givenFree(l) > 0 && (
+                            <label>Why free
+                              <select value={l.focReasonId} aria-label="Reason free"
+                                onChange={(e) => setLine(l.key, { focReasonId: e.target.value })}>
+                                {focReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                              </select>
+                            </label>
+                          )}
+                          {item?.code && <span className="linemenu-label">SKU {item.code}</span>}
+                          <button type="button" className="danger" onClick={() => removeLine(l.key)}
+                            disabled={lines.length === 1}>Remove line</button>
+                        </div>
+                      </details>
                     </td>
                   </tr>,
-                  item?.tracks_serial && !toDeliver && !matchedDeliveryId ? (
-                    <tr key={`${l.key}-imei`} className="batchrow">
-                      <td colSpan={12}>
-                        <SerialEntry
-                          label={`${item.code} — IMEI of each phone`}
-                          qty={Number(l.qty) || 0}
-                          value={l.serials ?? []}
-                          suggestions={shelf[`${l.itemId}@${locationId}`]}
-                          onChange={(v) => setLine(l.key, { serials: v, qty: String(v.length) })}
-                        />
+                  tracked ? (
+                    <tr key={`${l.key}-imei`} className="vline-sub">
+                      <td colSpan={6}>
+                        {showInline ? (
+                          <span className="vimei">
+                            IMEI: <span className="m">{serials[0].serial}</span>
+                            <button type="button" className="vicon" aria-label="Copy IMEI"
+                              onClick={() => navigator.clipboard?.writeText(serials[0].serial)}><Copy size={14} /></button>
+                            <span className="vsep">|</span>
+                            <button type="button" className="linkish" onClick={() => toggleImei(l.key)}>Change</button>
+                          </span>
+                        ) : (
+                          <>
+                            <button type="button" className={`vimei-sum${imeiDone ? " ok" : ""}`}
+                              aria-expanded={imeiOpen.includes(l.key) || !imeiDone} onClick={() => toggleImei(l.key)}>
+                              <ChevronRight size={14} className={imeiOpen.includes(l.key) || !imeiDone ? "open" : ""} aria-hidden="true" />
+                              {imeiDone && <Check size={14} aria-hidden="true" />}
+                              {serials.length}/{q} phones selected
+                              <span className="vsep">|</span>
+                              <span className="linkish">Manage IMEIs</span>
+                            </button>
+                            {(imeiOpen.includes(l.key) || !imeiDone) && (
+                              <SerialEntry
+                                label={`${item?.model ?? item?.name ?? ""} — IMEI of each phone`}
+                                qty={q}
+                                value={serials}
+                                suggestions={shelf[`${l.itemId}@${locationId}`]}
+                                onChange={(v) => setLine(l.key, { serials: v, qty: String(v.length) })}
+                              />
+                            )}
+                          </>
+                        )}
                       </td>
                     </tr>
                   ) : null,
@@ -1813,6 +1869,10 @@ export function SalesVoucher({
         </p>
       )}
       <div className="actions form-commit">
+        <span className="vcount">
+          {lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"}
+          {lines.some((l) => (l.serials ?? []).length) && ` · ${lines.reduce((n, l) => n + (l.serials ?? []).length, 0)} phones selected`}
+        </span>
         <button
           type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
           onClick={
