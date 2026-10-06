@@ -17,7 +17,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const co = user.companyId;
 
-  const [{ rows }, groups, brands, lastBuy, counts] = await Promise.all([
+  const [{ rows }, groups, brands, lastBuy] = await Promise.all([
     inventorySummary(co, { q: sp.q || undefined, groupId: sp.category || undefined, brand: sp.brand || undefined }),
     sql`select g.id, g.name,
                (select count(*)::int from item i join item_group gg on gg.id = i.item_group_id
@@ -30,10 +30,6 @@ export default async function Products({ searchParams }: { searchParams: Promise
           join document d on d.id = dl.document_id
          where d.company_id = ${co} and d.doc_type = 'GOODS_RECEIPT' and d.status = 'POSTED'
          group by dl.item_id`,
-    sql`select count(*) filter (where is_active)::int as active,
-               count(*) filter (where not is_active)::int as inactive
-          from item i where company_id = ${co}
-           and not exists (select 1 from item c where c.parent_item_id = i.id)`,
   ]);
   const bought = new Map(lastBuy.map((r: any) => [r.item_id, r.d]));
   const tracking = sp.tracking;
@@ -57,8 +53,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
         <Stat icon={<AlertTriangle size={20} />} tone="amber" label="Low Stock Items" value={low} note="Need to reorder" noteTone="warn" />
       </div>
 
-      <div className="section-grid">
-        <div>
+      <div>
           <form className="card filters" method="get">
             <div className="card-body filter-row">
               <div className="field">
@@ -90,6 +85,17 @@ export default async function Products({ searchParams }: { searchParams: Promise
               <button className="btn ghost">Filter</button>
             </div>
           </form>
+
+          {groups.length > 0 && (
+            <div className="chips" style={{ marginBottom: "var(--s3)" }} aria-label="Categories">
+              <Link href="/products" className="chip" data-on={!sp.category}>All</Link>
+              {groups.map((g: any) => (
+                <Link key={g.id} href={`/products?category=${g.id}`} className="chip"
+                  data-on={sp.category === g.id}>{g.name} · {g.n}</Link>
+              ))}
+              <Link href="/items/categories" className="chip">Manage categories</Link>
+            </div>
+          )}
 
           <div className="card" style={{ overflowX: "auto" }}>
             <table>
@@ -129,29 +135,6 @@ export default async function Products({ searchParams }: { searchParams: Promise
             <Pager p={pg} params={sp} />
           </div>
         </div>
-
-        <div>
-          <div className="card" style={{ marginBottom: "var(--s3)" }}>
-            <div className="card-head"><h2>Product Categories</h2><Link href="/items/categories">View all</Link></div>
-            <div className="card-body">
-              {groups.map((g: any) => (
-                <Link key={g.id} href={`/products?category=${g.id}`} className="listrow" style={{ color: "inherit", textDecoration: "none" }}>
-                  <span className="thumb"><Package size={18} aria-hidden="true" /></span>
-                  <span className="grow"><div className="prod-name">{g.name}</div><div className="prod-sub">{g.n} products</div></span>
-                </Link>
-              ))}
-            </div>
-          </div>
-          <div className="card">
-            <div className="card-head"><h2>Quick Stats</h2></div>
-            <div className="card-body">
-              <div className="listrow"><span className="grow">Active products</span><strong>{counts[0].active}</strong></div>
-              <div className="listrow"><span className="grow">Low stock items</span><strong>{low}</strong></div>
-              <div className="listrow"><span className="grow">Inactive products</span><strong>{counts[0].inactive}</strong></div>
-            </div>
-          </div>
-        </div>
-      </div>
     </>
   );
 }
