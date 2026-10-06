@@ -657,7 +657,8 @@ export async function getNotes(companyId: string, kind: "CREDIT_NOTE" | "DEBIT_N
      order by d.posting_date desc, d.created_at desc`;
 }
 
-export async function getDocuments(companyId: string, docType?: string, openGrirOnly?: boolean) {
+/** `limit` only when a caller wants the newest few — the dashboard's five. */
+export async function getDocuments(companyId: string, docType?: string, openGrirOnly?: boolean, limit?: number) {
   return sql`
     select d.id, d.doc_type, d.doc_no, d.doc_date, d.posting_date, d.due_date,
            d.status, d.gross_total, d.currency, d.posted_at,
@@ -697,7 +698,8 @@ export async function getDocuments(companyId: string, docType?: string, openGrir
      -- with the day they open, not above this week's trading, and a bulk
      -- repair or an import would otherwise take the whole top of the list.
      -- "What happened just now" is the History log, which is its own screen.
-     order by d.posting_date desc, d.created_at desc, d.doc_no desc`;
+     order by d.posting_date desc, d.created_at desc, d.doc_no desc
+     ${limit ? sql`limit ${limit}` : sql``}`;
 }
 
 /**

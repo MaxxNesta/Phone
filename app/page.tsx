@@ -5,12 +5,80 @@ import { retailDashboard } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
 import { WeekBars } from "@/components/week-bars";
+import { ArrowRight } from "lucide-react";
+import { ShareDonut } from "@/components/charts";
+import { PeriodPicker } from "@/components/period-picker";
+import { resolvePeriod, DEFAULT_PERIOD } from "@/lib/period";
+import {
+  getTopCategories, getRevenueByRegion, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
+} from "@/lib/queries";
 
-export default async function Dashboard({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
+type Share = { id: string; name: string; revenue: number | string };
+
+/* Badge per document type in Recent activity, as on the business overview. */
+const TYPE_MARK: Record<string, { short: string; tint: string }> = {
+  GOODS_RECEIPT: { short: "GR", tint: "#6C5CE0" },
+  PURCHASE_ORDER: { short: "PO", tint: "#3B6FD4" },
+  PURCHASE_INVOICE: { short: "PI", tint: "var(--warn)" },
+  SUPPLIER_PAYMENT: { short: "PAY", tint: "var(--brand)" },
+  SALES_ORDER: { short: "SO", tint: "#3B6FD4" },
+  DELIVERY: { short: "DO", tint: "#6C5CE0" },
+  SALES_INVOICE: { short: "SI", tint: "var(--warn)" },
+  CUSTOMER_RECEIPT: { short: "REC", tint: "var(--brand)" },
+  STOCK_TRANSFER: { short: "TR", tint: "var(--muted)" },
+  STOCK_ADJUSTMENT: { short: "ADJ", tint: "var(--muted)" },
+};
+
+const since = (at: string | null, on: string) => {
+  const t = at ? new Date(at).getTime() : new Date(on).getTime();
+  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  return new Date(on).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+};
+
+/* A breakdown where nothing has been filed is one slice reading "Not
+   categorised" — a circle around the whole company that tells nobody
+   anything. */
+const worthDrawing = (rows: { id: string }[]) =>
+  rows.length > 0 && !(rows.length === 1 && rows[0].id === "none");
+
+export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await currentUser();
   if (!user) return null;
-  const { denied } = await searchParams;
-  const d = await retailDashboard(user.companyId);
+  const sp = await searchParams;
+  const { denied } = sp;
+  // One window per donut, as on the business overview: each card's period
+  // picker edits its own key in the URL and leaves the others alone.
+  const period = { cat: resolvePeriod(sp.cat), reg: resolvePeriod(sp.reg),
+                   cust: resolvePeriod(sp.cust), supp: resolvePeriod(sp.supp) };
+  const hrefWith = (key: string, value: string) => {
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "denied") next[k] = v;
+    if (value === DEFAULT_PERIOD) delete next[key];
+    else next[key] = value;
+    const q = new URLSearchParams(next).toString();
+    return q ? `/?${q}` : "/";
+  };
+  const co = user.companyId;
+  const [d, cats, regionRows, custRows, suppRows, recentDocs] = await Promise.all([
+    retailDashboard(co),
+    getTopCategories(co, period.cat.from, period.cat.to),
+    getRevenueByRegion(co, period.reg.from, period.reg.to),
+    getRevenueByCustomerCategory(co, period.cust.from, period.cust.to),
+    getSpendBySupplierCategory(co, period.supp.from, period.supp.to),
+    getDocuments(co, undefined, undefined, 5),
+  ]);
+  const categories = cats as unknown as Share[];
+  const regions = regionRows as unknown as Share[];
+  const custCategories = custRows as unknown as Share[];
+  const suppCategories = suppRows as unknown as Share[];
+  const recent = recentDocs as unknown as {
+    id: string; doc_type: string; doc_no: string | null; partner_name: string | null;
+    gross_total: number | string; posted_at: string | null; posting_date: string;
+  }[];
   const seeCost = can(user, "cost.view");
 
   const change = d.yesterday.revenue > 0
@@ -120,6 +188,86 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <Stat icon={<AlertTriangle size={20} />} tone="amber" label="Serial / Stock Mismatch" value={d.bad.length}
             note={d.bad.map((b: any) => `${b.name}: ${b.serials} IMEIs vs ${b.on_hand} on hand`).join("; ")} noteTone="down" />
         )}
+      </div>
+
+      <div className="section-grid-2">
+        <div className="card">
+          <div className="card-head">
+            <span><h2>Revenue by category</h2><span className="page-sub">Sales {period.cat.sentence}</span></span>
+            <PeriodPicker current={period.cat} label="revenue by category" hrefFor={(k) => hrefWith("cat", k)} />
+          </div>
+          <div className="card-body"><ShareDonut data={categories} currency="MMK" /></div>
+        </div>
+        <div className="card">
+          <div className="card-head">
+            <span><h2>Revenue by state / region</h2><span className="page-sub">Sales {period.reg.sentence}</span></span>
+            <PeriodPicker current={period.reg} label="revenue by state or region" hrefFor={(k) => hrefWith("reg", k)} />
+          </div>
+          <div className="card-body">
+            {regions.length === 1 && regions[0].id === "none" ? (
+              <div className="empty">
+                No customer has a state or region yet.{" "}
+                <Link href="/partners" style={{ color: "var(--link)" }}>Set one on a customer</Link> to see where revenue comes from.
+              </div>
+            ) : <ShareDonut data={regions} currency="MMK" />}
+          </div>
+        </div>
+        {worthDrawing(custCategories) && (
+          <div className="card">
+            <div className="card-head">
+              <span><h2>Revenue by customer type</h2><span className="page-sub">Revenue {period.cust.sentence}</span></span>
+              <PeriodPicker current={period.cust} label="revenue by customer type" hrefFor={(k) => hrefWith("cust", k)} />
+            </div>
+            <div className="card-body"><ShareDonut data={custCategories} currency="MMK" /></div>
+          </div>
+        )}
+        {worthDrawing(suppCategories) && (
+          <div className="card">
+            <div className="card-head">
+              <span><h2>Purchases by supplier type</h2><span className="page-sub">Purchases {period.supp.sentence}</span></span>
+              <PeriodPicker current={period.supp} label="purchases by supplier type" hrefFor={(k) => hrefWith("supp", k)} />
+            </div>
+            <div className="card-body"><ShareDonut data={suppCategories} currency="MMK" /></div>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h2>Recent activity</h2>
+          <Link href="/documents">View all documents <ArrowRight size={14} style={{ verticalAlign: "-2px" }} /></Link>
+        </div>
+        <div className="card-body">
+          {recent.length === 0 ? (
+            <div className="empty">Nothing posted yet.</div>
+          ) : (
+            <div className="dash-activity">
+              {recent.map((r) => {
+                const mark = TYPE_MARK[r.doc_type] ?? { short: "DOC", tint: "var(--muted)" };
+                return (
+                  <Link key={r.id} href={`/documents/${r.id}`} className="dash-activity-row">
+                    <span className="dash-activity-mark" style={{
+                      color: mark.tint, background: `color-mix(in srgb, ${mark.tint} 10%, transparent)`,
+                    }}>{mark.short}</span>
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ fontWeight: 500, display: "block" }}>{r.doc_no ?? "—"}</span>
+                      <span className="dash-kpi-note">
+                        {r.doc_type.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}
+                        {r.partner_name ? ` · ${r.partner_name}` : ""}
+                      </span>
+                    </span>
+                    <span className="dash-activity-right">
+                      <span>
+                        <span style={{ fontWeight: 700, display: "block" }}>MMK {money(r.gross_total)}</span>
+                        <span className="dash-kpi-note">{since(r.posted_at, r.posting_date)}</span>
+                      </span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       <p className="page-sub"><Link href="/overview">Detailed business overview →</Link></p>
