@@ -5370,3 +5370,6 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 /* Sales report: long codes and names do not widen the table. */
 .salescode .ellip { max-width: 150px; }
 .salesname { min-width: 160px; max-width: 280px; }
+
+/* Dashboard rows: both cards as tall as the taller, whatever is in them. */
+.section-grid.eqrow { align-items: stretch; }

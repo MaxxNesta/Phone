@@ -415,7 +415,7 @@ export async function retailDashboard(companyId: string) {
            group by 1
           having count(*) filter (where s.status = 'IN_STOCK') <= 2
              and count(*) filter (where s.status = 'SOLD' and s.out_date > current_date - 60) > 0
-           order by 2, 3 desc limit 6`,
+           order by 2, 3 desc limit 5`,
       sql`select to_char(d, 'YYYY-MM-DD') as day, to_char(d, 'Dy') as label,
                  coalesce((select sum(r.revenue) from (${range(sql`current_date - 6`)}) r
                             where r.posting_date = d), 0)::float as revenue
@@ -440,7 +440,7 @@ export async function retailDashboard(companyId: string) {
            where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
              -- A void's reversal is bookkeeping, not a sale.
              and d.reverses_document_id is null
-           order by d.posted_at desc limit 6`,
+           order by d.posted_at desc limit 5`,
       sql`select count(*)::int as n from v_stock_serial
            where company_id = ${companyId} and status = 'SOLD'
              and warranty_expiry between current_date and current_date + 30`,

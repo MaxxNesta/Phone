@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, AlertTriangle } from "lucide-react";
+import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, AlertTriangle, Check } from "lucide-react";
 import { currentUser, can } from "@/lib/auth";
 import { retailDashboard } from "@/lib/phone";
 import { money } from "@/lib/format";
@@ -11,6 +11,7 @@ import { PeriodPicker } from "@/components/period-picker";
 import { resolvePeriod, DEFAULT_PERIOD } from "@/lib/period";
 import {
   getTopCategories, getRevenueByRegion, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
+  getHealth,
 } from "@/lib/queries";
 
 type Share = { id: string; name: string; revenue: number | string };
@@ -63,13 +64,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     return q ? `/?${q}` : "/";
   };
   const co = user.companyId;
-  const [d, cats, regionRows, custRows, suppRows, recentDocs] = await Promise.all([
+  const [d, cats, regionRows, custRows, suppRows, recentDocs, health] = await Promise.all([
     retailDashboard(co),
     getTopCategories(co, period.cat.from, period.cat.to),
     getRevenueByRegion(co, period.reg.from, period.reg.to),
     getRevenueByCustomerCategory(co, period.cust.from, period.cust.to),
     getSpendBySupplierCategory(co, period.supp.from, period.supp.to),
     getDocuments(co, undefined, undefined, 5),
+    getHealth(co),
   ]);
   const categories = cats as unknown as Share[];
   const regions = regionRows as unknown as Share[];
@@ -80,6 +82,19 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     gross_total: number | string; posted_at: string | null; posting_date: string;
   }[];
   const seeCost = can(user, "cost.view");
+
+  // The ledger checking itself: each line is a query that finds breaks, so
+  // "fine" here means the query found none, not that nobody looked.
+  const checks = [
+    { label: "Trial balance", ok: health.trialBalance === 0,
+      value: health.trialBalance === 0 ? "Balanced" : `Off by MMK ${money(health.trialBalance)}` },
+    { label: "Journal integrity", ok: health.unbalanced === 0,
+      value: `${health.unbalanced} unbalanced entr${health.unbalanced === 1 ? "y" : "ies"}` },
+    { label: "Inventory ↔ GL", ok: health.inventoryBreaks === 0,
+      value: health.inventoryBreaks === 0 ? `Reconciled · MMK ${compact(d.stock.value)}`
+        : `${health.inventoryBreaks} break${health.inventoryBreaks === 1 ? "" : "s"}` },
+  ];
+  const healthy = checks.every((c) => c.ok);
 
   const change = d.yesterday.revenue > 0
     ? ((d.today.revenue - d.yesterday.revenue) / d.yesterday.revenue) * 100 : null;
@@ -113,7 +128,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           note={`${d.ar.customers} customer${d.ar.customers === 1 ? "" : "s"} due`} noteTone="warn" />
       </div>
 
-      <div className="section-grid">
+      <div className="section-grid eqrow">
         <div className="card">
           <div className="card-head"><h2>Sales Performance</h2><span className="page-sub">Last 7 days · MMK</span></div>
           <div className="card-body"><WeekBars data={d.week as never} /></div>
@@ -133,7 +148,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <div className="section-grid">
+      <div className="section-grid eqrow">
         <div className="card">
           <div className="card-head"><h2>Recent Sales</h2><Link href="/sales/invoices">View all</Link></div>
           <table>
@@ -232,6 +247,31 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         )}
       </div>
 
+      <div className="card" style={{ marginBottom: "var(--s3)" }}>
+        <div className="card-head">
+          <span><h2>Accounting health</h2><span className="page-sub" style={{ display: "block" }}>Automated checks between operational ledgers and the general ledger</span></span>
+          <span className={`pill ${healthy ? "ok" : "overdue"}`}>
+            {healthy ? <Check size={13} aria-hidden="true" /> : <AlertTriangle size={13} aria-hidden="true" />}
+            {" "}{healthy ? "Healthy" : "Needs attention"}
+          </span>
+        </div>
+        <div className="card-body">
+          <div className="dash-health">
+            {checks.map((c) => (
+              <div key={c.label} className={`dash-health-item${c.ok ? "" : " bad"}`}>
+                <span className="dash-health-mark" aria-hidden="true">
+                  {c.ok ? <Check size={14} /> : <AlertTriangle size={14} />}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span className="dash-kpi-note" style={{ display: "block" }}>{c.label}</span>
+                  <strong>{c.value}</strong>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       <div className="card">
         <div className="card-head">
           <h2>Recent activity</h2>
@@ -270,7 +310,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <p className="page-sub"><Link href="/overview">Detailed business overview →</Link></p>
     </>
   );
 }
