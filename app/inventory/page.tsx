@@ -41,7 +41,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const total = rows.reduce((s, r: any) => s + Number(r.value), 0);
   const units = rows.reduce((s, r: any) => s + Math.max(0, r.available), 0);
   const reserved = rows.reduce((s, r: any) => s + Number(r.reserved), 0);
-  const low = rows.filter((r: any) => r.status !== "HEALTHY");
+  // Running low: some left, at or under the reorder point. A variant that was
+  // never stocked is not running low, and counting every one buried the few
+  // that are.
+  const low = rows.filter((r: any) => r.status === "LOW");
   // A column per warehouse only on request, and only where there is more than
   // one: a single-shop company would see the same figure twice.
   const manyWarehouses = allLocs.length > 1;
@@ -55,7 +58,18 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     return t ? `/inventory?${t}` : "/inventory";
   })();
 
-  const pg = paginate(rows, sp.page);
+  // What is on the shelf, unless asked for the whole catalogue. Looking for
+  // "out of stock" is asking for the whole catalogue.
+  const allItems = sp.all === "1" || sp.status === "OUT";
+  const shown = allItems ? rows : rows.filter((r: any) => Number(r.qty) > 0 || Number(r.reserved) > 0);
+  const scopeHref = (all: boolean) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "all" && k !== "page") q.set(k, v);
+    if (all) q.set("all", "1");
+    const t = q.toString();
+    return t ? `/inventory?${t}` : "/inventory";
+  };
+  const pg = paginate(shown, sp.page);
   return (
     <>
       <div className="page-head hero">
@@ -91,6 +105,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             </div>
           )}
           {byWarehouse && <input type="hidden" name="by" value="warehouse" />}
+          {sp.all === "1" && <input type="hidden" name="all" value="1" />}
           <div className="field">
             <label htmlFor="is">Stock status</label>
             <select id="is" name="status" defaultValue={sp.status ?? ""}>
@@ -108,9 +123,15 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       <div className="card" style={{ overflowX: "auto", marginBottom: "var(--s3)" }}>
         <div className="card-head">
           <h2>Inventory Summary</h2>
-          {manyWarehouses
-            ? <Link href={toggleHref} className="dt-tool">{byWarehouse ? "Hide warehouses" : "Show by warehouse"}</Link>
-            : <span className="page-sub">Current stock levels</span>}
+          <span className="actions">
+            <span className="scopetabs" style={{ margin: 0 }}>
+              <Link className="scopetab" data-active={!allItems} href={scopeHref(false)}>In stock</Link>
+              <Link className="scopetab" data-active={allItems} href={scopeHref(true)}>All items</Link>
+            </span>
+            {manyWarehouses && (
+              <Link href={toggleHref} className="dt-tool">{byWarehouse ? "Hide warehouses" : "Show by warehouse"}</Link>
+            )}
+          </span>
         </div>
         <table>
           <thead>
@@ -149,7 +170,11 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={9} className="page-sub">No products match.</td></tr>}
+            {shown.length === 0 && (
+              <tr><td colSpan={9} className="page-sub">
+                {allItems ? "No products match." : <>Nothing in stock matches. <Link href={scopeHref(true)}>Show all items</Link></>}
+              </td></tr>
+            )}
           </tbody>
         </table>
         <Pager p={pg} params={sp} />

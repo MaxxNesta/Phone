@@ -537,7 +537,8 @@ export async function inventorySummary(companyId: string, f: {
        and (${f.modelId ?? null}::uuid is null or coalesce(p.id, i.id) = ${f.modelId ?? null})
        ${opts.length ? sql`and (select count(*) from item_variant_option v
                                  where v.item_id = i.id and v.option_id in ${sql(opts)}) = ${opts.length}` : sql``}
-     order by coalesce(p.name, i.name), i.name
+     -- What is on the shelf first, then the rest of the catalogue.
+     order by coalesce(per.qty, 0) > 0 desc, coalesce(p.name, i.name), i.name
      -- ponytail: whole catalogue in one read; paginate in SQL past ~5k variants.
      limit 5000`;
   const withStatus = rows.map((r: any) => {
