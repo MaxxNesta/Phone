@@ -124,7 +124,7 @@ export function ItemForm({
   // person filling this in says otherwise for this one product.
   const typeIdentity = nodes.find((n) => n.id === chain[0])?.identity ?? "NONE";
   const [trackOverride, setTrackOverride] = useState<{ root: string; v: string } | null>(null);
-  const tracking = trackOverride?.root === chain[0] ? trackOverride.v : typeIdentity;
+  const tracking = trackOverride && trackOverride.root === chain[0] ? trackOverride.v : typeIdentity;
   const groupCode = selected?.code ?? "";
   const preview = groupCode && serial ? `${groupCode}${serial}` : "";
 
