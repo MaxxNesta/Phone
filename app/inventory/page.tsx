@@ -80,6 +80,9 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     value: { num: true, v: (r) => Number(r.value) },
     status: { num: false, v: (r) => ({ OUT: 0, LOW: 1, HEALTHY: 2 } as Record<string, number>)[r.status] ?? 3 },
   };
+  // Cost and value order the rows by figures a viewer without cost.view may
+  // not see, so for them those sorts do not exist.
+  if (!seeCost) { delete SORTS.cost; delete SORTS.value; }
   const sortKey = sp.sort && SORTS[sp.sort] ? sp.sort : null;
   const sortDir = sp.dir === "asc" || sp.dir === "desc" ? sp.dir : sortKey && SORTS[sortKey].num ? "desc" : "asc";
   if (sortKey) {
