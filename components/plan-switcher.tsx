@@ -25,11 +25,13 @@ const BLURB: Record<Plan, string> = {
  * live databases the branch count already exceeds Starter's.
  */
 export function PlanSwitcher({
-  current, limits, have, action,
+  current, limits, have, locked, action,
 }: {
   current: Plan;
   limits: Record<Plan, PlanLimits>;
   have: { branches: number; warehouses: number };
+  /** Production: shown, not switchable. */
+  locked: boolean;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
   const [state, formAction, working] = useActionState<ActionResult | null, FormData>(
@@ -66,7 +68,7 @@ export function PlanSwitcher({
             <h2>Packages</h2>
             <span className="page-sub">
               on <strong>{current.charAt(0) + current.slice(1).toLowerCase()}</strong>
-              {" · nothing enforced yet"}
+
             </span>
           </div>
           <div className="tablewrap">
@@ -99,7 +101,7 @@ export function PlanSwitcher({
                           : l.users}
                       </td>
                       <td className="r">
-                        {here ? (
+                        {here || locked ? (
                           <span className="page-sub">—</span>
                         ) : (
                           <form action={formAction}>
@@ -123,12 +125,11 @@ export function PlanSwitcher({
         <div className="card">
           <div className="card-body">
             <div className="hintbar caution">
-              <strong>Switching changes nothing today.</strong> No screen is
-              hidden and no limit refuses anything — the column exists so the
-              tiers can be built against it. When enforcement does arrive, a
-              company already over a limit keeps what it has and is refused
-              only on adding more: nothing already posted or configured should
-              be invalidated by a change to a price list.
+              {locked
+                ? <><strong>Need more branches or warehouses?</strong> Contact your provider to upgrade the package.</>
+                : <><strong>Test site:</strong> the package can be switched here. In production only the provider can change it.</>}
+              {" "}A company already over a limit keeps what it has and is
+              refused only when adding more.
             </div>
           </div>
         </div>

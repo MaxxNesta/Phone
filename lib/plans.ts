@@ -48,6 +48,14 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   ENTERPRISE: { branches: null, warehouses: null, users: null },
 };
 
+/**
+ * Whether the package can be changed from inside the app. Not in production:
+ * there the customer's own admin would otherwise lift their own limits. The
+ * vendor changes a live company's package in the database. Dev and preview
+ * keep the switch so the tiers can be tested.
+ */
+export const planSwitchable = process.env.VERCEL_ENV !== "production";
+
 /** Whether a limit is known. An unknown limit never refuses anything. */
 export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
   return PLAN_LIMITS[plan]?.[what] ?? null;

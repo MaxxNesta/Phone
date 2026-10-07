@@ -1,7 +1,7 @@
 import { sql } from "@/lib/db";
 import { getCompany } from "@/lib/queries";
 import { setCompanyPlan } from "@/lib/actions";
-import { PLAN_LIMITS, type Plan } from "@/lib/plans";
+import { PLAN_LIMITS, planSwitchable, type Plan } from "@/lib/plans";
 import { PlanSwitcher } from "@/components/plan-switcher";
 import { HelpHint } from "@/components/help-hint";
 
@@ -26,10 +26,9 @@ export default async function PlanSettings() {
         <span className="eyebrow">Settings</span>
         <h1>Package</h1>
         <HelpHint>
-          Which package this company is sold on. Switchable so the tiers can
-          actually be tested — the point of gating is that Starter looks
-          different from Enterprise, and that cannot be checked from a value
-          set once at install.
+          Which package this company is on. In production the package is set
+          by the provider; on test sites it can be switched here so each tier
+          can be tried.
           <br /><br />
           <strong>Enforced:</strong> Starter is one branch and three
           warehouses; Business is up to four branches; Enterprise has no
@@ -42,6 +41,7 @@ export default async function PlanSettings() {
         current={row.plan}
         limits={PLAN_LIMITS}
         have={counts}
+        locked={!planSwitchable}
         action={setCompanyPlan}
       />
     </>

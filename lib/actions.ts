@@ -10,7 +10,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
   from "./import-vouchers";
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines } from "./queries";
 import { scaffoldCompany } from "./setup";
-import { limitFor, type Plan } from "./plans";
+import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser } from "./auth";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
@@ -3851,6 +3851,7 @@ export async function deleteLocation(_prev: unknown, fd: FormData): Promise<Acti
  */
 export async function setCompanyPlan(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
+  if (!planSwitchable) return { error: "The package is set by your provider. Contact them to upgrade." };
   try {
     const co = await companyId();
     const plan = str(fd, "plan");
