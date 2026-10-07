@@ -42,8 +42,8 @@ export default async function PurchasingTerms({ searchParams }: { searchParams: 
   const pg = paginate(rows, sp.page);
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Catalogue</span>
         <h1>Purchasing terms</h1>
         <HelpHint>
           How long one item takes from one supplier, where it differs from
@@ -57,6 +57,7 @@ export default async function PurchasingTerms({ searchParams }: { searchParams: 
           actually happened is measured separately and shown beside it, and
           never overwrites what you set here.
         </HelpHint>
+        <p className="page-sub">How long each item takes to arrive from a supplier, where it differs from the usual.</p>
       </div>
 
       <SupplierItemForm

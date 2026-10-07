@@ -43,8 +43,8 @@ export default async function TaxCodes() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Accounting</span>
         <h1>Tax codes</h1>
         <HelpHint>
           Commercial tax, as charged on an invoice line. Tax charged on a sale
@@ -62,6 +62,7 @@ export default async function TaxCodes() {
           taxed the way that day was taxed. Documents already posted never
           move either way &mdash; their tax is stored on their own lines.
         </HelpHint>
+        <p className="page-sub">Commercial tax rates applied to sales and purchases.</p>
       </div>
 
       <SimpleForm action={createTaxCode} submitLabel="Add tax code">

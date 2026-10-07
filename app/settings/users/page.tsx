@@ -14,6 +14,7 @@ export default async function Users() {
   return (
     <>
       <div className="page-head hero">
+        <span className="eyebrow">Settings · Account</span>
         <h1>Users</h1>
         <p className="page-sub">Who can sign in, and what their role lets them do. Checked on the server for every page and action.</p>
       </div>

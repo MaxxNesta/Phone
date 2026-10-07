@@ -27,6 +27,7 @@ export default async function Currencies() {
   return (
     <>
       <div className="page-head hero">
+        <span className="eyebrow">Settings · Accounting</span>
         <h1>Currencies &amp; exchange rates</h1>
         <p className="page-sub">
           Buy in yuan, baht or dollars; the books are kept in {co.base_currency}. A purchase uses the latest

@@ -47,14 +47,15 @@ export default async function Subcategories() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Catalogue</span>
         <h1>Sub categories</h1>
         <HelpHint>
           Every sub category across the whole catalogue, in one flat list —
           the tree view groups them by category; this jumps straight to any of
           them.
         </HelpHint>
+        <p className="page-sub">Every sub category in one list, such as the models inside each type.</p>
       </div>
 
       <AddCategoryForm

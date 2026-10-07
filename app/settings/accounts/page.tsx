@@ -92,8 +92,8 @@ export default async function ChartOfAccounts({
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Settings</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Accounting</span>
         <h1>Chart of accounts</h1>
         <HelpHint>
           Created with the company and yours to customise. Accounts nest to any
@@ -102,6 +102,7 @@ export default async function ChartOfAccounts({
           and protected &mdash; retiring one would turn a routine sale into an
           error.
         </HelpHint>
+        <p className="page-sub">The accounts every sale, purchase and payment posts to.</p>
       </div>
 
       <AddAccountForm action={createAccount} accounts={accounts} currencies={currencies} />

@@ -5347,3 +5347,9 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .stockname-text { min-width: 0; max-width: 360px; }
 .prod { min-width: 0; }
 .prod-text { min-width: 0; max-width: 340px; }
+
+/* Hero page heads with a help mark: the mark sits beside the title, not on
+   a line of its own. */
+.page-head.hero > h1:has(+ .helphint) { display: inline-block; padding-right: 0.5rem; vertical-align: middle; }
+.page-head.hero > h1 + .helphint { vertical-align: middle; }
+.page-head.hero > .eyebrow { display: block; }

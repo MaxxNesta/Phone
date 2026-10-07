@@ -45,13 +45,14 @@ export default async function Salespersons() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Company</span>
         <h1>Salespersons</h1>
         <HelpHint>
           Staff who get credited on a sale. Commission is reported on here,
           not paid automatically &mdash; paying it out is a payroll matter.
         </HelpHint>
+        <p className="page-sub">Staff a sale can be credited to.</p>
       </div>
 
       <AddSalesmanForm action={createSalesman} locations={locations} />

@@ -37,8 +37,8 @@ export default async function Units() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Catalogue</span>
         <h1>Units</h1>
         <HelpHint>
           What quantities are counted in. Each item is stored in one base unit
@@ -47,6 +47,7 @@ export default async function Units() {
           not changed underneath it afterwards. Retiring one takes it off the
           pickers and leaves every existing item counting exactly as before.
         </HelpHint>
+        <p className="page-sub">How products are counted and packed: piece, box, carton.</p>
       </div>
 
       <AddUnitForm action={createUnit} />

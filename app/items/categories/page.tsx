@@ -36,13 +36,14 @@ export default async function CategoriesRoot() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Catalogue</span>
         <h1>Categories</h1>
         <HelpHint>
           The top of your product tree. Open one to add categories inside it,
           then keep going until you reach the products themselves.
         </HelpHint>
+        <p className="page-sub">Product types such as iPhone, iPad and Accessories, and how each one is tracked.</p>
       </div>
 
       <AddCategoryForm

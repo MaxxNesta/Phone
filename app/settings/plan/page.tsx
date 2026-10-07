@@ -22,8 +22,8 @@ export default async function PlanSettings() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Settings</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Account</span>
         <h1>Package</h1>
         <HelpHint>
           Which package this company is on. In production the package is set
@@ -35,6 +35,7 @@ export default async function PlanSettings() {
           limit. A company already over its limit keeps what it has and is
           refused only when it adds more.
         </HelpHint>
+        <p className="page-sub">What your package includes, and how much of it is in use.</p>
       </div>
 
       <PlanSwitcher

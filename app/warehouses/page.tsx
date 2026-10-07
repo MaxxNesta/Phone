@@ -56,8 +56,8 @@ export default async function Warehouses() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Company</span>
         <h1>Branches &amp; warehouses</h1>
         <HelpHint>
           Branches and the warehouses inside them, shown as one tree. A
@@ -66,6 +66,7 @@ export default async function Warehouses() {
           branch. Stock lives in warehouses, and the branch it rolls up to is
           what the branch-by-branch financial reports are grouped by.
         </HelpHint>
+        <p className="page-sub">Where you sell from and where stock is kept.</p>
       </div>
 
       {(() => {

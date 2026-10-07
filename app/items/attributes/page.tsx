@@ -45,8 +45,8 @@ export default async function VariantAttributes() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Catalogue</span>
         <h1>Variant attributes</h1>
         <HelpHint>
           The ways a product can vary — Size, Colour, Material — and the
@@ -56,6 +56,7 @@ export default async function VariantAttributes() {
           combination, and it is those that carry the stock, the price and the
           barcode. Most items need none of this and are unaffected.
         </HelpHint>
+        <p className="page-sub">The options a model comes in: storage, colour, SIM and more.</p>
       </div>
 
       <AddAttributeForm action={createVariantAttribute} />

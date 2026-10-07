@@ -34,14 +34,15 @@ export default async function Brands() {
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Master data</span>
+      <div className="page-head hero">
+        <span className="eyebrow">Settings · Catalogue</span>
         <h1>Brands</h1>
         <HelpHint>
           A flat list, on purpose &mdash; the same brand shows up under many
           different categories, so it doesn&rsquo;t belong on the category
           tree itself.
         </HelpHint>
+        <p className="page-sub">The makers products are filed under.</p>
       </div>
 
       <AddBrandForm action={createBrand} />
