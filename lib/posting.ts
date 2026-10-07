@@ -5027,7 +5027,8 @@ async function linkFulfilmentIn(
 
     const [got] = await tx`
       select dl.id, dl.item_id, dl.base_qty as qty,
-             d.doc_no, d.doc_type, d.partner_id, d.status
+             d.doc_no, d.doc_type, d.partner_id, d.status,
+             (select x.document_id from document_line x where x.id = dl.source_line_id) as source_doc
         from document_line dl
         join document d on d.id = dl.document_id
        where dl.id = ${l.fulfilmentLineId} and d.company_id = ${companyId}`;
@@ -5051,6 +5052,11 @@ async function linkFulfilmentIn(
     }
     if (order.item_id !== got.item_id) {
       throw new Error(`Line ${i + 1}: those two lines are for different items`);
+    }
+    // Made from this very order: it already counts toward it, and linking
+    // it again would count the same goods twice.
+    if (input.source !== "POSTING" && got.source_doc === order.document_id) {
+      throw new Error(`Line ${i + 1}: ${got.doc_no} was received against ${order.doc_no} already`);
     }
 
     // What the order still expects, counting what already answers it either

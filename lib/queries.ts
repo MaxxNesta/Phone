@@ -5342,6 +5342,11 @@ export async function getOrderProgress(orderId: string, docType: string) {
       join document dd on dd.id = dl.document_id
      where ol.document_id in (${versionsOf(orderId)})
        and dd.status = 'POSTED'
+       -- A line made from this order already counts through its own
+       -- reference below; a link on top of it would count it twice.
+       and not exists (select 1 from document_line x
+                        where x.id = dl.source_line_id
+                          and x.document_id in (${versionsOf(orderId)}))
      group by fl.order_line_id, ol.item_id`;
 
   const done = new Map<string, number>();

@@ -2,7 +2,8 @@
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import Link from "next/link";
-import { Fragment, useActionState, useEffect, useState } from "react";
+import { Fragment, useActionState, useEffect, useRef, useState } from "react";
+import { OffOrderConfirm } from "./off-order-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
@@ -349,6 +350,15 @@ export function ReceiptForm({
   const baseTotal = foreign && !matchedPi && Number(rate) > 0 ? total * Number(rate) : total;
   const lineCols = 8 + (order ? 1 : 0) + (matchedPi ? 1 : 0);
 
+  // Received against an order but not on it: posts, but the order counts
+  // only what it ordered, so it is asked about once before posting.
+  const offOrder = order
+    ? lines.filter((l) => l.itemId && Number(l.qty) > 0 && !order.lines.some((ol) => ol.itemId === l.itemId))
+    : [];
+  const [askOffOrder, setAskOffOrder] = useState(false);
+  const offOrderOk = useRef(false);
+  const postRef = useRef<HTMLButtonElement>(null);
+
   return (
     <form action={formAction} className="form wide gr">
       {/* One submission, one posting. Generated when this form mounts, so a
@@ -387,9 +397,18 @@ export function ReceiptForm({
               {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
             </button>
           )}
-          <button type="submit" disabled={pending || total === 0 || serialShort.length > 0}>
+          <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0}
+            onClick={(e) => {
+              if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }
+            }}>
             {pending ? "Posting…" : "Post GR"}
           </button>
+          {order && (
+            <OffOrderConfirm open={askOffOrder} orderNo={order.docNo}
+              lines={offOrder.map((l) => ({ name: byId(l.itemId)?.name ?? "Item", qty: Number(l.qty) }))}
+              onCancel={() => setAskOffOrder(false)}
+              onConfirm={() => { setAskOffOrder(false); offOrderOk.current = true; postRef.current?.click(); offOrderOk.current = false; }} />
+          )}
         </div>
       </div>
 

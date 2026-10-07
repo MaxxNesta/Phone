@@ -5373,3 +5373,25 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 
 /* Dashboard rows: both cards as tall as the taller, whatever is in them. */
 .section-grid.eqrow { align-items: stretch; }
+
+/* Apple-style alert: centred, short title, the items as a quiet list. */
+.confirm.alertish .confirm-panel { text-align: center; }
+.confirm.alertish .confirm-icon { margin: 0 auto var(--s3); }
+.confirm-icon.info { background: color-mix(in srgb, var(--link) 12%, transparent); color: var(--link); }
+.alert-items {
+  list-style: none; margin: var(--s3) 0 0; padding: 0; text-align: left;
+  border-radius: 10px; background: var(--ground);
+}
+.alert-items li {
+  display: flex; justify-content: space-between; gap: var(--s3);
+  padding: 9px 12px; font-size: var(--t-sm); white-space: normal;
+}
+.alert-items li + li { border-top: 1px solid var(--line-soft); }
+.confirm.alertish .confirm-actions { justify-content: stretch; }
+.confirm.alertish .confirm-actions > * { flex: 1; }
+
+.offorder-note {
+  display: flex; align-items: center; gap: 6px; margin: 0 0 var(--s3);
+  font-size: var(--t-sm); color: var(--ink-soft);
+}
+.offorder-note svg { color: var(--link); flex: none; }

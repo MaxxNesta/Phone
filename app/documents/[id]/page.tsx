@@ -8,6 +8,7 @@ import { serialsOnDocument } from "@/lib/phone";
 import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
+import { OffOrderNote, type OffOrderReceived } from "@/components/off-order-note";
 import { LinkFulfilment, OrderActions } from "@/components/link-fulfilment";
 import { TaskBanner } from "@/components/document-rail";
 import { DocumentFooter } from "@/components/document-footer";
@@ -293,6 +294,17 @@ export default async function DocumentPage({
     ? await getOrderOutstanding(doc.company_id, doc.id)
     : { outstanding: 0, isClosed: false };
   const closure = isPostedOrder ? await getOrderClosure(doc.id) : null;
+  // Goods its receipts or deliveries brought that the order never asked for.
+  const offOrder = isPostedOrder ? (await sql`
+    select i.name, sum(dl.base_qty)::float as qty, d.doc_no as "docNo"
+      from document d
+      join document_line dl on dl.document_id = d.id
+      join item i on i.id = dl.item_id
+     where d.source_document_id = ${doc.id} and d.status = 'POSTED'
+       and d.doc_type in ('GOODS_RECEIPT', 'DELIVERY')
+       and dl.item_id not in (select item_id from document_line where document_id = ${doc.id})
+     group by i.name, d.doc_no, d.posting_date
+     order by d.posting_date, d.doc_no, i.name`) as unknown as OffOrderReceived[] : [];
   // What closing or reopening would be deciding about, and what it leaves
   // alone — read here so the confirmation shows the same figures the engine
   // will record.
@@ -952,6 +964,9 @@ export default async function DocumentPage({
           <>
             {versionTrail}
             <TaskBanner tasks={tasks.filter((t: any) => !t.aspect)} />
+            {offOrder.length > 0 && (
+              <OffOrderNote orderNo={doc.doc_no ?? "this order"} rows={offOrder} purchase={!sales} />
+            )}
           </>
         }
         badges={versionBadge}
