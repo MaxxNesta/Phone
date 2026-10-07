@@ -29,6 +29,8 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   const showCost = can(user, "cost.view");
   const [rows, facets, k] = await Promise.all([
     phoneStock(user.companyId, f), phoneStockFacets(user.companyId), serialKpis(user.companyId)]);
+  // With one warehouse every unit is in it: no Location column or filter.
+  const manyWarehouses = facets.locations.filter((l: any) => l.is_stock_location).length > 1;
   const units = stripCost(rows as Record<string, any>[], showCost);
   // A scanned IMEI that names one phone opens that phone.
   const exact = sp.q ? units.filter((u: any) => u.imei === sp.q!.trim() || u.imei2 === sp.q!.trim()) : [];
@@ -75,7 +77,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             <label htmlFor="f-q">IMEI, serial or model</label>
             <input id="f-q" name="q" defaultValue={sp.q ?? ""} placeholder="Scan or type" autoFocus />
           </div>
-          {select("location", facets.locations.map((l: any) => ({ v: l.id, l: l.name })), sp.location)}
+          {manyWarehouses && select("location", facets.locations.map((l: any) => ({ v: l.id, l: l.name })), sp.location)}
           {select("brand", facets.brands.map((v) => ({ v, l: v })), sp.brand)}
           {select("model", facets.models.map((v) => ({ v, l: v })), sp.model)}
           {select("storage", facets.storages.map((v) => ({ v, l: v })), sp.storage)}
@@ -96,7 +98,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
         <table>
           <thead>
             <tr>
-              <th>Model</th><th>Variant</th><th>IMEI / Serial</th><th>Location</th>
+              <th>Model</th><th>Variant</th><th>IMEI / Serial</th>{manyWarehouses && <th>Location</th>}
               {showCost && <th className="num">Cost</th>}<th className="num">Price</th>
               <th>Status</th><th className="num">Age</th><th>Warranty</th>
             </tr>
@@ -112,7 +114,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
                 </td>
                 <td className="prod-sub">{[u.storage, u.colour].filter(Boolean).join(" · ") || u.item_name}</td>
                 <td className="m"><Link href={`/inventory/phones/${u.serial_id}`}>{u.imei}</Link></td>
-                <td>{u.location_name}</td>
+                {manyWarehouses && <td>{u.location_name}</td>}
                 {showCost && <td className="num">{money(u.unit_cost)}</td>}
                 <td className="num">{u.price != null ? money(u.price) : "—"}</td>
                 <td>

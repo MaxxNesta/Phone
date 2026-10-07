@@ -39,6 +39,18 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const units = rows.reduce((s, r: any) => s + Math.max(0, r.available), 0);
   const reserved = rows.reduce((s, r: any) => s + Number(r.reserved), 0);
   const low = rows.filter((r: any) => r.status !== "HEALTHY");
+  // A column per warehouse only on request, and only where there is more than
+  // one: a single-shop company would see the same figure twice.
+  const manyWarehouses = allLocs.length > 1;
+  const byWarehouse = manyWarehouses && sp.by === "warehouse";
+  const shownLocs = byWarehouse ? locations : [];
+  const toggleHref = (() => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "by" && k !== "page") q.set(k, v);
+    if (!byWarehouse) q.set("by", "warehouse");
+    const t = q.toString();
+    return t ? `/inventory?${t}` : "/inventory";
+  })();
 
   const pg = paginate(rows, sp.page);
   return (
@@ -79,13 +91,16 @@ export default async function InventorySummary({ searchParams }: { searchParams:
               {brands.map((b: any) => <option key={b.name} value={b.name}>{b.name}</option>)}
             </select>
           </div>
-          <div className="field">
-            <label htmlFor="il">Location</label>
-            <select id="il" name="location" defaultValue={sp.location ?? ""}>
-              <option value="">All</option>
-              {allLocs.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </div>
+          {manyWarehouses && (
+            <div className="field">
+              <label htmlFor="il">Location</label>
+              <select id="il" name="location" defaultValue={sp.location ?? ""}>
+                <option value="">All</option>
+                {allLocs.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </div>
+          )}
+          {byWarehouse && <input type="hidden" name="by" value="warehouse" />}
           <div className="field">
             <label htmlFor="is">Stock status</label>
             <select id="is" name="status" defaultValue={sp.status ?? ""}>
@@ -100,12 +115,17 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       </form>
 
       <div className="card" style={{ overflowX: "auto", marginBottom: "var(--s3)" }}>
-        <div className="card-head"><h2>Inventory Summary</h2><span className="page-sub">Current stock levels across all locations</span></div>
+        <div className="card-head">
+          <h2>Inventory Summary</h2>
+          {manyWarehouses
+            ? <Link href={toggleHref} className="dt-tool">{byWarehouse ? "Hide warehouses" : "Show by warehouse"}</Link>
+            : <span className="page-sub">Current stock levels</span>}
+        </div>
         <table>
           <thead>
             <tr>
               <th>Product</th><th>Category</th>
-              {locations.map((l: any) => <th key={l.id} className="num">{l.name}</th>)}
+              {shownLocs.map((l: any) => <th key={l.id} className="num">{l.name}</th>)}
               <th className="num">Reserved</th><th className="num">Available</th>
               {seeCost && <><th className="num">Avg / FIFO cost</th><th className="num">Stock value</th></>}
               <th>Status</th>
@@ -124,7 +144,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                   </span>
                 </td>
                 <td>{r.category}</td>
-                {locations.map((l: any) => <td key={l.id} className="num">{Number(r.by_loc?.[l.id] ?? 0)}</td>)}
+                {shownLocs.map((l: any) => <td key={l.id} className="num">{Number(r.by_loc?.[l.id] ?? 0)}</td>)}
                 <td className="num">{r.reserved}</td>
                 <td className="num">{r.available}</td>
                 {seeCost && <>
