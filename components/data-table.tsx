@@ -254,10 +254,13 @@ export function DataTable({
 
   const canExport = Boolean(csvFilename && rows.some((r) => r.csv));
 
+  // Figures sort biggest first on the first click — "which has the most"
+  // is the question — and words A to Z.
   function toggleSort(key: string) {
+    const first = columns.find((c) => c.key === key)?.align === "r" ? "desc" : "asc";
     setSort((s) => {
-      if (!s || s.key !== key) return { key, dir: "asc" };
-      if (s.dir === "asc") return { key, dir: "desc" };
+      if (!s || s.key !== key) return { key, dir: first };
+      if (s.dir === first) return { key, dir: first === "asc" ? "desc" : "asc" };
       return null;
     });
   }
@@ -363,7 +366,9 @@ export function DataTable({
                   {c.sortable ? (
                     <button type="button" className="sortbtn" onClick={() => toggleSort(c.key)}>
                       {c.label}
-                      {sort?.key === c.key ? (sort.dir === "asc" ? " ↑" : " ↓") : ""}
+                      {sort?.key === c.key
+                        ? <span className="sortmark on" aria-hidden="true">{sort.dir === "asc" ? "↑" : "↓"}</span>
+                        : <span className="sortmark" aria-hidden="true">↕</span>}
                     </button>
                   ) : (
                     c.label

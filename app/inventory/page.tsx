@@ -61,7 +61,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   // What is on the shelf, unless asked for the whole catalogue. Looking for
   // "out of stock" is asking for the whole catalogue.
   const allItems = sp.all === "1" || sp.status === "OUT";
-  const shown = allItems ? rows : rows.filter((r: any) => Number(r.qty) > 0 || Number(r.reserved) > 0);
+  const shown = allItems ? [...rows] : rows.filter((r: any) => Number(r.qty) > 0 || Number(r.reserved) > 0);
   const scopeHref = (all: boolean) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) if (v && k !== "all" && k !== "page") q.set(k, v);
@@ -69,6 +69,45 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     const t = q.toString();
     return t ? `/inventory?${t}` : "/inventory";
   };
+  // Sorted on the server, across every page rather than the 25 on screen.
+  // Figures biggest first on the first click, words A to Z.
+  const SORTS: Record<string, { num: boolean; v: (r: any) => number | string }> = {
+    product: { num: false, v: (r) => `${r.model} ${r.variant ?? ""}`.toLowerCase() },
+    category: { num: false, v: (r) => String(r.category ?? "").toLowerCase() },
+    reserved: { num: true, v: (r) => Number(r.reserved) },
+    available: { num: true, v: (r) => Number(r.available) },
+    cost: { num: true, v: (r) => Number(r.avg_cost ?? -1) },
+    value: { num: true, v: (r) => Number(r.value) },
+    status: { num: false, v: (r) => ({ OUT: 0, LOW: 1, HEALTHY: 2 } as Record<string, number>)[r.status] ?? 3 },
+  };
+  const sortKey = sp.sort && SORTS[sp.sort] ? sp.sort : null;
+  const sortDir = sp.dir === "asc" || sp.dir === "desc" ? sp.dir : sortKey && SORTS[sortKey].num ? "desc" : "asc";
+  if (sortKey) {
+    const { v } = SORTS[sortKey];
+    shown.sort((a: any, b: any) => {
+      const x = v(a), y = v(b);
+      const c = x < y ? -1 : x > y ? 1 : 0;
+      return sortDir === "asc" ? c : -c;
+    });
+  }
+  const sortHref = (key: string) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "sort" && k !== "dir" && k !== "page") q.set(k, v);
+    const first = SORTS[key].num ? "desc" : "asc";
+    q.set("sort", key);
+    q.set("dir", sortKey === key ? (sortDir === "asc" ? "desc" : "asc") : first);
+    return `/inventory?${q.toString()}`;
+  };
+  const Th = ({ k, label, num }: { k: string; label: string; num?: boolean }) => (
+    <th className={num ? "num" : undefined} aria-sort={sortKey === k ? (sortDir === "asc" ? "ascending" : "descending") : undefined}>
+      <Link href={sortHref(k)} className="sortbtn" scroll={false}>
+        {label}
+        {sortKey === k
+          ? <span className="sortmark on" aria-hidden="true">{sortDir === "asc" ? "↑" : "↓"}</span>
+          : <span className="sortmark" aria-hidden="true">↕</span>}
+      </Link>
+    </th>
+  );
   const pg = paginate(shown, sp.page);
   return (
     <>
@@ -136,11 +175,11 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <table>
           <thead>
             <tr>
-              <th>Product</th><th>Category</th>
+              <Th k="product" label="Product" /><Th k="category" label="Category" />
               {shownLocs.map((l: any) => <th key={l.id} className="num">{l.name}</th>)}
-              <th className="num">Reserved</th><th className="num">Available</th>
-              {seeCost && <><th className="num">Avg / FIFO cost</th><th className="num">Stock value</th></>}
-              <th>Status</th>
+              <Th k="reserved" label="Reserved" num /><Th k="available" label="Available" num />
+              {seeCost && <><Th k="cost" label="Avg / FIFO cost" num /><Th k="value" label="Stock value" num /></>}
+              <Th k="status" label="Status" />
             </tr>
           </thead>
           <tbody>

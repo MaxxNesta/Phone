@@ -5395,3 +5395,8 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   font-size: var(--t-sm); color: var(--ink-soft);
 }
 .offorder-note svg { color: var(--link); flex: none; }
+
+/* Every sortable header says so; the one in use says which way. */
+.sortmark { font-size: 0.85em; opacity: 0.35; }
+.sortmark.on { opacity: 1; color: var(--ink); }
+.sortbtn:hover .sortmark { opacity: 0.8; }
