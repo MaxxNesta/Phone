@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth";
 import { inventorySummary, catalogFacets } from "@/lib/phone";
 import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
 import { AutoApply } from "@/components/auto-apply";
+import { BulkDelete, PickPage } from "@/components/bulk-delete";
 import { money, shortDate } from "@/lib/format";
 import { Stat } from "@/components/stat";
 import { paginate } from "@/lib/paging";
@@ -41,6 +42,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const low = rows.filter((r: any) => r.status !== "HEALTHY").length;
 
   const pg = paginate(list, sp.page);
+  const filtered = Object.entries(sp).some(([k, v]) => v && (["q", "category", "model", "tracking"].includes(k) || k.startsWith("a_")));
   return (
     <>
       <div className="page-head hero">
@@ -80,9 +82,15 @@ export default async function Products({ searchParams }: { searchParams: Promise
 
 
           <div className="card" style={{ overflowX: "auto" }}>
+            <div className="card-head">
+              <h2>Products</h2>
+              <BulkDelete filtered={filtered}
+                shown={list.map((r: any) => ({ id: r.id, name: [r.model, r.variant].filter(Boolean).join(" · ") }))} />
+            </div>
             <table>
               <thead>
                 <tr>
+                  <th className="tight"><PickPage /></th>
                   <th>Product</th><th>Category</th><th>Tracking</th>
                   <th className="num">Selling price</th><th className="num">Available</th><th>Status</th>
                   <th>Last purchase</th><th />
@@ -91,6 +99,9 @@ export default async function Products({ searchParams }: { searchParams: Promise
               <tbody>
                 {pg.rows.map((r: any) => (
                   <tr key={r.id}>
+                    <td className="tight">
+                      <input type="checkbox" className="bulk-pick" value={r.id} aria-label={`Select ${r.model}`} />
+                    </td>
                     <td>
                       <span className="prod">
                         <span className="thumb">{r.photo ? <img src={r.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}</span>
@@ -110,7 +121,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     <td><Link href={`/items/${r.id}`} aria-label={`Edit ${r.name}`}>Edit</Link></td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={8} className="page-sub">No products match.</td></tr>}
+                {list.length === 0 && <tr><td colSpan={9} className="page-sub">No products match.</td></tr>}
               </tbody>
             </table>
             <Pager p={pg} params={sp} />

@@ -7436,3 +7436,91 @@ export async function addItemPack(
   const [u] = await sql`select code from uom where id = ${uomId}`;
   return { pack: true as const, uomId, code: u.code as string, factor };
 }
+
+// ------------------------------------------------------- bulk delete ----
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Items among `ids` that something keeps — a document line, a movement, a
+ * serial, a lot. Read from the catalogue's own foreign keys, so a table added
+ * later that points at an item is honoured without anyone remembering this.
+ */
+async function itemsWithHistory(tx: typeof sql, ids: string[]): Promise<Set<string>> {
+  const refs = await tx<{ tbl: string; col: string }[]>`
+    select c.conrelid::regclass::text as tbl, a.attname as col
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+     where c.contype = 'f' and c.confrelid = 'item'::regclass
+       and c.confdeltype in ('a', 'r') and array_length(c.conkey, 1) = 1
+       and c.conrelid <> 'item'::regclass`;
+  const kept = new Set<string>();
+  for (const r of refs) {
+    const rows = await tx`select distinct ${tx(r.col)}::text as id from ${tx(r.tbl)} where ${tx(r.col)} in ${tx(ids)}`;
+    for (const x of rows) kept.add(x.id as string);
+  }
+  return kept;
+}
+
+/**
+ * Removes the chosen items. One with history cannot be deleted without
+ * rewriting the books, so it is deactivated instead — gone from every list,
+ * still there for the documents that name it. A model left with no variants
+ * goes with them.
+ */
+export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | { error: string }> {
+  await requirePermission("items.manage");
+  const co = await companyId();
+  const wanted = [...new Set(ids)].filter((x) => UUID_RE.test(x));
+  if (wanted.length === 0) return { error: "Nothing chosen" };
+  try {
+    const result = await sql.begin(async (tx) => {
+      const mine = (await tx`select id::text as id, parent_item_id::text as parent from item
+                              where company_id = ${co} and id in ${tx(wanted)}`) as unknown as { id: string; parent: string | null }[];
+      if (mine.length === 0) return { deleted: 0, hidden: 0 };
+      const all = mine.map((m) => m.id);
+      const kept = await itemsWithHistory(tx as unknown as typeof sql, all);
+      // A model whose variants are not all going stays: its variants need it.
+      const stillParent = await tx`select distinct parent_item_id::text as id from item
+                                    where parent_item_id in ${tx(all)} and not (id in ${tx(all)})`;
+      for (const x of stillParent) kept.add(x.id as string);
+      // …and a variant that has to stay keeps its model.
+      for (const m of mine) if (kept.has(m.id) && m.parent && all.includes(m.parent)) kept.add(m.parent);
+      const del = all.filter((x) => !kept.has(x));
+      const hide = all.filter((x) => kept.has(x));
+      if (del.length) {
+        await tx`delete from item where id in ${tx(del)} and parent_item_id is not null`;
+        await tx`delete from item where id in ${tx(del)}`;
+      }
+      if (hide.length) await tx`update item set is_active = false where id in ${tx(hide)}`;
+      // Models left with nothing under them.
+      const parents = [...new Set(mine.map((m) => m.parent).filter((p): p is string => Boolean(p)))];
+      let models = 0;
+      if (parents.length) {
+        const empty = (await tx`select p.id::text as id from item p where p.id in ${tx(parents)}
+                                 and not exists (select 1 from item c where c.parent_item_id = p.id and c.is_active)`)
+          .map((r) => r.id as string);
+        if (empty.length) {
+          const pk = await itemsWithHistory(tx as unknown as typeof sql, empty);
+          const withKids = new Set((await tx`select distinct parent_item_id::text as id from item
+                                              where parent_item_id in ${tx(empty)}`).map((r) => r.id as string));
+          const goes = empty.filter((x) => !pk.has(x) && !withKids.has(x));
+          const off = empty.filter((x) => !goes.includes(x));
+          if (goes.length) await tx`delete from item where id in ${tx(goes)}`;
+          if (off.length) await tx`update item set is_active = false where id in ${tx(off)}`;
+          models = empty.length;
+        }
+      }
+      return { deleted: del.length, hidden: hide.length, models };
+    });
+    revalidatePath("/products");
+    revalidatePath("/items");
+    revalidatePath("/inventory");
+    revalidatePath("/items/stock");
+    const parts = [`${result.deleted} deleted`];
+    if (result.hidden) parts.push(`${result.hidden} with history hidden instead`);
+    return { ok: parts.join(" · ") };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}

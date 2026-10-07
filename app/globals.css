@@ -5400,3 +5400,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .sortmark { font-size: 0.85em; opacity: 0.35; }
 .sortmark.on { opacity: 1; color: var(--ink); }
 .sortbtn:hover .sortmark { opacity: 0.8; }
+
+button.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; }
+button.danger-solid:hover { opacity: 0.9; }
+.confirm.alertish .confirm-icon:not(.info) { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
