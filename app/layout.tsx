@@ -153,7 +153,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/inventory" exact>Summary</NavLink>
                 <NavLink href="/items/stock">Stock</NavLink>
                 <NavLink href="/inventory/phones">IMEI / Serial Tracking</NavLink>
-                {may("inventory.manage") && <NavLink href="/inventory/transfer">Stock transfers</NavLink>}
+                {may("inventory.manage") && (company?.warehouses ?? 0) > 1 && <NavLink href="/inventory/transfer">Stock transfers</NavLink>}
                 {may("inventory.manage") && <NavLink href="/inventory/adjustments">Stock count &amp; adjustments</NavLink>}
                 <NavLink href="/reports/phone-stock">Inventory aging</NavLink>
                 <NavLink href="/inventory/warranty">Warranty lookup</NavLink>
