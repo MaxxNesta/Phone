@@ -37,7 +37,11 @@ export function ItemForm({
   returnTo,
   presetGroupId,
   variantAttributes,
+  retail,
 }: {
+  /** Phone retail: nothing expires and nothing is recalled by lot, so the
+   *  batch switches are not offered. */
+  retail?: boolean;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   nodes: Node[];
   uoms: Uom[];
@@ -315,7 +319,7 @@ export function ItemForm({
               </div>
               <input type="hidden" name="identity" value={tracking} />
               <span className="hint">{TRACKING.find((t) => t.v === tracking)?.note}
-                {" "}Every receipt names each unit, and every sale says which one left.</span>
+                {tracking !== "NONE" && " Every receipt names each unit, and every sale says which one left."}</span>
             </div>
             <div className="row" style={{ marginBottom: "0.75rem" }}>
               <div className="field">
@@ -329,6 +333,7 @@ export function ItemForm({
               </div>
             </div>
 
+            {!retail && (<>
             <label className="trackbox-opt" htmlFor="tracks_batch">
               <input
                 id="tracks_batch" name="tracks_batch" type="checkbox"
@@ -377,6 +382,7 @@ export function ItemForm({
                   : "No number here — the batch is typed on the document that brings the goods in: a goods receipt, a purchase bill that receives, or a stock adjustment that finds stock."}
               </p>
             )}
+            </>)}
           </fieldset>
 
           {/* This form creates; adding variants to a product that already has

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { sql } from "@/lib/db";
 import { createItem } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
-import { getBrands, getVariantAttributes} from "@/lib/queries";
+import { getBrands, getCompany, getVariantAttributes } from "@/lib/queries";
 import { ItemForm } from "@/components/item-form";
 import { HelpHint } from "@/components/help-hint";
 
@@ -52,6 +52,7 @@ export default async function NewItem() {
         uoms={uoms as never}
         brands={brands as never}
         returnTo="/items"
+        retail={Boolean((await getCompany())?.retail_mode)}
       />
     </>
   );

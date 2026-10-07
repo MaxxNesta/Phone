@@ -6,7 +6,7 @@ import {
   createCategory, createItem, insertCategoryAbove, moveCategory,
   updateCategory, deactivateCategory, activateCategory, deleteCategory,
 } from "@/lib/actions";
-import { getBrands, getVariantAttributes} from "@/lib/queries";
+import { getBrands, getCompany, getVariantAttributes } from "@/lib/queries";
 import { allCategories, childrenOf, trail, depthOf, levelCounts, branchIds, levelLabel, levelLabelPlural, MAX_CATEGORY_DEPTH } from "@/lib/tree";
 import { AddCategoryForm } from "@/components/level-form";
 import { ItemForm } from "@/components/item-form";
@@ -156,6 +156,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
               brands={brands as never}
               returnTo={returnTo}
               presetGroupId={id}
+              retail={Boolean((await getCompany())?.retail_mode)}
             />
           </div>
         </div>
