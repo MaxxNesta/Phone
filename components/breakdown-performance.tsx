@@ -32,10 +32,12 @@ const PERIOD = [
 
 type Measure = (typeof PERIOD)[number][0];
 
-export function BreakdownPerformance({ rows, label }: {
+export function BreakdownPerformance({ rows, label, retail }: {
   rows: Row[]; label: string;
+  /** Retail: nothing is ever invoiced ahead of shipping. */
+  retail?: boolean;
 }) {
-  const MEASURES = PERIOD;
+  const MEASURES = retail ? PERIOD.filter(([k]) => k !== "unmatched") : PERIOD;
   const [measure, setMeasure] = useState<Measure>("revenue");
   /* Switching basis drops whichever measure the other one had and this one
      does not, so the fallback is what keeps the chart on screen instead of

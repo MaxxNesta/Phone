@@ -70,8 +70,10 @@ function Kpi({ label, value, now, before, points, invert }: {
 }
 
 export function SalesOverview({
-  now, before, series, prevFrom, prevTo, currency,
+  now, before, series, prevFrom, prevTo, currency, retail,
 }: {
+  /** Retail: goods leave on the invoice, so nothing is ever unshipped. */
+  retail?: boolean;
   now: Side; before: Side;
   series: { month: string; net: number | string; profit: number | string }[];
   prevFrom: string; prevTo: string; currency: string;
@@ -89,14 +91,14 @@ export function SalesOverview({
      "Profit as a share of net sales"],
     ["Average selling price", now.avgPrice, before.avgPrice, false, false,
      `${revenueLabel} divided by units`],
-    unmatchedRow(now, before),
+    ...(retail ? [] : [unmatchedRow(now, before)]),
     ["Discounts given", now.discount, before.discount, false, true, "Off the list price, all three kinds"],
     ["Returns", now.returned, before.returned, false, true, "Credited back to customers"],
   ];
 
   return (
     <>
-      <div className="kpis kpis-five">
+      <div className={retail ? "kpis" : "kpis kpis-five"}>
         <Kpi label={revenueLabel} value={`${currency} ${num(now.net)}`}
              now={now.net} before={before.net} />
         <Kpi label="Units sold" value={num(now.units)}
@@ -106,8 +108,10 @@ export function SalesOverview({
         <Kpi label="Gross margin"
              value={now.marginPct === null ? "—" : `${now.marginPct.toFixed(1)}%`}
              now={now.marginPct} before={before.marginPct} points />
-        <Kpi label="Not yet shipped" value={`${currency} ${num(now.unmatched)}`}
-             now={now.unmatched} before={before.unmatched} invert />
+        {!retail && (
+          <Kpi label="Not yet shipped" value={`${currency} ${num(now.unmatched)}`}
+               now={now.unmatched} before={before.unmatched} invert />
+        )}
       </div>
 
       <section className="grid2">

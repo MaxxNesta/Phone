@@ -42,6 +42,9 @@ export default async function SalesReports({
   const tab = (TABS.find(([k]) => k === p.by)?.[0] ?? "overview") as Tab;
   const by = (tab === "overview" ? "item" : tab) as SalesBreakdownBy;
   const range = { from: p.from || defaultFrom(), to: p.to || today() };
+  // Retail invoices move the goods themselves, so nothing is ever invoiced
+  // ahead of shipping and "Not yet shipped" would always read nought.
+  const retail = Boolean(company.retail_mode);
 
   const branches = (await getBranches(company.id)) as unknown as Array<{
     id: string; code: string; name: string;
@@ -172,9 +175,11 @@ export default async function SalesReports({
         {/* Revenue the ledger cannot put a cost against yet, because the
             goods have not gone out. The one way the two halves still part
             company now that both are recognised on the invoice. */}
-        <td className="r" style={{ color: r.unmatched > 0 ? "var(--bad)" : undefined }}>
-          {r.unmatched ? money(String(r.unmatched)) : "—"}
-        </td>
+        {!retail && (
+          <td className="r" style={{ color: r.unmatched > 0 ? "var(--bad)" : undefined }}>
+            {r.unmatched ? money(String(r.unmatched)) : "—"}
+          </td>
+        )}
         <td className="r">
           {tot.revenue > 0 ? `${((r.revenue / tot.revenue) * 100).toFixed(1)}%` : "—"}
         </td>
@@ -199,12 +204,14 @@ export default async function SalesReports({
           by the invoice itself, so both halves of a sale land together and
           the figures here tie to the income statement.
           <br /><br />
+          {!retail && (<>
           <strong>Not yet shipped</strong> is the exception: an invoice
           raised before the goods go out earns revenue the books cannot put
           a cost against yet. It is shown so a flattering margin can be
           recognised for what it is. The cost appears when the goods do, in
           the period they leave.
           <br /><br />
+          </>)}
           Free-of-charge lines earn nothing and their cost goes to promotion
           expense, so they are counted as units given away and left out of
           both money columns.
@@ -249,10 +256,11 @@ export default async function SalesReports({
           now={overview.now} before={overview.before}
           series={overview.series} prevFrom={overview.prevFrom} prevTo={overview.prevTo}
           currency={company.base_currency}
+          retail={retail}
         />
       ) : (
       <>
-      <div className="kpis kpis-five">
+      <div className={retail ? "kpis" : "kpis kpis-five"}>
         <Tile label="Revenue" value={money(String(tot.revenue))}
               sub={`${rows.length} ${rows.length === 1 ? label.toLowerCase() : plural} sold`} />
         <Tile label="Cost of those goods" value={money(String(tot.cost))}
@@ -261,10 +269,12 @@ export default async function SalesReports({
               sub={tot.revenue > 0
                 ? `${((tot.margin / tot.revenue) * 100).toFixed(1)}% margin`
                 : "nothing sold"} />
-        <Tile label="Not yet shipped" value={money(String(tot.unmatched))}
-              sub={tot.unmatched > 0
-                ? "invoiced with no goods out — no cost against it yet"
-                : "every invoice has its goods behind it"} />
+        {!retail && (
+          <Tile label="Not yet shipped" value={money(String(tot.unmatched))}
+                sub={tot.unmatched > 0
+                  ? "invoiced with no goods out — no cost against it yet"
+                  : "every invoice has its goods behind it"} />
+        )}
         <Tile {...fourth} />
       </div>
 
@@ -296,7 +306,7 @@ export default async function SalesReports({
             </div>
           </div>
 
-          <BreakdownPerformance rows={rows} label={label} />
+          <BreakdownPerformance rows={rows} label={label} retail={retail} />
         </section>
       ) : (
         <section className="grid3">
@@ -375,7 +385,7 @@ export default async function SalesReports({
               { key: "cost", label: "COGS", sortable: true, align: "r" },
               { key: "margin", label: "Gross margin", sortable: true, align: "r" },
               { key: "margin_pct", label: "Gross margin %", sortable: true, align: "r" },
-              { key: "unmatched", label: "Not yet shipped", sortable: true, align: "r" },
+              ...(retail ? [] : [{ key: "unmatched", label: "Not yet shipped", sortable: true, align: "r" as const }]),
               { key: "share", label: "Share", sortable: true, align: "r" },
               { key: "invoices", label: "Invoices", align: "r" },
             ]}
