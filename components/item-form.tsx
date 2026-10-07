@@ -19,6 +19,15 @@ const TRACKING = [
   { v: "NONE", label: "Quantity only", note: "Cases, cables, chargers. Counted, not named." },
 ] as const;
 type Uom = { id: string; code: string; name: string };
+
+/** What a product of each Apple type is called, as a hint in the name field. */
+const NAME_EXAMPLE: Record<string, string> = {
+  iphone: "iPhone 18",
+  ipad: "iPad Air 11-inch (M3)",
+  mac: "MacBook Air 13-inch (M4)",
+  "apple watch": "Apple Watch Series 11",
+  airpods: "AirPods Pro 3",
+};
 type Brand = { id: string; code: string; name: string };
 
 // Category depth is capped at two: Category, then Sub category.
@@ -131,6 +140,13 @@ export function ItemForm({
   const tracking = trackOverride && trackOverride.root === chain[0] ? trackOverride.v : typeIdentity;
   const groupCode = selected?.code ?? "";
   const preview = groupCode && serial ? `${groupCode}${serial}` : "";
+  // The name field speaks the type's language: an iPad is named as an iPad
+  // model, an accessory just by what it is.
+  const typeName = nodes.find((n) => n.id === chain[0])?.name ?? "";
+  const accessory = /accessor/i.test(typeName);
+  const nameLabel = !typeName ? "Model" : accessory ? "Accessory name" : `${typeName} model`;
+  const namePlaceholder = accessory ? "20W USB-C Power Adapter"
+    : NAME_EXAMPLE[typeName.toLowerCase()] ?? (typeName ? `${typeName} …` : "iPhone 18");
 
   function pick(depth: number, id: string) {
     // Choosing at one level invalidates everything below it.
@@ -138,7 +154,7 @@ export function ItemForm({
   }
 
   return (
-    <form action={formAction} className="form">
+    <form action={formAction} className="form wide">
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
       <input type="hidden" name="item_group_id" value={selectedId} />
@@ -216,8 +232,8 @@ export function ItemForm({
             </div>
 
             <div className="field">
-              <label htmlFor="name">Name</label>
-              <input id="name" name="name" type="text" required placeholder="Apolo Exercise Book"
+              <label htmlFor="name">{nameLabel}</label>
+              <input id="name" name="name" type="text" required placeholder={namePlaceholder}
                      value={itemName} onChange={(e) => setItemName(e.target.value)} />
             </div>
 
