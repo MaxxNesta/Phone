@@ -137,7 +137,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <div className="card-head"><h2>Top Selling Models</h2><span className="page-sub">Last 30 days</span></div>
           <div className="card-body">
             {d.topModels.length === 0 && <p className="page-sub">No phones sold yet.</p>}
-            {d.topModels.map((m: any) => (
+            {d.topModels.slice(0, 5).map((m: any) => (
               <div className="listrow" key={m.model}>
                 <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
                 <span className="grow"><div className="prod-name">{m.model}</div><div className="prod-sub">{m.sold} sold</div></span>
@@ -154,7 +154,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <table>
             <thead><tr><th>Invoice</th><th>Customer / Item</th><th className="num">Total</th><th>Status</th></tr></thead>
             <tbody>
-              {d.recent.map((r: any) => (
+              {d.recent.slice(0, 5).map((r: any) => (
                 <tr key={r.id}>
                   <td className="m"><Link href={`/documents/${r.id}`}>{r.doc_no}</Link></td>
                   <td>{r.partner_code === "WALKIN" ? "Walk-in" : r.customer}{r.item ? ` · ${r.item}` : ""}</td>
@@ -175,7 +175,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <div className="card-head"><h2>Low Stock</h2><span className="page-sub">Selling, nearly out</span></div>
           <div className="card-body">
             {d.low.length === 0 && <p className="page-sub">Nothing selling is running out.</p>}
-            {d.low.map((l: any) => (
+            {d.low.slice(0, 5).map((l: any) => (
               <div className="listrow" key={l.name}>
                 <span className="grow">
                   <div>{l.name}</div>
