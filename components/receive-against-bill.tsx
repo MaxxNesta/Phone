@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useMemo, useState } from "react";
 import { useActionState } from "react";
@@ -203,12 +204,8 @@ export function ReceiveAgainstBill({
         <div className="rcv-fields">
           <div className="field">
             <label htmlFor="rcv_loc">Warehouse</label>
-            <select id="rcv_loc" name="location_id" required
-                    value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-              ))}
-            </select>
+            <WarehouseSelect locations={locations} id="rcv_loc" name="location_id" required
+                    value={locationId} onChange={(e) => setLocationId(e.target.value)} />
           </div>
           <div className="field">
             <label htmlFor="rcv_date">Received date</label>

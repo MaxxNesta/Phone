@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -118,22 +119,14 @@ export function StockTransferForm({
           <div className="row">
             <div className="field">
               <label htmlFor="from_location_id">From warehouse</label>
-              <select id="from_location_id" name="from_location_id" value={fromLocationId}
-                onChange={(e) => setFromLocationId(e.target.value)} required>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
+              <WarehouseSelect locations={locations} id="from_location_id" name="from_location_id" value={fromLocationId}
+                onChange={(e) => setFromLocationId(e.target.value)} required />
             </div>
 
             <div className="field">
               <label htmlFor="to_location_id">To warehouse</label>
-              <select id="to_location_id" name="to_location_id" value={toLocationId}
-                onChange={(e) => setToLocationId(e.target.value)} required>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
+              <WarehouseSelect locations={locations} id="to_location_id" name="to_location_id" value={toLocationId}
+                onChange={(e) => setToLocationId(e.target.value)} required />
             </div>
 
             <div className="field">

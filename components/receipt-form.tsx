@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import Link from "next/link";
 import { Fragment, useActionState, useEffect, useState } from "react";
@@ -435,12 +436,8 @@ export function ReceiptForm({
               </div>
               <div className="field">
                 <label htmlFor="location_id">Warehouse</label>
-                <select id="location_id" name="location_id" value={locationId}
-                        onChange={(e) => setLocationId(e.target.value)} required>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                  ))}
-                </select>
+                <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId}
+                        onChange={(e) => setLocationId(e.target.value)} required />
               </div>
               <div className="field">
                 <label htmlFor="doc_date">GR date</label>

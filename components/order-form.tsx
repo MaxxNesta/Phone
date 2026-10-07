@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
@@ -259,11 +260,7 @@ export function OrderForm({
 
             <div className="field">
               <label htmlFor="location_id">Warehouse</label>
-              <select id="location_id" name="location_id" defaultValue={locations[0]?.id ?? ""} required>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
+              <WarehouseSelect locations={locations} id="location_id" name="location_id" defaultValue={locations[0]?.id ?? ""} required />
             </div>
 
             <div className="field">

@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -135,12 +136,8 @@ export function AdjustmentForm({
           <div className="row">
             <div className="field">
               <label htmlFor="location_id">Warehouse</label>
-              <select id="location_id" name="location_id" value={locationId}
-                onChange={(e) => setLocationId(e.target.value)} required>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
+              <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId}
+                onChange={(e) => setLocationId(e.target.value)} required />
             </div>
 
             <div className="field">

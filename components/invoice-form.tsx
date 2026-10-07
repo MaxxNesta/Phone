@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { CurrencyRate, type FxOption } from "./currency-rate";
@@ -565,14 +566,8 @@ export function InvoiceForm({
                   <span className="hint">Where the goods were received</span>
                 </>
               ) : (
-                <select id="location_id" name="location_id" value={locationId}
-                        onChange={(e) => setLocationId(e.target.value)} required>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.code} · {l.name}
-                    </option>
-                  ))}
-                </select>
+                <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId}
+                        onChange={(e) => setLocationId(e.target.value)} required />
               )}
             </div>
 

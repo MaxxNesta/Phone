@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
@@ -115,9 +116,7 @@ export function ConsignmentReceiveForm({
             <label style={{ display: "block", fontSize: "var(--erp-text-sm)", color: "var(--erp-fg-muted)" }}>
               Warehouse
             </label>
-            <select name="location_id" value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
-              {locations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
-            </select>
+            <WarehouseSelect locations={locations} name="location_id" value={locationId} onChange={(e) => setLocationId(e.target.value)} required />
           </div>
           <div>
             <label style={{ display: "block", fontSize: "var(--erp-text-sm)", color: "var(--erp-fg-muted)" }}>Date</label>

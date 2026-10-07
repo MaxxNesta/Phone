@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
@@ -277,12 +278,8 @@ export function DeliveryForm({
             </div>
             <div className="field">
               <label htmlFor="location_id">From warehouse</label>
-              <select id="location_id" name="location_id" value={locationId} required
-                      onChange={(e) => setLocationId(e.target.value)}>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
+              <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId} required
+                      onChange={(e) => setLocationId(e.target.value)} />
             </div>
             <div className="field">
               <label htmlFor="doc_date">Date</label>

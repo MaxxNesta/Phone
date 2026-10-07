@@ -1,4 +1,5 @@
 "use client";
+import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useActionState, useEffect, useState } from "react";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -203,12 +204,8 @@ export function ReturnForm({
               {/* The receipt's own warehouse where there is one: goods that
                   came into Mandalay go back from Mandalay, and asking again
                   invites picking the wrong shelf. */}
-              <select id="location_id" name="location_id" required
-                      value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-              </select>
+              <WarehouseSelect locations={locations} id="location_id" name="location_id" required
+                      value={locationId} onChange={(e) => setLocationId(e.target.value)} />
             </div>
 
             {(
