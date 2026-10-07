@@ -2,7 +2,7 @@
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { CurrencyRate, type FxOption } from "./currency-rate";
+import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { AwaitingLine } from "@/lib/queries";
 import { ItemPicker } from "./item-picker";
@@ -151,6 +151,8 @@ export function InvoiceForm({
   const base = fx?.base ?? "MMK";
   const [currency, setCurrency] = useState(base);
   const [rate, setRate] = useState("");
+  const fxSwitch = useFxSwitch(base, currency, rate, (c, r) => { setCurrency(c); setRate(r); },
+    (f) => setLines((ls) => ls.map((l) => ({ ...l, unitPrice: convertPrice(l.unitPrice, f) }))));
   /** Set when the bill follows a receipt valued abroad: its rate, not ours. */
   const [lockedFx, setLockedFx] = useState<string | null>(null);
   const foreign = kind === "purchase" && currency !== base;
@@ -161,7 +163,7 @@ export function InvoiceForm({
   /** Bill a receipt in its own currency, at its own rate. */
   const followReceipt = (d: OpenDoc) => {
     if (d.currency && d.currency !== base) {
-      setCurrency(d.currency); setRate(String(d.exchange_rate ?? ""));
+      fxSwitch.reset(d.currency, String(d.exchange_rate ?? ""));
       setLockedFx(`At ${d.doc_no}'s rate — the goods were valued on the day they arrived.`);
     } else { setLockedFx(null); }
   };
@@ -374,8 +376,7 @@ export function InvoiceForm({
     if (kind === "purchase") {
       // The supplier's own currency, at the latest rate on file.
       const cur = partners.find((x) => x.id === id)?.currency || base;
-      setCurrency(cur);
-      setRate(cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
+      fxSwitch.change(cur, cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
     }
     setFromOrderId(null);
     const p = partners.find((x) => x.id === id);
@@ -601,7 +602,8 @@ export function InvoiceForm({
             {kind === "purchase" && fx && (
               <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
                 locked={lockedFx}
-                onChange={(c, r) => { setCurrency(c); setRate(r); }} />
+                date={docDate} pricesIn={fxSwitch.pricesIn}
+                onChange={fxSwitch.change} />
             )}
           </div>
         </div>

@@ -10,7 +10,7 @@ import { MaybeSamePurchase } from "./same-purchase";
 import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode } from "./imei-panel";
 import { PhonePicker, type VariantCatalog } from "./phone-picker";
 import { ArrowLeft, ClipboardList, Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
-import { CurrencyRate, type FxOption } from "./currency-rate";
+import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 
 type Item = PickerItem;
@@ -160,6 +160,8 @@ export function ReceiptForm({
   const [currency, setCurrency] = useState<string>(saved?.currency ?? base);
   const [rate, setRate] = useState<string>(saved?.rate ?? "");
   const foreign = currency !== base;
+  const fxSwitch = useFxSwitch(base, currency, rate, (c, r) => { setCurrency(c); setRate(r); },
+    (f) => setLines((ls) => ls.map((l) => ({ ...l, unitCost: convertPrice(l.unitCost, f) }))));
   const [docDate, setDocDate] = useState<string>(saved?.docDate ?? today);
   const [draftId, setDraftId] = useState(draft?.id ?? "");
   const [draftResult, draftAction, savingDraft] = useActionState<ActionResult | null, FormData>(
@@ -428,8 +430,7 @@ export function ReceiptForm({
                       setPartnerId(id);
                       // Their currency, at the latest rate on file.
                       const cur = suppliers.find((s) => s.id === id)?.currency || base;
-                      setCurrency(cur);
-                      setRate(cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
+                      fxSwitch.change(cur, cur === base ? "" : String(fx?.options.find((o) => o.code === cur)?.rate ?? ""));
                     }}
                   />
                 )}
@@ -456,7 +457,8 @@ export function ReceiptForm({
               </div>
               {fx && !matchedPi && (
                 <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
-                  onChange={(c, r) => { setCurrency(c); setRate(r); }} />
+                  date={docDate} pricesIn={fxSwitch.pricesIn}
+                  onChange={fxSwitch.change} />
               )}
             </div>
             <div className="field" style={{ marginTop: 20 }}>
@@ -689,7 +691,12 @@ export function ReceiptForm({
                           <span className="subline">—</span>
                         )}
                       </td>
-                      <td className="r">{fmt(amount(l))}</td>
+                      <td className="r">
+                        {fmt(amount(l))}
+                        {foreign && !matchedPi && Number(rate) > 0 && fxSwitch.pricesIn === currency && amount(l) > 0 && (
+                          <span className="subline" style={{ display: "block" }}>≈ {fmt(amount(l) * Number(rate))} {base}</span>
+                        )}
+                      </td>
                       <td className="tight">
                         <button type="button" className="danger tiny" onClick={() => removeLine(l.key)}
                           aria-label="Remove line" disabled={lines.length === 1}>
