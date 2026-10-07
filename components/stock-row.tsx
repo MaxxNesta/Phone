@@ -103,6 +103,11 @@ export function StockRow(
   { item: StockRowItem; columnCount: number; showConsigned: boolean }
 ) {
   const [open, setOpen] = useState(false);
+  // A model can come in hundreds of combinations; the few on the shelf are
+  // what this panel is for. The rest stay one click away.
+  const [allVariants, setAllVariants] = useState(false);
+  const live = item.variants.filter((v) => v.onHand !== 0 || v.reservedQty !== 0 || v.incomingQty !== 0);
+  const shownVariants = allVariants ? item.variants : live;
   const consigned = item.consignors.length > 0;
   // Only where there is some: a fifth column of dashes on a 380px panel costs
   // more than it tells anyone.
@@ -224,7 +229,14 @@ export function StockRow(
                 <h3>
                   Variants
                   <span className="page-sub">
-                    {item.variants.length} on this product · the line above is these added up
+                    {allVariants
+                      ? `All ${item.variants.length} on this product`
+                      : `${live.length} in stock of ${item.variants.length}`}
+                    {item.variants.length > live.length && (
+                      <>{" · "}<button type="button" className="linkish" onClick={() => setAllVariants(!allVariants)}>
+                        {allVariants ? "Only in stock" : `Show all ${item.variants.length}`}
+                      </button></>
+                    )}
                   </span>
                 </h3>
                 <div className="tablewrap">
@@ -242,7 +254,10 @@ export function StockRow(
                       </tr>
                     </thead>
                     <tbody>
-                      {item.variants.map((v) => (
+                      {shownVariants.length === 0 && (
+                        <tr><td colSpan={9} className="page-sub">None of its variants are in stock.</td></tr>
+                      )}
+                      {shownVariants.map((v) => (
                         <tr key={v.id}>
                           <td className="vgroup-thumb">
                             <ItemThumb src={v.photoSrc} name={v.name} />

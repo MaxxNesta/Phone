@@ -658,7 +658,7 @@ export default async function Stock({
 
       {mode === "grouped" && (
         <VariantStock
-          rows={variantStock}
+          rows={showZeros ? variantStock : variantStock.filter((r) => Number(r.qty_on_hand) !== 0)}
           groupBy={group}
           basePath="/items/stock"
           keep={{ location: allLocations ? undefined : selectedLocationId,
