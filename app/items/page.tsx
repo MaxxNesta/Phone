@@ -150,6 +150,7 @@ export default async function Items({
     node: (
       <ItemRow
         startEditing={edit === i.id}
+        retail={Boolean(company?.retail_mode)}
         item={{
           ...i,
           packs: packs

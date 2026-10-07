@@ -290,10 +290,12 @@ export function ItemForm({
             <ItemPhotoField />
           </div>
 
+          {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
           <label className="check" htmlFor="is_stocked" style={{ marginTop: "1rem" }}>
             <input id="is_stocked" name="is_stocked" type="checkbox" defaultChecked />
             Stocked — this item moves through inventory
           </label>
+          )}
 
           {/* Its own panel, not two more ticks at the foot of the card.
               Whether an item keeps lots decides what every future receipt of

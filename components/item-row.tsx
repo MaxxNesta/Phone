@@ -53,7 +53,10 @@ export function ItemRow({
   setPhotoAction,
   variants = [],
   startEditing,
+  retail,
 }: {
+  /** Phone retail: every item is stocked, so the switch is not offered. */
+  retail?: boolean;
   item: Item;
   /** Opens straight into the editor, for a link that meant this item. */
   startEditing?: boolean;
@@ -150,10 +153,12 @@ export function ItemRow({
               />
             </div>
             <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem" }}>
-              <label className="check">
-                <input name="is_stocked" type="checkbox" defaultChecked={item.is_stocked} />
-                Stocked (unchecked = service)
-              </label>
+              {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
+                <label className="check">
+                  <input name="is_stocked" type="checkbox" defaultChecked={item.is_stocked} />
+                  Stocked (unchecked = service)
+                </label>
+              )}
               <label className="check">
                 <input name="is_active" type="checkbox" defaultChecked={item.is_active} />
                 Active
