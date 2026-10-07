@@ -55,13 +55,15 @@ export default async function Currencies() {
                     {admin && (
                       <td>
                         {c.code !== co.base_currency && (
-                          <details>
+                          <details className="rowpop">
                             <summary className="linkish">Edit</summary>
-                            <CurrencyForm currency={c} />
-                            <form action={deleteCurrency}>
-                              <input type="hidden" name="code" value={c.code} />
-                              <button className="linkish" style={{ color: "var(--bad)" }}>Delete (only if unused)</button>
-                            </form>
+                            <div className="rowpop-panel">
+                              <CurrencyForm currency={c} />
+                              <form action={deleteCurrency}>
+                                <input type="hidden" name="code" value={c.code} />
+                                <button className="linkish" style={{ color: "var(--bad)" }}>Delete (only if unused)</button>
+                              </form>
+                            </div>
                           </details>
                         )}
                       </td>

@@ -5353,3 +5353,16 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .page-head.hero > h1:has(+ .helphint) { display: inline-block; padding-right: 0.5rem; vertical-align: middle; }
 .page-head.hero > h1 + .helphint { vertical-align: middle; }
 .page-head.hero > .eyebrow { display: block; }
+
+/* A row's edit form opens as a panel over the table instead of inside the
+   cell, so the table keeps its shape. */
+.rowpop { position: relative; }
+.rowpop > summary { list-style: none; cursor: pointer; white-space: nowrap; }
+.rowpop > summary::-webkit-details-marker { display: none; }
+.rowpop-panel {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(360px, 90vw);
+  display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px;
+  background: var(--surface); white-space: normal; text-align: left;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.08);
+}
+.card:has(.rowpop[open]) { overflow: visible !important; }
