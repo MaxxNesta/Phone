@@ -7209,7 +7209,7 @@ export async function getInventoryCogsReconciliation(
 }
 
 /** How a sales report is cut. */
-export type SalesBreakdownBy = "item" | "customer" | "category" | "brand";
+export type SalesBreakdownBy = "item" | "model" | "customer" | "category";
 
 /** One row of a sales breakdown. */
 export type SalesBreakdownRow = {
@@ -7241,25 +7241,25 @@ function salesDimension(by: SalesBreakdownBy) {
       item:     sql`i.id::text`,
       customer: sql`d.partner_id::text`,
       category: sql`coalesce(pg.id, g.id)::text`,
-      brand:    sql`coalesce(b.id::text, 'none')`,
+      model:    sql`coalesce(m.id, i.id)::text`,
     }[by],
     code: {
       item:     sql`i.code`,
       customer: sql`p.code`,
       category: sql`coalesce(pg.code, g.code)`,
-      brand:    sql`coalesce(b.code, '—')`,
+      model:    sql`coalesce(m.code, i.code)`,
     }[by],
     name: {
       item:     sql`i.name`,
       customer: sql`p.name`,
       category: sql`coalesce(pg.name, g.name)`,
-      brand:    sql`coalesce(b.name, 'No brand')`,
+      model:    sql`coalesce(m.name, i.name)`,
     }[by],
     joins: sql`
       join item i on i.id = dl.item_id
       left join item_group g on g.id = i.item_group_id
       left join item_group pg on pg.id = g.parent_id
-      left join brand b on b.id = i.brand_id
+      left join item m on m.id = i.parent_item_id
       left join business_partner p on p.id = d.partner_id`,
   };
 }

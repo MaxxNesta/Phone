@@ -16,9 +16,9 @@ type Tab = SalesBreakdownBy | "overview";
 const TABS: [Tab, string, string][] = [
   ["overview", "Overview", "How the period compares with the one before"],
   ["item", "By item", "Which products earned it"],
+  ["model", "By model", "Each model, every storage and colour together"],
   ["customer", "By customer", "Who it came from"],
   ["category", "By category", "Which part of the catalogue"],
-  ["brand", "By brand", "Whose goods sold"],
 ];
 
 const qty = (v: number) =>
@@ -74,7 +74,7 @@ export default async function SalesReports({
   const head = rows.slice(0, TOP);
   const tail = rows.slice(TOP);
   const donut = [
-    ...head.map((r) => ({ id: r.key, name: `${r.code} · ${r.name}`, revenue: r.revenue })),
+    ...head.map((r) => ({ id: r.key, name: r.name, revenue: r.revenue })),
     ...(tail.length > 0
       ? [{ id: "rest", name: `${tail.length} others`, rest: true,
            revenue: tail.reduce((t, r) => t + r.revenue, 0) }]
@@ -89,11 +89,11 @@ export default async function SalesReports({
     return `/sales/reports?${q.toString()}`;
   };
 
-  const label = { item: "Item", customer: "Customer", category: "Category", brand: "Brand" }[by];
+  const label = { item: "Item", model: "Model", customer: "Customer", category: "Category" }[by];
   /* Written out, because adding an s gives "categorys". English plurals are
      not a rule the code can apply and these are four known words. */
   const plural = { item: "items", customer: "customers",
-                   category: "categories", brand: "brands" }[by];
+                   category: "categories", model: "models" }[by];
 
   /* The fourth tile asks something the table and the donut do not already
      answer, and what is worth asking changes with the cut: how dear the
@@ -152,9 +152,9 @@ export default async function SalesReports({
        is a row nobody can check against its header. */
     node: (
       <tr>
-        <td className="code">{r.code}</td>
-        <td className="wrap">
-          {r.name}
+        <td className="code salescode" title={r.code}><span className="ellip">{r.code}</span></td>
+        <td className="wrap salesname">
+          <span className="clamp2" title={r.name}>{r.name}</span>
           {r.freeQty > 0 && (
             <div className="subline">{qty(r.freeQty)} given free</div>
           )}
@@ -309,7 +309,7 @@ export default async function SalesReports({
               <div className="chartbox">
                 <RankedBarChart height={280} compact
                   data={rows.slice(0, 10).map((r) => ({
-                    label: `${r.code} ${r.name}`, value: r.revenue,
+                    label: r.name, value: r.revenue,
                   }))} />
               </div>
             </div>
@@ -326,7 +326,7 @@ export default async function SalesReports({
                   data={[...rows]
                     .sort((a, b) => b.qty - a.qty)
                     .slice(0, 10)
-                    .map((r) => ({ label: `${r.code} ${r.name}`, value: r.qty }))} />
+                    .map((r) => ({ label: r.name, value: r.qty }))} />
               </div>
             </div>
           </div>

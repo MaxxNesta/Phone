@@ -5366,3 +5366,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.16), 0 0 0 0.5px rgb(0 0 0 / 0.08);
 }
 .card:has(.rowpop[open]) { overflow: visible !important; }
+
+/* Sales report: long codes and names do not widen the table. */
+.salescode .ellip { max-width: 150px; }
+.salesname { min-width: 160px; max-width: 280px; }
