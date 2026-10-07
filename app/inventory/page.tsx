@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Boxes, Package, Lock, AlertTriangle, Smartphone } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
-import { inventorySummary, recentMovements } from "@/lib/phone";
+import { inventorySummary, recentMovements, catalogFacets } from "@/lib/phone";
+import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
+import { AutoApply } from "@/components/auto-apply";
 import { money, dateTime } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
 import { paginate } from "@/lib/paging";
@@ -24,14 +26,15 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const co = user.companyId;
   const seeCost = can(user, "cost.view");
 
-  const [{ locations, rows }, moves, groups, brands, allLocs] = await Promise.all([
-    inventorySummary(co, {
-      q: sp.q || undefined, groupId: sp.category || undefined, brand: sp.brand || undefined,
+  const facetsP = catalogFacets(co, sp.category || undefined);
+  const [{ locations, rows }, facets, moves, groups, allLocs] = await Promise.all([
+    facetsP.then((f) => inventorySummary(co, {
+      q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
       locationId: sp.location || undefined, status: sp.status || undefined,
-    }),
+    })),
+    facetsP,
     recentMovements(co),
     sql`select id, name from item_group where company_id = ${co} and parent_id is null order by name`,
-    sql`select name from brand where company_id = ${co} and is_active order by name`,
     sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`,
   ]);
 
@@ -77,20 +80,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <label htmlFor="iq">Search</label>
             <input id="iq" name="q" defaultValue={sp.q ?? ""} placeholder="Search product, SKU, model…" />
           </div>
-          <div className="field">
-            <label htmlFor="ic">Category</label>
-            <select id="ic" name="category" defaultValue={sp.category ?? ""}>
-              <option value="">All</option>
-              {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="ib">Brand</label>
-            <select id="ib" name="brand" defaultValue={sp.brand ?? ""}>
-              <option value="">All</option>
-              {brands.map((b: any) => <option key={b.name} value={b.name}>{b.name}</option>)}
-            </select>
-          </div>
+          <CatalogFilterFields groups={groups as never} facets={facets} sp={sp} prefix="i" />
           {manyWarehouses && (
             <div className="field">
               <label htmlFor="il">Location</label>
@@ -110,7 +100,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
               <option value="OUT">Out of stock</option>
             </select>
           </div>
-          <button className="btn ghost">Filter</button>
+          <AutoApply />
+          <button className="btn ghost" data-apply>Filter</button>
         </div>
       </form>
 

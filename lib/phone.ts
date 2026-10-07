@@ -488,9 +488,14 @@ export async function serialKpis(companyId: string) {
  * over locations, or two or fewer phones of a variant that has sold.
  */
 export async function inventorySummary(companyId: string, f: {
-  q?: string; groupId?: string; brand?: string; locationId?: string; status?: string;
+  q?: string; groupId?: string; locationId?: string; status?: string;
+  /** The model (parent product) — every storage and colour of it. */
+  modelId?: string;
+  /** Variant options the item must have, one per attribute: 256 GB, Black. */
+  optionIds?: string[];
 }) {
   const like = f.q ? `%${f.q.trim()}%` : null;
+  const opts = f.optionIds ?? [];
   const locations = await sql`
     select id, name from location where company_id = ${companyId} and is_stock_location and is_active
      and (${f.locationId ?? null}::uuid is null or id = ${f.locationId ?? null}) order by code`;
@@ -529,9 +534,12 @@ export async function inventorySummary(companyId: string, f: {
             or p.name ilike ${like} or i.barcode = ${f.q ?? null})
        and (${f.groupId ?? null}::uuid is null or i.item_group_id = ${f.groupId ?? null}
             or g.parent_id = ${f.groupId ?? null})
-       and (${f.brand ?? null}::text is null or b.name = ${f.brand ?? null})
+       and (${f.modelId ?? null}::uuid is null or coalesce(p.id, i.id) = ${f.modelId ?? null})
+       ${opts.length ? sql`and (select count(*) from item_variant_option v
+                                 where v.item_id = i.id and v.option_id in ${sql(opts)}) = ${opts.length}` : sql``}
      order by coalesce(p.name, i.name), i.name
-     limit 300`;
+     -- ponytail: whole catalogue in one read; paginate in SQL past ~5k variants.
+     limit 5000`;
   const withStatus = rows.map((r: any) => {
     const available = Number(r.qty) - Number(r.reserved);
     const low = r.min_qty != null ? Number(r.qty) <= Number(r.min_qty)
@@ -542,6 +550,48 @@ export async function inventorySummary(companyId: string, f: {
     locations,
     rows: f.status ? withStatus.filter((r) => r.status === f.status) : withStatus,
   };
+}
+
+export type CatalogFacets = {
+  models: { id: string; name: string }[];
+  attributes: { id: string; name: string; options: { id: string; name: string }[] }[];
+};
+
+/**
+ * What a category's products can be told apart by: its models, and the
+ * attributes its variants actually use (an iPhone has storage and SIM, a
+ * Mac a chip) with the options in use. Nothing until a category is chosen.
+ */
+export async function catalogFacets(companyId: string, groupId?: string): Promise<CatalogFacets> {
+  if (!groupId) return { models: [], attributes: [] };
+  const inGroup = sql`(i.item_group_id = ${groupId} or g.parent_id = ${groupId})`;
+  const [models, opts] = await Promise.all([
+    sql<{ id: string; name: string }[]>`
+      select distinct coalesce(p.id, i.id) as id, coalesce(p.name, i.name) as name
+        from item i
+        left join item p on p.id = i.parent_item_id
+        join item_group g on g.id = i.item_group_id
+       where i.company_id = ${companyId} and i.is_active and i.is_stocked and ${inGroup}
+         and not exists (select 1 from item c where c.parent_item_id = i.id)
+       order by 2`,
+    sql<{ attr_id: string; attr: string; id: string; name: string }[]>`
+      select a.id as attr_id, a.name as attr, o.id, o.name
+        from item i
+        join item_group g on g.id = i.item_group_id
+        join item_variant_option ivo on ivo.item_id = i.id
+        join variant_option o on o.id = ivo.option_id
+        join variant_attribute a on a.id = o.attribute_id
+       where i.company_id = ${companyId} and i.is_active and ${inGroup}
+       group by a.id, a.name, a.sort_order, o.id, o.name, o.sort_order
+       order by a.sort_order, a.name, o.sort_order, o.name`,
+  ]);
+  const attributes: CatalogFacets["attributes"] = [];
+  for (const r of opts) {
+    let a = attributes.find((x) => x.id === r.attr_id);
+    if (!a) attributes.push(a = { id: r.attr_id, name: r.attr, options: [] });
+    a.options.push({ id: r.id, name: r.name });
+  }
+  return { models: [...models], attributes };
 }
 
 /** The last stock movements, newest first, for the summary page. */

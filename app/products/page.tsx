@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Package, Smartphone, Headphones, AlertTriangle, Plus } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { inventorySummary } from "@/lib/phone";
+import { inventorySummary, catalogFacets } from "@/lib/phone";
+import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
+import { AutoApply } from "@/components/auto-apply";
 import { money, shortDate } from "@/lib/format";
 import { Stat } from "@/components/stat";
 import { paginate } from "@/lib/paging";
@@ -17,15 +19,16 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const co = user.companyId;
 
-  const [{ rows }, groups, brands, lastBuy] = await Promise.all([
-    inventorySummary(co, { q: sp.q || undefined, groupId: sp.category || undefined, brand: sp.brand || undefined }),
+  const facetsP = catalogFacets(co, sp.category || undefined);
+  const [{ rows }, facets, groups, lastBuy] = await Promise.all([
+    facetsP.then((f) => inventorySummary(co, { q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f) })),
+    facetsP,
     sql`select g.id, g.name,
                (select count(*)::int from item i join item_group gg on gg.id = i.item_group_id
                  where i.company_id = ${co} and i.is_active
                    and not exists (select 1 from item c where c.parent_item_id = i.id)
                    and (gg.id = g.id or gg.parent_id = g.id)) as n
           from item_group g where g.company_id = ${co} and g.parent_id is null order by g.name`,
-    sql`select name from brand where company_id = ${co} and is_active order by name`,
     sql`select dl.item_id, max(d.posting_date) as d from document_line dl
           join document d on d.id = dl.document_id
          where d.company_id = ${co} and d.doc_type = 'GOODS_RECEIPT' and d.status = 'POSTED'
@@ -60,20 +63,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 <label htmlFor="pq">Search</label>
                 <input id="pq" name="q" defaultValue={sp.q ?? ""} placeholder="Search product name, model, SKU…" />
               </div>
-              <div className="field">
-                <label htmlFor="pc">Category</label>
-                <select id="pc" name="category" defaultValue={sp.category ?? ""}>
-                  <option value="">All</option>
-                  {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="pb">Brand</label>
-                <select id="pb" name="brand" defaultValue={sp.brand ?? ""}>
-                  <option value="">All</option>
-                  {brands.map((b: any) => <option key={b.name} value={b.name}>{b.name}</option>)}
-                </select>
-              </div>
+              <CatalogFilterFields groups={groups as never} facets={facets} sp={sp} prefix="p" />
               <div className="field">
                 <label htmlFor="pt">Tracking</label>
                 <select id="pt" name="tracking" defaultValue={sp.tracking ?? ""}>
@@ -83,7 +73,8 @@ export default async function Products({ searchParams }: { searchParams: Promise
                   <option value="NONE">Quantity</option>
                 </select>
               </div>
-              <button className="btn ghost">Filter</button>
+              <AutoApply />
+              <button className="btn ghost" data-apply>Filter</button>
             </div>
           </form>
 
@@ -92,7 +83,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
             <table>
               <thead>
                 <tr>
-                  <th>Product</th><th>Brand</th><th>Category</th><th>Tracking</th>
+                  <th>Product</th><th>Category</th><th>Tracking</th>
                   <th className="num">Selling price</th><th className="num">Available</th><th>Status</th>
                   <th>Last purchase</th><th />
                 </tr>
@@ -106,7 +97,6 @@ export default async function Products({ searchParams }: { searchParams: Promise
                         <span><div className="prod-name">{r.model}</div><div className="prod-sub">{r.variant ?? ""}</div></span>
                       </span>
                     </td>
-                    <td>{r.brand ?? "—"}</td>
                     <td>{r.category}</td>
                     <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? "Serial" : r.tracks_serial ? "IMEI" : "Quantity"}</span></td>
                     <td className="num">{r.price != null ? money(r.price) : "—"}</td>
@@ -120,7 +110,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     <td><Link href={`/items/${r.id}`} aria-label={`Edit ${r.name}`}>Edit</Link></td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={9} className="page-sub">No products match.</td></tr>}
+                {list.length === 0 && <tr><td colSpan={8} className="page-sub">No products match.</td></tr>}
               </tbody>
             </table>
             <Pager p={pg} params={sp} />
