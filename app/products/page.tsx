@@ -33,7 +33,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
   ]);
   const bought = new Map(lastBuy.map((r: any) => [r.item_id, r.d]));
   const tracking = sp.tracking;
-  const list = rows.filter((r: any) => !tracking || (tracking === "SERIAL") === r.tracks_serial);
+  const list = rows.filter((r: any) => !tracking || (r.identity ?? (r.tracks_serial ? "IMEI" : "NONE")) === tracking);
   const serialized = rows.filter((r: any) => r.tracks_serial).length;
   const low = rows.filter((r: any) => r.status !== "HEALTHY").length;
 
@@ -54,7 +54,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
       </div>
 
       <div>
-          <form className="card filters" method="get">
+          <form className="card filters" method="get" style={{ marginBottom: "var(--s3)" }}>
             <div className="card-body filter-row">
               <div className="field">
                 <label htmlFor="pq">Search</label>
@@ -78,30 +78,21 @@ export default async function Products({ searchParams }: { searchParams: Promise
                 <label htmlFor="pt">Tracking</label>
                 <select id="pt" name="tracking" defaultValue={sp.tracking ?? ""}>
                   <option value="">All</option>
-                  <option value="SERIAL">Serialized</option>
-                  <option value="QTY">Quantity</option>
+                  <option value="IMEI">IMEI</option>
+                  <option value="SERIAL">Serial number</option>
+                  <option value="NONE">Quantity</option>
                 </select>
               </div>
               <button className="btn ghost">Filter</button>
             </div>
           </form>
 
-          {groups.length > 0 && (
-            <div className="chips" style={{ marginBottom: "var(--s3)" }} aria-label="Categories">
-              <Link href="/products" className="chip" data-on={!sp.category}>All</Link>
-              {groups.map((g: any) => (
-                <Link key={g.id} href={`/products?category=${g.id}`} className="chip"
-                  data-on={sp.category === g.id}>{g.name} · {g.n}</Link>
-              ))}
-              <Link href="/items/categories" className="chip">Manage categories</Link>
-            </div>
-          )}
 
           <div className="card" style={{ overflowX: "auto" }}>
             <table>
               <thead>
                 <tr>
-                  <th>Product</th><th>Brand / Model</th><th>Category</th><th>Tracking</th>
+                  <th>Product</th><th>Brand</th><th>Category</th><th>Tracking</th>
                   <th className="num">Selling price</th><th className="num">Available</th><th>Status</th>
                   <th>Last purchase</th><th />
                 </tr>
@@ -115,7 +106,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                         <span><div className="prod-name">{r.model}</div><div className="prod-sub">{r.variant ?? ""}</div></span>
                       </span>
                     </td>
-                    <td><div>{r.brand ?? "—"}</div><div className="prod-sub">{r.model}</div></td>
+                    <td>{r.brand ?? "—"}</td>
                     <td>{r.category}</td>
                     <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? "Serial" : r.tracks_serial ? "IMEI" : "Quantity"}</span></td>
                     <td className="num">{r.price != null ? money(r.price) : "—"}</td>
