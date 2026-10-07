@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
 import { getCompany, getPartnerBalances } from "@/lib/queries";
+import { unbilledReceipts, unbilledBySupplier } from "@/lib/unbilled";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 
@@ -20,7 +21,21 @@ export default async function Payables({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const all = (await getPartnerBalances(company.id, "PURCHASE_INVOICE")) as any[];
+  const [billed, unbilledRows] = await Promise.all([
+    getPartnerBalances(company.id, "PURCHASE_INVOICE") as Promise<any[]>,
+    unbilledReceipts(company.id),
+  ]);
+  // Goods in with no bill yet: not a payable in the books, but owed. Shown
+  // beside each supplier's balance, and suppliers owed only that get a row.
+  const unbilled = new Map(unbilledBySupplier(unbilledRows).map((u) => [u.partnerId, u]));
+  const all: any[] = [
+    ...billed,
+    ...[...unbilled.values()].filter((u) => !billed.some((b) => b.partner_id === u.partnerId))
+      .map((u) => ({ partner_id: u.partnerId, partner_name: u.partnerName, partner_code: u.partnerCode,
+                     open_invoices: 0, outstanding: 0, overdue: 0, paid: 0 })),
+  ];
+  const unbilledOf = (id: string) => unbilled.get(id)?.value ?? 0;
+  const totalUnbilled = [...unbilled.values()].reduce((s, u) => s + u.value, 0);
 
   const rowState = (r: any) => {
     // A remnant below the currency's smallest unit is not a debt anybody can
@@ -45,6 +60,7 @@ export default async function Payables({
       open_invoices: Number(s.open_invoices),
       outstanding: Number(s.outstanding),
       overdue: Number(s.overdue ?? 0),
+      unbilled: unbilledOf(s.partner_id),
     },
     node: (
       <tr className="link">
@@ -56,6 +72,9 @@ export default async function Payables({
         <td className="r">{money(s.outstanding)}</td>
         <td className="r" style={{ color: Number(s.overdue) > 0 ? "var(--bad)" : undefined }}>
           {Number(s.overdue) > 0 ? money(s.overdue) : "—"}
+        </td>
+        <td className="r" style={{ color: unbilledOf(s.partner_id) > 0 ? "var(--warn)" : undefined }}>
+          {unbilledOf(s.partner_id) > 0 ? money(unbilledOf(s.partner_id)) : "—"}
         </td>
         <td className="tight">
           <Link href={`/purchases/invoices?supplier=${s.partner_id}`} className="btn ghost tiny">View</Link>
@@ -92,6 +111,11 @@ export default async function Payables({
           <span className="kpi-value">{money(totalDueSoon)}</span>
           <span className="kpi-note">within 7 days</span>
         </div>
+        <div className="kpi">
+          <span className="kpi-label">Received, not billed</span>
+          <span className="kpi-value" style={{ color: totalUnbilled > 0 ? "var(--warn)" : undefined }}>{money(totalUnbilled)}</span>
+          <span className="kpi-note"><Link href="/purchases/received-not-invoiced">goods in awaiting their invoice</Link></span>
+        </div>
       </div>
 
       <div className="flow">
@@ -125,6 +149,7 @@ export default async function Payables({
               { key: "open_invoices", label: "Invoices", sortable: true, align: "r" },
               { key: "outstanding", label: "Outstanding", sortable: true, align: "r" },
               { key: "overdue", label: "Overdue", sortable: true, align: "r" },
+              { key: "unbilled", label: "Received, not billed", sortable: true, align: "r" },
               { key: "actions", label: "" },
             ]}
             footer={
@@ -132,6 +157,7 @@ export default async function Payables({
                 <td colSpan={2}>Total outstanding</td>
                 <td className="r">{moneyOrTrace(totalPayable)}</td>
                 <td className="r">{moneyOrTrace(totalOverdue)}</td>
+                <td className="r">{money(totalUnbilled)}</td>
                 <td />
               </tr>
             }

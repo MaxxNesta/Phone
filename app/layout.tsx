@@ -168,6 +168,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <NavGroup label="Purchases" icon={<Package size={15} />} match={["/purchases", "/payables"]}>
                 <NavLink href="/purchases/orders" exact>Purchase orders</NavLink>
                 <NavLink href="/purchases/receive" exact>Goods receipts</NavLink>
+                <NavLink href="/purchases/received-not-invoiced">Received not invoiced</NavLink>
                 <NavLink href="/purchases/invoices" exact>Purchase invoices</NavLink>
                 <NavLink href="/purchases/returns" exact>Supplier returns</NavLink>
                 <NavLink href="/purchases/debit-notes" exact>Debit notes</NavLink>

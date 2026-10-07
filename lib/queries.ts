@@ -957,6 +957,8 @@ export async function getGrirCollisions(companyId: string) {
 export async function getOpenGoodsReceipts(companyId: string, limit: number | null = 200) {
   const docs = await sql`
     select d.id, d.doc_no, d.doc_date, d.partner_id,
+           (select bp.name from business_partner bp where bp.id = d.partner_id) as partner_name,
+           (select bp.code from business_partner bp where bp.id = d.partner_id) as partner_code,
            -- Where the goods went. An invoice raised from this receipt bills
            -- for stock in that warehouse, so the form should not make somebody
            -- pick it again from a list they cannot get wrong.
