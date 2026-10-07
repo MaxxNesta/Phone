@@ -137,9 +137,9 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                 <td>
                   <span className="prod">
                     <span className="thumb">{r.photo ? <img src={r.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}</span>
-                    <span>
-                      <div className="prod-name">{r.model}</div>
-                      <div className="prod-sub">{r.variant ?? r.brand ?? ""}</div>
+                    <span className="prod-text">
+                      <div className="prod-name clamp2" title={r.model}>{r.model}</div>
+                      <div className="prod-sub ellip" title={r.variant ?? r.brand ?? ""}>{r.variant ?? r.brand ?? ""}</div>
                     </span>
                   </span>
                 </td>

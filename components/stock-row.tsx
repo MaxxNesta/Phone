@@ -135,8 +135,8 @@ export function StockRow(
           </button>
         </td>
 
-        <td className="code codecell">
-          <Link href={`/items/categories/${item.itemGroupId}`} style={{ color: "var(--link)" }}>
+        <td className="code codecell" title={item.code}>
+          <Link href={`/items/categories/${item.itemGroupId}`} className="ellip" style={{ color: "var(--link)" }}>
             {item.code}
           </Link>
         </td>
@@ -149,7 +149,7 @@ export function StockRow(
           <span className="stockname">
             <ItemThumb src={item.photoSrc} name={item.name} />
             <span className="stockname-text">
-              {item.name}
+              <span className="clamp2" title={item.name}>{item.name}</span>
               {item.variant && (
                 <VariantTags variant={item.variant} className="vartags-inline" />
               )}
