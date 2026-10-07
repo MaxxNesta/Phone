@@ -45,18 +45,20 @@ export default async function InventoryCogs({
       </div>
 
       <form className="row" style={{ marginBottom: "1rem", alignItems: "flex-end" }}>
-        <div className="field">
-          <label htmlFor="branch">Branch</label>
-          <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-            <option value="">All branches (consolidated)</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-            ))}
-            {unassignedLines.lines > 0 && (
-              <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
-            )}
-          </select>
-        </div>
+        {branches.length > 1 && (
+          <div className="field">
+            <label htmlFor="branch">Branch</label>
+            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+              <option value="">All branches (consolidated)</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+              ))}
+              {unassignedLines.lines > 0 && (
+                <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
+              )}
+            </select>
+          </div>
+        )}
         <div className="field">
           <label htmlFor="from">From</label>
           <input id="from" name="from" type="date" defaultValue={range.from} />

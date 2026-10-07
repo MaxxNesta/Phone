@@ -236,15 +236,17 @@ export default async function SalesReports({
           <label htmlFor="to">To</label>
           <input id="to" name="to" type="date" defaultValue={range.to} />
         </div>
-        <div className="field">
-          <label htmlFor="branch">Branch</label>
-          <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-            <option value="">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-            ))}
-          </select>
-        </div>
+        {branches.length > 1 && (
+          <div className="field">
+            <label htmlFor="branch">Branch</label>
+            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="actions">
           <AutoApply />
           <button type="submit" data-apply>Update</button>

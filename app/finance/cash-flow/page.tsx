@@ -41,18 +41,20 @@ export default async function CashFlow({
         {/* Which branch's cash moved. The cash side of the entry decides it:
             money leaving the Yangon till is Yangon's outflow whatever it was
             spent on, and the other leg may carry a different branch or none. */}
-        <div className="field">
-          <label htmlFor="branch">Branch</label>
-          <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-            <option value="">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-            ))}
-            {unassignedLines.lines > 0 && (
-              <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
-            )}
-          </select>
-        </div>
+        {branches.length > 1 && (
+          <div className="field">
+            <label htmlFor="branch">Branch</label>
+            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+              ))}
+              {unassignedLines.lines > 0 && (
+                <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
+              )}
+            </select>
+          </div>
+        )}
         <div className="actions">
           <AutoApply />
           <button type="submit" data-apply>Update</button>

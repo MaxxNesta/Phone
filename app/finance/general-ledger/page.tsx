@@ -228,18 +228,20 @@ async function EntriesView({
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label htmlFor="location">Branch</label>
-              <select id="location" name="location" defaultValue={p.location ?? ""}>
-                <option value="">All branches</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-                {unassignedLines > 0 && (
-                  <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines} lines) —</option>
-                )}
-              </select>
-            </div>
+            {locations.length > 1 && (
+              <div className="field">
+                <label htmlFor="location">Branch</label>
+                <select id="location" name="location" defaultValue={p.location ?? ""}>
+                  <option value="">All branches</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                  ))}
+                  {unassignedLines > 0 && (
+                    <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines} lines) —</option>
+                  )}
+                </select>
+              </div>
+            )}
             <div className="field">
               <label htmlFor="type">Document type</label>
               <select id="type" name="type" defaultValue={p.type ?? ""}>
@@ -372,18 +374,20 @@ async function AccountView({
               <label htmlFor="a-to">To</label>
               <input id="a-to" name="to" type="date" defaultValue={p.to ?? ""} />
             </div>
-            <div className="field">
-              <label htmlFor="a-location">Branch</label>
-              <select id="a-location" name="location" defaultValue={p.location ?? ""}>
-                <option value="">All branches</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-                {unassignedLines > 0 && (
-                  <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines} lines) —</option>
-                )}
-              </select>
-            </div>
+            {locations.length > 1 && (
+              <div className="field">
+                <label htmlFor="a-location">Branch</label>
+                <select id="a-location" name="location" defaultValue={p.location ?? ""}>
+                  <option value="">All branches</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                  ))}
+                  {unassignedLines > 0 && (
+                    <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines} lines) —</option>
+                  )}
+                </select>
+              </div>
+            )}
             <div className="field">
               {/* Off by default. A voided entry and the mirror that undid it
                   both sit in the ledger, so the account reads as three

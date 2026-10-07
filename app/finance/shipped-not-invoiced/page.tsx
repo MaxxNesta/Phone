@@ -158,15 +158,17 @@ export default async function ShippedNotInvoiced({
 
       <form className="row" style={{ margin: 0, alignItems: "flex-end" }}>
         {band && <input type="hidden" name="band" value={band} />}
-        <div className="field">
-          <label htmlFor="branch">Branch</label>
-          <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-            <option value="">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-            ))}
-          </select>
-        </div>
+        {branches.length > 1 && (
+          <div className="field">
+            <label htmlFor="branch">Branch</label>
+            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="actions">
           <button type="submit">Update</button>
         </div>

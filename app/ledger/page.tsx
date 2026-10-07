@@ -126,21 +126,23 @@ export default async function TrialBalance({
               <input id="asOf" name="asOf" type="date" defaultValue={p.asOf ?? ""} />
               <span className="hint">Blank means everything posted</span>
             </div>
-            <div className="field">
-              {/* Branches only — the list is branches, and calling it
-                  "warehouse" invited someone to look for one and conclude the
-                  filter was broken when no warehouse was there. */}
-              <label htmlFor="location">Branch</label>
-              <select id="location" name="location" defaultValue={p.location ?? ""}>
-                <option value="">All branches</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
-                ))}
-                {unassigned.lines > 0 && (
-                  <option value={UNASSIGNED_BRANCH}>— No branch ({unassigned.lines} lines) —</option>
-                )}
-              </select>
-            </div>
+            {locations.length > 1 && (
+              <div className="field">
+                {/* Branches only — the list is branches, and calling it
+                    "warehouse" invited someone to look for one and conclude the
+                    filter was broken when no warehouse was there. */}
+                <label htmlFor="location">Branch</label>
+                <select id="location" name="location" defaultValue={p.location ?? ""}>
+                  <option value="">All branches</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
+                  ))}
+                  {unassigned.lines > 0 && (
+                    <option value={UNASSIGNED_BRANCH}>— No branch ({unassigned.lines} lines) —</option>
+                  )}
+                </select>
+              </div>
+            )}
             <div className="field">
               <label htmlFor="type">Account type</label>
               <select id="type" name="type" defaultValue={p.type ?? ""}>
