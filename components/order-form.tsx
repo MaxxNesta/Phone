@@ -243,7 +243,7 @@ export function OrderForm({
 
       <input type="hidden" name="lines" value={payload} />
 
-      <div className="card">
+      <div className="card compact">
         <div className="card-head">
           <h2>{isSales ? "Customer" : "Supplier"} and dates</h2>
         </div>

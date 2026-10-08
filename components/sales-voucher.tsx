@@ -926,7 +926,7 @@ export function SalesVoucher({
         <input type="hidden" name="price_level_id" value={activeLevelId} />
       )}
 
-      <div className="card doc-meta">
+      <div className="card doc-meta compact">
         <div className="card-head">
           <span className="actions">
             <span className="pill">Sales invoice</span>

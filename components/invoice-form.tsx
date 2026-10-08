@@ -533,7 +533,7 @@ export function InvoiceForm({
 
       <input type="hidden" name="lines" value={payload} />
 
-      <div className="card doc-meta">
+      <div className="card doc-meta compact">
         <div className="card-body">
           <div className="row">
             <div className="field">

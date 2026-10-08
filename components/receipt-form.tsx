@@ -425,7 +425,7 @@ export function ReceiptForm({
       )}
 
       <div className="gr-top">
-        <div className="card">
+        <div className="card compact">
           <div className="card-head"><h2><ClipboardList size={18} aria-hidden="true" /> GR information</h2></div>
           <div className="card-body">
             <div className="row">

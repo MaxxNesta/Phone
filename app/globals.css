@@ -5428,3 +5428,15 @@ button.danger-solid:hover { opacity: 0.9; }
 .linetable td.unitcell select { width: 100%; }
 .linetable td.pricecell, .grlines td.pricecell { width: 190px; }
 .linetable td.pricecell input, .grlines td.pricecell input { min-width: 0; width: 100%; }
+
+/* A document's header — who, when, where — read once and set once. Shorter
+   fields and closer rows, so the lines, where the work is, start higher.
+   Still 36px: a comfortable target for a mouse and for a finger. */
+.card.compact { --field-h: 36px; --field-r: 10px; --field-px: 12px; }
+.card.compact .card-head { padding-top: 10px; padding-bottom: 10px; }
+.card.compact .card-body { padding-top: 12px; padding-bottom: 12px; }
+.card.compact .row { gap: 10px 14px; }
+.card.compact .field { gap: 4px; margin-bottom: 0; }
+.card.compact .field > label { font-size: 0.8125rem; }
+.card.compact input, .card.compact select { font-size: 0.9375rem; }
+.card.compact .hint { margin-top: 2px; font-size: 0.75rem; }
