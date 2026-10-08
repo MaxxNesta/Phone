@@ -5440,3 +5440,12 @@ button.danger-solid:hover { opacity: 0.9; }
 .card.compact .field > label { font-size: 0.8125rem; }
 .card.compact input, .card.compact select { font-size: 0.9375rem; }
 .card.compact .hint { margin-top: 2px; font-size: 0.75rem; }
+
+/* A small form in a dialog: title, a line on what it does, fields stacked. */
+.confirm.sheetish .confirm-panel { text-align: left; }
+.sheet-fields { display: flex; flex-direction: column; gap: 12px; margin-top: var(--s3); }
+.sheet-fields .field { margin: 0; }
+.sheet-fields select, .sheet-fields input { width: 100%; }
+
+.sheet-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.confirm.sheetish { max-width: 32rem; }
