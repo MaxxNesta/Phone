@@ -73,7 +73,7 @@ export default async function Handset({ params }: { params: Promise<{ id: string
 
       <div className="card">
         <div className="card-head"><h2>Timeline</h2></div>
-        <ol className="timeline">
+        <ol className="unittimeline">
           {events.map((e: any, i: number) => (
             <li key={i} className={`tl-${e.event.toLowerCase()}${e.status === "REVERSED" ? " tl-voided" : ""}`}>
               <div className="tl-what">
