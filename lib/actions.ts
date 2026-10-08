@@ -7485,8 +7485,17 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
     const result = await sql.begin(async (tx) => {
       const mine = (await tx`select id::text as id, parent_item_id::text as parent from item
                               where company_id = ${co} and id in ${tx(wanted)}`) as unknown as { id: string; parent: string | null }[];
-      if (mine.length === 0) return { deleted: 0, hidden: 0 };
-      const all = mine.map((m) => m.id);
+      if (mine.length === 0) return { deleted: 0, hidden: 0, stocked: 0 };
+      // On the shelf: neither deleted nor hidden. Hiding it would take stock
+      // that is still there out of every list while its value stays on the
+      // balance sheet.
+      const stocked = new Set((await tx`
+        select item_id::text as id from v_stock_on_hand
+         where item_id in ${tx(mine.map((m) => m.id))} and qty_on_hand <> 0`).map((r) => r.id as string));
+      const stockedCount = stocked.size;
+      for (const m of mine) if (stocked.has(m.id) && m.parent) stocked.add(m.parent);
+      const all = mine.map((m) => m.id).filter((x) => !stocked.has(x));
+      if (all.length === 0) return { deleted: 0, hidden: 0, stocked: stockedCount };
       const kept = await itemsWithHistory(tx as unknown as typeof sql, all);
       // A model whose variants are not all going stays: its variants need it.
       const stillParent = await tx`select distinct parent_item_id::text as id from item
@@ -7519,7 +7528,7 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
           models = empty.length;
         }
       }
-      return { deleted: del.length, hidden: hide.length, models };
+      return { deleted: del.length, hidden: hide.length, models, stocked: stockedCount };
     });
     revalidatePath("/products");
     revalidatePath("/items");
@@ -7527,6 +7536,7 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
     revalidatePath("/items/stock");
     const parts = [`${result.deleted} deleted`];
     if (result.hidden) parts.push(`${result.hidden} with history hidden instead`);
+    if (result.stocked) parts.push(`${result.stocked} kept: still in stock`);
     return { ok: parts.join(" · ") };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };

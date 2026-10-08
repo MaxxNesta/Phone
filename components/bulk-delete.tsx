@@ -77,7 +77,7 @@ export function BulkDelete({ shown, filtered }: {
             <div className="confirm-icon" aria-hidden="true"><Trash2 size={18} strokeWidth={2.25} /></div>
             <h2 className="confirm-title">Delete {ask.length} product{ask.length === 1 ? "" : "s"}?</h2>
             <p className="confirm-detail">
-              This can&rsquo;t be undone. Any with sales, stock or IMEIs are hidden instead, so your records stay intact.
+              This can&rsquo;t be undone. Anything still in stock is kept, and anything with past sales or receipts is hidden instead, so your records stay intact.
             </p>
             <ul className="alert-items">
               {ask.slice(0, 4).map((id) => <li key={id}><span>{nameOf.get(id) ?? "Product"}</span></li>)}
