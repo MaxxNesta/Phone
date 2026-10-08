@@ -279,7 +279,10 @@ export function SalesVoucher({
   const onHandHere = (itemId: string) => onHandByItem.get(itemId) ?? 0;
 
   const customer = customers.find((c) => c.id === customerId);
-  const defaultLevelId = priceLevels[0]?.id ?? null;
+  // A walk-in at a retail counter pays the retail price, which is the one the
+  // POS charges too; otherwise the first level, as before.
+  const defaultLevelId = (retail ? priceLevels.find((l) => l.code === "RETAIL") : undefined)?.id
+    ?? priceLevels[0]?.id ?? null;
   const activeLevelId = customer?.price_level_id ?? defaultLevelId;
   const activeLevel = priceLevels.find((l) => l.id === activeLevelId);
 

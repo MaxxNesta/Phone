@@ -734,7 +734,9 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
       if (salePrice > 0) {
         const [level] = await tx`
-          select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+          select id from price_level where company_id = ${co}
+           -- A retail shop's sale price is its retail price: the POS reads that level.
+           order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1`;
         if (level) {
           await tx`
             insert into item_price
@@ -820,7 +822,9 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           }
           if (salePrice > 0) {
             const [level] = await tx`
-              select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+              select id from price_level where company_id = ${co}
+           -- A retail shop's sale price is its retail price: the POS reads that level.
+           order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1`;
             if (level) {
               await tx`
                 insert into item_price
@@ -1642,7 +1646,9 @@ export async function createItemInline(
 
       if (input.price && input.price > 0) {
         const [level] = await tx`
-          select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+          select id from price_level where company_id = ${co}
+           -- A retail shop's sale price is its retail price: the POS reads that level.
+           order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1`;
         if (level) {
           await tx`
             insert into item_price
@@ -4073,7 +4079,9 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
     }
 
     const [level] = await sql`
-      select id from price_level where company_id = ${co} order by sort_order, code limit 1`;
+      select id from price_level where company_id = ${co}
+           -- A retail shop's sale price is its retail price: the POS reads that level.
+           order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1`;
 
     await sql.begin(async (tx) => {
       for (const r of rows) {
