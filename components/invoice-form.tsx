@@ -850,7 +850,7 @@ export function InvoiceForm({
                         {ordered === null ? "—" : fmt(ordered)}
                       </td>
                     )}
-                    <td className="narrow">
+                    <td className="narrow qtycell">
                       {/* What arrived, arrived, and what was agreed was
                           agreed. A line billing a receipt takes its quantity
                           from that receipt; a line filled from an order takes
@@ -882,7 +882,7 @@ export function InvoiceForm({
                         </span>
                       )}
                     </td>
-                    <td className="narrow">
+                    <td className="narrow pricecell">
                       {/* The price on an order line is the agreed one and is
                           changed at the order. On a receipt line it stays
                           open: the supplier's bill is external truth, and a

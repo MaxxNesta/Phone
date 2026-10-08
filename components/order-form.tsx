@@ -321,7 +321,7 @@ export function OrderForm({
                         backTo={isSales ? "/sales/orders/new" : "/purchases/orders/new"}
                       />
                     </td>
-                    <td className="narrow">
+                    <td className="narrow qtycell">
                       <input type="number" min="0" step="any" value={l.qty}
                         onChange={(e) => setLine(l.key, { qty: e.target.value })}
                         aria-label="Quantity" />
@@ -330,7 +330,7 @@ export function OrderForm({
                         whether it means pieces or cartons. Shown even for an
                         item with no packs, because the buyer still needs to
                         know what they are promising. */}
-                    <td className="narrow">
+                    <td className="narrow unitcell">
                       {!item ? (
                         <span className="code" style={{ color: "var(--muted)" }}>&mdash;</span>
                       ) : addingPack === l.key ? (
@@ -372,7 +372,7 @@ export function OrderForm({
                         />
                       )}
                     </td>
-                    <td className="narrow">
+                    <td className="narrow pricecell">
                       <input type="number" min="0" step="any" value={l.unitPrice}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })}
                         aria-label="Expected price" />

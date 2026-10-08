@@ -5418,3 +5418,13 @@ button.danger-solid:hover { opacity: 0.9; }
   font: 500 11px/1.5 var(--mono, ui-monospace, monospace); letter-spacing: 0;
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.18);
 }
+
+/* Line tables: a quantity is a few digits and a unit a short code, a price
+   runs to millions of kyat. Width follows the figure, and the item takes
+   what is left. */
+.linetable td.qtycell, .grlines td.qtycell { width: 96px; }
+.linetable td.qtycell input, .grlines td.qtycell input { min-width: 0; width: 100%; }
+.linetable td.unitcell, .grlines td.unitcell { width: 80px; }
+.linetable td.unitcell select { width: 100%; }
+.linetable td.pricecell, .grlines td.pricecell { width: 190px; }
+.linetable td.pricecell input, .grlines td.pricecell input { min-width: 0; width: 100%; }

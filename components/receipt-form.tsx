@@ -662,7 +662,7 @@ export function ReceiptForm({
                               : "—"}
                         </td>
                       )}
-                      <td className="narrow">
+                      <td className="narrow qtycell">
                         <input type="number" min="0" step="any" value={l.qty}
                           onChange={(e) => setLine(l.key, { qty: e.target.value })}
                           aria-label="Receive quantity"
@@ -670,7 +670,7 @@ export function ReceiptForm({
                       </td>
                       {/* Which unit this quantity is in. Only where the item
                           has packs — one option is a question already answered. */}
-                      <td className="narrow">
+                      <td className="narrow unitcell">
                         {(item?.packs ?? []).length > 0 ? (
                           <select value={l.uomId ?? ""} onChange={(e) => setLine(l.key, { uomId: e.target.value })}
                             aria-label={`Unit for ${item?.code ?? "line"}`}>
@@ -683,7 +683,7 @@ export function ReceiptForm({
                           <span className="subline">{item?.uom_code ?? "—"}</span>
                         )}
                       </td>
-                      <td className="narrow">
+                      <td className="narrow pricecell">
                         {/* The bill is the cost of these goods, so it is not
                             typed over here. Quantity stays the receiver's to
                             state: what arrived is what arrived. */}
