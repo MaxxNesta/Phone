@@ -806,8 +806,8 @@ export function InvoiceForm({
                       {/* An order line's item is not this voucher's to swap:
                           changing what is being bought starts at the order. */}
                       {l.orderLineId ? (
-                        <span className="readout" title="On the order — change it there">
-                          {item ? `${item.code} · ${item.name}` : "—"}
+                        <span className="readout codetip" data-code={item?.code ?? ""}>
+                          {item ? item.name : "—"}
                         </span>
                       ) : (
                         <ItemPicker

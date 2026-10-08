@@ -365,8 +365,7 @@ export function ErpOrderForm({
                   <tr key={l.id} className="erp-tr">
                     <td className="erp-td erp-lineno">{n + 1}</td>
                     <td className="erp-td erp-item">
-                      <span className="erp-item-code">{l.itemCode}</span>
-                      <span className="erp-item-name">{l.itemName}</span>
+                      <span className="erp-item-name codetip" data-code={l.itemCode}>{l.itemName}</span>
                       {l.itemNameMy && <span className="erp-item-my name-my">{l.itemNameMy}</span>}
                     </td>
                     <td className="erp-td erp-num">

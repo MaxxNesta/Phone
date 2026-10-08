@@ -1480,7 +1480,7 @@ export default async function DocumentPage({
               <table>
                 <thead>
                   <tr>
-                    <th>#</th><th>Item</th><th>Description</th><th>Unit</th>
+                    <th>#</th><th>Item</th><th>Unit</th>
                     <th className="r">Qty</th><th className="r">{valueLabel}</th><th className="r">Net</th>
                   </tr>
                 </thead>
@@ -1497,9 +1497,8 @@ export default async function DocumentPage({
                       <Fragment key={l.id}>
                         <tr>
                           <td className="code">{l.line_no}</td>
-                          <td className="code">{l.item_code ?? "—"}</td>
                           <td className="wrap">
-                            {l.item_name ?? l.description ?? "—"}
+                            <span className="codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
                             {l.foc_reason && <> <span className="pill warn">{l.foc_reason}</span></>}
                           </td>
                           <td className="code">{l.uom_code ?? "—"}</td>
@@ -1510,7 +1509,7 @@ export default async function DocumentPage({
                         {batches.length > 0 && (
                           <tr className="batchtrail">
                             <td />
-                            <td colSpan={6}>
+                            <td colSpan={5}>
                               {batches.map((b, i) => (
                                 <span key={`${b.batch_no}-${i}`} className="batchtrail-item">
                                   <span className="code">{b.batch_no}</span>
@@ -1529,7 +1528,7 @@ export default async function DocumentPage({
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={6}>Total</td>
+                    <td colSpan={5}>Total</td>
                     <td className="r">{money(doc.gross_total)}</td>
                   </tr>
                 </tfoot>

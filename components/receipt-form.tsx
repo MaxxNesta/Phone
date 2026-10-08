@@ -642,13 +642,12 @@ export function ReceiptForm({
                           <span className="prod">
                             <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
                             <span>
-                              <span className="prod-name">{item.name}</span>
-                              <span className="prod-sub" style={{ display: "block" }}>
-                                {item.code}
-                                {!l.sourceLineId && (
-                                  <> · <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button></>
-                                )}
-                              </span>
+                              <span className="prod-name codetip" data-code={item.code}>{item.name}</span>
+                              {!l.sourceLineId && (
+                                <span className="prod-sub" style={{ display: "block" }}>
+                                  <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button>
+                                </span>
+                              )}
                             </span>
                           </span>
                         ) : (

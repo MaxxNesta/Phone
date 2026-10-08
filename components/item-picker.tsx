@@ -184,7 +184,7 @@ export function ItemPicker({
           onClick={() => { setOpen(true); setQuery(""); }}
           title="Change item"
         >
-          <span className="m">{selected.code}</span> · {selected.name}
+          <span className="codetip" data-code={selected.code}>{selected.name}</span>
           <VariantTags variant={asVariant(selected.variant)} />
         </button>
         <Link

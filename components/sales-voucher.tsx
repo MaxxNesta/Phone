@@ -1283,7 +1283,7 @@ export function SalesVoucher({
                         <span className="vprod" title="On the order — change it there">
                           <span className="vthumb">{item?.photo ? <img src={item.photo} alt="" /> : <Smartphone size={20} aria-hidden="true" />}</span>
                           <span>
-                            <span className="vname">{item?.model ?? item?.name ?? "—"}</span>
+                            <span className="vname codetip" data-code={item?.code ?? ""}>{item?.model ?? item?.name ?? "—"}</span>
                             <span className="vopts">{parts.map((x) => x.o).join(" · ") || "On the order"}</span>
                           </span>
                         </span>
@@ -1306,7 +1306,7 @@ export function SalesVoucher({
                         <span className="vprod">
                           <span className="vthumb">{item.photo ? <img src={item.photo} alt="" /> : <Smartphone size={20} aria-hidden="true" />}</span>
                           <span>
-                            <span className="vname">{item.model ?? item.name}</span>
+                            <span className="vname codetip" data-code={item.code}>{item.model ?? item.name}</span>
                             {parts.length > 0 && <span className="vopts">{parts.map((x) => x.o).join(" · ")}</span>}
                             <span className={`vavail${short ? " short" : ""}`}>
                               {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}
