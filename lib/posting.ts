@@ -8189,47 +8189,47 @@ export async function importItems(input: {
       values (${companyId}, ${ref}, ${filename}, ${input.rowCount})
       returning id`;
 
-    let created = 0;
-    let matched = 0;
+    // A barcode already in the catalogue is left exactly as it is. An
+    // import that quietly rewrote an item's category, brand or code would
+    // edit master data as a side effect of a file someone uploaded to add
+    // something else, which is not what "import items" says it does.
+    const matched = rows.filter((r) => r.itemId).length;
+    const fresh = rows.filter((r) => !r.itemId);
 
-    for (const r of rows) {
-      // A barcode already in the catalogue is left exactly as it is. An
-      // import that quietly rewrote an item's category, brand or code would
-      // edit master data as a side effect of a file someone uploaded to add
-      // something else, which is not what "import items" says it does.
-      if (r.itemId) { matched++; continue; }
+    // The serial the sheet asked for, and the trigger composes the code from
+    // it and the category — what the preview showed. Inserted as a set,
+    // chunked; matched back by category and serial, which the code makes
+    // unique.
+    const key = (groupId: string, serial: string) => `${groupId}|${serial}`;
+    const idOf = new Map<string, string>();
+    for (let i = 0; i < fresh.length; i += 1000) {
+      const made = await tx`insert into item ${tx(fresh.slice(i, i + 1000).map((r) => ({
+        company_id: companyId, item_group_id: r.categoryId, serial: r.serial, name: r.name,
+        barcode: r.barcode || null, brand_id: r.brandId, base_uom_id: r.uomId,
+        is_stocked: true, import_batch_id: batch.id,
+      })))} returning id, item_group_id, serial`;
+      for (const m of made) idOf.set(key(m.item_group_id as string, m.serial as string), m.id as string);
+    }
 
-      // The serial the sheet asked for, and the trigger composes the code
-      // from it and the category. A blank Stock ID column was already turned
-      // into the next free number by the validator, which is also what the
-      // preview showed — so this writes what was approved rather than
-      // deciding it a second time and possibly differently.
-      const [item] = await tx`
-        insert into item (company_id, item_group_id, serial, name, barcode,
-                          brand_id, base_uom_id, is_stocked, import_batch_id)
-        values (${companyId}, ${r.categoryId}, ${r.serial}, ${r.name}, ${r.barcode || null},
-                ${r.brandId}, ${r.uomId}, true, ${batch.id})
-        returning id`;
-
-      // The same write the new-item form makes, for the same reason: a price
-      // belongs to a price level, and the first level by sort_order is the
-      // one a company that has never thought about levels is using. Doing it
-      // here rather than leaving the column to a later screen is the point —
-      // there is no later screen, and an item created without a price has no
-      // way to be given one.
-      if (r.salePrice && r.salePrice > 0) {
-        const [level] = await tx`
-          select id from price_level where company_id = ${companyId} order by sort_order, code limit 1`;
-        if (level) {
-          await tx`
-            insert into item_price
-              (company_id, item_id, price_level_id, uom_id, currency, price)
-            values (${companyId}, ${item.id}, ${level.id}, ${r.uomId}, 'MMK', ${r.salePrice})`;
+    // The same write the new-item form makes: a sale price belongs to a
+    // price level — Retail in a retail shop, else the first by sort order.
+    const priced = fresh.filter((r) => r.salePrice && r.salePrice > 0);
+    if (priced.length) {
+      const [level] = await tx`
+        select id from price_level where company_id = ${companyId}
+         order by (code = 'RETAIL' and (select retail_mode from company where id = ${companyId})) desc,
+                  sort_order, code limit 1`;
+      if (level) {
+        const prices = priced.map((r) => ({
+          company_id: companyId, item_id: idOf.get(key(r.categoryId, r.serial))!,
+          price_level_id: level.id, uom_id: r.uomId, currency: "MMK", price: r.salePrice,
+        }));
+        for (let i = 0; i < prices.length; i += 5000) {
+          await tx`insert into item_price ${tx(prices.slice(i, i + 5000))}`;
         }
       }
-
-      created++;
     }
+    const created = fresh.length;
 
     return {
       ref,

@@ -6881,24 +6881,32 @@ export type MissingEntry = {
 export async function createMissingMasterData(
   entries: MissingEntry[]
 ): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
-  await requirePermission("items.manage");
+  const me = await requirePermission("items.manage");
   try {
     const co = await companyId();
+    // Brands are the owner's: the shop sells Apple (see createBrand).
+    if (entries.some((e) => e.kind === "brand" && e.name?.trim()) && !can(me, "brands.manage")) {
+      return { ok: false, error: "Only the owner can add a brand. Remove the new brands from the sheet or ask the owner." };
+    }
 
-    // A generated code, letters and digits only so it stays typeable, with a
-    // numeric suffix settling the rare collision between two similar names.
+    // Codes in use, read once; a generated code is letters and digits so it
+    // stays typeable, with a numeric suffix settling the rare collision.
+    const [brandCodes, segments] = await Promise.all([
+      sql`select code from brand where company_id = ${co}`,
+      sql`select segment from item_group where company_id = ${co}`,
+    ]);
+    const taken = {
+      brand: new Set(brandCodes.map((r) => r.code as string)),
+      item_group: new Set(segments.map((r) => r.segment as string)),
+    };
     const codeFor = async (
-      tx: typeof sql, table: "brand" | "item_group", column: "code" | "segment",
+      _tx: typeof sql, table: "brand" | "item_group", _column: "code" | "segment",
       name: string, fallback: string
     ) => {
       const base = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || fallback;
       let code = base;
-      for (let i = 2; ; i++) {
-        const clash = await tx.unsafe(
-          `select 1 from ${table} where company_id = $1 and ${column} = $2`, [co, code]);
-        if (clash.length === 0) break;
-        code = `${base.slice(0, 12 - String(i).length)}${i}`;
-      }
+      for (let i = 2; taken[table].has(code); i++) code = `${base.slice(0, 12 - String(i).length)}${i}`;
+      taken[table].add(code);
       return code;
     };
 
@@ -6976,11 +6984,13 @@ export async function createMissingMasterData(
 export async function createMissingBrands(
   names: string[]
 ): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
-  await requirePermission("items.manage");
+  const me = await requirePermission("items.manage");
   try {
     const co = await companyId();
     const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
     if (wanted.length === 0) return { ok: true, created: 0 };
+    if (!can(me, "brands.manage")) return { ok: false, error: "Only the owner can add a brand." };
+    const taken = new Set((await sql`select code from brand where company_id = ${co}`).map((r) => r.code as string));
 
     let created = 0;
     await sql.begin(async (tx) => {
@@ -6993,11 +7003,8 @@ export async function createMissingBrands(
         // suffix settles the rare collision between two similar names.
         const base = (name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "BRAND");
         let code = base;
-        for (let i = 2; ; i++) {
-          const [clash] = await tx`select 1 from brand where company_id = ${co} and code = ${code}`;
-          if (!clash) break;
-          code = `${base.slice(0, 12 - String(i).length)}${i}`;
-        }
+        for (let i = 2; taken.has(code); i++) code = `${base.slice(0, 12 - String(i).length)}${i}`;
+        taken.add(code);
 
         await tx`insert into brand (company_id, code, name) values (${co}, ${code}, ${name})`;
         created++;
