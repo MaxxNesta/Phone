@@ -170,6 +170,9 @@ export async function scaffoldCompany(input: SetupInput) {
       insert into location (company_id, parent_id, code, name, is_stock_location)
       values (${co.id}, ${office.id}, 'MAIN-WH', ${input.warehouseName}, true)`;
 
+    // The shop sells Apple: the brand is there from the start.
+    await tx`insert into brand (company_id, code, name) values (${co.id}, 'APPLE', 'Apple')`;
+
     await tx`
       insert into uom (company_id, code, name) values
         (${co.id}, 'PCS', 'Pieces'),

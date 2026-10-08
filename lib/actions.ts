@@ -11,7 +11,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines } from "./queries";
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
-import { requirePermission, requireUser } from "./auth";
+import { requirePermission, requireUser, can } from "./auth";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
 import { asRegion } from "./regions";
@@ -1264,7 +1264,10 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("items.manage");
+  const me = await requirePermission("items.manage");
+  // The shop sells Apple. Another brand is the owner's decision, made twice.
+  if (!can(me, "brands.manage")) return { error: "Only the owner can add a brand." };
+  if (fd.get("confirm_other_brand") !== "yes") return { error: "Confirm that you want to add a brand other than Apple." };
   const toastMsg = "Brand added";
   const code = str(fd, "code").toUpperCase();
 
@@ -1379,14 +1382,16 @@ export async function deleteBrand(_prev: unknown, fd: FormData): Promise<ActionR
   redirectWithToast("/items/brands", "Brand deleted");
 }
 
-export type NewBrandInput = { name: string; nameMy?: string };
+export type NewBrandInput = { name: string; nameMy?: string; confirmed?: boolean };
 export type PickerBrand = { id: string; code: string; name: string };
 
 /** Quick-add from inside the item form, same shape as createItemInline. */
 export async function createBrandInline(
   input: NewBrandInput
 ): Promise<{ ok: true; brand: PickerBrand } | { ok: false; error: string }> {
-  await requirePermission("items.manage");
+  const me = await requirePermission("items.manage");
+  if (!can(me, "brands.manage")) return { ok: false, error: "Only the owner can add a brand." };
+  if (!input.confirmed) return { ok: false, error: "Confirm that you want to add a brand other than Apple." };
   try {
     const co = await companyId();
 

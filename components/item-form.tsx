@@ -5,6 +5,7 @@ import { PackSizes } from "./pack-sizes";
 import { useActionState, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { createBrandInline, type PickerBrand } from "@/lib/actions";
+import { ConfirmOtherBrand } from "./brand-form";
 import { ItemPhotoField } from "./item-photo-field";
 
 type Node = {
@@ -47,7 +48,10 @@ export function ItemForm({
   presetGroupId,
   variantAttributes,
   retail,
+  canAddBrand,
 }: {
+  /** Owner only (brands.manage): the shop sells Apple. */
+  canAddBrand?: boolean;
   /** Phone retail: nothing expires and nothing is recalled by lot, so the
    *  batch switches are not offered. */
   retail?: boolean;
@@ -69,7 +73,10 @@ export function ItemForm({
   const [tracksBatch, setTracksBatch] = useState(false);
   const [tracksExpiry, setTracksExpiry] = useState(false);
   const [brandList, setBrandList] = useState<Brand[]>(brands);
-  const [brandId, setBrandId] = useState("");
+  // Apple unless chosen otherwise: it is what the shop sells.
+  const [brandId, setBrandId] = useState(
+    brands.find((b) => b.code === "APPLE" || b.name.toLowerCase() === "apple")?.id ?? "");
+  const [askBrand, setAskBrand] = useState(false);
   // Controlled, because the pack sizes below have to exclude whichever
   // unit is currently the base — a box cannot contain boxes.
   const [baseUomId, setBaseUomId] = useState(uoms[0]?.id ?? "");
@@ -83,7 +90,8 @@ export function ItemForm({
     if (!name) return;
     setBrandError(null);
     startBrand(async () => {
-      const res = await createBrandInline({ name });
+      const res = await createBrandInline({ name, confirmed: true });
+      setAskBrand(false);
       if (!res.ok) {
         setBrandError(res.error);
         return;
@@ -250,11 +258,11 @@ export function ItemForm({
                     id="brand_select" type="text" autoFocus
                     value={newBrandName}
                     onChange={(e) => setNewBrandName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addBrand(); } }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (newBrandName.trim()) setAskBrand(true); } }}
                     placeholder="Advics"
                   />
                   <span className="actions" style={{ marginTop: "0.4rem" }}>
-                    <button type="button" className="tiny" disabled={brandPending || !newBrandName.trim()} onClick={addBrand}>
+                    <button type="button" className="tiny" disabled={brandPending || !newBrandName.trim()} onClick={() => setAskBrand(true)}>
                       {brandPending ? "Saving…" : "Add"}
                     </button>
                     <button type="button" className="ghost tiny" onClick={() => { setAddingBrand(false); setBrandError(null); }}>
@@ -262,6 +270,8 @@ export function ItemForm({
                     </button>
                   </span>
                   {brandError && <span className="hint" style={{ color: "var(--bad)" }}>{brandError}</span>}
+                  <ConfirmOtherBrand open={askBrand} name={newBrandName.trim()} busy={brandPending}
+                    onCancel={() => setAskBrand(false)} onConfirm={addBrand} />
                 </>
               ) : (
                 <>
@@ -271,9 +281,11 @@ export function ItemForm({
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                   </select>
-                  <span className="hint">
-                    Optional. <button type="button" className="ghost tiny" style={{ padding: 0 }} onClick={() => setAddingBrand(true)}>+ New brand</button>
-                  </span>
+                  {canAddBrand && (
+                    <span className="hint">
+                      <button type="button" className="ghost tiny" style={{ padding: 0 }} onClick={() => setAddingBrand(true)}>+ New brand</button>
+                    </span>
+                  )}
                 </>
               )}
             </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { sql } from "@/lib/db";
+import { currentUser, can } from "@/lib/auth";
 import { createItem } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
 import { getBrands, getCompany, getVariantAttributes } from "@/lib/queries";
@@ -53,6 +54,7 @@ export default async function NewItem() {
         brands={brands as never}
         returnTo="/items"
         retail={Boolean((await getCompany())?.retail_mode)}
+        canAddBrand={can((await currentUser())!, "brands.manage")}
       />
     </>
   );

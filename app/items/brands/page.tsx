@@ -1,4 +1,5 @@
 import { sql } from "@/lib/db";
+import { currentUser, can } from "@/lib/auth";
 import { createBrand, updateBrand, deactivateBrand, activateBrand, deleteBrand } from "@/lib/actions";
 import { AddBrandForm } from "@/components/brand-form";
 import { BrandRow } from "@/components/brand-row";
@@ -45,7 +46,8 @@ export default async function Brands() {
         <p className="page-sub">The makers products are filed under.</p>
       </div>
 
-      <AddBrandForm action={createBrand} />
+      {/* Owner only: the shop sells Apple, and another brand is asked twice. */}
+      {can((await currentUser())!, "brands.manage") && <AddBrandForm action={createBrand} />}
 
       <section>
         <div className="card">

@@ -26,6 +26,7 @@ export type Permission =
   | "inventory.manage"    // receive, transfer, adjust, holds
   | "partners.manage"
   | "items.manage"
+  | "brands.manage"       // add a brand: owner only, the shop sells Apple
   | "accounting.view"
   | "accounting.post"
   | "reports.view"
@@ -35,7 +36,7 @@ export type Permission =
 const ALL: Permission[] = [
   "pos.sell", "sales.view", "sales.post", "sales.return", "documents.void",
   "discount.unlimited", "cost.view", "purchase.view", "purchase.post",
-  "inventory.view", "inventory.manage", "partners.manage", "items.manage",
+  "inventory.view", "inventory.manage", "partners.manage", "items.manage", "brands.manage",
   "accounting.view", "accounting.post", "reports.view", "settings.manage", "users.manage",
 ];
 

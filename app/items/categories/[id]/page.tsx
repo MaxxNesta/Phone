@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
+import { currentUser, can } from "@/lib/auth";
 import { money, qty } from "@/lib/db";
 import {
   createCategory, createItem, insertCategoryAbove, moveCategory,
@@ -157,6 +158,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
               returnTo={returnTo}
               presetGroupId={id}
               retail={Boolean((await getCompany())?.retail_mode)}
+              canAddBrand={can((await currentUser())!, "brands.manage")}
             />
           </div>
         </div>
