@@ -760,11 +760,10 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
        * expand.
        */
       if (variantPlan.combos.length > 0) {
-        for (const [order, attributeId] of variantPlan.attributes.entries()) {
-          await tx`
-            insert into item_variant_attribute (item_id, attribute_id, sort_order)
-            values (${item.id}, ${attributeId}, ${order})`;
-        }
+        // Set-based: a model with 1,000 combinations was ~7,000 round trips
+        // when each variant, option, pack and price was its own insert.
+        await tx`insert into item_variant_attribute ${tx(variantPlan.attributes.map((attributeId, order) =>
+          ({ item_id: item.id, attribute_id: attributeId, sort_order: order })))}`;
 
         const optionRows = await tx`
           select id, code, name, attribute_id from variant_option
@@ -778,7 +777,12 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           (rank.get(byId.get(x)?.attribute_id) ?? 0) -
           (rank.get(byId.get(y)?.attribute_id) ?? 0));
 
-        for (const raw of variantPlan.combos) {
+        const [level] = salePrice > 0 ? await tx`
+          select id from price_level where company_id = ${co}
+           -- A retail shop's sale price is its retail price: the POS reads that level.
+           order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1` : [];
+
+        const planned = variantPlan.combos.map((raw) => {
           // An option id the form invented, or one deleted between loading
           // the page and saving it, would otherwise become "undefined" in
           // the middle of a code.
@@ -793,44 +797,50 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           // only a serial: the variant says which.
           const childIdentity = identity === "SERIAL"
             && parts.some((p: any) => /cellular/i.test(p.name)) ? "IMEI" : identity;
-          const [child] = await tx`
-            insert into item
-              (company_id, item_group_id, parent_item_id, serial, name, name_my,
-               base_uom_id, valuation_method, is_stocked, brand_id,
-               tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months)
-            values
-              (${co}, ${groupId}, ${item.id}, ${serial + "-" + suffix},
-               ${name + " " + label}, ${nameMy ? nameMy + " " + label : null},
-               ${uomId}, 'FIFO', ${fd.get("is_stocked") !== null}, ${brandId},
-               ${fd.get("tracks_batch") !== null},
-               ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
-               ${childIdentity}, ${months(fd, "warranty_months")},
-               ${months(fd, "supplier_warranty_months")})
-            returning id`;
-          for (const id of combo) {
-            await tx`insert into item_variant_option (item_id, option_id)
-                     values (${child.id}, ${id})`;
-          }
-          /* The variants are what is actually bought and sold, so they
-             inherit the packs as they already inherit the base unit and
-             the price. A carton of shirts is a carton of each size; a
-             pack left only on the parent would apply to nothing. */
-          for (const pk of newPacks) {
-            await tx`
-              insert into item_uom (company_id, item_id, uom_id, factor)
-              values (${co}, ${child.id}, ${pk.uomId}, ${pk.factor})`;
-          }
-          if (salePrice > 0) {
-            const [level] = await tx`
-              select id from price_level where company_id = ${co}
-           -- A retail shop's sale price is its retail price: the POS reads that level.
-           order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1`;
-            if (level) {
-              await tx`
-                insert into item_price
-                  (company_id, item_id, price_level_id, uom_id, currency, price)
-                values (${co}, ${child.id}, ${level.id}, ${uomId}, 'MMK', ${salePrice})`;
-            }
+          return {
+            combo,
+            row: {
+              company_id: co, item_group_id: groupId, parent_item_id: item.id,
+              serial: serial + "-" + suffix,
+              name: name + " " + label, name_my: nameMy ? nameMy + " " + label : null,
+              base_uom_id: uomId, valuation_method: "FIFO",
+              is_stocked: fd.get("is_stocked") !== null, brand_id: brandId,
+              tracks_batch: fd.get("tracks_batch") !== null,
+              tracks_expiry: fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null,
+              identity: childIdentity,
+              warranty_months: months(fd, "warranty_months"),
+              supplier_warranty_months: months(fd, "supplier_warranty_months"),
+            },
+          };
+        });
+
+        // Chunked to stay well inside Postgres's 65,535-parameter limit.
+        const idBySerial = new Map<string, string>();
+        for (let i = 0; i < planned.length; i += 1000) {
+          const made = await tx`insert into item ${tx(planned.slice(i, i + 1000).map((p) => p.row))}
+                                returning id, serial`;
+          for (const m of made) idBySerial.set(m.serial as string, m.id as string);
+        }
+
+        const options = planned.flatMap((p) => p.combo.map((id) =>
+          ({ item_id: idBySerial.get(p.row.serial)!, option_id: id })));
+        for (let i = 0; i < options.length; i += 5000) {
+          await tx`insert into item_variant_option ${tx(options.slice(i, i + 5000))}`;
+        }
+        /* The variants are what is actually bought and sold, so they
+           inherit the packs as they already inherit the base unit and
+           the price. A carton of shirts is a carton of each size; a
+           pack left only on the parent would apply to nothing. */
+        const packRows = planned.flatMap((p) => newPacks.map((pk) =>
+          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor })));
+        for (let i = 0; i < packRows.length; i += 5000) {
+          await tx`insert into item_uom ${tx(packRows.slice(i, i + 5000))}`;
+        }
+        if (level) {
+          const prices = planned.map((p) => ({ company_id: co, item_id: idBySerial.get(p.row.serial)!,
+            price_level_id: level.id, uom_id: uomId, currency: "MMK", price: salePrice }));
+          for (let i = 0; i < prices.length; i += 5000) {
+            await tx`insert into item_price ${tx(prices.slice(i, i + 5000))}`;
           }
         }
       }
