@@ -7,6 +7,7 @@ import { Smartphone, Lock, TrendingUp, Wallet } from "lucide-react";
 import { money, shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { AutoApply } from "@/components/auto-apply";
 
 export const metadata = { title: "Phone stock" };
 
@@ -19,7 +20,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   const user = await requirePermission("inventory.view");
   const sp = await searchParams;
   const f = {
-    q: sp.q || undefined, locationId: sp.location || undefined, brand: sp.brand || undefined,
+    q: sp.q || undefined, locationId: sp.location || undefined,
     model: sp.model || undefined, storage: sp.storage || undefined, colour: sp.colour || undefined,
     // In stock unless asked otherwise: what is on the shelf is the usual question.
     // A search is about one phone, wherever it is now; browsing is about the shelf.
@@ -78,7 +79,6 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             <input id="f-q" name="q" defaultValue={sp.q ?? ""} placeholder="Scan or type" autoFocus />
           </div>
           {manyWarehouses && select("location", facets.locations.map((l: any) => ({ v: l.id, l: l.name })), sp.location)}
-          {select("brand", facets.brands.map((v) => ({ v, l: v })), sp.brand)}
           {select("model", facets.models.map((v) => ({ v, l: v })), sp.model)}
           {select("storage", facets.storages.map((v) => ({ v, l: v })), sp.storage)}
           {select("colour", facets.colours.map((v) => ({ v, l: v })), sp.colour)}
@@ -90,7 +90,8 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             </select>
           </div>
           {select("supplier", facets.suppliers.map((s: any) => ({ v: s.id, l: s.name })), sp.supplier)}
-          <div className="filter-go"><button className="btn ghost">Filter</button></div>
+          <AutoApply />
+          <div className="filter-go"><button className="btn ghost" data-apply>Filter</button></div>
         </div>
       </form>
 

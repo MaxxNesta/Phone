@@ -368,22 +368,9 @@ export default async function Stock({
 
   return (
     <>
-      <div className="page-head hero">
-        <span className="eyebrow">Inventory</span>
+      <div className="page-head">
+        <span className="eyebrow">Master data</span>
         <h1>Stock</h1>
-        <div className="head-actions">
-          <AddReorderPointForm
-            action={createReorderPoint}
-            // A model with its variants: the point is set on the variant, which
-            // is what sits on a shelf.
-            items={listable.map((i) => ({
-              id: i.id, name: i.name, category: i.parent_group_name ?? i.group_name,
-              variants: (childrenOf.get(i.id) ?? []).map((k) => ({ id: k.id, parts: asVariant(k.variant) ?? [] })),
-            }))}
-            locations={reorderableLocations}
-            count={reorderPoints.length}
-          />
-        </div>
       </div>
 
       {/* Both filters on one line: each narrows the same list, and a warehouse
@@ -414,6 +401,19 @@ export default async function Stock({
               All items
             </Link>
           </div>
+        </div>
+        <div className="filterbar-end">
+          <AddReorderPointForm
+            action={createReorderPoint}
+            // A model with its variants: the point is set on the variant, which
+            // is what sits on a shelf.
+            items={listable.map((i) => ({
+              id: i.id, name: i.name, category: i.parent_group_name ?? i.group_name,
+              variants: (childrenOf.get(i.id) ?? []).map((k) => ({ id: k.id, parts: asVariant(k.variant) ?? [] })),
+            }))}
+            locations={reorderableLocations}
+            count={reorderPoints.length}
+          />
         </div>
       </div>
 

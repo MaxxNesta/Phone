@@ -5449,3 +5449,7 @@ button.danger-solid:hover { opacity: 0.9; }
 
 .sheet-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
 .confirm.sheetish { max-width: 32rem; }
+
+/* An action that belongs with a filter bar sits at its far end. */
+.filterbar-end { margin-left: auto; align-self: flex-end; }
+.js-autoapply .filter-go:has(> [data-apply]) { display: none; }
