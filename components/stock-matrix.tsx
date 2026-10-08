@@ -100,7 +100,7 @@ export function StockMatrix({
             const shot = photos.pictureFor(p.variants[0]);
             const total = p.variants.reduce((s, v) => s + Number(v.qty_on_hand), 0);
             return (
-              <Link key={p.id} href={href(p.id)} className="matrixpick-row"
+              <Link key={p.id} scroll={false} href={href(p.id)} className="matrixpick-row"
                     data-active={p.id === selected.id || undefined}>
                 <ItemThumb
                   src={shot ? `/items/${shot.id}/photo?v=${shot.photo_version}` : null}

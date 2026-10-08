@@ -107,7 +107,7 @@ export function VariantStock({
           <div className="card-body" style={{ paddingBottom: 0 }}>
             <div className="scopetabs" style={{ margin: 0 }}>
               {attrList.map((a) => (
-                <Link key={a.id} className="scopetab" data-active={a.id === active.id}
+                <Link key={a.id} scroll={false} className="scopetab" data-active={a.id === active.id}
                       href={href(a.id)}>
                   By {a.name.toLowerCase()}
                 </Link>

@@ -392,11 +392,11 @@ export default async function Stock({
               addressable by its query, and this way the choice survives a
               reload and can be bookmarked like the warehouse beside it. */}
           <div className="scopetabs" style={{ margin: 0 }}>
-            <Link className="scopetab" data-active={!showZeros}
+            <Link scroll={false} className="scopetab" data-active={!showZeros}
                   href={`/items/stock${allLocations ? "" : `?location=${selectedLocationId}`}`}>
               In stock
             </Link>
-            <Link className="scopetab" data-active={showZeros}
+            <Link scroll={false} className="scopetab" data-active={showZeros}
                   href={`/items/stock?${allLocations ? "" : `location=${selectedLocationId}&`}zeros=1`}>
               All items
             </Link>
@@ -582,7 +582,7 @@ export default async function Stock({
             if (key !== "list") q.set("view", key);
             const qs = q.toString();
             return (
-              <Link key={key} className="scopetab" data-active={mode === key}
+              <Link key={key} scroll={false} className="scopetab" data-active={mode === key}
                     href={`/items/stock${qs ? `?${qs}` : ""}`}>
                 {label}
               </Link>
