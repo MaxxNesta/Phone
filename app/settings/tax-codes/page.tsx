@@ -1,3 +1,4 @@
+import { getCompany } from "@/lib/queries";
 import { sql } from "@/lib/db";
 import { createTaxCode, updateTaxCode, addTaxRate } from "@/lib/actions";
 import { TaxCodeRow } from "@/components/tax-code-row";
@@ -5,7 +6,8 @@ import { SimpleForm } from "@/components/simple-form";
 import { HelpHint } from "@/components/help-hint";
 
 export default async function TaxCodes() {
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
   if (!co) return <div className="empty">No company found.</div>;
 
   const today = new Date().toISOString().slice(0, 10);

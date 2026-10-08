@@ -513,10 +513,12 @@ export async function inventorySummary(companyId: string, f: {
     select i.id, i.name, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
            g.name as category, b.name as brand, i.tracks_serial, i.identity,
            coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
+           -- company_id first so stock_serial(company_id, item_id) is used per row.
            (select count(*)::int from stock_serial_hold h join stock_serial s on s.id = h.serial_id
-             where s.item_id = i.id and h.released_at is null) as reserved,
+             where s.company_id = i.company_id and s.item_id = i.id and h.released_at is null) as reserved,
            case when coalesce(per.qty, 0) > 0 then per.value / per.qty end as avg_cost,
-           (select sum(r.min_qty)::float from item_reorder r where r.item_id = i.id) as min_qty,
+           (select sum(r.min_qty)::float from item_reorder r
+             where r.company_id = i.company_id and r.item_id = i.id) as min_qty,
            ${RETAIL_PRICE}::float as price,
            case when i.photo_updated_at is not null
                   then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')

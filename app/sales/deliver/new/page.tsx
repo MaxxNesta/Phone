@@ -2,8 +2,7 @@ import Link from "next/link";
 import { getFormData, createDelivery } from "@/lib/actions";
 import {
   getOpenSalesOrders, getStockByLocation, getOwnershipMap,
-  getInvoiceDeliveryContext, getRelatedDocuments, getPickOrder,
-} from "@/lib/queries";
+  getInvoiceDeliveryContext, getRelatedDocuments, getPickOrder, getCompany } from "@/lib/queries";
 import { DeliverAgainstInvoice } from "@/components/deliver-against-invoice";
 import { RelatedDocumentsPanel } from "@/components/related-documents";
 import { allCategories } from "@/lib/tree";
@@ -19,7 +18,9 @@ export default async function NewDelivery({
 }) {
   const { match_invoice_id } = (await searchParams) ?? {};
   const d = await getFormData();
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
+  if (!co) return <div className="empty">No company found.</div>;
 
   /**
    * An invoice was chosen before this page opened, so the page is about that

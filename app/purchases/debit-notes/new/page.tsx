@@ -1,3 +1,4 @@
+import { getCompany } from "@/lib/queries";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { createDebitNote } from "@/lib/actions";
@@ -11,7 +12,8 @@ export default async function NewDebitNote({
   searchParams: Promise<{ bill?: string }>;
 }) {
   const { bill: invoice } = await searchParams;
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
   if (!co) return <div className="empty">No company found.</div>;
 
   /* A note always names an invoice, so this page is only reachable with one.

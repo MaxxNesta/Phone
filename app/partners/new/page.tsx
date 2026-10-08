@@ -1,3 +1,4 @@
+import { getCompany } from "@/lib/queries";
 import { createPartner } from "@/lib/actions";
 import { SimpleForm } from "@/components/simple-form";
 import { HelpHint } from "@/components/help-hint";
@@ -5,7 +6,9 @@ import { REGION_GROUPS } from "@/lib/regions";
 import { sql } from "@/lib/db";
 
 export default async function NewPartner() {
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
+  if (!co) return <div className="empty">No company found.</div>;
   const currencies = await sql`select code, name from currency order by code`;
   const levels = (await sql`
     select id, name from price_level where company_id = ${co.id} order by sort_order`

@@ -1,3 +1,4 @@
+import { getCompany } from "@/lib/queries";
 import Link from "next/link";
 import { getFormData, createStockAdjustment } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
@@ -8,7 +9,9 @@ import { HelpHint } from "@/components/help-hint";
 
 export default async function NewStockAdjustment() {
   const d = await getFormData();
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
+  if (!co) return <div className="empty">No company found.</div>;
   const categories = await allCategories(co.id);
   const today = new Date().toISOString().slice(0, 10);
 

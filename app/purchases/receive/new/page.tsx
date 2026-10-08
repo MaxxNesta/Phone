@@ -2,8 +2,7 @@ import { getFormData, createGoodsReceipt, saveReceiptDraft } from "@/lib/actions
 import {
   getOpenPurchaseInvoices, getOpenPurchaseOrders, getGrirCollisions,
   getBillReceiptContext, getRelatedDocuments, getDocumentDraft, getVariantCatalog,
-  getReceiptDraftForOrder,
-} from "@/lib/queries";
+  getReceiptDraftForOrder, getCompany } from "@/lib/queries";
 import { ReceiveAgainstBill } from "@/components/receive-against-bill";
 import { RelatedDocumentsPanel } from "@/components/related-documents";
 import { allCategories } from "@/lib/tree";
@@ -19,7 +18,9 @@ export default async function NewGoodsReceipt({
 }) {
   const { match_invoice_id, draft: draftId, order: orderId } = await searchParams;
   const d = await getFormData();
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
+  if (!co) return <div className="empty">No company found.</div>;
 
   /**
    * A bill was chosen before this page opened, so the page is about that

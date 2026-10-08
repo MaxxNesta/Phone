@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getFormData, createPurchaseInvoice, saveInvoiceDraft } from "@/lib/actions";
-import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft } from "@/lib/queries";
+import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, getCompany } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { InvoiceForm } from "@/components/invoice-form";
@@ -15,7 +15,9 @@ export default async function NewPurchaseInvoice({
 }) {
   const { goods_receipt_id, draft: draftId } = await searchParams;
   const { suppliers, items, locations, uoms, cashAccounts, taxCodes, fx } = await getFormData();
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
+  if (!co) return <div className="empty">No company found.</div>;
 
   // Resuming an unfinished bill. A draft deleted meanwhile opens a blank
   // form rather than an error.

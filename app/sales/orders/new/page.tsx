@@ -1,7 +1,7 @@
 import { getFormData, createSalesOrder, saveInvoiceDraft } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
-import { getUntouchedOpenOrders, getDocumentDraft } from "@/lib/queries";
+import { getUntouchedOpenOrders, getDocumentDraft, getCompany } from "@/lib/queries";
 import { OrderForm } from "@/components/order-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
@@ -13,7 +13,9 @@ export default async function NewSalesOrder({
 }) {
   const { draft: draftId } = await searchParams;
   const d = await getFormData();
-  const [co] = await sql`select id from company order by created_at limit 1`;
+  // The layout already read the company; this is that same cached read.
+  const co = await getCompany();
+  if (!co) return <div className="empty">No company found.</div>;
   const categories = await allCategories(co.id);
   const awaiting = await getUntouchedOpenOrders(co.id, "SALES_ORDER");
   const today = new Date().toISOString().slice(0, 10);
