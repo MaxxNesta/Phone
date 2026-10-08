@@ -385,10 +385,11 @@ export function ReceiptForm({
         </Link>
         <div className="gr-title">
           <h1>Goods Receipt <span className="pill draft">{draftId ? "Draft" : "New"}</span></h1>
-          <p className="page-sub">
-            {order ? <>Receiving against <Link href={`/documents/${order.id}`}>{order.docNo}</Link></>
-              : "Receive goods from a supplier"}
-          </p>
+          {order && (
+            <p className="page-sub">
+              Receiving against <Link href={`/documents/${order.id}`}>{order.docNo}</Link>
+            </p>
+          )}
         </div>
         <div className="gr-actions">
           {saveDraft && (
