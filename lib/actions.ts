@@ -4098,26 +4098,26 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
            -- A retail shop's sale price is its retail price: the POS reads that level.
            order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1`;
 
+    // One statement per kind of change, not three per variant.
+    const flags = rows.map((r) => ({ id: r.id, barcode: r.barcode.trim() || null, is_active: r.isActive }));
+    const prices = rows.map((r) => ({ id: r.id, price: r.price.trim() === "" ? null : Number(r.price) }));
+    const cleared = prices.filter((p) => p.price === null).map((p) => p.id);
+    const set = prices.filter((p) => p.price !== null && Number.isFinite(p.price) && p.price >= 0);
     await sql.begin(async (tx) => {
-      for (const r of rows) {
-        const bc = r.barcode.trim();
+      await tx`
+        update item i set barcode = v.barcode, is_active = v.is_active
+          from jsonb_to_recordset(${tx.json(flags)}::jsonb) as v(id uuid, barcode text, is_active boolean)
+         where i.id = v.id and i.company_id = ${co}`;
+      if (!level) return;
+      if (cleared.length) {
+        await tx`delete from item_price where price_level_id = ${level.id} and item_id = any(${cleared}::uuid[])`;
+      }
+      if (set.length) {
         await tx`
-          update item set barcode = ${bc || null}, is_active = ${r.isActive}
-           where id = ${r.id} and company_id = ${co}`;
-
-        if (!level) continue;
-        const price = r.price.trim() === "" ? null : Number(r.price);
-        if (price === null) {
-          await tx`delete from item_price
-                    where item_id = ${r.id} and price_level_id = ${level.id}`;
-          continue;
-        }
-        if (!Number.isFinite(price) || price < 0) continue;
-        const [uom] = await tx`select base_uom_id from item where id = ${r.id}`;
-        await tx`
-          insert into item_price
-            (company_id, item_id, price_level_id, uom_id, currency, price)
-          values (${co}, ${r.id}, ${level.id}, ${uom.base_uom_id}, 'MMK', ${price})
+          insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price)
+          select ${co}, i.id, ${level.id}, i.base_uom_id, 'MMK', v.price
+            from jsonb_to_recordset(${tx.json(set)}::jsonb) as v(id uuid, price numeric)
+            join item i on i.id = v.id and i.company_id = ${co}
           on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
             do update set price = excluded.price`;
       }
