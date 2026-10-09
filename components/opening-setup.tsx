@@ -219,7 +219,7 @@ export function OpeningSetup({
             <table>
               <thead>
                 <tr>
-                  <th>Item</th><th>Warehouse</th>
+                  <th>Item</th>{locations.length > 1 && <th>Warehouse</th>}
                   <th className="r">Quantity</th><th className="r">Unit cost</th>
                   <th className="r">Value</th><th />
                 </tr>
@@ -237,14 +237,15 @@ export function OpeningSetup({
                         ))}
                       </select>
                     </td>
-                    <td>
+                    {/* One warehouse: every row opens there, nothing to choose. */}
+                    {locations.length > 1 && <td>
                       <select value={r.locationId} onChange={(e) => setStock((rs) =>
                         rs.map((x) => x.key === r.key ? { ...x, locationId: e.target.value } : x))}>
                         {locations.map((l) => (
                           <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
                         ))}
                       </select>
-                    </td>
+                    </td>}
                     <td><input type="number" step="any" value={r.qty} onChange={(e) => setStock((rs) =>
                       rs.map((x) => x.key === r.key ? { ...x, qty: e.target.value } : x))} /></td>
                     <td><input type="number" step="any" value={r.unitCost} onChange={(e) => setStock((rs) =>
@@ -260,7 +261,7 @@ export function OpeningSetup({
                     const dupes = units.length - new Set(units.map((u) => u.serial)).size;
                     return (
                       <tr className="batchrow">
-                        <td colSpan={6}>
+                        <td colSpan={locations.length > 1 ? 6 : 5}>
                           <div className="serialentry">
                             <div className="serialentry-head">
                               <span>Handsets — one per line: IMEI, or IMEI cost, or IMEI IMEI2 cost</span>
@@ -288,7 +289,7 @@ export function OpeningSetup({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4}>
+                  <td colSpan={locations.length > 1 ? 4 : 3}>
                     <button type="button" className="ghost tiny" onClick={() =>
                       add(setStock, (k) => ({ key: k, itemId: "", locationId: locations[0]?.id ?? "", qty: "", unitCost: "" }))}>
                       Add item

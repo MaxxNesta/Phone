@@ -104,10 +104,14 @@ export function ConsignmentSaleForm({
           </div>
           <div>
             <label style={{ display: "block", fontSize: "var(--erp-text-sm)", color: "var(--erp-fg-muted)" }}>Warehouse</label>
+            {locations.length === 1 ? (
+              <span className="fixedfield">{locations[0].code} · {locations[0].name}</span>
+            ) : (
             <select value={locationId}
                     onChange={(e) => { setLocationId(e.target.value); setLines([{ key: 1, itemId: "", batchKey: "", qty: "", unitPrice: "" }]); }}>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
             </select>
+            )}
           </div>
           <div>
             <label style={{ display: "block", fontSize: "var(--erp-text-sm)", color: "var(--erp-fg-muted)" }}>Date</label>
