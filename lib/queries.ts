@@ -7306,27 +7306,34 @@ export type SalesBreakdownRow = {
  * Category means the top of the tree an item is filed under, not the
  * sub-category, because "which categories sell" is asked about the top level.
  */
+/**
+ * The model an item with no parent product belongs to, read off its name:
+ * "iPhone 16 256GB Black" is an iPhone 16. Everything from the storage on
+ * is the variant; a name with no storage in it is its own model.
+ */
+const MODEL_OF_NAME = sql`regexp_replace(i.name, ' +[0-9]+ *(GB|TB)( .*)?$', '', 'i')`;
+
 function salesDimension(by: SalesBreakdownBy) {
   return {
     dim: {
       item:     sql`i.id::text`,
       customer: sql`d.partner_id::text`,
       category: sql`coalesce(pg.id, g.id)::text`,
-      model:    sql`coalesce(m.id, i.id)::text`,
+      model:    sql`coalesce(m.id::text, 'n:' || ${MODEL_OF_NAME})`,
       brand:    sql`coalesce(b.id::text, 'none')`,
     }[by],
     code: {
       item:     sql`i.code`,
       customer: sql`p.code`,
       category: sql`coalesce(pg.code, g.code)`,
-      model:    sql`coalesce(m.code, i.code)`,
+      model:    sql`coalesce(m.code, ${MODEL_OF_NAME})`,
       brand:    sql`coalesce(b.code, '—')`,
     }[by],
     name: {
       item:     sql`i.name`,
       customer: sql`p.name`,
       category: sql`coalesce(pg.name, g.name)`,
-      model:    sql`coalesce(m.name, i.name)`,
+      model:    sql`coalesce(m.name, ${MODEL_OF_NAME})`,
       brand:    sql`coalesce(b.name, 'No brand')`,
     }[by],
     joins: sql`
