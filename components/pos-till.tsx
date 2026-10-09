@@ -6,6 +6,7 @@ import { Search, Smartphone, X, Minus, Plus, Trash2, Gift, ChevronDown, Shopping
 import { posSearchAction, posUnitsAction, posPostSale, type PosSale } from "@/lib/pos-actions";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
+import { priceLines, type VolumeBand } from "@/lib/discount";
 
 type Loc = { id: string; name: string; branch: string | null };
 type Opt = { id: string; name: string; code?: string };
@@ -18,6 +19,8 @@ type Line = {
   tracksSerial: boolean; serial: string | null; qty: number; onHand: number;
   unitPrice: number; discountPct: number; taxCodeId: string; warrantyMonths: number | null;
   unitCost?: number;
+  /** For a quantity discount band scoped to a category. */
+  itemGroupId: string | null;
   /** Given free: not charged, still leaves the shelf. The reason says why. */
   focReasonId: string | null;
 };
@@ -28,6 +31,8 @@ const maskImei = (s: string) => (s.length > 8 ? `${s.slice(0, 4)}•••••
 export function PosTill(props: {
   locations: Loc[]; customers: Opt[]; salesmen: Opt[]; accounts: Account[]; taxCodes: Tax[];
   focReasons: Opt[];
+  /** Discount bands in force today, the ones the server will apply. */
+  volumeDiscounts: VolumeBand[];
   showCost: boolean; discountCeiling: number | null; defaultSalesman: string | null;
 }) {
   const noTax = props.taxCodes.find((t) => t.code === "NONE")?.id ?? props.taxCodes[0]?.id ?? "";
@@ -85,22 +90,36 @@ export function PosTill(props: {
   const clearFilters = () => { setType(""); setModel(""); setOptFilter({}); };
 
   // --------------------------------------------------------------- totals --
-  // Indicative only: the server prices the sale and is what posts.
+  // Priced with the same function and bands the server posts with, so the
+  // amount taken at the counter is the amount the invoice asks for — a
+  // volume discount the till did not know about would overcharge the cash.
   const totals = useMemo(() => {
     let sub = 0, disc = 0, net = 0, tax = 0, cost = 0, freeValue = 0, freeQty = 0, units = 0;
+    const charged = lines.filter((l) => !l.focReasonId);
+    const priced = priceLines(charged.map((l) => ({
+      itemId: l.itemId, itemGroupId: l.itemGroupId, qty: l.qty, baseQty: l.qty,
+      unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmount: null,
+    })), props.volumeDiscounts, 0);
+    let volume = 0;
+    const earned = new Set<string>();
     for (const l of lines) {
       units += l.qty;
       cost += (l.unitCost ?? 0) * l.qty;
-      if (l.focReasonId) { freeValue += l.qty * l.unitPrice; freeQty += l.qty; continue; }
-      const gross = l.qty * l.unitPrice;
-      const amount = gross * (1 - l.discountPct / 100);
-      sub += gross; disc += gross - amount;
-      const r = taxRate(l.taxCodeId) / 100;
-      const lineNet = inclusive ? amount / (1 + r) : amount;
-      net += lineNet; tax += inclusive ? amount - lineNet : amount * r;
+      if (l.focReasonId) { freeValue += l.qty * l.unitPrice; freeQty += l.qty; }
     }
-    return { sub, disc, net, tax, total: net + tax, cost, freeValue, freeQty, units };
-  }, [lines, inclusive, props.taxCodes]);
+    charged.forEach((l, i) => {
+      const p = priced.lines[i];
+      sub += p.gross; disc += p.itemDiscountAmount;
+      volume += p.volumeDiscountAmount + p.invoiceDiscountAmount;
+      if (p.volumeDiscountName) earned.add(`${p.volumeDiscountName} ${p.volumeDiscountPct}%`);
+      const r = taxRate(l.taxCodeId) / 100;
+      const lineNet = inclusive ? p.net / (1 + r) : p.net;
+      net += lineNet; tax += inclusive ? p.net - lineNet : p.net * r;
+    });
+    if (priced.invoiceBand) earned.add(`${priced.invoiceBand.name} ${Number(priced.invoiceBand.discount_pct)}%`);
+    return { sub, disc, volume, earned: [...earned].join(", "), net, tax, total: net + tax,
+             cost, freeValue, freeQty, units };
+  }, [lines, inclusive, props.taxCodes, props.volumeDiscounts]);
 
   const flash = (kind: "error" | "ok", text: string, id?: string) => setMessage({ kind, text, id });
 
@@ -112,7 +131,7 @@ export function PosTill(props: {
     setLines((ls) => [...ls, {
       key: newKey(), itemId: u.item_id, name: item?.model ?? u.item_name, variant: item?.variant ?? null,
       photo: item?.photo ?? null, tracksSerial: true, serial: u.imei, qty: 1, onHand: 1,
-      unitPrice: item?.price ?? 0, discountPct: 0, taxCodeId: noTax,
+      unitPrice: item?.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item?.item_group_id ?? null,
       warrantyMonths: item?.warranty_months ?? null, unitCost: u.unit_cost, focReasonId: null,
     }]);
     setPicking(null);
@@ -131,7 +150,7 @@ export function PosTill(props: {
       return [...ls, {
         key: newKey(), itemId: item.id, name: item.model, variant: item.variant, photo: item.photo,
         tracksSerial: false, serial: null, qty: 1, onHand: item.on_hand,
-        unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax,
+        unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
         warrantyMonths: item.warranty_months, focReasonId: null,
       }];
     });
@@ -387,6 +406,10 @@ export function PosTill(props: {
         <dl className="pos3-slip">
           <dt>Subtotal</dt><dd>{money(totals.sub)}</dd>
           {totals.disc > 0 && <><dt>Discount</dt><dd className="neg">−{money(totals.disc)}</dd></>}
+          {totals.volume > 0 && (
+            <><dt title={totals.earned}>Volume discount <small>{totals.earned}</small></dt>
+              <dd className="neg">−{money(totals.volume)}</dd></>
+          )}
           {totals.freeQty > 0 && (
             <><dt>Free items ({totals.freeQty})</dt><dd className="subline">{money(totals.freeValue)} not charged</dd></>
           )}

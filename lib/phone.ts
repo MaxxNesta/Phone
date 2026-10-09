@@ -49,6 +49,8 @@ export type SellableItem = {
   photo: string | null;
   /** Its type — iPhone, Mac, Accessories: the top category. */
   type: string | null;
+  /** Its own category, which a quantity discount band can be scoped to. */
+  item_group_id: string | null;
   /** Its options by attribute name — { Storage: "256 GB", Colour: "Black" }. */
   opts: Record<string, string> | null;
 };
@@ -79,7 +81,7 @@ export async function posSearch(companyId: string, locationId: string, q: string
 async function sellable(companyId: string, locationId: string, term: string | null) {
   const like = term ? `%${term}%` : null;
   return sql<SellableItem[]>`
-    select i.id, i.code, i.name, i.barcode, coalesce(p.name, i.name) as model,
+    select i.id, i.code, i.name, i.barcode, coalesce(p.name, i.name) as model, i.item_group_id,
            b.name as brand, ${VARIANT_LABEL} as variant, i.tracks_serial,
            fn_qty_on_hand(${companyId}, i.id, ${locationId})::float as on_hand,
            ${RETAIL_PRICE}::float as price, i.warranty_months,
