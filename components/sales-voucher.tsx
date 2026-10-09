@@ -6,7 +6,8 @@ import type { ActionResult, PickerItem } from "@/lib/actions";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
 import { priceLines, type VolumeBand } from "@/lib/discount";
-import { ItemPicker } from "./item-picker";
+import { ItemChooser } from "./item-chooser";
+import type { VariantCatalog } from "./phone-picker";
 import { UnitToggle } from "./unit-toggle";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
@@ -117,6 +118,7 @@ function addDays(iso: string, days: number) {
 export function SalesVoucher({
   action, saveDraft, draft, customers, items: initialItems, locations, salesmen, cashAccounts, promotions,
   volumeDiscounts,
+  catalog,
   currencyScale = 4,
   currency = "",
   focReasons, openInvoices, nextInvoiceNo, today, categories, uoms,
@@ -128,6 +130,8 @@ export function SalesVoucher({
   retail = false,
   initialOrderId = null,
 }: {
+  /** For picking a line by category, brand and model. */
+  catalog?: VariantCatalog;
   /** Opened from a sales order ("Create invoice"): its customer and lines fill in. */
   initialOrderId?: string | null;
   /** Counter retail: the invoice hands the goods over, so there is no
@@ -1292,7 +1296,8 @@ export function SalesVoucher({
                         </span>
                       ) : picking ? (
                         <div className="vpick">
-                          <ItemPicker
+                          <ItemChooser
+                            catalog={catalog}
                             mode="sales"
                             items={items}
                             categories={categories}

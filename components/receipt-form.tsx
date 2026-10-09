@@ -153,8 +153,6 @@ export function ReceiptForm({
   const [partnerId, setPartnerId] = useState<string>(saved?.partnerId ?? order?.partnerId ?? "");
   /** The line whose IMEIs are open below the table. */
   const [imeiKey, setImeiKey] = useState<number | null>(null);
-  /** Lines being picked by name rather than brand and model. */
-  const [byName, setByName] = useState<number[]>([]);
   /** A line whose phone is being changed. */
   const [changing, setChanging] = useState<number | null>(null);
   const base = fx?.base ?? "MMK";
@@ -726,33 +724,24 @@ export function ReceiptForm({
                     {picking && (
                       <tr className="gr-pickrow">
                         <td colSpan={lineCols}>
-                          {catalog && !byName.includes(l.key) ? (
-                            <div className="gr-pick">
+                          {/* Type a code, SKU or barcode — or walk category, brand,
+                              model, storage, colour. Both, always: a scanner and a
+                              clerk browsing the shelf are the same job. */}
+                          <div className="gr-pick">
+                            <ItemPicker
+                              mode="purchase"
+                              items={items}
+                              categories={categories}
+                              uoms={uoms}
+                              value={l.itemId}
+                              onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
+                              onCreated={addItem}
+                            />
+                            {catalog && (
                               <PhonePicker catalog={catalog} value={l.itemId}
                                 onPick={(id) => { pickItem(l.key, id); setChanging(null); }} />
-                              <button type="button" className="linkish" onClick={() => setByName((k) => [...k, l.key])}>
-                                Search by name instead
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="gr-pick">
-                              <ItemPicker
-                                mode="purchase"
-                                items={items}
-                                categories={categories}
-                                uoms={uoms}
-                                value={l.itemId}
-                                onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
-                                onCreated={addItem}
-                              />
-                              {catalog && (
-                                <button type="button" className="linkish"
-                                  onClick={() => setByName((k) => k.filter((x) => x !== l.key))}>
-                                  Pick by brand and model
-                                </button>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )}

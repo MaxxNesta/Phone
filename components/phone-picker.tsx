@@ -10,7 +10,8 @@ export type VariantCatalog = {
 };
 
 /**
- * A product picked the way it is sold: type (iPhone, iPad, Mac…), model,
+ * A product picked the way it is sold: category (iPhone, iPad, Mac…), brand
+ * when the category carries more than one, model,
  * then one choice per attribute the model varies by — Storage, Colour, SIM
  * for an iPhone; Chip, Memory, Storage for a Mac. Each list offers only what
  * some variant of the model carries, and the last choice names the item. All
@@ -33,11 +34,17 @@ export function PhonePicker({ catalog, value, onPick }: {
   }, [catalog, value]);
 
   const [type, setType] = useState(start.type);
+  const [brandId, setBrandId] = useState(
+    catalog.models.find((m) => m.id === start.model)?.brandId ?? "");
   const [modelId, setModelId] = useState(start.model);
   const [opts, setOpts] = useState<Record<string, string>>(start.opts);
 
   const typesInUse = catalog.types.filter((t) => catalog.models.some((m) => m.typeId === t.id));
-  const models = catalog.models.filter((m) => m.typeId === type);
+  const ofType = catalog.models.filter((m) => m.typeId === type);
+  // Brand is a step only when this category carries more than one.
+  const brandsHere = catalog.brands.filter((b) => ofType.some((m) => m.brandId === b.id));
+  const askBrand = brandsHere.length > 1;
+  const models = askBrand && brandId ? ofType.filter((m) => m.brandId === brandId) : ofType;
   const model = catalog.models.find((m) => m.id === modelId);
 
   // Options still possible given the choices made before this attribute.
@@ -87,34 +94,48 @@ export function PhonePicker({ catalog, value, onPick }: {
     resolve(model, next);
   };
 
+  // One row per step, its choices as cells to click. A row appears once the
+  // step before it is answered, so the table grows as the item narrows.
+  const cell = (key: string, label: string, on: boolean, pick: () => void) => (
+    <button key={key} type="button" className="cgrid-opt" aria-pressed={on} onClick={pick}>{label}</button>
+  );
   return (
-    <div className="vpick">
-      <label className="vpick-field">
-        <span>Type</span>
-        <select value={type} onChange={(e) => { setType(e.target.value); setModelId(""); setOpts({}); }}>
-          <option value="">Choose…</option>
-          {typesInUse.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </label>
-      <label className="vpick-field">
-        <span>Model</span>
-        <select value={modelId} disabled={!type} onChange={(e) => chooseModel(e.target.value)}>
-          <option value="">{type ? "Choose…" : "Type first"}</option>
-          {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
-      </label>
-      {model?.attrs.map((a, i) => {
-        const ready = model.attrs.slice(0, i).every((e) => opts[e.id]);
-        return (
-          <label className="vpick-field" key={a.id}>
-            <span>{a.name}</span>
-            <select value={opts[a.id] ?? ""} disabled={!ready} onChange={(e) => chooseOpt(i, e.target.value)}>
-              <option value="">Choose…</option>
-              {optionsFor(i).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </label>
-        );
-      })}
-    </div>
+    <table className="cgrid">
+      <tbody>
+        <tr>
+          <th scope="row">Category</th>
+          <td><div className="cgrid-opts">
+            {typesInUse.map((t) => cell(t.id, t.name, type === t.id,
+              () => { setType(t.id); setBrandId(""); setModelId(""); setOpts({}); }))}
+          </div></td>
+        </tr>
+        {type && askBrand && (
+          <tr>
+            <th scope="row">Brand</th>
+            <td><div className="cgrid-opts">
+              {brandsHere.map((b) => cell(b.id, b.name, brandId === b.id,
+                () => { setBrandId(b.id); setModelId(""); setOpts({}); }))}
+            </div></td>
+          </tr>
+        )}
+        {type && (!askBrand || brandId) && (
+          <tr>
+            <th scope="row">Model</th>
+            <td><div className="cgrid-opts">
+              {models.map((m) => cell(m.id, m.name, modelId === m.id, () => chooseModel(m.id)))}
+              {models.length === 0 && <span className="page-sub">Nothing in this category yet.</span>}
+            </div></td>
+          </tr>
+        )}
+        {model?.attrs.map((a, i) => model.attrs.slice(0, i).every((e) => opts[e.id]) && (
+          <tr key={a.id}>
+            <th scope="row">{a.name}</th>
+            <td><div className="cgrid-opts">
+              {optionsFor(i).map((o) => cell(o.id, o.name, opts[a.id] === o.id, () => chooseOpt(i, o.id)))}
+            </div></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }

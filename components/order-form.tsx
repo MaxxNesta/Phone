@@ -6,7 +6,8 @@ import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { AwaitingLine } from "@/lib/queries";
 import { UnitToggle, AddPackInline } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
-import { ItemPicker } from "./item-picker";
+import { ItemChooser } from "./item-chooser";
+import type { VariantCatalog } from "./phone-picker";
 import { PartnerPicker } from "./partner-picker";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 
@@ -52,7 +53,10 @@ export function OrderForm({
   categories,
   uoms,
   awaiting = [],
+  catalog,
 }: {
+  /** For picking a line by category, brand and model. */
+  catalog?: VariantCatalog;
   kind: "sales" | "purchase";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   /** Keeps the order without saving it as a real one. */
@@ -306,7 +310,8 @@ export function OrderForm({
                 return (
                   <tr key={l.key}>
                     <td style={{ minWidth: 240 }}>
-                      <ItemPicker
+                      <ItemChooser
+                        catalog={catalog}
                         mode={kind}
                         items={items}
                         categories={categories}
