@@ -26,10 +26,7 @@ export function ConfirmOtherBrand({ open, name, busy, onCancel, onConfirm }: {
       onClick={(e) => { if (e.target === ref.current && !busy) onCancel(); }}>
       <div className="confirm-panel">
         <div className="confirm-icon" aria-hidden="true"><AlertTriangle size={18} strokeWidth={2.25} /></div>
-        <h2 className="confirm-title">Add &ldquo;{name || "this brand"}&rdquo;?</h2>
-        <p className="confirm-detail">
-          This shop sells Apple. A new brand appears in every product list and filter.
-        </p>
+        <h2 className="confirm-title">Are you sure you want to add {name ? <>&ldquo;{name}&rdquo;</> : "this brand"}?</h2>
         <div className="confirm-actions">
           <button type="button" className="ghost" autoFocus disabled={busy} onClick={onCancel}>Cancel</button>
           <button type="button" disabled={busy} onClick={onConfirm}>{busy ? "Adding…" : "Add brand"}</button>
