@@ -26,9 +26,15 @@ export type UnitMode = "IMEI" | "SERIAL";
  * digits is taken as a serial number — an iPad without cellular has a serial
  * and no IMEI, and it is still one unit with one name.
  */
-function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI"): Status | null {
+/** IMEIs and serials already on file, with where each stands. */
+export type OnFile = Record<string, string>;
+
+function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI", onFile: OnFile = {}): Status | null {
   const v = row.serial.trim();
   if (!v) return null;
+  // Already in the books: a second receipt of the same phone is refused.
+  const seen = [v, row.imei2?.trim(), row.deviceSerial?.trim()].find((x) => x && onFile[x]);
+  if (seen) return { ok: false, label: `${onFile[seen]}${seen !== v ? ` (${seen})` : ""}` };
   const twice = all.filter((r) => r.serial.trim() === v || r.imei2?.trim() === v).length > 1;
   if (twice) return { ok: false, label: "Repeated" };
   // A Mac or AirPods: the serial is the identity, and has no check digit.
@@ -38,8 +44,8 @@ function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI"): Status
   return { ok: true, label: "Serial" };
 }
 
-export function rowsProblem(rows: UnitRow[], mode: UnitMode = "IMEI") {
-  return rows.some((r) => statusOf(r, rows, mode)?.ok === false)
+export function rowsProblem(rows: UnitRow[], mode: UnitMode = "IMEI", onFile: OnFile = {}) {
+  return rows.some((r) => statusOf(r, rows, mode, onFile)?.ok === false)
     || rows.some((r) => r.imei2 && /^\d{15}$/.test(r.imei2.trim()) && !imeiCheckOk(r.imei2.trim()));
 }
 
@@ -49,7 +55,9 @@ export function rowsProblem(rows: UnitRow[], mode: UnitMode = "IMEI") {
  * Enter, which moves to the next empty row), Paste list (one phone per line,
  * "IMEI1 IMEI2 serial") and a CSV in the same column order.
  */
-export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI" }: {
+export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = {} }: {
+  /** Units already recorded, checked as they are typed. */
+  onFile?: OnFile;
   /** IMEI: IMEI 1, IMEI 2 and serial per unit. SERIAL: the serial alone. */
   mode?: UnitMode;
   title: string;
@@ -139,7 +147,7 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI" }: {
             </thead>
             <tbody ref={table}>
               {padded.map((r, i) => {
-                const st = statusOf(r, padded, mode);
+                const st = statusOf(r, padded, mode, onFile);
                 const imei2Bad = !!r.imei2 && /^\d{15}$/.test(r.imei2.trim()) && !imeiCheckOk(r.imei2.trim());
                 return (
                   <tr key={i}>

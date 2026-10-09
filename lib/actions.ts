@@ -7597,3 +7597,29 @@ export async function confirmCashFlowSuggestions(): Promise<void> {
   revalidatePath("/settings/accounts");
   revalidatePath("/finance/cash-flow");
 }
+
+/**
+ * Which of these IMEIs or serials the company already has on file, and where
+ * each stands — so a receipt can say "already in stock" as the number is
+ * scanned rather than when Post is pressed. The engine refuses the same set
+ * (any unit recorded before, in any state); this only says so sooner.
+ */
+export async function serialsOnFile(values: string[]): Promise<Record<string, string>> {
+  await requireUser();
+  const co = await companyId();
+  const v = [...new Set(values.map((x) => x.trim()).filter((x) => x.length >= 5))].slice(0, 2000);
+  if (v.length === 0) return {};
+  const rows = await sql<{ serial_no: string; imei2: string | null; device_serial: string | null; status: string; location_name: string | null }[]>`
+    select s.serial_no, s.imei2, s.device_serial, v.status, v.location_name
+      from stock_serial s
+      join v_stock_serial v on v.serial_id = s.id
+     where s.company_id = ${co}
+       and (s.serial_no = any(${v}) or s.imei2 = any(${v}) or s.device_serial = any(${v}))`;
+  const label = (r: (typeof rows)[number]) =>
+    r.status === "IN_STOCK" ? `In stock${r.location_name ? ` at ${r.location_name}` : ""}`
+    : r.status === "SOLD" ? "Already sold"
+    : `Already on file (${r.status.toLowerCase().replace(/_/g, " ")})`;
+  const out: Record<string, string> = {};
+  for (const r of rows) for (const x of [r.serial_no, r.imei2, r.device_serial]) if (x && v.includes(x)) out[x] = label(r);
+  return out;
+}

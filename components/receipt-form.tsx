@@ -5,10 +5,11 @@ import Link from "next/link";
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { OffOrderConfirm } from "./off-order-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
+import { serialsOnFile } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
-import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode } from "./imei-panel";
+import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ArrowLeft, ClipboardList, Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
@@ -371,8 +372,19 @@ export function ReceiptForm({
   // IMEI for phones and cellular devices; a serial number for Macs, AirPods
   // and Wi-Fi iPads.
   const modeOf = (l: Line): UnitMode => (byId(l.itemId)?.identity === "SERIAL" ? "SERIAL" : "IMEI");
+  // Every IMEI and serial on the receipt, checked against the books as it is
+  // scanned: a phone already received is flagged on its row, not at Post.
+  const [onFile, setOnFile] = useState<OnFile>({});
+  const serialKey = [...new Set(lines.flatMap((l) => (l.serials ?? [])
+    .flatMap((u) => [u.serial, u.imei2 ?? "", u.deviceSerial ?? ""]))
+    .map((x) => x.trim()).filter((x) => x.length >= 5))].sort().join(",");
+  useEffect(() => {
+    if (!serialKey) { setOnFile({}); return; }
+    const t = setTimeout(() => { serialsOnFile(serialKey.split(",")).then(setOnFile).catch(() => {}); }, 300);
+    return () => clearTimeout(t);
+  }, [serialKey]);
   const serialShort = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
-    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l))));
+    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
   const tracked = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0);
   const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
   const supplier = suppliers.find((s) => s.id === partnerId) ?? null;
@@ -734,7 +746,7 @@ export function ReceiptForm({
                       <td>
                         {item?.tracks_serial ? (
                           <span className="gr-imei">
-                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? [], modeOf(l)) ? "ok" : "warn"}`}>
+                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? [], modeOf(l), onFile) ? "ok" : "warn"}`}>
                               {n} / {q} entered
                             </span>
                             <button type="button" className="dt-tool" onClick={() => setImeiKey(l.key)}
@@ -883,6 +895,7 @@ export function ReceiptForm({
               qty={Number(imeiLine.qty) || 0}
               rows={imeiLine.serials ?? []}
               onChange={(rows) => setLine(imeiLine.key, { serials: rows })}
+              onFile={onFile}
             />
           ) : (
             <div className="card-body subline">
