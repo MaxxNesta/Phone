@@ -2269,7 +2269,7 @@ export async function getOpenSalesOrders(companyId: string) {
 export async function getOpenPurchaseOrders(companyId: string) {
   return sql`
     select o.id as order_id, o.doc_no as order_no, o.partner_id, p.name as partner_name,
-           o.location_id, o.due_date,
+           o.location_id, o.due_date, o.currency, o.exchange_rate,
            l.code as location_code, l.name as location_name,
            ol.id as line_id, ol.item_id, i.code as item_code, i.name as item_name,
            i.tracks_serial,

@@ -202,6 +202,10 @@ export type OrderInput = {
   dueDate?: string | null;
   memo?: string | null;
   reference?: string | null;
+  /** A purchase order may be placed in the supplier's currency. Blank is kyat;
+   *  a blank rate takes the one on file for the order date. */
+  currency?: string | null;
+  exchangeRate?: number | null;
   lines: OrderLine[];
 };
 
@@ -2606,6 +2610,11 @@ async function postOrderIn(
       tx, companyId, docType, docDate, input.amendOf);
 
     const netTotal = round4(input.lines.reduce((s, l) => s + l.qty * (l.unitPrice ?? 0), 0));
+    // Prices stay in the order's currency: an order posts nothing, and the
+    // receipt against it takes the same currency and rate.
+    const fx = docType === "PURCHASE_ORDER"
+      ? await resolveFx(tx, companyId, input.currency, input.exchangeRate, docDate) : null;
+    const [{ base_currency: baseCur }] = await tx`select base_currency from company where id = ${companyId}`;
 
     const [doc] = await tx`
       insert into document
@@ -2614,7 +2623,8 @@ async function postOrderIn(
          net_total, tax_total, gross_total, memo, posted_at, reference)
       values
         (${companyId}, ${docType}, ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date,
-         ${docDate}::date, ${dueDate ?? null}, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
+         ${docDate}::date, ${dueDate ?? null}, ${partnerId}, ${locationId},
+         ${fx?.currency ?? baseCur}, ${fx?.rate ?? 1}, 'POSTED',
          ${netTotal}, 0, ${netTotal}, ${input.memo ?? null}, now(), ${input.reference ?? null})
       returning id`;
 

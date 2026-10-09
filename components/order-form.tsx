@@ -8,6 +8,7 @@ import { UnitToggle, AddPackInline } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
+import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import { PartnerPicker } from "./partner-picker";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 
@@ -15,6 +16,8 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Partner = {
   id: string; code: string; name: string; payment_terms_days: number;
+  /** A supplier's own currency, which their order defaults to. */
+  currency?: string | null;
   /** Which column of the price list this customer is quoted from.
    *  Absent on a supplier, who is not quoted at all. */
   price_level_id?: string | null;
@@ -53,7 +56,10 @@ export function OrderForm({
   categories,
   uoms,
   awaiting = [],
+  fx,
 }: {
+  /** Currencies and their latest rates: a purchase order can be placed in the supplier's. */
+  fx?: { base: string; options: FxOption[] };
   kind: "sales" | "purchase";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   /** Keeps the order without saving it as a real one. */
@@ -107,6 +113,11 @@ export function OrderForm({
   const [extraPacks, setExtraPacks] = useState<Record<string, { uomId: string; code: string; factor: number }[]>>({});
   const [partnerId, setPartnerId] = useState(restored?.partnerId ?? "");
   const [docDate, setDocDate] = useState(restored?.docDate ?? today);
+  const base = fx?.base ?? "MMK";
+  const [currency, setCurrency] = useState<string>(restored?.currency ?? base);
+  const [rate, setRate] = useState<string>(restored?.rate ?? "");
+  const fxSwitch = useFxSwitch(base, currency, rate, (c, r) => { setCurrency(c); setRate(r); },
+    (f) => setLines((ls) => ls.map((l) => ({ ...l, unitPrice: convertPrice(l.unitPrice, f) }))));
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
 
   const isSales = kind === "sales";
@@ -127,7 +138,7 @@ export function OrderForm({
     setSavedAt(new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }));
   }, [draftResult]);
 
-  const draftState = JSON.stringify({ lines, partnerId, docDate, dueDate });
+  const draftState = JSON.stringify({ lines, partnerId, docDate, dueDate, currency, rate });
   const byId = (id: string) => items.find((i) => i.id === id);
 
   // Everything already awaited from whoever is chosen. Held for the whole
@@ -184,6 +195,11 @@ export function OrderForm({
     setPartnerId(id);
     const p = partners.find((x) => x.id === id);
     if (p && p.payment_terms_days > 0) setDueDate(addDays(docDate, p.payment_terms_days));
+    // A supplier who bills in yuan is ordered from in yuan, at the rate on file.
+    if (!isSales && fx && p) {
+      const cur = p.currency || base;
+      fxSwitch.change(cur, cur === base ? "" : String(fx.options.find((o) => o.code === cur)?.rate ?? ""));
+    }
 
     // Re-quote lines already entered, since this customer's level may
     // differ from the one they were quoted at. A price somebody typed
@@ -295,6 +311,10 @@ export function OrderForm({
                 onChange={(e) => setDueDate(e.target.value)} />
               <span className="hint">Optional</span>
             </div>
+            {!isSales && fx && (
+              <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
+                date={docDate} pricesIn={fxSwitch.pricesIn} onChange={fxSwitch.change} />
+            )}
           </div>
         </div>
       </div>
@@ -414,7 +434,7 @@ export function OrderForm({
 
         <div className="totalbar">
           <span style={{ color: "var(--muted)" }}>Expected total</span>
-          <span className="big">{fmt(total)} MMK</span>
+          <span className="big">{fmt(total)} {isSales ? base : currency}</span>
         </div>
       </div>
 

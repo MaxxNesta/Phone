@@ -87,10 +87,12 @@ export default async function NewGoodsReceipt({
   const orderRows = orderId ? (openOrders as unknown as Array<{
     order_id: string; order_no: string; partner_id: string; location_id: string | null;
     line_id: string; item_id: string; remaining_qty: string; expected_price: string | null;
+    currency: string; exchange_rate: string;
   }>).filter((r) => r.order_id === orderId && Number(r.remaining_qty) > 0) : [];
   const toReceive = orderRows.length ? {
     id: orderRows[0].order_id, docNo: orderRows[0].order_no, partnerId: orderRows[0].partner_id,
     locationId: orderRows[0].location_id,
+    currency: orderRows[0].currency, rate: Number(orderRows[0].exchange_rate),
     lines: orderRows.map((r) => ({ lineId: r.line_id, itemId: r.item_id,
       qty: Number(r.remaining_qty), unitCost: Number(r.expected_price ?? 0) })),
   } : null;

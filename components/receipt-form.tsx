@@ -24,6 +24,8 @@ type Partner = {
 /** A purchase order being received: its supplier, and what is still owed. */
 export type OrderToReceive = {
   id: string; docNo: string; partnerId: string; locationId: string | null;
+  /** What the order was placed in; the receipt prices in the same. */
+  currency?: string; rate?: number;
   lines: { lineId: string; itemId: string; qty: number; unitCost: number }[];
 };
 type Location = { id: string; code: string; name: string };
@@ -153,8 +155,9 @@ export function ReceiptForm({
   /** A line whose phone is being changed. */
   const [changing, setChanging] = useState<number | null>(null);
   const base = fx?.base ?? "MMK";
-  const [currency, setCurrency] = useState<string>(saved?.currency ?? base);
-  const [rate, setRate] = useState<string>(saved?.rate ?? "");
+  const orderFx = order?.currency && order.currency !== base ? order : null;
+  const [currency, setCurrency] = useState<string>(saved?.currency ?? orderFx?.currency ?? base);
+  const [rate, setRate] = useState<string>(saved?.rate ?? (orderFx ? String(orderFx.rate) : ""));
   const foreign = currency !== base;
   const fxSwitch = useFxSwitch(base, currency, rate, (c, r) => { setCurrency(c); setRate(r); },
     (f) => setLines((ls) => ls.map((l) => ({ ...l, unitCost: convertPrice(l.unitCost, f) }))));

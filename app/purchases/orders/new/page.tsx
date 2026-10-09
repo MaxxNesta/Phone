@@ -75,6 +75,7 @@ export default async function NewPurchaseOrder({
         uoms={d.uoms as never}
         today={today}
         awaiting={awaiting}
+        fx={d.fx}
       />
     </>
   );

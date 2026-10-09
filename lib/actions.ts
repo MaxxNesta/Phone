@@ -2203,6 +2203,7 @@ export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise
       dueDate: str(fd, "due_date") || null,
       memo: str(fd, "memo") || null,
       reference: str(fd, "reference") || null,
+      ...fxFields(fd),
       lines,
     }, tx));
 
