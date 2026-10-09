@@ -149,7 +149,7 @@ export function ReceiptForm({
     : order ? order.lines.map((l, i) => ({
         key: i + 1, itemId: l.itemId, qty: String(l.qty), unitCost: l.unitCost ? String(l.unitCost) : "",
         sourceLineId: l.lineId, ordered: l.qty }))
-    : [{ key: 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
+    : []);
   const [partnerId, setPartnerId] = useState<string>(saved?.partnerId ?? order?.partnerId ?? "");
   /** The line whose IMEIs are open below the table. */
   const [imeiKey, setImeiKey] = useState<number | null>(null);
@@ -282,9 +282,6 @@ export function ReceiptForm({
     });
   }
 
-  const addLine = () =>
-    setLines((ls) => [...ls,
-      { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
 
   /**
    * From the search or the catalogue. Against an order, an item comes back as
@@ -319,7 +316,7 @@ export function ReceiptForm({
     : items;
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => ls.filter((l) => l.key !== key));
 
   // Per entered unit: five cartons at 12,000 is sixty thousand, whatever a
   // carton holds. The pieces are the engine's business, not this total's.
@@ -641,7 +638,7 @@ export function ReceiptForm({
                 </div>
               </details>
             )}
-            <button type="button" onClick={addLine}><Plus size={15} aria-hidden="true" /> Add item</button>
+            <button type="button" onClick={() => document.getElementById("add-items-search")?.focus()}><Plus size={15} aria-hidden="true" /> Add item</button>
           </span>
         </div>
         {!order && waitingOrders.length > 0 && (
@@ -674,6 +671,11 @@ export function ReceiptForm({
               </tr>
             </thead>
             <tbody>
+              {lines.length === 0 && (
+                <tr><td colSpan={lineCols} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                  No items yet — search above, scan a barcode, or Browse / Add multiple.
+                </td></tr>
+              )}
               {lines.map((l, idx) => {
                 const item = byId(l.itemId);
                 const billedLine = matchedPi?.lines.find(
@@ -766,7 +768,7 @@ export function ReceiptForm({
                       </td>
                       <td className="tight">
                         <button type="button" className="danger tiny" onClick={() => removeLine(l.key)}
-                          aria-label="Remove line" disabled={lines.length === 1}>
+                          aria-label="Remove line">
                           <Trash2 size={15} aria-hidden="true" />
                         </button>
                       </td>

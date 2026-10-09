@@ -5566,20 +5566,24 @@ button.danger-solid:hover { opacity: 0.9; }
   padding: 4px 6px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
 .pickedbtn:hover { background: var(--line-soft); }
 
-/* ---- Item tables as a grid: every cell ruled, the header a band, inputs
-   sitting flush in their cells like a sheet — light until hovered or typed in. ---- */
+/* ---- Item tables as a grid: every cell ruled in a firm line, the header a
+   band. The cell is the box — a quantity or price is typed straight into it
+   like a sheet, with no second box drawn inside. ---- */
 .linetable { border-collapse: collapse; }
-.linetable th, .linetable td { border: 1px solid var(--line-soft); }
+.linetable th, .linetable td { border: 1px solid #C7C7CC; }
 .linetable tr > :first-child { border-left: 0; }
 .linetable tr > :last-child { border-right: 0; }
-.linetable thead th { background: color-mix(in srgb, var(--line-soft) 70%, var(--surface)); font-size: var(--t-xs);
+.linetable thead th { background: #F2F2F4; font-size: var(--t-xs); border-bottom-width: 1.5px;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); padding: 8px 10px; }
 .linetable tbody tr:hover > td { background: color-mix(in srgb, var(--line-soft) 35%, transparent); }
-.linetable td > input[type="number"], .linetable td > input[type="text"], .linetable td > input:not([type]),
-.linetable td.qtycell input, .linetable td.pricecell input, .linetable td.r input {
-  border-color: var(--line-soft); background: var(--surface); box-shadow: none; }
-.linetable tbody tr:hover td input, .linetable td input:focus { border-color: var(--line); background: var(--surface); }
-.linetable td input:focus { border-color: var(--focus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 15%, transparent); }
+.linetable td input:not([type="checkbox"]):not([type="radio"]), .linetable td select {
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; width: 100%; min-width: 0; }
+.linetable td input:not([type="checkbox"]):not([type="radio"]):focus, .linetable td select:focus {
+  outline: 2px solid var(--focus); outline-offset: -2px; background: var(--surface); }
 /* The item takes what it needs, not the whole row: the figures sit beside it. */
 .linetable td:has(.pickedbtn) { width: 36%; }
 .pickedbtn .aib-name strong { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Unit and discount toggles inside a grid cell: flat chips, no box of their own. */
+.linetable .unitpick, .linetable .unittoggle { border: 0; box-shadow: none; background: none; padding: 0; border-radius: 0; }
+.linetable .unittoggle button { border: 0; border-radius: 4px; background: transparent; min-height: 0; box-shadow: none; }
+.linetable .unittoggle button.on { background: var(--brand); color: var(--brand-fg); }

@@ -46,6 +46,8 @@ export function AddItemsBar({
   const [hi, setHi] = useState(0);
   const [f, setF] = useState<Filters>(NONE);
   const [showFilters, setShowFilters] = useState(false);
+  // The match list shows while someone is searching, and goes once they pick.
+  const [listing, setListing] = useState(false);
   const [browsing, setBrowsing] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const avail = (i: PickerItem) => (available ? available(i.id) : Number(i.on_hand) || 0);
@@ -92,18 +94,19 @@ export function AddItemsBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, q, f, filtering]);
   useEffect(() => setHi(0), [q, f]);
+  useEffect(() => { if (filtering) setListing(true); }, [f, filtering]);
 
   const add = (picks: Pick[]) => {
     if (picks.length === 0) return;
     onAdd(picks);
-    setQ(""); setMsg(null);
+    setQ(""); setMsg(null); setListing(false); setShowFilters(false);
     box.current?.focus();
   };
 
   async function enter() {
     const t = q.trim();
     if (!t) return;
-    if (onEnter && (await onEnter(t))) { setQ(""); setMsg(null); box.current?.focus(); return; }
+    if (onEnter && (await onEnter(t))) { setQ(""); setMsg(null); setListing(false); box.current?.focus(); return; }
     // A scanned barcode or a typed code means one item: it goes straight on.
     const exact = items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase());
     const pick = exact.length === 1 ? exact[0] : hits[hi];
@@ -143,19 +146,23 @@ export function AddItemsBar({
       <div className="aib-row">
         <div className="aib-search">
           <Search size={17} aria-hidden="true" />
-          <input ref={box} value={q} autoComplete="off" aria-label="Search items"
+          <input ref={box} id="add-items-search" value={q} autoComplete="off" aria-label="Search items"
+            onFocus={() => q.trim() && setListing(true)}
+            onBlur={() => setListing(false)}
             placeholder="Search by name, SKU, item code, or scan barcode…"
-            onChange={(e) => { setQ(e.target.value); setMsg(null); }}
+            onChange={(e) => { setQ(e.target.value); setMsg(null); setListing(true); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); enter(); }
               else if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(h + 1, hits.length - 1)); }
               else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
-              else if (e.key === "Escape") setQ("");
+              else if (e.key === "Escape") { setQ(""); setListing(false); }
             }} />
-          {hits.length > 0 && (
+          {listing && hits.length > 0 && (
             <div className="aib-hits" role="listbox" aria-label="Matching items">
               {hits.map((i, n) => (
                 <button key={i.id} type="button" role="option" aria-selected={n === hi}
+                  // Kept from taking the focus, so the list is still there for the click.
+                  onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setHi(n)} onClick={() => add([{ itemId: i.id, qty: 1 }])}>
                   <Thumb i={i} />
                   <span className="aib-name"><strong>{itemLabel(i)}</strong>

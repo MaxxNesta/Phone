@@ -103,7 +103,7 @@ export function OrderForm({
   const [lines, setLines] = useState<Line[]>(
     Array.isArray(restored?.lines) && restored!.lines.length > 0
       ? restored!.lines as Line[]
-      : [{ key: 1, itemId: "", qty: "", unitPrice: "" }],
+      : [],
   );
   // The line whose pack builder is open, and the packs added in this
   // session — the item list came from the server and will not know about
@@ -218,8 +218,6 @@ export function OrderForm({
     );
   }
 
-  const addLine = () =>
-    setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitPrice: "" }]);
 
   /** From the search or the catalogue: one more of a line already there, else
    *  the first empty line, else a new one — priced as picking it would. */
@@ -241,7 +239,7 @@ export function OrderForm({
   }
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => ls.filter((l) => l.key !== key));
 
   const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
   const total = lines.reduce((s, l) => s + amount(l), 0);
@@ -328,7 +326,7 @@ export function OrderForm({
       <div className="card">
         <div className="card-head">
           <h2>Lines</h2>
-          <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
+          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}>Add line</button>
         </div>
         <AddItemsBar items={items} categories={categories} onAdd={addPicks}
           title={isSales ? "Add products to sales order" : "Add products to purchase order"}
@@ -344,6 +342,11 @@ export function OrderForm({
               </tr>
             </thead>
             <tbody>
+              {lines.length === 0 && (
+                <tr><td colSpan={6} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                  No items yet — search above, scan a barcode, or Browse / Add multiple.
+                </td></tr>
+              )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
                 return (
@@ -423,7 +426,7 @@ export function OrderForm({
                     <td className="r">{fmt(amount(l))}</td>
                     <td className="tight">
                       <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label="Remove line" disabled={lines.length === 1}>×</button>
+                        aria-label="Remove line">×</button>
                     </td>
                   </tr>
                 );

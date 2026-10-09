@@ -220,7 +220,7 @@ export function SalesVoucher({
   const [lines, setLines] = useState<Line[]>(
     Array.isArray(restored?.lines) && restored!.lines.length > 0
       ? restored!.lines as Line[]
-      : [{ key: 1, itemId: "", qty: "", unitPrice: "", discountPct: "", focQty: "", focReasonId: "", source: "OWNED" }],
+      : [],
   );
   const [customerId, setCustomerId] = useState(restored?.customerId ?? "");
   const [locationId, setLocationId] = useState(restored?.locationId ?? locations[0]?.id ?? "");
@@ -549,15 +549,9 @@ export function SalesVoucher({
     return true;
   }
 
-  const addLine = () =>
-    setLines((ls) => [
-      ...ls,
-      { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitPrice: "",
-        discountPct: "", focQty: "", focReasonId: "", source: "OWNED" },
-    ]);
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => ls.filter((l) => l.key !== key));
 
   const amount = (l: Line) => {
     const gross = (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
@@ -1178,7 +1172,7 @@ export function SalesVoucher({
                 : "Bill only part of what went out"}
             </label>
           )}
-          <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
+          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}>Add line</button>
         </div>
         {billPart && (
           <p className="hint" style={{ padding: "0 1rem 0.5rem" }}>
@@ -1211,6 +1205,11 @@ export function SalesVoucher({
               </tr>
             </thead>
             <tbody>
+              {lines.length === 0 && (
+                <tr><td colSpan={6} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                  No items yet — search above, scan a barcode, or Browse / Add multiple.
+                </td></tr>
+              )}
               {lines.flatMap((l) => {
                 const item = byId(l.itemId);
                 const free = freeQty(l);
@@ -1431,7 +1430,7 @@ export function SalesVoucher({
                           )}
                           {item?.code && <span className="linemenu-label">SKU {item.code}</span>}
                           <button type="button" className="danger" onClick={() => removeLine(l.key)}
-                            disabled={lines.length === 1}>Remove line</button>
+                            >Remove line</button>
                         </div>
                       </details>
                     </td>
