@@ -5495,6 +5495,12 @@ button.danger-solid:hover { opacity: 0.9; }
 .cf-table .cf-sub td { font-weight: 600; }
 .cf-table .cf-group { color: var(--ink-soft); }
 .cf-table .cf-neg { color: var(--bad); }
+/* Smaller than body text, and a line sits under its section header:
+   one step in, a sub-line (depreciation under adjustments) two. */
+.cf-table td { font-size: 13px; }
+.cf-table .cf-row td:first-child { padding-left: 40px; }
+.cf-table .cf-row.cf-indent td:first-child { padding-left: 64px; }
+.cf-table .cf-head .page-sub { font-size: inherit; font-weight: 400; }
 .cfpanel-bal { width: calc(100% - 32px); margin: 0 16px 8px; border: 1px solid var(--line-soft); border-radius: 10px; }
 .cfpanel-bal td { padding: 8px 12px; font-size: 0.875rem; }
 .cfpanel-bal tr + tr td { border-top: 1px solid var(--line-soft); }

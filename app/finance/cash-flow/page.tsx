@@ -114,6 +114,7 @@ export default async function CashFlow({
               href={{ pathname: "/finance/cash-flow/print", query: {
                 from: range.from, to: range.to,
                 ...(branchId ? { branch: branchId } : {}),
+                ...(indirect ? { method: "indirect" } : {}),
               } }}
               className="erp-hbtn noprint"
               style={{ marginLeft: "auto" }}
@@ -123,14 +124,14 @@ export default async function CashFlow({
           </div>
           {ind ? <IndirectStatementView st={ind} sp={sp as Record<string, string | undefined>} range={range} /> : (
           <div className="tablewrap">
-            <table>
+            <table className="cf-table">
               {SECTIONS.map((sec) => {
                 const items = typed.filter((r) => r.section === sec.key);
                 const total = items.reduce((s, r) => s + Number(r.amount), 0);
                 if (items.length === 0) return null;
                 return (
                   <tbody key={sec.key}>
-                    <tr><td colSpan={2} style={{ background: "var(--line-soft)" }}><span className="eyebrow">{sec.label}</span></td></tr>
+                    <tr className="cf-head"><td colSpan={2}>{sec.label}</td></tr>
                     {items.map((r) => {
                       // Each line opens what it is made of, beside the statement.
                       const open = sp.line === r.category;
@@ -148,9 +149,9 @@ export default async function CashFlow({
                         </tr>
                       );
                     })}
-                    <tr>
+                    <tr className="cf-total">
                       <td>Net {sec.label.toLowerCase()}</td>
-                      <td className={`r${total < 0 ? " cf-neg" : ""}`} style={{ fontWeight: 600 }}>{money(total)}</td>
+                      <td className={`r${total < 0 ? " cf-neg" : ""}`}>{money(total)}</td>
                     </tr>
                   </tbody>
                 );

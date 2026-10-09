@@ -48,8 +48,8 @@ export function IndirectStatementView({ st, sp, range }: { st: IndirectStatement
     const open = sp.line === l.key;
     const label = <>{l.label}{l.drill && <ChevronRight size={15} aria-hidden="true" />}</>;
     return (
-      <tr key={l.key} className={`cf-row${l.bold ? " cf-sub" : ""}`} data-active={open || undefined}>
-        <td className="wrap" style={{ paddingLeft: l.indent ? 30 : undefined }}>
+      <tr key={l.key} className={`cf-row${l.bold ? " cf-sub" : ""}${l.indent ? " cf-indent" : ""}`} data-active={open || undefined}>
+        <td className="wrap">
           {l.drill
             ? <Link href={qs(sp, { line: open ? undefined : l.key, lp: undefined, q: undefined })} scroll={false} className="cf-line">{label}</Link>
             : <span className={l.bold ? "" : "cf-group"}>{l.label}</span>}
