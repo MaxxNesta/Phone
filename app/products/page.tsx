@@ -20,7 +20,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const co = user.companyId;
 
-  const facetsP = catalogFacets(co, sp.category || undefined);
+  const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
   const [{ rows }, facets, groups, lastBuy] = await Promise.all([
     facetsP.then((f) => inventorySummary(co, { q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f) })),
     facetsP,
@@ -36,6 +36,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
          group by dl.item_id`,
   ]);
   const bought = new Map(lastBuy.map((r: any) => [r.item_id, r.d]));
+  const multiBrand = facets.brands.length > 1;
   const tracking = sp.tracking;
   const list = rows.filter((r: any) => !tracking || (r.identity ?? (r.tracks_serial ? "IMEI" : "NONE")) === tracking);
   const serialized = rows.filter((r: any) => r.tracks_serial).length;
@@ -91,7 +92,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
               <thead>
                 <tr>
                   <th className="tight"><PickPage /></th>
-                  <th>Product</th><th>Category</th><th>Tracking</th>
+                  <th>Product</th>{multiBrand && <th>Brand</th>}<th>Category</th><th>Tracking</th>
                   <th className="num">Selling price</th><th className="num">Available</th><th>Status</th>
                   <th>Last purchase</th><th />
                 </tr>
@@ -108,6 +109,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                         <span><div className="prod-name">{r.model}</div><div className="prod-sub">{r.variant ?? ""}</div></span>
                       </span>
                     </td>
+                    {multiBrand && <td>{r.brand ?? "—"}</td>}
                     <td>{r.category}</td>
                     <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? "Serial" : r.tracks_serial ? "IMEI" : "Quantity"}</span></td>
                     <td className="num">{r.price != null ? money(r.price) : "—"}</td>
@@ -121,7 +123,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     <td><Link href={`/items/${r.id}`} aria-label={`Edit ${r.name}`}>Edit</Link></td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={9} className="page-sub">No products match.</td></tr>}
+                {list.length === 0 && <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">No products match.</td></tr>}
               </tbody>
             </table>
             <Pager p={pg} params={sp} />

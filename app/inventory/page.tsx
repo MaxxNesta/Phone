@@ -26,7 +26,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const co = user.companyId;
   const seeCost = can(user, "cost.view");
 
-  const facetsP = catalogFacets(co, sp.category || undefined);
+  const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
   const [{ locations, rows }, facets, moves, groups, allLocs] = await Promise.all([
     facetsP.then((f) => inventorySummary(co, {
       q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
@@ -47,6 +47,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const low = rows.filter((r: any) => r.status === "LOW");
   // A column per warehouse only on request, and only where there is more than
   // one: a single-shop company would see the same figure twice.
+  const multiBrand = facets.brands.length > 1;
   const manyWarehouses = allLocs.length > 1;
   const byWarehouse = manyWarehouses && sp.by === "warehouse";
   const shownLocs = byWarehouse ? locations : [];
@@ -74,6 +75,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const SORTS: Record<string, { num: boolean; v: (r: any) => number | string }> = {
     product: { num: false, v: (r) => `${r.model} ${r.variant ?? ""}`.toLowerCase() },
     category: { num: false, v: (r) => String(r.category ?? "").toLowerCase() },
+    brand: { num: false, v: (r) => String(r.brand ?? "").toLowerCase() },
     reserved: { num: true, v: (r) => Number(r.reserved) },
     available: { num: true, v: (r) => Number(r.available) },
     cost: { num: true, v: (r) => Number(r.avg_cost ?? -1) },
@@ -178,7 +180,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <table>
           <thead>
             <tr>
-              <Th k="product" label="Product" /><Th k="category" label="Category" />
+              <Th k="product" label="Product" />{multiBrand && <Th k="brand" label="Brand" />}<Th k="category" label="Category" />
               {shownLocs.map((l: any) => <th key={l.id} className="num">{l.name}</th>)}
               <Th k="reserved" label="Reserved" num /><Th k="available" label="Available" num />
               {seeCost && <><Th k="cost" label="Avg / FIFO cost" num /><Th k="value" label="Stock value" num /></>}
@@ -193,10 +195,11 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                     <span className="thumb">{r.photo ? <img src={r.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}</span>
                     <span className="prod-text">
                       <div className="prod-name clamp2" title={r.model}>{r.model}</div>
-                      <div className="prod-sub ellip" title={r.variant ?? r.brand ?? ""}>{r.variant ?? r.brand ?? ""}</div>
+                      <div className="prod-sub ellip" title={r.variant ?? ""}>{r.variant ?? ""}</div>
                     </span>
                   </span>
                 </td>
+                {multiBrand && <td>{r.brand ?? "—"}</td>}
                 <td>{r.category}</td>
                 {shownLocs.map((l: any) => <td key={l.id} className="num">{Number(r.by_loc?.[l.id] ?? 0)}</td>)}
                 <td className="num">{r.reserved}</td>
@@ -213,7 +216,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
               </tr>
             ))}
             {shown.length === 0 && (
-              <tr><td colSpan={9} className="page-sub">
+              <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">
                 {allItems ? "No products match." : <>Nothing in stock matches. <Link href={scopeHref(true)}>Show all items</Link></>}
               </td></tr>
             )}

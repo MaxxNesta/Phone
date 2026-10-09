@@ -66,14 +66,14 @@ export function ItemFilters({
         </select>
       </div>
 
-      <div className="field">
+      {brands.length > 0 && <div className="field">
         <label htmlFor="f-brand">Brand</label>
         <select id="f-brand" value={selected.brand} onChange={(e) => set("brand", e.target.value)}>
           <option value="">All brands</option>
           <option value="none">— no brand —</option>
           {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
-      </div>
+      </div>}
 
       <div className="field">
         <label htmlFor="f-status">Status</label>

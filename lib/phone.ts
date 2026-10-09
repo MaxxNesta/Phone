@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { sql } from "./db";
+import { getBrandsInUse } from "./queries";
 
 // Read side of phone retail: what the POS searches, the serial stock views,
 // warranty lookup, the phone reports and the dashboard figures. Everything
@@ -493,6 +494,7 @@ export async function inventorySummary(companyId: string, f: {
   modelId?: string;
   /** Variant options the item must have, one per attribute: 256 GB, Black. */
   optionIds?: string[];
+  brandId?: string;
 }) {
   const like = f.q ? `%${f.q.trim()}%` : null;
   const opts = f.optionIds ?? [];
@@ -537,6 +539,7 @@ export async function inventorySummary(companyId: string, f: {
        and (${f.groupId ?? null}::uuid is null or i.item_group_id = ${f.groupId ?? null}
             or g.parent_id = ${f.groupId ?? null})
        and (${f.modelId ?? null}::uuid is null or coalesce(p.id, i.id) = ${f.modelId ?? null})
+       and (${f.brandId ?? null}::uuid is null or b.id = ${f.brandId ?? null})
        ${opts.length ? sql`and (select count(*) from item_variant_option v
                                  where v.item_id = i.id and v.option_id in ${sql(opts)}) = ${opts.length}` : sql``}
      -- What is on the shelf first, then the rest of the catalogue.
@@ -556,6 +559,8 @@ export async function inventorySummary(companyId: string, f: {
 }
 
 export type CatalogFacets = {
+  /** Brands in use; one or none means the brand filter is not shown. */
+  brands: { id: string; name: string }[];
   models: { id: string; name: string }[];
   attributes: { id: string; name: string; options: { id: string; name: string }[] }[];
 };
@@ -565,16 +570,19 @@ export type CatalogFacets = {
  * attributes its variants actually use (an iPhone has storage and SIM, a
  * Mac a chip) with the options in use. Nothing until a category is chosen.
  */
-export async function catalogFacets(companyId: string, groupId?: string): Promise<CatalogFacets> {
-  if (!groupId) return { models: [], attributes: [] };
+export async function catalogFacets(companyId: string, groupId?: string, brandId?: string): Promise<CatalogFacets> {
+  const brands = (await getBrandsInUse(companyId)).map((b) => ({ id: b.id, name: b.name }));
+  if (!groupId) return { brands, models: [], attributes: [] };
   const inGroup = sql`(i.item_group_id = ${groupId} or g.parent_id = ${groupId})`;
+  const ofBrand = brandId && brands.some((b) => b.id === brandId)
+    ? sql`and coalesce(p.brand_id, i.brand_id) = ${brandId}` : sql``;
   const [models, opts] = await Promise.all([
     sql<{ id: string; name: string }[]>`
       select distinct coalesce(p.id, i.id) as id, coalesce(p.name, i.name) as name
         from item i
         left join item p on p.id = i.parent_item_id
         join item_group g on g.id = i.item_group_id
-       where i.company_id = ${companyId} and i.is_active and i.is_stocked and ${inGroup}
+       where i.company_id = ${companyId} and i.is_active and i.is_stocked and ${inGroup} ${ofBrand}
          and not exists (select 1 from item c where c.parent_item_id = i.id)
        order by 2`,
     sql<{ attr_id: string; attr: string; id: string; name: string }[]>`
@@ -594,7 +602,7 @@ export async function catalogFacets(companyId: string, groupId?: string): Promis
     if (!a) attributes.push(a = { id: r.attr_id, name: r.attr, options: [] });
     a.options.push({ id: r.id, name: r.name });
   }
-  return { models: [...models], attributes };
+  return { brands, models: [...models], attributes };
 }
 
 /** The last stock movements, newest first, for the summary page. */

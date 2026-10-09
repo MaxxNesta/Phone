@@ -12,13 +12,14 @@ export function catalogSelection(sp: Search, facets: CatalogFacets) {
   const optionIds = facets.attributes
     .map((a) => sp[`a_${a.id}`])
     .filter((v): v is string => Boolean(v) && facets.attributes.some((a) => a.options.some((o) => o.id === v)));
-  return { modelId, optionIds };
+  const brandId = facets.brands.length > 1 && facets.brands.some((b) => b.id === sp.brand) ? sp.brand : undefined;
+  return { modelId, optionIds, brandId };
 }
 
 /**
  * Category, then that category's model, then one select per attribute its
- * products use — iPhone: storage, colour, SIM; Mac: chip, memory. Only
- * Apple is sold, so there is no brand to choose.
+ * products use — iPhone: storage, colour, SIM; Mac: chip, memory. Brand
+ * comes first, and only once the catalogue carries more than one.
  */
 export function CatalogFilterFields({ groups, facets, sp, prefix }: {
   groups: { id: string; name: string }[];
@@ -28,9 +29,18 @@ export function CatalogFilterFields({ groups, facets, sp, prefix }: {
   prefix: string;
 }) {
   const category = groups.find((g) => g.id === sp.category);
-  const { modelId } = catalogSelection(sp, facets);
+  const { modelId, brandId } = catalogSelection(sp, facets);
   return (
     <>
+      {facets.brands.length > 1 && (
+        <div className="field">
+          <label htmlFor={`${prefix}-brand`}>Brand</label>
+          <select id={`${prefix}-brand`} name="brand" defaultValue={brandId ?? ""}>
+            <option value="">All</option>
+            {facets.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+      )}
       <div className="field">
         <label htmlFor={`${prefix}-cat`}>Category</label>
         <select id={`${prefix}-cat`} name="category" defaultValue={sp.category ?? ""}>

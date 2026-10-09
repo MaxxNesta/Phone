@@ -1476,9 +1476,11 @@ export async function getDocument(id: string) {
 export async function getDocumentLines(id: string) {
   return sql`
     select dl.*, i.code as item_code, i.name as item_name,
-           u.code as uom_code, f.name as foc_reason
+           u.code as uom_code, f.name as foc_reason, b.name as brand_name
       from document_line dl
       left join item i on i.id = dl.item_id
+      left join item p on p.id = i.parent_item_id
+      left join brand b on b.id = coalesce(p.brand_id, i.brand_id)
       left join uom  u on u.id = dl.entered_uom_id
       left join foc_reason f on f.id = dl.foc_reason_id
      where dl.document_id = ${id}
@@ -3881,6 +3883,20 @@ export async function getIncomingQty(companyId: string) {
     having sum(greatest(ol.base_qty - coalesce(r.received_qty, 0)
                                     - coalesce(fl.linked_qty, 0), 0)) > 0`;
 }
+
+/**
+ * The brands the active catalogue actually carries. One brand (an Apple
+ * shop) means brand tells nobody anything, so every filter, column and
+ * report tab for it stays hidden; a second brand turns them all on.
+ */
+export const getBrandsInUse = cache(async (companyId: string) =>
+  sql<{ id: string; code: string; name: string }[]>`
+    select distinct b.id, b.code, b.name
+      from item i
+      left join item p on p.id = i.parent_item_id
+      join brand b on b.id = coalesce(p.brand_id, i.brand_id)
+     where i.company_id = ${companyId} and i.is_active
+     order by b.name`);
 
 export async function getBrands(companyId: string) {
   return sql`
@@ -7264,7 +7280,7 @@ export async function getInventoryCogsReconciliation(
 }
 
 /** How a sales report is cut. */
-export type SalesBreakdownBy = "item" | "model" | "customer" | "category";
+export type SalesBreakdownBy = "item" | "model" | "brand" | "customer" | "category";
 
 /** One row of a sales breakdown. */
 export type SalesBreakdownRow = {
@@ -7297,24 +7313,28 @@ function salesDimension(by: SalesBreakdownBy) {
       customer: sql`d.partner_id::text`,
       category: sql`coalesce(pg.id, g.id)::text`,
       model:    sql`coalesce(m.id, i.id)::text`,
+      brand:    sql`coalesce(b.id::text, 'none')`,
     }[by],
     code: {
       item:     sql`i.code`,
       customer: sql`p.code`,
       category: sql`coalesce(pg.code, g.code)`,
       model:    sql`coalesce(m.code, i.code)`,
+      brand:    sql`coalesce(b.code, '—')`,
     }[by],
     name: {
       item:     sql`i.name`,
       customer: sql`p.name`,
       category: sql`coalesce(pg.name, g.name)`,
       model:    sql`coalesce(m.name, i.name)`,
+      brand:    sql`coalesce(b.name, 'No brand')`,
     }[by],
     joins: sql`
       join item i on i.id = dl.item_id
       left join item_group g on g.id = i.item_group_id
       left join item_group pg on pg.id = g.parent_id
       left join item m on m.id = i.parent_item_id
+      left join brand b on b.id = coalesce(m.brand_id, i.brand_id)
       left join business_partner p on p.id = d.partner_id`,
   };
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "@/lib/db";
-import { getCompany, getItems, getBrands } from "@/lib/queries";
+import { getCompany, getItems, getBrands, getBrandsInUse } from "@/lib/queries";
 import { updateItem, deactivateItem, activateItem, deleteItem, setVariantPhoto } from "@/lib/actions";
 import { ItemRow } from "@/components/item-row";
 import { asVariant } from "@/components/variant-tags";
@@ -36,6 +36,8 @@ export default async function Items({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
+  // Brand filter and column only once the catalogue carries two brands.
+  const multiBrand = (await getBrandsInUse(company.id)).length > 1;
   const [all, brands, uoms, groups, packs] = await Promise.all([
     getItems(company.id) as unknown as Promise<Row[]>,
     getBrands(company.id) as unknown as Promise<{ id: string; code: string; name: string }[]>,
@@ -158,6 +160,7 @@ export default async function Items({
             .map((p) => ({ uomId: p.uom_id, code: p.uom_code, factor: Number(p.factor) })),
         }}
         brands={brands}
+        showBrand={multiBrand}
         uoms={uoms}
         updateAction={updateItem}
         deactivateAction={deactivateItem}
@@ -201,7 +204,7 @@ export default async function Items({
 
       <ItemFilters
         groups={groups}
-        brands={brands}
+        brands={multiBrand ? brands : []}
         selected={{ category: category ?? "", sub: sub ?? "", brand: brand ?? "", status: status ?? "" }}
       />
 
@@ -251,7 +254,7 @@ export default async function Items({
                 { key: "name", label: "Name", sortable: true },
                 { key: "category", label: "Category", sortable: true },
                 { key: "subcategory", label: "Sub category", sortable: true },
-                { key: "brand_name", label: "Brand", sortable: true },
+                ...(multiBrand ? [{ key: "brand_name", label: "Brand", sortable: true }] : []),
                 { key: "uom_code", label: "Unit", sortable: true },
                 { key: "sale_price", label: "Selling price", sortable: true, align: "r" },
                 { key: "last_purchase_price", label: "Latest purchase price", sortable: true, align: "r" },

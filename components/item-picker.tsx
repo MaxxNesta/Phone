@@ -103,6 +103,7 @@ export function ItemPicker({
     const hit = items.filter((i) =>
       i.code.toLowerCase().includes(q) ||
       i.name.toLowerCase().includes(q) ||
+      (i.brand ?? "").toLowerCase().includes(q) ||
       (i.barcode ?? "").toLowerCase().includes(q) ||
       (asVariant(i.variant) ?? []).some(
         (v) => v.a.toLowerCase().includes(q) || v.o.toLowerCase().includes(q)));
@@ -244,6 +245,7 @@ export function ItemPicker({
               >
                 <span className="m">{i.code}</span>
                 <span className="picker-name">
+                  {i.brand && <span className="page-sub">{i.brand} · </span>}
                   {i.name}
                   <VariantTags variant={asVariant(i.variant)} labelled />
                 </span>

@@ -39,6 +39,7 @@ import { sql, money, qty, shortDate } from "@/lib/db";
 import {
   getDocument,
   getDocumentLines,
+  getBrandsInUse,
   getDocumentBatches,
   getJournalForDocument,
   getDownstream,
@@ -146,7 +147,7 @@ export default async function DocumentPage({
   const doc = await getDocument(id);
   if (!doc) notFound();
 
-  const [lines, docBatches, journal, downstream, chainDocuments, attachments, docSerials] =
+  const [lines, docBatches, journal, downstream, chainDocuments, attachments, docSerials, brandsInUse] =
     await Promise.all([
       getDocumentLines(id),
       getDocumentBatches(id),
@@ -155,7 +156,10 @@ export default async function DocumentPage({
       getChainDocuments(id),
       getDocumentAttachments(doc.company_id, id),
       serialsOnDocument(id),
+      getBrandsInUse(doc.company_id),
     ]);
+  // A line names its brand only once the shop carries more than one.
+  const multiBrand = brandsInUse.length > 1;
 
   // Goods already in and a bill already waiting for them, from this order's
   // supplier: shown on the receive form this page carries, since receiving
@@ -1498,6 +1502,7 @@ export default async function DocumentPage({
                         <tr>
                           <td className="code">{l.line_no}</td>
                           <td className="wrap">
+                            {multiBrand && l.brand_name && <span className="page-sub">{l.brand_name} · </span>}
                             <span className="codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
                             {l.foc_reason && <> <span className="pill warn">{l.foc_reason}</span></>}
                           </td>

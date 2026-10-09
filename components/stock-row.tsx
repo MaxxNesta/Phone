@@ -99,8 +99,8 @@ const DASH = "—";
 const EXPIRING_DAYS = 90;
 
 export function StockRow(
-  { item, columnCount, showConsigned }:
-  { item: StockRowItem; columnCount: number; showConsigned: boolean }
+  { item, columnCount, showConsigned, showBrand = false }:
+  { item: StockRowItem; columnCount: number; showConsigned: boolean; showBrand?: boolean }
 ) {
   const [open, setOpen] = useState(false);
   // A model can come in hundreds of combinations; the few on the shelf are
@@ -184,6 +184,7 @@ export function StockRow(
         </td>
 
         <td className="catcell" style={{ color: "var(--muted)" }}>{item.category}</td>
+        {showBrand && <td style={{ color: "var(--muted)" }}>{item.brandName ?? "—"}</td>}
         <td className="code">{item.uomCode}</td>
         <td className="r">{qty(item.onHand)}</td>
         {/* Held but not owned, so it is deliberately absent from On hand and

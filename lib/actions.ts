@@ -8,7 +8,7 @@ import { parseCsv, planImport, type MasterData } from "./import-items";
 import { xlsxToRows, type UploadFormat } from "./read-spreadsheet";
 import { planVoucherImport, voucherColumns, type VoucherMasterData, type VoucherKind }
   from "./import-vouchers";
-import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines } from "./queries";
+import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse } from "./queries";
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can } from "./auth";
@@ -1601,6 +1601,8 @@ export type PickerItem = {
   model?: string | null;
   /** Its picture, or its product's. */
   photo?: string | null;
+  /** Its brand, or its product's — null while the shop carries only one. */
+  brand?: string | null;
 };
 
 /**
@@ -3491,6 +3493,9 @@ export async function getFormData() {
                        then '/items/' || i.parent_item_id || '/photo?v=' ||
                             to_char((select p.photo_updated_at from item p where p.id = i.parent_item_id), 'YYYYMMDDHH24MISSMS')
                 end as photo,
+                (select b.name from brand b
+                  where b.id = coalesce((select p.brand_id from item p where p.id = i.parent_item_id),
+                                        i.brand_id)) as brand,
                 -- What a variant is, so the line says "Colour Red, Size M"
                 -- rather than leaving it buried in a name the picker has
                 -- already truncated. Null for an ordinary item.
@@ -3620,6 +3625,8 @@ export async function getFormData() {
           from v_customer_credit
          where company_id = ${co} and credit_limit is not null`,
   ]);
+  // One brand tells a clerk nothing; the line shows it only once there are two.
+  if ((await getBrandsInUse(co)).length <= 1) for (const it of items) it.brand = null;
 
   return {
     customers, suppliers, items, locations, volumeDiscounts, groups, uoms,

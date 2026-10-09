@@ -54,7 +54,10 @@ export function ItemRow({
   variants = [],
   startEditing,
   retail,
+  showBrand = true,
 }: {
+  /** Hidden while the shop carries a single brand. */
+  showBrand?: boolean;
   /** Phone retail: every item is stocked, so the switch is not offered. */
   retail?: boolean;
   item: Item;
@@ -102,7 +105,7 @@ export function ItemRow({
   if (editing) {
     return (
       <tr>
-        <td colSpan={10}>
+        <td colSpan={showBrand ? 10 : 9}>
           <form action={formAction} className="form" style={{ padding: "0.5rem 0" }}>
             {state && "error" in state && <div className="alert">{state.error}</div>}
             <input type="hidden" name="id" value={item.id} />
@@ -210,7 +213,7 @@ export function ItemRow({
       <td style={{ color: "var(--muted)" }}>
         {item.parent_group_name ? item.group_name : "—"}
       </td>
-      <td style={{ color: "var(--muted)" }}>{item.brand_name ?? "—"}</td>
+      {showBrand && <td style={{ color: "var(--muted)" }}>{item.brand_name ?? "—"}</td>}
       {/* The base unit, and what else this item is bought and sold in.
           Pack sizes lived only inside Edit, so the catalogue could not
           answer "which of these come by the carton" without opening every
@@ -273,7 +276,7 @@ export function ItemRow({
     {open && variants.length > 0 && (
       <tr className="variantrow">
         <td />
-        <td colSpan={9}>
+        <td colSpan={showBrand ? 9 : 8}>
           {/* Where somebody already is when they notice the twelve sizes
               they just made have no barcodes on them. */}
           <Link href={`/items/${item.id}/variants`} className="linkbtn">
@@ -311,13 +314,13 @@ export function ItemRow({
               and repeating them down twelve rows says nothing twelve times.
               The table has no barcode or quantity column, so those ride under
               the name rather than being put in somebody else's. */}
-          <td colSpan={7} />
+          <td colSpan={showBrand ? 7 : 6} />
         </tr>
 
         {photoFor === v.id && (
           <tr className="variantrow">
             <td />
-            <td colSpan={9}>
+            <td colSpan={showBrand ? 9 : 8}>
               {photoRes && "error" in photoRes && (
                 <div className="alert">{photoRes.error}</div>
               )}

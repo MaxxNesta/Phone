@@ -20,7 +20,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   const user = await requirePermission("inventory.view");
   const sp = await searchParams;
   const f = {
-    q: sp.q || undefined, locationId: sp.location || undefined,
+    q: sp.q || undefined, locationId: sp.location || undefined, brand: sp.brand || undefined,
     model: sp.model || undefined, storage: sp.storage || undefined, colour: sp.colour || undefined,
     // In stock unless asked otherwise: what is on the shelf is the usual question.
     // A search is about one phone, wherever it is now; browsing is about the shelf.
@@ -31,6 +31,8 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   const [rows, facets, k] = await Promise.all([
     phoneStock(user.companyId, f), phoneStockFacets(user.companyId), serialKpis(user.companyId)]);
   // With one warehouse every unit is in it: no Location column or filter.
+  // Brand only when there is more than one to tell apart.
+  const multiBrand = facets.brands.length > 1;
   const manyWarehouses = facets.locations.filter((l: any) => l.is_stock_location).length > 1;
   const units = stripCost(rows as Record<string, any>[], showCost);
   // A scanned IMEI that names one phone opens that phone.
@@ -79,6 +81,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             <input id="f-q" name="q" defaultValue={sp.q ?? ""} placeholder="Scan or type" autoFocus />
           </div>
           {manyWarehouses && select("location", facets.locations.map((l: any) => ({ v: l.id, l: l.name })), sp.location)}
+          {multiBrand && select("brand", facets.brands.map((v) => ({ v, l: v })), sp.brand)}
           {select("model", facets.models.map((v) => ({ v, l: v })), sp.model)}
           {select("storage", facets.storages.map((v) => ({ v, l: v })), sp.storage)}
           {select("colour", facets.colours.map((v) => ({ v, l: v })), sp.colour)}
@@ -99,7 +102,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
         <table>
           <thead>
             <tr>
-              <th>Model</th><th>Variant</th><th>IMEI / Serial</th>{manyWarehouses && <th>Location</th>}
+              <th>Model</th>{multiBrand && <th>Brand</th>}<th>Variant</th><th>IMEI / Serial</th>{manyWarehouses && <th>Location</th>}
               {showCost && <th className="num">Cost</th>}<th className="num">Price</th>
               <th>Status</th><th className="num">Age</th><th>Warranty</th>
             </tr>
@@ -113,6 +116,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
                     <span className="prod-name">{u.model_name}</span>
                   </span>
                 </td>
+                {multiBrand && <td>{u.brand_name ?? "—"}</td>}
                 <td className="prod-sub">{[u.storage, u.colour].filter(Boolean).join(" · ") || u.item_name}</td>
                 <td className="m"><Link href={`/inventory/phones/${u.serial_id}`}>{u.imei}</Link></td>
                 {manyWarehouses && <td>{u.location_name}</td>}
@@ -129,7 +133,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
               </tr>
             ))}
             {units.length === 0 && (
-              <tr><td colSpan={9} className="page-sub">No handsets match.</td></tr>
+              <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">No handsets match.</td></tr>
             )}
           </tbody>
         </table>

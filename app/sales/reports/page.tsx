@@ -6,7 +6,7 @@ import { DataTable, type DataRow } from "@/components/data-table";
 import { RankedBarChart, ShareDonut } from "@/components/charts";
 import { BreakdownPerformance } from "@/components/breakdown-performance";
 import {
-  getCompany, getBranches, getSalesBreakdown, getSalesOverview, UNASSIGNED_BRANCH,
+  getCompany, getBranches, getSalesBreakdown, getSalesOverview, getBrandsInUse, UNASSIGNED_BRANCH,
   type SalesBreakdownBy,
 } from "@/lib/queries";
 import { SalesOverview } from "@/components/sales-overview";
@@ -17,6 +17,7 @@ const TABS: [Tab, string, string][] = [
   ["overview", "Overview", "How the period compares with the one before"],
   ["item", "By item", "Which products earned it"],
   ["model", "By model", "Each model, every storage and colour together"],
+  ["brand", "By brand", "Whose goods sold"],
   ["customer", "By customer", "Who it came from"],
   ["category", "By category", "Which part of the catalogue"],
 ];
@@ -39,7 +40,10 @@ export default async function SalesReports({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const tab = (TABS.find(([k]) => k === p.by)?.[0] ?? "overview") as Tab;
+  // By brand only once there is more than one brand to compare.
+  const multiBrand = (await getBrandsInUse(company.id)).length > 1;
+  const tabs = TABS.filter(([k]) => k !== "brand" || multiBrand);
+  const tab = (tabs.find(([k]) => k === p.by)?.[0] ?? "overview") as Tab;
   const by = (tab === "overview" ? "item" : tab) as SalesBreakdownBy;
   const range = { from: p.from || defaultFrom(), to: p.to || today() };
   // Retail invoices move the goods themselves, so nothing is ever invoiced
@@ -92,11 +96,11 @@ export default async function SalesReports({
     return `/sales/reports?${q.toString()}`;
   };
 
-  const label = { item: "Item", model: "Model", customer: "Customer", category: "Category" }[by];
+  const label = { item: "Item", model: "Model", brand: "Brand", customer: "Customer", category: "Category" }[by];
   /* Written out, because adding an s gives "categorys". English plurals are
      not a rule the code can apply and these are four known words. */
   const plural = { item: "items", customer: "customers",
-                   category: "categories", model: "models" }[by];
+                   category: "categories", model: "models", brand: "brands" }[by];
 
   /* The fourth tile asks something the table and the donut do not already
      answer, and what is worth asking changes with the cut: how dear the
@@ -219,7 +223,7 @@ export default async function SalesReports({
       </div>
 
       <div className="erp-tabs">
-        {TABS.map(([k, t, hint]) => (
+        {tabs.map(([k, t, hint]) => (
           <Link key={k} href={link({ by: k })} title={hint}
                 className={`erp-tab ${tab === k ? "here" : ""}`}>{t}</Link>
         ))}

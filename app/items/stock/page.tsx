@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Boxes, PackageCheck, TrendingDown, AlertTriangle, HandCoins } from "lucide-react";
 import { money, qty, shortDate } from "@/lib/db";
 import {
-  getCompany, getItems, getReservedQty, getIncomingQty, getLowStock, getReorderPoints, getLocations,
+  getCompany, getItems, getBrandsInUse, getReservedQty, getIncomingQty, getLowStock, getReorderPoints, getLocations,
   getStockByLocation, getConsignedStockOnHand, getStockBatches, getExpiryBands,
   getVariantStock,
 } from "@/lib/queries";
@@ -283,7 +283,9 @@ export default async function Stock({
   // A column nobody can put a number in is a column that costs width for
   // nothing — and thirteen is where this table stops fitting.
   const anyConsigned = stocked.some((i) => i.consignedQty > 0);
-  const STOCK_COLUMNS = anyConsigned ? 13 : 12;
+  // Brand only once the catalogue carries more than one.
+  const multiBrand = (await getBrandsInUse(company.id)).length > 1;
+  const STOCK_COLUMNS = (anyConsigned ? 13 : 12) + (multiBrand ? 1 : 0);
 
   const rows: DataRow[] = visible.map((i) => {
     const ids = i.members.map((m) => m.id);
@@ -343,7 +345,7 @@ export default async function Stock({
 
     return {
       key: i.id,
-      searchText: [i.code, i.name, i.name_my, i.group_name, i.parent_group_name, i.barcode,
+      searchText: [i.code, i.name, i.name_my, i.group_name, i.parent_group_name, i.barcode, i.brand_name,
                    // so searching "red" finds the red one
                    ...(asVariant(i.variant) ?? []).flatMap((v) => [v.a, v.o]),
                    ...consignors].filter(Boolean).join(" "),
@@ -352,6 +354,7 @@ export default async function Stock({
         name: i.name,
         ownership: consignors.length > 0 ? `Consignment ${consignors.join(" ")}` : "Company-owned",
         group_name: category,
+        brand_name: i.brand_name ?? "",
         uom_code: i.uom_code,
         onHand: i.onHand,
         consignedQty: i.consignedQty,
@@ -362,7 +365,7 @@ export default async function Stock({
         value_on_hand: i.valueOnHand,
         last_cost: Number(i.last_purchase_price ?? 0),
       },
-      node: <StockRow item={rowItem} columnCount={STOCK_COLUMNS} showConsigned={anyConsigned} />,
+      node: <StockRow item={rowItem} columnCount={STOCK_COLUMNS} showConsigned={anyConsigned} showBrand={multiBrand} />,
     };
   });
 
@@ -643,6 +646,7 @@ export default async function Stock({
                 { key: "name", label: "Item", sortable: true },
                 { key: "ownership", label: "Ownership", sortable: true },
                 { key: "group_name", label: "Category", sortable: true },
+                ...(multiBrand ? [{ key: "brand_name", label: "Brand", sortable: true }] : []),
                 { key: "uom_code", label: "Unit", sortable: true },
                 { key: "onHand", label: "On hand", sortable: true, align: "r" },
                 ...(anyConsigned
