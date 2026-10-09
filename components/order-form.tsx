@@ -259,6 +259,20 @@ export function OrderForm({
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
+      {/* The document's commands, top right and always in view — the same
+          place on every document. */}
+      <div className="doc-bar">
+        {savedAt && <span className="page-sub" style={{ color: "var(--ok)" }}>Draft saved {savedAt}</span>}
+        {saveDraft && (
+          <button type="submit" formAction={draftFormAction} className="btn ghost"
+                  formNoValidate disabled={savingDraft || pending}>
+            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
+          </button>
+        )}
+        <button type="submit" disabled={pending || total === 0}>
+          {pending ? "Saving…" : `Save ${isSales ? "sales" : "purchase"} order`}
+        </button>
+      </div>
 
       {/* What the editor holds, for a draft to put back. */}
       {saveDraft && (
@@ -446,26 +460,6 @@ export function OrderForm({
         <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
       </div>
 
-      <div className="actions">
-        <button type="submit" disabled={pending || total === 0}>
-          {pending ? "Saving…" : `Save ${isSales ? "sales" : "purchase"} order`}
-        </button>
-        {saveDraft && (
-          <button type="submit" formAction={draftFormAction} className="btn ghost"
-                  formNoValidate disabled={savingDraft || pending}>
-            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save as draft"}
-          </button>
-        )}
-        {savedAt && (
-          <span className="page-sub" style={{ color: "var(--ok)" }}>
-            Draft saved {savedAt}
-          </span>
-        )}
-        <span className="page-sub">
-          Commits nothing yet — no stock moves and nothing posts to the ledger
-          until this is delivered {isSales ? "" : "or received"}.
-        </span>
-      </div>
     </form>
   );
 }

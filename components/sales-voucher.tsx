@@ -885,6 +885,31 @@ export function SalesVoucher({
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
+      {/* The document's commands, top right and always in view — the same
+          place on every document. */}
+      <div className="doc-bar">
+        <span className="vcount">
+          {lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"}
+          {lines.some((l) => (l.serials ?? []).length) && ` · ${lines.reduce((n, l) => n + (l.serials ?? []).length, 0)} phones selected`}
+          {savedAt && <span style={{ color: "var(--ok)" }}> · Draft saved {savedAt}</span>}
+        </span>
+        {saveDraft && (
+          <button type="submit" formAction={draftFormAction} className="btn ghost"
+                  formNoValidate disabled={savingDraft || pending}>
+            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
+          </button>
+        )}
+        <button
+          type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
+          onClick={
+            shortages.length > 0 && !negativeConfirmed
+              ? () => setAskNegative(true)
+              : undefined
+          }
+          disabled={pending || total === 0 || cashTooMuch || imeiShort.length > 0}>
+          {pending ? "Posting…" : "Post invoice"}
+        </button>
+      </div>
 
       {/* What the editor holds, for a draft to put back. Separate from the
           `lines` field below, which is the posting payload and has already
@@ -1841,37 +1866,6 @@ export function SalesVoucher({
           {imeiShort.map((l) => `${items.find((i) => i.id === l.itemId)?.code} ${(l.serials ?? []).length}/${l.qty}`).join(", ")}
         </p>
       )}
-      <div className="actions form-commit">
-        <span className="vcount">
-          {lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"}
-          {lines.some((l) => (l.serials ?? []).length) && ` · ${lines.reduce((n, l) => n + (l.serials ?? []).length, 0)} phones selected`}
-        </span>
-        <button
-          type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
-          onClick={
-            shortages.length > 0 && !negativeConfirmed
-              ? () => setAskNegative(true)
-              : undefined
-          }
-          disabled={pending || total === 0 || cashTooMuch || imeiShort.length > 0}>
-          {pending ? "Posting…" : "Post voucher"}
-        </button>
-        {saveDraft && (
-          <button type="submit" formAction={draftFormAction} className="btn ghost"
-                  formNoValidate disabled={savingDraft || pending}>
-            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save as draft"}
-          </button>
-        )}
-        {savedAt && (
-          <span className="page-sub" style={{ color: "var(--ok)" }}>
-            Draft saved {savedAt}
-          </span>
-        )}
-        <span className="page-sub">
-          Stock, the receivable{cashAmount > 0 ? ", the receipt" : ""} and the journal entry are
-          written together, or none of them are.
-        </span>
-      </div>
     </form>
   );
 }

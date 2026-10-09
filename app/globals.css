@@ -5587,3 +5587,11 @@ button.danger-solid:hover { opacity: 0.9; }
 .linetable .unitpick, .linetable .unittoggle { border: 0; box-shadow: none; background: none; padding: 0; border-radius: 0; }
 .linetable .unittoggle button { border: 0; border-radius: 4px; background: transparent; min-height: 0; box-shadow: none; }
 .linetable .unittoggle button.on { background: var(--brand); color: var(--brand-fg); }
+
+/* Every document's commands in one place: top right, and kept in view while
+   the lines below scroll, so Post is never a scroll away. */
+.gr-head, .doc-bar { position: sticky; top: 0; z-index: 20; background: var(--ground); padding: 10px 0; }
+.doc-bar { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line-soft); margin-bottom: 4px; }
+.doc-bar > :first-child:not(button) { margin-right: auto; }
+@media (max-width: 820px) { .gr-head, .doc-bar { top: var(--navbar-h); } }
