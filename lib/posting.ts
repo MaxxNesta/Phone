@@ -1886,16 +1886,23 @@ async function claimSerials(
   serials: string[],
 ): Promise<SerialUnit[]> {
   const units: SerialUnit[] = [];
-  for (const raw of serials) {
-    const sn = raw.trim();
-    const [s] = await tx`
-      select id, item_id, serial_no from stock_serial
-       where company_id = ${companyId} and (serial_no = ${sn} or imei2 = ${sn})
-         for update`;
+  const wanted = serials.map((raw) => raw.trim());
+  if (wanted.length === 0) return units;
+  // Every unit on the line in one lock and one status read. Locked in id
+  // order, so two tills claiming overlapping units cannot deadlock.
+  const found = await tx`
+    select id, item_id, serial_no, imei2 from stock_serial
+     where company_id = ${companyId} and (serial_no = any(${wanted}) or imei2 = any(${wanted}))
+     order by id
+       for update`;
+  const status = found.length === 0 ? [] : await tx`
+    select serial_id, status, location_id, location_name, stock_lot_id, item_code
+      from v_stock_serial where serial_id = any(${found.map((f) => f.id)})`;
+  const statusOf = new Map(status.map((s) => [s.serial_id, s]));
+  for (const sn of wanted) {
+    const s = found.find((f) => f.serial_no === sn) ?? found.find((f) => f.imei2 === sn);
     if (!s) throw new Error(`${sn} was never received.`);
-    const [st] = await tx`
-      select status, location_id, location_name, stock_lot_id, item_code
-        from v_stock_serial where serial_id = ${s.id}`;
+    const st = statusOf.get(s.id)!;
     if (st.status !== "IN_STOCK") {
       throw new Error(`${sn} is ${SERIAL_STATUS[st.status] ?? st.status.toLowerCase()}.`);
     }
@@ -1914,18 +1921,18 @@ async function recordSerialIssues(
   units: SerialUnit[], consumptionIds: string[],
   event: { kind: string; documentId: string; locationId: string } | null,
 ) {
-  for (const [i, u] of units.entries()) {
+  if (units.length === 0) return;
+  await tx`
+    insert into stock_serial_issue ${tx(units.map((u, i) => ({
+      company_id: companyId, serial_id: u.serialId, stock_movement_id: movementId,
+      lot_id: u.lotId, consumption_id: consumptionIds[i],
+    })))}`;
+  if (event) {
     await tx`
-      insert into stock_serial_issue
-        (company_id, serial_id, stock_movement_id, lot_id, consumption_id)
-      values (${companyId}, ${u.serialId}, ${movementId}, ${u.lotId}, ${consumptionIds[i]})`;
-    if (event) {
-      await tx`
-        insert into stock_serial_event
-          (company_id, serial_id, event, document_id, from_location_id, lot_id)
-        values (${companyId}, ${u.serialId}, ${event.kind}, ${event.documentId},
-                ${event.locationId}, ${u.lotId})`;
-    }
+      insert into stock_serial_event ${tx(units.map((u) => ({
+        company_id: companyId, serial_id: u.serialId, event: event.kind,
+        document_id: event.documentId, from_location_id: event.locationId, lot_id: u.lotId,
+      })))}`;
   }
 }
 
@@ -1934,14 +1941,13 @@ async function moveSerialsTo(
   tx: TransactionSql, companyId: string, serialIds: string[], lotId: string,
   event: { kind: string; documentId: string; from?: string | null; to: string },
 ) {
-  for (const id of serialIds) {
-    await tx`update stock_serial set stock_lot_id = ${lotId} where id = ${id}`;
-    await tx`
-      insert into stock_serial_event
-        (company_id, serial_id, event, document_id, from_location_id, to_location_id, lot_id)
-      values (${companyId}, ${id}, ${event.kind}, ${event.documentId},
-              ${event.from ?? null}, ${event.to}, ${lotId})`;
-  }
+  if (serialIds.length === 0) return;
+  await tx`update stock_serial set stock_lot_id = ${lotId} where id = any(${serialIds})`;
+  await tx`
+    insert into stock_serial_event ${tx(serialIds.map((id) => ({
+      company_id: companyId, serial_id: id, event: event.kind, document_id: event.documentId,
+      from_location_id: event.from ?? null, to_location_id: event.to, lot_id: lotId,
+    })))}`;
 }
 
 async function createFifoLot(
@@ -4383,20 +4389,26 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
           + `recorded. A serial identifies one unit, and that one has arrived before.`
         );
       }
-      for (const sn of given) {
-        const d = details.get(sn);
-        const [unit] = await tx`
-          insert into stock_serial
-            (company_id, item_id, serial_no, stock_lot_id, stock_movement_id,
-             imei2, device_serial, supplier_warranty_months, notes)
-          values (${companyId}, ${line.itemId}, ${sn}, ${lotId}, ${movement.id},
-                  ${d?.imei2?.trim() || null}, ${d?.deviceSerial?.trim() || null},
-                  ${d?.supplierWarrantyMonths ?? null}, ${d?.notes?.trim() || null})
+      // Two statements for the whole line, not two per unit: a box of 200
+      // phones was 400 round trips.
+      if (given.length > 0) {
+        const units = await tx`
+          insert into stock_serial ${tx(given.map((sn) => {
+            const d = details.get(sn);
+            return {
+              company_id: companyId, item_id: line.itemId, serial_no: sn,
+              stock_lot_id: lotId, stock_movement_id: movement.id,
+              imei2: d?.imei2?.trim() || null, device_serial: d?.deviceSerial?.trim() || null,
+              supplier_warranty_months: d?.supplierWarrantyMonths ?? null,
+              notes: d?.notes?.trim() || null,
+            };
+          }))}
           returning id`;
         await tx`
-          insert into stock_serial_event
-            (company_id, serial_id, event, document_id, to_location_id, lot_id)
-          values (${companyId}, ${unit.id}, 'RECEIVED', ${doc.id}, ${locationId}, ${lotId})`;
+          insert into stock_serial_event ${tx(units.map((u) => ({
+            company_id: companyId, serial_id: u.id, event: "RECEIVED",
+            document_id: doc.id, to_location_id: locationId, lot_id: lotId,
+          })))}`;
       }
     }
 

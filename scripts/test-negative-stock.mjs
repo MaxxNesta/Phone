@@ -207,9 +207,11 @@ try {
       join document d on d.journal_entry_id = je.id
      where jl.company_id = ${co.id} and d.id = ${gr.id}
        and jl.account_id in (
-             select distinct slc.expense_account_id
-               from stock_lot_consumption slc
-              where slc.company_id = ${co.id} and slc.expense_account_id is not null)`;
+             -- The shortfall records where its provisional cost went. A sale
+             -- from an empty shelf consumes no lot, so stock_lot_consumption
+             -- has nothing to say about it.
+             select ns.expense_account_id from negative_stock ns
+              where ns.company_id = ${co.id} and ns.item_id = ${item})`;
   check("the 200 a unit it was under-costed by reaches the account it was charged to",
     Math.abs(n(variance[0].v) - 2000) < 0.0001, String(n(variance[0].v)));
 
