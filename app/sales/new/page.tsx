@@ -1,5 +1,5 @@
 import { getFormData, createSalesInvoice, saveInvoiceDraft } from "@/lib/actions";
-import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocumentDraft, getVariantCatalog } from "@/lib/queries";
+import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocumentDraft } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { SalesVoucher } from "@/components/sales-voucher";
@@ -15,7 +15,6 @@ export default async function NewSalesInvoice({
   const d = await getFormData();
   const [co] = await sql`select id, base_currency, retail_mode from company order by created_at limit 1`;
   const categories = await allCategories(co.id);
-  const catalog = await getVariantCatalog(co.id);
   const deliveries = await getOpenDeliveries(co.id);
   // Same as the purchase side: billed from one delivery, the crumb names it.
   const from = delivery_id
@@ -82,7 +81,6 @@ export default async function NewSalesInvoice({
       </div>
 
       <SalesVoucher
-        catalog={catalog}
         retail={Boolean((co as { retail_mode?: boolean }).retail_mode)}
         initialOrderId={orderId ?? null}
         action={createSalesInvoice}

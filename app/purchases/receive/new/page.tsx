@@ -1,7 +1,7 @@
 import { getFormData, createGoodsReceipt, saveReceiptDraft } from "@/lib/actions";
 import {
   getOpenPurchaseInvoices, getOpenPurchaseOrders, getGrirCollisions,
-  getBillReceiptContext, getRelatedDocuments, getDocumentDraft, getVariantCatalog,
+  getBillReceiptContext, getRelatedDocuments, getDocumentDraft,
   getReceiptDraftForOrder, getCompany } from "@/lib/queries";
 import { ReceiveAgainstBill } from "@/components/receive-against-bill";
 import { RelatedDocumentsPanel } from "@/components/related-documents";
@@ -94,7 +94,6 @@ export default async function NewGoodsReceipt({
     lines: orderRows.map((r) => ({ lineId: r.line_id, itemId: r.item_id,
       qty: Number(r.remaining_qty), unitCost: Number(r.expected_price ?? 0) })),
   } : null;
-  const catalog = await getVariantCatalog(co.id);
   // A half-scanned receipt for this order comes back as it was left.
   const orderDraft = toReceive && !draftRow ? await getReceiptDraftForOrder(co.id, toReceive.id) : null;
 
@@ -127,7 +126,6 @@ export default async function NewGoodsReceipt({
 
       <ReceiptForm
         key={toReceive?.id ?? "free"}
-        catalog={catalog}
         order={toReceive}
         action={createGoodsReceipt}
         suppliers={d.suppliers as never}

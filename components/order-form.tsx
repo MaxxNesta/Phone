@@ -6,8 +6,8 @@ import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { AwaitingLine } from "@/lib/queries";
 import { UnitToggle, AddPackInline } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
-import { ItemChooser } from "./item-chooser";
-import type { VariantCatalog } from "./phone-picker";
+import { ItemPicker } from "./item-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { PartnerPicker } from "./partner-picker";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 
@@ -53,10 +53,7 @@ export function OrderForm({
   categories,
   uoms,
   awaiting = [],
-  catalog,
 }: {
-  /** For picking a line by category, brand and model. */
-  catalog?: VariantCatalog;
   kind: "sales" | "purchase";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   /** Keeps the order without saving it as a real one. */
@@ -208,6 +205,25 @@ export function OrderForm({
   const addLine = () =>
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitPrice: "" }]);
 
+  /** From the search or the catalogue: one more of a line already there, else
+   *  the first empty line, else a new one — priced as picking it would. */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const item = byId(p.itemId);
+        const price = !item ? 0 : isSales ? priceFor(p.itemId) : Number(item.next_cost);
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "", uomId: "" };
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];
+      }
+      return next;
+    });
+  }
+
   const removeLine = (key: number) =>
     setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
 
@@ -294,6 +310,9 @@ export function OrderForm({
           <h2>Lines</h2>
           <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
         </div>
+        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+          title={isSales ? "Add products to sales order" : "Add products to purchase order"}
+          sub="Search the full product catalogue" />
 
         <div className="tablewrap">
           <table className="linetable">
@@ -310,8 +329,7 @@ export function OrderForm({
                 return (
                   <tr key={l.key}>
                     <td style={{ minWidth: 240 }}>
-                      <ItemChooser
-                        catalog={catalog}
+                      <ItemPicker
                         mode={kind}
                         items={items}
                         categories={categories}

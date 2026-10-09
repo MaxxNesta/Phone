@@ -5510,24 +5510,58 @@ button.danger-solid:hover { opacity: 0.9; }
 .cfpanel-sum .page-sub { white-space: nowrap; }
 .cfpanel-sum strong { white-space: nowrap; }
 .cf-neg { color: var(--bad); }
-
-/* A line's item: the search box with a Browse button beside it, and the
-   category / brand / model picker opening under them. */
-.ichoose { display: grid; gap: 6px; }
-.ichoose-row { display: flex; gap: 6px; align-items: center; }
-.ichoose-row > :first-child { flex: 1; min-width: 0; }
-.ichoose-row .btn { flex: none; white-space: nowrap; }
-
-/* The catalogue picker as a table: a step per row, its choices as a grid of
-   cells. The chosen cell is filled; a row appears once the one above is set. */
-.cgrid { width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface, #fff); }
-.cgrid th, .cgrid td { border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: middle; }
-.cgrid tr:last-child th, .cgrid tr:last-child td { border-bottom: 0; }
-.cgrid th { width: 110px; text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-soft); background: var(--line-soft); white-space: nowrap; }
-.cgrid-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
-.cgrid-opt { font: inherit; font-size: 13px; text-align: left; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
-.cgrid-opt:hover { border-color: var(--brand); }
-.cgrid-opt[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
-.cgrid-opt:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .grlines tr.gr-pickrow .gr-pick { display: grid; gap: 10px; align-items: start; }
 .grlines tr.gr-pickrow .gr-pick > :first-child { max-width: 460px; }
+
+/* ---- Add items: search with matches underneath, filters that fold away,
+   and a catalogue drawer for adding several at once. ---- */
+.aib { display: grid; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.aib-row { display: flex; gap: 8px; align-items: center; }
+.aib-search { position: relative; flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
+  border: 1.5px solid var(--line); border-radius: var(--r-md); padding: 0 12px; background: var(--surface); }
+.aib-search:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 15%, transparent); }
+.aib-search > svg { color: var(--muted); flex: none; }
+.aib-search input { border: 0; outline: 0; box-shadow: none; flex: 1; min-width: 0; padding: 10px 0; background: transparent; font-size: var(--t-base); }
+.aib-hits { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: 0 12px 32px rgb(0 0 0 / 0.12); overflow: hidden; }
+.aib-hits button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 8px 12px; border: 0; background: none;
+  text-align: left; font: inherit; color: inherit; cursor: pointer; border-radius: 0; }
+.aib-hits button[aria-selected="true"] { background: var(--line-soft); }
+.aib-name { display: grid; min-width: 0; flex: 1; }
+.aib-name strong { font-weight: 600; font-size: var(--t-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aib-name small { color: var(--muted); font-size: var(--t-xs); }
+.aib-thumb { width: 34px; height: 34px; flex: none; border-radius: 8px; background: var(--line-soft); display: grid; place-items: center; overflow: hidden; color: var(--muted); }
+.aib-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.aib-avail { font-size: var(--t-sm); color: var(--muted); white-space: nowrap; }
+.aib-avail.ok { color: var(--ok); font-weight: 600; }
+.aib-toggle, .aib-browse { white-space: nowrap; flex: none; }
+.aib-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.aib-filters label { display: grid; gap: 4px; font-size: var(--t-xs); font-weight: 600; color: var(--ink-soft); min-width: 140px; flex: 1 1 140px; max-width: 220px; }
+.aib-filters select { font-weight: 400; }
+.aib-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 0.28); display: flex; justify-content: flex-end; }
+.aib-drawer { width: min(760px, 100%); height: 100%; background: var(--surface); display: flex; flex-direction: column; gap: 12px;
+  padding: 20px 22px; box-shadow: -12px 0 40px rgb(0 0 0 / 0.15); }
+.aib-drawer header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.aib-drawer h2 { font-size: var(--t-lg); margin: 0; }
+.aib-x { border: 0; background: none; padding: 6px; cursor: pointer; color: var(--muted); }
+.aib-tablewrap { flex: 1; overflow: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.aib-table { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
+.aib-table th { position: sticky; top: 0; background: var(--line-soft); text-align: left; font-size: var(--t-xs); font-weight: 600; padding: 8px 10px; z-index: 1; }
+.aib-table td { padding: 8px 10px; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+.aib-table tbody tr { cursor: pointer; }
+.aib-table tbody tr:hover td { background: color-mix(in srgb, var(--line-soft) 60%, transparent); }
+.aib-table tbody tr[data-on] td { background: color-mix(in srgb, var(--ok) 7%, transparent); }
+.aib-prod { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.aib-qty { width: 70px; text-align: right; }
+.aib-drawer footer { display: flex; align-items: center; gap: 8px; padding-top: 4px; }
+.aib-drawer footer > span { margin-right: auto; }
+@media (max-width: 720px) {
+  .aib-row { flex-wrap: wrap; }
+  .aib-search { flex-basis: 100%; }
+}
+.aib-drawer .aib-search { flex: none; }
+.aib-table .aib-name strong { white-space: normal; }
+/* A picked item on a line: picture, name, and where it sits in the catalogue. */
+.pickedbtn { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; font: inherit; font-weight: 400;
+  padding: 4px 6px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
+.pickedbtn:hover { background: var(--line-soft); }

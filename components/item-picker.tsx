@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { createItemInline, type PickerItem } from "@/lib/actions";
+import { Thumb, itemLabel } from "./add-items-bar";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -180,13 +181,15 @@ export function ItemPicker({
       <span className="pickeditem">
         <button
           type="button"
-          className="ghost"
-          style={{ flex: 1, textAlign: "left", fontWeight: 400, padding: "0.3rem 0.45rem" }}
+          className="pickedbtn"
           onClick={() => { setOpen(true); setQuery(""); }}
           title="Change item"
         >
-          <span className="codetip" data-code={selected.code}>{selected.name}</span>
-          <VariantTags variant={asVariant(selected.variant)} />
+          <Thumb i={selected} />
+          <span className="aib-name">
+            <strong className="codetip" data-code={selected.code}>{itemLabel(selected)}</strong>
+            <small>{[[selected.brand, selected.model].filter(Boolean).join(" / "), selected.code].filter(Boolean).join(" · ")}</small>
+          </span>
         </button>
         <Link
           href={`/items/${selected.id}`}

@@ -1,7 +1,7 @@
 import { getFormData, createPurchaseOrder, saveInvoiceDraft } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
-import { getUntouchedOpenOrders, getDocumentDraft, getCompany, getVariantCatalog } from "@/lib/queries";
+import { getUntouchedOpenOrders, getDocumentDraft, getCompany } from "@/lib/queries";
 import { OrderForm } from "@/components/order-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
@@ -17,7 +17,6 @@ export default async function NewPurchaseOrder({
   const co = await getCompany();
   if (!co) return <div className="empty">No company found.</div>;
   const categories = await allCategories(co.id);
-  const catalog = await getVariantCatalog(co.id);
   const awaiting = await getUntouchedOpenOrders(co.id, "PURCHASE_ORDER");
   const today = new Date().toISOString().slice(0, 10);
 
@@ -65,7 +64,6 @@ export default async function NewPurchaseOrder({
       </div>
 
       <OrderForm
-        catalog={catalog}
         kind="purchase"
         action={createPurchaseOrder}
         saveDraft={saveInvoiceDraft}

@@ -6,14 +6,14 @@ import type { ActionResult, PickerItem } from "@/lib/actions";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
 import { priceLines, type VolumeBand } from "@/lib/discount";
-import { ItemChooser } from "./item-chooser";
-import type { VariantCatalog } from "./phone-picker";
+import { ItemPicker } from "./item-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { UnitToggle } from "./unit-toggle";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Smartphone, Copy, MoreVertical, ScanLine, ChevronRight } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Smartphone, Copy, MoreVertical, ChevronRight } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -118,7 +118,6 @@ function addDays(iso: string, days: number) {
 export function SalesVoucher({
   action, saveDraft, draft, customers, items: initialItems, locations, salesmen, cashAccounts, promotions,
   volumeDiscounts,
-  catalog,
   currencyScale = 4,
   currency = "",
   focReasons, openInvoices, nextInvoiceNo, today, categories, uoms,
@@ -130,8 +129,6 @@ export function SalesVoucher({
   retail = false,
   initialOrderId = null,
 }: {
-  /** For picking a line by category, brand and model. */
-  catalog?: VariantCatalog;
   /** Opened from a sales order ("Create invoice"): its customer and lines fill in. */
   initialOrderId?: string | null;
   /** Counter retail: the invoice hands the goods over, so there is no
@@ -496,12 +493,8 @@ export function SalesVoucher({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, locationId]);
 
-  // Scan an IMEI to add that exact phone: onto its product's line if there
-  // is one, otherwise a new line at the customer's price.
-  const [scan, setScan] = useState("");
+  // Why a scanned IMEI could not go on: sold, elsewhere, already here.
   const [scanMsg, setScanMsg] = useState<string | null>(null);
-  // Products a typed name or SKU matched, to pick from.
-  const [scanHits, setScanHits] = useState<{ id: string; label: string; sub: string }[]>([]);
   // A line whose product is being changed, and the lines whose IMEI list is open.
   const [changing, setChanging] = useState<number | null>(null);
   const [imeiOpen, setImeiOpen] = useState<number[]>([]);
@@ -510,43 +503,34 @@ export function SalesVoucher({
 
   // A product chosen from the search: its own row if it is already on the
   // voucher (one more of it), otherwise a new row at the customer's price.
-  function addProduct(itemId: string) {
-    setScanHits([]);
-    setScan("");
+  function addProduct(itemId: string, qty = 1) {
     setLines((ls) => {
       const it = items.find((i) => i.id === itemId);
       const at = ls.find((l) => l.itemId === itemId && !l.orderLineId && !l.sourceLineId);
-      if (at && !it?.tracks_serial) return ls.map((l) => (l === at ? { ...l, qty: String((Number(l.qty) || 0) + 1) } : l));
+      if (at && !it?.tracks_serial) return ls.map((l) => (l === at ? { ...l, qty: String((Number(l.qty) || 0) + qty) } : l));
       if (at) return ls;
       const p = priceFor(itemId);
       const blank = ls.find((l) => !l.itemId);
       const line: Line = {
         key: blank?.key ?? Math.max(0, ...ls.map((l) => l.key)) + 1, itemId,
-        qty: it?.tracks_serial ? "0" : "1",
+        qty: it?.tracks_serial ? "0" : String(qty),
         unitPrice: p > 0 ? String(p) : "", discountPct: "", focQty: "", focReasonId: "", source: "OWNED",
       };
       if (it?.tracks_serial) setImeiOpen((k) => [...k, line.key]);
       return blank ? ls.map((l) => (l === blank ? line : l)) : [...ls, line];
     });
   }
-  async function scanImei(term: string) {
-    const t = term.trim();
-    if (!t) return;
+  /** An IMEI scanned into the search: that phone goes on its line. False when
+   *  the term is not an IMEI, so the search treats it as a name or code. */
+  async function scanUnit(t: string): Promise<boolean> {
     setScanMsg(null);
     const r = await posSearchAction(locationId, t);
     const u = r.units[0];
-    if (!u) {
-      // Not an IMEI: a name, SKU or barcode. One exact match goes straight on.
-      const exact = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase());
-      if (exact.length === 1) return addProduct(exact[0].id);
-      const hits = r.items.filter((i) => items.some((x) => x.id === i.id)).slice(0, 8)
-        .map((i) => ({ id: i.id, label: i.model, sub: [i.variant, `${i.on_hand} available`].filter(Boolean).join(" · ") }));
-      if (hits.length === 0) return setScanMsg(`Nothing matches ${t}.`);
-      return setScanHits(hits);
-    }
-    if (u.status !== "IN_STOCK") return setScanMsg(`${u.imei} is ${u.status.toLowerCase().replace(/_/g, " ")}.`);
-    if (u.location_id !== locationId) return setScanMsg(`${u.imei} is at ${u.location_name}, not this location.`);
-    if (lines.some((l) => l.serials?.some((x) => x.serial === u.imei))) return setScanMsg(`${u.imei} is already on this voucher.`);
+    if (!u) return false;
+    const refuse = (m: string) => { setScanMsg(m); return true; };
+    if (u.status !== "IN_STOCK") return refuse(`${u.imei} is ${u.status.toLowerCase().replace(/_/g, " ")}.`);
+    if (u.location_id !== locationId) return refuse(`${u.imei} is at ${u.location_name}, not this location.`);
+    if (lines.some((l) => l.serials?.some((x) => x.serial === u.imei))) return refuse(`${u.imei} is already on this voucher.`);
     setLines((ls) => {
       const at = ls.find((l) => l.itemId === u.item_id && !l.orderLineId && !l.sourceLineId);
       if (at) {
@@ -562,8 +546,7 @@ export function SalesVoucher({
       };
       return blank ? ls.map((l) => (l === blank ? line : l)) : [...ls, line];
     });
-    setScan("");
-    setScanHits([]);
+    return true;
   }
 
   const addLine = () =>
@@ -1207,23 +1190,13 @@ export function SalesVoucher({
         {!toDeliver && !matchedDeliveryId && (
           // Not a <form>: it sits inside the voucher's own form, and a nested
           // form is dropped by the browser — Enter would post the voucher.
-          <div className="voucher-scan">
-            <span className="voucher-scan-icon" aria-hidden="true"><ScanLine size={18} /></span>
-            <input value={scan} onChange={(e) => { setScan(e.target.value); setScanHits([]); }} autoComplete="off"
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); scanImei(scan); } }}
-              placeholder="Scan IMEI or search by name / SKU…" aria-label="Scan IMEI or search products" />
-            <button type="button" onClick={() => scanImei(scan)}>Add</button>
-            {scanMsg && <span className="hint low" role="status">{scanMsg}</span>}
-            {scanHits.length > 0 && (
-              <div className="voucher-hits" role="listbox" aria-label="Matching products">
-                {scanHits.map((h) => (
-                  <button type="button" role="option" aria-selected={false} key={h.id} onClick={() => addProduct(h.id)}>
-                    <strong>{h.label}</strong><span>{h.sub}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <>
+            <AddItemsBar items={items} categories={categories}
+              onAdd={(picks: Pick[]) => picks.forEach((p) => addProduct(p.itemId, p.qty))}
+              onEnter={scanUnit} available={onHandHere} stockToggle
+              title="Add items from available stock" sub="Tick several, set how many, add them together" />
+            {scanMsg && <p className="hint low" role="status" style={{ padding: "0 16px" }}>{scanMsg}</p>}
+          </>
         )}
         <div className="tablewrap">
           <table className="linetable vlines">
@@ -1296,8 +1269,7 @@ export function SalesVoucher({
                         </span>
                       ) : picking ? (
                         <div className="vpick">
-                          <ItemChooser
-                            catalog={catalog}
+                          <ItemPicker
                             mode="sales"
                             items={items}
                             categories={categories}

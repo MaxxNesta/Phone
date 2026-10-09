@@ -9,7 +9,7 @@ import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
 import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode } from "./imei-panel";
-import { PhonePicker, type VariantCatalog } from "./phone-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ArrowLeft, ClipboardList, Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
@@ -91,11 +91,8 @@ export function ReceiptForm({
   fx,
   saveDraft,
   draft,
-  catalog,
   order,
 }: {
-  /** Brand, model and variant lists, so a phone is picked the way it is sold. */
-  catalog?: VariantCatalog;
   /** Receiving a purchase order: its lines arrive filled in, against it. */
   order?: OrderToReceive | null;
   /** Keeps a half-scanned receipt; nothing moves until it posts. */
@@ -284,6 +281,38 @@ export function ReceiptForm({
   const addLine = () =>
     setLines((ls) => [...ls,
       { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitCost: "", sourceLineId: null }]);
+
+  /**
+   * From the search or the catalogue. Against an order, an item comes back as
+   * its order line — still owed, at the order's cost, linked so the receipt
+   * answers it. Otherwise it is priced as picking it on a line would be.
+   */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const ol = order?.lines.find((x) => x.itemId === p.itemId);
+        const billed = matchedPi?.lines.find((pl) => pl.itemId === p.itemId);
+        const item = byId(p.itemId);
+        const cost = ol ? ol.unitCost : billed ? billed.unitPrice : item ? Number(item.next_cost) : 0;
+        const fill: Partial<Line> = {
+          itemId: p.itemId, qty: String(p.qty), unitCost: cost > 0 ? String(cost) : "",
+          sourceLineId: ol?.lineId ?? billed?.lineId ?? null, ...(ol ? { ordered: ol.qty } : {}),
+        };
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, ...fill } as Line : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill } as Line];
+      }
+      return next;
+    });
+  }
+  // Against an order, the search and catalogue offer the order's lines not
+  // already on this receipt — a line removed can be brought back, at what is owed.
+  const offered = order
+    ? items.filter((i) => order.lines.some((l) => l.itemId === i.id) && !lines.some((l) => l.itemId === i.id))
+    : items;
 
   const removeLine = (key: number) =>
     setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
@@ -606,6 +635,12 @@ export function ReceiptForm({
             Receiving without one leaves it open — use Add from PO if these goods answer it.
           </p>
         )}
+        <AddItemsBar items={offered} categories={categories} onAdd={addPicks}
+          available={order ? (id) => order.lines.filter((l) => l.itemId === id).reduce((t, l) => t + l.qty, 0) : undefined}
+          availLabel={order ? "Outstanding" : undefined}
+          empty={order ? "Every line of this order is already on the receipt." : undefined}
+          title={order ? `Outstanding items from ${order.docNo}` : "Add products to goods receipt"}
+          sub={order ? "Select the purchase order lines to add to this goods receipt" : "Search the full product catalogue"} />
 
         <div className="tablewrap">
           <table className="linetable grlines">
@@ -724,9 +759,6 @@ export function ReceiptForm({
                     {picking && (
                       <tr className="gr-pickrow">
                         <td colSpan={lineCols}>
-                          {/* Type a code, SKU or barcode — or walk category, brand,
-                              model, storage, colour. Both, always: a scanner and a
-                              clerk browsing the shelf are the same job. */}
                           <div className="gr-pick">
                             <ItemPicker
                               mode="purchase"
@@ -737,10 +769,6 @@ export function ReceiptForm({
                               onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
                               onCreated={addItem}
                             />
-                            {catalog && (
-                              <PhonePicker catalog={catalog} value={l.itemId}
-                                onPick={(id) => { pickItem(l.key, id); setChanging(null); }} />
-                            )}
                           </div>
                         </td>
                       </tr>
