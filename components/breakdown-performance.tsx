@@ -46,7 +46,7 @@ export function BreakdownPerformance({ rows, label, retail }: {
   const active = chosen[0];
 
   const data = rows.slice(0, 6).map((r) => ({
-    label: r.code || r.name,
+    label: r.name || r.code,
     value: active === "marginPct" ? (r.marginPct ?? 0) : (r[active] as number),
   }));
 

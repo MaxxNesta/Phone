@@ -129,7 +129,7 @@ export default async function SalesReports({
     : { label: `Lowest-margin ${by}`,
         value: lowest === null ? "—" : pct(lowest.marginPct),
         sub: lowest === null ? `no ${plural} earned anything`
-           : `${lowest.code} · ${lowest.name}` };
+           : lowest.name };
 
   const table: DataRow[] = rows.map((r) => ({
     key: r.key,
