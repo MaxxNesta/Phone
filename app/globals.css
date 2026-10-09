@@ -5503,3 +5503,4 @@ button.danger-solid:hover { opacity: 0.9; }
 .cfpanel-sum { gap: 12px; flex-wrap: nowrap; }
 .cfpanel-sum .page-sub { white-space: nowrap; }
 .cfpanel-sum strong { white-space: nowrap; }
+.cf-neg { color: var(--bad); }

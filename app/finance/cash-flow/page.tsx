@@ -144,21 +144,21 @@ export default async function CashFlow({
                               {r.category}<ChevronRight size={15} aria-hidden="true" />
                             </Link>
                           </td>
-                          <td className="r">{money(r.amount)}</td>
+                          <td className={`r${Number(r.amount) < 0 ? " cf-neg" : ""}`}>{money(r.amount)}</td>
                         </tr>
                       );
                     })}
                     <tr>
                       <td>Net {sec.label.toLowerCase()}</td>
-                      <td className="r" style={{ fontWeight: 600 }}>{money(total)}</td>
+                      <td className={`r${total < 0 ? " cf-neg" : ""}`} style={{ fontWeight: 600 }}>{money(total)}</td>
                     </tr>
                   </tbody>
                 );
               })}
               <tfoot>
-                <tr><td>Net change in cash</td><td className="r" style={{ fontWeight: 700 }}>{money(netChange)}</td></tr>
-                <tr><td>Cash at beginning of period</td><td className="r">{money(beginningCash)}</td></tr>
-                <tr><td>Cash at end of period</td><td className="r" style={{ fontWeight: 700 }}>{money(endingCash)}</td></tr>
+                <tr><td>Net change in cash</td><td className={`r${netChange < 0 ? " cf-neg" : ""}`} style={{ fontWeight: 700 }}>{money(netChange)}</td></tr>
+                <tr><td>Cash at beginning of period</td><td className={`r${Number(beginningCash) < 0 ? " cf-neg" : ""}`}>{money(beginningCash)}</td></tr>
+                <tr><td>Cash at end of period</td><td className={`r${Number(endingCash) < 0 ? " cf-neg" : ""}`} style={{ fontWeight: 700 }}>{money(endingCash)}</td></tr>
                 {/* The statement's own proof. Ending cash is read straight
                     from the ledger while the movements above are classified
                     from it, so the two are arrived at independently and
