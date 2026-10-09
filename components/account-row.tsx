@@ -11,11 +11,23 @@ export type CoaAccount = {
   account_type: string; parent_id: string | null;
   is_postable: boolean; is_control: boolean; is_active: boolean;
   currency: string | null; is_cash_account: boolean; is_bank_account: boolean;
+  cash_flow_class: string | null; indirect_role: string | null; cash_flow_confirmed: boolean;
   system_roles: string[]; rule_roles: string[];
   posting_count: number; child_count: number;
 };
 
 const TYPES = ["ASSET", "LIABILITY", "EQUITY", "REVENUE", "COGS", "EXPENSE"];
+
+/** Where the account sits in a cash flow statement (migration 0128). */
+const CASH_FLOW_CLASSES: [string, string][] = [
+  ["OPERATING", "Operating"], ["INVESTING", "Investing"], ["FINANCING", "Financing"], ["CASH", "Cash & bank (reconciled to)"],
+];
+const INDIRECT_ROLES: [string, string][] = [
+  ["", "— none (part of net profit) —"], ["WORKING_CAPITAL", "Working capital"], ["NON_CASH", "Non-cash add-back (depreciation)"],
+  ["FIXED_ASSET", "Fixed asset purchases / disposals"], ["BORROWING", "Borrowings / repayments"],
+  ["CAPITAL", "Capital contributions"], ["DISTRIBUTION", "Drawings / dividends"], ["INCOME_TAX", "Income tax payable"],
+  ["RETAINED_EARNINGS", "Retained earnings"], ["OPENING_BALANCE", "Opening balance equity"], ["OTHER", "Other"],
+];
 
 const moneyKind = (a: CoaAccount) =>
   a.is_bank_account ? "bank" : a.is_cash_account ? "cash" : "";
@@ -134,6 +146,24 @@ export function AccountRow({
               </div>
             </div>
 
+            {account.is_postable && (
+              <div className="row">
+                <div className="field">
+                  <label>Cash flow</label>
+                  <select name="cash_flow_class" defaultValue={account.cash_flow_class ?? "OPERATING"}>
+                    {CASH_FLOW_CLASSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Indirect method role</label>
+                  <select name="indirect_role" defaultValue={account.indirect_role ?? ""}>
+                    {INDIRECT_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                  {!account.cash_flow_confirmed && <span className="hint">Suggested from the chart. Saving confirms it.</span>}
+                </div>
+              </div>
+            )}
+
             <label className="check" style={{ marginTop: "0.4rem" }}>
               <input name="is_active" type="checkbox" defaultChecked={account.is_active} />
               Active
@@ -177,6 +207,9 @@ export function AccountRow({
         {!account.is_bank_account && account.is_cash_account && <> <span className="pill ok">cash</span></>}
         {account.currency && <> <span className="pill">{account.currency}</span></>}
         {!account.is_active && <> <span className="pill overdue">inactive</span></>}
+        {account.is_postable && !account.cash_flow_confirmed && (
+          <> <span className="pill warn" title={`Suggested: ${account.cash_flow_class ?? "?"}${account.indirect_role ? " · " + account.indirect_role.toLowerCase().replace(/_/g, " ") : ""}. Edit and save to confirm.`}>cash flow: review</span></>
+        )}
         {locked && <> <span className="pill" title={`Used by the posting engine for ${lockedBy}`}>in use by posting</span></>}
       </td>
       <td>

@@ -12,7 +12,14 @@ import {
  * as the screen, so the two cannot arrive at different figures.
  */
 
-export type Params = { from?: string; to?: string; branch?: string };
+export type Params = {
+  from?: string; to?: string; branch?: string;
+  /** The side panel: which line is open, its tab, search, page and the
+   *  document being traced. */
+  line?: string; tab?: string; q?: string; lp?: string; doc?: string;
+  /** "indirect" for the indirect method; the direct method otherwise. */
+  method?: string;
+};
 
 function defaultFrom() {
   return `${new Date().getFullYear()}-01-01`;

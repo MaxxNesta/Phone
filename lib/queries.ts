@@ -2142,6 +2142,7 @@ export async function getChartOfAccounts(companyId: string) {
     select a.id, a.code, a.name, a.name_my, a.account_type, a.parent_id,
            a.is_postable, a.is_control, a.is_active, a.currency,
            a.is_cash_account, a.is_bank_account,
+           a.cash_flow_class, a.indirect_role, a.cash_flow_confirmed,
            coalesce(sa.roles, array[]::text[])  as system_roles,
            coalesce(ad.roles, array[]::text[])  as rule_roles,
            coalesce(jl.n, 0)::int               as posting_count,
@@ -3980,7 +3981,7 @@ function liveEntriesOnly(showVoided?: boolean) {
  * location straight to a branch id matches nothing and reads as "this branch
  * has no activity", which is worse than an error.
  */
-function branchFilterOn(alias: ReturnType<typeof sql>, branchId?: string | null) {
+export function branchFilterOn(alias: ReturnType<typeof sql>, branchId?: string | null) {
   if (!branchId) return sql``;
   // Entries posted before the branch dimension was stamped carry no location
   // and belong to no branch. They still count in the consolidated company
@@ -4479,71 +4480,80 @@ export async function getBalanceSheet(companyId: string, asOf: string, branchId?
 }
 
 /**
- * Direct-method cash flow: every cash/bank-touching journal line, attributed
- * to a category by the OTHER side of its entry rather than the cash side
- * itself — decomposing per contra line handles multi-line vouchers
- * correctly, and excluding cash-to-cash contra lines drops internal
- * transfers, which are not a real inflow or outflow.
+ * Every classified piece of cash movement in a period: one row per cash line
+ * per contra line of its entry, with the category and section it counts
+ * under and its share of the cash. The statement sums these; the drill-down
+ * lists them. One definition, so a line on the statement and the
+ * transactions shown behind it cannot disagree.
+ *
+ * Each cash movement counted once. Joining every cash line to every contra
+ * line and summing the contra repeated the entry once per cash line: Dr Cash
+ * 60,000 + Dr Bank 40,000 / Cr Capital 100,000 reported 200,000 of financing
+ * inflow against 100,000 of actual cash. So the amount is the cash line's own
+ * movement, apportioned across the entry's contra lines in proportion to
+ * them. The parts always add back to the cash line.
+ *
+ * Attributed by the OTHER side of the entry rather than the cash side, and
+ * cash-to-cash contra lines excluded, so internal transfers are not counted.
  */
+function cashFlowPieces(companyId: string, from: string, to: string, branchId?: string | null) {
+  return sql`
+    with cash_line as (
+      select jl.id, jl.journal_entry_id, jl.base_amount, jl.location_id, jl.account_id
+        from journal_line jl
+        join account a on a.id = jl.account_id
+       where jl.company_id = ${companyId}
+         and (a.is_cash_account or a.is_bank_account)
+    ),
+    contra as (
+      select jl.journal_entry_id, jl.base_amount, a.account_type
+        from journal_line jl
+        join account a on a.id = jl.account_id
+       where jl.company_id = ${companyId}
+         and not (a.is_cash_account or a.is_bank_account)
+    ),
+    contra_total as (
+      select journal_entry_id, sum(base_amount) as total
+        from contra group by journal_entry_id
+    )
+    select
+      c.journal_entry_id, c.account_id as cash_account_id,
+      je.entry_no, je.entry_date, je.source_type, je.source_id,
+      case
+        when je.source_type in ('CUSTOMER_RECEIPT', 'SALES_INVOICE') then 'Received from customers'
+        when je.source_type = 'SUPPLIER_PAYMENT' then 'Paid to suppliers'
+        when k.account_type = 'REVENUE' then 'Received from customers'
+        when k.account_type = 'COGS' then 'Paid to suppliers'
+        when k.account_type = 'EXPENSE' then 'Operating expenses paid'
+        when k.account_type = 'EQUITY' then 'Owner contributions / drawings'
+        when k.account_type = 'LIABILITY' then 'Loans and other liabilities'
+        when k.account_type = 'ASSET' then 'Purchase / sale of fixed assets'
+        else 'Other'
+      end as category,
+      case
+        when je.source_type in ('CUSTOMER_RECEIPT', 'SALES_INVOICE', 'SUPPLIER_PAYMENT')
+          or k.account_type in ('REVENUE', 'COGS', 'EXPENSE') then 'operating'
+        when k.account_type = 'ASSET' then 'investing'
+        when k.account_type in ('EQUITY', 'LIABILITY') then 'financing'
+        else 'operating'
+      end as section,
+      c.base_amount * k.base_amount / nullif(ct.total, 0) as amount
+      from cash_line c
+      join journal_entry je on je.id = c.journal_entry_id
+      join contra k on k.journal_entry_id = c.journal_entry_id
+      join contra_total ct on ct.journal_entry_id = c.journal_entry_id
+     where je.entry_date between ${from}::date and ${to}::date
+       ${branchFilterOn(sql`c`, branchId)}`;
+}
+
+/** Direct-method cash flow: the classified pieces, summed by category. */
 export async function getCashFlowStatement(
   companyId: string, from: string, to: string, branchId?: string | null
 ) {
   const [rows, beginning, ending] = await Promise.all([
-    // Each cash movement counted once. Joining every cash line to every
-    // contra line and summing the contra repeated the entry once per cash
-    // line: Dr Cash 60,000 + Dr Bank 40,000 / Cr Capital 100,000 reported
-    // 200,000 of financing inflow against 100,000 of actual cash.
-    //
-    // So the amount is the cash line's own movement — which is the cash that
-    // truly moved — apportioned across the entry's contra lines in
-    // proportion to them. One cash line against one contra keeps its whole
-    // value; a payment split across an expense and an asset splits in the
-    // same ratio. The parts always add back to the cash line.
     sql`
-      with cash_line as (
-        select jl.id, jl.journal_entry_id, jl.base_amount, jl.location_id
-          from journal_line jl
-          join account a on a.id = jl.account_id
-         where jl.company_id = ${companyId}
-           and (a.is_cash_account or a.is_bank_account)
-      ),
-      contra as (
-        select jl.journal_entry_id, jl.base_amount, a.account_type
-          from journal_line jl
-          join account a on a.id = jl.account_id
-         where jl.company_id = ${companyId}
-           and not (a.is_cash_account or a.is_bank_account)
-      ),
-      contra_total as (
-        select journal_entry_id, sum(base_amount) as total
-          from contra group by journal_entry_id
-      )
-      select
-        case
-          when je.source_type in ('CUSTOMER_RECEIPT', 'SALES_INVOICE') then 'Received from customers'
-          when je.source_type = 'SUPPLIER_PAYMENT' then 'Paid to suppliers'
-          when k.account_type = 'REVENUE' then 'Received from customers'
-          when k.account_type = 'COGS' then 'Paid to suppliers'
-          when k.account_type = 'EXPENSE' then 'Operating expenses paid'
-          when k.account_type = 'EQUITY' then 'Owner contributions / drawings'
-          when k.account_type = 'LIABILITY' then 'Loans and other liabilities'
-          when k.account_type = 'ASSET' then 'Purchase / sale of fixed assets'
-          else 'Other'
-        end as category,
-        case
-          when je.source_type in ('CUSTOMER_RECEIPT', 'SALES_INVOICE', 'SUPPLIER_PAYMENT')
-            or k.account_type in ('REVENUE', 'COGS', 'EXPENSE') then 'operating'
-          when k.account_type = 'ASSET' then 'investing'
-          when k.account_type in ('EQUITY', 'LIABILITY') then 'financing'
-          else 'operating'
-        end as section,
-        sum(c.base_amount * k.base_amount / nullif(ct.total, 0)) as amount
-        from cash_line c
-        join journal_entry je on je.id = c.journal_entry_id
-        join contra k on k.journal_entry_id = c.journal_entry_id
-        join contra_total ct on ct.journal_entry_id = c.journal_entry_id
-       where je.entry_date between ${from}::date and ${to}::date
-         ${branchFilterOn(sql`c`, branchId)}
+      select category, section, sum(amount) as amount
+        from (${cashFlowPieces(companyId, from, to, branchId)}) p
        group by category, section
        order by section, category`,
     sql`
@@ -4571,6 +4581,44 @@ export async function getCashFlowStatement(
     beginningCash: Number(beginning[0]?.balance ?? 0),
     endingCash: Number(ending[0]?.balance ?? 0),
   };
+}
+
+export type CashFlowTransaction = {
+  entryId: string; entryNo: string | null; date: string;
+  documentId: string | null; docNo: string | null; docType: string | null;
+  partner: string | null; method: string; amount: number;
+};
+
+/**
+ * What one line of the cash flow statement is made of: the same pieces the
+ * statement summed for that category, one row per entry and cash account,
+ * with the document, the customer or supplier, and where the money went.
+ */
+export async function getCashFlowTransactions(
+  companyId: string, from: string, to: string, branchId: string | null, category: string,
+): Promise<CashFlowTransaction[]> {
+  const rows = await sql`
+    select p.journal_entry_id::text as entry_id, p.entry_no, p.entry_date::text as date,
+           d.id::text as document_id, d.doc_no, d.doc_type,
+           coalesce(bp.name, (select bp2.name from journal_line jl
+                                join business_partner bp2 on bp2.id = jl.partner_id
+                               where jl.journal_entry_id = p.journal_entry_id and jl.partner_id is not null
+                               limit 1)) as partner,
+           acc.name as method, sum(p.amount)::float as amount
+      from (${cashFlowPieces(companyId, from, to, branchId)}) p
+      join account acc on acc.id = p.cash_account_id
+      left join document d on d.id = p.source_id
+      left join business_partner bp on bp.id = d.partner_id
+     where p.category = ${category}
+     group by p.journal_entry_id, p.entry_no, p.entry_date, d.id, d.doc_no, d.doc_type, bp.name, acc.name
+    having abs(sum(p.amount)) > 0.004
+     order by p.entry_date desc, p.entry_no desc`;
+  return rows.map((r) => ({
+    entryId: r.entry_id as string, entryNo: r.entry_no as string | null, date: r.date as string,
+    documentId: r.document_id as string | null, docNo: r.doc_no as string | null,
+    docType: r.doc_type as string | null, partner: r.partner as string | null,
+    method: r.method as string, amount: Number(r.amount),
+  }));
 }
 
 // ------------------------------------------------------------ delivery trips --

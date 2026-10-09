@@ -6219,8 +6219,23 @@ export async function updateAccount(_prev: unknown, fd: FormData): Promise<Actio
     }
 
     const money = moneyFlags(str(fd, "money_kind"));
+    // Cash flow classification, when the form carried it (postable accounts):
+    // saving it is the person confirming the suggestion.
+    const cfClass = str(fd, "cash_flow_class");
+    const cfRole = str(fd, "indirect_role") || null;
+    if (cfClass && !["OPERATING", "INVESTING", "FINANCING", "CASH"].includes(cfClass)) {
+      return { error: "Choose where the account sits in the cash flow" };
+    }
+    if (cfRole && !["WORKING_CAPITAL", "NON_CASH", "FIXED_ASSET", "BORROWING", "CAPITAL", "DISTRIBUTION",
+                    "INCOME_TAX", "RETAINED_EARNINGS", "OPENING_BALANCE", "OTHER"].includes(cfRole)) {
+      return { error: "Choose the account's indirect method role" };
+    }
 
     await sql.begin(async (tx) => {
+      if (cfClass) {
+        await tx`update account set cash_flow_class = ${cfClass}, indirect_role = ${cfRole}, cash_flow_confirmed = true
+                  where id = ${id} and company_id = ${co}`;
+      }
       await tx`
         update account set
           code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
@@ -7563,4 +7578,14 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Accept every suggested cash flow classification as it stands. */
+export async function confirmCashFlowSuggestions(): Promise<void> {
+  await requirePermission("accounting.post");
+  const co = await companyId();
+  await sql`update account set cash_flow_confirmed = true
+             where company_id = ${co} and is_postable and not cash_flow_confirmed`;
+  revalidatePath("/settings/accounts");
+  revalidatePath("/finance/cash-flow");
 }

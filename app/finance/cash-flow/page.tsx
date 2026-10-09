@@ -1,22 +1,35 @@
 import Link from "next/link";
-import { Printer } from "lucide-react";
+import { Printer, ChevronRight } from "lucide-react";
 import { money } from "@/lib/db";
 import { AutoApply } from "@/components/auto-apply";
 import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { HelpHint } from "@/components/help-hint";
 import { getCashFlowData, SECTIONS, type Params } from "./data";
+import { CashFlowPanel } from "./panel";
+import { IndirectStatementView, IndirectPanel } from "./indirect";
+import { getIndirectCashFlow } from "@/lib/indirect-cash-flow";
 
 export default async function CashFlow({
   searchParams,
 }: {
   searchParams: Promise<Params>;
 }) {
-  const data = await getCashFlowData(await searchParams);
+  const sp = await searchParams;
+  const data = await getCashFlowData(sp);
   if (!data) return <div className="empty">No company found.</div>;
   const {
     company, branches, unassignedLines, branchId, range, typed,
     beginningCash, endingCash, netChange, difference, unreconciled,
   } = data;
+  const indirect = sp.method === "indirect";
+  const ind = indirect ? await getIndirectCashFlow(company.id, range.from, range.to, branchId) : null;
+  // The switch keeps the period and branch, and drops the open drawer: a
+  // direct line and an indirect line are different questions.
+  const methodHref = (m: string | null) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries({ from: range.from, to: range.to, branch: branchId ?? "", method: m ?? "" })) if (v) q.set(k, v);
+    return `/finance/cash-flow${q.toString() ? `?${q}` : ""}`;
+  };
 
   return (
     <>
@@ -29,7 +42,18 @@ export default async function CashFlow({
         </HelpHint>
       </div>
 
+      <div className="scopetabs" style={{ margin: "0 0 0.75rem" }} role="tablist" aria-label="Method">
+        <Link scroll={false} className="scopetab" data-active={!indirect} href={methodHref(null)}>Direct Method</Link>
+        <Link scroll={false} className="scopetab" data-active={indirect} href={methodHref("indirect")}>Indirect Method</Link>
+      </div>
+      <p className="page-sub" style={{ margin: "-0.25rem 0 0.75rem" }}>
+        {indirect
+          ? "Starts from net profit and adjusts for non-cash items and working capital to arrive at the change in cash."
+          : "Actual cash and bank movements, by what they were for."}
+      </p>
+
       <form className="row" style={{ marginBottom: "1rem", alignItems: "flex-end" }}>
+        {indirect && <input type="hidden" name="method" value="indirect" />}
         <div className="field">
           <label htmlFor="from">From</label>
           <input id="from" name="from" type="date" defaultValue={range.from} />
@@ -70,6 +94,14 @@ export default async function CashFlow({
         </p>
       )}
 
+      {ind && ind.toReview > 0 && (
+        <p className="hint" style={{ margin: "0 0 1rem" }}>
+          {ind.toReview} account{ind.toReview === 1 ? "'s" : "s'"} cash flow classification is still a suggestion.{" "}
+          <Link href="/settings/accounts">Review in the chart of accounts</Link>.
+        </p>
+      )}
+
+      <div className={sp.line ? "cf-split" : undefined}>
       <section>
         <div className="card">
           <div className="card-head">
@@ -89,6 +121,7 @@ export default async function CashFlow({
               <Printer size={15} aria-hidden="true" /> Print
             </Link>
           </div>
+          {ind ? <IndirectStatementView st={ind} sp={sp as Record<string, string | undefined>} range={range} /> : (
           <div className="tablewrap">
             <table>
               {SECTIONS.map((sec) => {
@@ -98,12 +131,23 @@ export default async function CashFlow({
                 return (
                   <tbody key={sec.key}>
                     <tr><td colSpan={2} style={{ background: "var(--line-soft)" }}><span className="eyebrow">{sec.label}</span></td></tr>
-                    {items.map((r) => (
-                      <tr key={r.category}>
-                        <td className="wrap">{r.category}</td>
-                        <td className="r">{money(r.amount)}</td>
-                      </tr>
-                    ))}
+                    {items.map((r) => {
+                      // Each line opens what it is made of, beside the statement.
+                      const open = sp.line === r.category;
+                      const q = new URLSearchParams();
+                      for (const [k, v] of Object.entries({ from: range.from, to: range.to, branch: branchId ?? "" })) if (v) q.set(k, v);
+                      if (!open) q.set("line", r.category);
+                      return (
+                        <tr key={r.category} className="cf-row" data-active={open || undefined}>
+                          <td className="wrap">
+                            <Link href={`/finance/cash-flow?${q.toString()}`} scroll={false} className="cf-line">
+                              {r.category}<ChevronRight size={15} aria-hidden="true" />
+                            </Link>
+                          </td>
+                          <td className="r">{money(r.amount)}</td>
+                        </tr>
+                      );
+                    })}
                     <tr>
                       <td>Net {sec.label.toLowerCase()}</td>
                       <td className="r" style={{ fontWeight: 600 }}>{money(total)}</td>
@@ -131,8 +175,17 @@ export default async function CashFlow({
               </tfoot>
             </table>
           </div>
+          )}
         </div>
       </section>
+      {sp.line && indirect && (
+        <IndirectPanel companyId={company.id} range={range} branchId={branchId} sp={sp as Record<string, string | undefined>} />
+      )}
+      {sp.line && !indirect && (
+        <CashFlowPanel companyId={company.id} range={range} branchId={branchId} sp={sp as Record<string, string | undefined>}
+          lineTotal={typed.filter((r) => r.category === sp.line).reduce((s, r) => s + Number(r.amount), 0)} />
+      )}
+      </div>
     </>
   );
 }

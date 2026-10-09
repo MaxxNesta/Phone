@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { sql } from "@/lib/db";
 import { getCompany, getChartOfAccounts } from "@/lib/queries";
-import { createAccount, updateAccount, deactivateAccount, activateAccount, deleteAccount } from "@/lib/actions";
+import { createAccount, updateAccount, deactivateAccount, activateAccount, deleteAccount, confirmCashFlowSuggestions } from "@/lib/actions";
 import { AddAccountForm } from "@/components/account-form";
 import { AccountRow, type CoaAccount } from "@/components/account-row";
 import { HelpHint } from "@/components/help-hint";
@@ -105,6 +105,20 @@ export default async function ChartOfAccounts({
         <p className="page-sub">The accounts every sale, purchase and payment posts to.</p>
       </div>
 
+      {(() => {
+        // The cash flow statement reads these; suggestions are flagged until
+        // someone says they are right.
+        const review = accounts.filter((a) => a.is_postable && !a.cash_flow_confirmed).length;
+        return review > 0 ? (
+          <form action={confirmCashFlowSuggestions} className="hintbar caution" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "var(--s3)" }}>
+            <span style={{ flex: 1 }}>
+              <strong>{review} account{review === 1 ? "" : "s"}</strong> carry a suggested cash flow classification
+              (marked <em>cash flow: review</em>). Edit any that are wrong, or accept them all.
+            </span>
+            <button type="submit" className="btn ghost">Confirm all suggestions</button>
+          </form>
+        ) : null;
+      })()}
       <AddAccountForm action={createAccount} accounts={accounts} currencies={currencies} />
 
       <div className="flow">
