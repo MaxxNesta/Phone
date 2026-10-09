@@ -5570,10 +5570,10 @@ button.danger-solid:hover { opacity: 0.9; }
    band. The cell is the box — a quantity or price is typed straight into it
    like a sheet, with no second box drawn inside. ---- */
 .linetable { border-collapse: collapse; }
-.linetable th, .linetable td { border: 1px solid #C7C7CC; }
+.linetable th, .linetable td { border: 1px solid color-mix(in srgb, var(--line) 82%, var(--ink)); }
 .linetable tr > :first-child { border-left: 0; }
 .linetable tr > :last-child { border-right: 0; }
-.linetable thead th { background: #F2F2F4; font-size: var(--t-xs); border-bottom-width: 1.5px;
+.linetable thead th { background: var(--line-soft); font-size: var(--t-xs); border-bottom-width: 1.5px;
   font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); padding: 8px 10px; }
 .linetable tbody tr:hover > td { background: color-mix(in srgb, var(--line-soft) 35%, transparent); }
 .linetable td input:not([type="checkbox"]):not([type="radio"]), .linetable td select {
