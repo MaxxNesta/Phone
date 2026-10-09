@@ -1473,17 +1473,20 @@ export function SalesVoucher({
                           </span>
                         ) : (
                           <>
-                            <button type="button" className={`vimei-sum${imeiDone ? " ok" : ""}`}
-                              aria-expanded={imeiOpen.includes(l.key) || !imeiDone} onClick={() => toggleImei(l.key)}>
-                              <ChevronRight size={14} className={imeiOpen.includes(l.key) || !imeiDone ? "open" : ""} aria-hidden="true" />
-                              {imeiDone && <Check size={14} aria-hidden="true" />}
-                              {serials.length}/{q} phones selected
-                              <span className="vsep">|</span>
-                              <span className="linkish">Manage IMEIs</span>
-                            </button>
+                            {/* Once every phone is named the panel folds to one line;
+                                until then it is open, and is its own summary. */}
+                            {imeiDone && (
+                              <button type="button" className="vimei-sum ok"
+                                aria-expanded={imeiOpen.includes(l.key)} onClick={() => toggleImei(l.key)}>
+                                <Check size={14} aria-hidden="true" />
+                                {imeiOpen.includes(l.key)
+                                  ? <span className="linkish">Hide IMEIs</span>
+                                  : <>{serials.length}/{q} phones <span className="linkish">Edit</span></>}
+                              </button>
+                            )}
                             {(imeiOpen.includes(l.key) || !imeiDone) && (
                               <SerialEntry
-                                label={`${item?.model ?? item?.name ?? ""} — IMEI of each phone`}
+                                label="IMEIs"
                                 qty={q}
                                 value={serials}
                                 suggestions={shelf[`${l.itemId}@${locationId}`]}

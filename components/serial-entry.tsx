@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FileUp, ScanLine, X } from "lucide-react";
 
 export type ScannedSerial = { serial: string; imei2?: string | null };
 
@@ -55,51 +56,59 @@ export function SerialEntry({ qty, value, onChange, withImei2 = false, label, su
   const short = qty > 0 && value.length !== qty;
   const offered = (suggestions ?? []).filter((s) => !value.some((v) => v.serial === s));
 
+  const n = value.length;
   return (
     <div className="serialentry">
       <div className="serialentry-head">
-        <span>{label}</span>
-        <span className={short ? "low" : "ok-qty"} aria-live="polite">
-          {value.length} of {qty || 0} scanned
+        <strong>{label}</strong>
+        <span className={`pill ${qty > 0 && !short ? "ok" : "warn"}`} aria-live="polite">
+          {qty > 0 ? `${n} of ${qty}` : `${n} scanned`}
         </span>
-        <label className="linkish serialentry-csv">
-          Import CSV
+        <label className="btn ghost tiny serialentry-csv">
+          <FileUp size={14} aria-hidden="true" /> Import CSV
           <input type="file" accept=".csv,.txt,text/csv,text/plain" hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
         </label>
       </div>
-      <textarea
-        rows={1}
-        value={draft}
-        aria-label={`${label}: scan or type, Enter after each`}
-        placeholder={withImei2 ? "Scan IMEI (and IMEI 2), Enter after each — or paste a list" : "Scan IMEI, Enter after each — or paste a list"}
-        onChange={(e) => {
-          // A paste of several lines arrives at once.
-          if (e.target.value.includes("\n")) add(e.target.value);
-          else setDraft(e.target.value);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); if (draft.trim()) add(draft); }
-        }}
-        onBlur={() => { if (draft.trim()) add(draft); }}
-      />
-      {value.length > 0 && (
+      <div className="serialentry-input">
+        <ScanLine size={16} aria-hidden="true" />
+        <textarea
+          rows={1}
+          value={draft}
+          aria-label={`${label}: scan or type, Enter after each`}
+          placeholder={withImei2 ? "Scan or type an IMEI (and IMEI 2)" : "Scan or type an IMEI"}
+          onChange={(e) => {
+            // A paste of several lines arrives at once.
+            if (e.target.value.includes("\n")) add(e.target.value);
+            else setDraft(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); if (draft.trim()) add(draft); }
+          }}
+          onBlur={() => { if (draft.trim()) add(draft); }}
+        />
+      </div>
+      <p className="serialentry-hint">Press Enter after each, or paste a list.</p>
+      {n > 0 && (
         <ul className="serialentry-list">
           {value.map((s) => (
             <li key={s.serial}>
               <span className="m">{s.serial}{s.imei2 ? ` / ${s.imei2}` : ""}</span>
-              <button type="button" className="linkish" onClick={() => remove(s.serial)}
-                aria-label={`Remove ${s.serial}`}>×</button>
+              <button type="button" onClick={() => remove(s.serial)} aria-label={`Remove ${s.serial}`}>
+                <X size={13} aria-hidden="true" />
+              </button>
             </li>
           ))}
         </ul>
       )}
       {offered.length > 0 && (
         <div className="serialentry-offer">
-          <span className="hint">Tap to add:</span>
-          {offered.slice(0, 40).map((s) => (
-            <button type="button" key={s} className="chip" onClick={() => add(s)}>{s}</button>
-          ))}
+          <span className="serialentry-hint">On this shelf — tap to add</span>
+          <div>
+            {offered.slice(0, 40).map((s) => (
+              <button type="button" key={s} className="chip" onClick={() => add(s)}>{s}</button>
+            ))}
+          </div>
         </div>
       )}
     </div>
