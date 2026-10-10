@@ -7949,3 +7949,57 @@ export async function getSalesPivotFacts(
      limit ${PIVOT_CAP + 1}`;
   return rows as unknown as SalesFact[];
 }
+
+export type PriceRow = {
+  doc_id: string; doc_no: string; date: string; item_id: string; item: string; code: string;
+  partner: string; location: string; uom: string; qty: number;
+  currency: string; rate: number;
+  /** Net of every discount, before tax, per entered unit — in the document's currency and in kyat. */
+  unit_fc: number; unit_base: number;
+};
+export type PriceSide = "purchase" | "receipt" | "sale";
+
+/**
+ * What each unit actually went for, line by line: bought on a supplier's bill
+ * (or received on a goods receipt), or sold on an invoice. Lines are stored in
+ * kyat; the document keeps the currency and rate it was entered at, so the
+ * foreign price is the stored one divided back by that rate.
+ */
+export async function getPriceHistory(companyId: string, side: PriceSide, f: {
+  q?: string; itemId?: string; partnerId?: string; from: string; to: string;
+  currency?: string; locationId?: string;
+}): Promise<PriceRow[]> {
+  const docType = side === "sale" ? "SALES_INVOICE" : side === "receipt" ? "GOODS_RECEIPT" : "PURCHASE_INVOICE";
+  const like = f.q ? `%${f.q.trim()}%` : null;
+  const rows = await sql`
+    select d.id as doc_id, d.doc_no, d.posting_date::text as date,
+           i.id as item_id, i.name as item, i.code,
+           coalesce(p.name, 'Walk-in') as partner, coalesce(l.name, '—') as location,
+           coalesce(u.code, bu.code) as uom, coalesce(dl.entered_qty, dl.base_qty)::float as qty,
+           d.currency, coalesce(d.exchange_rate, 1)::float as rate,
+           (dl.net_amount / nullif(coalesce(dl.entered_qty, dl.base_qty), 0))::float as unit_base
+      from document_line dl
+      join document d on d.id = dl.document_id
+      join item i on i.id = dl.item_id
+      join uom bu on bu.id = i.base_uom_id
+      left join uom u on u.id = dl.entered_uom_id
+      left join business_partner p on p.id = d.partner_id
+      left join location l on l.id = coalesce(dl.location_id, d.location_id)
+     where d.company_id = ${companyId}
+       and d.doc_type = ${docType}
+       and d.status = 'POSTED'
+       and dl.foc_reason_id is null
+       and coalesce(dl.entered_qty, dl.base_qty) > 0
+       and d.posting_date between ${f.from}::date and ${f.to}::date
+       and (${like}::text is null or i.name ilike ${like} or i.code ilike ${like} or i.barcode = ${f.q ?? null})
+       and (${f.itemId ?? null}::uuid is null or i.id = ${f.itemId ?? null})
+       and (${f.partnerId ?? null}::uuid is null or d.partner_id = ${f.partnerId ?? null})
+       and (${f.currency ?? null}::text is null or d.currency = ${f.currency ?? null})
+       and (${f.locationId ?? null}::uuid is null or coalesce(dl.location_id, d.location_id) = ${f.locationId ?? null})
+     order by d.posting_date desc, d.doc_no desc
+     limit 5000`;
+  return (rows as unknown as Omit<PriceRow, "unit_fc">[]).map((r) => ({
+    ...r, unit_base: Number(r.unit_base) || 0,
+    unit_fc: r.rate > 0 ? (Number(r.unit_base) || 0) / r.rate : Number(r.unit_base) || 0,
+  }));
+}

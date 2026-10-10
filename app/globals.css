@@ -5675,3 +5675,21 @@ button.danger-solid:hover { opacity: 0.9; }
 .pv-help > div > svg { color: var(--ink-soft); flex: none; margin-top: 2px; }
 .pv-help strong { display: block; color: var(--ink); margin-bottom: 2px; }
 @media (max-width: 760px) { .pv-help { grid-template-columns: 1fr; } }
+
+/* Price history: the filter card, a quiet note, and a table where the kyat
+   figure is the one to read. */
+.ph-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; align-items: end; padding: 14px 16px; }
+.ph-filters .ph-q { grid-column: 1 / -1; }
+.ph-filters .actions { display: flex; gap: 8px; }
+.ph-note { display: flex; align-items: center; gap: 8px; margin: 12px 0; padding: 10px 14px; border-radius: 10px;
+  background: color-mix(in srgb, var(--info) 8%, transparent); color: var(--ink-soft); font-size: var(--t-sm); }
+.ph-note svg { color: var(--info); flex: none; }
+.ph-table { width: 100%; border-collapse: collapse; font-size: var(--t-md); font-variant-numeric: tabular-nums; }
+.ph-table th, .ph-table td { padding: 10px 14px; border-bottom: 1px solid var(--line-soft); text-align: left; }
+.ph-table thead th { font-size: var(--t-sm); font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+.ph-table .r { text-align: right; }
+.ph-prod { font-weight: 500; }
+.ph-sku { font-size: var(--t-xs); color: var(--muted); }
+.ph-cur { font-weight: 700; font-size: var(--t-sm); }
+.ph-base { font-weight: 600; }
+.ph-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; flex-wrap: wrap; }
