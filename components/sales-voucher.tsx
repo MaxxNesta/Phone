@@ -284,7 +284,12 @@ export function SalesVoucher({
   // POS charges too; otherwise the first level, as before.
   const defaultLevelId = (retail ? priceLevels.find((l) => l.code === "RETAIL") : undefined)?.id
     ?? priceLevels[0]?.id ?? null;
-  const activeLevelId = customer?.price_level_id ?? defaultLevelId;
+  // The customer's level unless this one invoice says otherwise. The override
+  // is for the occasion — a retail customer buying at wholesale today — and
+  // goes back to the customer's own level when the customer changes.
+  const [levelOverride, setLevelOverride] = useState<string | null>(null);
+  const customerLevelId = customer?.price_level_id ?? defaultLevelId;
+  const activeLevelId = levelOverride ?? customerLevelId;
   const activeLevel = priceLevels.find((l) => l.id === activeLevelId);
 
   /**
@@ -319,6 +324,7 @@ export function SalesVoucher({
     const c = customers.find((x) => x.id === id);
     if (!c) return;
 
+    setLevelOverride(null);
     setDueDate(c.payment_terms_days > 0 ? addDays(docDate, c.payment_terms_days) : "");
     setPaymentType(c.payment_terms_days > 0 ? "CREDIT" : "CASH");
 
@@ -331,6 +337,20 @@ export function SalesVoucher({
         const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId) || !l.unitPrice;
         if (!wasSuggested) return l;
         const at = itemPrices.find((p) => p.item_id === l.itemId && p.price_level_id === level);
+        return { ...l, unitPrice: at ? String(Number(at.price)) : l.unitPrice };
+      })
+    );
+  }
+
+  /** This invoice at another level: suggested prices follow it, typed ones stay. */
+  function chooseLevel(id: string) {
+    setLevelOverride(id === customerLevelId ? null : id);
+    setLines((ls) =>
+      ls.map((l) => {
+        if (!l.itemId) return l;
+        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId) || !l.unitPrice;
+        if (!wasSuggested) return l;
+        const at = itemPrices.find((p) => p.item_id === l.itemId && p.price_level_id === id);
         return { ...l, unitPrice: at ? String(Number(at.price)) : l.unitPrice };
       })
     );
@@ -939,7 +959,16 @@ export function SalesVoucher({
         <div className="card-head">
           <span className="actions">
             <span className="pill">Sales invoice</span>
-            {activeLevel && (
+            {activeLevel && priceLevels.length > 1 ? (
+              <select className="levelpick" value={activeLevelId ?? ""} aria-label="Price level for this invoice"
+                title={levelOverride ? "Changed for this invoice — the customer's own level is the default"
+                  : "The customer's price level"}
+                onChange={(e) => chooseLevel(e.target.value)}>
+                {priceLevels.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}{l.id === customerLevelId ? " (default)" : ""}</option>
+                ))}
+              </select>
+            ) : activeLevel && (
               <span className="pill ok" title="Prices suggested at this level">
                 {activeLevel.name}
               </span>

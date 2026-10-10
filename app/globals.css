@@ -5693,3 +5693,8 @@ button.danger-solid:hover { opacity: 0.9; }
 .ph-cur { font-weight: 700; font-size: var(--t-sm); }
 .ph-base { font-weight: 600; }
 .ph-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; flex-wrap: wrap; }
+
+/* The invoice's price level: a pill that opens, the customer's level marked default. */
+.levelpick { min-height: 0; height: auto; width: auto; padding: 3px 26px 3px 10px; border-radius: 999px;
+  font-size: var(--t-xs); font-weight: 600; color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+  background-color: color-mix(in srgb, var(--ok) 10%, transparent); background-position: right 8px center; }
