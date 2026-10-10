@@ -991,6 +991,39 @@ function inTransaction<T>(
  * SI20260910001, because that is the number on the piece of paper the
  * customer is holding.
  */
+/**
+ * Lock, in one fixed order, every document-number series a posting will draw
+ * on — before it writes any journal entry.
+ *
+ * A series row stays locked until the transaction ends, so the order in which
+ * a posting takes its numbers is a lock order. A posting of one document takes
+ * its number and then the journal's; a posting of two took the first number,
+ * wrote a journal entry, and only then took the second. A cash sale held the
+ * journal series and waited for the receipt series while a payment held the
+ * receipt series and waited for the journal's: a deadlock, found by load
+ * testing. Claiming every document series first, sorted by prefix, makes the
+ * journal series always the last lock taken, the same as everywhere else.
+ *
+ * It changes no number: a series row missing for the day is created exactly
+ * as fn_next_document_no would create it, and the numbers are still drawn in
+ * the same places by the same function.
+ */
+async function claimNumberSeries(tx: TransactionSql, companyId: string, date: string, docTypes: string[]) {
+  if (docTypes.length < 2) return;
+  await tx`
+    insert into number_series (company_id, document_type, series_date, prefix, padding, next_value)
+    select ${companyId}, p.pfx, ${date}::date, p.pfx, 3, 1
+      from (select distinct fn_document_prefix(t, null) as pfx from unnest(${docTypes}::text[]) t) p
+     order by p.pfx
+    on conflict (company_id, document_type, series_date) where series_date is not null do nothing`;
+  await tx`
+    select id from number_series
+     where company_id = ${companyId} and series_date = ${date}::date
+       and document_type in (select fn_document_prefix(t, null) from unnest(${docTypes}::text[]) t)
+     order by document_type
+       for update`;
+}
+
 async function documentNumberFor(
   tx: TransactionSql,
   companyId: string,
@@ -3636,6 +3669,14 @@ async function _postSalesInvoice(
   const fiscalYear = fyRows[0]?.fy ?? null;
   if (!fiscalYear) throw new Error(`No fiscal year covers ${docDate}`);
 
+  // A cash receipt and a consignor's bill are numbered after this invoice's
+  // journal entry: their series are claimed first, so the journal's is last.
+  await claimNumberSeries(tx, companyId, docDate, [
+    "SALES_INVOICE",
+    ...(cashIn > 0 ? ["CUSTOMER_RECEIPT"] : []),
+    ...(input.deliveryId ? ["PURCHASE_INVOICE"] : []),
+  ]);
+
   const { docNo, version } = await documentNumberFor(
     tx, companyId, "SALES_INVOICE", docDate, input.amendOf);
 
@@ -4137,6 +4178,12 @@ export async function postSaleWithDelivery(input: SalesInvoiceInput, outer?: Tra
     const flags = await tx`select id, is_stocked from item where id = any(${itemIds})`;
     const stocked = new Set(flags.filter((r: any) => r.is_stocked).map((r: any) => r.id));
     const toDeliver = input.lines.filter((l) => stocked.has(l.itemId));
+
+    // The delivery's journal entry comes before the invoice's number.
+    await claimNumberSeries(tx, input.companyId, input.docDate, [
+      "DELIVERY", "SALES_INVOICE", "PURCHASE_INVOICE",
+      ...((input.cashIn ?? 0) > 0 ? ["CUSTOMER_RECEIPT"] : []),
+    ]);
 
     let deliveryId: string | undefined;
     if (toDeliver.length > 0) {
@@ -5396,6 +5443,10 @@ async function _postPurchaseInvoice(
   const fiscalYear = fyRows[0]?.fy ?? null;
   if (!fiscalYear) throw new Error(`No fiscal year covers ${docDate}`);
 
+  // Paid on the spot: the payment is numbered after this bill's journal entry.
+  await claimNumberSeries(tx, companyId, docDate,
+    ["PURCHASE_INVOICE", ...(cashOut > 0 ? ["SUPPLIER_PAYMENT"] : [])]);
+
   const { docNo, version } = await documentNumberFor(
     tx, companyId, "PURCHASE_INVOICE", docDate, input.amendOf);
 
@@ -5743,6 +5794,12 @@ export async function postPurchaseWithReceipt(
     const flags = await tx`select id, is_stocked from item where id = any(${itemIds})`;
     const stocked = new Set(flags.filter((r: any) => r.is_stocked).map((r: any) => r.id));
     const toReceive = input.lines.filter((l) => stocked.has(l.itemId));
+
+    // The receipt's journal entry comes before the bill's number.
+    await claimNumberSeries(tx, input.companyId, input.docDate, [
+      "GOODS_RECEIPT", "PURCHASE_INVOICE",
+      ...((input.cashOut ?? 0) > 0 ? ["SUPPLIER_PAYMENT"] : []),
+    ]);
 
     /**
      * Where these lines came from an order.
