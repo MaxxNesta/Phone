@@ -466,7 +466,7 @@ export async function getAttachment(companyId: string, id: string) {
 /** The attributes a product may vary by, each with its values in order. */
 export async function getVariantAttributes(companyId: string) {
   const attributes = await sql`
-    select id, code, name from variant_attribute
+    select id, code, name, identities from variant_attribute
      where company_id = ${companyId} and is_active
      order by sort_order, name`;
   if (attributes.length === 0) return [];

@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 
 export type PickerAttribute = {
   id: string; code: string; name: string;
+  /** The product identities it is offered for — Memory is for Macs. Null is all. */
+  identities?: string[] | null;
   options: { id: string; code: string; name: string }[];
 };
 

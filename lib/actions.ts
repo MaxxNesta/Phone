@@ -702,6 +702,16 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     const identity = (["IMEI", "SERIAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
       ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
 
+    // An option not offered for this kind of product — Memory on an iPhone —
+    // is refused here as well as hidden on the form.
+    if (variantPlan.attributes.length > 0) {
+      const off = await sql`
+        select name from variant_attribute
+         where id in ${sql(variantPlan.attributes)}
+           and identities is not null and not (${identity} = any(identities))`;
+      if (off.length > 0) return { error: `${off[0].name} is not chosen for this kind of product` };
+    }
+
     await sql.begin(async (tx) => {
       const [item] = await tx`
         insert into item

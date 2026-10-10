@@ -417,7 +417,8 @@ export function ItemForm({
 
           {/* This form creates; adding variants to a product that already has
               stock and history is a larger question and is not offered here. */}
-          <VariantPicker attributes={variantAttributes ?? []} serial={serial} name={itemName} />
+          <VariantPicker serial={serial} name={itemName}
+            attributes={(variantAttributes ?? []).filter((a) => !a.identities || a.identities.includes(tracking))} />
         </div>
       </div>
 
