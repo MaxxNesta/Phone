@@ -549,15 +549,20 @@ export async function getVariantStock(companyId: string) {
  * selling price, kept where somebody is already looking.
  */
 export async function getVariantGrid(companyId: string, parentId: string) {
-  const [level] = await sql`
+  // Every price level, the shop's own first: a retail shop's counter price is Retail.
+  const levels = await sql<{ id: string; name: string }[]>`
     select id, name from price_level where company_id = ${companyId}
-     order by sort_order, code limit 1`;
+     order by (code = 'RETAIL' and (select retail_mode from company where id = ${companyId})) desc,
+              sort_order, code`;
 
   const rows = await sql`
     select i.id, i.code, i.name, i.barcode, i.is_active, i.base_uom_id,
            to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS') as photo_version,
            coalesce(s.qty_on_hand, 0) as on_hand,
-           ip.price,
+           (select json_object_agg(x.price_level_id, x.price) from (
+              select distinct on (price_level_id) price_level_id, price from item_price
+               where item_id = i.id and valid_from <= current_date
+               order by price_level_id, valid_from desc) x) as prices,
            json_agg(json_build_object(
                       'attributeId', attr.id, 'attribute', attr.name,
                       'optionId', o.id, 'option', o.name,
@@ -573,14 +578,12 @@ export async function getVariantGrid(companyId: string, parentId: string) {
              on iva.item_id = i.parent_item_id and iva.attribute_id = attr.id
       left join (select item_id, sum(qty_on_hand) as qty_on_hand
                    from v_stock_on_hand group by item_id) s on s.item_id = i.id
-      left join item_price ip
-             on ip.item_id = i.id and ip.price_level_id = ${level?.id ?? null}
      where i.company_id = ${companyId} and i.parent_item_id = ${parentId}
      group by i.id, i.code, i.name, i.barcode, i.is_active, i.base_uom_id,
-              i.photo_updated_at, s.qty_on_hand, ip.price
+              i.photo_updated_at, s.qty_on_hand
      order by i.code`;
 
-  return { level: level ?? null, rows };
+  return { levels: [...levels], rows };
 }
 
 export async function getItemVariants(companyId: string, parentId: string) {

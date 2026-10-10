@@ -31,8 +31,8 @@ export default async function VariantsOfProduct({
 
   const [uom] = await sql`select code from uom where id = ${parent.base_uom_id}`;
 
-  const { level, rows } = (await getVariantGrid(company.id, id)) as unknown as
-    { level: { id: string; name: string } | null; rows: any[] };
+  const { levels, rows } = (await getVariantGrid(company.id, id)) as unknown as
+    { levels: { id: string; name: string }[]; rows: any[] };
 
   if (rows.length === 0) {
     return (
@@ -63,7 +63,7 @@ export default async function VariantsOfProduct({
   const shown = only && rows.some((r) => r.id === only) ? rows.filter((r) => r.id === only) : rows;
   const gridRows: GridRow[] = shown.map((r) => ({
     id: r.id, code: r.code, name: r.name,
-    barcode: r.barcode, price: r.price,
+    barcode: r.barcode, prices: r.prices,
     is_active: r.is_active, on_hand: r.on_hand,
     photoSrc: srcOf(r.id),
     parts: r.parts,
@@ -82,8 +82,7 @@ export default async function VariantsOfProduct({
           cannot be put on two variants — clashes are shown as you type and
           refused on save.
           <br /><br />
-          The price here is the {level?.name ?? "first"} level. A product
-          sold at several levels still needs the price list.
+          Each price level has its own column; Retail is the price the counter uses.
         </HelpHint>
       </div>
 
@@ -104,7 +103,7 @@ export default async function VariantsOfProduct({
               action={saveVariantGrid}
               parentId={parent.id}
               rows={gridRows}
-              levelName={level?.name ?? null}
+              levels={levels}
               uom={uom?.code ?? ""}
             />
           </div>

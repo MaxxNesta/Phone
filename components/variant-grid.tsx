@@ -9,7 +9,9 @@ import type { VariantPart } from "@/lib/variants";
 
 export type GridRow = {
   id: string; code: string; name: string;
-  barcode: string | null; price: string | null;
+  barcode: string | null;
+  /** The current price at each level, by level id. */
+  prices: Record<string, string | number> | null;
   is_active: boolean; on_hand: string;
   photoSrc: string | null;
   parts: VariantPart[] | null;
@@ -26,14 +28,19 @@ export type GridRow = {
  * the database refuses them anyway, but finding out at the end of twelve
  * rows is finding out too late to remember which scanner slipped.
  */
+const priceOf = (r: GridRow, levelId: string) => {
+  const p = r.prices?.[levelId];
+  return p === undefined || p === null ? "" : String(Number(p));
+};
+
 export function VariantGrid({
-  action, parentId, rows: initial, levelName, uom,
+  action, parentId, rows: initial, levels, uom,
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   parentId: string;
   rows: GridRow[];
-  /** Which price is being edited — there may be more on the price list. */
-  levelName: string | null;
+  /** Every price level, a column each — Retail first in a retail shop. */
+  levels: { id: string; name: string }[];
   uom: string;
 }) {
   const router = useRouter();
@@ -43,7 +50,7 @@ export function VariantGrid({
   const [rows, setRows] = useState(() => initial.map((r) => ({
     id: r.id,
     barcode: r.barcode ?? "",
-    price: r.price !== null ? String(Number(r.price)) : "",
+    prices: Object.fromEntries(levels.map((l) => [l.id, priceOf(r, l.id)])),
     isActive: r.is_active,
   })));
 
@@ -77,7 +84,7 @@ export function VariantGrid({
 
   const dirty = rows.some((r, i) =>
     r.barcode !== (initial[i].barcode ?? "") ||
-    r.price !== (initial[i].price !== null ? String(Number(initial[i].price)) : "") ||
+    levels.some((l) => r.prices[l.id] !== priceOf(initial[i], l.id)) ||
     r.isActive !== initial[i].is_active);
 
   const byId = new Map(initial.map((r) => [r.id, r]));
@@ -101,10 +108,12 @@ export function VariantGrid({
               <th colSpan={2}>Variant</th>
               <th>Code</th>
               <th>Barcode</th>
-              <th className="r">
-                {levelName ? `${levelName} price` : "Price"}
-                {levelName && <div className="subline">per {uom}</div>}
-              </th>
+              {levels.map((l) => (
+                <th key={l.id} className="r">
+                  {l.name} price
+                  <div className="subline">per {uom}</div>
+                </th>
+              ))}
               <th className="r">On hand</th>
               <th>Active</th>
             </tr>
@@ -141,13 +150,15 @@ export function VariantGrid({
                       </div>
                     )}
                   </td>
-                  <td className="narrow">
-                    <input
-                      type="number" min="0" step="any" aria-label={`Price for ${v.name}`}
-                      value={r.price}
-                      onChange={(e) => set(r.id, { price: e.target.value })}
-                    />
-                  </td>
+                  {levels.map((l) => (
+                    <td key={l.id} className="narrow">
+                      <input
+                        type="number" min="0" step="any" aria-label={`${l.name} price for ${v.name}`}
+                        value={r.prices[l.id]}
+                        onChange={(e) => set(r.id, { prices: { ...r.prices, [l.id]: e.target.value } })}
+                      />
+                    </td>
+                  ))}
                   <td className="r">{Number(v.on_hand)}</td>
                   <td>
                     <label className="check">
