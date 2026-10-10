@@ -7889,3 +7889,60 @@ export async function getShippedNotInvoicedBalance(companyId: string) {
   return { ...row, balance: Number(row.balance) };
 }
 
+
+/** One posted sales-invoice line, with everything a pivot can group it by. */
+export type SalesFact = {
+  doc_id: string; doc_no: string; date: string; month: string;
+  item: string; model: string; brand: string; category: string;
+  customer: string; branch: string; salesman: string;
+  /** Variant options by attribute — { Storage: "128 GB", Colour: "Black" }. */
+  opts: Record<string, string> | null;
+  qty: number; revenue: number; cost: number;
+};
+
+/**
+ * The sales pivot's raw rows: every posted invoice line in the period and
+ * branch, priced as the breakdown tabs price it (net of discounts, free lines
+ * carrying no revenue) and costed from the invoice's own cost claims. The
+ * grouping happens in the browser, so changing rows or columns costs no
+ * round trip.
+ */
+export async function getSalesPivotFacts(
+  companyId: string, from: string, to: string, branchId?: string | null,
+): Promise<SalesFact[]> {
+  const rows = await sql`
+    select d.id as doc_id, d.doc_no, d.posting_date::text as date, to_char(d.posting_date, 'YYYY-MM') as month,
+           i.name as item, coalesce(m.name, i.name) as model,
+           coalesce(b.name, 'No brand') as brand, coalesce(pg.name, g.name, '—') as category,
+           coalesce(p.name, 'Walk-in') as customer, coalesce(br.name, loc.name, '—') as branch,
+           coalesce(sm.name, '—') as salesman,
+           (select json_object_agg(a.name, o.name)
+              from item_variant_option ivo
+              join variant_option o on o.id = ivo.option_id
+              join variant_attribute a on a.id = o.attribute_id
+             where ivo.item_id = i.id) as opts,
+           case when dl.foc_reason_id is null then dl.base_qty else 0 end::float as qty,
+           case when dl.foc_reason_id is null then dl.net_amount else 0 end::float as revenue,
+           coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
+                      where a.invoice_line_id = dl.id), 0)::float as cost
+      from document_line dl
+      join document d on d.id = dl.document_id
+      join item i on i.id = dl.item_id
+      left join item m on m.id = i.parent_item_id
+      left join brand b on b.id = coalesce(m.brand_id, i.brand_id)
+      left join item_group g on g.id = i.item_group_id
+      left join item_group pg on pg.id = g.parent_id
+      left join business_partner p on p.id = d.partner_id
+      left join location loc on loc.id = d.location_id
+      left join location br on br.id = loc.parent_id
+      left join salesman sm on sm.id = d.salesman_id
+     where d.company_id = ${companyId}
+       and d.doc_type = 'SALES_INVOICE'
+       and d.status = 'POSTED'
+       and d.posting_date between ${from}::date and ${to}::date
+       ${salesBranch(sql`d.location_id`, branchId)}
+     order by d.posting_date
+     -- ponytail: whole period in the browser; aggregate in SQL past ~20k lines.
+     limit 20000`;
+  return rows as unknown as SalesFact[];
+}

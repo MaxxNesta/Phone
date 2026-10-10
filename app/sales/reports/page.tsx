@@ -6,18 +6,20 @@ import { DataTable, type DataRow } from "@/components/data-table";
 import { RankedBarChart, ShareDonut } from "@/components/charts";
 import { BreakdownPerformance } from "@/components/breakdown-performance";
 import {
-  getCompany, getBranches, getSalesBreakdown, getSalesOverview, getBrandsInUse, UNASSIGNED_BRANCH,
+  getCompany, getBranches, getSalesBreakdown, getSalesOverview, getBrandsInUse, getSalesPivotFacts, UNASSIGNED_BRANCH,
   type SalesBreakdownBy,
 } from "@/lib/queries";
 import { SalesOverview } from "@/components/sales-overview";
+import { SalesPivot } from "@/components/sales-pivot";
 
-type Tab = SalesBreakdownBy | "overview";
+type Tab = SalesBreakdownBy | "overview" | "pivot";
 
 const TABS: [Tab, string, string][] = [
   ["overview", "Overview", "How the period compares with the one before"],
   ["item", "By item", "Which products earned it"],
   ["model", "By model", "Each model, every storage and colour together"],
   ["brand", "By brand", "Whose goods sold"],
+  ["pivot", "Pivot", "Group and compare any way: rows, columns, measures"],
   ["customer", "By customer", "Who it came from"],
   ["category", "By category", "Which part of the catalogue"],
 ];
@@ -44,7 +46,7 @@ export default async function SalesReports({
   const multiBrand = (await getBrandsInUse(company.id)).length > 1;
   const tabs = TABS.filter(([k]) => k !== "brand" || multiBrand);
   const tab = (tabs.find(([k]) => k === p.by)?.[0] ?? "overview") as Tab;
-  const by = (tab === "overview" ? "item" : tab) as SalesBreakdownBy;
+  const by = (tab === "overview" || tab === "pivot" ? "item" : tab) as SalesBreakdownBy;
   const range = { from: p.from || defaultFrom(), to: p.to || today() };
   // Retail invoices move the goods themselves, so nothing is ever invoiced
   // ahead of shipping and "Not yet shipped" would always read nought.
@@ -64,7 +66,8 @@ export default async function SalesReports({
   const overview = tab === "overview"
     ? await getSalesOverview(company.id, range.from, range.to, branchId)
     : null;
-  const rows = tab === "overview"
+  const facts = tab === "pivot" ? await getSalesPivotFacts(company.id, range.from, range.to, branchId) : null;
+  const rows = tab === "overview" || tab === "pivot"
     ? []
     : await getSalesBreakdown(company.id, range.from, range.to, by, branchId);
 
@@ -257,7 +260,9 @@ export default async function SalesReports({
         </div>
       </form>
 
-      {overview ? (
+      {facts ? (
+        <SalesPivot facts={facts} currency={company.base_currency} />
+      ) : overview ? (
         <SalesOverview
           now={overview.now} before={overview.before}
           series={overview.series} prevFrom={overview.prevFrom} prevTo={overview.prevTo}
