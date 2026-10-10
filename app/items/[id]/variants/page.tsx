@@ -13,11 +13,14 @@ import { HelpHint } from "@/components/help-hint";
  * realise the twelve sizes they just created have no barcodes on them.
  */
 export default async function VariantsOfProduct({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** One variant's row only, when its own Edit opened this page. */
+  searchParams: Promise<{ only?: string }>;
 }) {
   const { id } = await params;
+  const { only } = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -57,7 +60,8 @@ export default async function VariantsOfProduct({
     return v ? photos.srcFor(v) : null;
   };
 
-  const gridRows: GridRow[] = rows.map((r) => ({
+  const shown = only && rows.some((r) => r.id === only) ? rows.filter((r) => r.id === only) : rows;
+  const gridRows: GridRow[] = shown.map((r) => ({
     id: r.id, code: r.code, name: r.name,
     barcode: r.barcode, price: r.price,
     is_active: r.is_active, on_hand: r.on_hand,
@@ -86,7 +90,10 @@ export default async function VariantsOfProduct({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>{rows.length} variant{rows.length === 1 ? "" : "s"}</h2>
+            <h2>{shown.length === rows.length ? `${rows.length} variant${rows.length === 1 ? "" : "s"}` : shown[0].name}</h2>
+            {shown.length !== rows.length && (
+              <Link href={`/items/${parent.id}/variants`} className="linkish">Show all {rows.length} variants</Link>
+            )}
             <span className="page-sub">
               scan straight into the barcode column — the field takes whatever
               the scanner types

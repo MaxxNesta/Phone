@@ -99,7 +99,9 @@ export default async function Items({
   }
   const catalogue = all.filter((i) => !i.parent_item_id);
 
-  const items = catalogue.filter((i) =>
+  // Opened to edit one item: that item alone, not the whole catalogue to hunt through.
+  const editing = edit && catalogue.some((i) => i.id === edit) ? edit : null;
+  const items = catalogue.filter((i) => (!editing || i.id === editing) &&
     (!category || rootOf(i.item_group_id) === category) &&
     (!sub || i.item_group_id === sub) &&
     (!brand || (brand === "none" ? i.brand_id === null : i.brand_id === brand)) &&
@@ -202,6 +204,11 @@ export default async function Items({
         <Link href="/items/new" className="btn">+ Item</Link>
       </div>
 
+      {editing && (
+        <p className="hint" style={{ margin: "0 0 8px" }}>
+          Editing one item. <Link href="/items" className="linkish">Show all products</Link>
+        </p>
+      )}
       <ItemFilters
         groups={groups}
         brands={multiBrand ? brands : []}

@@ -124,7 +124,12 @@ export default async function ItemPage({
             the form that actually writes — but it opens on this item with
             its editor already up, rather than dropping you into a list of
             sixteen to find it again. */}
-        <Link className="btn ghost" href={`/items?edit=${item.id}`}>Edit this item</Link>
+        {/* A variant is edited on its product's grid, opened on just this
+            row; anything else in the catalogue, opened on just itself. */}
+        <Link className="btn ghost"
+          href={item.parent_item_id ? `/items/${item.parent_item_id}/variants?only=${item.id}` : `/items?edit=${item.id}`}>
+          Edit this {item.parent_item_id ? "variant" : "item"}
+        </Link>
         {item.is_stocked && (
           <Link className="btn ghost" href={`/inventory/movements?item=${item.id}`}>
             All stock movements

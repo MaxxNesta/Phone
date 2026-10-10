@@ -2,8 +2,8 @@
 //
 // For each IMEI-tracked product that varies by Memory: variants that differ
 // only by memory become one. The one with history is kept (or the first),
-// renamed without the memory, and loses its memory option; the others are
-// deactivated, never deleted. A model where two of the twins both have
+// renamed without the memory, and loses its memory option; the twins are
+// deleted — they have no history, or the model would be left alone. A model where two of the twins both have
 // history is left alone and reported — merging stock is a person's decision.
 //
 //   node scripts/drop-memory-from-phones.mjs            dry run
@@ -27,7 +27,7 @@ const models = await sql`
    where p.identity = 'IMEI'
       or exists (select 1 from item c where c.parent_item_id = p.id and c.identity = 'IMEI')`;
 
-let merged = 0, deactivated = 0, renamed = 0;
+let merged = 0, deactivated = 0, renamed = 0, swept = 0;
 const skipped = [];
 await sql.begin(async (tx) => {
   for (const m of models) {
@@ -63,7 +63,7 @@ await sql.begin(async (tx) => {
       const label = g.rest.map((x) => x.n).join(" / ");
       renamed++;
       if (!apply) continue;
-      if (others.length) await tx`update item set is_active = false where id in ${tx(others.map((k) => k.id))}`;
+      if (others.length) await tx`delete from item where id in ${tx(others.map((k) => k.id))}`;
       await tx`delete from item_variant_option ivo using variant_option o
                 where ivo.item_id = ${keep.id} and o.id = ivo.option_id and o.attribute_id = ${m.mem_id}`;
       await tx`update item set name = ${label ? `${m.name} ${label}` : m.name},
@@ -73,8 +73,23 @@ await sql.begin(async (tx) => {
     if (apply) await tx`delete from item_variant_attribute where item_id = ${m.id} and attribute_id = ${m.mem_id}`;
     console.log(`${m.name}: ${kids.length} variants → ${groups.size}`);
   }
+
+  // Twins an earlier run only deactivated: a phone variant still holding a
+  // memory option, inactive and with no history, is deleted now.
+  const stale = await tx`
+    select c.id from item c
+      join item p on p.id = c.parent_item_id
+     where not c.is_active and (p.identity = 'IMEI' or c.identity = 'IMEI')
+       and exists (select 1 from item_variant_option ivo join variant_option o on o.id = ivo.option_id
+                   join variant_attribute a on a.id = o.attribute_id
+                   where ivo.item_id = c.id and a.code = 'MEM')
+       and not exists (select 1 from document_line dl where dl.item_id = c.id)
+       and not exists (select 1 from stock_movement sm where sm.item_id = c.id)
+       and not exists (select 1 from stock_serial ss where ss.item_id = c.id)`;
+  swept = stale.length;
+  if (apply && swept) await tx`delete from item where id in ${tx(stale.map((r) => r.id))}`;
 });
 
-console.log(`${apply ? "Applied" : "Dry run"}: ${models.length - skipped.length} models, ${merged} groups merged, ${deactivated} variants deactivated, ${renamed} renamed.`);
+console.log(`${apply ? "Applied" : "Dry run"}: ${models.length - skipped.length} models, ${merged} groups merged, ${deactivated} twins removed, ${renamed} renamed, ${swept} earlier twins removed.`);
 for (const s of skipped) console.log("Left alone —", s);
 await sql.end();
