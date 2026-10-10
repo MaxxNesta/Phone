@@ -6,7 +6,7 @@ import { DataTable, type DataRow } from "@/components/data-table";
 import { RankedBarChart, ShareDonut } from "@/components/charts";
 import { BreakdownPerformance } from "@/components/breakdown-performance";
 import {
-  getCompany, getBranches, getSalesBreakdown, getSalesOverview, getBrandsInUse, getSalesPivotFacts, UNASSIGNED_BRANCH,
+  getCompany, getBranches, getSalesBreakdown, getSalesOverview, getBrandsInUse, getSalesPivotFacts, PIVOT_CAP, UNASSIGNED_BRANCH,
   type SalesBreakdownBy,
 } from "@/lib/queries";
 import { SalesOverview } from "@/components/sales-overview";
@@ -261,7 +261,7 @@ export default async function SalesReports({
       </form>
 
       {facts ? (
-        <SalesPivot facts={facts} currency={company.base_currency} />
+        <SalesPivot facts={facts.slice(0, PIVOT_CAP)} truncated={facts.length > PIVOT_CAP} currency={company.base_currency} />
       ) : overview ? (
         <SalesOverview
           now={overview.now} before={overview.before}

@@ -41,7 +41,11 @@ type Node = { key: string; dim: string; value: string; facts: SalesFact[]; depth
  * columns, measures, swap, expand, sort, export — and a cell opens the
  * invoice lines it was added up from.
  */
-export function SalesPivot({ facts, currency }: { facts: SalesFact[]; currency: string }) {
+export function SalesPivot({ facts, currency, truncated = false }: {
+  facts: SalesFact[]; currency: string;
+  /** More lines than the browser is sent: the totals would be short. */
+  truncated?: boolean;
+}) {
   const attrDims = useMemo(() => {
     const names = new Set<string>();
     for (const f of facts) for (const k of Object.keys(f.opts ?? {})) names.add(k);
@@ -164,6 +168,17 @@ export function SalesPivot({ facts, currency }: { facts: SalesFact[]; currency: 
 
   if (facts.length === 0) {
     return <div className="card"><p className="page-sub" style={{ padding: 24, textAlign: "center" }}>No posted sales in this period.</p></div>;
+  }
+
+  if (truncated) {
+    return (
+      <div className="card">
+        <p className="page-sub" style={{ padding: 24, textAlign: "center", color: "var(--warn)" }}>
+          This period has more than {facts.length.toLocaleString("en-US")} invoice lines — too many to total here.
+          Choose a shorter date range.
+        </p>
+      </div>
+    );
   }
 
   return (

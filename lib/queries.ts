@@ -7907,6 +7907,8 @@ export type SalesFact = {
  * grouping happens in the browser, so changing rows or columns costs no
  * round trip.
  */
+export const PIVOT_CAP = 20000;
+
 export async function getSalesPivotFacts(
   companyId: string, from: string, to: string, branchId?: string | null,
 ): Promise<SalesFact[]> {
@@ -7943,6 +7945,7 @@ export async function getSalesPivotFacts(
        ${salesBranch(sql`d.location_id`, branchId)}
      order by d.posting_date
      -- ponytail: whole period in the browser; aggregate in SQL past ~20k lines.
-     limit 20000`;
+     -- One over the cap, so the page can tell a full period from a cut one.
+     limit ${PIVOT_CAP + 1}`;
   return rows as unknown as SalesFact[];
 }
