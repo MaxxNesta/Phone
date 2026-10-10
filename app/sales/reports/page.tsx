@@ -19,9 +19,9 @@ const TABS: [Tab, string, string][] = [
   ["item", "By item", "Which products earned it"],
   ["model", "By model", "Each model, every storage and colour together"],
   ["brand", "By brand", "Whose goods sold"],
-  ["pivot", "Pivot", "Group and compare any way: rows, columns, measures"],
   ["customer", "By customer", "Who it came from"],
   ["category", "By category", "Which part of the catalogue"],
+  ["pivot", "Pivot", "Group and compare any way: rows, columns, measures"],
 ];
 
 const qty = (v: number) =>
