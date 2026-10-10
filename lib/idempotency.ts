@@ -90,10 +90,17 @@ export async function postOnce<T extends Posted>(
   }
 }
 
-/** 23505: the unique index on (company_id, key) — somebody already has it. */
+/**
+ * 23505 on posting_attempt's own key (company_id, key) — somebody already has
+ * this submission. Only that one: a unique violation from inside the posting
+ * itself (a clashing document number, say) is a different failure and must
+ * reach the caller as itself, not be reported as a double submission.
+ */
 function isDuplicateKey(e: unknown): boolean {
-  return typeof e === "object" && e !== null
-    && (e as { code?: string }).code === "23505";
+  if (typeof e !== "object" || e === null) return false;
+  const err = e as { code?: string; table_name?: string; constraint_name?: string };
+  return err.code === "23505"
+    && (err.constraint_name === "posting_attempt_pkey" || err.table_name === "posting_attempt");
 }
 
 /**
