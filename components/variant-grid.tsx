@@ -49,6 +49,19 @@ export function VariantGrid({
 
   useEffect(() => { if (state && "ok" in state) router.refresh(); }, [state, router]);
 
+  /* A scanner types the barcode and presses Enter. Enter here moves to the
+     next row's barcode instead of submitting, so a shelf of boxes can be
+     scanned one after another; the page opens with the cursor in the first
+     empty one, ready for the first scan. */
+  useEffect(() => {
+    const first = [...document.querySelectorAll<HTMLInputElement>("input[data-barcode]")].find((i) => !i.value);
+    first?.focus();
+  }, []);
+  const nextBarcode = (from: HTMLInputElement) => {
+    const all = [...document.querySelectorAll<HTMLInputElement>("input[data-barcode]")];
+    all[all.indexOf(from) + 1]?.focus();
+  };
+
   const set = (id: string, patch: Partial<(typeof rows)[number]>) =>
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
@@ -116,8 +129,9 @@ export function VariantGrid({
                   <td>
                     <input
                       type="text" inputMode="numeric" aria-label={`Barcode for ${v.name}`}
-                      value={r.barcode}
+                      value={r.barcode} data-barcode
                       onChange={(e) => set(r.id, { barcode: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); nextBarcode(e.currentTarget); } }}
                       placeholder="scan or type"
                       style={dup ? { borderColor: "var(--bad)" } : undefined}
                     />
