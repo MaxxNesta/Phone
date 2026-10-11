@@ -69,7 +69,7 @@ try {
   const cust = await party("SCA-C", "Allocation Customer", { is_customer: true, payment_terms_days: 30 });
   const supp = await party("SCA-S", "Allocation Supplier", { is_supplier: true });
   const [item] = await sql`
-    select id from item where company_id = ${co.id} and is_stocked order by code limit 1`;
+    select id from item where company_id = ${co.id} and is_stocked and not tracks_serial order by code limit 1`;
   if (!item) throw new Error("This suite needs one stocked item.");
 
   // ---------------------------------------------------- the account and role

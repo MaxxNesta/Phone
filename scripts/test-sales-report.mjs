@@ -77,7 +77,7 @@ try {
   const supp = await party("SPB-S", "Basis Supplier", { is_supplier: true });
 
   const [item] = await sql`
-    select id, code from item where company_id = ${co.id} and is_stocked order by code limit 1`;
+    select id, code from item where company_id = ${co.id} and is_stocked and not tracks_serial order by code limit 1`;
   if (!item) throw new Error("This suite needs one stocked item.");
 
   const base = { companyId: co.id, locationId: loc.id };

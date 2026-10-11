@@ -104,7 +104,7 @@ try {
       values (${co.id}, 'EV-S', 'Evil Test Supplier', true) returning id`;
   }
   let [item] = await sql`
-    select id, code from item where company_id = ${co.id} and is_stocked
+    select id, code from item where company_id = ${co.id} and is_stocked and not tracks_serial
        -- A product with variants is a name for a group and cannot be
        -- sold or received; fn_document_line_not_parent refuses it.
        and not exists (select 1 from item c where c.parent_item_id = item.id)

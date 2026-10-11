@@ -16,7 +16,8 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import postgres from "postgres";
 
 const QUIET = 12, LIMIT = 240;
-const SKIP = new Set(["test-setup", "test-reset", "test-lock"]);
+// test-empty deletes every item and category: it is run on its own, never in a sweep.
+const SKIP = new Set(["test-setup", "test-reset", "test-lock", "test-empty"]);
 
 let url = process.env.DATABASE_URL;
 if (!url && existsSync(".env")) {

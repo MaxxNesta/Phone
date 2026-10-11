@@ -59,9 +59,29 @@ try {
   await sql`delete from number_series`;
 
   // The year the company already trades in, and the one it is about to enter.
-  const [thisYear] = await sql`
+  let [thisYear] = await sql`
     select id, code, start_date, end_date from fiscal_year
      where company_id = ${co.id} order by start_date limit 1`;
+
+  // Stock cannot move on a date still to come, so both sides of the rollover
+  // have to be behind us. While the first year is still running, the year
+  // before it is made and the rollover is tested from that one into this.
+  if (new Date(thisYear.end_date) >= new Date()) {
+    const ps = new Date(thisYear.start_date); ps.setUTCFullYear(ps.getUTCFullYear() - 1);
+    const pe = new Date(thisYear.start_date); pe.setUTCDate(pe.getUTCDate() - 1);
+    const d = (x) => x.toISOString().slice(0, 10);
+    const [prev] = await sql`
+      insert into fiscal_year (company_id, code, start_date, end_date)
+      values (${co.id}, ${`${ps.getUTCFullYear()}-${String(pe.getUTCFullYear()).slice(2)}`}, ${d(ps)}, ${d(pe)})
+      returning id, code, start_date, end_date`;
+    for (let m = 0; m < 12; m++) {
+      const s = new Date(Date.UTC(ps.getUTCFullYear(), ps.getUTCMonth() + m, 1));
+      const e = new Date(Date.UTC(ps.getUTCFullYear(), ps.getUTCMonth() + m + 1, 0));
+      await sql`insert into fiscal_period (company_id, fiscal_year_id, period_no, start_date, end_date)
+        values (${co.id}, ${prev.id}, ${m + 1}, ${d(s)}, ${d(e)})`;
+    }
+    thisYear = prev;
+  }
 
   const nextStart = new Date(thisYear.end_date); nextStart.setUTCDate(nextStart.getUTCDate() + 1);
   const nextEnd = new Date(nextStart); nextEnd.setUTCFullYear(nextEnd.getUTCFullYear() + 1);
@@ -99,6 +119,7 @@ try {
     select id from item where company_id = ${co.id} and is_stocked
        -- A product with variants is a name for a group and cannot be
        -- sold or received; fn_document_line_not_parent refuses it.
+       and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id)
        order by code limit 1`;
   if (!item) {

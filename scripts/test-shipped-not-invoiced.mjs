@@ -68,7 +68,7 @@ try {
   const cust = await party("SNI-C", "Unbilled Customer", { is_customer: true, payment_terms_days: 30 });
   const supp = await party("SNI-S", "Unbilled Supplier", { is_supplier: true });
   const [item] = await sql`
-    select id from item where company_id = ${co.id} and is_stocked order by code limit 1`;
+    select id from item where company_id = ${co.id} and is_stocked and not tracks_serial order by code limit 1`;
   if (!item) throw new Error("This suite needs one stocked item.");
 
   const base = { companyId: co.id, partnerId: cust.id, locationId: loc.id };

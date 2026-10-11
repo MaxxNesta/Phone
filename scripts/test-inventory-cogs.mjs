@@ -80,7 +80,7 @@ try {
   const supp = await party("ICR-S", "Recon Supplier", { is_supplier: true });
 
   const [item] = await sql`
-    select id, code, name from item where company_id = ${co.id} and is_stocked order by code limit 1`;
+    select id, code, name from item where company_id = ${co.id} and is_stocked and not tracks_serial order by code limit 1`;
   if (!item) throw new Error("This suite needs one stocked item.");
 
   const recon = () => getInventoryCogsReconciliation(co.id, FROM, TO, null);

@@ -415,6 +415,7 @@ try {
   const vItem = (await sql`select id from item where company_id = ${co.id} and is_stocked
        -- A product with variants is a name for a group and cannot be
        -- sold or received; fn_document_line_not_parent refuses it.
+       and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id) limit 1`)[0];
   const vLoc = (await sql`
     select id from location where company_id = ${co.id} and is_stock_location limit 1`)[0];
@@ -458,6 +459,7 @@ try {
   const [ccItem] = await sql`select id from item where company_id = ${co.id} and is_stocked
        -- A product with variants is a name for a group and cannot be
        -- sold or received; fn_document_line_not_parent refuses it.
+       and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id) limit 1`;
   const [ccWh] = await sql`
     select id from location where company_id = ${co.id} and is_stock_location and is_active

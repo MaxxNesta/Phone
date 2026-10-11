@@ -54,6 +54,7 @@ try {
      where company_id = ${co.id} and is_stocked and is_active
        -- A product with variants is a name for a group and cannot be
        -- sold or received; fn_document_line_not_parent refuses it.
+       and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id)
      -- A plain item first. These suites test ordering and fulfilment,
      -- not batch tracking, and a tracked item makes every receipt
@@ -78,9 +79,13 @@ try {
      -- demand a lot number the suite has no reason to care about.
        -- A product with variants is a name for a group and cannot be
        -- sold or received; fn_document_line_not_parent refuses it.
+       and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id)
      order by tracks_batch, code limit 1`)[0];
-  if (!svc) {
+  // A retail company's items are always stocked (0124): there is no service
+  // to invoice, and the case below does not arise.
+  const [{ retail_mode: retail }] = await sql`select retail_mode from company where id = ${co.id}`;
+  if (!svc && !retail) {
     // The code is set by a trigger from the group and the serial, so both go
     // in rather than a code of our own.
     [svc] = await sql`
@@ -180,8 +185,8 @@ try {
 
   // ---- a service, where no delivery applies ------------------------------
 
-  console.log("\n  a service, which nothing delivers\n");
-  {
+  if (!retail) {
+    console.log("\n  a service, which nothing delivers\n");
     const inv = await P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: loc.id,
       docDate: today, dueDate: today, toDeliver: false,
       lines: [{ itemId: svc.id, qty: 1, unitPrice: 50000 }] });
