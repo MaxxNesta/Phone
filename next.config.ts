@@ -16,6 +16,30 @@ const nextConfig: NextConfig = {
      */
     serverActions: { bodySizeLimit: "12mb" },
   },
+  // Says nothing about the framework to whoever is looking.
+  poweredByHeader: false,
+  /**
+   * The headers a scan of the app found missing. Framing is refused so the
+   * ERP cannot be loaded invisibly inside another site and clicked through;
+   * types are not sniffed; a link out does not carry the page's address;
+   * the app asks for no camera, microphone or location and is given none.
+   *
+   * No Content-Security-Policy yet: Next's inline scripts need a nonce per
+   * request, which is its own change. Strict-Transport-Security is set by
+   * Vercel on every deployment.
+   */
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+      ],
+    }];
+  },
 };
 
 export default nextConfig;
