@@ -7,7 +7,8 @@ export type PrintLine = {
   qty?: number | null;
   uom?: string | null;
   unitPrice?: number | null;
-  amount: number;
+  /** Null where the reader may not see it (cost, without cost.view). */
+  amount: number | null;
 };
 
 export type PrintEntry = {
@@ -121,7 +122,7 @@ export function PrintableDocument({ doc }: { doc: PrintableDoc }) {
                 <td className="c-num">{l.qty != null ? l.qty : ""}</td>
                 <td className="c-uom">{l.uom ?? ""}</td>
                 <td className="c-num">{l.unitPrice != null ? money(l.unitPrice) : ""}</td>
-                <td className="c-num">{money(l.amount)}</td>
+                <td className="c-num">{l.amount != null ? money(l.amount) : ""}</td>
               </tr>
             ))}
           </tbody>

@@ -9,6 +9,7 @@ import { variantPhotos } from "@/lib/variants";
 import { AccountPicker } from "@/components/account-picker";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { requireUser, can } from "@/lib/auth";
 
 const label = (t: string) => t.replace(/_/g, " ").toLowerCase();
 
@@ -23,6 +24,8 @@ export default async function StockMovements({
 }) {
   const { item, from: rawFrom, to: rawTo } = await searchParams;
   const company = await getCompany();
+  // Cost per movement is for those who may see cost; without it the column is not sent.
+  const seeCost = can(await requireUser(), "cost.view");
   if (!company) return <div className="empty">No company found.</div>;
 
   const from = asDate(rawFrom);
@@ -131,9 +134,9 @@ export default async function StockMovements({
         </td>
         <td className="r">{Number(r.qty) > 0 ? qty(r.qty) : ""}</td>
         <td className="r">{Number(r.qty) < 0 ? qty(String(-Number(r.qty))) : ""}</td>
-        <td className="r">
+        {seeCost && <td className="r">
           {Number(r.qty) === 0 ? money(r.total_cost) : money(r.unit_cost)}
-        </td>
+        </td>}
         {oneItem && <td className="r">{qty(String(r.balance))}</td>}
       </tr>
     ),
@@ -147,7 +150,7 @@ export default async function StockMovements({
     { key: "batch", label: "Batch" },
     { key: "in", label: "In", align: "r" as const },
     { key: "out", label: "Out", align: "r" as const },
-    { key: "cost", label: "Unit cost", align: "r" as const },
+    ...(seeCost ? [{ key: "cost", label: "Unit cost", align: "r" as const }] : []),
     ...(oneItem ? [{ key: "balance", label: "Balance", align: "r" as const }] : []),
   ];
 

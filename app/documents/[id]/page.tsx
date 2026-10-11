@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { requireUser, can, permissionForDocument } from "@/lib/auth";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { uploadAttachment, deleteAttachment } from "@/lib/actions";
 import { storageConfigured } from "@/lib/r2";
@@ -135,7 +136,8 @@ export default async function DocumentPage({
   // Only a path within the app is accepted: a `back` that could be pointed at
   // another site is an open redirect wearing a breadcrumb.
   const { back } = await searchParams;
-  const backHref = back && back.startsWith("/") && !back.startsWith("//") ? back : null;
+  // A backslash too: browsers read "/\evil.com" as "//evil.com".
+  const backHref = back && back.startsWith("/") && !back.startsWith("//") && !back.startsWith("/\\") ? back : null;
   // Named, not just "Back": an arrow that says where it goes is the
   // difference between a way out and a guess. A path this does not know
   // still gets an arrow, labelled plainly.
@@ -144,14 +146,20 @@ export default async function DocumentPage({
        ?? (backHref.startsWith("/finance/general-ledger") ? "General ledger" : "Back"))
     : null;
   const { id } = await params;
+  const user = await requireUser();
   const doc = await getDocument(id);
-  if (!doc) notFound();
+  // Not found rather than refused: whether a document exists is itself
+  // something a role without access to its side of the business is not told.
+  if (!doc || doc.company_id !== user.companyId || !can(user, permissionForDocument(doc.doc_type))) notFound();
+  // The posting carries cost of sales on every sale and the cost of stock on
+  // every movement: only those who may see cost, or keep the books, see it.
+  const seeJournal = can(user, "cost.view") || can(user, "accounting.view");
 
   const [lines, docBatches, journal, downstream, chainDocuments, attachments, docSerials, brandsInUse] =
     await Promise.all([
       getDocumentLines(id),
       getDocumentBatches(id),
-      getJournalForDocument(doc.journal_entry_id),
+      seeJournal ? getJournalForDocument(doc.journal_entry_id) : Promise.resolve([]),
       getDownstream(id),
       getChainDocuments(id),
       getDocumentAttachments(doc.company_id, id),
@@ -500,6 +508,9 @@ export default async function DocumentPage({
   // it cost the company nothing to give away.
   const valuedAtCost = doc.doc_type === "DELIVERY" || doc.doc_type === "STOCK_TRANSFER";
   const valueLabel = valuedAtCost ? "Cost" : "Price";
+  // An adjustment's lines are at cost too. Without cost.view those figures
+  // are left blank rather than sent.
+  const hideValue = (valuedAtCost || doc.doc_type === "STOCK_ADJUSTMENT") && !can(user, "cost.view");
 
   // On those documents the per-unit figure is derived from the line's value
   // rather than read from unit_price, because a free-of-charge line is
@@ -1508,8 +1519,8 @@ export default async function DocumentPage({
                           </td>
                           <td className="code">{l.uom_code ?? "—"}</td>
                           <td className="r">{qty(l.entered_qty)}</td>
-                          <td className="r">{money(unitValue(l))}</td>
-                          <td className="r">{money(l.net_amount)}</td>
+                          <td className="r">{hideValue ? "—" : money(unitValue(l))}</td>
+                          <td className="r">{hideValue ? "—" : money(l.net_amount)}</td>
                         </tr>
                         {batches.length > 0 && (
                           <tr className="batchtrail">
@@ -1568,7 +1579,7 @@ export default async function DocumentPage({
         storageReady={storageConfigured()}
       />
 
-      <section>
+      {seeJournal && <section>
         <div className="card">
           <div className="card-head">
             <h2>Posting</h2>
@@ -1613,7 +1624,7 @@ export default async function DocumentPage({
             </div>
           )}
         </div>
-      </section>
+      </section>}
     </ErpDocShell>
   );
 }

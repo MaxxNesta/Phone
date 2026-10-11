@@ -6,6 +6,7 @@ import {
 } from "@/lib/queries";
 import { PrintableDocument, type PrintableDoc } from "@/components/printable-document";
 import { PrintButton } from "@/components/print-button";
+import { requireUser, can, permissionForDocument } from "@/lib/auth";
 
 /**
  * A document as paper, for every type.
@@ -61,8 +62,11 @@ export default async function DocumentPrint({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const user = await requireUser();
   const [company, doc] = await Promise.all([getCompany(), getDocument(id)]);
-  if (!company || !doc) notFound();
+  // The same gate as the document itself: paper is no way round it.
+  if (!company || !doc || (doc as any).company_id !== user.companyId
+      || !can(user, permissionForDocument((doc as any).doc_type))) notFound();
 
   const d = doc as any;
   const [lines, journal] = await Promise.all([
@@ -77,6 +81,9 @@ export default async function DocumentPrint({
   // a payment — is described by what it did to the accounts, which is the
   // only record of it there is.
   const hasLines = lines.length > 0;
+  // Deliveries, transfers and adjustments are valued at cost.
+  const hideValue = ["DELIVERY", "STOCK_TRANSFER", "STOCK_ADJUSTMENT"].includes(d.doc_type)
+    && !can(user, "cost.view");
 
   const printable: PrintableDoc = {
     company: { name: company.name, nameMy: company.name_my, currency: company.base_currency },
@@ -100,8 +107,8 @@ export default async function DocumentPrint({
       name: l.item_name ?? l.description ?? "—",
       qty: l.entered_qty != null ? Number(l.entered_qty) : null,
       uom: l.uom_code ?? null,
-      unitPrice: l.unit_price != null ? Number(l.unit_price) : null,
-      amount: Number(l.net_amount ?? 0),
+      unitPrice: hideValue || l.unit_price == null ? null : Number(l.unit_price),
+      amount: hideValue ? null : Number(l.net_amount ?? 0),
     })) : undefined,
     entries: hasLines ? undefined : journal.map((j) => ({
       account: `${j.account_code} · ${j.account_name}`,
@@ -109,7 +116,7 @@ export default async function DocumentPrint({
       debit: Number(j.debit),
       credit: Number(j.credit),
     })),
-    totals: hasLines
+    totals: hideValue ? [] : hasLines
       ? [
           ...(Number(d.net_total) !== Number(d.gross_total)
             ? [{ label: "Subtotal", value: Number(d.net_total) },

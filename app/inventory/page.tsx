@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Boxes, Package, Lock, AlertTriangle, Smartphone } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
-import { inventorySummary, recentMovements, catalogFacets } from "@/lib/phone";
+import { inventorySummary, recentMovements, catalogFacets, stripCost } from "@/lib/phone";
 import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
 import { AutoApply } from "@/components/auto-apply";
 import { money, dateTime } from "@/lib/format";
@@ -27,7 +27,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const seeCost = can(user, "cost.view");
 
   const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
-  const [{ locations, rows }, facets, moves, groups, allLocs] = await Promise.all([
+  const [{ locations, rows: allRows }, facets, moves, groups, allLocs] = await Promise.all([
     facetsP.then((f) => inventorySummary(co, {
       q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
       locationId: sp.location || undefined, status: sp.status || undefined,
@@ -38,6 +38,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`,
   ]);
 
+  // Rendered only for cost.view, and not sent to anyone else either.
+  const rows = stripCost(allRows as Record<string, any>[], seeCost);
   const total = rows.reduce((s, r: any) => s + Number(r.value), 0);
   const units = rows.reduce((s, r: any) => s + Math.max(0, r.available), 0);
   const reserved = rows.reduce((s, r: any) => s + Number(r.reserved), 0);

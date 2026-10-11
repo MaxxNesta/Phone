@@ -1,4 +1,5 @@
-import { getAttachment, getCompany } from "@/lib/queries";
+import { getAttachment, getCompany, getDocument } from "@/lib/queries";
+import { requireUser, can, permissionForDocument } from "@/lib/auth";
 import { getObject } from "@/lib/r2";
 
 /**
@@ -10,11 +11,9 @@ import { getObject } from "@/lib/r2";
  * on it, and none of that should be readable by anyone who guesses a URL —
  * so there is no public address for it, and every read comes through here.
  *
- * Today that means "anyone who can reach the app", which is everyone,
- * because there is no sign-in yet. That is not much of a gate, but it is a
- * gate in the right place: when authentication arrives it goes in this
- * function and every attachment in the system is behind it at once. A public
- * bucket could not be retrofitted the same way.
+ * The gate is the document's own: whoever may open the document may read
+ * what is attached to it, and nobody else — a scanned purchase bill is as
+ * much a purchase as the bill.
  *
  * The document id is in the path and checked against the row, so a file
  * cannot be fetched by pointing at a document it does not belong to.
@@ -27,8 +26,13 @@ export async function GET(
 
   // Not lib/actions' companyId: that file is "use server", so anything
   // exported from it becomes callable from a browser.
+  const user = await requireUser();
   const company = await getCompany();
-  if (!company) return new Response("Not found", { status: 404 });
+  if (!company || company.id !== user.companyId) return new Response("Not found", { status: 404 });
+  const doc = await getDocument(id);
+  if (!doc || !can(user, permissionForDocument(doc.doc_type as string))) {
+    return new Response("Not found", { status: 404 });
+  }
 
   const row = await getAttachment(company.id, fileId);
   if (!row || row.document_id !== id) {

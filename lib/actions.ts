@@ -3476,7 +3476,7 @@ export async function getAccountsLedger(accountIds: string[], from?: string, to?
 // ------------------------------------------------------------- form lookups --
 
 export async function getFormData() {
-  await requireUser();
+  const user = await requireUser();
   const co = await companyId();
 
   const [
@@ -3639,8 +3639,14 @@ export async function getFormData() {
   // One brand tells a clerk nothing; the line shows it only once there are two.
   if ((await getBrandsInUse(co)).length <= 1) for (const it of items) it.brand = null;
 
+  // next_cost is what the next unit leaving stock cost: the default on a
+  // purchase, a receipt or an adjustment. Every form gets this data, the
+  // till included, so it goes only to those who buy stock or may see cost.
+  const seesCost = can(user, "cost.view") || can(user, "purchase.view");
+  const itemsShown = seesCost ? items : items.map((i) => ({ ...i, next_cost: 0 }));
+
   return {
-    customers, suppliers, items, locations, volumeDiscounts, groups, uoms,
+    customers, suppliers, items: itemsShown, locations, volumeDiscounts, groups, uoms,
     salesmen, promotions, cashAccounts, focReasons, itemPrices, priceLevels, openInvoices,
     // Null until the first invoice of the year exists, since the format
     // depends on a series that has not been created yet.

@@ -162,6 +162,28 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/logistics", "settings.manage"],
 ];
 
+/**
+ * What it takes to open a document, by its type.
+ *
+ * /documents/<id> sits under no listed prefix, so the path check let any
+ * signed-in user open any document — a cashier could read a goods receipt
+ * and the cost of every phone on it. A document is the side of the business
+ * it belongs to: a purchase needs purchase.view, a voucher accounting.view.
+ * An unknown type needs the most, not the least.
+ */
+const DOCUMENT_PERMISSIONS: Record<string, Permission> = {
+  SALES_ORDER: "sales.view", SALES_INVOICE: "sales.view", SALES_RETURN: "sales.view",
+  CUSTOMER_RECEIPT: "sales.view", CREDIT_NOTE: "sales.view",
+  PURCHASE_ORDER: "purchase.view", GOODS_RECEIPT: "purchase.view", PURCHASE_INVOICE: "purchase.view",
+  PURCHASE_RETURN: "purchase.view", SUPPLIER_PAYMENT: "purchase.view", DEBIT_NOTE: "purchase.view",
+  CONSIGNMENT_RECEIPT: "purchase.view",
+  DELIVERY: "inventory.view", STOCK_TRANSFER: "inventory.view", STOCK_ADJUSTMENT: "inventory.view",
+};
+
+export function permissionForDocument(docType: string): Permission {
+  return DOCUMENT_PERMISSIONS[docType] ?? "accounting.view";
+}
+
 export function permissionForPath(path: string): Permission | null {
   for (const [prefix, p] of PATH_PERMISSIONS) {
     if (path === prefix || path.startsWith(prefix + "/")) return p;

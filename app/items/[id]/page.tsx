@@ -6,6 +6,7 @@ import { getCompany, getStockMovements } from "@/lib/queries";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 import { ItemThumb } from "@/components/item-thumb";
 import { HelpHint } from "@/components/help-hint";
+import { requireUser, can } from "@/lib/auth";
 
 const money = (v: unknown) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -29,6 +30,9 @@ export default async function ItemPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  // What the stock cost is for those who may see cost; for everyone else
+  // the column is not there at all.
+  const seeCost = can(await requireUser(), "cost.view");
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -306,7 +310,7 @@ export default async function ItemPage({
                 <thead>
                   <tr>
                     <th>Date</th><th>Document</th><th>Warehouse</th>
-                    <th className="r">Quantity</th><th className="r">Unit cost</th>
+                    <th className="r">Quantity</th>{seeCost && <th className="r">Unit cost</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -324,7 +328,7 @@ export default async function ItemPage({
                       <td className="r" style={{ color: Number(m.qty) < 0 ? "var(--bad)" : undefined }}>
                         {qty(m.qty)}
                       </td>
-                      <td className="r">{m.unit_cost ? money(m.unit_cost) : "—"}</td>
+                      {seeCost && <td className="r">{m.unit_cost ? money(m.unit_cost) : "—"}</td>}
                     </tr>
                   ))}
                 </tbody>
