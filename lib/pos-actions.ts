@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sql } from "./db";
+import { postOnce } from "./idempotency";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "./auth";
 import { postRetailSale, postCustomerReceipt, type InvoiceLine } from "./posting";
 import { posSearch, unitsOnShelf, stripCost } from "./phone";
@@ -90,15 +91,13 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
     const partnerId = sale.partnerId || walkInId;
     const today = (await sql`select to_char(current_date, 'YYYY-MM-DD') as d`)[0].d as string;
 
-    const result = await sql.begin(async (tx) => {
-      // The same attempt twice is the same sale: a retried request finds the
-      // first one rather than selling the handset again (which the serial
-      // guard would refuse anyway, less helpfully).
-      const [seen] = await tx`
-        select id, doc_no from document
-         where company_id = ${co} and doc_type = 'SALES_INVOICE' and reference = ${"POS:" + sale.attempt}`;
-      if (seen) return { id: seen.id as string, docNo: seen.doc_no as string };
-
+    // The same attempt twice is the same sale. Looking for it first was not
+    // enough: requests sent together all looked before any had posted, and
+    // six copies of one sale sent at once posted six sales (found by testing
+    // retries over HTTP). postOnce claims the attempt in the transaction that
+    // posts it, so a second request waits for the first and is handed its sale.
+    const attemptKey = sale.attempt ? `POS:${String(sale.attempt).slice(0, 96)}` : null;
+    const result = await postOnce(co, attemptKey, async (tx) => {
       const [first, ...rest] = payments;
       const posted = await postRetailSale({
         companyId: co, partnerId, locationId: sale.locationId,
