@@ -41,3 +41,7 @@ next-env.d.ts
 
 .vercel
 tsconfig.tsbuildinfo
+
+# Load-test run data: session tokens and raw results stay local
+loadtest/run.json
+loadtest/results/
