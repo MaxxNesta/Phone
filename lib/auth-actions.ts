@@ -2,7 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { sql } from "./db";
+import { tooManyFailures, recordFailure, clearFailures, LOGIN_LIMITS } from "./login-throttle";
 import {
   createSession, endSession, hashPassword, verifyPassword, requirePermission,
   ROLES, type Role,
@@ -11,6 +13,8 @@ import {
 type Result = { error: string } | { ok: string } | null;
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+let dummy: string | null = null;
+const DUMMY_HASH = () => (dummy ??= hashPassword("not a password anyone has"));
 const initialsOf = (name: string) =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
 
@@ -31,12 +35,25 @@ const safeNext = (v: string) => {
 export async function signIn(_prev: Result, fd: FormData): Promise<Result> {
   const email = str(fd, "email").toLowerCase();
   const password = String(fd.get("password") ?? "");
+  // The caller's address as Vercel's edge saw it: the first hop, which the
+  // platform sets itself rather than passing on what the client sent.
+  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() || null;
+  // Refused before the password is checked, and the same for an email that
+  // does not exist, so the limit says nothing about which accounts there are.
+  if (await tooManyFailures(sql, email, ip)) {
+    return { error: `Too many failed sign-ins. Wait ${LOGIN_LIMITS.windowMinutes} minutes and try again.` };
+  }
   const [u] = await sql`
     select id, password_hash, is_active from app_user where lower(email) = ${email}`;
   // One message for every failure, so the form does not say which emails exist.
-  if (!u || !u.is_active || !verifyPassword(password, u.password_hash)) {
+  // An unknown email still pays for one scrypt, so how long the answer takes
+  // does not tell which emails exist either.
+  const ok = u ? verifyPassword(password, u.password_hash) : (verifyPassword(password, DUMMY_HASH()), false);
+  if (!u || !u.is_active || !ok) {
+    await recordFailure(sql, email, ip);
     return { error: "That email and password do not match an active account." };
   }
+  await clearFailures(sql, email);
   await createSession(u.id);
   redirect(safeNext(str(fd, "next")));
 }
