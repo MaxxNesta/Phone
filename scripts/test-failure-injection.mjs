@@ -121,7 +121,12 @@ async function killedMidway(label, companyId, post, atStatement) {
         apply(target, self, args) {
           if (Array.isArray(args[0]) && "raw" in args[0] && ++i === atStatement) {
             // From outside, as a crash or a dropped link would: this connection is gone.
-            return sql`select pg_terminate_backend(${pid})`.then(() => Reflect.apply(target, self, args));
+            // The client is given a moment to see the socket close: a statement
+            // written into the closing socket throws inside postgres.js, outside
+            // any promise, which is the library's race and not the posting's.
+            return sql`select pg_terminate_backend(${pid})`
+              .then(() => new Promise((r) => setTimeout(r, 500)))
+              .then(() => Reflect.apply(target, self, args));
           }
           return Reflect.apply(target, self, args);
         },
