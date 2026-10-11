@@ -24,9 +24,9 @@ const nextConfig: NextConfig = {
    * types are not sniffed; a link out does not carry the page's address;
    * the app asks for no camera, microphone or location and is given none.
    *
-   * No Content-Security-Policy yet: Next's inline scripts need a nonce per
-   * request, which is its own change. Strict-Transport-Security is set by
-   * Vercel on every deployment.
+   * The Content-Security-Policy is set in middleware.ts, because its nonce
+   * changes per request. Strict-Transport-Security is set by Vercel on every
+   * deployment.
    */
   async headers() {
     return [{

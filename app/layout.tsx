@@ -66,7 +66,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let dbError: string | null = null;
 
   // Sign-in and first-run screens draw without the application around them.
-  const path = (await headers()).get("x-pathname") ?? "";
+  const h = await headers();
+  const path = h.get("x-pathname") ?? "";
+  // The middleware's Content-Security-Policy runs only scripts carrying this.
+  const nonce = h.get("x-nonce") ?? undefined;
   const bare = path === "/login" || path.startsWith("/setup");
 
   // Asked together: the user lookup shares the request's cached company, so
@@ -98,6 +101,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             SidebarCollapse runs after paint, which is too late to prevent that
             — this is the same reason a theme preference is read here. */}
         <script
+          nonce={nonce}
           dangerouslySetInnerHTML={{
             __html:
               "try{if(localStorage.getItem('navCollapsed')==='true')"
