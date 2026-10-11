@@ -30,6 +30,8 @@ export function ConsignmentSaleForm({
   today: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  // One key per form: a double click or a retried request posts once.
+  const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   const [partnerId, setPartnerId] = useState("");
   const [locationId, setLocationId] = useState(
@@ -85,6 +87,7 @@ export function ConsignmentSaleForm({
 
   return (
     <form action={formAction} data-density="odoo">
+      <input type="hidden" name="idempotency_key" value={attemptKey} />
       <input type="hidden" name="lines" value={payload} />
       <input type="hidden" name="location_id" value={locationId} />
       <div className="erp-sheet-page" style={{ maxWidth: 820 }}>

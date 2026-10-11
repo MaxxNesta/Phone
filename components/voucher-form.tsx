@@ -64,6 +64,8 @@ export function VoucherForm({
   /** Locks the direction and hides the toggle — a receipt is always in, a payment always out. */
   presetDirection?: "in" | "out";
 }) {
+  // One key per form: a double click or a retried request posts once.
+  const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never,
     null
@@ -145,6 +147,7 @@ export function VoucherForm({
 
   return (
     <form action={formAction} className="form wide">
+      <input type="hidden" name="idempotency_key" value={attemptKey} />
       {state && "error" in state && <div className="alert">{state.error}</div>}
       <input type="hidden" name="lines" value={JSON.stringify(lines)} />
 

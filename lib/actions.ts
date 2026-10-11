@@ -2605,10 +2605,10 @@ async function postVoucherFrom(
     lines,
   };
 
-  const r =
-    kind === "cash" ? await postCashVoucher(input)
-      : kind === "bank" ? await postBankVoucher(input)
-      : await postJournalVoucher(input);
+  const r = await postOnce(co, attemptKey(fd), (tx) =>
+    kind === "cash" ? postCashVoucher(input, tx)
+      : kind === "bank" ? postBankVoucher(input, tx)
+      : postJournalVoucher(input, tx));
 
   return { id: r.id, docNo: r.docNo };
 }
@@ -3315,7 +3315,7 @@ export async function createCashTransfer(_prev: unknown, fd: FormData): Promise<
     });
     if (typeof toLocationId !== "string") return toLocationId;
 
-    const r = await postCashTransfer({
+    const r = await postOnce(co, attemptKey(fd), (tx) => postCashTransfer({
       companyId: co,
       docDate: str(fd, "doc_date"),
       fromAccountId: from,
@@ -3325,7 +3325,7 @@ export async function createCashTransfer(_prev: unknown, fd: FormData): Promise<
       amount,
       memo: str(fd, "memo") || null,
       reference: str(fd, "reference") || null,
-    });
+    }, tx));
     id = r.id;
     toastMsg = `Transfer ${r.docNo} posted`;
   } catch (e) {
@@ -5916,7 +5916,7 @@ export async function createStockAdjustment(_prev: unknown, fd: FormData): Promi
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
 
-    const result = await postStockAdjustment({
+    const result = await postOnce(co, attemptKey(fd), (tx) => postStockAdjustment({
       companyId: co,
       locationId: str(fd, "location_id"),
       docDate: str(fd, "doc_date"),
@@ -5924,7 +5924,7 @@ export async function createStockAdjustment(_prev: unknown, fd: FormData): Promi
       memo: str(fd, "memo") || null,
       reference: str(fd, "reference") || null,
       lines,
-    });
+    }, tx));
 
     docId = result.id;
     toastMsg = `Adjustment ${result.docNo} posted`;
@@ -5972,7 +5972,7 @@ export async function createStockTransfer(_prev: unknown, fd: FormData): Promise
     if (!toLocationId) return { error: "Choose a destination warehouse" };
     if (fromLocationId === toLocationId) return { error: "Choose two different warehouses" };
 
-    const result = await postStockTransfer({
+    const result = await postOnce(co, attemptKey(fd), (tx) => postStockTransfer({
       companyId: co,
       fromLocationId,
       toLocationId,
@@ -5984,7 +5984,7 @@ export async function createStockTransfer(_prev: unknown, fd: FormData): Promise
       allowNegativeStock: fd.get("allow_negative_stock") !== null,
       negativeStockReason: str(fd, "negative_stock_reason") || null,
       lines,
-    });
+    }, tx));
 
     docId = result.id;
     toastMsg = `Transfer ${result.docNo} posted`;
@@ -6457,7 +6457,7 @@ export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Pr
     if (!str(fd, "partner_id")) return { error: "Choose a consignor" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
 
-    const result = await postConsignmentReceipt({
+    const result = await postOnce(co, attemptKey(fd), (tx) => postConsignmentReceipt({
       companyId: co,
       partnerId: str(fd, "partner_id"),
       locationId: str(fd, "location_id"),
@@ -6465,7 +6465,7 @@ export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Pr
       memo: str(fd, "memo") || null,
       reference: str(fd, "reference") || null,
       lines,
-    });
+    }, tx));
 
     docId = result.id;
     toastMsg = `Consignment receipt ${result.docNo} posted`;
@@ -6520,7 +6520,7 @@ export async function createConsignmentSale(_prev: unknown, fd: FormData): Promi
       ? new Date(new Date(docDate).getTime() + dueDays * 86400000).toISOString().slice(0, 10)
       : null;
 
-    const result = await postSaleWithDelivery({
+    const result = await postOnce(co, attemptKey(fd), (tx) => postSaleWithDelivery({
       companyId: co,
       partnerId: str(fd, "partner_id"),
       locationId: str(fd, "location_id"),
@@ -6529,7 +6529,7 @@ export async function createConsignmentSale(_prev: unknown, fd: FormData): Promi
       memo: str(fd, "memo") || null,
       reference: str(fd, "reference") || null,
       lines,
-    });
+    }, tx));
 
     docId = result.id;
     toastMsg = `Consignment sale ${result.docNo} posted`;

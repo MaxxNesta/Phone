@@ -39,6 +39,8 @@ export function ConsignmentReceiveForm({
    *  shipment describes a negotiation that has finished, and they do not. */
   items?: Item[];
 }) {
+  // One key per form: a double click or a retried request posts once.
+  const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   const [agreementId, setAgreementId] = useState("");
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
@@ -83,6 +85,7 @@ export function ConsignmentReceiveForm({
 
   return (
     <form action={formAction} data-density="odoo">
+      <input type="hidden" name="idempotency_key" value={attemptKey} />
       <input type="hidden" name="lines" value={payload} />
       <div className="erp-sheet-page" style={{ maxWidth: 720 }}>
         <div className="erp-doc-title"><h1 style={{ fontSize: "var(--t-xl)" }}>Receive Consignment</h1></div>

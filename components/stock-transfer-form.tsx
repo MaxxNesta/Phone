@@ -41,6 +41,8 @@ export function StockTransferForm({
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
 }) {
+  // One key per form: a double click or a retried request posts once.
+  const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never,
     null
@@ -107,6 +109,7 @@ export function StockTransferForm({
 
   return (
     <form action={formAction} className="form wide">
+      <input type="hidden" name="idempotency_key" value={attemptKey} />
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
       <input type="hidden" name="lines" value={payload} />

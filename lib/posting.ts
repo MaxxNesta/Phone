@@ -6188,8 +6188,8 @@ async function _postStockAdjustment(
 }
 
 /** Dr Inventory / Cr Stock Adjustment, in a transaction of its own. */
-export async function postStockAdjustment(input: AdjustmentInput) {
-  return sql.begin((tx) => _postStockAdjustment(tx, input));
+export async function postStockAdjustment(input: AdjustmentInput, outer?: TransactionSql) {
+  return inTransaction(outer, (tx) => _postStockAdjustment(tx, input));
 }
 
 // =========================================================================
@@ -6240,13 +6240,13 @@ export type TransferInput = {
   lines: TransferLine[];
 };
 
-export async function postStockTransfer(input: TransferInput) {
+export async function postStockTransfer(input: TransferInput, outer?: TransactionSql) {
   const lines = input.lines.filter((l) => l.qty > 0);
   if (lines.length === 0) throw new Error("A transfer needs at least one line");
   assertLines(lines);
   if (input.fromLocationId === input.toLocationId) throw new Error("Choose two different locations");
 
-  return sql.begin(async (tx) => {
+  return inTransaction(outer, async (tx) => {
     const { companyId, fromLocationId, toLocationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
     const serialTrackedT = await serialTracking(tx, lines.map((l) => l.itemId));
@@ -8008,23 +8008,23 @@ async function _postVoucher(
 }
 
 /** A voucher in a transaction of its own. */
-async function postVoucher(input: VoucherInput, docType: VoucherDocType) {
-  return sql.begin((tx) => _postVoucher(tx, input, docType));
+async function postVoucher(input: VoucherInput, docType: VoucherDocType, outer?: TransactionSql) {
+  return inTransaction(outer, (tx) => _postVoucher(tx, input, docType));
 }
 
 /** Money in or out of a till. */
-export async function postCashVoucher(input: VoucherInput) {
-  return postVoucher(input, "CASH_VOUCHER");
+export async function postCashVoucher(input: VoucherInput, outer?: TransactionSql) {
+  return postVoucher(input, "CASH_VOUCHER", outer);
 }
 
 /** Money in or out of a bank account. */
-export async function postBankVoucher(input: VoucherInput) {
-  return postVoucher(input, "BANK_VOUCHER");
+export async function postBankVoucher(input: VoucherInput, outer?: TransactionSql) {
+  return postVoucher(input, "BANK_VOUCHER", outer);
 }
 
 /** Free-form, any accounts. Control accounts are still refused by the database. */
-export async function postJournalVoucher(input: VoucherInput) {
-  return postVoucher(input, "JOURNAL_VOUCHER");
+export async function postJournalVoucher(input: VoucherInput, outer?: TransactionSql) {
+  return postVoucher(input, "JOURNAL_VOUCHER", outer);
 }
 
 /**
@@ -8042,7 +8042,7 @@ export async function postCashTransfer(input: {
   amount: number;
   memo?: string | null;
   reference?: string | null;
-}) {
+}, outer?: TransactionSql) {
   if (input.fromAccountId === input.toAccountId) {
     throw new Error("Choose two different accounts");
   }
@@ -8059,7 +8059,8 @@ export async function postCashTransfer(input: {
         { accountId: input.fromAccountId, amount: -input.amount, locationId: input.fromLocationId },
       ],
     },
-    "CASH_TRANSFER"
+    "CASH_TRANSFER",
+    outer
   );
 }
 
@@ -8273,8 +8274,8 @@ async function _postConsignmentReceipt(tx: TransactionSql, input: ConsignmentRec
   return { id: doc.id as string, docNo: docNo as string };
 }
 
-export async function postConsignmentReceipt(input: ConsignmentReceiptInput) {
-  return sql.begin((tx) => _postConsignmentReceipt(tx, input));
+export async function postConsignmentReceipt(input: ConsignmentReceiptInput, outer?: TransactionSql) {
+  return inTransaction(outer, (tx) => _postConsignmentReceipt(tx, input));
 }
 
 // =========================================================================
@@ -10601,7 +10602,7 @@ export type OpeningBatchInput = {
  * what was true when trading began, and day one's own transactions should
  * not compete with it for the same date.
  */
-export async function postOpeningBatch(input: OpeningBatchInput) {
+export async function postOpeningBatch(input: OpeningBatchInput, outer?: TransactionSql) {
   const stock = (input.stock ?? []).filter((l) => l.itemId && l.qty > 0);
   const receivables = (input.receivables ?? []).filter((l) => l.partnerId && l.amount !== 0);
   const payables = (input.payables ?? []).filter((l) => l.partnerId && l.amount !== 0);
@@ -10623,7 +10624,7 @@ export async function postOpeningBatch(input: OpeningBatchInput) {
   asAt.setDate(asAt.getDate() - 1);
   const docDate = asAt.toISOString().slice(0, 10);
 
-  return sql.begin(async (tx) => {
+  return inTransaction(outer, async (tx) => {
     const { companyId } = input;
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
