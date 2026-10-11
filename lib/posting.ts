@@ -1952,6 +1952,26 @@ async function claimSerials(
   return units;
 }
 
+/**
+ * Rows inserted 5,000 at a time. Postgres takes at most 65,534 parameters in
+ * one statement, and a goods receipt line's IMEIs go in together at nine
+ * values each: one line of more than about 7,280 phones failed outright —
+ * found by load testing. Chunks keep a bulk insert far under the limit.
+ */
+async function insertInChunks(
+  tx: TransactionSql, table: string, rows: Record<string, unknown>[], returnIds = false,
+): Promise<{ id: string }[]> {
+  const out: { id: string }[] = [];
+  for (let i = 0; i < rows.length; i += 5000) {
+    const part = rows.slice(i, i + 5000);
+    const r = returnIds
+      ? await tx`insert into ${tx(table)} ${tx(part)} returning id`
+      : await tx`insert into ${tx(table)} ${tx(part)}`;
+    out.push(...(r as unknown as { id: string }[]));
+  }
+  return out;
+}
+
 /** The units left on this movement, each tied to the slice it left on. */
 async function recordSerialIssues(
   tx: TransactionSql, companyId: string, movementId: string,
@@ -1959,17 +1979,15 @@ async function recordSerialIssues(
   event: { kind: string; documentId: string; locationId: string } | null,
 ) {
   if (units.length === 0) return;
-  await tx`
-    insert into stock_serial_issue ${tx(units.map((u, i) => ({
-      company_id: companyId, serial_id: u.serialId, stock_movement_id: movementId,
-      lot_id: u.lotId, consumption_id: consumptionIds[i],
-    })))}`;
+  await insertInChunks(tx, "stock_serial_issue", units.map((u, i) => ({
+    company_id: companyId, serial_id: u.serialId, stock_movement_id: movementId,
+    lot_id: u.lotId, consumption_id: consumptionIds[i],
+  })));
   if (event) {
-    await tx`
-      insert into stock_serial_event ${tx(units.map((u) => ({
-        company_id: companyId, serial_id: u.serialId, event: event.kind,
-        document_id: event.documentId, from_location_id: event.locationId, lot_id: u.lotId,
-      })))}`;
+    await insertInChunks(tx, "stock_serial_event", units.map((u) => ({
+      company_id: companyId, serial_id: u.serialId, event: event.kind,
+      document_id: event.documentId, from_location_id: event.locationId, lot_id: u.lotId,
+    })));
   }
 }
 
@@ -1980,11 +1998,10 @@ async function moveSerialsTo(
 ) {
   if (serialIds.length === 0) return;
   await tx`update stock_serial set stock_lot_id = ${lotId} where id = any(${serialIds})`;
-  await tx`
-    insert into stock_serial_event ${tx(serialIds.map((id) => ({
-      company_id: companyId, serial_id: id, event: event.kind, document_id: event.documentId,
-      from_location_id: event.from ?? null, to_location_id: event.to, lot_id: lotId,
-    })))}`;
+  await insertInChunks(tx, "stock_serial_event", serialIds.map((id) => ({
+    company_id: companyId, serial_id: id, event: event.kind, document_id: event.documentId,
+    from_location_id: event.from ?? null, to_location_id: event.to, lot_id: lotId,
+  })));
 }
 
 async function createFifoLot(
@@ -4449,23 +4466,20 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       // Two statements for the whole line, not two per unit: a box of 200
       // phones was 400 round trips.
       if (given.length > 0) {
-        const units = await tx`
-          insert into stock_serial ${tx(given.map((sn) => {
-            const d = details.get(sn);
-            return {
-              company_id: companyId, item_id: line.itemId, serial_no: sn,
-              stock_lot_id: lotId, stock_movement_id: movement.id,
-              imei2: d?.imei2?.trim() || null, device_serial: d?.deviceSerial?.trim() || null,
-              supplier_warranty_months: d?.supplierWarrantyMonths ?? null,
-              notes: d?.notes?.trim() || null,
-            };
-          }))}
-          returning id`;
-        await tx`
-          insert into stock_serial_event ${tx(units.map((u) => ({
-            company_id: companyId, serial_id: u.id, event: "RECEIVED",
-            document_id: doc.id, to_location_id: locationId, lot_id: lotId,
-          })))}`;
+        const units = await insertInChunks(tx, "stock_serial", given.map((sn) => {
+          const d = details.get(sn);
+          return {
+            company_id: companyId, item_id: line.itemId, serial_no: sn,
+            stock_lot_id: lotId, stock_movement_id: movement.id,
+            imei2: d?.imei2?.trim() || null, device_serial: d?.deviceSerial?.trim() || null,
+            supplier_warranty_months: d?.supplierWarrantyMonths ?? null,
+            notes: d?.notes?.trim() || null,
+          };
+        }), true);
+        await insertInChunks(tx, "stock_serial_event", units.map((u) => ({
+          company_id: companyId, serial_id: u.id, event: "RECEIVED",
+          document_id: doc.id, to_location_id: locationId, lot_id: lotId,
+        })));
       }
     }
 
