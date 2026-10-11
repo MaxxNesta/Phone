@@ -1024,6 +1024,60 @@ async function claimNumberSeries(tx: TransactionSql, companyId: string, date: st
        for update`;
 }
 
+/**
+ * The same rule for a void and for a correction: every document series it will
+ * draw on, locked in one order before any journal number is taken.
+ *
+ * A void takes a reversal number and then a journal number per document, and
+ * a counter sale's void reverses three; a correction then posts the new
+ * version, drawing numbers again. Each held the journal series while waiting
+ * for the next document series, the order postings no longer use.
+ *
+ * Locked: the series of the document and of everything it composed, at the
+ * date each reversal lands on (its own period when open, else today, as
+ * planVoidIn decides), and the same series at `alsoOn` — a correction's new
+ * date. Locking a series nothing ends up drawing on costs only the wait.
+ */
+async function claimVoidSeries(tx: TransactionSql, documentId: string, alsoOn: string[] = []) {
+  const today = new Date().toISOString().slice(0, 10);
+  const series = await tx`
+    with recursive composed as (
+      select id, company_id, doc_type, voucher_direction, posting_date
+        from document where id = ${documentId}
+      union all
+      select d.id, d.company_id, d.doc_type, d.voucher_direction, d.posting_date
+        from document d join composed c on d.lifecycle_owner_id = c.id
+       where d.status = 'POSTED'
+    )
+    select distinct c.company_id, fn_document_prefix(c.doc_type, c.voucher_direction) as pfx,
+           to_char(case when exists (
+             select 1 from fiscal_period fp
+              where fp.company_id = c.company_id and fp.status = 'OPEN'
+                and c.posting_date between fp.start_date and fp.end_date)
+           then c.posting_date else ${today}::date end, 'YYYY-MM-DD') as on_date
+      from composed c
+    union
+    select c.company_id, fn_document_prefix(c.doc_type, c.voucher_direction), a.d
+      from composed c cross join unnest(${alsoOn}::text[]) a(d)` as unknown as
+    { company_id: string; pfx: string; on_date: string }[];
+  if (series.length === 0) return;
+  const companyId = series[0].company_id;
+  const pfx = series.map((r) => r.pfx), on = series.map((r) => r.on_date);
+  await tx`
+    insert into number_series (company_id, document_type, series_date, prefix, padding, next_value)
+    select ${companyId}, k.pfx, k.on_date::date, k.pfx, 3, 1
+      from unnest(${pfx}::text[], ${on}::text[]) k(pfx, on_date)
+     order by k.on_date, k.pfx
+    on conflict (company_id, document_type, series_date) where series_date is not null do nothing`;
+  await tx`
+    select ns.id from number_series ns
+      join unnest(${pfx}::text[], ${on}::text[]) k(pfx, on_date)
+        on ns.document_type = k.pfx and ns.series_date = k.on_date::date
+     where ns.company_id = ${companyId}
+     order by ns.series_date, ns.document_type
+       for update of ns`;
+}
+
 async function documentNumberFor(
   tx: TransactionSql,
   companyId: string,
@@ -8804,7 +8858,7 @@ export async function voidDocument(input: {
  */
 async function voidDocumentIn(
   tx: TransactionSql,
-  input: { documentId: string; reason?: string | null; goodsBack?: boolean }
+  input: { documentId: string; reason?: string | null; goodsBack?: boolean; claimed?: boolean }
 ) {
   const { documentId } = input;
   {
@@ -8882,8 +8936,10 @@ async function voidDocumentIn(
         + `them, this is not a void — raise a sales return when they come back.`
       );
     }
+    if (!input.claimed) await claimVoidSeries(tx, documentId);
     for (const child of owned as unknown as { id: string; doc_no: string }[]) {
       await voidDocumentIn(tx, {
+        claimed: true,
         documentId: child.id,
         reason: input.reason
           ? `${input.reason} (with ${doc.doc_no})`
@@ -9240,6 +9296,8 @@ export type AmendInput<T> = {
    * the identity to post under — the original's number, at the next version.
    */
   repost: (tx: TransactionSql, identity: AmendIdentity) => Promise<T & { id: string }>;
+  /** The corrected version's date, so its numbers are locked with the void's. */
+  docDate?: string;
 };
 
 export async function amendDocument<T>(input: AmendInput<T>, outer?: TransactionSql) {
@@ -9320,7 +9378,8 @@ export async function amendDocumentIn<T>(tx: TransactionSql, input: AmendInput<T
       // Goods a counter sale took out come straight back and leave again on
       // the replacement, in this transaction — amendInvoice refuses any
       // change to which goods those are, so nothing reaches a shelf unseen.
-      await voidDocumentIn(tx, { documentId: input.documentId, reason: input.reason, goodsBack: true });
+      await claimVoidSeries(tx, input.documentId, input.docDate ? [input.docDate] : []);
+      await voidDocumentIn(tx, { documentId: input.documentId, reason: input.reason, goodsBack: true, claimed: true });
     }
 
     const replacement = await input.repost(tx, identity);
@@ -10143,6 +10202,7 @@ export async function amendVoucher(input: {
     companyId: input.companyId,
     documentId: input.documentId,
     reason: input.reason,
+    docDate: input.voucher.docDate,
     repost: async (tx, identity) => {
       const [orig] = await tx`
         select doc_type from document where id = ${input.documentId}`;
@@ -10190,6 +10250,7 @@ export async function amendSettlement(input: {
     companyId: input.companyId,
     documentId: input.documentId,
     reason: input.reason,
+    docDate: input.settlement.docDate,
     repost: async (tx, identity) => {
       const [orig] = await tx`
         select doc_type, source_document_id from document where id = ${input.documentId}`;
@@ -10232,6 +10293,7 @@ export async function amendInvoice(input: {
     companyId: input.companyId,
     documentId: input.documentId,
     reason: input.reason,
+    docDate: input.invoice.docDate,
     repost: async (tx, identity) => {
       const [orig] = await tx`
         select doc_type, source_document_id from document where id = ${input.documentId}`;
