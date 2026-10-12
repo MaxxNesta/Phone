@@ -1,57 +1,9 @@
 "use client";
 
-/**
- * When a list can be narrowed to. Presets first — most questions are "this
- * month" or "last week", and a choice is quicker than typing two dates — and a
- * custom range for the rest, shown only when asked for. Dates are compared as
- * calendar days (UTC midnight), the way posting dates are stored.
- */
-const DATE_PRESETS = [
-  ["", "Any date"], ["today", "Today"], ["yesterday", "Yesterday"], ["7d", "Last 7 days"],
-  ["30d", "Last 30 days"], ["month", "This month"], ["lastmonth", "Last month"],
-  ["year", "This year"], ["custom", "Custom range…"],
-] as const;
-export type DatePreset = (typeof DATE_PRESETS)[number][0];
-export type DateRange = { preset: DatePreset; from: string; to: string };
-export const ANY_DATE: DateRange = { preset: "", from: "", to: "" };
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { DATE_PRESETS, type DatePreset, type DateRange } from "@/lib/date-range";
 
-const DAY = 86_400_000;
-const dayOf = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-const parseDay = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? Date.parse(v + "T00:00:00Z") : NaN);
-
-/** The [from, to) window a range means today, in UTC-midnight milliseconds; null for any date. */
-export function dateWindow({ preset, from, to }: DateRange): [number, number] | null {
-  const now = new Date();
-  const today = dayOf(now);
-  switch (preset) {
-    case "today": return [today, today + DAY];
-    case "yesterday": return [today - DAY, today];
-    case "7d": return [today - 6 * DAY, today + DAY];
-    case "30d": return [today - 29 * DAY, today + DAY];
-    case "month": return [Date.UTC(now.getFullYear(), now.getMonth(), 1), today + DAY];
-    case "lastmonth": return [Date.UTC(now.getFullYear(), now.getMonth() - 1, 1), Date.UTC(now.getFullYear(), now.getMonth(), 1)];
-    case "year": return [Date.UTC(now.getFullYear(), 0, 1), today + DAY];
-    case "custom": {
-      const a = parseDay(from), b = parseDay(to);
-      if (Number.isNaN(a) && Number.isNaN(b)) return null;
-      return [Number.isNaN(a) ? -Infinity : a, Number.isNaN(b) ? Infinity : b + DAY];
-    }
-    default: return null;
-  }
-}
-
-/** Whether a date (a YYYY-MM-DD string or milliseconds) falls in the range. Undated rows never do. */
-export function inDateRange(value: string | number | null | undefined, range: DateRange): boolean {
-  const w = dateWindow(range);
-  if (!w) return true;
-  // A plain day ("2026-10-11"), or anything a Date reads — some pages hand
-  // over String(date) — taken as the calendar day it names.
-  const s = value == null ? "" : String(value);
-  const t = typeof value === "number" ? value
-    : /^\d{4}-\d{2}-\d{2}/.test(s) ? parseDay(s.slice(0, 10))
-    : s && !Number.isNaN(new Date(s).getTime()) ? dayOf(new Date(s)) : NaN;
-  return Number.isFinite(t) && t > 0 && t >= w[0] && t < w[1];
-}
+export { dateWindow, inDateRange, ANY_DATE, type DatePreset, type DateRange } from "@/lib/date-range";
 
 /** The preset menu, and two day fields when the range is custom. */
 export function DateFilter({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
@@ -76,4 +28,25 @@ export function DateFilter({ value, onChange }: { value: DateRange; onChange: (v
       )}
     </div>
   );
+}
+
+/**
+ * The same menu for a page whose figures are worked out on the server: the
+ * range lives in the URL (?date=, ?from=, ?to=), so it survives a reload and
+ * can be shared, and the page re-reads it. Other parameters are kept.
+ */
+export function UrlDateFilter() {
+  const router = useRouter(), path = usePathname(), sp = useSearchParams();
+  const value: DateRange = {
+    preset: (sp.get("date") ?? "") as DatePreset, from: sp.get("from") ?? "", to: sp.get("to") ?? "",
+  };
+  const onChange = (v: DateRange) => {
+    const next = new URLSearchParams(sp.toString());
+    for (const [k, x] of [["date", v.preset], ["from", v.preset === "custom" ? v.from : ""], ["to", v.preset === "custom" ? v.to : ""]] as const) {
+      if (x) next.set(k, x); else next.delete(k);
+    }
+    const q = next.toString();
+    router.replace(q ? `${path}?${q}` : path, { scroll: false });
+  };
+  return <DateFilter value={value} onChange={onChange} />;
 }

@@ -1,5 +1,7 @@
 import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
+import { periodFromParams } from "@/lib/date-range";
+import { UrlDateFilter } from "@/components/date-filter";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
 import { getCompany, getPartnerBalances } from "@/lib/queries";
@@ -16,13 +18,23 @@ const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
 export default async function Receivables({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; date?: string; from?: string; to?: string }>;
 }) {
-  const { status } = await searchParams;
+  const sp = await searchParams;
+  const { status } = sp;
+  // Invoices posted in the chosen period only; the tabs keep the period.
+  const period = periodFromParams(sp);
+  const keep = new URLSearchParams(Object.entries({ date: sp.date, from: sp.from, to: sp.to })
+    .filter(([, v]) => v) as [string, string][]);
+  const tabHref = (value: string) => {
+    const q = new URLSearchParams(keep);
+    if (value) q.set("status", value);
+    return q.size ? `/receivables?${q}` : "/receivables";
+  };
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const all = (await getPartnerBalances(company.id, "SALES_INVOICE", await seenLocations())) as any[];
+  const all = (await getPartnerBalances(company.id, "SALES_INVOICE", await seenLocations(), period)) as any[];
 
   const rowState = (r: any) => {
     // A remnant below the currency's smallest unit is not a debt anybody can
@@ -103,7 +115,7 @@ export default async function Receivables({
         {TABS.map(([value, label]) => (
           <Link
             key={value}
-            href={value ? `/receivables?status=${value}` : "/receivables"}
+            href={tabHref(value)}
             className={`flow-node ${(status ?? "") === value ? "here" : ""}`}
           >
             {label}
@@ -116,6 +128,7 @@ export default async function Receivables({
           <div className="card-head">
             <h2>Customers</h2>
             <span className="actions">
+              <UrlDateFilter />
               <span className="page-sub">{customers.length} with a balance</span>
               <Link href="/receivables/receive" className="btn">Receive payment</Link>
             </span>

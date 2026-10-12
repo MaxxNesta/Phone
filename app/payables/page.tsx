@@ -1,5 +1,7 @@
 import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
+import { periodFromParams } from "@/lib/date-range";
+import { UrlDateFilter } from "@/components/date-filter";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
 import { getCompany, getPartnerBalances } from "@/lib/queries";
@@ -17,15 +19,26 @@ const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
 export default async function Payables({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; date?: string; from?: string; to?: string }>;
 }) {
-  const { status } = await searchParams;
+  const sp = await searchParams;
+  const { status } = sp;
+  // Invoices posted in the chosen period only; the tabs keep the period.
+  const period = periodFromParams(sp);
+  const keep = new URLSearchParams(Object.entries({ date: sp.date, from: sp.from, to: sp.to })
+    .filter(([, v]) => v) as [string, string][]);
+  const tabHref = (value: string) => {
+    const q = new URLSearchParams(keep);
+    if (value) q.set("status", value);
+    return q.size ? `/payables?${q}` : "/payables";
+  };
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
   const [billed, unbilledRows] = await Promise.all([
-    getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations()) as Promise<any[]>,
-    unbilledReceipts(company.id),
+    getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations(), period) as Promise<any[]>,
+    seenLocations().then((locs) => unbilledReceipts(company.id, locs))
+      .then((rows) => period ? rows.filter((r) => r.docDate >= period.from && r.docDate < period.to) : rows),
   ]);
   // Goods in with no bill yet: not a payable in the books, but owed. Shown
   // beside each supplier's balance, and suppliers owed only that get a row.
@@ -125,7 +138,7 @@ export default async function Payables({
         {TABS.map(([value, label]) => (
           <Link
             key={value}
-            href={value ? `/payables?status=${value}` : "/payables"}
+            href={tabHref(value)}
             className={`flow-node ${(status ?? "") === value ? "here" : ""}`}
           >
             {label}
@@ -138,6 +151,7 @@ export default async function Payables({
           <div className="card-head">
             <h2>Suppliers</h2>
             <span className="actions">
+              <UrlDateFilter />
               <span className="page-sub">{suppliers.length} with a balance</span>
               <Link href="/payables/pay" className="btn">Pay supplier</Link>
             </span>

@@ -627,11 +627,13 @@ export async function getItemVariants(companyId: string, parentId: string) {
 
 /** What each customer/supplier owes or is owed, for a per-partner rollup. */
 export async function getPartnerBalances(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE",
-                                         locs: string[] | null = null) {
-  // v_partner_balance is one total per partner and cannot be cut by branch, so
-  // someone who sees only their own branch gets the same arithmetic over that
-  // branch's invoices alone.
-  const balances = locs ? sql`(
+                                         locs: string[] | null = null,
+                                         posted: { from: string; to: string } | null = null) {
+  // v_partner_balance is one total per partner and cannot be cut by branch or
+  // date, so someone who sees only their own branch, or asks for invoices
+  // posted in a period ([from, to), YYYY-MM-DD), gets the same arithmetic over
+  // those invoices alone.
+  const balances = locs || posted ? sql`(
     select v.company_id, v.partner_id, v.partner_code, v.partner_name, v.doc_type,
            count(*) filter (where v.outstanding <> 0)::int as open_invoices,
            sum(v.gross_total) as invoiced, sum(v.paid) as paid, sum(v.outstanding) as outstanding,
@@ -641,7 +643,8 @@ export async function getPartnerBalances(companyId: string, docType: "SALES_INVO
            max(p.credit_limit) as credit_limit
       from v_invoice_status v join business_partner p on p.id = v.partner_id
      where v.company_id = ${companyId} and v.doc_type = ${docType}
-       and v.document_id in (select id from document where location_id = any(${locs}))
+       ${locs ? sql`and v.document_id in (select id from document where location_id = any(${locs}))` : sql``}
+       ${posted ? sql`and v.posting_date >= ${posted.from}::date and v.posting_date < ${posted.to}::date` : sql``}
      group by v.company_id, v.partner_id, v.partner_code, v.partner_name, v.doc_type
     having sum(v.outstanding) <> 0)` : sql`v_partner_balance`;
   return sql`

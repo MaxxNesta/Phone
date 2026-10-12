@@ -29,17 +29,26 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const seeCost = can(user, "cost.view");
 
   const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
-  const [{ locations, rows: allRows }, facets, moves, groups, allLocs] = await Promise.all([
+  // The warehouses this person may see, each with the branch it belongs to.
+  // The filter offers both: a whole branch, or one warehouse in it.
+  const seen = await seenLocations();
+  const allLocs = (await seenRows((await sql`
+    select w.id, w.name, b.id as branch_id, b.name as branch_name
+      from location w left join location b on b.id = w.parent_id
+     where w.company_id = ${co} and w.is_stock_location and w.is_active
+     order by b.code nulls first, w.code`) as unknown as Record<string, unknown>[], "id")) as any[];
+  const branchOpts = [...new Map(allLocs.filter((l) => l.branch_id)
+    .map((l) => [l.branch_id, { id: l.branch_id as string, name: l.branch_name as string }])).values()];
+  const pickedBranch = branchOpts.some((b) => b.id === sp.location);
+  const [{ locations, rows: allRows }, facets, moves, groups] = await Promise.all([
     facetsP.then(async (f) => inventorySummary(co, {
       q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
-      locationId: sp.location || undefined, status: sp.status || undefined,
-      locs: await seenLocations(),
+      locationId: (!pickedBranch && sp.location) || undefined, status: sp.status || undefined,
+      locs: pickedBranch ? allLocs.filter((l) => l.branch_id === sp.location).map((l) => l.id as string) : seen,
     })),
     facetsP,
-    seenLocations().then((locs) => recentMovements(co, 8, locs)),
+    recentMovements(co, 8, seen),
     sql`select id, name from item_group where company_id = ${co} and parent_id is null order by name`,
-    sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`
-      .then((r) => seenRows(r as unknown as Record<string, unknown>[], "id")) as any,
   ]);
 
   // Rendered only for cost.view, and not sent to anyone else either.
@@ -148,10 +157,18 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           <CatalogFilterFields groups={groups as never} facets={facets} sp={sp} prefix="i" />
           {manyWarehouses && (
             <div className="field">
-              <label htmlFor="il">Location</label>
+              <label htmlFor="il">{branchOpts.length > 1 ? "Branch & warehouse" : "Warehouse"}</label>
               <select id="il" name="location" defaultValue={sp.location ?? ""}>
-                <option value="">All</option>
-                {allLocs.map((l: any) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                <option value="">{branchOpts.length > 1 ? "All branches" : "All warehouses"}</option>
+                {branchOpts.length > 1 && allLocs.filter((l) => !l.branch_id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {branchOpts.length > 1
+                  ? branchOpts.map((b) => (
+                      <optgroup key={b.id} label={b.name}>
+                        <option value={b.id}>All of {b.name}</option>
+                        {allLocs.filter((l) => l.branch_id === b.id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                      </optgroup>
+                    ))
+                  : allLocs.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           )}

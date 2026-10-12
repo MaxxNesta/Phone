@@ -20,7 +20,7 @@ export async function BranchScope() {
   return (
     <span className="branch-scope" title="You see this branch only. An administrator can change this in Settings → Users.">
       <MapPin size={14} aria-hidden="true" />
-      {mine ? `${mine.name} only` : "No branch assigned"}
+      {mine ? mine.name : "No branch assigned"}
     </span>
   );
 }
