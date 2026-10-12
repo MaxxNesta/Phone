@@ -2370,21 +2370,31 @@ async function adjustReceiptCost(
     const difference = round4(b.qty * b.newUnitCost - b.heldValue);
     if (difference === 0) continue;
 
-    // Which lots this receipt line put on the shelf. Matched by the receipt
-    // and the item rather than by the line, because a receipt's stock movement
-    // does not record which of its lines it came from — and reading it that
-    // way also keeps working for stock received before any of this existed.
+    // Which lots this receipt line put on the shelf: the line's own, through
+    // the movement it wrote. Matching by receipt and item instead shared one
+    // line's correction with every other line of that item — three phones
+    // received on three lines, one billed 300,000 dearer, and all three went
+    // up 100,000. A unit's cost is its own line's.
+    //
+    // A receipt movement that names no line predates lines being recorded on
+    // movements; for those the receipt and the item is still the only match.
     const [receiptLine] = await tx`
       select document_id, item_id from document_line where id = ${b.receiptLineId}`;
     if (!receiptLine) continue;
+    const [byLine] = await tx`
+      select exists (select 1 from stock_movement
+                      where document_id = ${receiptLine.document_id}
+                        and document_line_id is not null and qty > 0) as yes`;
+    const ofLine = byLine.yes
+      ? tx`sm.document_line_id = ${b.receiptLineId}`
+      : tx`sm.document_id = ${receiptLine.document_id} and sl.item_id = ${receiptLine.item_id}`;
 
     // Locked on its own first: Postgres refuses FOR UPDATE on a query that
     // groups, and everything below has to see a stable picture.
     await tx`
       select sl.id from stock_lot sl
         join stock_movement sm on sm.id = sl.stock_movement_id
-       where sm.document_id = ${receiptLine.document_id}
-         and sl.item_id = ${receiptLine.item_id}
+       where ${ofLine}
        order by sl.created_at
          for update of sl`;
 
@@ -2392,23 +2402,48 @@ async function adjustReceiptCost(
       select sl.id, sl.qty_received
         from stock_lot sl
         join stock_movement sm on sm.id = sl.stock_movement_id
-       where sm.document_id = ${receiptLine.document_id}
-         and sl.item_id = ${receiptLine.item_id}
+       where ${ofLine}
        order by sl.created_at`;
 
-    // Nothing to revalue: the goods never became a lot. A receipt from before
-    // lot tracking, or one that only covered goods already sold. The caller
-    // sends what is left to variance, which is where a difference with no
-    // goods behind it belongs.
-    if (lots.length === 0) continue;
+    /*
+     * Units of this line that never reached the shelf: they covered goods
+     * already sold short, and settleNegativeStock charged them out on arrival
+     * at the receipt's price. They are sold units like any other, so their
+     * share of the correction goes where that shortage's cost went — not onto
+     * the lot, which would value the units still on the shelf at the whole
+     * line's difference. A shortage a transfer created is left out: its goods
+     * are stock at the other warehouse with no layer to put the value on, and
+     * the caller sends that share to variance, as before.
+     */
+    const covered = byLine.yes ? await tx`
+      select ns.expense_account_id, ns.to_location_id, sum(s.qty)::float as qty
+        from negative_stock_settlement s
+        join negative_stock ns on ns.id = s.negative_stock_id
+        join stock_movement sm on sm.id = s.stock_movement_id
+       where sm.document_line_id = ${b.receiptLineId} and sm.qty > 0
+       group by ns.expense_account_id, ns.to_location_id` : [];
+
+    // Nothing to revalue: the goods never became a lot and covered nothing. A
+    // receipt from before lot tracking. The caller sends what is left to
+    // variance, which is where a difference with no goods behind it belongs.
+    if (lots.length === 0 && covered.length === 0) continue;
 
     const received = lots.reduce((t: number, l: Record<string, unknown>) =>
-      t + Number(l.qty_received), 0);
+      t + Number(l.qty_received), 0)
+      + covered.reduce((t: number, c: Record<string, unknown>) => t + Number(c.qty), 0);
     if (received <= 0) continue;
 
-    // A receipt with two lines of the same item shares the difference between
-    // their lots in proportion to what each brought in, which is the right
-    // answer for goods nobody can tell apart on the pallet.
+    for (const c of covered as unknown as Array<{
+      expense_account_id: string | null; to_location_id: string | null; qty: number;
+    }>) {
+      if (c.to_location_id) continue;
+      addExpense(c.expense_account_id, receiptLine.item_id as string,
+        round4(difference * (Number(c.qty) / received)));
+    }
+
+    // One lot per line, normally. Only the older match above can find several
+    // (a receipt's lines of one item together), and then the difference is
+    // shared in proportion to what each brought in.
     for (const lot of lots) {
       await placeOnLot(
         lot.id as string,
