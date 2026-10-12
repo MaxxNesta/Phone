@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 /**
  * A report's filters apply themselves.
@@ -33,6 +33,27 @@ export function AutoApply() {
   const mark = useRef<HTMLSpanElement>(null);
   const router = useRouter();
   const [pending, start] = useTransition();
+  const search = useSearchParams();
+  // The visible filters of this form that are narrowing the page now. Hidden
+  // fields (the tab, a mode) are where the person is, not what they filtered.
+  const [active, setActive] = useState<string[]>([]);
+  useEffect(() => {
+    const form = mark.current?.closest("form");
+    if (!form) return;
+    const names = [...form.elements]
+      .filter((el): el is HTMLInputElement | HTMLSelectElement =>
+        "name" in el && Boolean((el as HTMLInputElement).name) && (el as HTMLInputElement).type !== "hidden")
+      .map((el) => el.name);
+    setActive([...new Set(names)].filter((n) => (search.get(n) ?? "") !== ""));
+  }, [search]);
+
+  /** Back to the broad view in one step: this form's filters go, the rest stays. */
+  const clear = () => {
+    const params = new URLSearchParams(search.toString());
+    for (const n of active) params.delete(n);
+    const query = params.toString();
+    start(() => router.replace(query ? `?${query}` : window.location.pathname, { scroll: false }));
+  };
 
   useEffect(() => {
     const form = mark.current?.closest("form");
@@ -76,8 +97,15 @@ export function AutoApply() {
   // for anyone who cannot see it move. It is also this element that locates
   // the form, so it stays in the markup either way.
   return (
-    <span ref={mark} className="visually-hidden" aria-live="polite">
-      {pending ? "Updating the report" : ""}
-    </span>
+    <>
+      <span ref={mark} className="visually-hidden" aria-live="polite">
+        {pending ? "Updating the report" : ""}
+      </span>
+      {active.length > 0 && (
+        <button type="button" className="filters-clear" onClick={clear}>
+          Clear filters{active.length > 1 ? ` (${active.length})` : ""}
+        </button>
+      )}
+    </>
   );
 }

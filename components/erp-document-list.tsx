@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { DateFilter, inDateRange, ANY_DATE, type DateRange } from "./date-filter";
 import Link from "next/link";
 // From lib/format, not lib/db: lib/db also exports the postgres client, and
 // importing it into a client component pulls the driver into the browser
@@ -69,17 +70,17 @@ export function ErpDocumentList({
   typeFilter?: { label: string; clearHref: string } | null;
 }) {
   const [q, setQ] = useState("");
+  const [dates, setDates] = useState<DateRange>(ANY_DATE);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
     key: "postingDate", dir: "desc",
   });
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const matched = needle
-      ? rows.filter((r) =>
-          [r.docNo, label(r.docType), r.partnerName, r.sourceDocNo]
-            .filter(Boolean).join(" ").toLowerCase().includes(needle))
-      : rows;
+    const matched = rows.filter((r) =>
+      inDateRange(r.postingDate, dates)
+      && (!needle || [r.docNo, label(r.docType), r.partnerName, r.sourceDocNo]
+            .filter(Boolean).join(" ").toLowerCase().includes(needle)));
 
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...matched].sort((a, b) => {
@@ -89,7 +90,7 @@ export function ErpDocumentList({
       if (y === null || y === undefined) return -1;
       return (x < y ? -1 : 1) * dir;
     });
-  }, [rows, q, sort]);
+  }, [rows, q, sort, dates]);
 
   // The footer totals what is on screen. A search that hides half the ledger
   // and still shows the full total is a figure nobody can reconcile.
@@ -137,6 +138,7 @@ export function ErpDocumentList({
             value={q} onChange={(e) => setQ(e.target.value)}
             aria-label="Search documents"
           />
+          <DateFilter value={dates} onChange={setDates} />
         </div>
 
         <span style={{ color: "var(--erp-fg-muted)", fontSize: "var(--erp-text-sm)",

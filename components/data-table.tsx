@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { Columns3, ChevronLeft, ChevronRight, Search, Download } from "lucide-react";
+import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
 
 export type Column = {
   key: string;
@@ -44,6 +45,7 @@ export type DataRow = {
 
 const PAGE_SIZES = [10, 20, 50, 100];
 
+
 /**
  * Search, sort, choose columns and page for an already-fetched list, entirely
  * client-side — these pages are small master-data/document lists, not paged
@@ -78,6 +80,7 @@ export function DataTable({
   tableClassName,
   storageKey,
   defaultPageSize = 10,
+  dateKey = "posting_date",
 }: {
   rows: DataRow[];
   columns: Column[];
@@ -122,6 +125,12 @@ export function DataTable({
    *  has said belongs to a particular screen. */
   storageKey?: string;
   defaultPageSize?: number;
+  /**
+   * The sort key holding each row's date (milliseconds). Every document list
+   * already sorts by posting_date, so the date filter appears on those by
+   * itself and stays away from lists that have no dates.
+   */
+  dateKey?: string;
 }) {
   // Seeded when a link arrives pointing at one row — "edit this item" from
   // the item's own page should land on that item, not on a list to search
@@ -129,6 +138,10 @@ export function DataTable({
   const [q, setQ] = useState(initialQuery ?? "");
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(defaultSort ?? null);
   const [picked, setPicked] = useState<Record<string, string>>({});
+  const [dates, setDates] = useState<DateRange>(ANY_DATE);
+  const hasDates = useMemo(
+    () => rows.some((r) => typeof r.sort?.[dateKey] === "number" && (r.sort[dateKey] as number) > 0),
+    [rows, dateKey]);
   const [hidden, setHidden] = useState<string[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -191,11 +204,17 @@ export function DataTable({
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const chosen = Object.entries(picked).filter(([, v]) => v);
+    const window = hasDates ? dateWindow(dates) : null;
     return rows.filter((r) => {
       if (needle && !r.searchText.toLowerCase().includes(needle)) return false;
+      if (window) {
+        // A row with no date (a draft not yet dated) is outside any window.
+        const t = r.sort?.[dateKey];
+        if (typeof t !== "number" || t <= 0 || t < window[0] || t >= window[1]) return false;
+      }
       return chosen.every(([k, v]) => r.facet?.[k] === v);
     });
-  }, [rows, q, picked]);
+  }, [rows, q, picked, hasDates, dates, dateKey]);
 
   const sorted = useMemo(() => {
     if (!sort) return filtered;
@@ -306,6 +325,8 @@ export function DataTable({
               ))}
             </select>
           ))}
+
+        {hasDates && <DateFilter value={dates} onChange={setDates} />}
 
         <span className="dt-spacer" />
 
