@@ -1456,7 +1456,7 @@ async function planFifoConsumption(
   await tx`
     select sl.id from stock_lot sl
      where sl.company_id = ${companyId} and sl.item_id = ${itemId} and sl.location_id = ${locationId}
-     order by sl.received_date, sl.created_at
+     order by sl.received_date, sl.created_at, (select dl.line_no from stock_movement m join document_line dl on dl.id = m.document_line_id where m.id = sl.stock_movement_id) nulls last, sl.id
        for update`;
 
   if (pinnedLots) {
@@ -1532,7 +1532,11 @@ async function planFifoConsumption(
      group by sl.id, sl.unit_cost, a.delta, sl.qty_received, sl.received_date, sl.created_at,
               sl.expiry_date
     having sl.qty_received - coalesce(sum(c.qty), 0) > 0.0001
-     order by sl.expiry_date asc nulls first, sl.received_date, sl.created_at`;
+     -- Two lines of one receipt arrive at the same moment, so the receipt's
+     -- own line order decides between them, then the layer's id: a tie left
+     -- to the database put line 2 ahead of line 1 on some runs and not others.
+     order by sl.expiry_date asc nulls first, sl.received_date, sl.created_at,
+              (select dl.line_no from stock_movement m join document_line dl on dl.id = m.document_line_id where m.id = sl.stock_movement_id) nulls last, sl.id`;
 
   let need = round4(qty);
   const draws: FifoDraw[] = [];
@@ -2557,7 +2561,7 @@ async function resolveReturnLayers(
       join stock_lot l on l.id = c.lot_id
      where sm.company_id = ${companyId} and sm.document_id = ${deliveryId}
        and sm.item_id = ${itemId}
-     order by l.received_date, l.created_at, c.created_at`;
+     order by l.received_date, l.created_at, (select dl.line_no from stock_movement m join document_line dl on dl.id = m.document_line_id where m.id = l.stock_movement_id) nulls last, l.id, c.created_at`;
 
   if (consumed.length === 0) return null;
 
@@ -3679,7 +3683,9 @@ async function claimDeliveredCost(
        -- left two receipts made on one day tied on both date and microsecond,
        -- so a random uuid decided which layer an invoice claimed. It took the
        -- dearer layer first often enough to pass for a while and then fail.
-       order by l.received_date, l.created_at, l.id, c.id`;
+       -- And the same tiebreak the planner uses, so a claim follows the order
+       -- the goods actually left in.
+       order by l.received_date, l.created_at, (select dl.line_no from stock_movement m join document_line dl on dl.id = m.document_line_id where m.id = l.stock_movement_id) nulls last, l.id, c.id`;
   }
 
   let need = qty;
