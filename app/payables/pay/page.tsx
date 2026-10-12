@@ -1,3 +1,4 @@
+import { onlyMyLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { getSettlementData, createSupplierPayment } from "@/lib/actions";
 import { getCompany, getBranches } from "@/lib/queries";
@@ -13,7 +14,8 @@ export default async function PaySupplier({
   const { partner, invoice } = await searchParams;
   const { partners, invoices, cashAccounts, fx } = await getSettlementData("pay");
   const company = await getCompany();
-  const branches = company ? await getBranches(company.id) : [];
+  // A receipt or payment is written at the person's own branch.
+  const branches = company ? await onlyMyLocations((await getBranches(company.id)) as unknown as { id: string }[]) : [];
   const today = new Date().toISOString().slice(0, 10);
 
   if (partners.length === 0 || cashAccounts.length === 0) {

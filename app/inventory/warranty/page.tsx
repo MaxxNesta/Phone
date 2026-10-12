@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
 import { warrantyLookup, warrantiesEnding } from "@/lib/phone";
@@ -15,8 +16,10 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
   const user = await requirePermission("inventory.view");
   const sp = await searchParams;
   const { q, ending } = sp;
-  const rows = q ? await warrantyLookup(user.companyId, q)
-    : await warrantiesEnding(user.companyId, Number(ending) || 30);
+  // Phones sold at other branches stay out of view for someone who sees only their own.
+  const locs = await seenLocations();
+  const rows = q ? await warrantyLookup(user.companyId, q, locs)
+    : await warrantiesEnding(user.companyId, Number(ending) || 30, locs);
 
   const pg = paginate(rows, sp.page);
   return (

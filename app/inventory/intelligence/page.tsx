@@ -1,3 +1,4 @@
+import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, qty as fmtQty, shortDate } from "@/lib/db";
 import {
@@ -74,11 +75,14 @@ export default async function InventoryIntelligence({
 
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "matched";
 
-  const locations = (await getLocations(company.id)) as unknown as any[];
+  const locations = (await seenRows((await getLocations(company.id)) as unknown as Record<string, unknown>[], "id")) as unknown as any[];
   const warehouses = locations.filter((l) => l.is_stock_location);
+  // Someone who sees only their own branch has no "all": their branch's
+  // warehouse is the whole of what they may read.
+  const limited = (await seenLocations()) !== null;
   const chosen = sp.location && warehouses.some((l) => l.id === sp.location)
-    ? sp.location : "all";
-  const locationId = chosen === "all" ? null : chosen;
+    ? sp.location : limited ? (warehouses[0]?.id ?? "none") : "all";
+  const locationId = chosen === "all" ? null : chosen === "none" ? "00000000-0000-0000-0000-000000000000" : chosen;
 
   const exportHref = (() => {
     const q = new URLSearchParams();

@@ -66,3 +66,16 @@ export async function seenBranches<T extends { id: string }>(branches: T[]): Pro
   const seen = await seenLocations();
   return seen ? branches.filter((b) => seen.includes(b.id)) : branches;
 }
+
+/**
+ * Keeps the rows at a location the signed-in person may see, for queries that
+ * return one row per location (stock by location, batches, low stock). `key`
+ * names the column holding the location; a row with none is kept only for
+ * someone who sees everything.
+ */
+export async function seenRows<T extends Record<string, unknown>>(rows: T[], key = "location_id"): Promise<T[]> {
+  const seen = await seenLocations();
+  if (!seen) return rows;
+  const set = new Set(seen);
+  return rows.filter((r) => set.has(r[key] as string));
+}

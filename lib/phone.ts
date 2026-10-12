@@ -249,7 +249,7 @@ export async function serialsOnDocument(documentId: string) {
 }
 
 /** IMEI, maker's serial, invoice number or customer name. */
-export async function warrantyLookup(companyId: string, q: string) {
+export async function warrantyLookup(companyId: string, q: string, locs: string[] | null = null) {
   const term = q.trim();
   if (!term) return [];
   const like = `%${term}%`;
@@ -264,6 +264,7 @@ export async function warrantyLookup(companyId: string, q: string) {
            v.supplier_name, v.received_date, v.supplier_warranty_months
       from v_stock_serial v
      where v.company_id = ${companyId}
+       ${locs ? sql`and v.location_id = any(${locs})` : sql``}
        and (v.imei = ${term} or v.imei2 = ${term} or v.device_serial = ${term}
             or v.out_doc_no ilike ${like} or v.customer_name ilike ${like})
      order by v.out_date desc nulls last
@@ -271,11 +272,12 @@ export async function warrantyLookup(companyId: string, q: string) {
 }
 
 /** Sold units whose customer warranty ends within `days`. */
-export async function warrantiesEnding(companyId: string, days = 30) {
+export async function warrantiesEnding(companyId: string, days = 30, locs: string[] | null = null) {
   return sql`
     select serial_id, imei, item_name, customer_name, out_doc_no, out_document_id, warranty_expiry
       from v_stock_serial
      where company_id = ${companyId} and status = 'SOLD'
+       ${locs ? sql`and location_id = any(${locs})` : sql``}
        and warranty_expiry between current_date and current_date + ${days}::int
      order by warranty_expiry
      limit 200`;
@@ -297,7 +299,8 @@ export type SalesDimension = keyof typeof SALES_DIMENSIONS;
  * they are REVERSED; their reversal carries no lines.
  */
 export async function phoneSales(companyId: string, from: string, to: string,
-                                 by: SalesDimension, phonesOnly: boolean) {
+                                 by: SalesDimension, phonesOnly: boolean,
+                                 locs: string[] | null = null) {
   const key = {
     model: sql`coalesce(p.name, i.name)`,
     brand: sql`coalesce(b.name, '—')`,
@@ -330,6 +333,7 @@ export async function phoneSales(companyId: string, from: string, to: string,
         left join stock_serial s on s.id = si.serial_id
         left join stock_lot_consumption c on c.id = si.consumption_id
        where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
+         ${locs ? sql`and d.location_id = any(${locs})` : sql``}
          and d.posting_date between ${from}::date and ${to}::date
          and dl.foc_reason_id is null
       union all
@@ -342,6 +346,7 @@ export async function phoneSales(companyId: string, from: string, to: string,
         join document_line dl on dl.document_id = d.id
         left join document src on src.id = d.source_document_id
        where d.company_id = ${companyId} and d.doc_type = 'SALES_RETURN' and d.status = 'POSTED'
+         ${locs ? sql`and d.location_id = any(${locs})` : sql``}
          and d.posting_date between ${from}::date and ${to}::date
     )
     select ${key} as key,

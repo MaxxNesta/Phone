@@ -12,7 +12,7 @@ import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLine
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can } from "./auth";
-import { assertMyBranch, onlyMyLocations } from "./branch-scope";
+import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
 import { asRegion } from "./regions";
@@ -2511,6 +2511,8 @@ export async function createCustomerReceipt(_prev: unknown, fd: FormData): Promi
 export async function getSettlementData(kind: "pay" | "receive") {
   await requireUser();
   const co = await companyId();
+  // Invoices of the person's own branch only, unless they may see every branch.
+  const locs = await seenLocations();
   const docType = kind === "pay" ? "PURCHASE_INVOICE" : "SALES_INVOICE";
   const role = kind === "pay" ? "is_supplier" : "is_customer";
 
@@ -2530,6 +2532,7 @@ export async function getSettlementData(kind: "pay" | "receive") {
            from v_invoice_status s
            left join v_open_item o on o.document_id = s.document_id
           where s.company_id = ${co} and s.doc_type = ${docType} and s.outstanding <> 0
+            ${locs ? sql`and s.document_id in (select id from document where location_id = any(${locs}))` : sql``}
           order by s.due_date nulls last, s.posting_date`,
     sql`select id, code, name from account
          where company_id = ${co} and is_cash_account and is_active order by code`,

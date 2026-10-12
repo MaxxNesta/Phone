@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
 import { getCompany, getPartnerBalances } from "@/lib/queries";
@@ -22,7 +23,7 @@ export default async function Payables({
   if (!company) return <div className="empty">No company found.</div>;
 
   const [billed, unbilledRows] = await Promise.all([
-    getPartnerBalances(company.id, "PURCHASE_INVOICE") as Promise<any[]>,
+    getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations()) as Promise<any[]>,
     unbilledReceipts(company.id),
   ]);
   // Goods in with no bill yet: not a payable in the books, but owed. Shown

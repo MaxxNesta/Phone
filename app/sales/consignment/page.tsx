@@ -1,3 +1,4 @@
+import { seenLocations, seenRows } from "@/lib/branch-scope";
 import { getCompany, getConsignedStockOnHand, getPartners, getLocations } from "@/lib/queries";
 import { createConsignmentSale } from "@/lib/actions";
 import { ConsignmentSaleForm } from "@/components/consignment-sale-form";
@@ -7,9 +8,9 @@ export default async function ConsignmentSalePage() {
   if (!company) return <div className="empty">No company found.</div>;
 
   const [batches, partners, allLocations] = await Promise.all([
-    getConsignedStockOnHand(company.id) as any,
+    getConsignedStockOnHand(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as any,
     getPartners(company.id) as any,
-    getLocations(company.id) as any,
+    getLocations(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[], "id")) as any,
   ]);
 
   const customers = partners.filter((p: any) => p.is_customer);

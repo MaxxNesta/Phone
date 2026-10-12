@@ -1,3 +1,4 @@
+import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/format";
 import { getCompany, getDiscountsGiven, getDiscountsByPartner } from "@/lib/queries";
@@ -25,8 +26,8 @@ export default async function DiscountsGiven({
     .toISOString().slice(0, 10);
 
   const [lines, byPartner] = await Promise.all([
-    getDiscountsGiven(company.id, from, to),
-    getDiscountsByPartner(company.id, from, to),
+    seenLocations().then((l) => getDiscountsGiven(company.id, from, to, l)),
+    seenLocations().then((l) => getDiscountsByPartner(company.id, from, to, l)),
   ]) as unknown as [
     Array<{
       document_line_id: string; document_id: string; doc_no: string;

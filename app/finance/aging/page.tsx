@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Users, AlertTriangle, CreditCard, CalendarClock } from "lucide-react";
 import { money } from "@/lib/db";
@@ -57,14 +58,15 @@ export default async function AgingPage({
    * otherwise invisible: the table shows issued and due, and a reader asked to
    * believe "90+ days" has no third date on screen to check it against.
    */
+  const locs = await seenLocations();
   const [asOfRow] = await sql`select to_char(current_date, 'DD Mon YYYY') as d`;
   const asOf = String(asOfRow?.d ?? "");
 
   const [ar, ap, items, dueSoon] = await Promise.all([
-    getAging(company.id, "SALES_INVOICE") as unknown as Promise<Bucket[]>,
-    getAging(company.id, "PURCHASE_INVOICE") as unknown as Promise<Bucket[]>,
-    getOpenItems(company.id, docType) as unknown as Promise<OpenItem[]>,
-    getDueWithin(company.id, "PURCHASE_INVOICE"),
+    getAging(company.id, "SALES_INVOICE", locs) as unknown as Promise<Bucket[]>,
+    getAging(company.id, "PURCHASE_INVOICE", locs) as unknown as Promise<Bucket[]>,
+    getOpenItems(company.id, docType, locs) as unknown as Promise<OpenItem[]>,
+    getDueWithin(company.id, "PURCHASE_INVOICE", 7, locs),
   ]);
 
   const sum = (b: Bucket[]) => b.reduce((t, x) => t + n(x.total), 0);

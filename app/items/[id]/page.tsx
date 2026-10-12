@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { PhoneSettings } from "@/components/phone-settings";
 import { notFound } from "next/navigation";
@@ -95,7 +96,7 @@ export default async function ItemPage({
          where s.item_id = ${id} and s.qty_on_hand <> 0
          order by l.code` as unknown as Promise<
       Array<{ code: string; name: string; qty_on_hand: string }>>,
-    getStockMovements(company.id, id) as unknown as Promise<any[]>,
+    seenLocations().then((locs) => getStockMovements(company.id, id, null, null, locs)) as unknown as Promise<any[]>,
     sql`select i.id, i.code, i.name from item i
          where i.parent_item_id = ${id} order by i.code` as unknown as Promise<
       Array<{ id: string; code: string; name: string }>>,

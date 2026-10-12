@@ -1,3 +1,4 @@
+import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { getCompany, getNegativeStock } from "@/lib/queries";
 import { reconcileNegativeStockAction } from "@/lib/actions";
@@ -9,7 +10,7 @@ export default async function NegativeStock() {
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const rows = (await getNegativeStock(company.id)) as unknown as Parameters<
+  const rows = (await seenRows((await getNegativeStock(company.id)) as unknown as Record<string, unknown>[])) as unknown as Parameters<
     typeof ReconcileStock
   >[0]["rows"];
   const today = new Date().toISOString().slice(0, 10);

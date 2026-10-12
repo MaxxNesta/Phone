@@ -1,3 +1,4 @@
+import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { requirePermission, can } from "@/lib/auth";
 import { phoneSales, SALES_DIMENSIONS, type SalesDimension, stripCost } from "@/lib/phone";
@@ -22,7 +23,7 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
   const phonesOnly = sp.scope !== "all";
   const seeCost = can(user, "cost.view");
 
-  const raw = await phoneSales(user.companyId, from, to, by, phonesOnly);
+  const raw = await phoneSales(user.companyId, from, to, by, phonesOnly, await seenLocations());
   const rows = stripCost(raw as Record<string, any>[], seeCost);
   const sum = (k: string) => raw.reduce((s, r: any) => s + Number(r[k] ?? 0), 0);
   const revenue = sum("revenue"), cost = sum("cost"), units = sum("units");

@@ -1,3 +1,4 @@
+import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { qty as fmtQty } from "@/lib/db";
 import {
@@ -47,12 +48,12 @@ export default async function Replenishment({
   const [items, locations, stockByLocation, reserved, incoming, reorderPoints,
          consumption, supply, observedLead, variantStock] = await Promise.all([
     getItems(company.id) as unknown as Promise<any[]>,
-    getLocations(company.id) as unknown as Promise<any[]>,
-    getStockByLocation(company.id) as unknown as Promise<any[]>,
+    getLocations(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[], "id")) as unknown as Promise<any[]>,
+    getStockByLocation(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as unknown as Promise<any[]>,
     getReservedQty(company.id) as unknown as Promise<any[]>,
     getIncomingQty(company.id) as unknown as Promise<any[]>,
     getReorderPoints(company.id) as unknown as Promise<any[]>,
-    getConsumptionRate(company.id, windowDays) as unknown as Promise<any[]>,
+    getConsumptionRate(company.id, windowDays).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as unknown as Promise<any[]>,
     getItemSupply(company.id) as unknown as Promise<any[]>,
     getSupplierLeadTimes(company.id) as unknown as Promise<any[]>,
     getVariantStock(company.id) as unknown as Promise<any[]>,

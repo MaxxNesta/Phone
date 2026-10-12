@@ -291,6 +291,7 @@ export type AgingSide = "SALES_INVOICE" | "PURCHASE_INVOICE";
 /** The five buckets, in order, for one side of the ledger. */
 export async function getAging(
   companyId: string, docType: AgingSide = "SALES_INVOICE",
+  locs: string[] | null = null
 ) {
   return sql`
     select aging_bucket,
@@ -298,6 +299,7 @@ export async function getAging(
            sum(outstanding)       as total
       from v_open_item
      where company_id = ${companyId} and doc_type = ${docType}
+       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
      group by aging_bucket
      order by case aging_bucket
        when 'CURRENT' then 0 when '1-30' then 1 when '31-60' then 2
@@ -345,11 +347,13 @@ export async function getPartnerAging(
  */
 export async function getDueWithin(
   companyId: string, docType: AgingSide, days = 7,
+  locs: string[] | null = null
 ) {
   const [row] = await sql`
     select coalesce(sum(outstanding), 0) as total, count(*)::int as invoices
       from v_open_item
      where company_id = ${companyId} and doc_type = ${docType}
+       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
        and due_date is not null
        and due_date >= current_date
        and due_date <= current_date + ${days}::int`;
@@ -622,7 +626,24 @@ export async function getItemVariants(companyId: string, parentId: string) {
 }
 
 /** What each customer/supplier owes or is owed, for a per-partner rollup. */
-export async function getPartnerBalances(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE") {
+export async function getPartnerBalances(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE",
+                                         locs: string[] | null = null) {
+  // v_partner_balance is one total per partner and cannot be cut by branch, so
+  // someone who sees only their own branch gets the same arithmetic over that
+  // branch's invoices alone.
+  const balances = locs ? sql`(
+    select v.company_id, v.partner_id, v.partner_code, v.partner_name, v.doc_type,
+           count(*) filter (where v.outstanding <> 0)::int as open_invoices,
+           sum(v.gross_total) as invoiced, sum(v.paid) as paid, sum(v.outstanding) as outstanding,
+           sum(v.outstanding) filter (where v.due_date is not null and v.days_overdue > 0) as overdue,
+           sum(v.outstanding) filter (where v.due_date is not null and v.days_overdue <= 0
+                                        and v.due_date <= current_date + 7) as due_soon,
+           max(p.credit_limit) as credit_limit
+      from v_invoice_status v join business_partner p on p.id = v.partner_id
+     where v.company_id = ${companyId} and v.doc_type = ${docType}
+       and v.document_id in (select id from document where location_id = any(${locs}))
+     group by v.company_id, v.partner_id, v.partner_code, v.partner_name, v.doc_type
+    having sum(v.outstanding) <> 0)` : sql`v_partner_balance`;
   return sql`
     select b.partner_id, b.partner_code, b.partner_name,
            b.open_invoices, b.invoiced, b.paid, b.outstanding, b.overdue,
@@ -633,19 +654,20 @@ export async function getPartnerBalances(companyId: string, docType: "SALES_INVO
            -- as 0 tells the reader their screen is broken.
            (abs(b.overdue) >= 0.5 / power(10, c.decimal_places)) as overdue_material,
            (abs(b.outstanding) >= 0.5 / power(10, c.decimal_places)) as outstanding_material
-      from v_partner_balance b
+      from ${balances} b
       join company co on co.id = b.company_id
       join currency c on c.code = co.base_currency
      where b.company_id = ${companyId} and b.doc_type = ${docType}
      order by b.outstanding desc`;
 }
 
-export async function getOpenItems(companyId: string, docType: string) {
+export async function getOpenItems(companyId: string, docType: string, locs: string[] | null = null) {
   return sql`
     select document_id, doc_no, partner_id, partner_name, posting_date, due_date,
            gross_total, allocated, outstanding, aging_bucket, days_overdue
       from v_open_item
      where company_id = ${companyId} and doc_type = ${docType}
+       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
      order by due_date nulls last`;
 }
 
@@ -967,7 +989,8 @@ export async function getGrirCollisions(companyId: string) {
  * matcher the ledger settles with, so what the form offers and what GR/IR
  * still holds are the same figure.
  */
-export async function getOpenGoodsReceipts(companyId: string, limit: number | null = 200) {
+export async function getOpenGoodsReceipts(companyId: string, limit: number | null = 200,
+                                           locs: string[] | null = null) {
   const docs = await sql`
     select d.id, d.doc_no, d.doc_date, d.partner_id,
            (select bp.name from business_partner bp where bp.id = d.partner_id) as partner_name,
@@ -984,6 +1007,7 @@ export async function getOpenGoodsReceipts(companyId: string, limit: number | nu
       left join v_grir_balance g on g.document_id = d.id and g.company_id = d.company_id
       left join document src on src.id = d.source_document_id
      where d.company_id = ${companyId} and d.doc_type = 'GOODS_RECEIPT' and d.status = 'POSTED'
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
        -- Either the receipt anchors its own clearing balance, or it was
        -- matched to an invoice and cleared through that invoice's anchor.
        -- Receipts from before GR/IR clearing existed have neither, and must
@@ -3737,6 +3761,7 @@ export async function getStockMovements(
   itemId: string | null,
   from?: string | null,
   to?: string | null,
+  locs: string[] | null = null,
 ) {
   return sql`
     select sm.id, sm.movement_date, sm.qty, sm.unit_cost, sm.total_cost,
@@ -3749,6 +3774,7 @@ export async function getStockMovements(
       join location l on l.id = sm.location_id
       join item i on i.id = sm.item_id
      where sm.company_id = ${companyId}
+       ${locs ? sql`and sm.location_id = any(${locs})` : sql``}
        and (${itemId ?? null}::uuid is null or sm.item_id = ${itemId ?? null})
        and (${from ?? null}::date is null or sm.movement_date >= ${from ?? null})
        and (${to ?? null}::date is null or sm.movement_date <= ${to ?? null})
@@ -4685,16 +4711,19 @@ export async function getDrivers(companyId: string) {
  * answer the gross method would have given, without the gross method's cost
  * of restating every sale.
  */
-export async function getDiscountsGiven(companyId: string, from: string, to: string) {
+export async function getDiscountsGiven(companyId: string, from: string, to: string,
+                                         locs: string[] | null = null) {
   return sql`
     select * from v_discount_given
      where company_id = ${companyId}
+       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
        and posting_date >= ${from}::date and posting_date < ${to}::date
      order by posting_date desc, doc_no desc`;
 }
 
 /** The same thing totalled per customer, which is the question usually meant. */
-export async function getDiscountsByPartner(companyId: string, from: string, to: string) {
+export async function getDiscountsByPartner(companyId: string, from: string, to: string,
+                                         locs: string[] | null = null) {
   return sql`
     select partner_id, partner_name,
            count(distinct document_id)::int as invoices,
@@ -4709,6 +4738,7 @@ export async function getDiscountsByPartner(companyId: string, from: string, to:
                 else 0 end as discount_pct
       from v_discount_given
      where company_id = ${companyId}
+       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
        and posting_date >= ${from}::date and posting_date < ${to}::date
      group by partner_id, partner_name
      order by total_discount desc`;
@@ -5744,7 +5774,8 @@ export type AdvanceRow = {
  */
 export async function getAdvanceLedger(
   companyId: string,
-  side: "CUSTOMER" | "SUPPLIER"
+  side: "CUSTOMER" | "SUPPLIER",
+  locs: string[] | null = null
 ) {
   const kind = side === "CUSTOMER" ? "CUSTOMER_RECEIPT" : "SUPPLIER_PAYMENT";
   const role = side === "CUSTOMER" ? "CUSTOMER_ADVANCE" : "SUPPLIER_ADVANCE";
@@ -5756,6 +5787,7 @@ export async function getAdvanceLedger(
     select d.id
       from document d
      where d.company_id = ${companyId}
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
        and d.doc_type = ${kind}
        and d.status = 'POSTED'
        -- Voiding a receipt reverses it: the original goes to REVERSED, which

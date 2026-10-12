@@ -1,6 +1,7 @@
+import { seenLocations } from "@/lib/branch-scope";
 import { NextRequest } from "next/server";
 import {
-  getCompany, getMatchedProfitability, getVariantProfitability, getInventoryAging,
+  getCompany, getLocations, getMatchedProfitability, getVariantProfitability, getInventoryAging,
 } from "@/lib/queries";
 
 /**
@@ -54,7 +55,17 @@ export async function GET(req: NextRequest) {
 
   const q = req.nextUrl.searchParams;
   const tab = q.get("tab") ?? "matched";
-  const locationId = q.get("location") || null;
+  // The page's rule: someone who sees only their own branch gets its
+  // warehouse, whatever the link asks for.
+  const asked = q.get("location") || null;
+  const seen = await seenLocations();
+  let locationId = asked;
+  if (seen) {
+    const mine = ((await getLocations(company.id)) as unknown as { id: string; is_stock_location: boolean }[])
+      .filter((l) => l.is_stock_location && seen.includes(l.id));
+    locationId = asked && mine.some((l) => l.id === asked) ? asked
+      : mine[0]?.id ?? "00000000-0000-0000-0000-000000000000";
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const askedTo = asDate(q.get("to"));

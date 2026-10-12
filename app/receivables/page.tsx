@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
 import { getCompany, getPartnerBalances } from "@/lib/queries";
@@ -20,7 +21,7 @@ export default async function Receivables({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const all = (await getPartnerBalances(company.id, "SALES_INVOICE")) as any[];
+  const all = (await getPartnerBalances(company.id, "SALES_INVOICE", await seenLocations())) as any[];
 
   const rowState = (r: any) => {
     // A remnant below the currency's smallest unit is not a debt anybody can

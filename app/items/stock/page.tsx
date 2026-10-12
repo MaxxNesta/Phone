@@ -1,3 +1,4 @@
+import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Boxes, PackageCheck, TrendingDown, AlertTriangle, HandCoins } from "lucide-react";
 import { money, qty, shortDate } from "@/lib/db";
@@ -51,7 +52,7 @@ export default async function Stock({
     getItems(company.id) as unknown as Promise<Row[]>,
     getReservedQty(company.id) as unknown as Promise<Array<{ item_id: string; location_id: string; reserved_qty: string }>>,
     getIncomingQty(company.id) as unknown as Promise<Array<{ item_id: string; location_id: string; incoming_qty: string }>>,
-    getLowStock(company.id) as unknown as Promise<Array<{
+    getLowStock(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as unknown as Promise<Array<{
       item_id: string; item_code: string; item_name: string;
       location_id: string; location_code: string; qty_on_hand: string; min_qty: string | null;
       reason: "below_reorder" | "out_of_stock";
@@ -60,8 +61,8 @@ export default async function Stock({
       id: string; item_id: string; location_id: string; min_qty: string;
       item_code: string; item_name: string; location_code: string;
     }>>,
-    getLocations(company.id) as unknown as Promise<Array<{ id: string; code: string; name: string; is_stock_location: boolean }>>,
-    getStockByLocation(company.id) as unknown as Promise<Array<{
+    getLocations(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[], "id")) as unknown as Promise<Array<{ id: string; code: string; name: string; is_stock_location: boolean }>>,
+    getStockByLocation(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as unknown as Promise<Array<{
       item_id: string; location_id: string; qty_on_hand: string; value_on_hand: string;
     }>>,
     getConsignedStockOnHand(company.id) as unknown as Promise<Array<{
@@ -69,7 +70,7 @@ export default async function Stock({
     }>>,
     // Only the items that keep lots return anything here, so this costs
     // nothing on a catalogue that tracks none.
-    getStockBatches(company.id) as unknown as Promise<Array<{
+    getStockBatches(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as unknown as Promise<Array<{
       item_id: string; location_id: string; location_code: string;
       batch_no: string | null; expiry_date: string | null;
       days_left: number | null; qty: string;

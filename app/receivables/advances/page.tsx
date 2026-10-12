@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import { getCompany, getAdvanceLedger } from "@/lib/queries";
 import { AdvanceLedger } from "@/components/advance-ledger";
 import { HelpHint } from "@/components/help-hint";
@@ -11,7 +12,7 @@ export default async function CustomerAdvances({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const advances = await getAdvanceLedger(company.id, "CUSTOMER");
+  const advances = await getAdvanceLedger(company.id, "CUSTOMER", await seenLocations());
 
   return (
     <>

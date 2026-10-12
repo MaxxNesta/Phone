@@ -13,8 +13,8 @@ export type UnbilledReceipt = {
  * invoice" will offer. Not a debt in the books until the bill is entered:
  * the value sits in GR/IR clearing, not in the supplier's balance.
  */
-export async function unbilledReceipts(companyId: string): Promise<UnbilledReceipt[]> {
-  const docs = (await getOpenGoodsReceipts(companyId, null)) as unknown as Array<{
+export async function unbilledReceipts(companyId: string, locs: string[] | null = null): Promise<UnbilledReceipt[]> {
+  const docs = (await getOpenGoodsReceipts(companyId, null, locs)) as unknown as Array<{
     id: string; doc_no: string; doc_date: string; partner_id: string;
     partner_name: string | null; partner_code: string | null;
     lines: { enteredQty: number; unitPrice: number }[];

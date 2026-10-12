@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, qty, shortDate } from "@/lib/db";
 import {
@@ -57,7 +58,7 @@ export default async function StockMovements({
   const oneItem = selected !== null;
 
   const rows = (await getStockMovements(
-    company.id, selected?.id ?? null, from, to,
+    company.id, selected?.id ?? null, from, to, await seenLocations(),
   )) as unknown as Array<{
     id: string; movement_date: string; qty: string; unit_cost: string;
     total_cost: string; batch_no: string | null; doc_no: string | null;

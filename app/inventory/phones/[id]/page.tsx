@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission, can } from "@/lib/auth";
@@ -19,7 +20,9 @@ export default async function Handset({ params }: { params: Promise<{ id: string
   const user = await requirePermission("inventory.view");
   const { id } = await params;
   const d = await serialDetail(user.companyId, id);
-  if (!d) notFound();
+  // A phone at another branch is not found by someone who sees only their own.
+  const seen = await seenLocations();
+  if (!d || (seen && !seen.includes((d.unit as { location_id: string }).location_id))) notFound();
   const { unit: u, events, holds } = d;
   const docLink = (docId: string | null, no: string | null) =>
     docId ? <Link href={`/documents/${docId}`}>{no}</Link> : "—";

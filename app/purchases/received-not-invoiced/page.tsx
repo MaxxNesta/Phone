@@ -1,3 +1,4 @@
+import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { FileText, Clock, Truck } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
@@ -14,7 +15,7 @@ export const metadata = { title: "Received not invoiced" };
  */
 export default async function ReceivedNotInvoiced() {
   const user = await requirePermission("purchase.view");
-  const rows = await unbilledReceipts(user.companyId);
+  const rows = await unbilledReceipts(user.companyId, await seenLocations());
   const suppliers = unbilledBySupplier(rows);
   const total = rows.reduce((s, r) => s + r.value, 0);
   const oldest = rows.reduce((m, r) => Math.max(m, r.days), 0);

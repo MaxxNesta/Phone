@@ -70,7 +70,7 @@ export default async function Dashboard({
          repConsumption, repSupply, repObserved] = await Promise.all([
     getKpis(company.id),
     getHealth(company.id),
-    getAging(company.id),
+    seenLocations().then((locs) => getAging(company.id, undefined, locs)),
     seenLocations().then((locs) => getDocuments(company.id, undefined, undefined, undefined, locs)),
     getStock(company.id),
     getActionItems(company.id),
