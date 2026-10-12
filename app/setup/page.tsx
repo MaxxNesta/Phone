@@ -9,7 +9,7 @@ export default async function Setup() {
   const year = new Date().getFullYear();
 
   return (
-    <>
+    <div className="setup-wrap">
       <div className="page-head">
         <span className="eyebrow">First run</span>
         <h1>Set up your company</h1>
@@ -22,6 +22,6 @@ export default async function Setup() {
       </div>
 
       <SetupForm action={setupCompany} defaultYear={year} />
-    </>
+    </div>
   );
 }

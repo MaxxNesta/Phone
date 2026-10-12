@@ -4483,8 +4483,40 @@ tbody tr.row-selected > td:first-child { box-shadow: inset 2px 0 0 var(--brand);
 /* ---------------------------------------------------------- sign-in -- */
 
 main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(--s3); }
-.login-wrap { width: 100%; max-width: 400px; }
+.login-wrap { width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center; }
+/* The company's initial in the sidebar's own tile, so this is plainly the same app. */
+.login-mark {
+  width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center;
+  background: var(--brand); color: var(--brand-fg); font-size: 24px; font-weight: 700;
+  margin-bottom: 18px;
+}
+.login-title { font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -0.01em; margin: 0; text-align: center; }
+.login-sub { margin: 6px 0 22px; color: var(--muted); font-size: 15px; text-align: center; }
+.login-card { width: 100%; }
 .login-card .form { max-width: none; }
+/* Two fields, both needed: the asterisks say nothing here. */
+.login-form .field:has(:required) label::after { content: none; }
+.login-password { position: relative; display: flex; }
+.login-password input { flex: 1; padding-right: 48px; }
+.login-reveal {
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 0; background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer;
+}
+.login-reveal:hover { color: var(--ink); }
+.login-reveal:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+.btn.login-submit { width: 100%; justify-content: center; margin-top: 4px; }
+.login-help { margin: 16px 8px 0; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.45; }
+/* First-run setup is a long form: a readable column, not the full screen. */
+.setup-wrap { width: 100%; max-width: 760px; }
+/* One step back to everything from a filter panel; shown only while filters narrow it. */
+.filters-clear {
+  align-self: end; height: 36px; padding: 0 12px; border: 0; border-radius: 10px;
+  background: transparent; color: var(--link, var(--ink)); font-size: 0.875rem; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+}
+.filters-clear:hover { background: var(--line-soft); }
+.filters-clear:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .whoami {
   display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s2);
@@ -4887,6 +4919,20 @@ select.dt-filter, .dt-pager-size select {
 select.dt-filter:focus, .dt-pager-size select:focus {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent);
 }
+/* A filter that is narrowing the list says so: a firmer fill and weight, not
+   a colour — green already means posted here. */
+select.dt-filter.dt-filter-on {
+  background-color: color-mix(in srgb, var(--ink) 10%, transparent); font-weight: 600;
+}
+/* The date filter: a preset menu, and two day fields when the range is custom. */
+.dt-dates { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+input.dt-date {
+  width: auto; height: 36px; min-height: 36px; padding: 0 10px;
+  border: 0; border-radius: 10px; background: var(--line-soft);
+  font-size: 0.875rem; color: var(--ink);
+}
+input.dt-date:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); outline: none; }
+.dt-date-sep { color: var(--muted); }
 
 button.dt-tool {
   display: inline-flex; align-items: center; gap: 6px;
