@@ -1,3 +1,4 @@
+import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money } from "@/lib/db";
 import { AutoApply } from "@/components/auto-apply";
@@ -52,13 +53,14 @@ export default async function SalesReports({
   // ahead of shipping and "Not yet shipped" would always read nought.
   const retail = Boolean(company.retail_mode);
 
-  const branches = (await getBranches(company.id)) as unknown as Array<{
+  const branches = (await seenBranches((await getBranches(company.id)) as unknown as { id: string }[])) as unknown as Array<{
     id: string; code: string; name: string;
   }>;
-  const branchId =
+  // Someone who sees only their own branch gets it, whatever the link asks for.
+  const branchId = await scopedBranch(
     p.branch === UNASSIGNED_BRANCH ? UNASSIGNED_BRANCH
     : p.branch && branches.some((b) => b.id === p.branch) ? p.branch
-    : null;
+    : null);
 
   /* Only what the open tab needs. The overview compares two periods and
      the breakdowns scan one, and running both on every load would double

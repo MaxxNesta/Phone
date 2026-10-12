@@ -22,7 +22,7 @@ if (!process.env.DATABASE_URL && existsSync(join(root, ".env"))) {
 const url = process.env.DATABASE_URL;
 const sql = postgres(url, { ssl: url.includes("localhost") ? false : "require",
   prepare: !url.includes("-pooler."), onnotice: () => {}, max: 1 });
-const { locationsForUser } = await import("../lib/branch-rule.ts");
+const { locationsForUser, visibleLocationsForUser, visibleBranchForUser } = await import("../lib/branch-rule.ts");
 
 let bad = 0;
 const check = (label, ok, detail = "") => {
@@ -40,7 +40,7 @@ try {
   console.log(`\n  ${co.name} — ${branches.length} branches\n`);
   if (branches.length < 2) throw new Error("This test needs at least two branches on the database.");
   const [a, b] = branches;
-  const person = (role, branchId) => ({ companyId: co.id, role, branchId });
+  const person = (role, branchId, seesAllBranches = false) => ({ companyId: co.id, role, branchId, seesAllBranches });
 
   for (const role of ["ADMIN", "MANAGER"]) {
     check(`${role} with no branch works everywhere`, (await locationsForUser(person(role, null))) === null);
@@ -58,6 +58,15 @@ try {
     const none = await locationsForUser(person(role, null));
     check(`${role} with no branch set, several branches: nowhere until one is set`, none instanceof Set && none.size === 0);
   }
+  console.log("\n  what a person sees\n");
+  const seen = await visibleLocationsForUser(person("CASHIER", a.id));
+  check(`a cashier at ${a.code} sees ${a.code} only`, seen?.has(a.id) && !seen?.has(b.id));
+  check("  and reports filter to that branch", (await visibleBranchForUser(person("CASHIER", a.id))) === a.id);
+  check("allowed to see every branch: sees everything", (await visibleLocationsForUser(person("CASHIER", a.id, true))) === null);
+  check("  reports are not forced to one branch", (await visibleBranchForUser(person("CASHIER", a.id, true))) === null);
+  check("  but still posts only at their own", !(await locationsForUser(person("CASHIER", a.id, true)))?.has(b.id));
+  check("an administrator with no branch sees everything", (await visibleLocationsForUser(person("ADMIN", null))) === null);
+  check("a manager at a branch, not allowed more, sees that branch", !(await visibleLocationsForUser(person("MANAGER", a.id)))?.has(b.id));
 } catch (e) {
   bad++;
   console.error("\n  CRASH", e);

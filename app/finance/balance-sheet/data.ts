@@ -1,3 +1,4 @@
+import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
   getCompany, getBalanceSheet, getBranches, getUnassignedBranchActivity,
   getAccountTree, UNASSIGNED_BRANCH,
@@ -24,14 +25,15 @@ export async function getBalanceSheetData({ asOf: asOfParam, branch }: Params) {
 
   const asOf = asOfParam || today();
 
-  const branches = (await getBranches(company.id)) as unknown as Array<{
+  const branches = (await seenBranches((await getBranches(company.id)) as unknown as { id: string }[])) as unknown as Array<{
     id: string; code: string; name: string; warehouse_count: number;
   }>;
   const unassignedLines = await getUnassignedBranchActivity(company.id);
-  const branchId =
+  // Someone who sees only their own branch gets it, whatever the link asks for.
+  const branchId = await scopedBranch(
     branch === UNASSIGNED_BRANCH ? UNASSIGNED_BRANCH
     : branch && branches.some((b) => b.id === branch) ? branch
-    : null;
+    : null);
   const branchName =
     branchId === UNASSIGNED_BRANCH ? "No branch"
     : branches.find((b) => b.id === branchId)?.name ?? "All branches";

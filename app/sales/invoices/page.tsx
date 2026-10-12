@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/db";
 import {
@@ -28,7 +29,7 @@ export default async function SalesInvoices({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const posted_ = (await getInvoiceList(company.id, "SALES_INVOICE")) as any[];
+  const posted_ = (await getInvoiceList(company.id, "SALES_INVOICE", await seenLocations())) as any[];
 
   /**
    * Unfinished vouchers, wearing the same shape as the rest of the list.

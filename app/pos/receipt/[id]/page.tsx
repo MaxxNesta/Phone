@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
@@ -9,6 +10,8 @@ export const metadata = { title: "Receipt" };
 
 export default async function Receipt({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission("sales.view");
+  // Another branch's receipt is not found by someone who sees only their own.
+  const locs = await seenLocations();
   const { id } = await params;
   const [doc] = await sql`
     select d.id, d.doc_no, d.version, d.posting_date, d.net_total, d.tax_total, d.gross_total,
@@ -20,7 +23,8 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
       left join salesman sm on sm.id = d.salesman_id
       left join location l on l.id = d.location_id
       left join app_user u on u.id = d.posted_by_id
-     where d.id = ${id} and d.company_id = ${user.companyId} and d.doc_type = 'SALES_INVOICE'`;
+     where d.id = ${id} and d.company_id = ${user.companyId} and d.doc_type = 'SALES_INVOICE'
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}`;
   if (!doc) notFound();
 
   const [lines, paid] = await Promise.all([

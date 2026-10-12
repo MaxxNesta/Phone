@@ -8,7 +8,7 @@ import { ROLES, ROLE_LABEL } from "@/lib/roles";
 const ACROSS_BRANCHES = ["ADMIN", "MANAGER"];
 
 export function UserForm({ user, branches = [] }: {
-  user?: { id: string; name: string; email: string; role: string; is_active: boolean; branch_id?: string | null };
+  user?: { id: string; name: string; email: string; role: string; is_active: boolean; branch_id?: string | null; sees_all_branches?: boolean };
   branches?: { id: string; code: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState(saveUser, null);
@@ -49,6 +49,14 @@ export function UserForm({ user, branches = [] }: {
       ) : branches.length === 1 ? (
         <input type="hidden" name="branch_id" value={branches[0].id} />
       ) : null}
+      {/* Seeing is separate from posting: someone can sell at one branch and
+          still read every branch's figures, if an administrator allows it. */}
+      {branches.length > 1 && (
+        <label className="pos-check">
+          <input type="checkbox" name="sees_all_branches" defaultChecked={user?.sees_all_branches ?? false} />
+          Can see every branch&apos;s documents and reports
+        </label>
+      )}
       <div className="field">
         <label htmlFor={`up-${k}`}>{user ? "New password (leave blank to keep)" : "Password"}</label>
         <input id={`up-${k}`} name="password" type="password" minLength={8} required={!user} autoComplete="new-password" />

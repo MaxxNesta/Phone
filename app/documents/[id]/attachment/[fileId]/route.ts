@@ -1,5 +1,6 @@
 import { getAttachment, getCompany, getDocument } from "@/lib/queries";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
+import { seenLocations } from "@/lib/branch-scope";
 import { getObject } from "@/lib/r2";
 
 /**
@@ -30,7 +31,9 @@ export async function GET(
   const company = await getCompany();
   if (!company || company.id !== user.companyId) return new Response("Not found", { status: 404 });
   const doc = await getDocument(id);
-  if (!doc || !can(user, permissionForDocument(doc.doc_type as string))) {
+  const seen = await seenLocations();
+  if (!doc || !can(user, permissionForDocument(doc.doc_type as string))
+      || (seen && !seen.includes(doc.location_id as string))) {
     return new Response("Not found", { status: 404 });
   }
 

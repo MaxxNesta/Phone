@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requirePermission, can } from "@/lib/auth";
@@ -26,6 +27,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
     // A search is about one phone, wherever it is now; browsing is about the shelf.
     status: sp.status === "ALL" ? undefined : (sp.status || (sp.q ? undefined : "IN_STOCK")),
     supplierId: sp.supplier || undefined,
+    locs: await seenLocations(),
   };
   const showCost = can(user, "cost.view");
   const [rows, facets, k] = await Promise.all([

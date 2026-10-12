@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { getCompany, getDocuments } from "@/lib/queries";
 import { ErpDocumentList, type DocRow } from "@/components/erp-document-list";
@@ -28,7 +29,7 @@ export default async function DocumentsPage({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const docs = (await getDocuments(company.id, type || undefined, openOnly)) as any[];
+  const docs = (await getDocuments(company.id, type || undefined, openOnly, undefined, await seenLocations())) as any[];
 
   const rows: DocRow[] = docs.map((d) => ({
     id: d.id,

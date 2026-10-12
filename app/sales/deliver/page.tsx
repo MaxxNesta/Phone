@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Truck, FileText, Clock, Plus } from "lucide-react";
 import { money, shortDate } from "@/lib/db";
@@ -53,7 +54,7 @@ export default async function Deliver({
     getOpenSalesOrders(company.id),
     getPendingDeliveries(company.id),
     getStockByLocation(company.id),
-    getDeliveryHistory(company.id) as unknown as Promise<Delivery[]>,
+    getDeliveryHistory(company.id, await seenLocations()) as unknown as Promise<Delivery[]>,
     // What each delivery still has to bill, read off the same function the
     // invoice form offers from — and which counts an invoice naming the
     // delivery as well as a delivery line naming the invoice. Either bills it.

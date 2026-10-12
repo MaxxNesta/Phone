@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Package, FileText, FileClock, Plus } from "lucide-react";
@@ -38,7 +39,7 @@ export default async function Receive({
   const [openLines, history, grir, stillToBill, collisionRows, openBills, raisedFrom] =
     await Promise.all([
     getOpenPurchaseOrders(company.id),
-    getGoodsReceiptHistory(company.id) as unknown as Promise<Receipt[]>,
+    getGoodsReceiptHistory(company.id, await seenLocations()) as unknown as Promise<Receipt[]>,
     getGrirPositions(company.id),
     getOpenGoodsReceipts(company.id) as unknown as Promise<
       { id: string; lines: { qty: number; unitPrice: number }[] }[]>,

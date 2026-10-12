@@ -366,7 +366,12 @@ export async function getDueWithin(
  * invoice in those states today, so this half of the union returns nothing
  * in practice -- it is here so the list stays correct if that changes.
  */
-export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE") {
+/**
+ * Lists below take `locs`: the locations the reader may see (seenLocations), or
+ * null for every one. Someone limited to their own branch sees its documents only.
+ */
+export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE",
+                                     locs: string[] | null = null) {
   return sql`
     select document_id, doc_no, posting_date, due_date,
            partner_id, partner_code, partner_name,
@@ -379,6 +384,7 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
               from document d where d.id = v_invoice_status.document_id) as channel
       from v_invoice_status
      where company_id = ${companyId} and doc_type = ${docType}
+       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
 
      union all
 
@@ -394,6 +400,7 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
       -- it, both listed, for a sale that no longer stands. Voided documents
       -- belong in the history log, which is the one place that shows them.
       where d.company_id = ${companyId} and d.doc_type = ${docType} and d.status = 'DRAFT'
+        ${locs ? sql`and d.location_id = any(${locs})` : sql``}
 
      order by posting_date desc, doc_no desc`;
 }
@@ -651,7 +658,7 @@ export async function getOpenItems(companyId: string, docType: string) {
  * say. Kept separate rather than widening getDocuments, which feeds a dozen
  * screens that have no adjustment_reason to show.
  */
-export async function getNotes(companyId: string, kind: "CREDIT_NOTE" | "DEBIT_NOTE") {
+export async function getNotes(companyId: string, kind: "CREDIT_NOTE" | "DEBIT_NOTE", locs: string[] | null = null) {
   return sql`
     select d.id, d.doc_no, d.doc_date, d.posting_date, d.status,
            d.net_total, d.tax_total, d.gross_total,
@@ -662,6 +669,7 @@ export async function getNotes(companyId: string, kind: "CREDIT_NOTE" | "DEBIT_N
       left join business_partner p on p.id = d.partner_id
       left join document       src on src.id = d.source_document_id
      where d.company_id = ${companyId}
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
        and d.doc_type = ${kind}
        -- Same exclusion as every other list: neither half of a void is a
        -- correction that stands.
@@ -671,7 +679,8 @@ export async function getNotes(companyId: string, kind: "CREDIT_NOTE" | "DEBIT_N
 }
 
 /** `limit` only when a caller wants the newest few — the dashboard's five. */
-export async function getDocuments(companyId: string, docType?: string, openGrirOnly?: boolean, limit?: number) {
+export async function getDocuments(companyId: string, docType?: string, openGrirOnly?: boolean, limit?: number,
+                                   locs: string[] | null = null) {
   return sql`
     select d.id, d.doc_type, d.doc_no, d.doc_date, d.posting_date, d.due_date,
            d.status, d.gross_total, d.currency, d.posted_at,
@@ -687,6 +696,7 @@ export async function getDocuments(companyId: string, docType?: string, openGrir
      where d.company_id = ${companyId}
        ${docType ? sql`and d.doc_type = ${docType}` : sql``}
        ${openGrirOnly ? sql`and exists (select 1 from v_grir_balance g where g.document_id = d.id)` : sql``}
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
        -- Neither half of a void. The document that was undone is not a
        -- transaction any more, and the mirror that undid it is not one
        -- either — nobody raised it, and listing both makes one cancelled
@@ -2186,7 +2196,8 @@ export async function getChartOfAccounts(companyId: string) {
  */
 export async function getOrderList(
   companyId: string,
-  docType: "SALES_ORDER" | "PURCHASE_ORDER"
+  docType: "SALES_ORDER" | "PURCHASE_ORDER",
+  locs: string[] | null = null,
 ) {
   // One reckoning, shared with the dashboard and the fulfilment forms: goods
   // that name the order, goods linked to it afterwards, and nothing left
@@ -2210,6 +2221,7 @@ export async function getOrderList(
              group by order_id
       ) x on x.order_id = o.id
      where o.company_id = ${companyId} and o.doc_type = ${docType}
+       ${locs ? sql`and o.location_id = any(${locs})` : sql``}
      order by o.posting_date desc, o.doc_no desc`;
 }
 
@@ -2481,7 +2493,7 @@ export async function getOpenOrdersAwaitingGoods(
  * receipt. A receipt raised against an invoice that came first anchors on
  * that invoice instead, and correctly reads as billed.
  */
-export async function getGoodsReceiptHistory(companyId: string) {
+export async function getGoodsReceiptHistory(companyId: string, locs: string[] | null = null) {
   return sql`
     select d.id, d.doc_no, d.doc_date, d.status, d.gross_total,
            d.partner_id, p.name as partner_name,
@@ -2496,6 +2508,7 @@ export async function getGoodsReceiptHistory(companyId: string) {
       left join v_grir_balance g
              on g.document_id = d.id and g.company_id = d.company_id
      where d.company_id = ${companyId} and d.doc_type = 'GOODS_RECEIPT'
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
      order by d.doc_date desc, d.doc_no desc
      limit 300`;
 }
@@ -2516,7 +2529,7 @@ export async function getGoodsReceiptHistory(companyId: string) {
  * offers from, so what a screen calls outstanding and what a form lets you
  * bill cannot disagree.
  */
-export async function getDeliveryHistory(companyId: string) {
+export async function getDeliveryHistory(companyId: string, locs: string[] | null = null) {
   return sql`
     select d.id, d.doc_no, d.doc_date, d.status, d.gross_total,
            d.partner_id, p.name as partner_name,
@@ -2528,6 +2541,7 @@ export async function getDeliveryHistory(companyId: string) {
       left join location l on l.id = d.location_id
       left join document src on src.id = d.source_document_id
      where d.company_id = ${companyId} and d.doc_type = 'DELIVERY'
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
      order by d.doc_date desc, d.doc_no desc
      limit 300`;
 }

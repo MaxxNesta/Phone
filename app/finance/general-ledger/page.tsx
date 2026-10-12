@@ -1,3 +1,4 @@
+import { scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { ArrowRight, Scale } from "lucide-react";
 import { getFinanceData } from "@/lib/actions";
@@ -72,7 +73,9 @@ export default async function GeneralLedger({
     location?: string; type?: string; doc?: string; q?: string; voided?: string;
   }>;
 }) {
-  const p = await searchParams;
+  const p = { ...(await searchParams) };
+  // Someone who sees only their own branch reads its ledger, whatever the link asks.
+  p.location = (await scopedBranch(p.location)) ?? undefined;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 

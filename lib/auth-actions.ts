@@ -100,6 +100,7 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
   const password = String(fd.get("password") ?? "");
   const active = fd.get("is_active") !== null;
   const branchId = str(fd, "branch_id") || null;
+  const seesAll = fd.get("sees_all_branches") !== null;
 
   if (!name || !email.includes("@")) return { error: "Enter a name and an email address." };
   if (!ROLES.includes(role)) return { error: "Choose a role." };
@@ -120,7 +121,7 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
     if (id) {
       await sql`
         update app_user set name = ${name}, initials = ${initialsOf(name)}, email = ${email},
-               role = ${role}, is_active = ${active}, branch_id = ${branchId},
+               role = ${role}, is_active = ${active}, branch_id = ${branchId}, sees_all_branches = ${seesAll},
                password_hash = coalesce(${hash}, password_hash)
          where id = ${id} and company_id = ${admin.companyId}`;
       // A deactivated account or a changed password ends its sessions now.
@@ -128,8 +129,8 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
     } else {
       if (!hash) return { error: "A new account needs a password." };
       await sql`
-        insert into app_user (company_id, name, initials, email, password_hash, role, is_active, branch_id)
-        values (${admin.companyId}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, ${role}, ${active}, ${branchId})`;
+        insert into app_user (company_id, name, initials, email, password_hash, role, is_active, branch_id, sees_all_branches)
+        values (${admin.companyId}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, ${role}, ${active}, ${branchId}, ${seesAll})`;
     }
   } catch (e) {
     const msg = (e as Error).message;

@@ -7,6 +7,7 @@ import {
 import { PrintableDocument, type PrintableDoc } from "@/components/printable-document";
 import { PrintButton } from "@/components/print-button";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
+import { seenLocations } from "@/lib/branch-scope";
 
 /**
  * A document as paper, for every type.
@@ -67,6 +68,8 @@ export default async function DocumentPrint({
   // The same gate as the document itself: paper is no way round it.
   if (!company || !doc || (doc as any).company_id !== user.companyId
       || !can(user, permissionForDocument((doc as any).doc_type))) notFound();
+  const seen = await seenLocations();
+  if (seen && !seen.includes((doc as any).location_id)) notFound();
 
   const d = doc as any;
   const [lines, journal] = await Promise.all([

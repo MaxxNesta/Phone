@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
+import { seenLocations } from "@/lib/branch-scope";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { uploadAttachment, deleteAttachment } from "@/lib/actions";
 import { storageConfigured } from "@/lib/r2";
@@ -151,6 +152,9 @@ export default async function DocumentPage({
   // Not found rather than refused: whether a document exists is itself
   // something a role without access to its side of the business is not told.
   if (!doc || doc.company_id !== user.companyId || !can(user, permissionForDocument(doc.doc_type))) notFound();
+  // Another branch's document, for someone who sees only their own.
+  const seen = await seenLocations();
+  if (seen && !seen.includes(doc.location_id)) notFound();
   // The posting carries cost of sales on every sale and the cost of stock on
   // every movement: only those who may see cost, or keep the books, see it.
   const seeJournal = can(user, "cost.view") || can(user, "accounting.view");

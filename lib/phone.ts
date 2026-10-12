@@ -129,6 +129,8 @@ export async function unitsOnShelf(companyId: string, itemId: string, locationId
 export type PhoneStockFilter = {
   q?: string; locationId?: string; brand?: string; model?: string;
   storage?: string; colour?: string; status?: string; supplierId?: string;
+  /** The locations the reader may see (seenLocations); null for every one. */
+  locs?: string[] | null;
 };
 
 export async function phoneStock(companyId: string, f: PhoneStockFilter) {
@@ -150,6 +152,7 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter) {
             or v.device_serial ilike ${like} or v.item_name ilike ${like} or v.model_name ilike ${like})
        and (${f.locationId ?? null}::uuid is null or v.location_id = ${f.locationId ?? null}
             or loc.parent_id = ${f.locationId ?? null})
+       ${f.locs ? sql`and v.location_id = any(${f.locs})` : sql``}
        and (${f.brand ?? null}::text is null or v.brand_name = ${f.brand ?? null})
        and (${f.model ?? null}::text is null or v.model_name = ${f.model ?? null})
        and (${f.storage ?? null}::text is null or ${optionMatching(STORAGE_RE)} = ${f.storage ?? null})
@@ -362,7 +365,7 @@ export async function phoneSales(companyId: string, from: string, to: string,
 }
 
 /** Phones held, by model and branch, with age and how fast each model sells. */
-export async function phoneStockSummary(companyId: string) {
+export async function phoneStockSummary(companyId: string, locs: string[] | null = null) {
   return sql`
     with held as (
       select v.model_name, v.brand_name, coalesce(br.name, loc.name) as branch,
@@ -377,6 +380,7 @@ export async function phoneStockSummary(companyId: string) {
         left join location loc on loc.id = v.location_id
         left join location br on br.id = loc.parent_id
        where v.company_id = ${companyId} and v.status = 'IN_STOCK'
+         ${locs ? sql`and v.location_id = any(${locs})` : sql``}
        group by 1, 2, 3
     ),
     sold as (
@@ -384,6 +388,7 @@ export async function phoneStockSummary(companyId: string) {
              count(*) filter (where out_date > current_date - 90)::int as sold_90
         from v_stock_serial
        where company_id = ${companyId} and status = 'SOLD'
+         ${locs ? sql`and location_id = any(${locs})` : sql``}
        group by 1
     )
     select h.*, coalesce(s.sold_30, 0) as sold_30, coalesce(s.sold_90, 0) as sold_90
@@ -393,9 +398,12 @@ export async function phoneStockSummary(companyId: string) {
 
 // ------------------------------------------------------------ dashboard ----
 
-export async function retailDashboard(companyId: string) {
+export async function retailDashboard(companyId: string, locs: string[] | null = null) {
+  // Someone who sees only their own branch gets its figures only (seenLocations).
+  const at = (col: "location_id" | "d.location_id" | "s.location_id") =>
+    locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``;
   const range = (from: ReturnType<typeof sql>, to: ReturnType<typeof sql> = sql`current_date`) =>
-    saleRows(companyId, from, to);
+    saleRows(companyId, from, to, locs);
   const [[today], [yesterday], [month], [stock], [ar], [aged], low, week, topModels, aging, recent, ending, bad] =
     await Promise.all([
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost,
@@ -405,16 +413,18 @@ export async function retailDashboard(companyId: string) {
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost
             from (${range(sql`date_trunc('month', current_date)::date`)}) r`,
       sql`select coalesce(sum(value_on_hand), 0)::float as value from v_stock_on_hand
-           where company_id = ${companyId}`,
+           where company_id = ${companyId} ${at("location_id")}`,
       sql`select coalesce(sum(outstanding), 0)::float as owed, count(distinct partner_id)::int as customers
             from v_open_item where company_id = ${companyId} and doc_type = 'SALES_INVOICE'
-             and outstanding > 0.005`,
+             and outstanding > 0.005
+             ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}`,
       sql`select count(*)::int as n from v_stock_serial
-           where company_id = ${companyId} and status = 'IN_STOCK' and received_date < current_date - 90`,
+           where company_id = ${companyId} and status = 'IN_STOCK' and received_date < current_date - 90
+             ${at("location_id")}`,
       // Variants that sell and are nearly out: two or fewer left, sold in 60 days.
       sql`select s.item_name as name, count(*) filter (where s.status = 'IN_STOCK')::int as left_,
                  count(*) filter (where s.status = 'SOLD' and s.out_date > current_date - 60)::int as sold_60
-            from v_stock_serial s where s.company_id = ${companyId}
+            from v_stock_serial s where s.company_id = ${companyId} ${at("s.location_id")}
            group by 1
           having count(*) filter (where s.status = 'IN_STOCK') <= 2
              and count(*) filter (where s.status = 'SOLD' and s.out_date > current_date - 60) > 0
@@ -431,7 +441,7 @@ export async function retailDashboard(companyId: string) {
                       when current_date - received_date <= 60 then '31–60 days'
                       when current_date - received_date <= 90 then '61–90 days'
                       else 'Over 90 days' end as label, count(*)::int as value
-            from v_stock_serial where company_id = ${companyId} and status = 'IN_STOCK'
+            from v_stock_serial where company_id = ${companyId} and status = 'IN_STOCK' ${at("location_id")}
            group by 1 order by min(current_date - received_date)`,
       sql`select d.id, d.doc_no, d.gross_total::float as total, bp.code as partner_code, bp.name as customer,
                  (select i.name from document_line dl join item i on i.id = dl.item_id
@@ -442,11 +452,11 @@ export async function retailDashboard(companyId: string) {
             left join v_open_item o on o.document_id = d.id
            where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
              -- A void's reversal is bookkeeping, not a sale.
-             and d.reverses_document_id is null
+             and d.reverses_document_id is null ${at("d.location_id")}
            order by d.posted_at desc limit 5`,
       sql`select count(*)::int as n from v_stock_serial
            where company_id = ${companyId} and status = 'SOLD'
-             and warranty_expiry between current_date and current_date + 30`,
+             and warranty_expiry between current_date and current_date + 30 ${at("location_id")}`,
       // A serial and the stock it belongs to disagreeing is a bug, not a
       // business event; it is shown so somebody notices.
       sql`select i.name, q.on_hand::float, coalesce(s.n, 0)::int as serials
@@ -463,7 +473,8 @@ export async function retailDashboard(companyId: string) {
 }
 
 /** Posted retail sale lines in a window: revenue, the cost they carried, phones sold. */
-function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnType<typeof sql>) {
+function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnType<typeof sql>,
+                  locs: string[] | null = null) {
   return sql`
     select d.posting_date, dl.item_id, dl.net_amount as revenue,
            coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
@@ -473,7 +484,8 @@ function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnTyp
       join document_line dl on dl.document_id = d.id
       join item i on i.id = dl.item_id
      where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
-       and d.posting_date between ${from} and ${to}`;
+       and d.posting_date between ${from} and ${to}
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}`;
 }
 
 /** The IMEI page's tiles: units by status, sales this month, value on hand. */
@@ -497,17 +509,22 @@ export async function inventorySummary(companyId: string, f: {
   /** Variant options the item must have, one per attribute: 256 GB, Black. */
   optionIds?: string[];
   brandId?: string;
+  /** The locations the reader may see (seenLocations); null for every one. */
+  locs?: string[] | null;
 }) {
   const like = f.q ? `%${f.q.trim()}%` : null;
   const opts = f.optionIds ?? [];
+  const locs = f.locs ?? null;
   const locations = await sql`
     select id, name from location where company_id = ${companyId} and is_stock_location and is_active
-     and (${f.locationId ?? null}::uuid is null or id = ${f.locationId ?? null}) order by code`;
+     and (${f.locationId ?? null}::uuid is null or id = ${f.locationId ?? null})
+     ${locs ? sql`and id = any(${locs})` : sql``} order by code`;
   const rows = await sql`
     with qty as (
       select item_id, location_id, qty_on_hand::float as qty, value_on_hand::float as value
         from v_stock_on_hand where company_id = ${companyId}
          and (${f.locationId ?? null}::uuid is null or location_id = ${f.locationId ?? null})
+         ${locs ? sql`and location_id = any(${locs})` : sql``}
     ),
     per as (
       select item_id, sum(qty) as qty, sum(value) as value,

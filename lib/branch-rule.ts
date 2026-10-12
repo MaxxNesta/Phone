@@ -32,3 +32,30 @@ export async function locationsForUser(user: Pick<SessionUser, "companyId" | "ro
     select id from tree`;
   return new Set(rows.map((r) => r.id as string));
 }
+
+/**
+ * What a person may see: everything if they may see every branch, otherwise
+ * exactly where they may work. Kept apart from where they may post because an
+ * administrator can let someone see all branches while they sell at one.
+ */
+export async function visibleLocationsForUser(
+  user: Pick<SessionUser, "companyId" | "role" | "branchId" | "seesAllBranches">,
+): Promise<Set<string> | null> {
+  if (user.seesAllBranches) return null;
+  return locationsForUser(user);
+}
+
+/**
+ * The one branch a person limited to their own branch sees, for reports that
+ * filter by branch; null when they may see every branch (or have none yet).
+ */
+export async function visibleBranchForUser(
+  user: Pick<SessionUser, "companyId" | "role" | "branchId" | "seesAllBranches">,
+): Promise<string | null> {
+  const seen = await visibleLocationsForUser(user);
+  if (!seen || seen.size === 0) return null;
+  if (user.branchId) return user.branchId;
+  const [only] = await sql`
+    select id from location where company_id = ${user.companyId} and parent_id is null and is_active`;
+  return (only?.id as string) ?? null;
+}

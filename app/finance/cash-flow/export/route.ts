@@ -1,3 +1,4 @@
+import { scopedBranch } from "@/lib/branch-scope";
 import { NextRequest } from "next/server";
 import { requirePermission } from "@/lib/auth";
 import { getCashFlowTransactions } from "@/lib/queries";
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
   const line = p.get("line") ?? "";
   const from = p.get("from") ?? `${new Date().getFullYear()}-01-01`;
   const to = p.get("to") ?? new Date().toISOString().slice(0, 10);
-  const branch = p.get("branch") || null;
+  const branch = await scopedBranch(p.get("branch") || null);
   if (!line) return new Response("Which line?", { status: 400 });
   // Dates go into the file name: only real dates, nothing a header could carry.
   const isDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);

@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
@@ -17,12 +18,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   if (!q) redirect("/");
   const like = `%${q}%`;
 
+  // Phones and documents of other branches stay out of a search by someone who sees only their own.
+  const locs = await seenLocations();
   const [units, docs, partners] = await Promise.all([
     sql`select serial_id, imei, item_name, status, customer_name from v_stock_serial
          where company_id = ${co} and (imei = ${q} or imei2 = ${q} or device_serial = ${q}
-               or imei ilike ${like}) limit 20`,
+               or imei ilike ${like}) ${locs ? sql`and location_id = any(${locs})` : sql``} limit 20`,
     sql`select id, doc_no, doc_type, posting_date, gross_total::float as total from document
-         where company_id = ${co} and doc_no ilike ${like} and status <> 'DRAFT'
+         where company_id = ${co} and doc_no ilike ${like} and status <> 'DRAFT' ${locs ? sql`and location_id = any(${locs})` : sql``}
          order by posting_date desc limit 20`,
     sql`select id, name, code, is_customer from business_partner
          where company_id = ${co} and (name ilike ${like} or code ilike ${like}) limit 20`,

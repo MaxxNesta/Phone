@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/db";
 import { getCompany, getDocuments } from "@/lib/queries";
@@ -10,7 +11,7 @@ export default async function CustomerReturns() {
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const returns = (await getDocuments(company.id, "SALES_RETURN")) as any[];
+  const returns = (await getDocuments(company.id, "SALES_RETURN", undefined, undefined, await seenLocations())) as any[];
   const total = returns.reduce((s, r) => s + Number(r.gross_total), 0);
 
   const rows: DataRow[] = returns.map((r) => ({

@@ -8,7 +8,7 @@ export const metadata = { title: "Users" };
 export default async function Users() {
   const admin = await requirePermission("users.manage");
   const [users, branches] = await Promise.all([
-    sql`select u.id, u.name, u.email, u.role, u.is_active, u.last_login_at, u.branch_id, b.name as branch_name
+    sql`select u.id, u.name, u.email, u.role, u.is_active, u.last_login_at, u.branch_id, u.sees_all_branches, b.name as branch_name
           from app_user u left join location b on b.id = u.branch_id
          where u.company_id = ${admin.companyId} order by u.is_active desc, u.name`,
     sql`select id, code, name from location
@@ -34,12 +34,13 @@ export default async function Users() {
                   <td>{u.name}{!u.is_active && <span className="pill reversed">inactive</span>}</td>
                   <td>{u.email ?? "—"}</td>
                   <td>{ROLE_LABEL[u.role as keyof typeof ROLE_LABEL] ?? u.role}</td>
-                  {manyBranches && <td>{u.branch_name ?? (["ADMIN", "MANAGER"].includes(u.role) ? "All branches" : <span className="pill warn">not set</span>)}</td>}
+                  {manyBranches && <td>{u.branch_name ?? (["ADMIN", "MANAGER"].includes(u.role) ? "All branches" : <span className="pill warn">not set</span>)}
+                    {u.branch_name && u.sees_all_branches && <div className="subline">sees all branches</div>}</td>}
                   <td>{u.last_login_at ? dateTime(u.last_login_at) : "never"}</td>
                   <td>
                     <details>
                       <summary className="linkish">Edit</summary>
-                      <UserForm branches={branches as never} user={{ id: u.id, name: u.name, email: u.email ?? "", role: u.role, is_active: u.is_active, branch_id: u.branch_id }} />
+                      <UserForm branches={branches as never} user={{ id: u.id, name: u.name, email: u.email ?? "", role: u.role, is_active: u.is_active, branch_id: u.branch_id, sees_all_branches: u.sees_all_branches }} />
                     </details>
                   </td>
                 </tr>

@@ -1,3 +1,4 @@
+import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
   getCompany, getCashFlowStatement, getBranches,
   getUnassignedBranchActivity, UNASSIGNED_BRANCH,
@@ -40,15 +41,16 @@ export async function getCashFlowData({ from, to, branch }: Params) {
 
   const range = { from: from || defaultFrom(), to: to || today() };
 
-  const branches = (await getBranches(company.id)) as unknown as
+  const branches = (await seenBranches((await getBranches(company.id)) as unknown as { id: string }[])) as unknown as
     Array<{ id: string; code: string; name: string }>;
   const unassignedLines = await getUnassignedBranchActivity(company.id);
   // A branch id that no longer exists falls back to the consolidated view
   // rather than showing an empty report with no explanation.
-  const branchId =
+  // Someone who sees only their own branch gets it, whatever the link asks for.
+  const branchId = await scopedBranch(
     branch === UNASSIGNED_BRANCH ? UNASSIGNED_BRANCH
     : branch && branches.some((b) => b.id === branch) ? branch
-    : null;
+    : null);
   const branchName =
     branchId === UNASSIGNED_BRANCH ? "No branch"
     : branches.find((b) => b.id === branchId)?.name ?? "All branches";

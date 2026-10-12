@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Boxes, Package, Lock, AlertTriangle, Smartphone } from "lucide-react";
 import { sql } from "@/lib/db";
@@ -28,9 +29,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
   const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
   const [{ locations, rows: allRows }, facets, moves, groups, allLocs] = await Promise.all([
-    facetsP.then((f) => inventorySummary(co, {
+    facetsP.then(async (f) => inventorySummary(co, {
       q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
       locationId: sp.location || undefined, status: sp.status || undefined,
+      locs: await seenLocations(),
     })),
     facetsP,
     recentMovements(co),

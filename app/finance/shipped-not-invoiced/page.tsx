@@ -1,3 +1,4 @@
+import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Truck, Clock, Boxes, AlertTriangle } from "lucide-react";
 import { money, sql } from "@/lib/db";
@@ -25,13 +26,14 @@ export default async function ShippedNotInvoiced({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const branches = (await getBranches(company.id)) as unknown as Array<{
+  const branches = (await seenBranches((await getBranches(company.id)) as unknown as { id: string }[])) as unknown as Array<{
     id: string; code: string; name: string;
   }>;
-  const branchId =
+  // Someone who sees only their own branch gets it, whatever the link asks for.
+  const branchId = await scopedBranch(
     p.branch === UNASSIGNED_BRANCH ? UNASSIGNED_BRANCH
     : p.branch && branches.some((b) => b.id === p.branch) ? p.branch
-    : null;
+    : null);
 
   /* The date the bands are measured against, read from the database rather
      than this server's clock — the ages were computed there, and a page

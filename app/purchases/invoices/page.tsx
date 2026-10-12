@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/db";
 import {
@@ -28,7 +29,7 @@ export default async function PurchaseInvoices({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const postedRows = (await getInvoiceList(company.id, "PURCHASE_INVOICE")) as any[];
+  const postedRows = (await getInvoiceList(company.id, "PURCHASE_INVOICE", await seenLocations())) as any[];
 
   // Unfinished bills, in the same shape as the rest of the list. They live in
   // their own table rather than in `document` (migration 0103), so they are

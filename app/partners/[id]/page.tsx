@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -26,6 +27,8 @@ export default async function Partner({ params, searchParams }: {
       from business_partner where id = ${id} and company_id = ${user.companyId}`;
   if (!p) notFound();
 
+  // A customer's dealings at other branches stay out of view for someone who sees only their own.
+  const locs = await seenLocations();
   const [phones, docs] = await Promise.all([
     sql`
       select s.id as serial_id, s.serial_no as imei, i.name as item_name, e.event,
@@ -35,11 +38,12 @@ export default async function Partner({ params, searchParams }: {
         join stock_serial s on s.id = e.serial_id
         join item i on i.id = s.item_id
         join v_stock_serial v on v.serial_id = s.id
-       where e.company_id = ${user.companyId}
+       where e.company_id = ${user.companyId} ${locs ? sql`and d.location_id = any(${locs})` : sql``}
        order by e.created_at desc limit 300`,
     sql`
       select id, doc_no, doc_type, status, posting_date, gross_total
         from document where partner_id = ${id} and company_id = ${user.companyId}
+         ${locs ? sql`and location_id = any(${locs})` : sql``}
        order by posting_date desc nulls last, created_at desc limit 100`,
   ]);
 

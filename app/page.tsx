@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, AlertTriangle, Check } from "lucide-react";
 import { currentUser, can } from "@/lib/auth";
@@ -65,12 +66,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   };
   const co = user.companyId;
   const [d, cats, regionRows, custRows, suppRows, recentDocs, health] = await Promise.all([
-    retailDashboard(co),
+    seenLocations().then((locs) => retailDashboard(co, locs)),
     getTopCategories(co, period.cat.from, period.cat.to),
     getRevenueByRegion(co, period.reg.from, period.reg.to),
     getRevenueByCustomerCategory(co, period.cust.from, period.cust.to),
     getSpendBySupplierCategory(co, period.supp.from, period.supp.to),
-    getDocuments(co, undefined, undefined, 5),
+    seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs)),
     getHealth(co),
   ]);
   const categories = cats as unknown as Share[];

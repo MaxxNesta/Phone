@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/db";
 import {
@@ -43,7 +44,7 @@ export default async function SalesOrders({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const saved = (await getOrderList(company.id, "SALES_ORDER")) as any[];
+  const saved = (await getOrderList(company.id, "SALES_ORDER", await seenLocations())) as any[];
 
   /**
    * Unfinished orders, in the same shape as the rest of the list.

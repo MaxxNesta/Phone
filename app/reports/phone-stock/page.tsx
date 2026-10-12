@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import { requirePermission, can } from "@/lib/auth";
 import { phoneStockSummary } from "@/lib/phone";
 import { money } from "@/lib/format";
@@ -19,7 +20,7 @@ export default async function PhoneStockReport({ searchParams }: { searchParams:
   const sp = await searchParams;
   const user = await requirePermission("reports.view");
   const seeCost = can(user, "cost.view");
-  const rows = await phoneStockSummary(user.companyId);
+  const rows = await phoneStockSummary(user.companyId, await seenLocations());
 
   const pg = paginate(rows, sp.page);
   return (

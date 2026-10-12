@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import {
   ArrowRight, ArrowUpRight, Check, AlertTriangle, ChevronRight,
@@ -70,7 +71,7 @@ export default async function Dashboard({
     getKpis(company.id),
     getHealth(company.id),
     getAging(company.id),
-    getDocuments(company.id),
+    seenLocations().then((locs) => getDocuments(company.id, undefined, undefined, undefined, locs)),
     getStock(company.id),
     getActionItems(company.id),
     getRevenueTrend(company.id, period.rev.chartMonths, period.rev.chartAnchor),

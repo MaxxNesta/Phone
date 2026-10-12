@@ -58,6 +58,8 @@ export type SessionUser = {
   email: string; role: Role;
   /** The branch this person works at; null for every branch (admin/manager only). */
   branchId: string | null;
+  /** May see every branch's documents and reports, though posting stays at branchId. */
+  seesAllBranches: boolean;
 };
 
 /** Only these roles may work across every branch. */
@@ -93,12 +95,13 @@ export const tokenHash = (token: string) => createHash("sha256").update(token).d
 export async function userForToken(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   const [u] = await sql`
-    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id
+    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches
       from user_session s join app_user u on u.id = s.user_id
      where s.token_hash = ${tokenHash(token)} and s.expires_at > now() and u.is_active`;
   if (!u) return null;
   return { id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
-           email: u.email, role: u.role as Role, branchId: u.branch_id ?? null };
+           email: u.email, role: u.role as Role, branchId: u.branch_id ?? null,
+           seesAllBranches: Boolean(u.sees_all_branches) };
 }
 
 /**
@@ -121,7 +124,7 @@ export async function ownerUser(): Promise<SessionUser | null> {
   const toUser = (u: Record<string, any>): SessionUser => ({
     id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
     // With sign-in off there is one person, the owner, and the owner works everywhere.
-    email: u.email ?? "", role: u.role as Role, branchId: null });
+    email: u.email ?? "", role: u.role as Role, branchId: null, seesAllBranches: true });
   // The company is found inside the same statement, with no parameters: one
   // round trip, and it need not wait for the layout's own company lookup.
   const [found] = await sql`
