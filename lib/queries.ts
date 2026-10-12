@@ -1443,6 +1443,17 @@ export async function getOpenDeliveries(companyId: string, limit: number | null 
   const share = await sharedSourceLines(
     companyId, "DELIVERY", docs.map((d: any) => d.billed_by_id));
 
+  // The phones on each delivery line that no invoice has billed yet, so the
+  // invoice can say which ones it bills and each is costed at what it cost.
+  const unbilledUnits = await sql`
+    select sm.document_line_id as line_id, s.serial_no
+      from v_delivery_cost_unclaimed v
+      join stock_serial_issue si on si.consumption_id = v.consumption_id
+      join stock_serial s on s.id = si.serial_id
+      join stock_movement sm on sm.id = v.stock_movement_id
+     where v.company_id = ${companyId} and v.document_id = any(${ids})
+     order by si.created_at, s.serial_no`;
+
   return docs
     .map((d: any) => {
       const own = lines.filter((l: any) => l.document_id === d.id);
@@ -1476,6 +1487,7 @@ export async function getOpenDeliveries(companyId: string, limit: number | null 
           orderPrice: l.foc_reason_id ? 0 : (l.order_price === null ? null : Number(l.order_price)),
           orderId: (l.order_id as string) ?? null,
           orderNo: (l.order_no as string) ?? null,
+          serials: unbilledUnits.filter((u: any) => u.line_id === l.id).map((u: any) => u.serial_no as string),
         }))
         .filter((l) => l.qty > 0);
 

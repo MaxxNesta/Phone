@@ -56,6 +56,8 @@ type MatchLine = {
   focReasonId?: string | null;
   orderId?: string | null;
   orderNo?: string | null;
+  /** The phones on this delivery line not yet billed, by IMEI. */
+  serials?: string[];
 };
 type OpenDelivery = {
   id: string; doc_no: string; doc_date: string; partner_id: string; location_id: string;
@@ -97,6 +99,10 @@ type Line = {
   focQty: string;
   /** The exact phones on this line, for an item tracked by IMEI or serial. */
   serials?: ScannedSerial[];
+  /** Billing a delivery: the phones it delivered and nobody has billed, to
+   *  choose from. The invoice names the ones it bills, so each is costed at
+   *  what that phone cost. */
+  deliveredSerials?: string[];
   /** Why they are free — promotion, sample, office use, damaged. Blank
    *  defaults to the promotional reason. */
   focReasonId: string;
@@ -425,7 +431,10 @@ export function SalesVoucher({
                  discountPct: "", focQty: "",
                  focReasonId: free ? (l.focReasonId as string) : "", source: "OWNED",
                  sourceLineId: l.lineId, sourceQty: String(l.qty),
-                 agreedPrice: agreed, orderId: l.orderId ?? null, orderNo: l.orderNo ?? null };
+                 agreedPrice: agreed, orderId: l.orderId ?? null, orderNo: l.orderNo ?? null,
+                 ...(l.serials?.length
+                   ? { serials: l.serials.map((serial) => ({ serial })), deliveredSerials: l.serials }
+                   : {}) };
       })
     );
   }
@@ -1308,6 +1317,16 @@ export function SalesVoucher({
                 const tracked = !!item?.tracks_serial && !toDeliver && !matchedDeliveryId;
                 const imeiDone = tracked && q > 0 && serials.length === q;
                 const showInline = tracked && q === 1 && serials.length === 1 && !imeiOpen.includes(l.key);
+                // Billing a delivery of phones: which of them. All ticked by
+                // default; billing part means unticking the ones not billed,
+                // and the quantity follows the ticks.
+                const delivered = matchedDeliveryId ? l.deliveredSerials ?? [] : [];
+                const toggleDelivered = (sn: string) => {
+                  const on = new Set(serials.map((x) => x.serial));
+                  if (on.has(sn)) on.delete(sn); else on.add(sn);
+                  const next = delivered.filter((x) => on.has(x)).map((serial) => ({ serial }));
+                  setLine(l.key, { serials: next, qty: String(next.length) });
+                };
 
                 return [
                   <tr key={l.key} className="vline">
@@ -1361,7 +1380,7 @@ export function SalesVoucher({
                       <input type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
                         max={(l.sourceLineId || l.orderLineId) && billPart
                           ? l.sourceQty : undefined}
-                        readOnly={!!(l.sourceLineId || l.orderLineId) && !billPart}
+                        readOnly={(!!(l.sourceLineId || l.orderLineId) && !billPart) || delivered.length > 0}
                         title={l.sourceLineId ? "Delivered quantity — billed as it went out" : undefined}
                         style={l.sourceLineId && !billPart
                           ? { background: "var(--line-soft)", cursor: "not-allowed" }
@@ -1524,6 +1543,22 @@ export function SalesVoucher({
                             )}
                           </>
                         )}
+                      </td>
+                    </tr>
+                  ) : null,
+                  delivered.length > 0 ? (
+                    <tr key={`${l.key}-billed`} className="vline-sub">
+                      <td colSpan={6}>
+                        <fieldset className="vbilled">
+                          <legend>{billPart ? "Phones billed" : `${delivered.length} phone${delivered.length === 1 ? "" : "s"} billed`}</legend>
+                          {delivered.map((sn) => (
+                            <label key={sn} className="vbilled-imei">
+                              <input type="checkbox" checked={serials.some((x) => x.serial === sn)}
+                                disabled={!billPart} onChange={() => toggleDelivered(sn)} />
+                              <span className="m">{sn}</span>
+                            </label>
+                          ))}
+                        </fieldset>
                       </td>
                     </tr>
                   ) : null,

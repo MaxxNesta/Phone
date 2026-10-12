@@ -3604,27 +3604,83 @@ async function claimDeliveredCost(
   qty: number,
   /** Whose journal entry carries the cost to 5000 — see migration 0116. */
   postedByDocumentId: string,
+  /** The phones this line bills, by IMEI (or IMEI 2), where it names them. */
+  serials?: string[],
+  /**
+   * Refuse to guess which phones an unnamed line bills. Set by an invoice
+   * billing deliveries; a delivery claiming for the invoice it fulfils is
+   * claiming its own units for that invoice, so there is nothing to guess.
+   */
+  mustName = false,
 ): Promise<{ cost: number }> {
   if (deliveryIds.length === 0 || qty <= 0) return { cost: 0 };
+  const named = (serials ?? []).map((x) => x.trim()).filter(Boolean);
 
-  /* Unclaimed layers from the deliveries behind this invoice, oldest lot
-     first so the claim follows the same order the goods did. Read through
-     the view, so "unclaimed" means one thing in the engine and in the
-     reconciliation that checks the engine. */
-  const layers = await tx`
-    select v.consumption_id, v.qty_unclaimed, v.unit_cost
-      from v_delivery_cost_unclaimed v
-      join stock_lot_consumption c on c.id = v.consumption_id
-      join stock_lot l on l.id = c.lot_id
-     where v.company_id = ${companyId}
-       and v.document_id = any(${deliveryIds as string[]})
-       and v.item_id = ${itemId}
-     -- The lot's own order, which is the order the FIFO planner drew in:
-     -- received_date then created_at. Ordering by the consumption instead
-     -- left two receipts made on one day tied on both date and microsecond,
-     -- so a random uuid decided which layer an invoice claimed. It took the
-     -- dearer layer first often enough to pass for a while and then fail.
-     order by l.received_date, l.created_at, l.id, c.id`;
+  /*
+   * A phone is billed at what that phone cost.
+   *
+   * Each delivered handset left on its own slice (one consumption per unit),
+   * so naming it finds exactly its cost. Unnamed, the claim used to take the
+   * delivery's layers oldest first: bill one of three phones delivered and
+   * the invoice was costed at whichever was received earliest, whichever
+   * phone the customer was actually billed for. Billing all of them is exact
+   * either way; billing part of them without saying which is refused, since
+   * any answer would be a guess about which handset the margin belongs to.
+   */
+  let layers;
+  if (named.length > 0) {
+    if (named.length !== qty) {
+      throw new Error(`${qty} billed but ${named.length} IMEI${named.length === 1 ? "" : "s"} named. Name one for each phone.`);
+    }
+    layers = await tx`
+      select v.consumption_id, v.qty_unclaimed, v.unit_cost, s.serial_no, s.imei2
+        from v_delivery_cost_unclaimed v
+        join stock_serial_issue si on si.consumption_id = v.consumption_id
+        join stock_serial s on s.id = si.serial_id
+       where v.company_id = ${companyId}
+         and v.document_id = any(${deliveryIds as string[]})
+         and v.item_id = ${itemId}
+         and (s.serial_no = any(${named}) or s.imei2 = any(${named}))
+       order by v.consumption_id`;
+    for (const sn of named) {
+      if (!layers.some((l) => l.serial_no === sn || l.imei2 === sn)) {
+        throw new Error(`${sn} is not on the delivery being billed, or it has been billed already.`);
+      }
+    }
+  } else {
+    if (mustName) {
+      const [unit] = await tx`
+        select i.tracks_serial,
+               (select coalesce(sum(v.qty_unclaimed), 0) from v_delivery_cost_unclaimed v
+                 where v.company_id = ${companyId}
+                   and v.document_id = any(${deliveryIds as string[]})
+                   and v.item_id = ${itemId})::float as waiting
+          from item i where i.id = ${itemId}`;
+      if (unit?.tracks_serial && qty < Number(unit.waiting) - 1e-9) {
+        throw new Error(
+          `This bills ${qty} of the ${Number(unit.waiting)} phones delivered and not yet billed. ` +
+          `Say which ones, by IMEI, so each is costed at what it cost.`);
+      }
+    }
+    /* Unclaimed layers from the deliveries behind this invoice, oldest lot
+       first so the claim follows the same order the goods did. Read through
+       the view, so "unclaimed" means one thing in the engine and in the
+       reconciliation that checks the engine. */
+    layers = await tx`
+      select v.consumption_id, v.qty_unclaimed, v.unit_cost
+        from v_delivery_cost_unclaimed v
+        join stock_lot_consumption c on c.id = v.consumption_id
+        join stock_lot l on l.id = c.lot_id
+       where v.company_id = ${companyId}
+         and v.document_id = any(${deliveryIds as string[]})
+         and v.item_id = ${itemId}
+       -- The lot's own order, which is the order the FIFO planner drew in:
+       -- received_date then created_at. Ordering by the consumption instead
+       -- left two receipts made on one day tied on both date and microsecond,
+       -- so a random uuid decided which layer an invoice claimed. It took the
+       -- dearer layer first often enough to pass for a while and then fail.
+       order by l.received_date, l.created_at, l.id, c.id`;
+  }
 
   let need = qty;
   let cost = 0;
@@ -3977,7 +4033,7 @@ async function _postSalesInvoice(
 
   const journal: JournalLine[] = [];
   /** What this invoice bills, for the cost claim once every line exists. */
-  const billedLines: Array<{ lineId: string; itemId: string; qty: number }> = [];
+  const billedLines: Array<{ lineId: string; itemId: string; qty: number; serials?: string[] }> = [];
   let lineNo = 0;
 
   for (const line of input.lines) {
@@ -4038,7 +4094,7 @@ async function _postSalesInvoice(
        lines are left out: a giveaway's cost went to its reason's account
        when the goods left and is not waiting here to be recognised. */
     if (!line.focReasonId && item.is_stocked && !input.issueStock) {
-      billedLines.push({ lineId: invLine.id as string, itemId: line.itemId, qty: baseQty });
+      billedLines.push({ lineId: invLine.id as string, itemId: line.itemId, qty: baseQty, serials: line.serials });
     }
 
     /* Counter retail: the goods leave now, on this document, and their cost
@@ -4161,7 +4217,11 @@ async function _postSalesInvoice(
     let held = 0;
     for (const b of billedLines) {
       const { cost } = await claimDeliveredCost(
-        tx, companyId, deliveriesBehind, b.lineId, b.itemId, b.qty, doc.id);
+        tx, companyId, deliveriesBehind, b.lineId, b.itemId, b.qty, doc.id, b.serials,
+        // Only where the invoice names its delivery: that is where the voucher
+        // offers the delivered IMEIs to choose from. An invoice raised from an
+        // order has no such list yet, and keeps claiming oldest-first.
+        Boolean(input.deliveryId));
       if (cost === 0) continue;
       const cogs = await tx`
         select fn_resolve_account_for_item(${companyId}, 'COGS', ${b.itemId}) as a`;

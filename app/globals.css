@@ -5763,3 +5763,12 @@ button.danger-solid:hover { opacity: 0.9; }
   background: var(--line-soft);
 }
 .branch-scope svg { color: var(--muted); }
+
+/* Billing a delivery of phones: the IMEIs it delivered, ticked for the ones
+   this invoice bills. Plain checkboxes with 44px rows, because choosing which
+   handset is billed is the decision, and it should read as one. */
+.vbilled { border: 0; margin: 0 0 0 64px; padding: 0; display: flex; flex-wrap: wrap; gap: 0 16px; }
+.vbilled legend { font-size: 0.8125rem; color: var(--ink-soft); padding: 0; margin-bottom: 2px; }
+.vbilled-imei { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 0.875rem; }
+.vbilled-imei input { width: 18px; height: 18px; }
+@media (max-width: 640px) { .vbilled { margin-left: 0; } }
