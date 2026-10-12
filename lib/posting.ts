@@ -763,7 +763,8 @@ async function assertOrderNotClosed(
 
 async function assertSourceLines(
   tx: TransactionSql,
-  sourceId: string,
+  /** The document the lines must come from, or several that may each be it. */
+  sourceId: string | string[],
   lines: ReadonlyArray<{ itemId: string; sourceLineId?: string | null }>
 ): Promise<void> {
   const named = lines.filter((l) => l.sourceLineId);
@@ -771,7 +772,7 @@ async function assertSourceLines(
 
   const rows = await tx`
     select id, item_id from document_line
-     where document_id = ${sourceId}
+     where document_id = any(${Array.isArray(sourceId) ? sourceId : [sourceId]})
        and id = any(${named.map((l) => l.sourceLineId as string)})`;
 
   const byId = new Map(rows.map((r: any) => [r.id, r.item_id]));
@@ -3991,7 +3992,13 @@ async function _postSalesInvoice(
     // invoice could name a delivery and then bill a different item, or ten
     // times the quantity that went out, and post. The purchase side had at
     // least the line check; the sales side had neither.
-    await assertSourceLines(tx, input.deliveryId, input.lines);
+    // A line may also name the sales order the delivery fulfils: a counter
+    // sale filled from an order bills its goods off the delivery it makes,
+    // and anything not delivered (a service) off the order itself.
+    const [dvSrc] = await tx`
+      select o.id from document dv join document o on o.id = dv.source_document_id
+       where dv.id = ${input.deliveryId} and o.doc_type = 'SALES_ORDER'`;
+    await assertSourceLines(tx, dvSrc ? [input.deliveryId, dvSrc.id as string] : input.deliveryId, input.lines);
     await assertNotOverBilled(tx, input.deliveryId, input.lines, "SALES_INVOICE");
   }
 
@@ -4353,6 +4360,29 @@ export async function postSaleWithDelivery(input: SalesInvoiceInput, outer?: Tra
     const stocked = new Set(flags.filter((r: any) => r.is_stocked).map((r: any) => r.id));
     const toDeliver = input.lines.filter((l) => stocked.has(l.itemId));
 
+    /*
+     * Filled from a sales order: the lines name the order's lines.
+     *
+     * The invoice checks its lines against the delivery it bills, and the
+     * delivery made here named no order, so every such sale was refused —
+     * "Line 1 refers to a line that is not on that document". The delivery
+     * now fulfils the order, line by line, and the invoice bills the
+     * delivery's lines: the same chain as goods delivered first and billed
+     * after, so the order's outstanding quantity falls and the invoice is
+     * costed from exactly this delivery.
+     */
+    const named = input.lines.map((l) => l.sourceLineId).filter((x): x is string => Boolean(x));
+    const orderLines = named.length === 0 ? [] : await tx`
+      select dl.id, dl.document_id from document_line dl
+        join document o on o.id = dl.document_id and o.doc_type = 'SALES_ORDER'
+       where dl.id = any(${named}) and o.company_id = ${input.companyId}`;
+    const orders = [...new Set(orderLines.map((r) => r.document_id as string))];
+    if (orders.length > 1) {
+      throw new Error("These lines come from more than one sales order. Bill one order at a time.");
+    }
+    const orderId = orders[0] ?? null;
+    const ofOrder = new Set(orderLines.map((r) => r.id as string));
+
     // The delivery's journal entry comes before the invoice's number.
     await claimNumberSeries(tx, input.companyId, input.docDate, [
       "DELIVERY", "SALES_INVOICE", "PURCHASE_INVOICE",
@@ -4373,6 +4403,7 @@ export async function postSaleWithDelivery(input: SalesInvoiceInput, outer?: Tra
         // writes no journal, and the invoice uses its own value rather than
         // reading the delivery's back.
         deliveryFee: input.deliveryFee,
+        ...(orderId ? { sourceDocumentId: orderId } : {}),
         // The sales voucher posts invoice and delivery together, so the
         // confirmation given on the voucher has to reach the half that
         // actually moves the stock.
@@ -4395,12 +4426,28 @@ export async function postSaleWithDelivery(input: SalesInvoiceInput, outer?: Tra
           // reason is: the delivery is the half that moves the goods, so it
           // is the half that has to know which ones.
           serials: l.serials,
+          ...(l.sourceLineId && ofOrder.has(l.sourceLineId) ? { sourceLineId: l.sourceLineId } : {}),
         })),
       });
       deliveryId = delivery.id;
     }
 
-    const invoice = await _postSalesInvoice(tx, { ...input, deliveryId });
+    // Each delivered line is billed off the delivery line it became, written
+    // in the same order. Matched by item as well, so a delivery that ever
+    // wrote its lines differently is refused rather than mis-linked.
+    let lines = input.lines;
+    if (deliveryId && orderId) {
+      const made = await tx`
+        select id, item_id from document_line where document_id = ${deliveryId} order by line_no`;
+      if (made.length !== toDeliver.length
+          || toDeliver.some((l, i) => made[i].item_id !== l.itemId)) {
+        throw new Error("The delivery for this sale did not come out line for line. Nothing was posted.");
+      }
+      const madeFor = new Map(toDeliver.map((l, i) => [l, made[i].id as string]));
+      lines = input.lines.map((l) => madeFor.has(l) ? { ...l, sourceLineId: madeFor.get(l) } : l);
+    }
+
+    const invoice = await _postSalesInvoice(tx, { ...input, lines, deliveryId });
 
     // Stamped after, because the delivery is written first — the stock has to
     // move before the bill that reports it can exist. The owner is what makes

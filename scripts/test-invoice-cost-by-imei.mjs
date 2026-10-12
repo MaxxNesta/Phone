@@ -231,6 +231,47 @@ try {
       check("A's 2,000,000 still waits on the earlier delivery", near(await unclaimed(first.id), A), fmt(await unclaimed(first.id)));
     });
 
+    await scenario("9. Non-retail: a counter sale filled from a sales order (it used to be refused)", async () => {
+      const it = await newItem(true);
+      const sn = [imei(), imei(), imei()];
+      await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+        lines: [[A, sn[0]], [B, sn[1]], [C, sn[2]]].map(([cost, s]) => ({ itemId: it.id, qty: 1, unitCost: cost, serials: [s] })) }, tx);
+      const so = await P.postSalesOrder({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+        lines: [{ itemId: it.id, qty: 3, unitPrice: 2_500_000 }] }, tx);
+      const [sol] = await tx`select id from document_line where document_id = ${so.id}`;
+      const sale = await P.postSaleWithDelivery({
+        companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today, paymentType: "CREDIT",
+        lines: [{ itemId: it.id, qty: 1, unitPrice: 2_500_000, sourceLineId: sol.id, serials: [sn[1]] }],
+      }, tx);
+      check("it posts, costed at the phone sold (B, 2,150,000)", near(await gl(sale.id, it.cogs), B), fmt(await gl(sale.id, it.cogs)));
+      const [dv] = await tx`select d.id, d.source_document_id, dl.source_line_id
+        from document d join document_line dl on dl.document_id = d.id
+       where d.lifecycle_owner_id = ${sale.id} and d.doc_type = 'DELIVERY'`;
+      check("its delivery fulfils the order line", dv?.source_document_id === so.id && dv?.source_line_id === sol.id);
+      const [il] = await tx`select dl.source_line_id from document_line dl where dl.document_id = ${sale.id}`;
+      const [dvl] = await tx`select id from document_line where document_id = ${dv.id}`;
+      check("and the invoice bills that delivery's line", il?.source_line_id === dvl?.id);
+      const [left] = await tx`select coalesce(sum(outstanding), 0)::float as q from v_order_outstanding where order_id = ${so.id}`;
+      check("the order has 2 phones still to deliver", near(left.q, 2), fmt(left.q));
+      check("nothing left waiting in the holding account for it", near(await unclaimed(dv.id), 0));
+    });
+
+    await scenario("10. Non-retail: the same for untracked goods, part of an order", async () => {
+      const it = await newItem(false);
+      await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+        lines: [{ itemId: it.id, qty: 10, unitCost: 100 }] }, tx);
+      const so = await P.postSalesOrder({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+        lines: [{ itemId: it.id, qty: 5, unitPrice: 300 }] }, tx);
+      const [sol] = await tx`select id from document_line where document_id = ${so.id}`;
+      const sale = await P.postSaleWithDelivery({
+        companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today, paymentType: "CREDIT",
+        lines: [{ itemId: it.id, qty: 2, unitPrice: 300, sourceLineId: sol.id }],
+      }, tx);
+      check("it posts, cost of sales 200", near(await gl(sale.id, it.cogs), 200), fmt(await gl(sale.id, it.cogs)));
+      const [left] = await tx`select coalesce(sum(outstanding), 0)::float as q from v_order_outstanding where order_id = ${so.id}`;
+      check("the order has 3 still to deliver", near(left.q, 3), fmt(left.q));
+    });
+
     const [rec] = await tx`select coalesce(sum(difference), 0)::float as d from v_check_inventory_reconciliation where company_id = ${co.id}`;
     console.log("");
     check("company: Inventory GL − stock ledger", near(rec.d, 0), fmt(rec.d));
