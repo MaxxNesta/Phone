@@ -1,4 +1,5 @@
-import { seenLocations } from "@/lib/branch-scope";
+import { BranchScope } from "@/components/branch-scope";
+import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Boxes, Package, Lock, AlertTriangle, Smartphone } from "lucide-react";
 import { sql } from "@/lib/db";
@@ -35,9 +36,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       locs: await seenLocations(),
     })),
     facetsP,
-    recentMovements(co),
+    seenLocations().then((locs) => recentMovements(co, 8, locs)),
     sql`select id, name from item_group where company_id = ${co} and parent_id is null order by name`,
-    sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`,
+    sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`
+      .then((r) => seenRows(r as unknown as Record<string, unknown>[], "id")) as any,
   ]);
 
   // Rendered only for cost.view, and not sent to anyone else either.
@@ -122,6 +124,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     <>
       <div className="page-head hero">
         <h1>Inventory</h1>
+        <BranchScope />
         <p className="page-sub">Stock summary across all stores and warehouses</p>
         {can(user, "inventory.manage") && (
           <div className="head-actions"><Link className="btn" href="/inventory/adjustments">+ Stock Adjustment</Link></div>

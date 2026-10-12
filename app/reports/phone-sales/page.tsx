@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { requirePermission, can } from "@/lib/auth";
@@ -34,6 +35,7 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
     <>
       <div className="page-head hero">
         <h1>Sales &amp; margin</h1>
+        <BranchScope />
         <p className="page-sub">
           Posted invoices less customer returns. Cost of sales is the exact cost each invoice posted —
           the same figures the ledger carries.

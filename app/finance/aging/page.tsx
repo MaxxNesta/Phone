@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Users, AlertTriangle, CreditCard, CalendarClock } from "lucide-react";
@@ -160,6 +161,7 @@ export default async function AgingPage({
       <div className="page-head">
         <span className="eyebrow">Accounting</span>
         <h1>AR / AP aging</h1>
+        <BranchScope />
         <span className="actions">
           <span className="asof">Measured as at {asOf}</span>
         </span>

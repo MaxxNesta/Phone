@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
@@ -72,6 +73,7 @@ export default async function Receivables({
       <div className="page-head">
         <span className="eyebrow">Sales</span>
         <h1>Receivables</h1>
+        <BranchScope />
         <HelpHint>
           What each customer owes, rolled up from their open invoices — not a
           balance kept on the customer, so it can never drift from the invoices

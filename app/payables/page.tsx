@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
@@ -89,6 +90,7 @@ export default async function Payables({
       <div className="page-head">
         <span className="eyebrow">Purchases</span>
         <h1>Payables</h1>
+        <BranchScope />
         <HelpHint>
           What you owe each supplier, rolled up from their open bills — not a
           balance kept on the supplier, so it can never drift from the invoices

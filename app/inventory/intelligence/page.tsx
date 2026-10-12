@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, qty as fmtQty, shortDate } from "@/lib/db";
@@ -129,6 +130,7 @@ export default async function InventoryIntelligence({
       <div className="page-head">
         <span className="eyebrow">Inventory</span>
         <h1>Inventory intelligence</h1>
+        <BranchScope />
         <HelpHint>
           Which products earn their shelf space, and which have been sitting
           on it. Worked out from the ledger when this page loads — the

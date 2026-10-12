@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/format";
@@ -88,6 +89,7 @@ export default async function DiscountsGiven({
       <div className="page-head">
         <span className="eyebrow">Sales</span>
         <h1>Discounts given</h1>
+        <BranchScope />
         <HelpHint>
           What was asked for and never collected. Sales post <strong>net</strong> —
           a line discounted 10% records revenue of 90, not 100 with a 10

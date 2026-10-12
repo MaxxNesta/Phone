@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import { requirePermission, can } from "@/lib/auth";
 import { phoneStockSummary } from "@/lib/phone";
@@ -27,6 +28,7 @@ export default async function PhoneStockReport({ searchParams }: { searchParams:
     <>
       <div className="page-head hero">
         <h1>Phone stock &amp; aging</h1>
+        <BranchScope />
         <p className="page-sub">Handsets on the shelf by model and branch, how long they have waited, and how fast each model sells</p>
       </div>
       <div className="card" style={{ overflowX: "auto" }}>

@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -57,6 +58,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
     <>
       <div className="page-head hero">
         <h1>IMEI / Serial Tracking</h1>
+        <BranchScope />
         <p className="page-sub">Scan or search an IMEI to see that phone’s whole life</p>
         {can(user, "inventory.manage") && (
           <div className="head-actions"><Link className="btn" href="/purchases/receive/new">+ Receive Stock</Link></div>

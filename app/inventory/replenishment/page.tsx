@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { qty as fmtQty } from "@/lib/db";
@@ -123,6 +124,7 @@ export default async function Replenishment({
       <div className="page-head">
         <span className="eyebrow">Inventory</span>
         <h1>Replenishment</h1>
+        <BranchScope />
         <HelpHint>
           What has been going out, what is left, and how much to buy to cover
           the next stretch. Every figure is worked out from the stock ledger

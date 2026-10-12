@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import { getCompany, getAdvanceLedger } from "@/lib/queries";
 import { AdvanceLedger } from "@/components/advance-ledger";
@@ -19,6 +20,7 @@ export default async function SupplierAdvances({
       <div className="page-head">
         <span className="eyebrow">Purchases</span>
         <h1>Supplier advances</h1>
+        <BranchScope />
         <HelpHint>
           Money paid to suppliers before they billed for anything — what they
           still owe us in goods, and which bills the rest has gone to. It is an

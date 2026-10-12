@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Boxes, PackageCheck, TrendingDown, AlertTriangle, HandCoins } from "lucide-react";
@@ -375,6 +376,7 @@ export default async function Stock({
       <div className="page-head">
         <span className="eyebrow">Master data</span>
         <h1>Stock</h1>
+        <BranchScope />
       </div>
 
       {/* Both filters on one line: each narrows the same list, and a warehouse

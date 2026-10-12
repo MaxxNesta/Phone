@@ -630,7 +630,7 @@ export async function catalogFacets(companyId: string, groupId?: string, brandId
 }
 
 /** The last stock movements, newest first, for the summary page. */
-export async function recentMovements(companyId: string, limit = 8) {
+export async function recentMovements(companyId: string, limit = 8, locs: string[] | null = null) {
   return sql`
     select sm.id, sm.created_at, sm.qty::float, i.name as item, d.doc_type, d.doc_no, d.id as document_id,
            l.name as location, d.memo, u.name as user_name,
@@ -643,7 +643,8 @@ export async function recentMovements(companyId: string, limit = 8) {
       left join document d on d.id = sm.document_id
       left join app_user u on u.id = coalesce(d.posted_by_id, d.created_by_id)
      where sm.company_id = ${companyId} and sm.qty <> 0
-       -- A transfer is two movements; show the leg that left.
-       and not (d.doc_type = 'STOCK_TRANSFER' and sm.qty > 0)
+       -- A transfer is two movements; show the leg that left. Someone who sees
+       -- one branch sees the leg at their branch, arriving or leaving.
+       ${locs ? sql`and sm.location_id = any(${locs})` : sql`and not (d.doc_type = 'STOCK_TRANSFER' and sm.qty > 0)`}
      order by sm.created_at desc limit ${limit}`;
 }

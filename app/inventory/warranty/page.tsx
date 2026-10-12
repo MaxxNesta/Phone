@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
@@ -26,6 +27,7 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
     <>
       <div className="page-head hero">
         <h1>Warranty lookup</h1>
+        <BranchScope />
         <p className="page-sub">By IMEI, maker&apos;s serial, invoice number or customer name</p>
       </div>
       <form className="card filters" method="get">

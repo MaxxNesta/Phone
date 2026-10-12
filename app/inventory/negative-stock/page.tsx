@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { getCompany, getNegativeStock } from "@/lib/queries";
@@ -21,6 +22,7 @@ export default async function NegativeStock() {
       <div className="page-head">
         <span className="eyebrow">Inventory</span>
         <h1>Negative stock &mdash; pending reconciliation</h1>
+        <BranchScope />
         <HelpHint>
           Goods that went out before anything recorded them arriving. The stock
           was physically there; the paperwork was not, and someone confirmed

@@ -5750,3 +5750,16 @@ button.danger-solid:hover { opacity: 0.9; }
 .levelpick { min-height: 0; height: auto; width: auto; padding: 3px 26px 3px 10px; border-radius: 999px;
   font-size: var(--t-xs); font-weight: 600; color: var(--ok); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
   background-color: color-mix(in srgb, var(--ok) 10%, transparent); background-position: right 8px center; }
+
+/* ---------------------------------------------------------- branch scope -- */
+
+/* Whose figures these are, beside the title: a quiet capsule, not a control,
+   because a person limited to their branch has nothing to choose. */
+.page-head .branch-scope { order: 3; }
+.branch-scope {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.15rem 0.6rem; border-radius: 999px;
+  font-size: var(--t-sm); font-weight: 500; color: var(--ink);
+  background: var(--line-soft);
+}
+.branch-scope svg { color: var(--muted); }

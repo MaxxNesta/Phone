@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { FileText, Clock, Truck } from "lucide-react";
@@ -25,6 +26,7 @@ export default async function ReceivedNotInvoiced() {
       <div className="page-head hero">
         <span className="eyebrow">Purchases</span>
         <h1>Received not invoiced</h1>
+        <BranchScope />
         <p className="page-sub">Goods that arrived with no supplier invoice entered yet. Each becomes a payable when its bill is posted.</p>
       </div>
 

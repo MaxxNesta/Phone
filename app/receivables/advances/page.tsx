@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import { getCompany, getAdvanceLedger } from "@/lib/queries";
 import { AdvanceLedger } from "@/components/advance-ledger";
@@ -19,6 +20,7 @@ export default async function CustomerAdvances({
       <div className="page-head">
         <span className="eyebrow">Sales</span>
         <h1>Customer advances</h1>
+        <BranchScope />
         <HelpHint>
           Money customers have paid before any invoice existed — what is still
           held for them, and which bills the rest has gone to. It is a

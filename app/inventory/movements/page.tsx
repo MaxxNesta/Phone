@@ -1,3 +1,4 @@
+import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money, qty, shortDate } from "@/lib/db";
@@ -162,6 +163,7 @@ export default async function StockMovements({
       <div className="page-head">
         <span className="eyebrow">Inventory</span>
         <h1>Stock movements</h1>
+        <BranchScope />
         <HelpHint>
           Every receipt, delivery, transfer, and adjustment, in order — and a
           running balance once one item is chosen, which makes it a stock
