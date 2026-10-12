@@ -130,7 +130,7 @@ try {
       const r = await reconciles(it.id); check("layers = stock ledger", r.ok, r.detail);
     });
 
-    await scenario("3. Untracked goods, two lines of one item (10 at 100, 10 at 200); 15 sold; line 2 billed at 230", async () => {
+    await scenario("3. Untracked goods, two lines of one item (10 at 100, 10 at 200); 15 sold; line 2 billed at 230 (+30 a unit)", async () => {
       const it = await newItem(false);
       const gr = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
         lines: [{ itemId: it.id, qty: 10, unitCost: 100 }, { itemId: it.id, qty: 10, unitCost: 200 }] }, tx);
@@ -140,8 +140,17 @@ try {
       const pi = await bill(gr.id, ls, [[it.id, 10, 100], [it.id, 10, 230]]);
       check("line 1's layer is untouched at 100", near(await lineCost(ls[0]), 100), fmt(await lineCost(ls[0])));
       check("line 2's layer is 230", near(await lineCost(ls[1]), 230), fmt(await lineCost(ls[1])));
-      check("the 5 still on the shelf: Dr Inventory 150", near(await gl(pi.id, it.inv), 150), fmt(await gl(pi.id, it.inv)));
-      check("the 5 of line 2 already sold: Dr Cost of sales 150", near(await gl(pi.id, it.cogs), 150), fmt(await gl(pi.id, it.cogs)));
+      // Two lines of one receipt arrive at the same moment, so which the sale
+      // drew first is not fixed. The split follows what actually left line 2.
+      const [sold] = await tx`
+        select coalesce(sum(c.qty), 0)::float as q
+          from stock_lot_consumption c join stock_lot l on l.id = c.lot_id
+          join stock_movement sm on sm.id = l.stock_movement_id
+         where sm.document_line_id = ${ls[1]}`;
+      check(`line 2's ${10 - sold.q} still on the shelf: Dr Inventory ${(10 - sold.q) * 30}`,
+        near(await gl(pi.id, it.inv), (10 - sold.q) * 30), fmt(await gl(pi.id, it.inv)));
+      check(`line 2's ${sold.q} already sold: Dr Cost of sales ${sold.q * 30}`,
+        near(await gl(pi.id, it.cogs), sold.q * 30), fmt(await gl(pi.id, it.cogs)));
       check("nothing to price variance", near(await gl(pi.id, ppv.a), 0), fmt(await gl(pi.id, ppv.a)));
       const r = await reconciles(it.id); check("layers = stock ledger", r.ok, r.detail);
     });
