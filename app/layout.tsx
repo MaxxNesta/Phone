@@ -54,10 +54,15 @@ const notoMyanmar = Noto_Sans_Myanmar({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: "Phone Retail ERP",
-  description: "Point of sale, IMEI stock and accounting for phone shops",
-};
+// The tab names the company, not the software: a shop's staff and customers
+// see this, and "Retail" describes how it was set up, not who it is.
+export async function generateMetadata(): Promise<Metadata> {
+  const company = await getCompany().catch(() => null);
+  return {
+    title: company?.name ? String(company.name) : "ERP",
+    description: "Point of sale, IMEI stock and accounting",
+  };
+}
 
 export const dynamic = "force-dynamic";
 
