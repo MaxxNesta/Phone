@@ -186,6 +186,51 @@ try {
       check("6 billed: 5 × 100 + 1 × 200 = 700", near(await gl(si.id, it.cogs), 700), fmt(await gl(si.id, it.cogs)));
     });
 
+    await scenario("7. A sales order for three phones, delivered against the order, billed from the order", async () => {
+      const it = await newItem(true);
+      const sn = [imei(), imei(), imei()];
+      await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+        lines: [[A, sn[0]], [B, sn[1]], [C, sn[2]]].map(([cost, s]) => ({ itemId: it.id, qty: 1, unitCost: cost, serials: [s] })) }, tx);
+      const so = await P.postSalesOrder({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+        lines: [{ itemId: it.id, qty: 3, unitPrice: 2_500_000 }] }, tx);
+      const [sol] = await tx`select id from document_line where document_id = ${so.id}`;
+      const dv = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+        sourceDocumentId: so.id, lines: [{ itemId: it.id, qty: 3, sourceLineId: sol.id, serials: sn }] }, tx);
+      // Raised from the order, not from the delivery: no deliveryId. The
+      // engine finds the delivery through the order line.
+      const fromOrder = (qty, serials) => P.postSalesInvoice({
+        companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today, paymentType: "CREDIT",
+        lines: [{ itemId: it.id, qty, unitPrice: 2_500_000, sourceLineId: sol.id, ...(serials ? { serials } : {}) }],
+      }, tx);
+      await refused("billing one of the order's three phones without naming it is refused", () => fromOrder(1), /Say which ones, by IMEI/);
+      const one = await fromOrder(1, [sn[1]]);
+      check("billing IMEI-B from the order costs 2,150,000", near(await gl(one.id, it.cogs), B), fmt(await gl(one.id, it.cogs)));
+      const rest = await fromOrder(2);
+      check("billing the remaining two without names takes exactly them: 4,100,000", near(await gl(rest.id, it.cogs), A + C), fmt(await gl(rest.id, it.cogs)));
+      check("nothing left waiting", near(await unclaimed(dv.id), 0));
+    });
+
+    await scenario("8. A retail counter sale filled from an order that has an earlier, unbilled delivery", async () => {
+      const it = await newItem(true);
+      const sn = [imei(), imei(), imei()];
+      await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+        lines: [[A, sn[0]], [B, sn[1]], [C, sn[2]]].map(([cost, s]) => ({ itemId: it.id, qty: 1, unitCost: cost, serials: [s] })) }, tx);
+      const so = await P.postSalesOrder({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+        lines: [{ itemId: it.id, qty: 3, unitPrice: 2_500_000 }] }, tx);
+      const [sol] = await tx`select id from document_line where document_id = ${so.id}`;
+      const first = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+        sourceDocumentId: so.id, lines: [{ itemId: it.id, qty: 1, sourceLineId: sol.id, serials: [sn[0]] }] }, tx);
+      // The phone handed over now is C; A went out earlier and is not billed
+      // here. Retail mode, as the shop runs: the invoice moves its own stock.
+      const sale = await P.postRetailSale({
+        companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today, paymentType: "CREDIT",
+        lines: [{ itemId: it.id, qty: 1, unitPrice: 2_500_000, sourceLineId: sol.id, serials: [sn[2]] }],
+      }, tx);
+      check("the invoice is costed at the phone handed over (C, 2,100,000), not the earlier one",
+        near(await gl(sale.id, it.cogs), C), fmt(await gl(sale.id, it.cogs)));
+      check("A's 2,000,000 still waits on the earlier delivery", near(await unclaimed(first.id), A), fmt(await unclaimed(first.id)));
+    });
+
     const [rec] = await tx`select coalesce(sum(difference), 0)::float as d from v_check_inventory_reconciliation where company_id = ${co.id}`;
     console.log("");
     check("company: Inventory GL − stock ledger", near(rec.d, 0), fmt(rec.d));

@@ -4224,10 +4224,12 @@ async function _postSalesInvoice(
     for (const b of billedLines) {
       const { cost } = await claimDeliveredCost(
         tx, companyId, deliveriesBehind, b.lineId, b.itemId, b.qty, doc.id, b.serials,
-        // Only where the invoice names its delivery: that is where the voucher
-        // offers the delivered IMEIs to choose from. An invoice raised from an
-        // order has no such list yet, and keeps claiming oldest-first.
-        Boolean(input.deliveryId));
+        // Every invoice claiming delivered phones, whether it names a delivery
+        // or reaches them through a sales order. The voucher never leaves it
+        // without names: goods leaving on the invoice are scanned, and goods
+        // already delivered are ticked off that delivery's IMEIs. A caller that
+        // skips the voucher meets the same rule rather than a guess.
+        true);
       if (cost === 0) continue;
       const cogs = await tx`
         select fn_resolve_account_for_item(${companyId}, 'COGS', ${b.itemId}) as a`;
