@@ -1,5 +1,6 @@
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
+import { landedInCogs, landedInCogsByAccount } from "./landed-cost";
 import { planVoidIn, type VoidBlocker } from "./void";
 import { priceLines, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
 
@@ -313,7 +314,7 @@ export type FulfillmentInput = {
   lines: FulfillmentLine[];
 };
 
-type JournalLine = {
+export type JournalLine = {
   accountId: string;
   amount: number; // positive debit, negative credit — always in base (kyat)
   partnerId?: string | null;
@@ -368,7 +369,7 @@ async function isFcAccount(tx: TransactionSql, accountId: string, fx: Fx) {
   return a?.currency === fx.currency;
 }
 
-function round4(n: number) {
+export function round4(n: number) {
   return Math.round(n * 10000) / 10000;
 }
 
@@ -976,7 +977,7 @@ async function assertOrderTerms(
  * a retry then posts them again. So every posting takes an optional
  * transaction, and postOnce hands it the one holding its claim.
  */
-function inTransaction<T>(
+export function inTransaction<T>(
   tx: TransactionSql | undefined,
   run: (tx: TransactionSql) => Promise<T>,
 ): Promise<T> {
@@ -1009,7 +1010,7 @@ function inTransaction<T>(
  * as fn_next_document_no would create it, and the numbers are still drawn in
  * the same places by the same function.
  */
-async function claimNumberSeries(tx: TransactionSql, companyId: string, date: string, docTypes: string[]) {
+export async function claimNumberSeries(tx: TransactionSql, companyId: string, date: string, docTypes: string[]) {
   if (docTypes.length < 2) return;
   await tx`
     insert into number_series (company_id, document_type, series_date, prefix, padding, next_value)
@@ -2051,7 +2052,7 @@ async function recordSerialIssues(
 }
 
 /** Units back on a shelf, on the layer that brought them there. */
-async function moveSerialsTo(
+export async function moveSerialsTo(
   tx: TransactionSql, companyId: string, serialIds: string[], lotId: string,
   event: { kind: string; documentId: string; from?: string | null; to: string },
 ) {
@@ -2063,7 +2064,7 @@ async function moveSerialsTo(
   })));
 }
 
-async function createFifoLot(
+export async function createFifoLot(
   tx: TransactionSql, companyId: string, itemId: string, locationId: string,
   receivedAt: string, unitCost: number, qty: number, stockMovementId: string,
   /** The lot these goods arrived under, for items that track batches. */
@@ -2304,26 +2305,33 @@ async function adjustReceiptCost(
     if (received <= 0) return;
 
     // Everything that has come off this lot, and what took it.
+    // A cost-layer split (landed cost) is not a sale either: the phone is on
+    // the shelf, on a layer of its own, and the value follows it there.
     const draws = await tx`
-      select c.qty, c.expense_account_id, d.doc_type, sm.document_id
+      select c.qty, c.expense_account_id, d.doc_type, sm.document_id, r.to_lot_id
         from stock_lot_consumption c
         join stock_movement sm on sm.id = c.stock_movement_id
         left join document d on d.id = sm.document_id
+        left join landed_cost_relayer r on r.consumption_id = c.id
        where c.lot_id = ${lotId}`;
 
     let sold = 0;
     const spent: { accountId: string | null; qty: number }[] = [];
     const moved: { documentId: string; qty: number }[] = [];
+    const split: { lotId: string; qty: number }[] = [];
     for (const d of draws) {
       const q = Number(d.qty);
-      if (d.doc_type === "STOCK_TRANSFER" && d.document_id) {
+      if (d.to_lot_id) {
+        split.push({ lotId: d.to_lot_id as string, qty: q });
+      } else if (d.doc_type === "STOCK_TRANSFER" && d.document_id) {
         moved.push({ documentId: d.document_id as string, qty: q });
       } else {
         sold = round4(sold + q);
         spent.push({ accountId: (d.expense_account_id as string) ?? null, qty: q });
       }
     }
-    const transferred = moved.reduce((t, m) => round4(t + m.qty), 0);
+    const transferred = round4(moved.reduce((t, m) => round4(t + m.qty), 0)
+      + split.reduce((t, m) => round4(t + m.qty), 0));
     const remaining = Math.max(0, round4(received - sold - transferred));
 
     // Rounded before it is used, not after, because this is the figure the lot
@@ -2347,6 +2355,9 @@ async function adjustReceiptCost(
       addExpense(sp.accountId, lot.item_id as string, round4(sp.qty * perUnit));
     }
 
+    for (const m of split) {
+      await placeOnLot(m.lotId, round4(m.qty * perUnit), depth + 1);
+    }
     for (const m of moved) {
       // The lot that transfer created at the other end. One inbound movement
       // per transfer line, so one lot — and this source lot may be only part
@@ -2654,7 +2665,7 @@ function consolidate(lines: JournalLine[]): JournalLine[] {
  * explicit location and a defaulted line at that same location still
  * collapse together, rather than surviving as two rows on one account.
  */
-async function writeJournal(
+export async function writeJournal(
   tx: TransactionSql,
   companyId: string,
   entryDate: string,
@@ -6868,12 +6879,15 @@ async function unitsComingBack(
       if (!same) throw new Error(`${sn} was sold on ${st.out_doc_no}, not on the sale named here.`);
     }
     const [cost] = await tx`
-      select c.unit_cost from stock_serial_issue si
+      select c.id, c.unit_cost from stock_serial_issue si
         join stock_lot_consumption c on c.id = si.consumption_id
        where si.serial_id = ${s.id} and si.lot_id = ${st.stock_lot_id}
          and fn_serial_issue_stands(si.stock_movement_id)
        order by si.created_at desc limit 1`;
-    out.push({ serialId: s.id as string, unitCost: Number(cost?.unit_cost ?? st.unit_cost) });
+    // Plus any landed cost put on this phone after it was sold: that went to
+    // cost of sales, so the return takes it back out with the rest.
+    const landed = cost ? await landedInCogs(tx, cost.id as string) : 0;
+    out.push({ serialId: s.id as string, unitCost: round4(Number(cost?.unit_cost ?? st.unit_cost) + landed) });
   }
   return out;
 }
@@ -9319,13 +9333,26 @@ async function voidDocumentIn(
          where sm.document_id = ${doc.id}
          order by c.created_at`;
 
+      // A landed cost posted after the sale charged its share of these
+      // phones to cost of sales. The reversal above negates the sale's own
+      // entry and nothing else, so that share is brought back here: onto the
+      // restored phone's cost, and out of the account it was charged to.
+      const landedBack: JournalLine[] = [];
       for (const slice of consumed as unknown as {
         id: string; qty: string; unit_cost: string; item_id: string; location_id: string;
         received_date: string; serial_id: string | null;
       }[]) {
         const qty = Number(slice.qty);
-        const unitCost = Number(slice.unit_cost);
+        const landed = slice.serial_id ? await landedInCogsByAccount(tx, slice.id) : [];
+        const landedTotal = round4(landed.reduce((t, l) => t + l.amount, 0));
+        const unitCost = round4(Number(slice.unit_cost) + (qty > 0 ? landedTotal / qty : 0));
         const cost = round4(qty * unitCost);
+        if (landedTotal !== 0) {
+          const [inv] = await tx`
+            select fn_resolve_account_for_item(${doc.company_id}, 'INVENTORY', ${slice.item_id}, null, ${slice.location_id}) as a`;
+          landedBack.push({ accountId: inv.a as string, amount: landedTotal, locationId: slice.location_id });
+          for (const l of landed) landedBack.push({ accountId: l.accountId, amount: -l.amount, locationId: slice.location_id });
+        }
 
         const [back] = await tx`
           insert into stock_movement
@@ -9345,6 +9372,10 @@ async function voidDocumentIn(
           await moveSerialsTo(tx, doc.company_id as string, [slice.serial_id], lotId,
             { kind: "RESTORED", documentId: reversal.id as string, to: slice.location_id });
         }
+      }
+      if (landedBack.length > 0) {
+        await writeJournal(tx, doc.company_id as string, plan.reversalDate, doc.doc_type as string,
+          reversal.id as string, `${reversalNo} landed cost back to stock`, landedBack);
       }
     }
 

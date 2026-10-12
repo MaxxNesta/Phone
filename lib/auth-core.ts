@@ -163,6 +163,9 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/sales", "sales.view"],
   ["/receivables", "sales.view"],
   ["/pos", "pos.sell"],
+  // A landed cost shows and changes what stock cost, so cost visibility,
+  // not purchasing, is what opens it.
+  ["/purchases/landed-costs", "cost.view"],
   ["/purchases", "purchase.view"],
   ["/inventory", "inventory.view"],
   ["/warehouses", "inventory.view"],
@@ -185,7 +188,7 @@ const DOCUMENT_PERMISSIONS: Record<string, Permission> = {
   CUSTOMER_RECEIPT: "sales.view", CREDIT_NOTE: "sales.view",
   PURCHASE_ORDER: "purchase.view", GOODS_RECEIPT: "purchase.view", PURCHASE_INVOICE: "purchase.view",
   PURCHASE_RETURN: "purchase.view", SUPPLIER_PAYMENT: "purchase.view", DEBIT_NOTE: "purchase.view",
-  CONSIGNMENT_RECEIPT: "purchase.view",
+  CONSIGNMENT_RECEIPT: "purchase.view", LANDED_COST: "cost.view",
   DELIVERY: "inventory.view", STOCK_TRANSFER: "inventory.view", STOCK_ADJUSTMENT: "inventory.view",
 };
 

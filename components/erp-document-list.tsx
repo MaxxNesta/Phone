@@ -46,7 +46,7 @@ const LABEL: Record<string, string> = {
   SUPPLIER_PAYMENT: "Supplier payment", SALES_ORDER: "Sales order",
   DELIVERY: "Delivery", SALES_INVOICE: "Sales invoice",
   SALES_RETURN: "Sales return", CUSTOMER_RECEIPT: "Customer receipt",
-  STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer",
+  STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer", LANDED_COST: "Landed cost",
   OPENING_BALANCE: "Opening balance", CASH_VOUCHER: "Cash voucher",
   BANK_VOUCHER: "Bank voucher", JOURNAL_VOUCHER: "Journal voucher",
   CASH_TRANSFER: "Cash transfer",

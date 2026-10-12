@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
+import { receiptLandedSummary } from "@/lib/landed-cost-queries";
 import { seenLocations } from "@/lib/branch-scope";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { uploadAttachment, deleteAttachment } from "@/lib/actions";
@@ -36,7 +37,7 @@ import {
   getFinanceData,
 } from "@/lib/actions";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { sql, money, qty, shortDate } from "@/lib/db";
 import {
   getDocument,
@@ -155,6 +156,8 @@ export default async function DocumentPage({
   // Another branch's document, for someone who sees only their own.
   const seen = await seenLocations();
   if (seen && !seen.includes(doc.location_id)) notFound();
+  // A landed cost has its own page, with its charges and each phone's share.
+  if (doc.doc_type === "LANDED_COST") redirect(`/purchases/landed-costs/${doc.id}`);
   // The posting carries cost of sales on every sale and the cost of stock on
   // every movement: only those who may see cost, or keep the books, see it.
   const seeJournal = can(user, "cost.view") || can(user, "accounting.view");
@@ -247,6 +250,8 @@ export default async function DocumentPage({
   // matching one to a fresh receipt would double-count the stock it already
   // recorded rather than reconcile anything.
   const isGr = doc.doc_type === "GOODS_RECEIPT" && doc.status === "POSTED";
+  // What freight and duty added to this receipt's phones, for those who see cost.
+  const landed = isGr && can(user, "cost.view") ? await receiptLandedSummary(user.companyId, doc.id) : null;
   const isPi = doc.doc_type === "PURCHASE_INVOICE" && doc.status === "POSTED";
   // The sales mirror: a delivery moves the goods and a sales invoice bills
   // them, exactly as a receipt and a purchase invoice do. Same two questions,
@@ -1080,6 +1085,23 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
+          {landed && (
+            <div className="lc-gr">
+              <dl>
+                <div><dt>Original inventory value</dt><dd>{money(landed.original)}</dd></div>
+                <div><dt>Landed cost added</dt><dd>{money(landed.added)}</dd></div>
+                <div><dt>Final inventory value</dt><dd><strong>{money(landed.final)}</strong></dd></div>
+              </dl>
+              <span className="lc-gr-actions">
+                {landed.count > 0 && (
+                  <Link href={`/purchases/landed-costs?gr=${doc.id}`} className="btn ghost tiny">Landed costs ({landed.count})</Link>
+                )}
+                {can(user, "purchase.post") && (
+                  <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn tiny">Add landed cost</Link>
+                )}
+              </span>
+            </div>
+          )}
           {advances.length > 0 && (
             <ApplyAdvance
               action={applyAdvanceAction}

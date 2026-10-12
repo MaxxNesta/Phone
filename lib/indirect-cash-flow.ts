@@ -264,7 +264,7 @@ async function describeEntries(ids: string[]) {
 const KIND_LABEL: Record<string, string> = {
   SALES_INVOICE: "Sales invoice", CUSTOMER_RECEIPT: "Customer receipt", PURCHASE_INVOICE: "Purchase invoice",
   SUPPLIER_PAYMENT: "Supplier payment", GOODS_RECEIPT: "Goods receipt", SALES_RETURN: "Sales return",
-  PURCHASE_RETURN: "Supplier return", STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer",
+  PURCHASE_RETURN: "Supplier return", STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer", LANDED_COST: "Landed cost",
   JOURNAL: "Journal", OPENING_BALANCE: "Opening balance", DELIVERY: "Delivery",
 };
 

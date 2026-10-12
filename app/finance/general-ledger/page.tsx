@@ -40,6 +40,7 @@ const TYPES: [string, string][] = [
   ["CUSTOMER_RECEIPT", "Customer receipt"],
   ["STOCK_ADJUSTMENT", "Stock adjustment"],
   ["STOCK_TRANSFER", "Stock transfer"],
+  ["LANDED_COST", "Landed cost"],
   ["JOURNAL_VOUCHER", "Journal voucher"],
   ["CASH_VOUCHER", "Cash voucher"],
   ["BANK_VOUCHER", "Bank voucher"],

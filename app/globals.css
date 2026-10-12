@@ -5772,3 +5772,117 @@ button.danger-solid:hover { opacity: 0.9; }
 .vbilled-imei { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 0.875rem; }
 .vbilled-imei input { width: 18px; height: 18px; }
 @media (max-width: 640px) { .vbilled { margin-left: 0; } }
+
+/* ----------------------------------------------------------- landed cost -- */
+
+/* Status in words with a tint, never the tint alone. Draft and Calculated are
+   work in progress (neutral, then firmer); Posted is done (ok); Reversed is
+   undone (muted, struck through so it reads as no longer in force). */
+.lc-status {
+  display: inline-flex; align-items: center; padding: 0.15rem 0.6rem; border-radius: 999px;
+  font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.01em;
+  background: var(--line-soft); color: var(--ink-soft);
+}
+.lc-calculated { background: color-mix(in srgb, var(--link) 12%, transparent); color: var(--link); }
+.lc-posted     { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.lc-reversed   { color: var(--muted); text-decoration: line-through; }
+.page-head .lc-status { order: 3; }
+
+.lc-note { color: var(--warn); font-size: var(--t-sm); }
+.filters-note { font-size: var(--t-sm); color: var(--muted); margin: 0 0 var(--s2); }
+
+/* Who did what, when: a quiet line under the title rather than a card. */
+.lc-trail { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: 0 0 var(--s3); font-size: var(--t-sm); }
+.lc-trail div { display: flex; gap: var(--s1); }
+.lc-trail dt { color: var(--muted); }
+.lc-trail dd { margin: 0; }
+
+/* Receipts to choose: whole rows are the target, at least 44px tall. */
+.lc-picklist { display: flex; flex-direction: column; max-height: 22rem; overflow-y: auto; }
+.lc-pick {
+  display: grid; grid-template-columns: auto 1fr; gap: 0 var(--s2); align-items: center;
+  min-height: 44px; padding: var(--s1) var(--s3); border-top: 1px solid var(--line-soft); cursor: pointer;
+}
+.lc-pick:hover { background: var(--line-soft); }
+.lc-pick input { width: 18px; height: 18px; grid-row: span 2; }
+.lc-pick-main { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.lc-pick-meta { font-size: var(--t-sm); color: var(--muted); }
+
+/* Charges: one fieldset each, the less-used fields folded away. */
+.lc-charges { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3); }
+.lc-charge { border: 1px solid var(--line); border-radius: 12px; padding: var(--s3); margin: 0; position: relative; }
+.lc-charge legend { font-weight: 600; padding: 0 var(--s1); }
+.lc-wide { flex: 2 1 22rem; }
+.lc-base { display: block; font-variant-numeric: tabular-nums; font-weight: 600; padding-top: 0.45rem; }
+.lc-src { margin: var(--s1) 0; font-size: var(--t-sm); color: var(--ink-soft); }
+.lc-more { margin-top: var(--s2); }
+.lc-more summary { cursor: pointer; font-size: var(--t-sm); color: var(--link); min-height: 28px; display: flex; align-items: center; }
+.lc-manual { margin-top: var(--s2); padding-top: var(--s2); border-top: 1px dashed var(--line); }
+.lc-manual-row { display: grid; grid-template-columns: 1fr 10rem; gap: var(--s2); align-items: center; min-height: 40px; }
+.lc-manual-row input { text-align: right; font-variant-numeric: tabular-nums; }
+.lc-sum { font-size: var(--t-sm); color: var(--warn); margin: var(--s1) 0 0; }
+.lc-sum.ok { color: var(--ok); }
+.lc-remove { margin-top: var(--s2); }
+
+.lc-actions, .lc-next { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; justify-content: flex-end; margin: var(--s3) 0; }
+.lc-step { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s2); width: auto; margin: 0; flex: 0 0 auto; }
+.lc-next { flex-direction: row; }
+.lc-step input[name="reason"] { min-width: 18rem; }
+.lc-step-msg { font-size: var(--t-sm); }
+.lc-step-msg.bad { color: var(--bad); }
+.lc-step-msg.ok { color: var(--ok); }
+
+.lc-excluded p { margin: 0 0 var(--s2); }
+.lc-excluded ul { margin: 0 0 var(--s3); padding-left: 1.2rem; font-size: var(--t-sm); }
+.lc-ack { font-size: var(--t-sm); color: var(--muted); }
+
+/* Allocation: one row per product variant, opening onto its IMEIs. */
+.lc-alloc { display: flex; flex-direction: column; }
+.lc-alloc-head, .lc-variant > summary, .lc-alloc-foot {
+  display: grid; grid-template-columns: 1fr repeat(3, minmax(7rem, 9rem)); gap: var(--s2);
+  padding: var(--s2) var(--s3); align-items: center; font-variant-numeric: tabular-nums;
+}
+.lc-alloc-head { font-size: var(--t-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.lc-alloc-head .r, .lc-variant > summary .r, .lc-alloc-foot .r { text-align: right; }
+.lc-variant { border-top: 1px solid var(--line-soft); }
+.lc-variant > summary { cursor: pointer; min-height: 44px; list-style: none; }
+.lc-variant > summary::-webkit-details-marker { display: none; }
+.lc-variant > summary > span:first-child::before {
+  content: "›"; display: inline-block; width: 1em; color: var(--muted); transition: transform 0.15s;
+}
+.lc-variant[open] > summary > span:first-child::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .lc-variant > summary > span:first-child::before { transition: none; } }
+.lc-count { color: var(--muted); font-size: var(--t-sm); }
+.lc-imeis { margin: 0 var(--s3) var(--s3); width: calc(100% - 2 * var(--s3)); font-size: var(--t-sm); }
+.lc-treat { color: var(--muted); }
+.lc-alloc-foot { border-top: 1px solid var(--line); font-weight: 600; }
+
+/* The receipt's own figures, at the top of its page. */
+.lc-gr {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--s2) var(--s4);
+  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: 12px; margin-bottom: var(--s3);
+}
+.lc-gr dl { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: 0; }
+.lc-gr dt { font-size: var(--t-xs); color: var(--muted); }
+.lc-gr dd { margin: 0; font-variant-numeric: tabular-nums; }
+.lc-gr-actions { display: flex; gap: var(--s2); }
+
+/* Settings rows that open to edit. */
+.lc-settings-list { display: flex; flex-direction: column; }
+.lc-setting { border-top: 1px solid var(--line-soft); }
+.lc-setting > summary {
+  display: grid; grid-template-columns: 2fr 1.2fr 1.4fr 0.6fr; gap: var(--s2); align-items: center;
+  padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
+}
+.lc-setting > .form { padding: 0 var(--s3) var(--s3); }
+.lc-active { align-self: end; min-height: 40px; }
+.lc-template-lines { margin-top: var(--s2); }
+
+@media (max-width: 720px) {
+  .lc-alloc-head { display: none; }
+  .lc-variant > summary, .lc-alloc-foot { grid-template-columns: 1fr 1fr; }
+  .lc-variant > summary > span:first-child, .lc-alloc-foot > span:first-child { grid-column: 1 / -1; }
+  .lc-setting > summary { grid-template-columns: 1fr; gap: 2px; }
+  .lc-step input[name="reason"] { min-width: 0; width: 100%; }
+  .lc-imeis { display: block; overflow-x: auto; }
+}

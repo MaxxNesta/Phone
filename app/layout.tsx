@@ -181,6 +181,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/purchases/invoices" exact>Purchase invoices</NavLink>
                 <NavLink href="/purchases/returns" exact>Supplier returns</NavLink>
                 <NavLink href="/purchases/debit-notes" exact>Debit notes</NavLink>
+                {may("cost.view") && <NavLink href="/purchases/landed-costs">Landed costs</NavLink>}
                 {company && planIncludes(company.plan, "supplier_performance") && (
                   <NavLink href="/purchases/supplier-performance" exact>Supplier performance</NavLink>
                 )}
@@ -274,6 +275,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavSubGroup label="Company" match={["/warehouses", "/salespersons"]}>
                   <NavLink href="/warehouses" sub>Branches &amp; warehouses</NavLink>
                   <NavLink href="/salespersons" sub>Salespersons</NavLink>
+                </NavSubGroup>
+                <NavSubGroup label="Purchasing" match={["/settings/landed-cost-types", "/settings/landed-cost-templates"]}>
+                  <NavLink href="/settings/landed-cost-types" sub>Landed cost types</NavLink>
+                  <NavLink href="/settings/landed-cost-templates" sub>Landed cost templates</NavLink>
                 </NavSubGroup>
                 <NavSubGroup label="Accounting" match={["/settings/accounts", "/settings/tax-codes", "/settings/currencies"]}>
                   <NavLink href="/settings/accounts" sub>Chart of Accounts</NavLink>

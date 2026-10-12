@@ -728,6 +728,8 @@ export async function getDocuments(companyId: string, docType?: string, openGrir
        -- sale look like two entries. The history log shows them; this is
        -- the list of what stands.
        and d.status <> 'REVERSED'
+       -- A discarded landed-cost draft is not a document anyone needs to find.
+       and d.status <> 'CANCELLED'
        and d.reverses_document_id is null
      -- Newest first, by the date the document carries, then by when it was
      -- actually entered.
@@ -3789,6 +3791,9 @@ export async function getStockMovements(
       join location l on l.id = sm.location_id
       join item i on i.id = sm.item_id
      where sm.company_id = ${companyId}
+       -- A cost-layer split moves a phone onto a layer of its own, not
+       -- anywhere: it is not stock coming or going, so it is not listed.
+       and sm.kind is null
        ${locs ? sql`and sm.location_id = any(${locs})` : sql``}
        and (${itemId ?? null}::uuid is null or sm.item_id = ${itemId ?? null})
        and (${from ?? null}::date is null or sm.movement_date >= ${from ?? null})

@@ -14,6 +14,8 @@ const EVENT: Record<string, string> = {
   RECEIVED: "Received", SOLD: "Sold", CUSTOMER_RETURN: "Returned by customer",
   SUPPLIER_RETURN: "Returned to supplier", TRANSFER: "Transferred", RESTORED: "Sale voided — back in stock",
   WRITTEN_OFF: "Written off", HOLD: "Held", RELEASE: "Released",
+  // Amounts stay on the landed cost itself, which only those who see cost can open.
+  LANDED_COST: "Landed cost", COST_LAYER_SPLIT: "Costed on its own (for a landed cost)",
 };
 
 export default async function Handset({ params }: { params: Promise<{ id: string }> }) {

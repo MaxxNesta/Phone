@@ -31,7 +31,7 @@ const TITLE: Record<string, string> = {
   STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer note",
   JOURNAL_VOUCHER: "Journal voucher", CASH_VOUCHER: "Cash voucher",
   BANK_VOUCHER: "Bank voucher", CASH_TRANSFER: "Transfer voucher",
-  OPENING_BALANCE: "Opening balances", CONSIGNMENT_RECEIPT: "Consignment receipt",
+  OPENING_BALANCE: "Opening balances", CONSIGNMENT_RECEIPT: "Consignment receipt", LANDED_COST: "Landed cost",
 };
 
 const SUPPLIER_SIDE = new Set([

@@ -642,7 +642,7 @@ export async function recentMovements(companyId: string, limit = 8, locs: string
       join location l on l.id = sm.location_id
       left join document d on d.id = sm.document_id
       left join app_user u on u.id = coalesce(d.posted_by_id, d.created_by_id)
-     where sm.company_id = ${companyId} and sm.qty <> 0
+     where sm.company_id = ${companyId} and sm.qty <> 0 and sm.kind is null
        -- A transfer is two movements; show the leg that left. Someone who sees
        -- one branch sees the leg at their branch, arriving or leaving.
        ${locs ? sql`and sm.location_id = any(${locs})` : sql`and not (d.doc_type = 'STOCK_TRANSFER' and sm.qty > 0)`}
