@@ -15,7 +15,7 @@ export default async function NewStockTransfer() {
   const categories = await allCategories(co.id);
   const today = new Date().toISOString().slice(0, 10);
 
-  if (categories.length === 0 || d.locations.length < 2) {
+  if (categories.length === 0 || d.allLocations.length < 2) {
     return (
       <>
         <ErpCrumbs steps={[
@@ -27,7 +27,7 @@ export default async function NewStockTransfer() {
         </div>
         <div className="alert">
           {categories.length === 0 && <div>No categories yet — add one first.</div>}
-          {d.locations.length < 2 && <div>Needs at least two stock locations set up.</div>}
+          {d.allLocations.length < 2 && <div>Needs at least two stock locations set up.</div>}
         </div>
       </>
     );
@@ -54,6 +54,7 @@ export default async function NewStockTransfer() {
         action={createStockTransfer}
         items={d.items as never}
         locations={d.locations as never}
+        toLocations={d.allLocations as never}
         stockByLocation={d.stockByLocation as never}
         shelfSerials={await sql`
           select item_id, location_id, imei from v_stock_serial

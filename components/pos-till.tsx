@@ -241,6 +241,13 @@ export function PosTill(props: {
               ))}
             </select>
           )}
+          {/* One place to sell from — a cashier's own branch — is shown, not
+              chosen, so the till always says where the sale is. */}
+          {props.locations.length === 1 && (
+            <span className="pos2-where" aria-label="Selling from">
+              {props.locations[0].branch ? `${props.locations[0].branch} · ${props.locations[0].name}` : props.locations[0].name}
+            </span>
+          )}
         </form>
 
         <div className="pos3-filters" role="group" aria-label="Filter products">

@@ -4698,6 +4698,12 @@ input[type="search"], .searchbox input, .card-head input[type="text"] {
   background-color: transparent; padding-left: 0;
 }
 .topsearch input:focus, .pos2-search input:focus, .pos2-search select:focus { box-shadow: none; }
+/* Where a till with one place to sell from is selling: shown, not chosen. */
+.pos2-search .pos2-where {
+  flex: none; white-space: nowrap; font-size: 13px; font-weight: 600;
+  color: color-mix(in srgb, var(--ok) 80%, var(--ink)); padding: 3px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
 
 /* Labels and hints: one style each. */
 .field { gap: 6px; min-width: 0; }

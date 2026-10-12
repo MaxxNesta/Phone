@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { sql } from "./db";
 import { postOnce } from "./idempotency";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "./auth";
+import { assertMyBranch } from "./branch-scope";
 import { postRetailSale, postCustomerReceipt, type InvoiceLine } from "./posting";
 import { posSearch, unitsOnShelf, stripCost } from "./phone";
 
@@ -13,12 +14,14 @@ import { posSearch, unitsOnShelf, stripCost } from "./phone";
 
 export async function posSearchAction(locationId: string, q: string) {
   const user = await requirePermission("pos.sell");
+  await assertMyBranch(locationId);
   const r = await posSearch(user.companyId, locationId, q);
   return { units: stripCost(r.units, can(user, "cost.view")), items: r.items };
 }
 
 export async function posUnitsAction(itemId: string, locationId: string) {
   const user = await requirePermission("pos.sell");
+  await assertMyBranch(locationId);
   return stripCost(await unitsOnShelf(user.companyId, itemId, locationId), can(user, "cost.view"));
 }
 
@@ -56,6 +59,8 @@ async function walkIn(companyId: string): Promise<string> {
 export async function posPostSale(sale: PosSale): Promise<PosResult> {
   try {
     const user = await requirePermission("pos.sell");
+    // The till sells at the cashier's own branch, whatever the request names.
+    await assertMyBranch(sale.locationId);
     const co = user.companyId;
 
     const lines: InvoiceLine[] = sale.lines

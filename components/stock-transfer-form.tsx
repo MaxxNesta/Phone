@@ -25,6 +25,7 @@ export function StockTransferForm({
   action,
   items: initialItems,
   locations,
+  toLocations,
   stockByLocation,
   shelfSerials = [],
   today,
@@ -34,6 +35,8 @@ export function StockTransferForm({
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   items: Item[];
   locations: Location[];
+  /** Where stock may go: any branch. `locations` is where it may come from. */
+  toLocations?: Location[];
   stockByLocation: StockRow[];
   /** Handsets on each shelf, so a phone line offers the IMEIs that can move. */
   shelfSerials?: { item_id: string; location_id: string; imei: string }[];
@@ -53,7 +56,9 @@ export function StockTransferForm({
 
   const [lines, setLines] = useState<Line[]>([{ key: 1, itemId: "", qty: "" }]);
   const [fromLocationId, setFromLocationId] = useState(locations[0]?.id ?? "");
-  const [toLocationId, setToLocationId] = useState(locations[1]?.id ?? locations[0]?.id ?? "");
+  const destinations = toLocations ?? locations;
+  const [toLocationId, setToLocationId] = useState(
+    destinations.find((l) => l.id !== locations[0]?.id)?.id ?? destinations[0]?.id ?? "");
   const [docDate, setDocDate] = useState(today);
   const [receivedTime, setReceivedTime] = useState("");
 
@@ -128,7 +133,7 @@ export function StockTransferForm({
 
             <div className="field">
               <label htmlFor="to_location_id">To warehouse</label>
-              <WarehouseSelect locations={locations} id="to_location_id" name="to_location_id" value={toLocationId}
+              <WarehouseSelect locations={destinations} id="to_location_id" name="to_location_id" value={toLocationId}
                 onChange={(e) => setToLocationId(e.target.value)} required />
             </div>
 

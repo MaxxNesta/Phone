@@ -1,3 +1,4 @@
+import { onlyMyLocations } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "@/lib/auth";
 import { PosTill } from "@/components/pos-till";
@@ -37,7 +38,7 @@ export default async function PosPage() {
         <p className="page-sub">Fast checkout · exact IMEI tracking · receipt-ready</p>
       </div>
       <PosTill
-        locations={locations as never}
+        locations={(await onlyMyLocations(locations as unknown as { id: string }[])) as never}
         customers={customers as never}
         salesmen={salesmen as never}
         accounts={accounts as never}

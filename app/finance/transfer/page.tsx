@@ -4,7 +4,7 @@ import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 
 export default async function InterbranchTransfer() {
-  const { cashAccounts, bankAccounts, branches } = await getFinanceData();
+  const { cashAccounts, bankAccounts, branches, allBranches } = await getFinanceData();
   type Acct = { id: string; code: string; name: string };
   const money = [
     ...(cashAccounts as unknown as Acct[]),
@@ -48,6 +48,7 @@ export default async function InterbranchTransfer() {
         action={createCashTransfer}
         accounts={money}
         branches={branches as never}
+        toBranches={allBranches as never}
         today={today}
       />
     </>

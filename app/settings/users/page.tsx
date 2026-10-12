@@ -7,9 +7,14 @@ export const metadata = { title: "Users" };
 
 export default async function Users() {
   const admin = await requirePermission("users.manage");
-  const users = await sql`
-    select id, name, email, role, is_active, last_login_at
-      from app_user where company_id = ${admin.companyId} order by is_active desc, name`;
+  const [users, branches] = await Promise.all([
+    sql`select u.id, u.name, u.email, u.role, u.is_active, u.last_login_at, u.branch_id, b.name as branch_name
+          from app_user u left join location b on b.id = u.branch_id
+         where u.company_id = ${admin.companyId} order by u.is_active desc, u.name`,
+    sql`select id, code, name from location
+         where company_id = ${admin.companyId} and parent_id is null and is_active order by code`,
+  ]);
+  const manyBranches = branches.length > 1;
 
   return (
     <>
@@ -22,18 +27,19 @@ export default async function Users() {
       <div className="section-grid">
         <div className="card" style={{ overflowX: "auto" }}>
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last sign-in</th><th /></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th>{manyBranches && <th>Branch</th>}<th>Last sign-in</th><th /></tr></thead>
             <tbody>
               {users.map((u: any) => (
                 <tr key={u.id}>
                   <td>{u.name}{!u.is_active && <span className="pill reversed">inactive</span>}</td>
                   <td>{u.email ?? "—"}</td>
                   <td>{ROLE_LABEL[u.role as keyof typeof ROLE_LABEL] ?? u.role}</td>
+                  {manyBranches && <td>{u.branch_name ?? (["ADMIN", "MANAGER"].includes(u.role) ? "All branches" : <span className="pill warn">not set</span>)}</td>}
                   <td>{u.last_login_at ? dateTime(u.last_login_at) : "never"}</td>
                   <td>
                     <details>
                       <summary className="linkish">Edit</summary>
-                      <UserForm user={{ id: u.id, name: u.name, email: u.email ?? "", role: u.role, is_active: u.is_active }} />
+                      <UserForm branches={branches as never} user={{ id: u.id, name: u.name, email: u.email ?? "", role: u.role, is_active: u.is_active, branch_id: u.branch_id }} />
                     </details>
                   </td>
                 </tr>
@@ -43,7 +49,7 @@ export default async function Users() {
         </div>
         <div className="card">
           <div className="card-head"><h2>Add a person</h2></div>
-          <div className="card-body"><UserForm /></div>
+          <div className="card-body"><UserForm branches={branches as never} /></div>
         </div>
       </div>
 

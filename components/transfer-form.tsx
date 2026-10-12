@@ -12,13 +12,17 @@ export function TransferForm({
   action,
   accounts,
   branches,
+  toBranches,
   today,
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   accounts: Account[];
   branches: Branch[];
+  /** Where money may go: any branch. `branches` is where it may come from. */
+  toBranches?: Branch[];
   today: string;
 }) {
+  const destinations = toBranches ?? branches;
   // One key per form: a double click or a retried request posts once.
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -83,7 +87,7 @@ export function TransferForm({
               </select>
             </div>
 
-            {branches.length > 1 ? (
+            {destinations.length > 1 ? (
               <div className="field">
                 <label htmlFor="to_location_id">To branch</label>
                 {/* Both ends, not one. A transfer between branches is a real
@@ -92,13 +96,13 @@ export function TransferForm({
                     from a within-branch move if both ends say where they are. */}
                 <select id="to_location_id" name="to_location_id" defaultValue="" required>
                   <option value="" disabled>Choose a branch</option>
-                  {branches.map((l) => (
+                  {destinations.map((l) => (
                     <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
                   ))}
                 </select>
               </div>
-            ) : branches.length === 1 ? (
-              <input type="hidden" name="to_location_id" value={branches[0].id} />
+            ) : destinations.length === 1 ? (
+              <input type="hidden" name="to_location_id" value={destinations[0].id} />
             ) : null}
 
             <div className="field">

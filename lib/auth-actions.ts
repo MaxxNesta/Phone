@@ -7,7 +7,7 @@ import { sql } from "./db";
 import { tooManyFailures, recordFailure, clearFailures, LOGIN_LIMITS } from "./login-throttle";
 import {
   createSession, endSession, hashPassword, verifyPassword, requirePermission,
-  ROLES, type Role,
+  ROLES, ALL_BRANCH_ROLES, type Role,
 } from "./auth";
 
 type Result = { error: string } | { ok: string } | null;
@@ -99,11 +99,20 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
   const role = str(fd, "role") as Role;
   const password = String(fd.get("password") ?? "");
   const active = fd.get("is_active") !== null;
+  const branchId = str(fd, "branch_id") || null;
 
   if (!name || !email.includes("@")) return { error: "Enter a name and an email address." };
   if (!ROLES.includes(role)) return { error: "Choose a role." };
   if (id === admin.id && (role !== "ADMIN" || !active)) {
     return { error: "You cannot remove your own administrator access." };
+  }
+  // A person works at one branch. Only an administrator or a manager may be
+  // left without one, which means every branch.
+  const branches = await sql`
+    select id from location where company_id = ${admin.companyId} and parent_id is null and is_active`;
+  if (branchId && !branches.some((b) => b.id === branchId)) return { error: "Choose one of the company's branches." };
+  if (!branchId && !ALL_BRANCH_ROLES.includes(role) && branches.length > 1) {
+    return { error: "Choose the branch this person works at. Only an administrator or a manager can work across all branches." };
   }
 
   try {
@@ -111,7 +120,7 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
     if (id) {
       await sql`
         update app_user set name = ${name}, initials = ${initialsOf(name)}, email = ${email},
-               role = ${role}, is_active = ${active},
+               role = ${role}, is_active = ${active}, branch_id = ${branchId},
                password_hash = coalesce(${hash}, password_hash)
          where id = ${id} and company_id = ${admin.companyId}`;
       // A deactivated account or a changed password ends its sessions now.
@@ -119,8 +128,8 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
     } else {
       if (!hash) return { error: "A new account needs a password." };
       await sql`
-        insert into app_user (company_id, name, initials, email, password_hash, role, is_active)
-        values (${admin.companyId}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, ${role}, ${active})`;
+        insert into app_user (company_id, name, initials, email, password_hash, role, is_active, branch_id)
+        values (${admin.companyId}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, ${role}, ${active}, ${branchId})`;
     }
   } catch (e) {
     const msg = (e as Error).message;

@@ -12,6 +12,7 @@ import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLine
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can } from "./auth";
+import { assertMyBranch, onlyMyLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
 import { asRegion } from "./regions";
@@ -1783,6 +1784,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const paymentType: "CASH" | "CREDIT" = str(fd, "payment_type") === "CASH" ? "CASH" : "CREDIT";
     const dueDate = str(fd, "due_date") || null;
@@ -1898,6 +1900,7 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const goodsReceiptId = str(fd, "goods_receipt_id") || null;
     const cashOut = num(fd, "cash_out");
@@ -1977,6 +1980,7 @@ export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<A
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postSalesReturn({
       companyId: co,
@@ -2017,6 +2021,7 @@ export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promis
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseReturn({
       companyId: co,
@@ -2164,6 +2169,7 @@ export async function createSalesOrder(_prev: unknown, fd: FormData): Promise<Ac
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postSalesOrder({
       companyId: co,
@@ -2204,6 +2210,7 @@ export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseOrder({
       companyId: co,
@@ -2245,6 +2252,7 @@ export async function createDelivery(_prev: unknown, fd: FormData): Promise<Acti
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const delivery = await postOnce(co, attemptKey(fd), (tx) => postDelivery({
       companyId: co,
@@ -2351,6 +2359,7 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postGoodsReceipt({
       companyId: co,
@@ -2419,6 +2428,7 @@ async function settle(
   // bills or sitting on account, and the engine refuses anything that tries
   // to be both.
   const advance = str(fd, "purpose") === "advance" ? num(fd, "advance") : 0;
+  await assertMyBranch(str(fd, "location_id"));
 
   if (advance <= 0 && allocations.length === 0) {
     return { error: "Enter an amount against at least one invoice, or record it as an advance" };
@@ -2595,6 +2605,7 @@ async function postVoucherFrom(
     choose: "Choose the branch this voucher happened at",
   });
   if (typeof locationId !== "string") return locationId;
+  await assertMyBranch(locationId);
 
   const input = {
     companyId: co,
@@ -3309,6 +3320,8 @@ export async function createCashTransfer(_prev: unknown, fd: FormData): Promise<
       choose: "Choose the branch the money is leaving",
     });
     if (typeof fromLocationId !== "string") return fromLocationId;
+    // Money may be sent to another branch's till, never taken out of one.
+    await assertMyBranch(fromLocationId);
     const toLocationId = await resolveBranch(co, str(fd, "to_location_id"), {
       none: "Set up a branch before transferring money",
       choose: "Choose the branch the money is going to",
@@ -3353,6 +3366,7 @@ export async function createAccountOpening(_prev: unknown, fd: FormData): Promis
       choose: "Choose the branch these opening balances belong to",
     });
     if (typeof locationId !== "string") return locationId;
+    await assertMyBranch(locationId);
 
     const r = await postAccountOpening({
       companyId: co,
@@ -3427,7 +3441,10 @@ export async function getFinanceData() {
          where company_id = ${co} and is_active order by code`,
   ]);
 
-  return { accounts, accountTree, cashAccounts, bankAccounts, branches, costCenters };
+  // A voucher is written at the person's own branch; money may be sent to any.
+  return { accounts, accountTree, cashAccounts, bankAccounts,
+           branches: await onlyMyLocations(branches as unknown as { id: string }[]),
+           allBranches: branches, costCenters };
 }
 
 /** Movements on one account with its running balance. */
@@ -3646,7 +3663,13 @@ export async function getFormData() {
   const itemsShown = seesCost ? items : items.map((i) => ({ ...i, next_cost: 0 }));
 
   return {
-    customers, suppliers, items: itemsShown, locations, volumeDiscounts, groups, uoms,
+    customers, suppliers, items: itemsShown,
+    // Where this person may work: their own branch's locations only. A form
+    // with one location left shows it fixed. All of them, for the far end of
+    // a transfer, which may be another branch.
+    locations: await onlyMyLocations(locations as unknown as { id: string }[]),
+    allLocations: locations,
+    volumeDiscounts, groups, uoms,
     salesmen, promotions, cashAccounts, focReasons, itemPrices, priceLevels, openInvoices,
     // Null until the first invoice of the year exists, since the format
     // depends on a series that has not been created yet.
@@ -5921,6 +5944,7 @@ export async function createStockAdjustment(_prev: unknown, fd: FormData): Promi
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postStockAdjustment({
       companyId: co,
@@ -5977,6 +6001,8 @@ export async function createStockTransfer(_prev: unknown, fd: FormData): Promise
     if (!fromLocationId) return { error: "Choose a source warehouse" };
     if (!toLocationId) return { error: "Choose a destination warehouse" };
     if (fromLocationId === toLocationId) return { error: "Choose two different warehouses" };
+    // Stock may be sent to another branch, never taken out of one.
+    await assertMyBranch(fromLocationId);
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postStockTransfer({
       companyId: co,
@@ -6017,6 +6043,7 @@ export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<
 
     if (!itemId) return { error: "Choose an item" };
     if (!locationId) return { error: "Choose a location" };
+    await assertMyBranch(locationId);
     if (minQty <= 0) return { error: "Reorder point must be greater than zero" };
 
     const dup = await sql`
@@ -6462,6 +6489,7 @@ export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Pr
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a consignor" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postConsignmentReceipt({
       companyId: co,
@@ -6519,6 +6547,7 @@ export async function createConsignmentSale(_prev: unknown, fd: FormData): Promi
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    await assertMyBranch(str(fd, "location_id"));
 
     const dueDays = Number(fd.get("due_days") ?? 0);
     const docDate = str(fd, "doc_date");
