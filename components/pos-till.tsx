@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Search, Smartphone, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingBag } from "lucide-react";
-import { posSearchAction, posUnitsAction, posPostSale, type PosSale } from "@/lib/pos-actions";
+import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
+import type { ReceiptData } from "@/lib/receipt";
+import { PosSaleDone } from "./pos-sale-done";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { priceLines, type VolumeBand } from "@/lib/discount";
@@ -58,6 +60,8 @@ export function PosTill(props: {
   const [bankId, setBankId] = useState(bankAccts[0]?.id ?? "");
   const [split, setSplit] = useState([{ accountId: cashAcct?.id ?? "", amount: "" }]);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string; id?: string } | null>(null);
+  // The sale just posted, with its receipt, while the popup is open.
+  const [done, setDone] = useState<ReceiptData | null>(null);
   const [attempt, setAttempt] = useState(newKey);
   const [busy, start] = useTransition();
   const scan = useRef<HTMLInputElement>(null);
@@ -205,7 +209,11 @@ export function PosTill(props: {
       payments: payments(),
     });
     if (!r.ok) return flash("error", r.error);
-    flash("ok", `Sale ${r.docNo} posted`, r.id);
+    // The popup is the confirmation. If the receipt cannot be read back the
+    // sale still stands, so fall back to the line at the top rather than say nothing.
+    const receipt = await posReceiptAction(r.id).catch(() => null);
+    if (receipt) setDone(receipt);
+    else flash("ok", `Sale ${r.docNo} posted`, r.id);
     setLines([]);
     setEditing(null);
     setPartnerId("");
@@ -219,11 +227,14 @@ export function PosTill(props: {
   const customerName = props.customers.find((c) => c.id === partnerId)?.name ?? "Walk-in customer";
   const splitPaid = split.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
+  const closeDone = () => { setDone(null); scan.current?.focus(); };
+
   return (
     <div className="pos3">
+      {done && <PosSaleDone data={done} onClose={closeDone} />}
       <section className="pos3-shelf" aria-label="Products">
         {message && (
-          <div className={message.kind === "error" ? "alert" : "alert ok"} role="status">
+          <div className={message.kind === "error" ? "alert" : "alert ok"} role={message.kind === "error" ? "alert" : "status"}>
             {message.text}
             {message.id && <> · <Link href={`/pos/receipt/${message.id}`} target="_blank">Print receipt</Link></>}
           </div>

@@ -5886,3 +5886,75 @@ button.danger-solid:hover { opacity: 0.9; }
   .lc-step input[name="reason"] { min-width: 0; width: 100%; }
   .lc-imeis { display: block; overflow-x: auto; }
 }
+
+/* ------------------------------------------------------- sale complete -- */
+
+/* A sheet over the till when a sale posts: a quiet confirmation, the receipt as
+   it will print, and two choices. Centered on a desktop; a bottom sheet at
+   phone width, where the thumb is. */
+.sale-done-backdrop {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.36);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  animation: sale-fade 0.18s ease-out;
+}
+.sale-done {
+  width: min(440px, 100%); max-height: min(92vh, 760px);
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink);
+  border-radius: 22px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  overflow: hidden; animation: sale-pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.sale-done-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 26px 24px 14px; text-align: center; }
+.sale-done-check {
+  display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; margin-bottom: 6px;
+  background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok);
+}
+.sale-done-head h2 { margin: 0; font-size: 1.375rem; font-weight: 600; letter-spacing: var(--track-tight); }
+.sale-done-sub { margin: 0; font-size: var(--t-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The receipt on white paper, whatever the theme: it prints black on white. */
+.sale-done-paper {
+  --ink: #1D1D1F; --ink-soft: #424245; --muted: #6E6E73; --line: #D2D2D7; --line-soft: #EDEDF0; --surface: #FFFFFF;
+  margin: 0 20px; padding: 18px 18px 14px; flex: 1 1 auto; min-height: 120px; overflow-y: auto;
+  background: #FFFFFF; color: #1D1D1F; border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.sale-done-paper { overflow-x: hidden; }
+.sale-done-paper .receipt { max-width: none; margin: 0; }
+.sale-done-paper .receipt h1 { font-size: 1.05rem; }
+/* The tables' own cell padding is wider than a preview has room for: flush to the paper's edges. */
+.sale-done-paper .receipt table { width: 100%; margin: 0; }
+.sale-done-paper .receipt th, .sale-done-paper .receipt td { padding: 8px 6px; white-space: normal; }
+.sale-done-paper .receipt th:first-child, .sale-done-paper .receipt td:first-child { padding-left: 0; }
+.sale-done-paper .receipt th:last-child, .sale-done-paper .receipt td:last-child { padding-right: 0; white-space: nowrap; }
+
+.sale-done-actions { display: flex; gap: 10px; padding: 16px 20px 20px; }
+.sale-done-actions .btn {
+  flex: 1 1 0; min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 1rem; font-weight: 600; border-radius: 14px;
+}
+
+@keyframes sale-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sale-pop { from { opacity: 0; transform: scale(0.96) translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sale-done-backdrop, .sale-done { animation: none; } }
+@media (prefers-reduced-transparency: reduce) {
+  .sale-done-backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(0, 0, 0, 0.5); }
+}
+
+@media (max-width: 640px) {
+  .sale-done-backdrop { align-items: end; padding: 0; }
+  .sale-done { width: 100%; max-height: 94vh; border-radius: 22px 22px 0 0; animation: sale-rise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .sale-done-actions { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+@keyframes sale-rise { from { transform: translateY(100%); } to { transform: none; } }
+@media (max-width: 640px) and (prefers-reduced-motion: reduce) { .sale-done { animation: none; } }
+
+/* While the popup is open, Print prints the receipt and nothing else. */
+@media print {
+  html[data-sale-open] body > *:not(.sale-done-backdrop) { display: none !important; }
+  html[data-sale-open] .sale-done-backdrop { position: static; display: block; padding: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; animation: none; }
+  html[data-sale-open] .sale-done { max-height: none; width: auto; box-shadow: none; border-radius: 0; overflow: visible; animation: none; }
+  html[data-sale-open] .sale-done-head, html[data-sale-open] .sale-done-actions { display: none; }
+  html[data-sale-open] .sale-done-paper { margin: 0; padding: 0; overflow: visible; box-shadow: none; max-height: none; }
+}

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { sql } from "./db";
 import { postOnce } from "./idempotency";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "./auth";
-import { assertMyBranch } from "./branch-scope";
+import { assertMyBranch, seenLocations } from "./branch-scope";
+import { getReceipt, type ReceiptData } from "./receipt";
 import { postRetailSale, postCustomerReceipt, type InvoiceLine } from "./posting";
 import { posSearch, unitsOnShelf, stripCost } from "./phone";
 
@@ -23,6 +24,16 @@ export async function posUnitsAction(itemId: string, locationId: string) {
   const user = await requirePermission("pos.sell");
   await assertMyBranch(locationId);
   return stripCost(await unitsOnShelf(user.companyId, itemId, locationId), can(user, "cost.view"));
+}
+
+/**
+ * The receipt of a sale the till has just posted, for the popup that previews
+ * it. Read the way the receipt page reads it: another branch's receipt, or
+ * another company's, comes back as nothing.
+ */
+export async function posReceiptAction(id: string): Promise<ReceiptData | null> {
+  const user = await requirePermission("pos.sell");
+  return getReceipt(user.companyId, id, await seenLocations());
 }
 
 export type PosSale = {
