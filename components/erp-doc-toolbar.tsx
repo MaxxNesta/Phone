@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Star, Printer, Link2, Check, Copy } from "lucide-react";
+import { Star, Printer, Receipt, Link2, Check, Copy } from "lucide-react";
 
 /**
  * The document toolbar: favourite, print, copy link.
@@ -98,6 +98,19 @@ export function ErpPrintButton({ docId }: { docId: string }) {
   return (
     <a href={`/documents/${docId}/print`} className="erp-hbtn">
       <Printer size={15} aria-hidden="true" /> Print
+    </a>
+  );
+}
+
+/**
+ * The till receipt of a counter sale, opened ready to print. A sale's popup can
+ * be cancelled and the slip is still wanted later — a customer comes back, a
+ * paper jams — so the receipt is always reachable from the sale itself.
+ */
+export function ErpReceiptButton({ href }: { href: string }) {
+  return (
+    <a href={`${href}?print=1`} target="_blank" rel="noopener" className="erp-hbtn">
+      <Receipt size={15} aria-hidden="true" /> Receipt
     </a>
   );
 }

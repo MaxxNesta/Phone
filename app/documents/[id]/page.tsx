@@ -1071,6 +1071,10 @@ export default async function DocumentPage({
       backLabel={backLabel}
       docId={doc.id}
       docNo={doc.doc_no ?? "Draft"}
+      // A sale rung up at the till has a receipt to print again; its reference
+      // is how the till marks it (POS:<attempt>), as Sales History reads it.
+      receiptHref={doc.doc_type === "SALES_INVOICE" && doc.status === "POSTED"
+        && String(doc.reference ?? "").startsWith("POS:") ? `/pos/receipt/${doc.id}` : null}
       typeLabel={label(doc.doc_type).replace(/\b\w/g, (c) => c.toUpperCase())}
       status={doc.status}
       listHref={`/documents?type=${doc.doc_type}`}

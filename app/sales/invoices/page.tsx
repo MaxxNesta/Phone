@@ -135,6 +135,11 @@ export default async function SalesInvoices({
           </span>
         </td>
         <td className="tight">
+          {i.channel === "POS" && i.doc_status === "POSTED" && !i.draft_id && (
+            <a href={`/pos/receipt/${i.document_id}?print=1`} target="_blank" rel="noopener" className="btn ghost tiny">
+              Receipt
+            </a>
+          )}
           {i.doc_status === "POSTED" && Number(i.outstanding) > 0 && (
             <Link href={`/receivables/receive?partner=${i.partner_id}&invoice=${i.document_id}`} className="btn ghost tiny">
               Receive

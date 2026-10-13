@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { ErpCopyNumber, ErpPrintButton } from "@/components/erp-doc-toolbar";
+import { ErpCopyNumber, ErpPrintButton, ErpReceiptButton } from "@/components/erp-doc-toolbar";
 import { ErpMore } from "@/components/erp-more";
 
 /**
@@ -46,7 +46,7 @@ export type ChainStage = {
 export function ErpDocShell({
   docId, docNo, typeLabel, status, listHref, listLabel,
   chain, actions, menuActions, badges, children, backHref, backLabel,
-  banner, stats, footer,
+  banner, stats, footer, receiptHref,
 }: {
   docId: string;
   docNo: string;
@@ -69,6 +69,8 @@ export function ErpDocShell({
   menuActions?: React.ReactNode;
   /** Extra pills beside the number: outstanding, delivered, matched. */
   badges?: React.ReactNode;
+  /** A counter sale's till receipt, to print again whenever it is wanted. */
+  receiptHref?: string | null;
   /** Whose move it is, when somebody is late. Above the document itself. */
   banner?: React.ReactNode;
   /** The two or three figures the document is really about. */
@@ -100,6 +102,7 @@ export function ErpDocShell({
         <span className="erp-crumb-here">{docNo}</span>
         <ErpCopyNumber docNo={docNo} />
         <span style={{ marginLeft: "auto" }} className="erp-head-tools">
+          {receiptHref && <ErpReceiptButton href={receiptHref} />}
           <ErpPrintButton docId={docId} />
           {menuActions && <ErpMore>{menuActions}</ErpMore>}
         </span>
