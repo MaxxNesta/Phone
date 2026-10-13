@@ -433,6 +433,109 @@ try {
     check("and no cost of sales was posted for it", j.n === 0);
   });
 
+  // ---- delivered but not invoiced: cost of sales waits for the invoice (D8) ----
+  const [held] = await sql`select fn_system_account(${co.id}, 'SHIPPED_NOT_INVOICED') as a`;
+  // 1090 in the ledger against what the view says is waiting there.
+  const heldTies = async () => {
+    const [g] = await sql`select coalesce(sum(base_amount), 0)::float as v from journal_line where account_id = ${held.a}`;
+    const [v] = await sql`select coalesce(sum(value_unclaimed), 0)::float as v from v_delivery_cost_unclaimed where company_id = ${co.id}`;
+    return { ok: near(g.v, v.v), detail: `1090 ${fmt(g.v)}, waiting ${fmt(v.v)}` };
+  };
+  const deliver = (it, sn) => P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+    lines: [{ itemId: it.id, qty: 1, serials: [sn] }] });
+  const bill = (it, dv, sn) => P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+    dueDate: today, paymentType: "CREDIT", deliveryId: dv.id, lines: [{ itemId: it.id, qty: 1, unitPrice: 1_500_000, serials: [sn] }] });
+
+  await scenario("19. Delivered, not invoiced: the landed cost waits in 1090, then goes to cost of sales with the invoice", async () => {
+    const it = await item("Phone Held");
+    const { gr, sn: [s] } = await receiveEach([[it, 1_000_000]]);
+    const dv = await deliver(it, s);
+    const lc = await landed([gr.id], [charge("FREIGHT", 50_000, "VALUE")]);
+    check("Dr 1090 50,000, nothing to cost of sales", near(await glFor(lc.id, held.a), 50_000) && near(await glFor(lc.id, it.cogs), 0),
+      `${fmt(await glFor(lc.id, held.a))} / ${fmt(await glFor(lc.id, it.cogs))}`);
+    const [t] = await sql`select treatment from landed_cost_posting where landed_cost_id = ${lc.id}`;
+    check("recorded as HOLDING", t?.treatment === "HOLDING", t?.treatment);
+    let tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    const si = await bill(it, dv, s);
+    check("the invoice moves 1,050,000 from 1090 to cost of sales", near(await glFor(si.id, it.cogs), 1_050_000) && near(await glFor(si.id, held.a), -1_050_000),
+      `${fmt(await glFor(si.id, it.cogs))} / ${fmt(await glFor(si.id, held.a))}`);
+    tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    check("inventory reconciles", near(await reconciled(), 0));
+  });
+
+  await scenario("20. Customer return before invoicing: the whole cost leaves 1090 for inventory", async () => {
+    const it = await item("Phone HeldRet");
+    const { gr, sn: [s] } = await receiveEach([[it, 1_000_000]]);
+    const dv = await deliver(it, s);
+    await landed([gr.id], [charge("FREIGHT", 50_000, "VALUE")]);
+    const ret = await P.postSalesReturn({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: dv.id, lines: [{ itemId: it.id, qty: 1, unitPrice: 0, serials: [s] }] });
+    check("the phone is back at 1,050,000", near(await costOf(s), 1_050_000), fmt(await costOf(s)));
+    check("Dr Inventory 1,050,000 / Cr 1090 1,050,000", near(await glFor(ret.id, it.inv), 1_050_000) && near(await glFor(ret.id, held.a), -1_050_000),
+      `${fmt(await glFor(ret.id, it.inv))} / ${fmt(await glFor(ret.id, held.a))}`);
+    check("and nothing from cost of sales, which never had it", near(await glFor(ret.id, it.cogs), 0), fmt(await glFor(ret.id, it.cogs)));
+    const [w] = await sql`select count(*)::int n from v_delivery_cost_unclaimed where document_id = ${dv.id}`;
+    check("the delivery no longer waits for an invoice", w.n === 0);
+    const tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    check("inventory reconciles", near(await reconciled(), 0), fmt(await reconciled()));
+  });
+
+  await scenario("21. Invoice voided while the delivery stands: the whole cost goes back to 1090", async () => {
+    const it = await item("Phone InvVoid");
+    const { gr, sn: [s] } = await receiveEach([[it, 1_000_000]]);
+    const dv = await deliver(it, s);
+    await landed([gr.id], [charge("FREIGHT", 50_000, "VALUE")]);          // while waiting: 1090
+    const si = await bill(it, dv, s);                                         // 1,050,000 to cost of sales
+    const duty = await landed([gr.id], [charge("DUTY", 20_000, "VALUE")]); // after invoicing: cost of sales
+    await P.voidDocument({ documentId: si.id, reason: "test" });
+    const [rv] = await sql`select reversed_by_document_id as id from document where id = ${si.id}`;
+    check("the void takes 1,070,000 out of cost of sales (both landed costs)", near(await glFor(rv.id, it.cogs), -1_070_000), fmt(await glFor(rv.id, it.cogs)));
+    check("and puts it back in 1090", near(await glFor(rv.id, held.a), 1_070_000), fmt(await glFor(rv.id, held.a)));
+    check("cost of sales for this phone nets to nothing: invoice + later duty + void",
+      near((await glFor(si.id, it.cogs)) + (await glFor(duty.id, it.cogs)) + (await glFor(rv.id, it.cogs)), 0),
+      `${fmt(await glFor(si.id, it.cogs))} + ${fmt(await glFor(duty.id, it.cogs))} + ${fmt(await glFor(rv.id, it.cogs))}`);
+    const tie = await heldTies(); check("1090 = what waits there (1,070,000 for this phone)", tie.ok, tie.detail);
+    const [v] = await sql`select value_unclaimed::float v from v_delivery_cost_unclaimed where document_id = ${dv.id}`;
+    check("the delivery waits again at 1,070,000", near(v?.v, 1_070_000), fmt(v?.v));
+    const again = await bill(it, dv, s);
+    check("billing it again moves 1,070,000 to cost of sales", near(await glFor(again.id, it.cogs), 1_070_000), fmt(await glFor(again.id, it.cogs)));
+  });
+
+  await scenario("22. Invoice and delivery both reversed: the whole cost back in inventory", async () => {
+    const it = await item("Phone BothVoid");
+    const { gr, sn: [s] } = await receiveEach([[it, 1_000_000]]);
+    const dv = await deliver(it, s);
+    await landed([gr.id], [charge("FREIGHT", 50_000, "VALUE")]);
+    const si = await bill(it, dv, s);
+    await P.voidDocument({ documentId: si.id, reason: "test" });
+    await P.voidDocument({ documentId: dv.id, reason: "test", goodsBack: true });
+    check("the phone is in stock at 1,050,000", near(await costOf(s), 1_050_000), fmt(await costOf(s)));
+    const [st] = await sql`select status from v_stock_serial where imei = ${s}`;
+    check("in stock", st.status === "IN_STOCK", st.status);
+    const [w] = await sql`select count(*)::int n from v_delivery_cost_unclaimed where document_id = ${dv.id}`;
+    check("nothing waits in 1090 for it", w.n === 0);
+    const tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    check("inventory reconciles", near(await reconciled(), 0), fmt(await reconciled()));
+  });
+
+  await scenario("23. A landed-cost reversal comes from wherever the cost is now", async () => {
+    const it = await item("Phone RevHeld");
+    const a = await receiveEach([[it, 1_000_000]]), b = await receiveEach([[it, 1_000_000]]);
+    const dvA = await deliver(it, a.sn[0]);
+    const lcA = await landed([a.gr.id], [charge("FREIGHT", 50_000, "VALUE")]);
+    const revA = await L.reverseLandedCost({ ...actor, id: lcA.id, reason: "test" });
+    check("still waiting: the reversal credits 1090", near(await glFor(revA.id, held.a), -50_000) && near(await glFor(revA.id, it.cogs), 0),
+      `${fmt(await glFor(revA.id, held.a))} / ${fmt(await glFor(revA.id, it.cogs))}`);
+    const dvB = await deliver(it, b.sn[0]);
+    const lcB = await landed([b.gr.id], [charge("FREIGHT", 50_000, "VALUE")]);
+    await bill(it, dvB, b.sn[0]);
+    const revB = await L.reverseLandedCost({ ...actor, id: lcB.id, reason: "test" });
+    check("invoiced since: the reversal credits cost of sales, where the cost went", near(await glFor(revB.id, it.cogs), -50_000) && near(await glFor(revB.id, held.a), 0),
+      `${fmt(await glFor(revB.id, it.cogs))} / ${fmt(await glFor(revB.id, held.a))}`);
+    const tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    check("inventory reconciles", near(await reconciled(), 0));
+  });
+
   console.log("");
   check("company: Inventory GL = stock ledger at the end", near(await reconciled(), 0), fmt(await reconciled()));
   const [ub] = await sql`select count(*)::int n from v_check_unbalanced_entries where company_id = ${co.id}`;

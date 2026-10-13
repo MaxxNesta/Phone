@@ -54,8 +54,10 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
           Freight, insurance, customs duty and clearance are part of what a
           phone cost. A landed cost takes those charges, spreads them over the
           phones of one or more posted goods receipts, and adds each phone&rsquo;s
-          share to its cost. Phones still in stock go up in value; a phone
-          already sold puts its share into cost of sales.
+          share to its cost. Phones in stock go up in value. A phone delivered
+          but not yet invoiced carries its share in 1090 until the invoice
+          posts, since cost of sales is recognised with the invoice; a phone
+          already invoiced puts its share into cost of sales.
         </HelpHint>
         <span className="actions">
           <Link href="/purchases/landed-costs/new" className="btn"><Plus size={16} aria-hidden="true" /> New landed cost</Link>

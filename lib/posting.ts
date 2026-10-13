@@ -1,6 +1,6 @@
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
-import { landedInCogs, landedInCogsByAccount } from "./landed-cost";
+import { landedOn } from "./landed-cost";
 import { planVoidIn, type VoidBlocker } from "./void";
 import { priceLines, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
 
@@ -3649,7 +3649,7 @@ async function claimDeliveredCost(
       throw new Error(`${qty} billed but ${named.length} IMEI${named.length === 1 ? "" : "s"} named. Name one for each phone.`);
     }
     layers = await tx`
-      select v.consumption_id, v.qty_unclaimed, v.unit_cost, s.serial_no, s.imei2
+      select v.consumption_id, v.qty_unclaimed, v.unit_cost, v.landed_unclaimed, s.serial_no, s.imei2
         from v_delivery_cost_unclaimed v
         join stock_serial_issue si on si.consumption_id = v.consumption_id
         join stock_serial s on s.id = si.serial_id
@@ -3683,7 +3683,7 @@ async function claimDeliveredCost(
        the view, so "unclaimed" means one thing in the engine and in the
        reconciliation that checks the engine. */
     layers = await tx`
-      select v.consumption_id, v.qty_unclaimed, v.unit_cost
+      select v.consumption_id, v.qty_unclaimed, v.unit_cost, v.landed_unclaimed
         from v_delivery_cost_unclaimed v
         join stock_lot_consumption c on c.id = v.consumption_id
         join stock_lot l on l.id = c.lot_id
@@ -3703,20 +3703,23 @@ async function claimDeliveredCost(
   let need = qty;
   let cost = 0;
   for (const layer of layers as unknown as Array<{
-    consumption_id: string; qty_unclaimed: string; unit_cost: string;
+    consumption_id: string; qty_unclaimed: string; unit_cost: string; landed_unclaimed: string;
   }>) {
     if (need <= 1e-9) break;
     const available = Number(layer.qty_unclaimed);
     if (available <= 0) continue;
     const take = Math.min(need, available);
     const unit = Number(layer.unit_cost);
+    // A landed cost put on these goods while they waited went to 1090 with
+    // them; billing them moves it to cost of sales with the rest.
+    const landed = round4(Number(layer.landed_unclaimed ?? 0) * take / available);
     await tx`
       insert into sales_cost_allocation
         (company_id, invoice_line_id, consumption_id, qty, unit_cost,
-         posted_by_document_id)
+         posted_by_document_id, landed_amount)
       values (${companyId}, ${invoiceLineId}, ${layer.consumption_id}, ${take}, ${unit},
-              ${postedByDocumentId})`;
-    cost = round4(cost + take * unit);
+              ${postedByDocumentId}, ${landed})`;
+    cost = round4(cost + take * unit + landed);
     need = round4(need - take);
   }
 
@@ -6853,7 +6856,8 @@ async function unitsComingBack(
   tx: TransactionSql, companyId: string, partnerId: string,
   sourceDocumentId: string | null | undefined, itemId: string, serials: string[],
 ) {
-  const out: { serialId: string; unitCost: number }[] = [];
+  const out: { serialId: string; unitCost: number; consumptionId: string | null; held: boolean;
+                baseCost: number; landed: number }[] = [];
   for (const raw of serials) {
     const sn = raw.trim();
     const [s] = await tx`
@@ -6884,10 +6888,16 @@ async function unitsComingBack(
        where si.serial_id = ${s.id} and si.lot_id = ${st.stock_lot_id}
          and fn_serial_issue_stands(si.stock_movement_id)
        order by si.created_at desc limit 1`;
-    // Plus any landed cost put on this phone after it was sold: that went to
-    // cost of sales, so the return takes it back out with the rest.
-    const landed = cost ? await landedInCogs(tx, cost.id as string) : 0;
-    out.push({ serialId: s.id as string, unitCost: round4(Number(cost?.unit_cost ?? st.unit_cost) + landed) });
+    // Plus any landed cost put on this phone after it left: it sits where the
+    // phone's own cost sits, so the return takes it back with the rest.
+    const landed = cost ? await landedOn(tx, cost.id as string) : 0;
+    // Delivered and never invoiced: its cost is still in 1090, not in cost of
+    // sales, so that is where the return takes it from.
+    const [held] = cost ? await tx`
+      select 1 as yes from v_delivery_cost_unclaimed where consumption_id = ${cost.id}` : [];
+    const baseCost = Number(cost?.unit_cost ?? st.unit_cost);
+    out.push({ serialId: s.id as string, unitCost: round4(baseCost + landed),
+               consumptionId: (cost?.id as string) ?? null, held: Boolean(held), baseCost, landed });
   }
   return out;
 }
@@ -7033,6 +7043,7 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         ];
 
         let totalCost = 0;
+        let heldCost = 0;
         for (const [si, slice] of slices.entries()) {
           const sliceCost = round4(slice.unitCost * slice.qty);
           totalCost = round4(totalCost + sliceCost);
@@ -7055,6 +7066,16 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
           if (units) {
             await moveSerialsTo(tx, companyId, [units[si].serialId], lotId,
               { kind: "CUSTOMER_RETURN", documentId: doc.id, to: locationId });
+            const u = units[si];
+            if (u.held && u.consumptionId) {
+              // Taken back before anyone was billed: the goods stop waiting in
+              // 1090 for an invoice, and their cost leaves 1090 with them.
+              await tx`
+                insert into delivery_cost_return
+                  (company_id, consumption_id, return_line_id, return_document_id, qty, unit_cost, landed_amount)
+                values (${companyId}, ${u.consumptionId}, ${docLine.id}, ${doc.id}, 1, ${u.baseCost}, ${u.landed})`;
+              heldCost = round4(heldCost + sliceCost);
+            }
           }
         }
 
@@ -7062,13 +7083,20 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
           select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${line.itemId}) as a`;
         journal.push({ accountId: inventory[0].a, amount: totalCost, locationId });
 
-        if (line.focReasonId) {
+        if (heldCost !== 0) {
+          const [heldAcct] = await tx`select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`;
+          journal.push({ accountId: heldAcct.a as string, amount: -heldCost, locationId });
+        }
+        const billedCost = round4(totalCost - heldCost);
+        if (billedCost === 0) {
+          // Every unit came back before it was billed; nothing to take from cost of sales.
+        } else if (line.focReasonId) {
           const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId}`;
-          journal.push({ accountId: foc.account_id, amount: -totalCost, locationId });
+          journal.push({ accountId: foc.account_id, amount: -billedCost, locationId });
         } else {
           const cogs = await tx`
             select fn_resolve_account_for_item(${companyId}, 'COGS', ${line.itemId}) as a`;
-          journal.push({ accountId: cogs[0].a, amount: -totalCost, locationId });
+          journal.push({ accountId: cogs[0].a, amount: -billedCost, locationId });
         }
       }
 
@@ -9288,8 +9316,12 @@ async function voidDocumentIn(
      */
     if (doc.doc_type === "SALES_INVOICE") {
       const claims = await tx`
-        select a.id, a.invoice_line_id, a.consumption_id, a.qty, a.unit_cost
+        select a.id, a.invoice_line_id, a.consumption_id, a.qty, a.unit_cost, a.landed_amount,
+               c.qty as consumed, c.expense_account_id, sm.item_id, sm.location_id,
+               (select d2.doc_type from document d2 where d2.id = sm.document_id) as from_type
           from sales_cost_allocation a
+          join stock_lot_consumption c on c.id = a.consumption_id
+          join stock_movement sm on sm.id = c.stock_movement_id
           join document_line dl on dl.id = a.invoice_line_id
          where dl.document_id = ${doc.id}
            and a.reverses_id is null
@@ -9297,17 +9329,36 @@ async function voidDocumentIn(
              select 1 from sales_cost_allocation r where r.reverses_id = a.id)
          order by a.created_at, a.id`;
 
+      // The reversal negates the invoice's own entry, which moved the claimed
+      // cost — landed cost included — from 1090 to cost of sales. A landed
+      // cost posted after the invoice went straight to cost of sales and is
+      // in no entry of the invoice's, so it is brought back to 1090 here.
+      const landedLater: JournalLine[] = [];
       for (const c of claims as unknown as Array<{
         id: string; invoice_line_id: string; consumption_id: string;
-        qty: string; unit_cost: string;
+        qty: string; unit_cost: string; landed_amount: string; consumed: string;
+        expense_account_id: string | null; item_id: string; location_id: string; from_type: string;
       }>) {
         await tx`
           insert into sales_cost_allocation
             (company_id, invoice_line_id, consumption_id, qty, unit_cost, reverses_id,
-             posted_by_document_id)
+             posted_by_document_id, landed_amount)
           values (${doc.company_id}, ${c.invoice_line_id}, ${c.consumption_id},
                   ${-Number(c.qty)}, ${Number(c.unit_cost)}, ${c.id},
-                  ${reversal.id})`;
+                  ${reversal.id}, ${-Number(c.landed_amount)})`;
+        if (c.from_type !== "DELIVERY") continue;
+        const share = round4(await landedOn(tx, c.consumption_id) * Number(c.qty) / Number(c.consumed));
+        const later = round4(share - Number(c.landed_amount));
+        if (later === 0) continue;
+        const [held] = await tx`select fn_system_account(${doc.company_id}, 'SHIPPED_NOT_INVOICED') as a`;
+        const expense = c.expense_account_id
+          ?? (await tx`select fn_resolve_account_for_item(${doc.company_id}, 'COGS', ${c.item_id}) as a`)[0].a;
+        landedLater.push({ accountId: held.a as string, amount: later, locationId: c.location_id });
+        landedLater.push({ accountId: expense as string, amount: -later, locationId: c.location_id });
+      }
+      if (landedLater.length > 0) {
+        await writeJournal(tx, doc.company_id as string, plan.reversalDate, doc.doc_type as string,
+          reversal.id as string, `${reversalNo} landed cost back to 1090`, landedLater);
       }
     }
 
@@ -9324,7 +9375,7 @@ async function voidDocumentIn(
       // one. planVoidIn has already refused the case where something was
       // issued in between; this keeps the queue honest for everything after.
       const consumed = await tx`
-        select c.id, c.qty, c.unit_cost, l.item_id, l.location_id, l.received_date,
+        select c.id, c.qty, c.unit_cost, c.expense_account_id, l.item_id, l.location_id, l.received_date,
                (select si.serial_id from stock_serial_issue si
                  where si.consumption_id = c.id limit 1) as serial_id
           from stock_lot_consumption c
@@ -9339,19 +9390,26 @@ async function voidDocumentIn(
       // restored phone's cost, and out of the account it was charged to.
       const landedBack: JournalLine[] = [];
       for (const slice of consumed as unknown as {
-        id: string; qty: string; unit_cost: string; item_id: string; location_id: string;
-        received_date: string; serial_id: string | null;
+        id: string; qty: string; unit_cost: string; expense_account_id: string | null;
+        item_id: string; location_id: string; received_date: string; serial_id: string | null;
       }[]) {
         const qty = Number(slice.qty);
-        const landed = slice.serial_id ? await landedInCogsByAccount(tx, slice.id) : [];
-        const landedTotal = round4(landed.reduce((t, l) => t + l.amount, 0));
+        const landedTotal = slice.serial_id ? await landedOn(tx, slice.id) : 0;
         const unitCost = round4(Number(slice.unit_cost) + (qty > 0 ? landedTotal / qty : 0));
         const cost = round4(qty * unitCost);
         if (landedTotal !== 0) {
+          // A delivery's goods are unbilled by now (its invoice, if any, was
+          // voided first), so their landed cost waits in 1090; a counter
+          // sale's went to cost of sales with the sale.
           const [inv] = await tx`
             select fn_resolve_account_for_item(${doc.company_id}, 'INVENTORY', ${slice.item_id}, null, ${slice.location_id}) as a`;
+          const [from] = doc.doc_type === "DELIVERY"
+            ? await tx`select fn_system_account(${doc.company_id}, 'SHIPPED_NOT_INVOICED') as a`
+            : slice.expense_account_id
+              ? [{ a: slice.expense_account_id }]
+              : await tx`select fn_resolve_account_for_item(${doc.company_id}, 'COGS', ${slice.item_id}) as a`;
           landedBack.push({ accountId: inv.a as string, amount: landedTotal, locationId: slice.location_id });
-          for (const l of landed) landedBack.push({ accountId: l.accountId, amount: -l.amount, locationId: slice.location_id });
+          landedBack.push({ accountId: from.a as string, amount: -landedTotal, locationId: slice.location_id });
         }
 
         const [back] = await tx`

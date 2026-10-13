@@ -34,6 +34,13 @@ const METHODS = Object.keys(METHOD_LABEL) as Method[];
 /** Statuses in which the business still owns the phone. */
 const OWNED = new Set(["IN_STOCK", "RESERVED", "REPAIR"]);
 
+/** What the phone's history says a landed cost did. */
+const NOTE = {
+  INVENTORY: "Added to its cost",
+  HOLDING: "Added to its cost, waiting for the invoice",
+  COGS: "Added to cost of sales (already invoiced)",
+} as const;
+
 export type ChargeInput = {
   costTypeId: string;
   partnerId?: string | null;
@@ -457,8 +464,9 @@ export async function deleteLandedCost(input: Actor & { id: string }, outer?: Tr
 
 // ----------------------------------------------------------- posting --
 
+type Treatment = "INVENTORY" | "HOLDING" | "COGS";
 type Where = {
-  status: string; owned: boolean; item_id: string;
+  status: string; owned: boolean; item_id: string; treatment: Treatment;
   lot_id: string; location_id: string; consumption_id: string | null; expense_account_id: string | null;
 };
 
@@ -470,10 +478,13 @@ async function whereIs(tx: TransactionSql, serialId: string): Promise<Where> {
       join stock_lot l on l.id = s.stock_lot_id
      where v.serial_id = ${serialId}`;
   const owned = OWNED.has(v.status as string);
-  let consumption: { id: string; expense_account_id: string | null; location_id: string } | undefined;
+  let consumption: { id: string; expense_account_id: string | null; location_id: string; held: boolean } | undefined;
   if (!owned) {
+    // Held: it left on a delivery nobody has invoiced yet, so its cost is in
+    // 1090, not in cost of sales (D8 — cost of sales waits for the invoice).
     const rows = await tx`
-      select c.id, c.expense_account_id, sm.location_id
+      select c.id, c.expense_account_id, sm.location_id,
+             exists (select 1 from v_delivery_cost_unclaimed v where v.consumption_id = c.id) as held
         from stock_serial_issue si
         join stock_lot_consumption c on c.id = si.consumption_id
         join stock_movement sm on sm.id = si.stock_movement_id
@@ -483,10 +494,23 @@ async function whereIs(tx: TransactionSql, serialId: string): Promise<Where> {
   }
   return {
     status: v.status, owned, item_id: v.item_id, lot_id: v.lot_id,
+    treatment: owned ? "INVENTORY" : consumption?.held ? "HOLDING" : "COGS",
     location_id: consumption?.location_id ?? v.location_id,
     consumption_id: consumption?.id ?? null,
     expense_account_id: consumption?.expense_account_id ?? null,
   };
+}
+
+/** The account a phone's cost is in now: inventory where it stands, 1090 while it waits for an invoice, else where its sale charged it. */
+async function accountFor(tx: TransactionSql, companyId: string, w: Where): Promise<string> {
+  if (w.treatment === "INVENTORY") {
+    return (await tx`select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${w.item_id}, null, ${w.location_id}) as a`)[0].a;
+  }
+  if (w.treatment === "HOLDING") {
+    return (await tx`select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`)[0].a;
+  }
+  return w.expense_account_id
+    ?? (await tx`select fn_resolve_account_for_item(${companyId}, 'COGS', ${w.item_id}) as a`)[0].a;
 }
 
 /**
@@ -583,26 +607,22 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
       const amount = roundTo(Number(p.amount), base.dp);
       if (amount === 0) continue;
       const w = await whereIs(tx, p.serial_id);
-      let accountId: string, lotId: string | null = null;
+      let lotId: string | null = null;
       if (w.owned) {
         lotId = await isolate(tx, input.companyId, doc.id, doc.id, p.serial_id, w.lot_id, doc.doc_date);
         await revalueOwned(tx, input.companyId, doc.id, lotId, w.item_id, w.location_id, amount, doc.doc_date, reason);
-        const [inv] = await tx`select fn_resolve_account_for_item(${input.companyId}, 'INVENTORY', ${w.item_id}, null, ${w.location_id}) as a`;
-        accountId = inv.a;
-      } else {
-        accountId = w.expense_account_id
-          ?? (await tx`select fn_resolve_account_for_item(${input.companyId}, 'COGS', ${w.item_id}) as a`)[0].a;
       }
+      const accountId = await accountFor(tx, input.companyId, w);
       journal.push({ accountId, amount, locationId: w.location_id });
       await tx`
         insert into landed_cost_posting
           (landed_cost_id, document_id, serial_id, status_then, treatment, account_id, location_id, lot_id, consumption_id, amount)
-        values (${doc.id}, ${doc.id}, ${p.serial_id}, ${w.status}, ${w.owned ? "INVENTORY" : "COGS"}, ${accountId},
+        values (${doc.id}, ${doc.id}, ${p.serial_id}, ${w.status}, ${w.treatment}, ${accountId},
                 ${w.location_id}, ${lotId}, ${w.consumption_id}, ${amount})`;
       await tx`
         insert into stock_serial_event (company_id, serial_id, event, document_id, to_location_id, lot_id, note)
         values (${input.companyId}, ${p.serial_id}, 'LANDED_COST', ${doc.id}, ${w.location_id}, ${lotId},
-                ${w.owned ? "Added to its cost" : "Added to cost of sales (already sold)"})`;
+                ${NOTE[w.treatment]})`;
     }
     for (const c of charges) {
       journal.push({ accountId: c.clearing_account_id, amount: -roundTo(c.base_amount, base.dp), locationId: doc.location_id });
@@ -663,20 +683,17 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
       const amount = roundTo(Number(p.amount), base.dp);
       if (amount === 0) continue;
       const w = await whereIs(tx, p.serial_id);
-      let accountId: string, lotId: string | null = null;
+      let lotId: string | null = null;
       if (w.owned) {
         lotId = await isolate(tx, input.companyId, doc.id, rev.id, p.serial_id, w.lot_id, date);
         await revalueOwned(tx, input.companyId, rev.id, lotId, w.item_id, w.location_id, -amount, date, `Reverses ${doc.doc_no}`);
-        accountId = (await tx`select fn_resolve_account_for_item(${input.companyId}, 'INVENTORY', ${w.item_id}, null, ${w.location_id}) as a`)[0].a;
-      } else {
-        accountId = w.expense_account_id
-          ?? (await tx`select fn_resolve_account_for_item(${input.companyId}, 'COGS', ${w.item_id}) as a`)[0].a;
       }
+      const accountId = await accountFor(tx, input.companyId, w);
       journal.push({ accountId, amount: -amount, locationId: w.location_id });
       await tx`
         insert into landed_cost_posting
           (landed_cost_id, document_id, serial_id, status_then, treatment, account_id, location_id, lot_id, consumption_id, amount)
-        values (${doc.id}, ${rev.id}, ${p.serial_id}, ${w.status}, ${w.owned ? "INVENTORY" : "COGS"}, ${accountId},
+        values (${doc.id}, ${rev.id}, ${p.serial_id}, ${w.status}, ${w.treatment}, ${accountId},
                 ${w.location_id}, ${lotId}, ${w.consumption_id}, ${-amount})`;
       await tx`
         insert into stock_serial_event (company_id, serial_id, event, document_id, to_location_id, lot_id, note)
@@ -705,23 +722,13 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
 }
 
 /**
- * Landed cost a sold phone's slice carried into cost of sales, net of any
- * reversal taken from there. A customer return or a void puts the phone back
- * at this much more than the slice's own cost, and takes it out of cost of
- * sales with it.
+ * Landed cost a phone's slice carries now: every landed cost put on it after
+ * it left, net of any reversal taken from there. It sits wherever the slice's
+ * own cost sits — 1090 while the delivery waits for its invoice, cost of sales
+ * after — so a return, a void or an invoice moves it with that cost.
  */
-export async function landedInCogs(tx: TransactionSql, consumptionId: string): Promise<number> {
+export async function landedOn(tx: TransactionSql, consumptionId: string): Promise<number> {
   const [r] = await tx`
-    select coalesce(sum(amount), 0)::float as v from landed_cost_posting
-     where consumption_id = ${consumptionId} and treatment = 'COGS'`;
+    select coalesce(sum(amount), 0)::float as v from landed_cost_posting where consumption_id = ${consumptionId}`;
   return round4(Number(r.v));
-}
-
-/** The same, split by the account each amount went to. */
-export async function landedInCogsByAccount(tx: TransactionSql, consumptionId: string) {
-  const rows = await tx`
-    select account_id, sum(amount)::float as amount from landed_cost_posting
-     where consumption_id = ${consumptionId} and treatment = 'COGS'
-     group by account_id having sum(amount) <> 0`;
-  return rows.map((r) => ({ accountId: r.account_id as string, amount: round4(Number(r.amount)) }));
 }

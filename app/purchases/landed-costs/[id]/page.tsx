@@ -19,6 +19,11 @@ const STATUS_NOW: Record<string, string> = {
   IN_STOCK: "In stock", SOLD: "Sold", RETURNED_TO_SUPPLIER: "Returned to supplier", WRITTEN_OFF: "Written off",
   ISSUED: "Issued", RESERVED: "Reserved", REPAIR: "In repair",
 };
+// Where each phone's share went when this posted. Delivered but not invoiced
+// waits in 1090: cost of sales is recognised when the invoice posts.
+const TREATMENT: Record<string, string> = {
+  INVENTORY: "to stock value", HOLDING: "to 1090, waiting for the invoice", COGS: "to cost of sales",
+};
 const when = (t: string | Date | null) => (t ? new Date(t).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
 
 export default async function LandedCostPage({ params }: { params: Promise<{ id: string }> }) {
@@ -233,7 +238,7 @@ export default async function LandedCostPage({ params }: { params: Promise<{ id:
                         <td className="r">{p.allocated != null ? money(p.allocated) : "—"}</td>
                         <td className="r">{p.allocated != null ? money(Number(p.original_cost) + Number(p.allocated)) : "—"}</td>
                         <td>{STATUS_NOW[p.status] ?? p.status ?? "—"}
-                          {p.treatment && <span className="lc-treat"> · {p.treatment === "INVENTORY" ? "to stock value" : "to cost of sales"}</span>}</td>
+                          {p.treatment && <span className="lc-treat"> · {TREATMENT[p.treatment] ?? p.treatment}</span>}</td>
                       </tr>
                     ))}
                   </tbody>
