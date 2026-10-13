@@ -5,7 +5,7 @@ import { sql } from "./db";
 import { postOnce } from "./idempotency";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "./auth";
 import { assertMyBranch, seenLocations } from "./branch-scope";
-import { getReceipt, type ReceiptData } from "./receipt";
+import { receiptView, type ReceiptView } from "./receipt";
 import { postRetailSale, postCustomerReceipt, type InvoiceLine } from "./posting";
 import { posSearch, unitsOnShelf, stripCost } from "./phone";
 
@@ -27,13 +27,16 @@ export async function posUnitsAction(itemId: string, locationId: string) {
 }
 
 /**
- * The receipt of a sale the till has just posted, for the popup that previews
- * it. Read the way the receipt page reads it: another branch's receipt, or
- * another company's, comes back as nothing.
+ * The receipt of a sale the till has just posted, drawn with the template its
+ * branch publishes, for the Sale complete sheet. This first view pins the sale
+ * to that template version, so every reprint matches it. Read the way the
+ * receipt page reads it: another branch's receipt, or another company's,
+ * comes back as nothing. It reads the sale; it never posts anything.
  */
-export async function posReceiptAction(id: string): Promise<ReceiptData | null> {
+export async function posReceiptAction(id: string): Promise<{ view: ReceiptView; logoUrl: string | null } | null> {
   const user = await requirePermission("pos.sell");
-  return getReceipt(user.companyId, id, await seenLocations());
+  const view = await receiptView(user.companyId, id, await seenLocations(), { bind: true });
+  return view ? { view, logoUrl: view.identity.hasLogo ? "/api/company-logo" : null } : null;
 }
 
 export type PosSale = {

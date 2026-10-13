@@ -8,6 +8,8 @@ type Location = {
   id: string; code: string; name: string; name_my: string | null;
   parent_id: string | null; parent_name: string | null;
   is_stock_location: boolean; is_active: boolean;
+  /** A branch's, printed on its receipts. */
+  address?: string | null; phone?: string | null;
 };
 type LocationNode = Location & { depth: number };
 type Kind = "office" | "warehouse";
@@ -101,6 +103,18 @@ export function LocationRow({
                 <label>Name (Burmese)</label>
                 <input name="name_my" type="text" defaultValue={location.name_my ?? ""} />
               </div>
+              {kind === "office" && (
+                <>
+                  <div className="field">
+                    <label>Address <span className="opt">printed on receipts</span></label>
+                    <input name="address" type="text" maxLength={300} defaultValue={location.address ?? ""} />
+                  </div>
+                  <div className="field">
+                    <label>Phone</label>
+                    <input name="phone" type="tel" maxLength={60} defaultValue={location.phone ?? ""} />
+                  </div>
+                </>
+              )}
               {kind === "warehouse" && (
                 <div className="field">
                   <label>Branch</label>

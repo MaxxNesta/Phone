@@ -3972,7 +3972,7 @@ export async function getBrands(companyId: string) {
 export async function getLocations(companyId: string) {
   return sql`
     select l.id, l.code, l.name, l.name_my, l.parent_id, l.is_stock_location, l.is_active,
-           p.name as parent_name
+           l.address, l.phone, p.name as parent_name
       from location l
       left join location p on p.id = l.parent_id
      where l.company_id = ${companyId}

@@ -3829,7 +3829,10 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
       update location set
         code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
         parent_id = ${parentId}, is_stock_location = ${fd.get("is_stock_location") === "on"},
-        is_active = ${fd.get("is_active") === "on"}
+        is_active = ${fd.get("is_active") === "on"},
+        -- A branch's address and phone, for its receipts; a warehouse has none.
+        address = ${parentId ? null : str(fd, "address").slice(0, 300) || null},
+        phone = ${parentId ? null : str(fd, "phone").slice(0, 60) || null}
       where id = ${id} and company_id = ${co}`;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };

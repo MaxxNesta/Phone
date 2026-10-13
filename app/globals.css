@@ -4567,10 +4567,6 @@ main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(
 .pos-cart { overflow-x: auto; }
 @media (max-width: 1100px) { .pos { grid-template-columns: 1fr; } }
 
-.receipt { max-width: 380px; margin: 0 auto; font-size: var(--t-sm); }
-.receipt h1 { font-size: 1.2rem; margin: 0 0 var(--s1); }
-.receipt p { margin: 0 0 var(--s1); }
-@media print { .receipt { max-width: none; } }
 
 
 /* ===================================================== Apple layer ======
@@ -5920,14 +5916,7 @@ button.danger-solid:hover { opacity: 0.9; }
   background: #FFFFFF; color: #1D1D1F; border-radius: 12px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
-.sale-done-paper { overflow-x: hidden; }
-.sale-done-paper .receipt { max-width: none; margin: 0; }
-.sale-done-paper .receipt h1 { font-size: 1.05rem; }
-/* The tables' own cell padding is wider than a preview has room for: flush to the paper's edges. */
-.sale-done-paper .receipt table { width: 100%; margin: 0; }
-.sale-done-paper .receipt th, .sale-done-paper .receipt td { padding: 8px 6px; white-space: normal; }
-.sale-done-paper .receipt th:first-child, .sale-done-paper .receipt td:first-child { padding-left: 0; }
-.sale-done-paper .receipt th:last-child, .sale-done-paper .receipt td:last-child { padding-right: 0; white-space: nowrap; }
+.sale-done-paper { overflow-x: auto; }
 
 .sale-done-actions { display: flex; gap: 10px; padding: 16px 20px 20px; }
 .sale-done-actions .btn {
@@ -5950,11 +5939,142 @@ button.danger-solid:hover { opacity: 0.9; }
 @keyframes sale-rise { from { transform: translateY(100%); } to { transform: none; } }
 @media (max-width: 640px) and (prefers-reduced-motion: reduce) { .sale-done { animation: none; } }
 
-/* While the popup is open, Print prints the receipt and nothing else. */
-@media print {
-  html[data-sale-open] body > *:not(.sale-done-backdrop) { display: none !important; }
-  html[data-sale-open] .sale-done-backdrop { position: static; display: block; padding: 0; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; animation: none; }
-  html[data-sale-open] .sale-done { max-height: none; width: auto; box-shadow: none; border-radius: 0; overflow: visible; animation: none; }
-  html[data-sale-open] .sale-done-head, html[data-sale-open] .sale-done-actions { display: none; }
-  html[data-sale-open] .sale-done-paper { margin: 0; padding: 0; overflow: visible; box-shadow: none; max-height: none; }
+/* ------------------------------------------------------------- receipt --
+
+   One slip for the till sheet, the receipt page, the template preview and the
+   printer. Black on white whatever the theme. Thermal receipts are as wide as
+   the printer prints (--rc-width); A4 is a document with a table. */
+.rc {
+  --rc-ink: #000; --rc-soft: #333; --rc-rule: #000;
+  color: var(--rc-ink); background: #fff; font-family: var(--sans);
+  font-variant-numeric: tabular-nums; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word;
 }
+.rc-thermal { width: var(--rc-width, 72mm); max-width: 100%; margin: 0 auto; }
+.rc-fs-small { font-size: 11px; } .rc-fs-normal { font-size: 12.5px; } .rc-fs-large { font-size: 14px; }
+.rc-a4.rc-fs-small { font-size: 12px; } .rc-a4.rc-fs-normal { font-size: 13.5px; } .rc-a4.rc-fs-large { font-size: 15px; }
+.rc-head { display: flex; flex-direction: column; gap: 1px; }
+.rc-align-center .rc-head { align-items: center; text-align: center; }
+.rc-logo { max-width: 60%; max-height: 22mm; object-fit: contain; margin-bottom: 4px; }
+.rc-name { font-size: 1.3em; font-weight: 700; }
+.rc-pre { white-space: pre-line; }
+.rc-note { margin-top: 4px; }
+.rc-rule { border: 0; border-top: 1px dashed var(--rc-rule); margin: 6px 0; }
+.rc-line-solid .rc-rule { border-top-style: solid; }
+.rc-meta, .rc-totals { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 0; }
+.rc-meta dt, .rc-totals dt { color: var(--rc-soft); }
+.rc-meta dd, .rc-totals dd { margin: 0; text-align: right; }
+.rc-lines { display: flex; flex-direction: column; gap: 6px; }
+.rc-item { font-weight: 600; }
+.rc-sub { color: var(--rc-soft); font-size: 0.92em; }
+.rc-imei { font-family: var(--mono, ui-monospace, monospace); letter-spacing: 0.01em; }
+.rc-row { display: flex; justify-content: space-between; gap: 8px; }
+.rc-amt { white-space: nowrap; }
+.rc-grand { font-weight: 700; font-size: 1.15em; color: var(--rc-ink) !important; }
+.rc-foot { display: flex; flex-direction: column; gap: 4px; text-align: center; }
+.rc-policy { font-size: 0.9em; color: var(--rc-soft); }
+.rc-thanks { font-weight: 600; }
+.rc-sample {
+  text-align: center; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  border: 1px dashed #999; color: #666; padding: 2px; margin-bottom: 6px;
+}
+.rc-void { text-align: center; font-weight: 800; font-size: 1.4em; letter-spacing: 0.2em; border: 2px solid #000; margin: 6px 0; }
+.rc-compact .rc-lines { gap: 3px; } .rc-compact .rc-rule { margin: 3px 0; } .rc-compact { line-height: 1.22; }
+
+.rc-a4 { width: 186mm; padding: 0; }
+.rc-a4-top { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.rc-a4 .rc-head { align-items: flex-start; text-align: left; }
+.rc-a4-doc { min-width: 60mm; }
+.rc-a4-title { font-size: 1.8em; font-weight: 700; margin-bottom: 6px; text-align: right; }
+.rc-table { width: 100%; border-collapse: collapse; }
+.rc-table th { text-align: left; font-weight: 600; border-bottom: 1.5px solid #000; padding: 6px 8px; }
+.rc-table td { vertical-align: top; border-bottom: 1px solid #ccc; padding: 6px 8px; }
+.rc-table tr { break-inside: avoid; }
+.rc-table thead { display: table-header-group; }
+.rc-num { text-align: right; white-space: nowrap; }
+.rc-a4-end { display: flex; justify-content: flex-end; margin: 14px 0; break-inside: avoid; }
+.rc-a4-end .rc-totals { min-width: 75mm; }
+.rc-a4 .rc-foot { text-align: left; border-top: 1px solid #ccc; padding-top: 10px; break-inside: avoid; }
+
+/* On screen, the slip sits on white paper. A4 is shrunk to fit the column. */
+.rc-preview {
+  background: #fff; border-radius: 12px; padding: 16px 12px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); overflow-x: auto;
+}
+.rc-preview-A4 { zoom: 0.46; padding: 16px; }
+.rc-page-preview { max-width: 820px; margin: 16px auto; }
+.rc-page-preview.rc-preview-A4 { zoom: 0.85; }
+.rc-page-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+/* The printed copy: hidden on screen; when printing, the only thing printed. */
+.receipt-print-host { display: none; }
+@media print {
+  html[data-receipt-print] body > *:not(.receipt-print-host) { display: none !important; }
+  html[data-receipt-print] body { background: #fff !important; margin: 0; padding: 0; }
+  html[data-receipt-print] .receipt-print-host { display: block; }
+  .receipt-print-host[data-paper="58"], .receipt-print-host[data-paper="80"] { padding: 2mm 0; }
+  .receipt-print-host .rc-thermal { margin: 0 auto; max-width: none; }
+  .receipt-print-host .rc-a4 { width: auto; }
+  .rc, .rc * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* ---------------------------------------------------- receipt templates -- */
+.rt { display: flex; flex-direction: column; gap: 16px; }
+.rt-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+.rt-list { padding: 8px; position: sticky; top: 16px; }
+.rt-list ul { list-style: none; margin: 0 0 8px; padding: 0; }
+.rt-group { font-size: var(--t-sm); font-weight: 600; color: var(--muted); margin: 8px 8px 4px; }
+.rt-item {
+  width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  border: 0; background: transparent; color: var(--ink); border-radius: 10px; padding: 8px 10px; min-height: 44px;
+}
+.rt-item:hover { background: var(--line-soft); }
+.rt-item.on { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.rt-item-name { font-weight: 600; }
+.rt-item-meta { display: flex; gap: 6px; align-items: center; font-size: var(--t-sm); color: var(--muted); }
+.rt-new { width: 100%; justify-content: center; }
+.rt-empty { padding: 8px; }
+.rt-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.rt-editor { overflow: visible; }
+.rt-top { padding: 18px 20px 0; display: flex; flex-direction: column; gap: 6px; }
+.rt-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rt-title-row h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+.rt-scope { color: var(--muted); font-size: var(--t-sm); }
+.rt-tabs, .rt-seg {
+  display: inline-flex; gap: 2px; padding: 2px; background: var(--line-soft); border-radius: 10px;
+  width: fit-content; max-width: 100%; overflow-x: auto;
+}
+.rt-tabs { margin-top: 8px; }
+.rt-tabs > button, .rt-seg > button {
+  border: 0; border-radius: 8px; padding: 6px 14px; min-height: 32px; white-space: nowrap;
+  font-size: 0.875rem; font-weight: 500; color: var(--ink); background: transparent;
+}
+.rt-tabs > button.on, .rt-seg > button.on {
+  background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04);
+}
+.rt-label { font-size: var(--t-sm); font-weight: 600; color: var(--ink-soft); }
+.rt-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 20px; padding: 16px 20px 20px; align-items: start; }
+.rt-form { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.rt-group-box { border: 1px solid var(--line-soft); border-radius: 12px; padding: 14px 16px; }
+.rt-group-box h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 600; }
+.rt-rows { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.rt-switch { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; min-height: 32px; }
+.rt-switch > span { display: flex; flex-direction: column; gap: 2px; }
+.rt-preview-col { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.rt-preview-col .rc-preview { max-height: calc(100vh - 140px); overflow: auto; }
+.rt-preview-label { font-size: var(--t-sm); color: var(--muted); }
+.rt-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--t-sm); }
+.rt-msg { margin: 0 20px 12px; }
+.rt-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 20px; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-lg) var(--r-lg);
+}
+.rt-spacer { flex: 1; }
+.rt-active { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
+.rt-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.rt-logo { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+.rt-logo-img { max-width: 160px; max-height: 80px; object-fit: contain; background: #fff; border-radius: 8px; padding: 6px; border: 1px solid var(--line-soft); }
+.rt-paper-field { margin-top: 16px; }
+@media (max-width: 1100px) { .rt-body { grid-template-columns: 1fr; } .rt-preview-col { position: static; } }
+@media (max-width: 760px) { .rt-layout { grid-template-columns: 1fr; } .rt-list { position: static; } }

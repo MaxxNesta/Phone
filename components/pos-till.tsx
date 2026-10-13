@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Search, Smartphone, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingBag } from "lucide-react";
 import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
-import type { ReceiptData } from "@/lib/receipt";
+import type { ReceiptView } from "@/lib/receipt";
 import { PosSaleDone } from "./pos-sale-done";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
@@ -61,7 +61,7 @@ export function PosTill(props: {
   const [split, setSplit] = useState([{ accountId: cashAcct?.id ?? "", amount: "" }]);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string; id?: string } | null>(null);
   // The sale just posted, with its receipt, while the popup is open.
-  const [done, setDone] = useState<ReceiptData | null>(null);
+  const [done, setDone] = useState<{ view: ReceiptView; logoUrl: string | null } | null>(null);
   const [attempt, setAttempt] = useState(newKey);
   const [busy, start] = useTransition();
   const scan = useRef<HTMLInputElement>(null);
@@ -212,7 +212,9 @@ export function PosTill(props: {
     // The popup is the confirmation. If the receipt cannot be read back the
     // sale still stands, so fall back to the line at the top rather than say nothing.
     const receipt = await posReceiptAction(r.id).catch(() => null);
-    if (receipt) setDone(receipt);
+    // The template may say not to open the sheet: the line at the top, with
+    // its print link, is the confirmation then.
+    if (receipt && receipt.view.config.general.showAfterSale) setDone(receipt);
     else flash("ok", `Sale ${r.docNo} posted`, r.id);
     setLines([]);
     setEditing(null);
@@ -231,7 +233,7 @@ export function PosTill(props: {
 
   return (
     <div className="pos3">
-      {done && <PosSaleDone data={done} onClose={closeDone} />}
+      {done && <PosSaleDone view={done.view} logoUrl={done.logoUrl} onClose={closeDone} />}
       <section className="pos3-shelf" aria-label="Products">
         {message && (
           <div className={message.kind === "error" ? "alert" : "alert ok"} role={message.kind === "error" ? "alert" : "status"}>

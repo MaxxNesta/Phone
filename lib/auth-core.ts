@@ -31,6 +31,7 @@ export type Permission =
   | "accounting.post"
   | "reports.view"
   | "settings.manage"
+  | "receipts.manage"     // receipt templates: admins all; managers their own branch's
   | "users.manage";
 
 const ALL: Permission[] = [
@@ -38,6 +39,7 @@ const ALL: Permission[] = [
   "discount.unlimited", "cost.view", "purchase.view", "purchase.post",
   "inventory.view", "inventory.manage", "partners.manage", "items.manage", "brands.manage",
   "accounting.view", "accounting.post", "reports.view", "settings.manage", "users.manage",
+  "receipts.manage",
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
@@ -151,6 +153,7 @@ export async function ownerUser(): Promise<SessionUser | null> {
 
 export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/settings/users", "users.manage"],
+  ["/settings/receipt-templates", "receipts.manage"],
   // Rates are kept by whoever buys stock; the page itself refuses edits to
   // the currency list to anyone but an administrator.
   ["/settings/currencies", "purchase.view"],

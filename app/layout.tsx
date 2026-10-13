@@ -254,7 +254,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {may("settings.manage") && (
+            {(may("settings.manage") || may("receipts.manage")) && (
               <NavGroup label="Settings" icon={<Settings size={15} />} match={[
                 "/warehouses", "/salespersons", "/settings", "/items/categories", "/items/subcategories",
                 "/items/brands", "/items/attributes", "/items/units", "/items/purchasing",
@@ -272,6 +272,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <NavLink href="/items/purchasing" sub>Purchasing terms</NavLink>
                   </NavSubGroup>
                 )}
+                <NavSubGroup label="POS Settings" match={["/settings/receipt-templates"]}>
+                  <NavLink href="/settings/receipt-templates" sub>Receipt Templates</NavLink>
+                </NavSubGroup>
+                {may("settings.manage") && (<>
                 <NavSubGroup label="Company" match={["/warehouses", "/salespersons"]}>
                   <NavLink href="/warehouses" sub>Branches &amp; warehouses</NavLink>
                   <NavLink href="/salespersons" sub>Salespersons</NavLink>
@@ -289,6 +293,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/settings/plan" sub>Package</NavLink>
                   {may("users.manage") && <NavLink href="/settings/users" sub>Users</NavLink>}
                 </NavSubGroup>
+                </>)}
               </NavGroup>
             )}
 
