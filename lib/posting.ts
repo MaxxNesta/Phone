@@ -2553,7 +2553,11 @@ async function estimateCurrentCost(
  * is the same convention FIFO already uses going out, it is deterministic,
  * and returning a whole delivery restores exactly what leaving it cost.
  */
-type ReturnLayer = { qty: number; unitCost: number };
+type ReturnLayer = {
+  qty: number; unitCost: number;
+  /** Still waiting in 1090 for an invoice: the slice it left on. */
+  heldConsumptionId?: string;
+};
 
 async function resolveReturnLayers(
   tx: TransactionSql,
@@ -2602,6 +2606,46 @@ async function resolveReturnLayers(
   // anyway, the remainder has no layer to come back to and the caller falls
   // back to a current-cost estimate rather than inventing one here.
   return left > 0 ? null : layers;
+}
+
+/**
+ * What goods returned against a source come back at, and from where.
+ *
+ * Returned against a delivery, the goods first come off what is still
+ * waiting there for an invoice: their cost is in 1090, not in cost of sales,
+ * because no invoice has recognised it (D8). Those slices are marked so the
+ * return takes them out of 1090 and the delivery stops waiting for them.
+ * Anything beyond that was already billed and comes back from cost of sales,
+ * as before. Returned against an invoice, everything was billed.
+ */
+async function returnLayersFor(
+  tx: TransactionSql, companyId: string, sourceDocumentId: string,
+  itemId: string, qty: number, alreadyReturned: number,
+): Promise<ReturnLayer[] | null> {
+  const [src] = await tx`select doc_type from document where id = ${sourceDocumentId} and company_id = ${companyId}`;
+  if (src?.doc_type !== "DELIVERY") {
+    return resolveReturnLayers(tx, companyId, sourceDocumentId, itemId, qty, alreadyReturned);
+  }
+  const waiting = await tx`
+    select v.consumption_id, v.qty_unclaimed::float as qty, v.unit_cost::float as unit_cost
+      from v_delivery_cost_unclaimed v
+      join stock_lot_consumption c on c.id = v.consumption_id
+      join stock_lot l on l.id = c.lot_id
+     where v.company_id = ${companyId} and v.document_id = ${sourceDocumentId} and v.item_id = ${itemId}
+     order by l.received_date, l.created_at, l.id, c.id`;
+  const out: ReturnLayer[] = [];
+  let left = round4(qty);
+  for (const w of waiting as unknown as Array<{ consumption_id: string; qty: number; unit_cost: number }>) {
+    if (left <= 1e-9) break;
+    const take = round4(Math.min(left, w.qty));
+    if (take <= 0) continue;
+    out.push({ qty: take, unitCost: w.unit_cost, heldConsumptionId: w.consumption_id });
+    left = round4(left - take);
+  }
+  if (left <= 1e-9) return out;
+  const billed = await resolveReturnLayers(tx, companyId, sourceDocumentId, itemId, left,
+    round4(alreadyReturned + qty - left));
+  return billed ? [...out, ...billed] : null;
 }
 
 /** The delivery that actually moved the goods, given a sale or the delivery itself. */
@@ -7029,7 +7073,7 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         const layers = units
           ? units.map((u) => ({ qty: 1, unitCost: u.unitCost }))
           : input.sourceDocumentId
-            ? await resolveReturnLayers(
+            ? await returnLayersFor(
                 tx, companyId, input.sourceDocumentId, line.itemId, line.qty, taken
               )
             : null;
@@ -7076,6 +7120,14 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
                 values (${companyId}, ${u.consumptionId}, ${docLine.id}, ${doc.id}, 1, ${u.baseCost}, ${u.landed})`;
               heldCost = round4(heldCost + sliceCost);
             }
+          } else if (slice.heldConsumptionId) {
+            // Untracked goods taken back before anyone was billed: the same,
+            // slice by slice.
+            await tx`
+              insert into delivery_cost_return
+                (company_id, consumption_id, return_line_id, return_document_id, qty, unit_cost, landed_amount)
+              values (${companyId}, ${slice.heldConsumptionId}, ${docLine.id}, ${doc.id}, ${slice.qty}, ${slice.unitCost}, 0)`;
+            heldCost = round4(heldCost + sliceCost);
           }
         }
 

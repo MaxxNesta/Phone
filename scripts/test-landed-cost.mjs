@@ -536,6 +536,40 @@ try {
     check("inventory reconciles", near(await reconciled(), 0));
   });
 
+  await scenario("24. Untracked goods returned against a delivery nobody has invoiced", async () => {
+    const it = { ...(await item("Cable", false)), phone: false };
+    await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      lines: [{ itemId: it.id, qty: 20, unitCost: 100 }] });
+    const dv = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      lines: [{ itemId: it.id, qty: 6 }] });
+    const ret = await P.postSalesReturn({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: dv.id, lines: [{ itemId: it.id, qty: 2, unitPrice: 0 }] });
+    check("2 back before billing: Dr Inventory 200 / Cr 1090 200", near(await glFor(ret.id, it.inv), 200) && near(await glFor(ret.id, held.a), -200),
+      `${fmt(await glFor(ret.id, it.inv))} / ${fmt(await glFor(ret.id, held.a))}`);
+    check("nothing from cost of sales", near(await glFor(ret.id, it.cogs), 0), fmt(await glFor(ret.id, it.cogs)));
+    const [w] = await sql`select coalesce(sum(qty_unclaimed), 0)::float q, coalesce(sum(value_unclaimed), 0)::float v from v_delivery_cost_unclaimed where document_id = ${dv.id}`;
+    check("the delivery waits for 4, worth 400", near(w.q, 4) && near(w.v, 400), `${w.q} / ${fmt(w.v)}`);
+    let tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    const si = await P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      paymentType: "CREDIT", deliveryId: dv.id, lines: [{ itemId: it.id, qty: 4, unitPrice: 300 }] });
+    check("billing the 4 that stayed moves 400 to cost of sales", near(await glFor(si.id, it.cogs), 400), fmt(await glFor(si.id, it.cogs)));
+
+    // Part billed, then a return bigger than what is still waiting.
+    const dv2 = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      lines: [{ itemId: it.id, qty: 5 }] });
+    await P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      paymentType: "CREDIT", deliveryId: dv2.id, lines: [{ itemId: it.id, qty: 3, unitPrice: 300 }] });
+    const ret2 = await P.postSalesReturn({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: dv2.id, lines: [{ itemId: it.id, qty: 4, unitPrice: 0 }] });
+    check("4 back after 3 were billed: the 2 unbilled from 1090 (200), the 2 billed from cost of sales (200)",
+      near(await glFor(ret2.id, held.a), -200) && near(await glFor(ret2.id, it.cogs), -200) && near(await glFor(ret2.id, it.inv), 400),
+      `1090 ${fmt(await glFor(ret2.id, held.a))}, COGS ${fmt(await glFor(ret2.id, it.cogs))}, Inv ${fmt(await glFor(ret2.id, it.inv))}`);
+    const [w2] = await sql`select count(*)::int n from v_delivery_cost_unclaimed where document_id = ${dv2.id}`;
+    check("nothing of that delivery is left waiting", w2.n === 0);
+    tie = await heldTies(); check("1090 = what waits there", tie.ok, tie.detail);
+    check("inventory reconciles", near(await reconciled(), 0), fmt(await reconciled()));
+  });
+
   console.log("");
   check("company: Inventory GL = stock ledger at the end", near(await reconciled(), 0), fmt(await reconciled()));
   const [ub] = await sql`select count(*)::int n from v_check_unbalanced_entries where company_id = ${co.id}`;
