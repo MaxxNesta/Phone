@@ -5176,37 +5176,43 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-results { min-width: 0; }
 .pos3-count { margin: 0 0 8px; font-size: 0.8125rem; color: var(--muted); }
 
-/* A card: the picture beside the words, Add across the bottom. */
-.pos3-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); grid-auto-rows: 1fr; gap: 12px; }
+/* A card: the picture beside the words, Add across the bottom. Compact: a smaller
+   picture, tighter padding, and the price and stock on one row. */
+.pos3-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); grid-auto-rows: 1fr; gap: 10px; }
 .pos3-card {
-  position: relative; display: grid; grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: minmax(92px, 1fr) auto;
-  gap: 10px 12px; padding: 12px; border-radius: 14px; background: var(--surface); color: var(--ink);
+  position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr); grid-template-rows: minmax(74px, 1fr) auto;
+  gap: 8px 10px; padding: 10px; border-radius: 12px; background: var(--surface); color: var(--ink);
   border: 1px solid var(--line-soft); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
   transition: box-shadow 150ms, border-color 150ms;
 }
 .pos3-card:hover { border-color: var(--line); box-shadow: 0 6px 18px rgb(0 0 0 / 0.07); }
 .pos3-img {
-  position: relative; display: grid; place-items: center; width: 72px; height: 92px; overflow: hidden;
-  border-radius: 10px; background: var(--ground); color: var(--muted);
+  position: relative; display: grid; place-items: center; width: 58px; height: 74px; overflow: hidden;
+  border-radius: 9px; background: var(--ground); color: var(--muted);
 }
 .pos3-img img { width: 100%; height: 100%; object-fit: contain; }
 .pos3-card.out .pos3-img img { opacity: 0.45; }
-.pos3-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pos3-name { margin: 0; font-size: 0.9375rem; font-weight: 700; line-height: 1.25; letter-spacing: -0.005em; }
-.pos3-sub { margin: 0; font-size: 0.8125rem; font-weight: 400; color: var(--muted); line-height: 1.3; }
-.pos3-price { margin: 6px 0 0; font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pos3-info { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pos3-name { margin: 0; font-size: 0.875rem; font-weight: 700; line-height: 1.25; letter-spacing: -0.005em; }
+/* The variant: at most two lines, whatever it holds. */
+.pos3-sub {
+  margin: 0; font-size: 0.75rem; font-weight: 400; color: var(--muted); line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.pos3-meta { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; margin-top: auto; padding-top: 3px; }
+.pos3-price { margin: 0; font-size: 0.9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .pos3-price small { font-size: 0.6875rem; font-weight: 600; color: var(--muted); }
-.pos3-price.none { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8125rem; font-weight: 600; color: var(--warn); }
+.pos3-price.none { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 600; color: var(--warn); }
 .pos3-stock {
-  align-self: flex-start; margin-top: 6px; padding: 2px 9px; border-radius: 980px; font-size: 0.75rem; font-weight: 600;
+  padding: 1px 8px; border-radius: 980px; font-size: 0.6875rem; font-weight: 600; white-space: nowrap;
   background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok);
 }
 .pos3-stock.low { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
 .pos3-stock.out { background: var(--line-soft); color: var(--ink-soft); }
 .pos3-add {
   grid-column: 1 / -1; align-self: end; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; height: 40px; min-height: 40px; border: 0; border-radius: 10px;
-  background: var(--link); color: var(--brand-fg); font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.005em;
+  width: 100%; height: 34px; min-height: 34px; border: 0; border-radius: 9px;
+  background: var(--link); color: var(--brand-fg); font-size: 0.8125rem; font-weight: 600; letter-spacing: -0.005em;
   transition: filter 120ms ease-out, transform 120ms ease-out;
 }
 .pos3-add:hover:not(:disabled) { filter: brightness(0.94); }
@@ -5222,17 +5228,6 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-nothing p { margin: 0; }
 .pos3-link, .pos3-showmore { border: 0; background: transparent; color: var(--link); font-size: 0.875rem; font-weight: 500; min-height: 36px; }
 .pos3-showmore { display: block; width: 100%; margin-top: 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line-soft); }
-
-/* Choosing the exact unit of a serialised variant. */
-.pos3-units { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; padding: 12px; }
-.pos3-units-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.875rem; }
-.pos3-unit-list { display: flex; flex-wrap: wrap; gap: 8px; max-height: 180px; overflow-y: auto; }
-.pos3-unit {
-  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 40px;
-  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
-  color: var(--ink); font-size: 0.8125rem;
-}
-.pos3-unit:hover { border-color: var(--link); }
 
 /* The filter panel. */
 .pf { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px; padding: 4px 14px 10px; }
@@ -5327,7 +5322,6 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-group-total { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
 .pos3-group-total svg { color: var(--muted); transition: transform 150ms; }
 .pos3-group-total svg.up { transform: rotate(180deg); }
-.pos3-group-body { margin: 0 0 8px 26px; padding-left: 12px; border-left: 2px solid var(--line-soft); }
 .pos3-group.free .pos3-line-img { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ok) 50%, transparent); }
 
 .pos3-slip { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line-soft); font-size: 0.875rem; }
@@ -5399,6 +5393,112 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   .pos3-chips button { min-height: 40px; height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) { .pos3-group-total svg, .pos3-card { transition: none; } }
+/* Grouped IMEIs in the cart: a header with the total, then one compact row per unit. */
+.pos3-group-body { margin: 0 0 8px 0; padding: 4px 10px 8px; border-radius: 10px; background: var(--ground); }
+.pos3-group-sum { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0 4px; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pos3-urow { border-top: 1px solid var(--line-soft); padding: 4px 0; }
+.pos3-urow-main { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 4px 6px; }
+.pos3-urow-n { color: var(--muted); font-size: 0.75rem; text-align: right; }
+.pos3-urow-imei { font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; }
+.pos3-urow-price { font-size: 0.8125rem; font-variant-numeric: tabular-nums; text-align: right; }
+.pos3-urow-price s { color: var(--muted); font-size: 0.6875rem; }
+.pos3-icon {
+  width: 28px; height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: transparent; color: var(--muted);
+}
+.pos3-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.pos3-icon.on { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.pos3-icon.bad:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad); }
+.pos3-icon svg.up { transform: rotate(180deg); }
+.pos3-urow.free { background: color-mix(in srgb, var(--ok) 6%, transparent); border-radius: 8px; }
+.pos3-another {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 30px; margin-top: 4px; padding: 0 4px;
+  border: 0; background: transparent; color: var(--link); font-size: 0.8125rem; font-weight: 500;
+}
+
+/* The IMEI picker and the "Added to cart" confirmation: centered sheets over the till. */
+.pu-backdrop {
+  --link: var(--chart-1);
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
+  background: rgba(0, 0, 0, 0.36); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  animation: sale-fade 0.16s ease-out;
+}
+.pu {
+  position: relative; width: min(520px, 100%); max-height: min(90vh, 720px); display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink); border-radius: 18px; overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  animation: sale-pop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+.pu-small { width: min(440px, 100%); }
+.pu-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 4px; }
+.pu-head h2 { margin: 0; font-size: 1.125rem; font-weight: 700; }
+.pu-x {
+  width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; background: var(--line-soft); color: var(--ink-soft);
+}
+.pu-x-abs { position: absolute; top: 12px; right: 12px; z-index: 1; }
+.pu-prod { display: flex; gap: 12px; align-items: center; padding: 10px 18px; }
+.pu-photo { flex: none; display: grid; place-items: center; overflow: hidden; border-radius: 10px; background: var(--ground); color: var(--muted); }
+.pu-photo img { width: 100%; height: 100%; object-fit: contain; }
+.pu-prod-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pu-prod-text strong { font-size: 1rem; }
+.pu-sub { font-size: 0.8125rem; color: var(--muted); }
+.pu-price { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pu-price small { font-size: 0.6875rem; color: var(--muted); font-weight: 600; }
+.pu-price em { font-style: normal; color: var(--warn); font-size: 0.8125rem; }
+.pu-avail {
+  padding: 2px 10px; border-radius: 980px; font-size: 0.75rem; font-weight: 600;
+  background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok);
+}
+.pu-search {
+  display: flex; align-items: center; gap: 8px; height: 42px; margin: 4px 18px 0; padding: 0 12px; color: var(--muted);
+  border: 1.5px solid var(--link); border-radius: 11px; background: var(--surface);
+}
+.pu-search:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--link) 20%, transparent); }
+.pu-search input, .pu-search input:focus { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; border: 0; box-shadow: none; outline: 0; background: transparent; font-size: 0.9375rem; color: var(--ink); }
+.pu-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 18px 6px; font-size: 0.8125rem; }
+.pu-all { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.pu-all input, .pu-row input { width: 18px; height: 18px; flex: none; accent-color: var(--link); }
+.pu-n { color: var(--muted); font-variant-numeric: tabular-nums; }
+/* A fixed-height list that scrolls, however many units there are. */
+.pu-list { list-style: none; margin: 0 8px; padding: 0 10px; height: 300px; overflow-y: auto; border-top: 1px solid var(--line-soft); }
+.pu-row { display: flex; align-items: center; gap: 12px; padding: 9px 8px; border-bottom: 1px solid var(--line-soft); border-radius: 8px; cursor: pointer; }
+.pu-row:hover { background: var(--ground); }
+.pu-row.on { background: color-mix(in srgb, var(--link) 9%, transparent); }
+.pu-row-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.pu-row-text .m { font-size: 0.9375rem; font-weight: 500; }
+.pu-row-sub { font-size: 0.75rem; color: var(--muted); }
+.pu-cost { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.pu-none { padding: 28px 0; text-align: center; color: var(--muted); font-size: 0.875rem; }
+.pu-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px 16px; border-top: 1px solid var(--line-soft); }
+.pu-count { font-size: 0.875rem; color: var(--ink-soft); }
+.pu-count b { font-size: 1rem; color: var(--ink); }
+.pu-add {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 18px;
+  border: 0; border-radius: 11px; background: var(--link); color: var(--brand-fg); font-size: 0.9375rem; font-weight: 600;
+}
+.pu-add:hover:not(:disabled) { filter: brightness(0.94); }
+.pu-add:disabled { background: var(--line-soft); color: var(--muted); cursor: not-allowed; }
+.pa-top { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 24px 8px; text-align: center; }
+.pa-top h2 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.pa-top p { margin: 0; font-size: 0.875rem; color: var(--muted); }
+.pa-check { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); margin-bottom: 4px; }
+.pa-prod { margin: 6px 18px 0; padding: 10px; border: 1px solid var(--line-soft); border-radius: 12px; }
+.pa-imeis { margin: 10px 18px 0; padding: 10px 14px; border-radius: 12px; background: var(--ground); max-height: 190px; overflow-y: auto; }
+.pa-imeis h3 { margin: 0 0 4px; font-size: 0.8125rem; font-weight: 700; }
+.pa-imeis ol { margin: 0; padding-left: 20px; font-size: 0.875rem; line-height: 1.7; }
+.pa-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 18px 18px; }
+.pa-ghost {
+  min-height: 44px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--ink);
+  font-size: 0.9375rem; font-weight: 500;
+}
+@media (max-width: 640px) {
+  .pu-backdrop { align-items: end; padding: 0; }
+  .pu { width: 100%; max-height: 94vh; border-radius: 18px 18px 0 0; }
+  .pu-list { height: 38vh; }
+}
+@media (prefers-reduced-motion: reduce) { .pu-backdrop, .pu { animation: none; } }
+
 
 .voucher-scan { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
 .voucher-scan input { flex: 0 1 360px; }

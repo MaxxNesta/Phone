@@ -181,3 +181,38 @@ export const clearFilters = (s: Selection): Selection => ({ ...s, models: [], op
 export function cardState(i: Pick<FacetItem, "on_hand" | "price">): "out" | "low" | "ok" {
   return i.on_hand <= 0 ? "out" : i.on_hand <= LOW_STOCK ? "low" : "ok";
 }
+
+// ------------------------------------------------------ variant line ----
+
+/** Which option leads, by category. Anything not named follows in master-data order. */
+const LEAD: Array<[RegExp, RegExp[]]> = [
+  [/iphone/i, [/storage|capacity|rom/i, /colou?r/i, /\bsim\b/i]],
+  [/ipad/i, [/storage|capacity|rom/i, /colou?r/i, /connectivity|cellular|network/i]],
+  [/mac/i, [/chip|processor|cpu/i, /\bram\b|memory/i, /storage|capacity|ssd|rom/i, /colou?r/i]],
+  [/watch/i, [/case|size/i, /colou?r/i, /connectivity|cellular|network/i]],
+];
+
+/**
+ * What a card or cart line says about a variant: its option values in the order
+ * that category reads (iPhone: storage, colour, SIM; Mac: chip, RAM, storage,
+ * colour…), from the item's own master data. An option the item lacks is left
+ * out, never shown empty, and the brand is not part of it.
+ */
+export function variantParts(i: { type: string | null; variant?: string | null; opts: Record<string, string> | null }): string[] {
+  const opts = i.opts ?? {};
+  const names = Object.keys(opts).filter((a) => String(opts[a] ?? "").trim() !== "");
+  if (names.length === 0) {
+    return i.variant ? i.variant.split(/\s+\/\s+|\s+·\s+/).map((s) => s.trim()).filter(Boolean) : [];
+  }
+  const lead = LEAD.find(([t]) => t.test(i.type ?? ""))?.[1] ?? [];
+  const left = [...names];
+  const out: string[] = [];
+  for (const re of lead) {
+    const k = left.findIndex((a) => re.test(a));
+    if (k >= 0) out.push(opts[left.splice(k, 1)[0]]);
+  }
+  for (const a of left) out.push(opts[a]);
+  return out.map((v) => String(v).trim()).filter(Boolean);
+}
+
+export const variantLine = (i: Parameters<typeof variantParts>[0]) => variantParts(i).join(" · ");

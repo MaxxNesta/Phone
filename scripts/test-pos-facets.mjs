@@ -6,7 +6,7 @@
 
 import {
   computeFacets, filterItems, reconcile, emptySelection, toggleValue, clearFilters, cardState, matchesText,
-  LOW_STOCK,
+  LOW_STOCK, variantParts, variantLine,
 } from "../lib/pos-facets.ts";
 
 let good = 0, bad = 0;
@@ -119,6 +119,19 @@ check("'256GB' matches '256 GB' and a comma is a separator", matchesText(items[1
 check("a word that is nowhere matches nothing", filterItems(items, sel({ q: "zzz" })).length === 0);
 check("barcode and code are searchable", matchesText({ ...items[0], barcode: "885909" }, "885909") && matchesText(items[0], items[0].code));
 check("card states", cardState({ on_hand: 0, price: 5 }) === "out" && cardState({ on_hand: 2, price: 5 }) === "low" && cardState({ on_hand: 3, price: 5 }) === "ok");
+
+section("Variant line on a card (no brand, only the attributes the item has)");
+const v = (type, opts, variant = null) => variantLine({ type, opts, variant });
+check("iPhone: storage · colour · SIM, whatever order master data lists them", v("iPhone", { SIM: "Dual SIM", Colour: "Black", Storage: "256 GB" }) === "256 GB · Black · Dual SIM");
+check("iPad: storage · colour · connectivity", v("iPad", { Connectivity: "Wi-Fi", Colour: "Blue", Storage: "128 GB" }) === "128 GB · Blue · Wi-Fi");
+check("Mac: chip · RAM · storage · colour", v("Mac", { Colour: "Silver", SSD: "512 GB", RAM: "16 GB", Chip: "M3" }) === "M3 · 16 GB · 512 GB · Silver");
+check("Watch: case size · colour · connectivity", v("Apple Watch", { Connectivity: "GPS", Colour: "Black", "Case size": "46 mm" }) === "46 mm · Black · GPS");
+check("an unknown category lists what it has, in master-data order", v("Accessories", { Type: "Case", Compatibility: "iPhone 18" }) === "Case · iPhone 18");
+check("a missing option is left out, never shown empty", v("iPhone", { Storage: "256 GB", Colour: "", SIM: "eSIM" }) === "256 GB · eSIM");
+check("no options and no label → nothing (not the brand, not a placeholder)", v("AirPods", {}) === "" && v("Accessories", null) === "");
+check("an old label with slashes is split into the same dots", v("iPhone", null, "256 GB / Black") === "256 GB · Black");
+check("extra attributes follow the named ones", v("iPhone", { Region: "US", Colour: "Blue", Storage: "128 GB" }) === "128 GB · Blue · US");
+check("the brand never appears", !/apple/i.test(variantLine({ type: "iPhone", opts: { Storage: "256 GB" }, variant: null, brand: "Apple" })));
 
 section("Scale");
 const big = Array.from({ length: 6000 }, (_, i) => item(["iPhone", "iPad", "Mac", "Watch"][i % 4], `Model ${i % 150}`,

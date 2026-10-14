@@ -10,12 +10,13 @@ import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type Po
 import type { ReceiptView } from "@/lib/receipt";
 import { PosSaleDone } from "./pos-sale-done";
 import { PosFilters } from "./pos-filters";
+import { PosUnitPicker, PosAddedConfirm } from "./pos-unit-picker";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { priceLines, type VolumeBand } from "@/lib/discount";
 import { postedAmount, tender, fmtCents, exactText, quickAmounts } from "@/lib/pos-cash";
 import {
-  computeFacets, filterItems, reconcile, emptySelection, clearFilters, cardState, SHELF_LIMIT,
+  computeFacets, filterItems, reconcile, emptySelection, clearFilters, cardState, variantLine, SHELF_LIMIT,
   type Selection,
 } from "@/lib/pos-facets";
 
@@ -62,6 +63,8 @@ export function PosTill(props: {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [shownCount, setShownCount] = useState(PAGE);
   const [picking, setPicking] = useState<{ item: SellableItem; units: ScannedUnit[] } | null>(null);
+  // Units just put on the sale from the picker: the confirmation shows them.
+  const [added, setAdded] = useState<{ item: SellableItem; imeis: string[] } | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -164,26 +167,50 @@ export function PosTill(props: {
   const flash = (kind: "error" | "ok", text: string, id?: string) => setMessage({ kind, text, id });
 
   // ---------------------------------------------------------------- cart --
+  const unitLine = (u: ScannedUnit, item?: SellableItem): Line => ({
+    key: newKey(), itemId: u.item_id, name: item?.model ?? u.item_name, variant: (item && variantLine(item)) || null,
+    photo: item?.photo ?? null, tracksSerial: true, serial: u.imei, qty: 1, onHand: 1,
+    unitPrice: item?.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item?.item_group_id ?? null,
+    warrantyMonths: item?.warranty_months ?? null, unitCost: u.unit_cost, focReasonId: null,
+  });
+  /** Why a unit cannot go on this sale, or null: the checks every way of adding a unit shares. */
+  const unitProblem = (u: ScannedUnit, taken: Set<string>): string | null => {
+    if (taken.has(u.imei)) return `${u.imei} is already on this sale.`;
+    if (u.status !== "IN_STOCK") return `${u.imei} is ${u.status.toLowerCase().replace(/_/g, " ")}.`;
+    if (u.location_id !== locationId) return `${u.imei} is at ${u.location_name}. Transfer it here first.`;
+    return null;
+  };
+
+  // One scanned unit goes straight on.
   const addUnit = (u: ScannedUnit, item?: SellableItem) => {
-    if (lines.some((l) => l.serial === u.imei)) return flash("error", `${u.imei} is already on this sale.`);
-    if (u.status !== "IN_STOCK") return flash("error", `${u.imei} is ${u.status.toLowerCase().replace(/_/g, " ")}.`);
-    if (u.location_id !== locationId) return flash("error", `${u.imei} is at ${u.location_name}. Transfer it here first.`);
-    setLines((ls) => [...ls, {
-      key: newKey(), itemId: u.item_id, name: item?.model ?? u.item_name, variant: item?.variant ?? null,
-      photo: item?.photo ?? null, tracksSerial: true, serial: u.imei, qty: 1, onHand: 1,
-      unitPrice: item?.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item?.item_group_id ?? null,
-      warrantyMonths: item?.warranty_months ?? null, unitCost: u.unit_cost, focReasonId: null,
-    }]);
+    const why = unitProblem(u, new Set(lines.map((l) => l.serial ?? "")));
+    if (why) return flash("error", why);
+    setLines((ls) => [...ls, unitLine(u, item)]);
     setPicking(null);
     setMessage(null);
     scan.current?.focus();
   };
 
+  // Several chosen in the picker: each is checked as a scanned one would be.
+  const addUnits = (picked: ScannedUnit[], item: SellableItem) => {
+    const taken = new Set(lines.map((l) => l.serial ?? ""));
+    const ok: ScannedUnit[] = [], bad: string[] = [];
+    for (const u of picked) {
+      const why = unitProblem(u, taken);
+      if (why) bad.push(why); else { ok.push(u); taken.add(u.imei); }
+    }
+    if (ok.length > 0) setLines((ls) => [...ls, ...ok.map((u) => unitLine(u, item))]);
+    setPicking(null);
+    if (bad.length > 0) flash("error", bad[0] + (bad.length > 1 ? ` (and ${bad.length - 1} more)` : ""));
+    else setMessage(null);
+    if (ok.length > 0) setAdded({ item, imeis: ok.map((u) => u.imei) });
+    else scan.current?.focus();
+  };
+
   const addItem = async (item: SellableItem) => {
     if (item.tracks_serial) {
-      const units = (await posUnitsAction(item.id, locationId)).filter((u) => !lines.some((l) => l.serial === u.imei));
-      // One unit on the shelf is the unit: no list to choose from.
-      if (units.length === 1) return addUnit(units[0], item);
+      const units = (await posUnitsAction(item.id, locationId))
+        .filter((u) => u.status === "IN_STOCK" && !lines.some((l) => l.serial === u.imei));
       setPicking({ item, units });
       return;
     }
@@ -191,7 +218,7 @@ export function PosTill(props: {
       const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId);
       if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, l.onHand) } : l));
       return [...ls, {
-        key: newKey(), itemId: item.id, name: item.model, variant: item.variant, photo: item.photo,
+        key: newKey(), itemId: item.id, name: item.model, variant: variantLine(item) || null, photo: item.photo,
         tracksSerial: false, serial: null, qty: 1, onHand: item.on_hand,
         unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
         warrantyMonths: item.warranty_months, focReasonId: null,
@@ -229,6 +256,8 @@ export function PosTill(props: {
     // Words cleared after a server search of a big shelf: the whole shelf again.
     if (!v && searched.current) start(async () => { await loadShelf(); });
   };
+
+  const another = (itemId: string) => { const it = items.find((i) => i.id === itemId); if (it) void addItem(it); };
 
   const setLine = (key: string, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -333,24 +362,21 @@ export function PosTill(props: {
   const here = props.locations.find((l) => l.id === locationId) ?? props.locations[0];
 
   // ------------------------------------------------------------ rendering --
-  const renderLine = (l: Line, nested = false) => {
+  const renderLine = (l: Line) => {
     const charged = chargedOf(l);
     const isOpen = editing === l.key;
     const noPrice = !l.focReasonId && !(l.unitPrice > 0);
     return (
-      <div className={`pos3-line${l.focReasonId ? " free" : ""}${nested ? " nested" : ""}`} key={l.key}>
-        {!nested && (
-          <span className="pos3-line-img">
-            {l.photo ? <img src={l.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}
-          </span>
-        )}
+      <div className={`pos3-line${l.focReasonId ? " free" : ""}`} key={l.key}>
+        <span className="pos3-line-img">
+          {l.photo ? <img src={l.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}
+        </span>
         <div className="pos3-line-main">
           <div className="pos3-line-top">
             <div>
-              {!nested && <div className="pos3-line-name">{l.name}</div>}
+              <div className="pos3-line-name">{l.name}</div>
               <div className="pos3-line-sub">
-                {nested ? (l.serial ? <>IMEI <span className="m">{l.serial}</span></> : "") :
-                  [l.variant, l.serial ? `IMEI ${maskImei(l.serial)}` : null].filter(Boolean).join(" · ")}
+                {[l.variant, l.serial ? `IMEI ${maskImei(l.serial)}` : null].filter(Boolean).join(" · ")}
               </div>
             </div>
             <button type="button" className="pos3-bin" aria-label={`Remove ${l.name}${l.serial ? ` ${l.serial}` : ""}`}
@@ -387,6 +413,11 @@ export function PosTill(props: {
               onClick={() => setEditing(isOpen ? null : l.key)}>
               {noPrice ? "Set price" : "Edit"} <ChevronDown size={13} aria-hidden="true" />
             </button>
+            {l.tracksSerial && (
+              <button type="button" className="pos3-tool" onClick={() => another(l.itemId)}>
+                <Plus size={13} aria-hidden="true" /> Add another
+              </button>
+            )}
           </div>
           {l.focReasonId && (
             <select className="pos3-reason" aria-label="Why it is free" value={l.focReasonId}
@@ -418,11 +449,73 @@ export function PosTill(props: {
     );
   };
 
+  /** One IMEI inside a grouped entry: its own price, free flag and removal. */
+  const renderUnitRow = (l: Line, n: number) => {
+    const charged = chargedOf(l);
+    const isOpen = editing === l.key;
+    const noPrice = !l.focReasonId && !(l.unitPrice > 0);
+    return (
+      <div className={`pos3-urow${l.focReasonId ? " free" : ""}`} key={l.key}>
+        <div className="pos3-urow-main">
+          <span className="pos3-urow-n">{n}</span>
+          <span className="m pos3-urow-imei">{l.serial}</span>
+          <span className="pos3-urow-price">
+            {l.focReasonId ? <strong className="pos3-free">FREE</strong>
+              : noPrice ? <strong className="pos3-nopr">No price</strong>
+              : <>{l.discountPct > 0 && <s>{money(l.unitPrice)}</s>} {money(charged)}</>}
+          </span>
+          <button type="button" className={`pos3-icon${l.focReasonId ? " on" : ""}`} aria-pressed={!!l.focReasonId}
+            aria-label={l.focReasonId ? `Make ${l.serial} chargeable` : `Give ${l.serial} free`} title={l.focReasonId ? "Free — tap to charge" : "Make free"}
+            disabled={props.focReasons.length === 0}
+            onClick={() => setLine(l.key, { focReasonId: l.focReasonId ? null : defaultFoc })}><Gift size={14} /></button>
+          <button type="button" className="pos3-icon" aria-expanded={isOpen} aria-label={`Edit price of ${l.serial}`} title="Edit"
+            onClick={() => setEditing(isOpen ? null : l.key)}><ChevronDown size={14} className={isOpen ? "up" : ""} /></button>
+          <button type="button" className="pos3-icon bad" aria-label={`Remove ${l.serial}`} title="Remove this IMEI"
+            onClick={() => removeLine(l.key)}><X size={14} /></button>
+        </div>
+        {l.focReasonId && (
+          <select className="pos3-reason" aria-label="Why it is free" value={l.focReasonId}
+            onChange={(e) => setLine(l.key, { focReasonId: e.target.value })}>
+            {props.focReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        )}
+        {isOpen && (
+          <div className="pos3-edit">
+            <label>Price<input type="number" min={0} value={l.unitPrice} autoFocus={noPrice}
+              onChange={(e) => setLine(l.key, { unitPrice: Number(e.target.value) || 0 })} /></label>
+            {!l.focReasonId && (
+              <label>Discount %<input type="number" min={0} max={props.discountCeiling ?? 100} value={l.discountPct}
+                onChange={(e) => setLine(l.key, { discountPct: Number(e.target.value) || 0 })} /></label>
+            )}
+            <label>Tax<select value={l.taxCodeId} onChange={(e) => setLine(l.key, { taxCodeId: e.target.value })}>
+              {props.taxCodes.map((x) => <option key={x.id} value={x.id}>{x.code}</option>)}
+            </select></label>
+            <label>Warranty (mo)<input type="number" min={0} value={l.warrantyMonths ?? ""}
+              onChange={(e) => setLine(l.key, { warrantyMonths: e.target.value === "" ? null : Number(e.target.value) })} /></label>
+            {props.showCost && l.unitCost != null && (
+              <span className="subline pos3-edit-wide">Margin {money(charged - l.unitCost)}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const quick = useMemo(() => quickAmounts(tend.dueCents), [tend.dueCents]);
 
   return (
     <div className="pos3-page">
       {done && <PosSaleDone view={done.view} logoUrl={done.logoUrl} onClose={closeDone} />}
+      {picking && (
+        <PosUnitPicker item={picking.item} units={picking.units} showCost={props.showCost}
+          onAdd={(picked) => addUnits(picked, picking.item)}
+          onClose={() => { setPicking(null); scan.current?.focus(); }} />
+      )}
+      {added && (
+        <PosAddedConfirm item={added.item} imeis={added.imeis} cartUnits={totals.units}
+          onContinue={() => { setAdded(null); scan.current?.focus(); }}
+          onViewCart={() => { setAdded(null); document.getElementById("pos-cart")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} />
+      )}
 
       <div className="pos3-top">
         <div className="page-head hero">
@@ -494,24 +587,6 @@ export function PosTill(props: {
             </div>
           </div>
 
-          {picking && (
-            <div className="pos3-units" role="group" aria-label="Choose the exact unit">
-              <div className="pos3-units-head">
-                <strong>Which {picking.item.model}{picking.item.variant ? ` · ${picking.item.variant}` : ""}?</strong>
-                <button type="button" className="dt-step" aria-label="Close" onClick={() => setPicking(null)}><X size={14} /></button>
-              </div>
-              {picking.units.length === 0 && <p className="page-sub">None left on the shelf here.</p>}
-              <div className="pos3-unit-list">
-                {picking.units.map((u) => (
-                  <button type="button" key={u.serial_id} className="pos3-unit" onClick={() => addUnit(u, picking.item)}>
-                    <span className="m">{u.imei}</span>
-                    {props.showCost && <span className="subline">cost {money(u.unit_cost)}</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className={`pos3-work${filtersOpen ? " with-filters" : ""}`}>
             {filtersOpen && (
               <div id="pos3-filters" className="pos3-filter-col">
@@ -536,14 +611,16 @@ export function PosTill(props: {
                       </span>
                       <div className="pos3-info">
                         <h3 className="pos3-name">{i.model}</h3>
-                        <p className="pos3-sub">{i.variant ?? i.brand ?? i.code}</p>
-                        {i.price != null && i.price > 0
-                          ? <p className="pos3-price">{money(i.price)} <small>MMK</small></p>
-                          : <p className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> No price set</p>}
-                        <span className={`pos3-stock ${st}`}>{st === "out" ? "Out of stock" : `${i.on_hand} left`}</span>
+                        {variantLine(i) && <p className="pos3-sub">{variantLine(i)}</p>}
+                        <div className="pos3-meta">
+                          {i.price != null && i.price > 0
+                            ? <p className="pos3-price">{money(i.price)} <small>MMK</small></p>
+                            : <p className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> No price set</p>}
+                          <span className={`pos3-stock ${st}`}>{st === "out" ? "Out of stock" : `${i.on_hand} left`}</span>
+                        </div>
                       </div>
                       <button type="button" className="pos3-add" onClick={() => addItem(i)} disabled={st === "out"}
-                        aria-label={`Add ${i.model}${i.variant ? ` ${i.variant}` : ""}`}>
+                        aria-label={`${i.tracks_serial ? "Select unit of" : "Add"} ${i.model}${variantLine(i) ? ` ${variantLine(i)}` : ""}`}>
                         <ShoppingCart size={15} aria-hidden="true" /> {st === "out" ? "Unavailable" : i.tracks_serial ? "Select unit" : "Add"}
                       </button>
                     </article>
@@ -606,10 +683,10 @@ export function PosTill(props: {
                       {first.photo ? <img src={first.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}
                     </span>
                     <span className="pos3-group-text">
-                      <span className="pos3-line-name">{first.name} <span className="pos3-x2">× {qty}</span></span>
+                      <span className="pos3-line-name">{first.name}</span>
+                      {first.variant && <span className="pos3-line-sub">{first.variant}</span>}
                       <span className="pos3-line-sub">
-                        {[first.variant, first.focReasonId ? "Complimentary" : null].filter(Boolean).join(" · ")}
-                        {" · "}{isOpen ? "Hide" : "Show"} IMEIs
+                        {qty} unit{qty === 1 ? "" : "s"}{first.focReasonId ? " · Complimentary" : ""} · {isOpen ? "Hide" : "Show"} IMEIs
                       </span>
                     </span>
                     <span className="pos3-group-total">
@@ -618,7 +695,15 @@ export function PosTill(props: {
                       <ChevronDown size={15} aria-hidden="true" className={isOpen ? "up" : ""} />
                     </span>
                   </button>
-                  {isOpen && <div className="pos3-group-body">{g.lines.map((l) => renderLine(l, true))}</div>}
+                  {isOpen && (
+                    <div className="pos3-group-body">
+                      <div className="pos3-group-sum"><span>{qty} unit{qty === 1 ? "" : "s"} ({qty} IMEI{qty === 1 ? "" : "s"})</span><strong>{first.focReasonId ? "FREE" : money(total)}</strong></div>
+                      {g.lines.map((l, n) => renderUnitRow(l, n + 1))}
+                      <button type="button" className="pos3-another" onClick={() => another(first.itemId)}>
+                        <Plus size={14} aria-hidden="true" /> Add another IMEI
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
