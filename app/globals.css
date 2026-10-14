@@ -5379,7 +5379,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 /* Phone and tablet: the global search goes back above the page (it floats beside
    the title only where there is room), and touch targets reach 44 px. */
 @media (max-width: 900px) {
-  .main:has(.pos3-page) > .topbar { position: static; width: auto; margin: 0 0 var(--s2); }
+  .main.main:has(.pos3-page .page-head.hero) > .topbar { position: static; width: auto; margin: 0 0 var(--s2); }
   .pos3-top .page-head h1 { white-space: normal; }
 }
 @media (max-width: 1100px), (pointer: coarse) {
