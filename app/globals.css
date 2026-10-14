@@ -5397,9 +5397,9 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-group-body { margin: 0 0 8px 0; padding: 4px 10px 8px; border-radius: 10px; background: var(--ground); }
 .pos3-group-sum { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0 4px; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .pos3-urow { border-top: 1px solid var(--line-soft); padding: 4px 0; }
-.pos3-urow-main { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 4px 6px; }
+.pos3-urow-main { display: grid; grid-template-columns: 18px minmax(0, 1fr) repeat(4, auto); align-items: center; gap: 4px 6px; }
 .pos3-urow-n { color: var(--muted); font-size: 0.75rem; text-align: right; }
-.pos3-urow-imei { font-size: 0.8125rem; overflow: hidden; text-overflow: ellipsis; }
+.pos3-urow-imei { font-size: 0.8125rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pos3-urow-price { font-size: 0.8125rem; font-variant-numeric: tabular-nums; text-align: right; }
 .pos3-urow-price s { color: var(--muted); font-size: 0.6875rem; }
 .pos3-icon {

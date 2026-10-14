@@ -450,20 +450,24 @@ export function PosTill(props: {
   };
 
   /** One IMEI inside a grouped entry: its own price, free flag and removal. */
-  const renderUnitRow = (l: Line, n: number) => {
+  const renderUnitRow = (l: Line, n: number, base: Line) => {
     const charged = chargedOf(l);
     const isOpen = editing === l.key;
     const noPrice = !l.focReasonId && !(l.unitPrice > 0);
+    // The price is said only where it differs from the entry's own, so the IMEI keeps its room.
+    const oddPrice = !!l.focReasonId || noPrice || l.discountPct > 0 || l.unitPrice !== base.unitPrice;
     return (
       <div className={`pos3-urow${l.focReasonId ? " free" : ""}`} key={l.key}>
         <div className="pos3-urow-main">
           <span className="pos3-urow-n">{n}</span>
           <span className="m pos3-urow-imei">{l.serial}</span>
-          <span className="pos3-urow-price">
-            {l.focReasonId ? <strong className="pos3-free">FREE</strong>
-              : noPrice ? <strong className="pos3-nopr">No price</strong>
-              : <>{l.discountPct > 0 && <s>{money(l.unitPrice)}</s>} {money(charged)}</>}
-          </span>
+          {oddPrice && (
+            <span className="pos3-urow-price">
+              {l.focReasonId ? <strong className="pos3-free">FREE</strong>
+                : noPrice ? <strong className="pos3-nopr">No price</strong>
+                : <>{l.discountPct > 0 && <s>{money(l.unitPrice)}</s>} {money(charged)}</>}
+            </span>
+          )}
           <button type="button" className={`pos3-icon${l.focReasonId ? " on" : ""}`} aria-pressed={!!l.focReasonId}
             aria-label={l.focReasonId ? `Make ${l.serial} chargeable` : `Give ${l.serial} free`} title={l.focReasonId ? "Free — tap to charge" : "Make free"}
             disabled={props.focReasons.length === 0}
@@ -698,7 +702,7 @@ export function PosTill(props: {
                   {isOpen && (
                     <div className="pos3-group-body">
                       <div className="pos3-group-sum"><span>{qty} unit{qty === 1 ? "" : "s"} ({qty} IMEI{qty === 1 ? "" : "s"})</span><strong>{first.focReasonId ? "FREE" : money(total)}</strong></div>
-                      {g.lines.map((l, n) => renderUnitRow(l, n + 1))}
+                      {g.lines.map((l, n) => renderUnitRow(l, n + 1, first))}
                       <button type="button" className="pos3-another" onClick={() => another(first.itemId)}>
                         <Plus size={14} aria-hidden="true" /> Add another IMEI
                       </button>
