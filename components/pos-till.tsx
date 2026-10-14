@@ -13,6 +13,7 @@ import { PosFilters } from "./pos-filters";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { priceLines, type VolumeBand } from "@/lib/discount";
+import { postedAmount, tender, fmtCents, exactText, quickAmounts } from "@/lib/pos-cash";
 import {
   computeFacets, filterItems, reconcile, emptySelection, clearFilters, cardState, SHELF_LIMIT,
   type Selection,
@@ -254,7 +255,8 @@ export function PosTill(props: {
   }, [lines]);
 
   const payments = (): PosSale["payments"] => {
-    const total = Math.round(totals.total * 100) / 100;
+    // The sale's own total, whatever cash was handed over: change is not booked.
+    const total = postedAmount(totals.total);
     switch (mode) {
       case "CASH": return [{ accountId: cashAcct?.id ?? "", amount: total }];
       case "QR": case "CARD": return [{ accountId: bankId, amount: total }];
@@ -265,8 +267,8 @@ export function PosTill(props: {
 
   const customerName = props.customers.find((c) => c.id === partnerId)?.name ?? "Walk-in customer";
   const splitPaid = split.reduce((s, p) => s + (Number(p.amount) || 0), 0);
-  const receivedNum = Number(received) || 0;
-  const change = mode === "CASH" && receivedNum > totals.total + 0.005 ? receivedNum - totals.total : 0;
+  const tend = useMemo(() => tender(totals.total, received), [totals.total, received]);
+  const change = mode === "CASH" ? tend.changeCents : 0;
 
   // What stops Complete sale, said in words — each is a check the server also
   // makes; the till says it first.
@@ -279,11 +281,10 @@ export function PosTill(props: {
     }
     if (mode === "CREDIT" && !partnerId) out.push("Credit needs a customer — choose one above.");
     if (mode === "SPLIT" && !partnerId && splitPaid < totals.total - 0.005) out.push("A walk-in customer pays in full.");
-    if (mode === "CASH" && receivedNum > 0 && receivedNum < totals.total - 0.005) {
-      out.push(`Cash received is ${money(totals.total - receivedNum)} short.`);
-    }
+    if (mode === "CASH" && tend.invalid) out.push("Enter the cash received as an amount, zero or more.");
+    else if (mode === "CASH" && tend.shortCents > 0) out.push(`Cash received is ${fmtCents(tend.shortCents)} short.`);
     return out;
-  }, [lines, mode, partnerId, splitPaid, receivedNum, totals.total]);
+  }, [lines, mode, partnerId, splitPaid, tend, totals.total]);
 
   const post = () => {
     if (posting.current || issues.length > 0 || lines.length === 0) return;
@@ -417,12 +418,7 @@ export function PosTill(props: {
     );
   };
 
-  const roundUps = useMemo(() => {
-    const t = Math.ceil(totals.total);
-    if (t <= 0) return [] as number[];
-    const ups = [10_000, 50_000, 100_000].map((s) => Math.ceil(t / s) * s);
-    return [...new Set([t, ...ups])].slice(0, 4);
-  }, [totals.total]);
+  const quick = useMemo(() => quickAmounts(tend.dueCents), [tend.dueCents]);
 
   return (
     <div className="pos3-page">
@@ -657,19 +653,19 @@ export function PosTill(props: {
               <label htmlFor="pos-received">Cash received</label>
               <div className="pos3-money">
                 <input id="pos-received" type="number" inputMode="decimal" min={0} value={received}
-                  placeholder={totals.total > 0 ? String(Math.ceil(totals.total)) : "0"}
+                  placeholder={tend.dueCents > 0 ? exactText(tend.dueCents) : "0"}
                   onChange={(e) => setReceived(e.target.value)} />
                 <span>MMK</span>
               </div>
-              {roundUps.length > 0 && (
+              {quick.length > 0 && (
                 <div className="pos3-chips" role="group" aria-label="Quick amounts">
-                  {roundUps.map((n, i) => (
-                    <button type="button" key={n} onClick={() => setReceived(String(n))}>{i === 0 ? "Exact" : money(n)}</button>
+                  {quick.map((c, i) => (
+                    <button type="button" key={c} onClick={() => setReceived(exactText(c))}>{i === 0 ? "Exact" : fmtCents(c)}</button>
                   ))}
                 </div>
               )}
               {change > 0 && (
-                <div className="pos3-change" role="status"><span>Change to return</span><strong>{money(change)} MMK</strong></div>
+                <div className="pos3-change" role="status"><span>Change to return</span><strong>{fmtCents(change)} MMK</strong></div>
               )}
             </div>
           )}
