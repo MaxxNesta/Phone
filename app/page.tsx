@@ -141,7 +141,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             {d.topModels.slice(0, 5).map((m: any) => (
               <div className="listrow" key={m.model}>
                 <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
-                <span className="grow"><div className="prod-name">{m.model}</div><div className="prod-sub">{m.sold} sold</div></span>
+                <span className="grow prod-text"><div className="prod-name clamp2" title={m.model}>{m.model}</div><div className="prod-sub">{m.sold} sold</div></span>
                 <span className="num">{compact(m.revenue)}</span>
               </div>
             ))}

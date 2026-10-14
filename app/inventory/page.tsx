@@ -280,7 +280,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <tbody>
               {low.slice(0, 8).map((r: any) => (
                 <tr key={r.id}>
-                  <td><div className="prod-name">{r.model}</div><div className="prod-sub">{r.variant ?? ""}</div></td>
+                  <td className="prod-text"><div className="prod-name clamp2" title={r.model}>{r.model}</div><div className="prod-sub ellip" title={r.variant ?? ""}>{r.variant ?? ""}</div></td>
                   <td className="num low">{r.qty}</td>
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
                 </tr>

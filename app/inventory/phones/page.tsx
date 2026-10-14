@@ -117,7 +117,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
                 <td>
                   <span className="prod">
                     <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
-                    <span className="prod-name">{u.model_name}</span>
+                    <span className="prod-text"><span className="prod-name clamp2" title={u.model_name}>{u.model_name}</span></span>
                   </span>
                 </td>
                 {multiBrand && <td>{u.brand_name ?? "—"}</td>}
