@@ -5376,6 +5376,19 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   .pos3-bar-right { width: 100%; justify-content: space-between; }
   .pos3-branch { width: 100%; }
 }
+/* Phone and tablet: the global search goes back above the page (it floats beside
+   the title only where there is room), and touch targets reach 44 px. */
+@media (max-width: 900px) {
+  .main:has(.pos3-page) > .topbar { position: static; width: auto; margin: 0 0 var(--s2); }
+  .pos3-top .page-head h1 { white-space: normal; }
+}
+@media (max-width: 1100px), (pointer: coarse) {
+  .pos3-add, .pos3-pill, .pos3-filter-btn, .pos3-clear { min-height: 44px; height: 44px; }
+  .pos3-stepper button, .pos3-bin, .pos3-x { width: 36px; height: 36px; min-height: 36px; }
+  .pos3-tool { min-height: 36px; height: 36px; }
+  .pos3-cart .paymode { min-height: 44px; }
+  .pos3-chips button { min-height: 40px; height: 40px; }
+}
 @media (prefers-reduced-motion: reduce) { .pos3-group-total svg, .pos3-card { transition: none; } }
 
 .voucher-scan { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
