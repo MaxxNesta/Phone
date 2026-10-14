@@ -12,6 +12,7 @@ import {
   setReceiptTemplateActive, saveCompanyContact, uploadCompanyLogo, removeCompanyLogo, previewSaleData,
 } from "@/lib/receipt-template-actions";
 import { money, shortDate } from "@/lib/format";
+import { HelpHint } from "./help-hint";
 import { ReceiptSlip } from "./receipt-slip";
 import { ReceiptPrintHost } from "./receipt-print";
 
@@ -62,10 +63,10 @@ export function ReceiptTemplateEditor({ templates, isAdmin, myBranchId, branches
     <div className="rt">
       <div className="page-head">
         <h1>Receipt Templates</h1>
-        <p className="page-sub">
+        <HelpHint label="About receipt templates">
           What a counter sale’s receipt shows and how it prints. A branch’s default overrides the company’s.
           Changes stay a draft until you publish them; receipts already printed keep the version they were printed with.
-        </p>
+        </HelpHint>
       </div>
 
       <div className="rt-layout">
