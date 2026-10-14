@@ -5267,7 +5267,9 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 }
 .pos3-clear.sure { background: var(--bad); color: #fff; }
 .pos3-customer { height: 40px; min-height: 40px; font-size: 0.875rem; }
-.pos3-lines { display: flex; flex-direction: column; min-height: 72px; }
+.pos3-lines { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 96px; overflow-y: auto; overscroll-behavior: contain; }
+/* Everything but the line list keeps its size: the lines scroll, the slip, payment and Complete sale stay in view. */
+.pos3-cart > :not(.pos3-lines) { flex: none; }
 .pos3-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 0; color: var(--muted); font-size: 0.8125rem; }
 .pos3-line { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .pos3-line:last-child { border-bottom: 0; }
