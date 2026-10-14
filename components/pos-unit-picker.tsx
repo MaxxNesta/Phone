@@ -38,8 +38,8 @@ const Photo = ({ item, size }: { item: SellableItem; size: number }) => (
  * shelf with checkboxes. The caller hands in only units that are in stock here
  * and not already on the sale; nothing here can pick any other.
  */
-export function PosUnitPicker({ item, units, showCost, onAdd, onClose }: {
-  item: SellableItem; units: ScannedUnit[]; showCost: boolean;
+export function PosUnitPicker({ item, units, onAdd, onClose }: {
+  item: SellableItem; units: ScannedUnit[];
   onAdd: (picked: ScannedUnit[]) => void; onClose: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
@@ -116,7 +116,6 @@ export function PosUnitPicker({ item, units, showCost, onAdd, onClose }: {
                   <span className="m">{u.imei}</span>
                   <span className="pu-row-sub">Available · {u.location_name} · {item.code}</span>
                 </span>
-                {showCost && <span className="pu-cost">cost {money(u.unit_cost)}</span>}
               </label>
             </li>
           ))}

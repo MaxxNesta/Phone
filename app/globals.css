@@ -5111,11 +5111,11 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-top { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
 .pos3-top .page-head { flex: 1 1 340px; min-width: 0; }
 .pos3-top .page-head h1 { white-space: nowrap; }
-/* The global search floats at the top right of the page; the branch sits just left of it. */
+/* The global search floats at the top right of the page. */
 @media (min-width: 901px) { .pos3-top { padding-right: min(432px, 46%); } }
 
 .pos3-branch {
-  position: relative; display: flex; align-items: center; gap: 10px; min-width: 250px; padding: 9px 14px;
+  position: relative; display: flex; align-items: center; gap: 10px; flex: none; width: 240px; height: 52px; padding: 0 14px;
   border-radius: 14px; background: var(--surface); color: var(--ink);
   border: 1px solid var(--line-soft); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
 }
@@ -5127,6 +5127,9 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 
 .pos3 { display: grid; grid-template-columns: minmax(0, 1fr) clamp(340px, 31%, 430px); gap: 16px; align-items: start; }
 .pos3-shelf { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* The scan bar and the branch it sells from, side by side. */
+.pos3-searchrow { display: flex; align-items: stretch; gap: 10px; }
+.pos3-searchrow .pos3-search { flex: 1 1 0; min-width: 0; }
 
 /* Search: the biggest thing on the shelf, because a scanner types into it. */
 .pos3-search {
@@ -5378,6 +5381,8 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   .pos3-filter-col { position: static; max-height: none; }
   .pos3-grid { grid-template-columns: 1fr; }
   .pos3-bar-right { width: 100%; justify-content: space-between; }
+  .pos3-searchrow { flex-direction: column; }
+  .pos3-searchrow .pos3-search { flex: none; }
   .pos3-branch { width: 100%; }
 }
 /* Phone and tablet: the global search goes back above the page (it floats beside
@@ -5471,7 +5476,6 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pu-row-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .pu-row-text .m { font-size: 0.9375rem; font-weight: 500; }
 .pu-row-sub { font-size: 0.75rem; color: var(--muted); }
-.pu-cost { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
 .pu-none { padding: 28px 0; text-align: center; color: var(--muted); font-size: 0.875rem; }
 .pu-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px 16px; border-top: 1px solid var(--line-soft); }
 .pu-count { font-size: 0.875rem; color: var(--ink-soft); }

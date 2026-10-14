@@ -511,7 +511,7 @@ export function PosTill(props: {
     <div className="pos3-page">
       {done && <PosSaleDone view={done.view} logoUrl={done.logoUrl} onClose={closeDone} />}
       {picking && (
-        <PosUnitPicker item={picking.item} units={picking.units} showCost={props.showCost}
+        <PosUnitPicker item={picking.item} units={picking.units}
           onAdd={(picked) => addUnits(picked, picking.item)}
           onClose={() => { setPicking(null); scan.current?.focus(); }} />
       )}
@@ -526,26 +526,6 @@ export function PosTill(props: {
           <h1>POS / Counter Sale</h1>
           <p className="page-sub">Fast checkout · exact IMEI tracking · receipt-ready</p>
         </div>
-        {/* Where the sale is made: chosen when there are several, shown when
-            a cashier has only their own branch, so the till always says where. */}
-        <label className="pos3-branch">
-          <Store size={20} aria-hidden="true" />
-          <span className="pos3-branch-text">
-            <b>{here?.branch ?? here?.name}</b>
-            <small>{here?.branch ? here.name : "Selling from"}</small>
-          </span>
-          {props.locations.length > 1 && (
-            <>
-              <ChevronDown size={16} aria-hidden="true" />
-              <select aria-label="Selling from" value={locationId}
-                onChange={(e) => { setLocationId(e.target.value); setPicking(null); }}>
-                {props.locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.branch ? `${l.branch} · ${l.name}` : l.name}</option>
-                ))}
-              </select>
-            </>
-          )}
-        </label>
       </div>
 
       <div className="pos3">
@@ -557,18 +537,40 @@ export function PosTill(props: {
             </div>
           )}
 
-          <form className="pos3-search" onSubmit={(e) => { e.preventDefault(); search(q); }} role="search">
-            <ScanLine size={22} aria-hidden="true" />
-            <input ref={scan} autoFocus value={q} onChange={(e) => typed(e.target.value)} autoComplete="off"
-              inputMode="search" enterKeyHint="search"
-              placeholder="Scan IMEI or barcode, or search product (e.g. iPhone 16, 256GB)…"
-              aria-label="Search product, SKU, barcode or IMEI" />
-            {q && (
-              <button type="button" className="pos3-x" aria-label="Clear search" onClick={() => { typed(""); scan.current?.focus(); }}>
-                <X size={16} />
-              </button>
+          <div className="pos3-searchrow">
+            <form className="pos3-search" onSubmit={(e) => { e.preventDefault(); search(q); }} role="search">
+              <ScanLine size={22} aria-hidden="true" />
+              <input ref={scan} autoFocus value={q} onChange={(e) => typed(e.target.value)} autoComplete="off"
+                inputMode="search" enterKeyHint="search"
+                placeholder="Scan IMEI or barcode, or search product…"
+                aria-label="Search product, SKU, barcode or IMEI" />
+              {q && (
+                <button type="button" className="pos3-x" aria-label="Clear search" onClick={() => { typed(""); scan.current?.focus(); }}>
+                  <X size={16} />
+                </button>
+              )}
+            </form>
+          {/* Where the sale is made: chosen when there are several, shown when
+              a cashier has only their own branch, so the till always says where. */}
+          <label className="pos3-branch">
+            <Store size={20} aria-hidden="true" />
+            <span className="pos3-branch-text">
+              <b>{here?.branch ?? here?.name}</b>
+              <small>{here?.branch ? here.name : "Selling from"}</small>
+            </span>
+            {props.locations.length > 1 && (
+              <>
+                <ChevronDown size={16} aria-hidden="true" />
+                <select aria-label="Selling from" value={locationId}
+                  onChange={(e) => { setLocationId(e.target.value); setPicking(null); }}>
+                  {props.locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.branch ? `${l.branch} · ${l.name}` : l.name}</option>
+                  ))}
+                </select>
+              </>
             )}
-          </form>
+          </label>
+          </div>
 
           <div className="pos3-bar">
             <div className="pos3-pills" role="group" aria-label="Category">
