@@ -245,8 +245,9 @@ try {
   check("multiple IMEIs on one line both print", hs.includes(sn1[1]) && hs.includes(sn1[2]));
   check("line discount shown and total is after discount", /Discount 10%/.test(hs) && Math.abs(vs.data.total - 8_045_000) < 0.01, String(vs.data.total));
   check("subtotal before discount", Math.abs(vs.data.subtotal - 8_050_000) < 0.01 && Math.abs(vs.data.discount - 5_000) < 0.01);
-  check("long product names wrap, not overflow (overflow-wrap set on .rc)",
-    /\.rc\s*\{[^}]*overflow-wrap:\s*anywhere/.test(readFileSync(join(root, "app/globals.css"), "utf8")));
+  check("long product names wrap, not overflow (overflow-wrap set on .rc), and a number never breaks mid-way",
+    /\.rc\s*\{[^}]*overflow-wrap:\s*anywhere/.test(readFileSync(join(root, "app/globals.css"), "utf8"))
+    && /\.rc-totals dd, \.rc-amt[^}]*white-space:\s*nowrap/.test(readFileSync(join(root, "app/globals.css"), "utf8")));
 
   const credit = await sell({ lines: [{ itemId: cable, qty: 1, unitPrice: 30_000 }] });
   const vc = await R.receiptView(co.id, credit.id, null, { bind: true });

@@ -202,9 +202,16 @@ export async function receiptView(companyId: string, id: string, locs: string[] 
          where v.template_id = ${pin.template_id} and v.version = ${pin.template_version}`
     : [];
   const paper = (v?.paper as Paper) ?? "80";
+  // The logo is the company's current image, not a copy kept per sale: a
+  // receipt printed with one still reprints with it, but one whose logo has
+  // since been removed reprints without, rather than asking for a missing file.
+  const pinned = pin.identity as ReceiptIdentity;
+  const [now] = pinned.hasLogo
+    ? await sql`select logo is not null as has from company where id = ${companyId}`
+    : [];
   return {
     data, paper, config: sanitizeConfig(v?.config ?? defaultConfig(paper), paper),
-    identity: pin.identity as ReceiptIdentity,
+    identity: { ...pinned, hasLogo: pinned.hasLogo && Boolean(now?.has) },
     template: v ? { id: pin.template_id, name: v.name, version: Number(pin.template_version) } : null,
   };
 }

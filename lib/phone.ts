@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { sql } from "./db";
 import { getBrandsInUse } from "./queries";
+import { SHELF_LIMIT } from "./pos-facets";
 
 // Read side of phone retail: what the POS searches, the serial stock views,
 // warranty lookup, the phone reports and the dashboard figures. Everything
@@ -110,8 +111,11 @@ async function sellable(companyId: string, locationId: string, term: string | nu
      order by (i.barcode = ${term}) desc nulls last,
               fn_qty_on_hand(${companyId}, i.id, ${locationId}) > 0 desc,
               coalesce(p.name, i.name), i.name
-     limit 60`;
+     limit ${term ? SEARCH_LIMIT : SHELF_LIMIT}`;
 }
+
+/** A typed search is narrower than the shelf, and stays short. */
+const SEARCH_LIMIT = 120;
 
 /** The units of one variant on the shelf here — what the cashier picks from. */
 export async function unitsOnShelf(companyId: string, itemId: string, locationId: string) {

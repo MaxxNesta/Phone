@@ -33,10 +33,6 @@ export default async function PosPage() {
 
   return (
     <>
-      <div className="page-head hero">
-        <h1>POS / Counter Sale</h1>
-        <p className="page-sub">Fast checkout · exact IMEI tracking · receipt-ready</p>
-      </div>
       <PosTill
         locations={(await onlyMyLocations(locations as unknown as { id: string }[])) as never}
         customers={customers as never}
