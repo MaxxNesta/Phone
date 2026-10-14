@@ -118,6 +118,13 @@ async function setup() {
       paymentType: "CASH", reference: `POS:rtlive${stamp}${key}`, cashIn: 2_500_000, cashAccountId: cash.id,
       lines: [{ itemId: item.id, qty: 1, unitPrice: 2_500_000, serials: [sn[0]] }] });
     sold[key] = { id: s.id, docNo: s.docNo, imei: sn[0], spare: sn.slice(1) };
+    if (key === "b2") {
+      // A sale nobody has opened the receipt of yet: its first view pins it.
+      const u = await P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: b.wh, docDate: today, dueDate: today,
+        paymentType: "CASH", reference: `POS:rtlive${stamp}${key}u`, cashIn: 2_500_000, cashAccountId: cash.id,
+        lines: [{ itemId: item.id, qty: 1, unitPrice: 2_500_000, serials: [sn[1]] }] });
+      sold.b2u = { id: u.id, docNo: u.docNo, imei: sn[1] };
+    }
   }
   state.sales = sold; state.itemId = item.id;
   writeFileSync(STATE, JSON.stringify(state, null, 2));
@@ -160,7 +167,7 @@ async function act(st, who, name, args, path = "/settings/receipt-templates") {
 async function upload(st, who, file, name = "logo.png", type = "image/png", path = "/settings/receipt-templates") {
   const id = await actionId("uploadCompanyLogo", st);
   const fd = new FormData();
-  fd.append("1_logo", new Blob([file], { type }), name);
+  fd.append("_1_logo", new Blob([file], { type }), name);
   fd.append("0", '[null,"$K1"]');
   const res = await fetch(BASE + path, { method: "POST", redirect: "manual",
     headers: { "Next-Action": id, Accept: "text/x-component", ...cookie(st.tokens[who]) }, body: fd });
@@ -359,14 +366,22 @@ async function api() {
   const gotJ = await logoGet("admin");
   check("a valid JPEG is accepted and served as image/jpeg", j.ok && gotJ.headers.get("content-type") === "image/jpeg");
   await upload(st, "admin", good1);
-  const withLogo = await rc("admin", "b2");
-  check("the receipt page draws the logo from the signed-in route", /<img class="rc-logo"[^>]*src="\/api\/company-logo"/.test(withLogo.html), "");
+  const printedBefore = await rc("admin", "b2");
+  check("a receipt printed before the logo existed stays as printed (no logo appears on a reprint)", !/class="rc-logo"/.test(printedBefore.html));
+  const firstOpen = await page("admin", `/pos/receipt/${st.sales.b2u.id}`);
+  check("a sale first printed after the upload draws the logo from the signed-in route",
+    /<img class="rc-logo"[^>]*src="\/api\/company-logo"/.test(firstOpen.html) || /<img[^>]*class="rc-logo"[^>]*src="\/api\/company-logo"/.test(firstOpen.html), "");
   const pol = Buffer.concat([png(), Buffer.from('<svg onload="alert(1)"></svg>')]);
   const polR = await upload(st, "admin", pol);
   const polG = await logoGet("admin");
   check("an image with markup appended is still served only as an image, never inline markup",
     polR.ok ? polG.headers.get("content-type") === "image/png" && polG.headers.get("x-content-type-options") === "nosniff" : true, polR.error ?? "");
   await upload(st, "admin", good1);
+  await act(st, "admin", "removeCompanyLogo", []);
+  const afterRemoval = await page("admin", `/pos/receipt/${st.sales.b2u.id}`);
+  check("after the logo is removed, a receipt printed with it reprints without a broken image", !/class="rc-logo"/.test(afterRemoval.html));
+  const gone = await logoGet("admin");
+  check("and the logo route returns 404 again", gone.status === 404, gone.status);
 
   const sw = await sql`select count(*)::int n from document where company_id = ${st.companyId}`;
   check("no document was posted by any of these calls beyond the setup's own", sw[0].n >= 2);
