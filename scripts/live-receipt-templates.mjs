@@ -415,14 +415,33 @@ async function cleanup() {
   await sql`update company set address = ${st.orig.address}, phone = ${st.orig.phone}, logo = null, logo_mime = null where id = ${st.companyId}`;
   await sql`update location set address = null, phone = null where id = ${st.branches.b2.id}`;
   if (st.otherCompanyId) {
-    await sql`delete from user_session where user_id in (select id from app_user where company_id = ${st.otherCompanyId})`;
-    await sql`delete from receipt_template where company_id = ${st.otherCompanyId}`;
-    await sql`delete from app_user where company_id = ${st.otherCompanyId}`.catch(async () =>
-      sql`update app_user set is_active = false where company_id = ${st.otherCompanyId}`);
-    await sql`delete from company where id = ${st.otherCompanyId}`.catch(() => {});
+    const [first] = await sql`select id from company order by created_at limit 1`;
+    if (first.id === st.otherCompanyId) throw new Error("refusing to delete the first company");
+    // A new company is seeded with groups, accounts and the like, so deleting it
+    // takes its dependants first. Tables that refuse are retried after the others.
+    const tables = (await sql`
+      select distinct tc.table_name as t from information_schema.table_constraints tc
+        join information_schema.constraint_column_usage ccu on ccu.constraint_name = tc.constraint_name
+        join information_schema.columns c on c.table_name = tc.table_name and c.column_name = 'company_id'
+       where tc.constraint_type = 'FOREIGN KEY' and ccu.table_name = 'company' and tc.table_schema = 'public'`).map((r) => r.t);
+    let left = tables;
+    for (let pass = 0; pass < 8 && left.length; pass++) {
+      const next = [];
+      for (const t of left) {
+        try { await sql.unsafe(`delete from "${t}" where company_id = $1`, [st.otherCompanyId]); } catch { next.push(t); }
+      }
+      left = next;
+    }
+    const gone = await sql`delete from company where id = ${st.otherCompanyId} returning id`;
+    // A throwaway company left behind is not harmless: a suite that restores the
+    // company's name renames every company, and two of the same name confuse it.
+    if (gone.length === 0 && (await sql`select 1 from company where id = ${st.otherCompanyId}`).length) {
+      throw new Error(`could not delete the test company ${st.otherCompanyId}; tables still refusing: ${left.join(", ")}`);
+    }
   }
   const left = await sql`select count(*)::int n from app_user where email like ${"rt-" + st.stamp + "-%"} and is_active`;
-  console.log(`  cleaned up. active test people left: ${left[0].n}`);
+  const companies = (await sql`select count(*)::int n from company`)[0].n;
+  console.log(`  cleaned up. active test people left: ${left[0].n}; companies: ${companies}`);
 }
 
 try {
