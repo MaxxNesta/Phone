@@ -253,7 +253,7 @@ export function SalesPivot({ facts, currency, truncated = false }: {
                 const isOpen = open.has(node.key);
                 return (
                   <tr key={node.key} className={`pv-d${Math.min(node.depth, 3)}`}>
-                    <td style={{ paddingLeft: 14 + node.depth * 22 }}>
+                    <td className="wrapcell" style={{ paddingLeft: 14 + node.depth * 22 }}>
                       {leaf ? <span className="pv-leaf" /> : (
                         <button type="button" className="pv-twisty" aria-expanded={isOpen}
                           aria-label={`${isOpen ? "Collapse" : "Expand"} ${labelOf(node.dim, node.value)}`}
@@ -302,7 +302,7 @@ export function SalesPivot({ facts, currency, truncated = false }: {
                   <tr key={i}>
                     <td>{f.date}</td>
                     <td><Link href={`/documents/${f.doc_id}`}>{f.doc_no}</Link></td>
-                    <td>{f.item}</td>
+                    <td className="wrapcell">{f.item}</td>
                     <td>{f.customer}</td>
                     <td className="r">{fmt("qty", f.qty)}</td>
                     <td className="r">{fmt("revenue", f.revenue)}</td>

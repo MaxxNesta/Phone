@@ -134,7 +134,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
               {pg.rows.map((r, i) => (
                 <tr key={`${r.doc_id}-${i}`}>
                   <td>{shortDate(r.date)}</td>
-                  <td><div className="ph-prod">{r.item}</div><div className="ph-sku">{r.code}</div></td>
+                  <td className="wrapcell"><div className="ph-prod">{r.item}</div><div className="ph-sku">{r.code}</div></td>
                   <td>{r.partner}</td>
                   <td><Link href={`/documents/${r.doc_id}`}>{r.doc_no}</Link></td>
                   <td className="r">{r.qty.toLocaleString("en-US")} {r.uom}</td>

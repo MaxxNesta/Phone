@@ -6369,3 +6369,6 @@ button.danger-solid:hover { opacity: 0.9; }
 .rt-paper-field { margin-top: 16px; }
 @media (max-width: 1100px) { .rt-body { grid-template-columns: 1fr; } .rt-preview-col { position: static; } }
 @media (max-width: 760px) { .rt-layout { grid-template-columns: 1fr; } .rt-list { position: static; } }
+
+/* Long names wrap inside the cell instead of widening the table. */
+td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; max-width: 340px; }
