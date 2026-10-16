@@ -227,7 +227,7 @@ export function PosTill(props: {
     setMessage(null);
   };
 
-  // Enter: an exact IMEI or barcode goes straight onto the sale, whatever
+  // Enter: an exact IMEI, serial, barcode or SKU goes straight onto the sale, whatever
   // filters are on. Anything else is just words, which already narrow the
   // shelf as they are typed — unless the shelf was too big to load whole.
   const search = (term: string) => start(async () => {
@@ -244,8 +244,9 @@ export function PosTill(props: {
       flash("error", `No unit found with IMEI ${t}.`);
       return;
     }
-    // A barcode naming exactly one product adds it.
-    const byBarcode = r.items.filter((i) => i.barcode && i.barcode === t);
+    // A barcode or SKU code naming exactly one product adds it.
+    const lower = t.toLowerCase();
+    const byBarcode = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === lower);
     if (byBarcode.length === 1) { await addItem(byBarcode[0]); setQ(""); return; }
     if (truncated) { setItems(r.items); searched.current = true; }
   });
