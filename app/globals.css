@@ -5196,7 +5196,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-img img { width: 100%; height: 100%; object-fit: contain; }
 .pos3-card.out .pos3-img img { opacity: 0.45; }
 .pos3-info { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.pos3-name { margin: 0; font-size: 0.875rem; font-weight: 700; line-height: 1.25; letter-spacing: -0.005em; }
+.pos3-name { margin: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.3; letter-spacing: 0; }
 /* The variant: at most two lines, whatever it holds. */
 .pos3-sub {
   margin: 0; font-size: 0.75rem; font-weight: 400; color: var(--muted); line-height: 1.3;
@@ -5214,8 +5214,8 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-stock.out { background: var(--line-soft); color: var(--ink-soft); }
 .pos3-add {
   grid-column: 1 / -1; align-self: end; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; height: 34px; min-height: 34px; border: 0; border-radius: 9px;
-  background: var(--link); color: var(--brand-fg); font-size: 0.8125rem; font-weight: 600; letter-spacing: -0.005em;
+  width: 100%; height: 36px; min-height: 36px; padding: 0 18px; border: 0; border-radius: 980px;
+  background: var(--link); color: var(--brand-fg); font-size: 0.875rem; font-weight: 500; letter-spacing: 0; line-height: 1;
   transition: filter 120ms ease-out, transform 120ms ease-out;
 }
 .pos3-add:hover:not(:disabled) { filter: brightness(0.94); }
@@ -5263,7 +5263,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   background: var(--surface); border: 1px solid var(--line-soft); box-shadow: 0 8px 24px rgb(0 0 0 / 0.05);
 }
 .pos3-cart-head { display: flex; align-items: center; gap: 10px; }
-.pos3-cart-head h2 { display: flex; align-items: center; gap: 8px; margin: 0 auto 0 0; font-size: 1.125rem; font-weight: 700; }
+.pos3-cart-head h2 { display: flex; align-items: center; gap: 8px; margin: 0 auto 0 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: 0; }
 .pos3-clear {
   min-height: 30px; height: 30px; padding: 0 14px; border: 0; border-radius: 980px; font-size: 0.8125rem; font-weight: 600;
   background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad);
@@ -5283,7 +5283,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 }
 .pos3-line-img img { width: 100%; height: 100%; object-fit: contain; }
 .pos3-line-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
-.pos3-line-name { font-size: 0.9375rem; font-weight: 700; line-height: 1.25; }
+.pos3-line-name { font-size: 0.875rem; font-weight: 600; line-height: 1.3; }
 .pos3-x2 { font-weight: 500; color: var(--muted); }
 .pos3-line-sub { font-size: 0.75rem; color: var(--muted); line-height: 1.35; }
 .pos3-line-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
@@ -5334,7 +5334,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-slip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .pos3-slip dd small { font-size: 0.6875rem; color: var(--muted); font-weight: 600; }
 .pos3-slip dd.neg { color: var(--ok); }
-.pos3-slip .grand { font-size: 1.25rem; font-weight: 700; color: var(--ink); padding-top: 4px; }
+.pos3-slip .grand { font-size: 1.125rem; font-weight: 600; color: var(--ink); padding-top: 4px; }
 
 .pos3-cart .paymodes { display: grid; grid-template-columns: repeat(4, 1fr); }
 .pos3-cart .paymode { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 4px; font-size: 0.875rem; }
@@ -5360,7 +5360,10 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 .pos3-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .pos3-issues li { display: flex; align-items: flex-start; gap: 6px; font-size: 0.8125rem; color: var(--warn); line-height: 1.35; }
 .pos3-issues svg { flex: none; margin-top: 2px; }
-.pos3-cart .complete { min-height: 52px; border-radius: 14px; font-size: 1.0625rem; font-weight: 600; }
+.pos3-cart .complete {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 50px; padding: 0 24px; border-radius: 980px; font-size: 1rem; font-weight: 600; letter-spacing: 0; line-height: 1;
+}
 
 .pos3-mobilebar { display: none; }
 
