@@ -33,6 +33,10 @@ const priceOf = (r: GridRow, levelId: string) => {
   return p === undefined || p === null ? "" : String(Number(p));
 };
 
+/** The storage option of a variant ("128 GB"), or null for a product with none. */
+const storageOf = (r: GridRow) =>
+  r.parts?.find((x) => /storage|capacity/i.test(x.attribute))?.option ?? null;
+
 export function VariantGrid({
   action, parentId, rows: initial, levels, uom,
 }: {
@@ -89,6 +93,23 @@ export function VariantGrid({
 
   const byId = new Map(initial.map((r) => [r.id, r]));
 
+  /* Set prices by storage: one price per level for every variant of a storage
+     size, applied to the grid (not saved) so a rare colour can still be
+     overridden in its own row before saving. A blank level is left alone. */
+  const storages = useMemo(
+    () => [...new Set(initial.map(storageOf).filter((x): x is string => !!x))],
+    [initial]);
+  const [bulk, setBulk] = useState<Record<string, Record<string, string>>>({});
+  const bulkSet = (storage: string, levelId: string, v: string) =>
+    setBulk((b) => ({ ...b, [storage]: { ...b[storage], [levelId]: v } }));
+  const applyStorage = (storage: string) =>
+    setRows((rs) => rs.map((r) => {
+      if (storageOf(byId.get(r.id)!) !== storage) return r;
+      const prices = { ...r.prices };
+      for (const l of levels) { const v = bulk[storage]?.[l.id]; if (v) prices[l.id] = v; }
+      return { ...r, prices };
+    }));
+
   return (
     <form action={formAction}>
       <input type="hidden" name="parent_id" value={parentId} />
@@ -101,12 +122,46 @@ export function VariantGrid({
         </div>
       )}
 
+      {storages.length > 0 && (
+        <div className="tablewrap" style={{ marginBottom: "var(--s3)" }}>
+          <table>
+            <caption style={{ textAlign: "left", fontWeight: 600, padding: "0 0 6px" }}>
+              Set prices by storage
+              <span className="page-sub" style={{ fontWeight: 400 }}>
+                {" "}— fills every variant of that size; change a colour in its row afterwards
+              </span>
+            </caption>
+            <thead>
+              <tr>
+                <th>Storage</th>
+                {levels.map((l) => <th key={l.id} className="r">{l.name} price</th>)}
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {storages.map((st) => (
+                <tr key={st}>
+                  <td>{st} <span className="page-sub">({initial.filter((r) => storageOf(r) === st).length} variants)</span></td>
+                  {levels.map((l) => (
+                    <td key={l.id} className="narrow">
+                      <input type="number" min="0" step="any" aria-label={`${l.name} price for all ${st}`}
+                        value={bulk[st]?.[l.id] ?? ""} onChange={(e) => bulkSet(st, l.id, e.target.value)} />
+                    </td>
+                  ))}
+                  <td><button type="button" className="ghost" onClick={() => applyStorage(st)}>Apply to {st}</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
               <th colSpan={2}>Variant</th>
-              <th>Code</th>
+              <th>Variant SKU</th>
               <th>Barcode</th>
               {levels.map((l) => (
                 <th key={l.id} className="r">
