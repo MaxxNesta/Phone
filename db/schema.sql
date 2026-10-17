@@ -633,7 +633,10 @@ declare
     v_group text;
 begin
     select code into v_group from item_group where id = new.item_group_id;
-    new.code := coalesce(v_group, '') || new.serial;
+    v_group := coalesce(v_group, '');
+    new.code := v_group
+             || case when v_group = '' or v_group ~ '[-._/]$' then '' else '-' end
+             || new.serial;
     return new;
 end;
 $$;

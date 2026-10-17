@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { categoryCodeTakenBy } from "@/lib/item-code-actions";
 
 type Uom = { id: string; code: string; name: string };
 type ParentOption = { id: string; code: string; name: string };
@@ -48,6 +49,19 @@ export function AddCategoryForm({
   const composed = `${effectiveParentCode ?? ""}${segment}`;
 
   const nothingToChooseFrom = choosingParent && categories?.length === 0;
+
+  // Is the code already a category's? Asked as the segment is typed, so the
+  // answer is on screen before Save.
+  const [takenBy, setTakenBy] = useState<string | null>(null);
+  useEffect(() => {
+    setTakenBy(null);
+    if (!segment) return;
+    let stale = false;
+    const t = window.setTimeout(() => {
+      categoryCodeTakenBy(composed).then((n) => { if (!stale) setTakenBy(n); }).catch(() => {});
+    }, 300);
+    return () => { stale = true; window.clearTimeout(t); };
+  }, [composed, segment]);
 
   if (!open) {
     return (
@@ -96,12 +110,20 @@ export function AddCategoryForm({
               <label htmlFor="segment">Code segment</label>
               <input id="segment" name="segment" type="text" required autoFocus
                 value={segment} onChange={(e) => setSegment(e.target.value)}
-                placeholder={codeHint} />
-              <span className="hint">
-                {effectiveParentCode
-                  ? `Added to ${effectiveParentCode} to make this category's code`
-                  : "The start of every code beneath this category"}
-              </span>
+                placeholder={codeHint}
+                aria-invalid={takenBy ? true : undefined}
+                style={takenBy ? { borderColor: "var(--bad)" } : undefined} />
+              {takenBy ? (
+                <span className="hint" role="alert" style={{ color: "var(--bad)" }}>
+                  {composed} is already used by {takenBy}. Choose another code.
+                </span>
+              ) : (
+                <span className="hint">
+                  {effectiveParentCode
+                    ? `Added to ${effectiveParentCode} to make this category's code`
+                    : "The start of every code beneath this category"}
+                </span>
+              )}
             </div>
             <div className="field">
               <label htmlFor="name">Name</label>
@@ -114,7 +136,7 @@ export function AddCategoryForm({
           </div>
 
           <div className="actions">
-            <button type="submit" disabled={pending}>{pending ? "Saving…" : `Save ${label.toLowerCase()}`}</button>
+            <button type="submit" disabled={pending || !!takenBy}>{pending ? "Saving…" : `Save ${label.toLowerCase()}`}</button>
           </div>
         </form>
       </div>

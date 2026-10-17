@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { categoryCodeTakenBy } from "@/lib/item-code-actions";
 
 type Option = { id: string; name: string; code: string; depth: number };
 
@@ -26,6 +27,20 @@ export function Restructure({
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"above" | "move">("above");
+
+  // The category inserted above sits at the top level, so its code is its
+  // segment. Is that already a category's? Asked as it is typed.
+  const [segment, setSegment] = useState("");
+  const [takenBy, setTakenBy] = useState<string | null>(null);
+  useEffect(() => {
+    setTakenBy(null);
+    if (!segment) return;
+    let stale = false;
+    const t = window.setTimeout(() => {
+      categoryCodeTakenBy(segment).then((n) => { if (!stale) setTakenBy(n); }).catch(() => {});
+    }, 300);
+    return () => { stale = true; window.clearTimeout(t); };
+  }, [segment]);
 
   const action = tab === "above" ? aboveAction : moveAction;
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -69,8 +84,17 @@ export function Restructure({
               <div className="row">
                 <div className="field">
                   <label htmlFor="ra_code">Code segment</label>
-                  <input id="ra_code" name="segment" type="text" required placeholder="01" />
-                  <span className="hint">Everything beneath re-codes to match</span>
+                  <input id="ra_code" name="segment" type="text" required placeholder="01"
+                    value={segment} onChange={(e) => setSegment(e.target.value)}
+                    aria-invalid={takenBy ? true : undefined}
+                    style={takenBy ? { borderColor: "var(--bad)" } : undefined} />
+                  {takenBy ? (
+                    <span className="hint" role="alert" style={{ color: "var(--bad)" }}>
+                      {segment.toUpperCase()} is already used by {takenBy}. Choose another code.
+                    </span>
+                  ) : (
+                    <span className="hint">Everything beneath re-codes to match</span>
+                  )}
                 </div>
                 <div className="field">
                   <label htmlFor="ra_name">Name</label>
@@ -108,7 +132,7 @@ export function Restructure({
           <input type="hidden" name="return_to" value={returnTo} />
 
           <div className="actions">
-            <button type="submit" disabled={pending}>
+            <button type="submit" disabled={pending || (tab === "above" && !!takenBy)}>
               {pending ? "Saving…" : tab === "above" ? "Insert above" : "Move category"}
             </button>
           </div>

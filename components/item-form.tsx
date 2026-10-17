@@ -2,11 +2,13 @@
 
 import { VariantPicker, type PickerAttribute } from "./variant-picker";
 import { PackSizes } from "./pack-sizes";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { createBrandInline, type PickerBrand } from "@/lib/actions";
 import { ConfirmOtherBrand } from "./brand-form";
 import { ItemPhotoField } from "./item-photo-field";
+import { composeItemCode } from "@/lib/item-code";
+import { itemCodeTakenBy } from "@/lib/item-code-actions";
 
 type Node = {
   id: string; code: string; segment: string; name: string;
@@ -147,7 +149,20 @@ export function ItemForm({
   const [trackOverride, setTrackOverride] = useState<{ root: string; v: string } | null>(null);
   const tracking = trackOverride && trackOverride.root === chain[0] ? trackOverride.v : typeIdentity;
   const groupCode = selected?.code ?? "";
-  const preview = groupCode && serial ? `${groupCode}${serial}` : "";
+  const preview = groupCode && serial ? composeItemCode(groupCode, serial) : "";
+
+  // Is the code already somebody's? Asked a moment after typing stops, so the
+  // answer is on screen before Save, not in an error after it.
+  const [takenBy, setTakenBy] = useState<string | null>(null);
+  useEffect(() => {
+    setTakenBy(null);
+    if (!preview) return;
+    let stale = false;
+    const t = window.setTimeout(() => {
+      itemCodeTakenBy(preview).then((n) => { if (!stale) setTakenBy(n); }).catch(() => {});
+    }, 300);
+    return () => { stale = true; window.clearTimeout(t); };
+  }, [preview]);
   // The name field speaks the type's language: an iPad is named as an iPad
   // model, an accessory just by what it is.
   const typeName = nodes.find((n) => n.id === chain[0])?.name ?? "";
@@ -231,12 +246,20 @@ export function ItemForm({
                 value={serial}
                 onChange={(e) => setSerial(e.target.value)}
                 placeholder="001"
+                aria-invalid={takenBy ? true : undefined}
+                style={takenBy ? { borderColor: "var(--bad)" } : undefined}
               />
-              <span className="hint">
-                {groupCode
-                  ? `Appended to ${groupCode}`
-                  : "Its own piece of the code"}
-              </span>
+              {takenBy ? (
+                <span className="hint" role="alert" style={{ color: "var(--bad)" }}>
+                  {preview} is already used by {takenBy}. Choose another code.
+                </span>
+              ) : (
+                <span className="hint">
+                  {groupCode
+                    ? `Joined to ${groupCode} with a hyphen`
+                    : "Its own piece of the code"}
+                </span>
+              )}
             </div>
 
             <div className="field">
@@ -423,7 +446,7 @@ export function ItemForm({
       </div>
 
       <div className="actions">
-        <button type="submit" disabled={pending || !selectedId || !serial}>
+        <button type="submit" disabled={pending || !selectedId || !serial || !!takenBy}>
           {pending ? "Saving…" : preview ? `Save ${preview}` : "Save item"}
         </button>
         {!selectedId && <span className="page-sub">Choose a category first</span>}

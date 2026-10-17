@@ -28,6 +28,8 @@
  * is entered as the stock document it actually is.
  */
 
+import { composeItemCode } from "./item-code";
+
 export const IMPORT_COLUMNS = [
   "No", "Barcode", "Stock ID", "Stock Name", "Category", "Sub Category", "Brand", "Unit",
   "Selling price",
@@ -414,8 +416,8 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
     // database or by a Stock ID typed further up this same file. A number
     // nobody asked for must not be the thing that fails the import.
     let serial = String(n).padStart(3, "0");
-    while (itemByCode.has(norm(`${categoryCode}${serial}`)) ||
-           seenCode.has(norm(`${categoryCode}${serial}`))) {
+    while (itemByCode.has(norm(composeItemCode(categoryCode, serial))) ||
+           seenCode.has(norm(composeItemCode(categoryCode, serial)))) {
       n++;
       serial = String(n).padStart(3, "0");
     }
@@ -584,7 +586,7 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
     // composes is what lets a barcode-less catalogue be re-imported without
     // making a second copy of everything: both are unique per company, so
     // either is a sound key, and a row carrying only one still matches.
-    const byCodeKey = !barcode && stockId && group ? norm(`${group.code}${stockId}`) : null;
+    const byCodeKey = !barcode && stockId && group ? norm(composeItemCode(group.code, stockId)) : null;
     const existing = (barcode ? itemByBarcode.get(barcode) : undefined)
       ?? (byCodeKey ? itemByCode.get(byCodeKey) : undefined);
 
@@ -642,7 +644,7 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
     const serial = existing
       ? (existing.serial ?? "")
       : (stockId || takeNextSerial(group!.id, group!.code));
-    const code = existing ? existing.code : `${group!.code}${serial}`;
+    const code = existing ? existing.code : composeItemCode(group!.code, serial);
 
     // Two rows landing on one code, or a code an item already has. Both are
     // refused rather than resolved: the unique constraint would abort the

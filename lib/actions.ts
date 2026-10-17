@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
+import { composeItemCode } from "./item-code";
 import { redirect } from "next/navigation";
 import { money, sql } from "./db";
 import { parseCsv, planImport, type MasterData } from "./import-items";
@@ -528,6 +529,10 @@ export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise
       const [composed] = await tx`
         select fn_compose_group_code(${target.parent_id}::uuid, ${segment}) as code`;
 
+      const [dup] = await tx`
+        select name from item_group where company_id = ${co} and code = ${composed.code}`;
+      if (dup) throw new Error(`Code ${composed.code} is already used by ${dup.name}`);
+
       const [created] = await tx`
         insert into item_group (company_id, parent_id, segment, code, name, name_my)
         values (${co}, ${target.parent_id}, ${segment}, ${composed.code}, ${name},
@@ -687,7 +692,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       select code from item_group where id = ${groupId} and company_id = ${co}`;
     if (!grp) return { error: "That category no longer exists" };
 
-    fullCode = `${grp.code}${serial}`;
+    fullCode = composeItemCode(grp.code, serial);
     const dup = await sql`
       select name from item where company_id = ${co} and code = ${fullCode}`;
     if (dup.length) {
@@ -1663,7 +1668,7 @@ export async function createItemInline(
       serial = String(next.n).padStart(3, "0");
     }
 
-    fullCode = `${grp.code}${serial}`;
+    fullCode = composeItemCode(grp.code, serial);
     const dup = await sql`
       select name from item where company_id = ${co} and code = ${fullCode}`;
     if (dup.length) {

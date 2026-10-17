@@ -337,13 +337,13 @@ try {
   check("a typed Stock ID becomes the item's own piece of the code",
     ok.rows[0].serial === `Item${stamp}A` && ok.rows[0].serialAssigned === false,
     `${ok.rows[0].serial} assigned=${ok.rows[0].serialAssigned}`);
-  check("and the code is the category's code in front of it",
-    ok.rows[0].code === `${grp.code}Item${stamp}A`, ok.rows[0].code);
+  check("and the code is the category's code and a hyphen in front of it",
+    ok.rows[0].code === `${grp.code}-Item${stamp}A`, ok.rows[0].code);
   check("a blank Stock ID is given the next number in that category",
     ok.rows[2].serialAssigned === true && /^[0-9]{3}$/.test(ok.rows[2].serial),
     `${ok.rows[2].serial} assigned=${ok.rows[2].serialAssigned}`);
   check("an assigned number composes the same way",
-    ok.rows[2].code === `${grp.code}${ok.rows[2].serial}`, ok.rows[2].code);
+    ok.rows[2].code === `${grp.code}-${ok.rows[2].serial}`, ok.rows[2].code);
 
   {
     const twice = await plan(
@@ -364,8 +364,8 @@ try {
       `2,B${stamp}X2,Same${stamp},Second,${grp2.name},,,${uom.name}`);
     check("the same Stock ID under two categories is fine — the codes differ",
       across.errors.length === 0 &&
-      across.rows[0].code === `${grp.code}Same${stamp}` &&
-      across.rows[1].code === `${grp2.code}Same${stamp}`,
+      across.rows[0].code === `${grp.code}-Same${stamp}` &&
+      across.rows[1].code === `${grp2.code}-Same${stamp}`,
       across.rows.map((r) => r.code).join(" vs "));
 
     const bad = await plan(row(`B${stamp}BAD`, "Bad Id", null, null, null, "AB 01"));
