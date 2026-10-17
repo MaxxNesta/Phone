@@ -605,7 +605,9 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
   await requirePermission("items.manage");
   let returnTo: string | null = null;
   let fullCode: string | null = null;
-  const toastMsg = "Item added";
+  let toastMsg = "Item added";
+  // A product with variants lands on its variants page, where each one can be priced.
+  let variantsOf: string | null = null;
 
   try {
     const co = await companyId();
@@ -676,7 +678,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       } catch { return empty; }
     })();
 
-    if (!serial) return { error: "Serial is required" };
+    if (!serial) return { error: "Item code is required" };
     if (!name) return { error: "Name is required" };
     if (!groupId) return { error: "Choose a category" };
     if (!uomId) return { error: "Choose a unit" };
@@ -854,6 +856,11 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
             await tx`insert into item_price ${tx(prices.slice(i, i + 5000))}`;
           }
         }
+        variantsOf = item.id as string;
+        const n = planned.length;
+        toastMsg = `${n} variant${n === 1 ? "" : "s"} created` +
+          (level ? ` at ${salePrice.toLocaleString("en-US")} MMK. ` : ". ") +
+          "Set a different price or barcode for any size or colour below.";
       }
     });
   } catch (e) {
@@ -864,7 +871,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
   revalidatePath("/items");
   revalidatePath("/items/categories");
   revalidatePath("/items/stock");
-  redirectWithToast(returnTo || "/items", toastMsg);
+  redirectWithToast(variantsOf ? `/items/${variantsOf}/variants` : returnTo || "/items", toastMsg);
 }
 
 /**

@@ -225,7 +225,7 @@ export function ItemForm({
         <div className="card-body">
           <div className="row">
             <div className="field">
-              <label htmlFor="serial">Serial</label>
+              <label htmlFor="serial">Item code</label>
               <input
                 id="serial" name="serial" type="text" required
                 value={serial}
@@ -310,9 +310,9 @@ export function ItemForm({
             <PackSizes key={baseUomId} uoms={uoms} baseUomId={baseUomId} initial={[]} />
 
             <div className="field">
-              <label htmlFor="sale_price">Sale price</label>
+              <label htmlFor="sale_price">Default retail price</label>
               <input id="sale_price" name="sale_price" type="number" min="0" step="any" />
-              <span className="hint">Optional, in MMK</span>
+              <span className="hint">Optional, in MMK. If this product has variants, they all start at this price; you can set each one's own price after saving.</span>
             </div>
 
             <ItemPhotoField />
