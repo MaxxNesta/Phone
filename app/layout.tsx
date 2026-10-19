@@ -3,6 +3,7 @@ import { Noto_Sans_Myanmar, Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import "flag-icons/css/flag-icons.min.css";
 import "./globals.css";
 import Link from "next/link";
 import { getCompany } from "@/lib/queries";

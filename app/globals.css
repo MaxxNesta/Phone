@@ -6470,16 +6470,34 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
 .doc-fields .field > label .helphint-mark { width: 18px; height: 18px; min-height: 0; padding: 0; }
 
 /* ============================================================ language ==
-   EN | မြန်မာ in the top bar: a small segmented pair, the current one lifted. */
-.langswitch { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 10px; background: var(--line-soft); }
-.langswitch-opt {
-  min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent;
-  color: var(--ink-soft); font-size: var(--t-sm); font-weight: 500; line-height: 1;
+   The language picker in the top bar: flag and name, opening a list of every
+   language in its own script. */
+.langpick { position: relative; flex: none; }
+.langpick-btn {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px 0 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+  font-size: var(--t-sm); font-weight: 500; line-height: 1; white-space: nowrap;
 }
-.langswitch-opt:hover:not([aria-pressed="true"]) { color: var(--ink); }
-.langswitch-opt[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
-.langswitch-opt:lang(my), :lang(my) .langswitch-opt:lang(my) { font-family: var(--font-myanmar), var(--sans); }
+.langpick-btn:hover { background: var(--ground); }
+.langpick-chev { color: var(--muted); transition: transform 150ms; }
+.langpick-btn[aria-expanded="true"] .langpick-chev { transform: rotate(180deg); }
+.langpick-flag { width: 20px !important; height: 15px; flex: none; border-radius: 3px;
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.18); background-size: cover; }
+.langpick-list {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 180px; margin: 0; padding: 6px;
+  list-style: none; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.14); outline: 0;
+}
+.langpick-list li {
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 10px; border-radius: 8px;
+  color: var(--ink); font-size: var(--t-md); cursor: pointer;
+}
+.langpick-list li.hi { background: var(--line-soft); }
+.langpick-list li[aria-selected="true"] { font-weight: 600; }
+.langpick-check { margin-left: auto; color: var(--focus); }
+.langpick[aria-busy="true"] .langpick-btn { opacity: 0.7; }
+.langpick-btn > span:lang(my), .langpick-list li:lang(my) { font-family: var(--font-myanmar), var(--sans); }
+@media (max-width: 480px) { .langpick-btn > span { display: none; } }
 
 /* Burmese stacks marks above and below the line, so it needs more leading
    than Latin, and its words run longer: labels may wrap rather than clip. */
@@ -6496,6 +6514,5 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
   .main.main:has(.page-head.hero) > .topbar { position: static; width: auto; margin: 0 0 8px; }
   .page-head.hero h1 { padding-right: 0; }
 }
-.langswitch[aria-busy="true"] { opacity: 0.7; }
 /* The search shrinks to what the bar has left, beside the switcher and avatar. */
 .main > .topbar .topsearch { min-width: 0; }
