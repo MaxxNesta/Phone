@@ -39,22 +39,14 @@ import {
   reopenFiscalYear,
 } from "./posting";
 import { postOnce, alreadyPosted } from "./idempotency";
-import { getTranslations } from "next-intl/server";
-import { createTranslator } from "next-intl";
-import enMessages from "../messages/en.json";
+import { serverT } from "./i18n-server";
 /**
  * A message for the person who caused it, in their interface language
  * (messages/<locale>.json › actions). English is the fallback. Only what is
  * shown changes; every check and every posting is the same in any language.
  */
 async function m(key: string, values?: Record<string, string | number>): Promise<string> {
-  try {
-    return (await getTranslations("actions"))(key, values);
-  } catch {
-    // Outside a request (the scripts/ test suites call actions directly)
-    // there is no language to read: English, from the same dictionary.
-    return createTranslator({ locale: "en", messages: enMessages, namespace: "actions" })(key as never, values as never);
-  }
+  return (await serverT("actions"))(key as never, values as never);
 }
 
 
@@ -7607,7 +7599,7 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
   await requirePermission("items.manage");
   const co = await companyId();
   const wanted = [...new Set(ids)].filter((x) => UUID_RE.test(x));
-  const bt = await getTranslations("bulkDelete");
+  const bt = await serverT("bulkDelete");
   if (wanted.length === 0) return { error: bt("nothingChosen") };
   try {
     const result = await sql.begin(async (tx) => {

@@ -2,8 +2,11 @@ import { onlyMyLocations } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "@/lib/auth";
 import { PosTill } from "@/components/pos-till";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Counter sale" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("pos"))("title") };
+}
 
 export default async function PosPage() {
   const user = await requirePermission("pos.sell");

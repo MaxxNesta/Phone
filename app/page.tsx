@@ -14,6 +14,7 @@ import {
   getTopCategories, getRevenueByRegion, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
   getHealth,
 } from "@/lib/queries";
+import { getLocale, getTranslations } from "next-intl/server";
 
 type Share = { id: string; name: string; revenue: number | string };
 
@@ -31,15 +32,20 @@ const TYPE_MARK: Record<string, { short: string; tint: string }> = {
   STOCK_ADJUSTMENT: { short: "ADJ", tint: "var(--muted)" },
 };
 
-const since = (at: string | null, on: string) => {
-  const t = at ? new Date(at).getTime() : new Date(on).getTime();
-  const mins = Math.max(0, Math.round((Date.now() - t) / 60000));
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins} min ago`;
+const since = (at: string | null, on: string,
+  t: Awaited<ReturnType<typeof getTranslations<"dashboard">>>, dateLocale: string) => {
+  const ms = at ? new Date(at).getTime() : new Date(on).getTime();
+  const mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (mins < 1) return t("justNow");
+  if (mins < 60) return t("minAgo", { n: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  return new Date(on).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  if (hours < 24) return t("hoursAgo", { n: hours });
+  return new Date(on).toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
 };
+
+/** The document types the dashboard names; anything else is said as its code. */
+const DOC_TYPES = new Set(["GOODS_RECEIPT", "PURCHASE_ORDER", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT",
+  "SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT", "STOCK_TRANSFER", "STOCK_ADJUSTMENT"]);
 
 /* A breakdown where nothing has been filed is one slice reading "Not
    categorised" — a circle around the whole company that tells nobody
@@ -50,6 +56,12 @@ const worthDrawing = (rows: { id: string }[]) =>
 export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await currentUser();
   if (!user) return null;
+  const t = await getTranslations("dashboard");
+  // Dates in the reader's language: Burmese month names and digits under Myanmar.
+  const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
+  const when = (p: { key: string; month: string | null; label: string }) =>
+    p.month ? t("periodMonth", { month: new Date(`${p.month}-01T00:00:00Z`).toLocaleDateString(dateLocale, { month: "long", year: "numeric", timeZone: "UTC" }) })
+      : t(`period.${p.key}`);
   const sp = await searchParams;
   const { denied } = sp;
   // One window per donut, as on the business overview: each card's period
@@ -101,47 +113,48 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     ? ((d.today.revenue - d.yesterday.revenue) / d.yesterday.revenue) * 100 : null;
   const gp = d.today.revenue - d.today.cost;
   const margin = d.today.revenue ? (gp / d.today.revenue) * 100 : 0;
-  const date = new Date().toLocaleDateString("en-GB", {
+  const date = new Date().toLocaleDateString(dateLocale, {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Yangon" });
 
   return (
     <>
       <div className="page-head hero">
-        <h1>Dashboard</h1>
+        <h1>{t("title")}</h1>
         <p className="page-sub">{date}</p>
       </div>
 
       {denied && (
-        <div className="alert" role="alert">Your role cannot open that page ({denied}). Ask a manager.</div>
+        <div className="alert" role="alert">{t("denied", { page: denied })}</div>
       )}
 
       <div className="stats">
-        <Stat icon={<Banknote size={20} />} label="Today's Sales" value={`${compact(d.today.revenue)} MMK`}
-          note={change === null ? "No sales yesterday" : `${change >= 0 ? "+" : ""}${change.toFixed(1)}% vs yesterday`}
+        <Stat icon={<Banknote size={20} />} label={t("todaysSales")} value={`${compact(d.today.revenue)} MMK`}
+          note={change === null ? t("noSalesYesterday") : t("vsYesterday", { pct: `${change >= 0 ? "+" : ""}${change.toFixed(1)}` })}
           noteTone={change === null ? undefined : change >= 0 ? "up" : "down"} />
         {seeCost && (
-          <Stat icon={<TrendingUp size={20} />} tone="slate" label="Gross Profit" value={`${compact(gp)} MMK`}
-            note={`${margin.toFixed(1)}% margin`} />
+          <Stat icon={<TrendingUp size={20} />} tone="slate" label={t("grossProfit")} value={`${compact(gp)} MMK`}
+            note={t("margin", { pct: margin.toFixed(1) })} />
         )}
-        <Stat icon={<Smartphone size={20} />} tone="violet" label="Phones Sold" value={`${d.today.phones} units`}
-          note={`${d.yesterday.phones} yesterday`} />
-        <Stat icon={<Users size={20} />} tone="amber" label="Receivables" value={`${compact(d.ar.owed)} MMK`}
-          note={`${d.ar.customers} customer${d.ar.customers === 1 ? "" : "s"} due`} noteTone="warn" />
+        <Stat icon={<Smartphone size={20} />} tone="violet" label={t("phonesSold")} value={t("units", { n: d.today.phones })}
+          note={t("yesterday", { n: d.yesterday.phones })} />
+        <Stat icon={<Users size={20} />} tone="amber" label={t("receivables")} value={`${compact(d.ar.owed)} MMK`}
+          note={t("customersDue", { n: d.ar.customers })} noteTone="warn" />
       </div>
 
       <div className="section-grid eqrow">
         <div className="card">
-          <div className="card-head"><h2>Sales Performance</h2><span className="page-sub">Last 7 days · MMK</span></div>
-          <div className="card-body"><WeekBars data={d.week as never} /></div>
+          <div className="card-head"><h2>{t("salesPerformance")}</h2><span className="page-sub">{t("last7")}</span></div>
+          <div className="card-body"><WeekBars data={(d.week as unknown as { day: string; label: string; revenue: number }[]).map((w) => ({
+            ...w, label: new Date(`${w.day}T00:00:00Z`).toLocaleDateString(dateLocale, { weekday: "short", timeZone: "UTC" }) }))} /></div>
         </div>
         <div className="card">
-          <div className="card-head"><h2>Top Selling Models</h2><span className="page-sub">Last 30 days</span></div>
+          <div className="card-head"><h2>{t("topModels")}</h2><span className="page-sub">{t("last30")}</span></div>
           <div className="card-body">
-            {d.topModels.length === 0 && <p className="page-sub">No phones sold yet.</p>}
+            {d.topModels.length === 0 && <p className="page-sub">{t("noPhonesSold")}</p>}
             {d.topModels.slice(0, 5).map((m: any) => (
               <div className="listrow" key={m.model}>
                 <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
-                <span className="grow prod-text"><div className="prod-name clamp2" title={m.model}>{m.model}</div><div className="prod-sub">{m.sold} sold</div></span>
+                <span className="grow prod-text"><div className="prod-name clamp2" title={m.model}>{m.model}</div><div className="prod-sub">{t("sold", { n: m.sold })}</div></span>
                 <span className="num">{compact(m.revenue)}</span>
               </div>
             ))}
@@ -151,36 +164,36 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="section-grid eqrow">
         <div className="card">
-          <div className="card-head"><h2>Recent Sales</h2><Link href="/sales/invoices">View all</Link></div>
+          <div className="card-head"><h2>{t("recentSales")}</h2><Link href="/sales/invoices">{t("viewAll")}</Link></div>
           <table>
-            <thead><tr><th>Invoice</th><th>Customer / Item</th><th className="num">Total</th><th>Status</th></tr></thead>
+            <thead><tr><th>{t("invoice")}</th><th>{t("customerItem")}</th><th className="num">{t("total")}</th><th>{t("status")}</th></tr></thead>
             <tbody>
               {d.recent.slice(0, 5).map((r: any) => (
                 <tr key={r.id}>
                   <td className="m"><Link href={`/documents/${r.id}`}>{r.doc_no}</Link></td>
-                  <td>{r.partner_code === "WALKIN" ? "Walk-in" : r.customer}{r.item ? ` · ${r.item}` : ""}</td>
+                  <td>{r.partner_code === "WALKIN" ? t("walkIn") : r.customer}{r.item ? ` · ${r.item}` : ""}</td>
                   <td className="num">{money(r.total)}</td>
                   <td>
-                    {r.outstanding <= 0.005 ? <span className="pill ok">Paid</span>
-                      : r.outstanding < r.total - 0.005 ? <span className="pill warn">Partial</span>
-                      : <span className="pill warn">On account</span>}
+                    {r.outstanding <= 0.005 ? <span className="pill ok">{t("paid")}</span>
+                      : r.outstanding < r.total - 0.005 ? <span className="pill warn">{t("partial")}</span>
+                      : <span className="pill warn">{t("onAccount")}</span>}
                   </td>
                 </tr>
               ))}
-              {d.recent.length === 0 && <tr><td colSpan={4} className="page-sub">No sales yet.</td></tr>}
+              {d.recent.length === 0 && <tr><td colSpan={4} className="page-sub">{t("noSales")}</td></tr>}
             </tbody>
           </table>
         </div>
 
         <div className="card">
-          <div className="card-head"><h2>Low Stock</h2><span className="page-sub">Selling, nearly out</span></div>
+          <div className="card-head"><h2>{t("lowStock")}</h2><span className="page-sub">{t("lowStockSub")}</span></div>
           <div className="card-body">
-            {d.low.length === 0 && <p className="page-sub">Nothing selling is running out.</p>}
+            {d.low.length === 0 && <p className="page-sub">{t("nothingLow")}</p>}
             {d.low.slice(0, 5).map((l: any) => (
               <div className="listrow" key={l.name}>
                 <span className="grow">
                   <div>{l.name}</div>
-                  <div className="low" style={{ fontSize: "var(--t-sm)" }}>{l.left_} unit{l.left_ === 1 ? "" : "s"} left</div>
+                  <div className="low" style={{ fontSize: "var(--t-sm)" }}>{t("left", { n: l.left_ })}</div>
                 </span>
                 <span style={{ width: 110 }}>
                   <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(8, (l.left_ / 3) * 100)}%` }} /></div>
@@ -193,37 +206,37 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="stats">
         {seeCost && (
-          <Stat icon={<Package size={20} />} tone="slate" label="Inventory Value" value={`${compact(d.stock.value)} MMK`}
-            note={<Link href="/inventory">Inventory summary</Link>} />
+          <Stat icon={<Package size={20} />} tone="slate" label={t("inventoryValue")} value={`${compact(d.stock.value)} MMK`}
+            note={<Link href="/inventory">{t("inventorySummary")}</Link>} />
         )}
-        <Stat icon={<Clock size={20} />} tone="amber" label="Aged Phones" value={d.aged}
-          note={<Link href="/reports/phone-stock">Unsold over 90 days</Link>} noteTone={d.aged ? "warn" : undefined} />
-        <Stat icon={<ShieldAlert size={20} />} tone="violet" label="Warranties Ending" value={d.ending}
-          note={<Link href="/inventory/warranty?ending=30">Within 30 days</Link>} />
+        <Stat icon={<Clock size={20} />} tone="amber" label={t("agedPhones")} value={d.aged}
+          note={<Link href="/reports/phone-stock">{t("unsold90")}</Link>} noteTone={d.aged ? "warn" : undefined} />
+        <Stat icon={<ShieldAlert size={20} />} tone="violet" label={t("warrantiesEnding")} value={d.ending}
+          note={<Link href="/inventory/warranty?ending=30">{t("within30")}</Link>} />
         {d.bad.length > 0 && (
-          <Stat icon={<AlertTriangle size={20} />} tone="amber" label="Serial / Stock Mismatch" value={d.bad.length}
-            note={d.bad.map((b: any) => `${b.name}: ${b.serials} IMEIs vs ${b.on_hand} on hand`).join("; ")} noteTone="down" />
+          <Stat icon={<AlertTriangle size={20} />} tone="amber" label={t("mismatch")} value={d.bad.length}
+            note={d.bad.map((b: any) => t("mismatchItem", { name: b.name, serials: b.serials, onHand: b.on_hand })).join("; ")} noteTone="down" />
         )}
       </div>
 
       <div className="section-grid-2">
         <div className="card">
           <div className="card-head">
-            <span><h2>Revenue by category</h2><span className="page-sub">Sales {period.cat.sentence}</span></span>
-            <PeriodPicker current={period.cat} label="revenue by category" hrefFor={(k) => hrefWith("cat", k)} />
+            <span><h2>{t("byCategory")}</h2><span className="page-sub">{t("salesIn", { when: when(period.cat) })}</span></span>
+            <PeriodPicker current={period.cat} label={t("byCategoryLabel")} hrefFor={(k) => hrefWith("cat", k)} />
           </div>
           <div className="card-body"><ShareDonut data={categories} currency="MMK" /></div>
         </div>
         <div className="card">
           <div className="card-head">
-            <span><h2>Revenue by state / region</h2><span className="page-sub">Sales {period.reg.sentence}</span></span>
-            <PeriodPicker current={period.reg} label="revenue by state or region" hrefFor={(k) => hrefWith("reg", k)} />
+            <span><h2>{t("byRegion")}</h2><span className="page-sub">{t("salesIn", { when: when(period.reg) })}</span></span>
+            <PeriodPicker current={period.reg} label={t("byRegionLabel")} hrefFor={(k) => hrefWith("reg", k)} />
           </div>
           <div className="card-body">
             {regions.length === 1 && regions[0].id === "none" ? (
               <div className="empty">
-                No customer has a state or region yet.{" "}
-                <Link href="/partners" style={{ color: "var(--link)" }}>Set one on a customer</Link> to see where revenue comes from.
+                {t("noRegion")}{" "}
+                <Link href="/partners" style={{ color: "var(--link)" }}>{t("setRegion")}</Link> {t("setRegionAfter")}
               </div>
             ) : <ShareDonut data={regions} currency="MMK" />}
           </div>
@@ -231,8 +244,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {worthDrawing(custCategories) && (
           <div className="card">
             <div className="card-head">
-              <span><h2>Revenue by customer type</h2><span className="page-sub">Revenue {period.cust.sentence}</span></span>
-              <PeriodPicker current={period.cust} label="revenue by customer type" hrefFor={(k) => hrefWith("cust", k)} />
+              <span><h2>{t("byCustomerType")}</h2><span className="page-sub">{t("revenueIn", { when: when(period.cust) })}</span></span>
+              <PeriodPicker current={period.cust} label={t("byCustomerTypeLabel")} hrefFor={(k) => hrefWith("cust", k)} />
             </div>
             <div className="card-body"><ShareDonut data={custCategories} currency="MMK" /></div>
           </div>
@@ -240,8 +253,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {worthDrawing(suppCategories) && (
           <div className="card">
             <div className="card-head">
-              <span><h2>Purchases by supplier type</h2><span className="page-sub">Purchases {period.supp.sentence}</span></span>
-              <PeriodPicker current={period.supp} label="purchases by supplier type" hrefFor={(k) => hrefWith("supp", k)} />
+              <span><h2>{t("bySupplierType")}</h2><span className="page-sub">{t("purchasesIn", { when: when(period.supp) })}</span></span>
+              <PeriodPicker current={period.supp} label={t("bySupplierTypeLabel")} hrefFor={(k) => hrefWith("supp", k)} />
             </div>
             <div className="card-body"><ShareDonut data={suppCategories} currency="MMK" /></div>
           </div>
@@ -253,7 +266,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <span><h2>Accounting health</h2><span className="page-sub" style={{ display: "block" }}>Automated checks between operational ledgers and the general ledger</span></span>
           <span className={`pill ${healthy ? "ok" : "overdue"}`}>
             {healthy ? <Check size={13} aria-hidden="true" /> : <AlertTriangle size={13} aria-hidden="true" />}
-            {" "}{healthy ? "Healthy" : "Needs attention"}
+            {" "}{healthy ? t("healthy") : t("needsAttention")}
           </span>
         </div>
         <div className="card-body">
@@ -275,12 +288,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="card">
         <div className="card-head">
-          <h2>Recent activity</h2>
-          <Link href="/documents">View all documents <ArrowRight size={14} style={{ verticalAlign: "-2px" }} /></Link>
+          <h2>{t("recentActivity")}</h2>
+          <Link href="/documents">{t("viewAllDocs")} <ArrowRight size={14} style={{ verticalAlign: "-2px" }} /></Link>
         </div>
         <div className="card-body">
           {recent.length === 0 ? (
-            <div className="empty">Nothing posted yet.</div>
+            <div className="empty">{t("nothingPosted")}</div>
           ) : (
             <div className="dash-activity">
               {recent.map((r) => {
@@ -293,14 +306,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                     <span style={{ minWidth: 0 }}>
                       <span style={{ fontWeight: 500, display: "block" }}>{r.doc_no ?? "—"}</span>
                       <span className="dash-kpi-note">
-                        {r.doc_type.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}
+                        {DOC_TYPES.has(r.doc_type) ? t(`docType.${r.doc_type}`) : r.doc_type.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())}
                         {r.partner_name ? ` · ${r.partner_name}` : ""}
                       </span>
                     </span>
                     <span className="dash-activity-right">
                       <span>
                         <span style={{ fontWeight: 700, display: "block" }}>MMK {money(r.gross_total)}</span>
-                        <span className="dash-kpi-note">{since(r.posted_at, r.posting_date)}</span>
+                        <span className="dash-kpi-note">{since(r.posted_at, r.posting_date, t, dateLocale)}</span>
                       </span>
                     </span>
                   </Link>

@@ -8,6 +8,7 @@ import { assertMyBranch, seenLocations } from "./branch-scope";
 import { receiptView, type ReceiptView } from "./receipt";
 import { postRetailSale, postCustomerReceipt, type InvoiceLine } from "./posting";
 import { posSearch, unitsOnShelf, stripCost } from "./phone";
+import { serverT } from "./i18n-server";
 
 // The till. Every action checks pos.sell on the server; cost leaves the
 // server only for a role that may see it; discounts above the ceiling need
@@ -73,6 +74,7 @@ async function walkIn(companyId: string): Promise<string> {
 export async function posPostSale(sale: PosSale): Promise<PosResult> {
   try {
     const user = await requirePermission("pos.sell");
+    const tr = await serverT("pos");
     // The till sells at the cashier's own branch, whatever the request names.
     await assertMyBranch(sale.locationId);
     const co = user.companyId;
@@ -86,12 +88,12 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
         warrantyMonths: l.warrantyMonths,
         focReasonId: l.focReasonId || null,
       }));
-    if (lines.length === 0) return { ok: false, error: "The sale has no lines." };
+    if (lines.length === 0) return { ok: false, error: tr("noLines") };
 
     if (!can(user, "discount.unlimited")) {
       const over = lines.find((l) => (l.discountPct ?? 0) > DISCOUNT_CEILING_PCT);
       if (over) {
-        return { ok: false, error: `Discounts above ${DISCOUNT_CEILING_PCT}% need a manager.` };
+        return { ok: false, error: tr("discountNeedsManager", { pct: DISCOUNT_CEILING_PCT }) };
       }
     }
 
@@ -102,7 +104,7 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
         select id from account where company_id = ${co} and is_cash_account
            and id = any(${payments.map((p) => p.accountId)})`;
       if (ok.length !== new Set(payments.map((p) => p.accountId)).size) {
-        return { ok: false, error: "Choose a cash or bank account for each payment." };
+        return { ok: false, error: tr("chooseAccount") };
       }
     }
 
@@ -144,7 +146,7 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
 
       const [open] = await tx`select outstanding from v_open_item where document_id = ${posted.id}`;
       if (partnerId === walkInId && Number(open?.outstanding ?? 0) > 0.0001) {
-        throw new Error("A walk-in customer pays in full. Choose a customer to sell on account.");
+        throw new Error(tr("walkInFull"));
       }
 
       await tx`

@@ -6,6 +6,7 @@ import { Check, Search, ShoppingCart, Smartphone, X } from "lucide-react";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { variantLine } from "@/lib/pos-facets";
 import { money } from "@/lib/format";
+import { useTranslations } from "next-intl";
 
 /** Keeps Tab inside a dialog and puts Escape to the caller. */
 function useDialogKeys(root: React.RefObject<HTMLElement | null>, onClose: () => void) {
@@ -43,6 +44,7 @@ export function PosUnitPicker({ item, units, onAdd, onClose }: {
   onAdd: (picked: ScannedUnit[]) => void; onClose: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const tr = useTranslations("pos");
   const search = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -76,8 +78,8 @@ export function PosUnitPicker({ item, units, onAdd, onClose }: {
     <div className="pu-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={root} className="pu" role="dialog" aria-modal="true" aria-labelledby="pu-title">
         <header className="pu-head">
-          <h2 id="pu-title">Select IMEIs</h2>
-          <button type="button" className="pu-x" aria-label="Close" onClick={onClose}><X size={18} /></button>
+          <h2 id="pu-title">{tr("selectImeis")}</h2>
+          <button type="button" className="pu-x" aria-label={tr("close")} onClick={onClose}><X size={18} /></button>
         </header>
 
         <div className="pu-prod">
@@ -86,8 +88,8 @@ export function PosUnitPicker({ item, units, onAdd, onClose }: {
             <strong>{item.model}</strong>
             {variant && <span className="pu-sub">{variant}</span>}
             <span className="pu-price">
-              {item.price != null && item.price > 0 ? <>{money(item.price)} <small>MMK</small></> : <em>No price set</em>}
-              <span className="pu-avail">{units.length} available</span>
+              {item.price != null && item.price > 0 ? <>{money(item.price)} <small>MMK</small></> : <em>{tr("noPriceSet")}</em>}
+              <span className="pu-avail">{tr("available", { n: units.length })}</span>
             </span>
           </div>
         </div>
@@ -95,39 +97,39 @@ export function PosUnitPicker({ item, units, onAdd, onClose }: {
         <form className="pu-search" onSubmit={(e) => { e.preventDefault(); enter(); }} role="search">
           <Search size={17} aria-hidden="true" />
           <input ref={search} value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" inputMode="numeric"
-            placeholder="Search IMEI or scan…" aria-label="Search IMEI or scan" />
+            placeholder={tr("searchImei")} aria-label={tr("searchImeiLabel")} />
         </form>
 
         <div className="pu-bar">
           <label className="pu-all">
             <input type="checkbox" checked={allShown} ref={(el) => { if (el) el.indeterminate = !allShown && someShown; }}
               onChange={toggleAll} disabled={shown.length === 0} />
-            Select all{q.trim() ? " shown" : ""}
+            {q.trim() ? tr("selectAllShown") : tr("selectAll")}
           </label>
-          <span className="pu-n" aria-live="polite">{shown.length} of {units.length}</span>
+          <span className="pu-n" aria-live="polite">{tr("shownOf", { shown: shown.length, total: units.length })}</span>
         </div>
 
-        <ul className="pu-list" aria-label="IMEIs on the shelf">
+        <ul className="pu-list" aria-label={tr("imeisOnShelf")}>
           {shown.map((u) => (
             <li key={u.serial_id}>
               <label className={`pu-row${picked.has(u.serial_id) ? " on" : ""}`}>
                 <input type="checkbox" checked={picked.has(u.serial_id)} onChange={() => toggle(u.serial_id)} />
                 <span className="pu-row-text">
                   <span className="m">{u.imei}</span>
-                  <span className="pu-row-sub">Available · {u.location_name} · {item.code}</span>
+                  <span className="pu-row-sub">{tr("availableAt", { location: u.location_name, code: item.code })}</span>
                 </span>
               </label>
             </li>
           ))}
           {shown.length === 0 && (
-            <li className="pu-none">{units.length === 0 ? "No units on the shelf here." : "No IMEI matches."}</li>
+            <li className="pu-none">{units.length === 0 ? tr("noUnitsHere") : tr("noImeiMatch")}</li>
           )}
         </ul>
 
         <footer className="pu-foot">
-          <span className="pu-count"><b>{count}</b> selected</span>
+          <span className="pu-count"><b>{count}</b> {tr("selected")}</span>
           <button type="button" className="pu-add" disabled={count === 0} onClick={() => onAdd(units.filter((u) => picked.has(u.serial_id)))}>
-            <ShoppingCart size={16} aria-hidden="true" /> {count === 0 ? "Add to cart" : `Add ${count} unit${count === 1 ? "" : "s"} to cart`}
+            <ShoppingCart size={16} aria-hidden="true" /> {count === 0 ? tr("addToCart") : tr("addNToCart", { n: count })}
           </button>
         </footer>
       </div>
@@ -141,6 +143,7 @@ export function PosAddedConfirm({ item, imeis, cartUnits, onContinue, onViewCart
   item: SellableItem; imeis: string[]; cartUnits: number; onContinue: () => void; onViewCart: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const tr = useTranslations("pos");
   const cont = useRef<HTMLButtonElement>(null);
   useDialogKeys(root, onContinue);
   useEffect(() => { cont.current?.focus(); }, []);
@@ -149,11 +152,11 @@ export function PosAddedConfirm({ item, imeis, cartUnits, onContinue, onViewCart
   return createPortal(
     <div className="pu-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onContinue(); }}>
       <div ref={root} className="pu pu-small" role="dialog" aria-modal="true" aria-labelledby="pa-title">
-        <button type="button" className="pu-x pu-x-abs" aria-label="Close" onClick={onContinue}><X size={18} /></button>
+        <button type="button" className="pu-x pu-x-abs" aria-label={tr("close")} onClick={onContinue}><X size={18} /></button>
         <div className="pa-top">
           <span className="pa-check" aria-hidden="true"><Check size={28} strokeWidth={3} /></span>
-          <h2 id="pa-title">Added to cart</h2>
-          <p>{imeis.length} unit{imeis.length === 1 ? "" : "s"} added successfully.</p>
+          <h2 id="pa-title">{tr("addedToCart")}</h2>
+          <p>{tr("addedOk", { n: imeis.length })}</p>
         </div>
         <div className="pu-prod pa-prod">
           <Photo item={item} size={52} />
@@ -164,12 +167,12 @@ export function PosAddedConfirm({ item, imeis, cartUnits, onContinue, onViewCart
           </div>
         </div>
         <div className="pa-imeis">
-          <h3>Added IMEIs</h3>
+          <h3>{tr("addedImeis")}</h3>
           <ol>{imeis.map((s) => <li key={s}><span className="m">{s}</span></li>)}</ol>
         </div>
         <div className="pa-actions">
-          <button ref={cont} type="button" className="pa-ghost" onClick={onContinue}>Continue shopping</button>
-          <button type="button" className="pu-add" onClick={onViewCart}>View cart ({cartUnits} item{cartUnits === 1 ? "" : "s"})</button>
+          <button ref={cont} type="button" className="pa-ghost" onClick={onContinue}>{tr("continueShopping")}</button>
+          <button type="button" className="pu-add" onClick={onViewCart}>{tr("viewCartN", { n: cartUnits })}</button>
         </div>
       </div>
     </div>,

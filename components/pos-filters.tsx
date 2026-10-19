@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Search } from "lucide-react";
 import { toggleValue, clearFilters, type Facets, type Selection } from "@/lib/pos-facets";
+import { useTranslations } from "next-intl";
 
 const SHOWN = 6;
 
@@ -15,23 +16,24 @@ export function PosFilters({ facets, sel, total, onChange, onType }: {
   facets: Facets; sel: Selection; total: number;
   onChange: (s: Selection) => void; onType: (type: string) => void;
 }) {
+  const tr = useTranslations("pos");
   const typeTotal = facets.types.reduce((n, t) => n + t.count, 0);
   const none = facets.models.length === 0 && facets.groups.length === 0;
 
   return (
-    <aside className="pf" aria-label="Filters">
+    <aside className="pf" aria-label={tr("filters")}>
       <div className="pf-head">
-        <h2>Filters{facets.active > 0 && <span className="pf-count">{facets.active}</span>}</h2>
+        <h2>{tr("filters")}{facets.active > 0 && <span className="pf-count">{facets.active}</span>}</h2>
         {facets.active > 0 && (
-          <button type="button" className="pf-clear" onClick={() => onChange(clearFilters(sel))}>Clear filters</button>
+          <button type="button" className="pf-clear" onClick={() => onChange(clearFilters(sel))}>{tr("clearFilters")}</button>
         )}
       </div>
 
-      <Block title="Category">
-        <ul className="pf-list" role="radiogroup" aria-label="Category">
+      <Block title={tr("category")}>
+        <ul className="pf-list" role="radiogroup" aria-label={tr("category")}>
           <li>
             <button type="button" role="radio" aria-checked={!sel.type} className="pf-cat" onClick={() => onType("")}>
-              <span>All products</span><span className="pf-n">{typeTotal}</span>
+              <span>{tr("allProducts")}</span><span className="pf-n">{typeTotal}</span>
             </button>
           </li>
           {facets.types.map((t) => (
@@ -45,7 +47,7 @@ export function PosFilters({ facets, sel, total, onChange, onType }: {
       </Block>
 
       {facets.models.length > 0 && (
-        <Checks title="Model" attr="model" values={facets.models} sel={sel} onChange={onChange} searchable />
+        <Checks title={tr("model")} attr="model" values={facets.models} sel={sel} onChange={onChange} searchable />
       )}
       {facets.groups.map((g) => (
         <Checks key={g.attr} title={g.attr} attr={g.attr} values={g.values} sel={sel} onChange={onChange} />
@@ -53,18 +55,18 @@ export function PosFilters({ facets, sel, total, onChange, onType }: {
 
       {none && (
         <p className="pf-empty">
-          {total === 0 ? "No products match yet — try clearing the search." : "No more filters apply to this category."}
+          {total === 0 ? tr("filtersNoMatch") : tr("filtersNoMore")}
         </p>
       )}
 
-      <Block title="Stock">
+      <Block title={tr("stock")}>
         <label className="pf-check">
           <input type="checkbox" checked={sel.inStockOnly} onChange={(e) => onChange({ ...sel, inStockOnly: e.target.checked })} />
-          <span>In stock only</span>
+          <span>{tr("inStockOnly")}</span>
         </label>
         <label className="pf-check">
           <input type="checkbox" checked={sel.lowOnly} onChange={(e) => onChange({ ...sel, lowOnly: e.target.checked })} />
-          <span>Low stock (2 or fewer)</span>
+          <span>{tr("lowStock")}</span>
         </label>
       </Block>
     </aside>
@@ -84,6 +86,7 @@ function Checks({ title, attr, values, sel, onChange, searchable }: {
   title: string; attr: string; values: Array<{ value: string; count: number; on: boolean }>;
   sel: Selection; onChange: (s: Selection) => void; searchable?: boolean;
 }) {
+  const tr = useTranslations("pos");
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
   const list = values.filter((v) => !find || v.value.toLowerCase().includes(find.toLowerCase()));
@@ -94,8 +97,8 @@ function Checks({ title, attr, values, sel, onChange, searchable }: {
       {searchable && values.length > SHOWN && (
         <label className="pf-find">
           <Search size={14} aria-hidden="true" />
-          <input value={find} onChange={(e) => setFind(e.target.value)} placeholder={`Search ${title.toLowerCase()}…`}
-            aria-label={`Search ${title.toLowerCase()}`} />
+          <input value={find} onChange={(e) => setFind(e.target.value)} placeholder={tr("searchIn", { what: title.toLowerCase() })}
+            aria-label={tr("searchInLabel", { what: title.toLowerCase() })} />
         </label>
       )}
       <ul className="pf-list">
@@ -107,13 +110,13 @@ function Checks({ title, attr, values, sel, onChange, searchable }: {
             </label>
           </li>
         ))}
-        {list.length === 0 && <li className="pf-none">No match</li>}
+        {list.length === 0 && <li className="pf-none">{tr("noMatchShort")}</li>}
       </ul>
       {!find && list.length > cut.length && (
-        <button type="button" className="pf-more" onClick={() => setAll(true)}>Show more ({list.length - cut.length})</button>
+        <button type="button" className="pf-more" onClick={() => setAll(true)}>{tr("showMoreN", { n: list.length - cut.length })}</button>
       )}
       {!find && all && list.length > SHOWN && (
-        <button type="button" className="pf-more" onClick={() => setAll(false)}>Show fewer</button>
+        <button type="button" className="pf-more" onClick={() => setAll(false)}>{tr("showFewer")}</button>
       )}
     </Block>
   );

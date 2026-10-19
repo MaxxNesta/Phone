@@ -7,6 +7,7 @@ import { money } from "@/lib/format";
 import type { ReceiptView } from "@/lib/receipt";
 import { ReceiptSlip } from "./receipt-slip";
 import { ReceiptPrintHost } from "./receipt-print";
+import { useTranslations } from "next-intl";
 
 /**
  * Shown the moment a counter sale posts: it says so plainly, previews the very
@@ -20,6 +21,7 @@ import { ReceiptPrintHost } from "./receipt-print";
 export function PosSaleDone({ view, logoUrl, onClose }: {
   view: ReceiptView; logoUrl: string | null; onClose: () => void;
 }) {
+  const tr = useTranslations("pos");
   const sheet = useRef<HTMLDivElement>(null);
   const printRef = useRef<HTMLButtonElement>(null);
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -69,28 +71,28 @@ export function PosSaleDone({ view, logoUrl, onClose }: {
           <div ref={sheet} className="sale-done" role="dialog" aria-modal="true" aria-labelledby="sale-done-title">
             <header className="sale-done-head">
               <span className="sale-done-check" aria-hidden="true"><Check size={26} strokeWidth={3} /></span>
-              <h2 id="sale-done-title">Sale complete</h2>
+              <h2 id="sale-done-title">{tr("saleComplete")}</h2>
               <p className="sale-done-sub">
                 <span className="m">{data.docNo}</span> · {money(data.total)}
-                {paidBy ? ` · ${paidBy}` : data.onAccount > 0.005 ? " · on account" : ""}
+                {paidBy ? ` · ${paidBy}` : data.onAccount > 0.005 ? tr("onAccountShort") : ""}
               </p>
             </header>
 
-            <div className={`sale-done-paper rc-preview rc-preview-${paper}`} role="region" aria-label="Receipt preview">
+            <div className={`sale-done-paper rc-preview rc-preview-${paper}`} role="region" aria-label={tr("receiptPreview")}>
               {slip}
             </div>
 
             <footer className="sale-done-actions">
-              <button ref={doneRef} type="button" className="btn ghost" onClick={onClose}>Done</button>
+              <button ref={doneRef} type="button" className="btn ghost" onClick={onClose}>{tr("done")}</button>
               {g.allowPdf && (
                 <button type="button" className="btn ghost" onClick={() => print(true)}
-                  title="Opens the print dialog — choose “Save as PDF” there">
+                  title={tr("pdfTitle")}>
                   <FileDown size={17} aria-hidden="true" /> PDF
                 </button>
               )}
               {g.showPrintButton && (
                 <button ref={printRef} type="button" className="btn" onClick={() => print()}>
-                  <Printer size={17} aria-hidden="true" /> Print
+                  <Printer size={17} aria-hidden="true" /> {tr("print")}
                 </button>
               )}
             </footer>
