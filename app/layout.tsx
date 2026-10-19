@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Noto_Sans_Myanmar, Inter } from "next/font/google";
+import { Noto_Sans_Myanmar, Geist } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
 import { getCompany } from "@/lib/queries";
@@ -33,9 +33,13 @@ import { DatePickerFix } from "@/components/date-picker-fix";
 // already loaded and its figures are uniform by default — but it reads as a
 // different product, and the point here was to keep one look.
 //
-// Myanmar still falls through to Noto: Inter has no Burmese glyphs, and a
+// Inter was replaced by Geist (2026-10-19, owner's choice): it keeps the
+// tabular figures that make a column of amounts line up, and gives the app a
+// cleaner, more current face.
+//
+// Myanmar still falls through to Noto: Geist has no Burmese glyphs, and a
 // name in Burmese must not silently lose its shapes to a fallback.
-const inter = Inter({
+const geist = Geist({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-ui",
@@ -92,14 +96,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   if (bare) {
     return (
-      <html lang="en" className={`${inter.variable} ${notoMyanmar.variable}`}>
+      <html lang="en" className={`${geist.variable} ${notoMyanmar.variable}`}>
         <body><main className="bare">{children}</main><Toast /></body>
       </html>
     );
   }
 
   return (
-    <html lang="en" className={`${inter.variable} ${notoMyanmar.variable}`}>
+    <html lang="en" className={`${geist.variable} ${notoMyanmar.variable}`}>
       <body>
         {/* Before first paint, so a rail somebody collapsed yesterday does not
             flash open and shove the page sideways on the way in. The effect in

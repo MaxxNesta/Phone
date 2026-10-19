@@ -61,11 +61,11 @@
      and one line to undo, but it no longer resolves to a monospaced face.
      Nothing is actually monospaced any more.
 
-     Columns still line up. The house face is Inter, whose tabular figures
-     switch on with font-variant-numeric: tabular-nums — measured at 16px,
-     digit width spread 0.000, the same as a monospace. That is the whole
-     reason the face is Inter and not DM Sans, which has no tabular
-     numerals and could not hold a column together.
+     Columns still line up. The house face is Geist (Inter before
+     2026-10-19), whose figures are tabular — measured at 16px, digit width
+     spread 0.000 with or without tabular-nums, the same as a monospace. A
+     face without tabular numerals, like the DM Sans before Inter, could
+     not hold a column together.
 
      Everything that shows a figure therefore needs tabular-nums as well as
      this token. The two travel together; dropping the first makes "1"
@@ -327,7 +327,7 @@ h2 { font-size: var(--t-lg); font-weight: 600; letter-spacing: var(--track-tight
    name, or the English gloss under Burmese copy. The same three declarations
    were written inline in thirteen places; as one class the size and leading
    are set once, which matters now that Burmese resolves in Noto and Latin in
-   Inter, two faces with different optical sizes. */
+   Geist, two faces with different optical sizes. */
 .subline { font-size: var(--t-sm); color: var(--muted); line-height: var(--lh-snug); }
 .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
@@ -4573,7 +4573,7 @@ main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(
    This shop sells only Apple products, so the till and the back office are
    built on Apple's foundations (HIG, via the apple-design skill):
 
-   - one face, Inter, on every device (SF may not be served off Apple's
+   - one face, Geist, on every device (SF may not be served off Apple's
      platforms, and the laptop has to match the iPad)
    - Apple's neutral greys (tokens above), continuous 16px card corners
    - titles that carry hierarchy by weight and size, tracked tighter as they
