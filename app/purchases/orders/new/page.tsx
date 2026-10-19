@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { getUntouchedOpenOrders, getDocumentDraft, getCompany } from "@/lib/queries";
 import { OrderForm } from "@/components/order-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
+import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
 
 export default async function NewPurchaseOrder({
@@ -51,17 +52,14 @@ export default async function NewPurchaseOrder({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Purchase orders", href: "/purchases/orders" },
-        { label: "New purchase order" },
-      ]} />
-      <div className="page-head">
-        <h1>New purchase order</h1>
+      <DocHeading back={{ href: "/purchases/orders", label: "Back to purchase orders" }}
+        trail={[{ label: "Purchase orders", href: "/purchases/orders" }]}
+        title="New purchase order" status={draft ? "Draft" : "New"}>
         <HelpHint>
           A commitment to the supplier. Receive against it later — stock
           arrives and cost posts only on goods receipt, never here.
         </HelpHint>
-      </div>
+      </DocHeading>
 
       <OrderForm
         kind="purchase"

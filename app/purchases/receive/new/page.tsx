@@ -120,12 +120,6 @@ export default async function NewGoodsReceipt({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Goods receipts", href: "/purchases/receive" },
-        ...(toReceive ? [{ label: toReceive.docNo, href: `/documents/${toReceive.id}` }] : []),
-        { label: "Receive goods" },
-      ]} />
-
       <ReceiptForm
         key={toReceive?.id ?? "free"}
         order={toReceive}

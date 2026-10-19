@@ -8,6 +8,7 @@ import { UnitToggle, AddPackInline } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
+import { Package, Plus } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import { PartnerPicker } from "./partner-picker";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
@@ -259,20 +260,6 @@ export function OrderForm({
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
-      {/* The document's commands, top right and always in view — the same
-          place on every document. */}
-      <div className="doc-bar">
-        {savedAt && <span className="page-sub" style={{ color: "var(--ok)" }}>Draft saved {savedAt}</span>}
-        {saveDraft && (
-          <button type="submit" formAction={draftFormAction} className="btn ghost"
-                  formNoValidate disabled={savingDraft || pending}>
-            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
-          </button>
-        )}
-        <button type="submit" disabled={pending || total === 0}>
-          {pending ? "Saving…" : `Save ${isSales ? "sales" : "purchase"} order`}
-        </button>
-      </div>
 
       {/* What the editor holds, for a draft to put back. */}
       {saveDraft && (
@@ -291,12 +278,9 @@ export function OrderForm({
 
       <input type="hidden" name="lines" value={payload} />
 
-      <div className="card compact">
-        <div className="card-head">
-          <h2>{isSales ? "Customer" : "Supplier"} and dates</h2>
-        </div>
+      <div className="card doc-info">
         <div className="card-body">
-          <div className="row">
+          <div className="doc-fields">
             <div className="field">
               <label htmlFor="partner_id">{isSales ? "Customer" : "Supplier"}</label>
               <PartnerPicker
@@ -339,8 +323,8 @@ export function OrderForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>Lines</h2>
-          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}>Add line</button>
+          <h2><Package size={18} aria-hidden="true" /> Items</h2>
+          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}><Plus size={15} aria-hidden="true" /> Add item</button>
         </div>
         <AddItemsBar items={items} categories={categories} onAdd={addPicks}
           title={isSales ? "Add products to sales order" : "Add products to purchase order"}
@@ -460,6 +444,20 @@ export function OrderForm({
         <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
       </div>
 
+      {/* The document's commands, at the foot and kept in view — the same
+          place on every purchase document. */}
+      <div className="actions form-commit">
+        <button type="submit" disabled={pending || total === 0}>
+          {pending ? "Saving…" : `Save ${isSales ? "sales" : "purchase"} order`}
+        </button>
+        {saveDraft && (
+          <button type="submit" formAction={draftFormAction} className="btn ghost"
+                  formNoValidate disabled={savingDraft || pending}>
+            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save as draft"}
+          </button>
+        )}
+        {savedAt && <span className="page-sub" style={{ color: "var(--ok)" }}>Draft saved {savedAt}</span>}
+      </div>
     </form>
   );
 }

@@ -90,7 +90,7 @@ export function AddItemsBar({
   };
 
   const hits = useMemo(
-    () => (q.trim() || filtering ? items.filter((i) => match(i, q)).slice(0, 8) : []),
+    () => (q.trim() || filtering ? byRelevance(items.filter((i) => match(i, q)), q, avail).slice(0, 8) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [items, q, f, filtering]);
   useEffect(() => setHi(0), [q, f]);
@@ -160,7 +160,7 @@ export function AddItemsBar({
           {listing && hits.length > 0 && (
             <div className="aib-hits" role="listbox" aria-label="Matching items">
               {hits.map((i, n) => (
-                <button key={i.id} type="button" role="option" aria-selected={n === hi}
+                <button key={i.id} type="button" className="aib-hit" role="option" aria-selected={n === hi}
                   // Kept from taking the focus, so the list is still there for the click.
                   onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setHi(n)} onClick={() => add([{ itemId: i.id, qty: 1 }])}>
@@ -193,6 +193,16 @@ export function AddItemsBar({
   );
 }
 
+/** In stock before out of stock, then a name or code that starts with what was
+ *  typed before one that only contains it, then by name. */
+function byRelevance(list: PickerItem[], term: string, avail: (i: PickerItem) => number) {
+  const t = term.trim().toLowerCase();
+  const starts = (i: PickerItem) =>
+    t && (i.name.toLowerCase().startsWith(t) || i.code.toLowerCase().startsWith(t) || (i.model ?? "").toLowerCase().startsWith(t)) ? 0 : 1;
+  return [...list].sort((a, b) =>
+    Number(avail(b) > 0) - Number(avail(a) > 0) || starts(a) - starts(b) || a.name.localeCompare(b.name));
+}
+
 export function Thumb({ i }: { i: PickerItem }) {
   return (
     <span className="aib-thumb">
@@ -211,7 +221,7 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
   const [q, setQ] = useState("");
   const [inStock, setInStock] = useState(stockToggle);
   const [chosen, setChosen] = useState<Record<string, number>>({});
-  const rows = items.filter((i) => match(i, q) && (!inStock || avail(i) > 0));
+  const rows = byRelevance(items.filter((i) => match(i, q) && (!inStock || avail(i) > 0)), q, avail);
   const shown = rows.slice(0, 200);
   const count = Object.keys(chosen).length;
   const toggle = (id: string) => setChosen((c) => {

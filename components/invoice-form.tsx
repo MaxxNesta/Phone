@@ -10,7 +10,9 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock } from "lucide-react";
+import { HelpHint } from "./help-hint";
+import { PackageCheck, Truck, Clock, Package, Plus } from "lucide-react";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -145,7 +147,8 @@ export function InvoiceForm({
   const [lines, setLines] = useState<Line[]>(
     Array.isArray(restored?.lines) && restored!.lines.length > 0
       ? restored!.lines as Line[]
-      : [{ key: 1, itemId: "", qty: "", unitPrice: "" }],
+      // Empty: the search bar above the table adds lines, as on orders and receipts.
+      : [],
   );
   const [partnerId, setPartnerId] = useState(restored?.partnerId ?? "");
   const base = fx?.base ?? "MMK";
@@ -394,11 +397,27 @@ export function InvoiceForm({
     if (m !== "match" && matchedGrId) setMatchedGrId("");
   }
 
-  const addLine = () =>
-    setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitPrice: "" }]);
+  /** From the search or the catalogue: one more of a line already there, else
+   *  the first empty line, else a new one — priced as picking it would. */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const item = byId(p.itemId);
+        const price = !item ? 0 : Number(isSales ? item.sale_price : item.next_cost);
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "" };
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];
+      }
+      return next;
+    });
+  }
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => ls.filter((l) => l.key !== key));
 
   const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
   const goodsTotal = lines.reduce((s, l) => s + amount(l), 0);
@@ -533,9 +552,9 @@ export function InvoiceForm({
 
       <input type="hidden" name="lines" value={payload} />
 
-      <div className="card doc-meta compact">
+      <div className="card doc-meta doc-info">
         <div className="card-body">
-          <div className="row">
+          <div className="doc-fields">
             <div className="field">
               <label htmlFor="partner_id">{isSales ? "Customer" : "Supplier"}</label>
               {fromReceipt ? (
@@ -585,7 +604,13 @@ export function InvoiceForm({
             </div>
 
             <div className="field">
-              <label htmlFor="due_date">Due date</label>
+              <label htmlFor="due_date">
+                Due date{" "}
+                <HelpHint label="About the due date">
+                  Filled from the supplier&rsquo;s payment terms.
+                  {leavesBalance && " Required while a balance is left owing, so the bill can be tracked as overdue."}
+                </HelpHint>
+              </label>
               <input
                 id="due_date"
                 name="due_date"
@@ -594,9 +619,6 @@ export function InvoiceForm({
                 onChange={(e) => setDueDate(e.target.value)}
                 required={leavesBalance}
               />
-              <span className="hint">
-                {leavesBalance ? "Filled from payment terms — required so this can be tracked as overdue" : "Filled from payment terms"}
-              </span>
             </div>
 
             {kind === "purchase" && fx && (
@@ -609,19 +631,16 @@ export function InvoiceForm({
         </div>
       </div>
 
-      {/* The one question that decides whether stock moves. Three cards
+      {/* The one question that decides whether stock moves. Three options
           because the engine has three paths, worded as the situation rather
           than as the mechanism — somebody entering a bill knows whether the
-          goods are in the warehouse; they do not know what GR/IR clearing is. */}
+          goods are in the warehouse; they do not know what GR/IR clearing is.
+          A segmented control, with only the chosen option explained under it. */}
       {!isSales && (
-        <div className="card receive-mode">
-          <div className="card-head">
-            <h2>Have the goods arrived?</h2>
-            <span className="page-sub">This decides whether stock moves when the bill posts.</span>
-          </div>
+        <div className="card receive-mode doc-info">
           <div className="card-body">
-            <div className="modes" role="radiogroup" aria-label="Goods receipt status">
-              {([
+            {(() => {
+              const modes = ([
                 {
                   key: "match" as const,
                   icon: <PackageCheck size={18} aria-hidden="true" />,
@@ -655,25 +674,35 @@ export function InvoiceForm({
                   disabled: fromReceipt,
                   why: fromReceipt ? "A goods receipt already recorded these goods" : null,
                 },
-              ]).map((m) => (
-                <button
-                  key={m.key}
-                  type="button"
-                  role="radio"
-                  aria-checked={receiveMode === m.key}
-                  className={`mode${receiveMode === m.key ? " on" : ""}`}
-                  disabled={m.disabled}
-                  onClick={() => chooseReceiveMode(m.key)}
-                >
-                  <span className="mode-icon">{m.icon}</span>
-                  <span className="mode-text">
-                    <strong>{m.title}</strong>
-                    <span className="mode-lead">{m.lead}</span>
-                    <span className="mode-note">{m.why ?? m.note}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
+              ]);
+              const cur = modes.find((m) => m.key === receiveMode);
+              return (<>
+                <div className="receive-row">
+                <span className="receive-q" id="receive-q">Have the goods arrived?</span>
+                <div className="segmented" role="radiogroup" aria-labelledby="receive-q">
+                  {modes.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={receiveMode === m.key}
+                      className={`seg${receiveMode === m.key ? " on" : ""}`}
+                      disabled={m.disabled}
+                      title={m.disabled ? (m.why ?? m.note) : undefined}
+                      onClick={() => chooseReceiveMode(m.key)}
+                    >
+                      {m.icon} {m.title}
+                    </button>
+                  ))}
+                </div>
+                </div>
+                {cur && (
+                  <p className="receive-explain">
+                    {cur.lead} <span className="subline">{cur.why ?? cur.note}</span>
+                  </p>
+                )}
+              </>);
+            })()}
 
             {/* Only under the choice it belongs to. In the header it was a
                 field somebody scrolled past on the way to the lines. */}
@@ -739,7 +768,7 @@ export function InvoiceForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>Lines</h2>
+          <h2><Package size={18} aria-hidden="true" /> Items</h2>
           {lines.some(inherited) && (
             <label className="billpart">
               <input
@@ -752,8 +781,8 @@ export function InvoiceForm({
                 : "Bill only part of what arrived"}
             </label>
           )}
-          <button type="button" className="ghost tiny" onClick={addLine}>
-            Add line
+          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}>
+            <Plus size={15} aria-hidden="true" /> Add item
           </button>
         </div>
         {billPart && (
@@ -767,6 +796,11 @@ export function InvoiceForm({
             , waiting for the next bill — it is not written off.
           </p>
         )}
+
+        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+          stockToggle={isSales}
+          title={isSales ? "Add products to sales invoice" : "Add products to purchase invoice"}
+          sub="Search the full product catalogue" />
 
         <div className="tablewrap">
           <table className="linetable">
@@ -783,6 +817,11 @@ export function InvoiceForm({
               </tr>
             </thead>
             <tbody>
+              {lines.length === 0 && (
+                <tr><td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                  No items yet — search above, scan a barcode, or Browse / Add multiple.
+                </td></tr>
+              )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
                 const short = isSales && item?.is_stocked && Number(l.qty) > Number(item.on_hand);

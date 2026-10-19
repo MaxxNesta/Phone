@@ -1,11 +1,10 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { getFormData, createPurchaseInvoice, saveInvoiceDraft } from "@/lib/actions";
 import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, getCompany } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { InvoiceForm } from "@/components/invoice-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
+import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
 
 export default async function NewPurchaseInvoice({
@@ -65,26 +64,22 @@ export default async function NewPurchaseInvoice({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Purchase invoices", href: "/purchases/invoices" },
-        ...(from ? [{ label: from.doc_no, href: `/documents/${from.id}` }] : []),
-        { label: "New purchase invoice" },
-      ]} />
-      <div className="page-head">
-        <h1>New purchase invoice</h1>
-        {/* Raised from one receipt: the way back is that document, not the
-            list of every invoice. The crumb above says the same thing; this
-            is the arrow somebody actually aims at. */}
-        {from && (
-          <Link href={`/documents/${from.id}`} className="btn ghost">
-            <ArrowLeft size={14} aria-hidden="true" /> Back to {from.doc_no}
-          </Link>
-        )}
+      {/* Raised from one receipt: the arrow goes back to that document, not
+          the list of every invoice. */}
+      <DocHeading
+        back={from
+          ? { href: `/documents/${from.id}`, label: `Back to ${from.doc_no}` }
+          : { href: "/purchases/invoices", label: "Back to purchase invoices" }}
+        trail={[
+          { label: "Purchase invoices", href: "/purchases/invoices" },
+          ...(from ? [{ label: from.doc_no, href: `/documents/${from.id}` }] : []),
+        ]}
+        title="New purchase invoice" status={draft ? "Draft" : "New"}>
         <HelpHint>
           Stock arrives at the price paid and the supplier balance opens. Each
           receipt becomes its own FIFO cost layer.
         </HelpHint>
-      </div>
+      </DocHeading>
 
       <InvoiceForm
         kind="purchase"

@@ -4,6 +4,7 @@ import { sql } from "@/lib/db";
 import { getUntouchedOpenOrders, getDocumentDraft, getCompany } from "@/lib/queries";
 import { OrderForm } from "@/components/order-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
+import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
 
 export default async function NewSalesOrder({
@@ -51,17 +52,14 @@ export default async function NewSalesOrder({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Sales orders", href: "/sales/orders" },
-        { label: "New sales order" },
-      ]} />
-      <div className="page-head">
-        <h1>New sales order</h1>
+      <DocHeading back={{ href: "/sales/orders", label: "Back to sales orders" }}
+        trail={[{ label: "Sales orders", href: "/sales/orders" }]}
+        title="New sales order" status={draft ? "Draft" : "New"}>
         <HelpHint>
           A commitment from the customer. Deliver against it later — stock
           leaves and cost posts only on delivery, never here.
         </HelpHint>
-      </div>
+      </DocHeading>
 
       <OrderForm
         kind="sales"

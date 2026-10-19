@@ -11,7 +11,8 @@ import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
 import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { AddItemsBar, type Pick } from "./add-items-bar";
-import { ArrowLeft, ClipboardList, Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
+import { DocHeading } from "./doc-heading";
+import { Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 
@@ -416,41 +417,17 @@ export function ReceiptForm({
         </>
       )}
 
-      {/* The document's own header: what it is, where it stands, and the two
-          things to do with it — kept in view rather than at the foot. */}
-      <div className="gr-head">
-        <Link href="/purchases/receive" className="gr-back" aria-label="Back to goods receipts">
-          <ArrowLeft size={18} aria-hidden="true" />
-        </Link>
-        <div className="gr-title">
-          <h1>Goods Receipt <span className="pill draft">{draftId ? "Draft" : "New"}</span></h1>
-          {order && (
-            <p className="page-sub">
-              Receiving against <Link href={`/documents/${order.id}`}>{order.docNo}</Link>
-            </p>
-          )}
-        </div>
-        <div className="gr-actions">
-          {saveDraft && (
-            <button type="submit" formAction={draftAction} formNoValidate className="ghost"
-              disabled={savingDraft || pending}>
-              {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
-            </button>
-          )}
-          <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0}
-            onClick={(e) => {
-              if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }
-            }}>
-            {pending ? "Posting…" : "Post GR"}
-          </button>
-          {order && (
-            <OffOrderConfirm open={askOffOrder} orderNo={order.docNo}
-              lines={offOrder.map((l) => ({ name: byId(l.itemId)?.name ?? "Item", qty: Number(l.qty) }))}
-              onCancel={() => setAskOffOrder(false)}
-              onConfirm={() => { setAskOffOrder(false); offOrderOk.current = true; postRef.current?.click(); offOrderOk.current = false; }} />
-          )}
-        </div>
-      </div>
+      {/* The document's own heading: what it is and where it stands. Its two
+          commands sit in the bar at the foot, as on every purchase document. */}
+      <DocHeading
+        back={order
+          ? { href: `/documents/${order.id}`, label: `Back to ${order.docNo}` }
+          : { href: "/purchases/receive", label: "Back to goods receipts" }}
+        trail={[
+          { label: "Goods receipts", href: "/purchases/receive" },
+          ...(order ? [{ label: order.docNo, href: `/documents/${order.id}` }] : []),
+        ]}
+        title="Goods receipt" status={draftId ? "Draft" : "New"} />
 
       {state && "error" in state && <div className="alert">{state.error}</div>}
       {draftResult && "error" in draftResult && <div className="alert">{draftResult.error}</div>}
@@ -464,11 +441,9 @@ export function ReceiptForm({
         </div>
       )}
 
-      <div className="gr-top">
-        <div className="card compact">
-          <div className="card-head"><h2><ClipboardList size={18} aria-hidden="true" /> GR information</h2></div>
+      <div className="card doc-info">
           <div className="card-body">
-            <div className="row">
+            <div className="doc-fields cols-4">
               <div className="field">
                 <label htmlFor="partner_id">Supplier</label>
                 {order ? (
@@ -519,38 +494,28 @@ export function ReceiptForm({
                   date={docDate} pricesIn={fxSwitch.pricesIn}
                   onChange={fxSwitch.change} />
               )}
+              <div className="field span-rest">
+                <label htmlFor="memo">Remarks</label>
+                <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
+              </div>
             </div>
-            <div className="field" style={{ marginTop: 20 }}>
-              <label htmlFor="memo">Remarks</label>
-              <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
-            </div>
-          </div>
-        </div>
-
-        <div className="card gr-supplier">
-          <div className="card-head"><h2><Building2 size={18} aria-hidden="true" /> Supplier info</h2></div>
-          <div className="card-body">
-            {supplier ? (
-              <>
-                <div className="gr-supplier-name">{supplier.name}</div>
-                {supplier.company_name && <div className="subline">{supplier.company_name}</div>}
-                <dl className="facts">
-                  {(supplier.address || supplier.township || supplier.region) && (
-                    <><dt>Address</dt><dd>{[supplier.address, supplier.township, supplier.region].filter(Boolean).join(", ")}</dd></>
-                  )}
-                  {supplier.phone && <><dt>Phone</dt><dd>{supplier.phone}</dd></>}
-                  <dt>Currency</dt><dd>{supplier.currency || base}</dd>
-                  {supplier.payment_terms_days != null && <><dt>Terms</dt><dd>{supplier.payment_terms_days} days</dd></>}
-                </dl>
-                <Link href={`/partners/${supplier.id}`} className="btn ghost" style={{ width: "100%", justifyContent: "center" }}>
-                  View supplier
-                </Link>
-              </>
-            ) : (
-              <p className="subline">Choose a supplier to see their details.</p>
+            {/* Who the goods are from, in one line once a supplier is chosen —
+                not a card standing empty until then. */}
+            {supplier && (
+              <p className="doc-supplier">
+                <Building2 size={15} aria-hidden="true" />
+                <span>
+                  <strong>{supplier.name}</strong>
+                  {[supplier.phone, [supplier.township, supplier.region].filter(Boolean).join(", "),
+                    supplier.payment_terms_days != null ? `${supplier.payment_terms_days}-day terms` : null,
+                    supplier.currency || base]
+                    .filter(Boolean).map((x) => ` · ${x}`).join("")}
+                </span>
+                <Link href={`/partners/${supplier.id}`} className="linkish">View supplier</Link>
+              </p>
             )}
           </div>
-        </div>
+
       </div>
 
       <MaybeSamePurchase lines={sameTwice} />
@@ -638,7 +603,7 @@ export function ReceiptForm({
                 </div>
               </details>
             )}
-            <button type="button" onClick={() => document.getElementById("add-items-search")?.focus()}><Plus size={15} aria-hidden="true" /> Add item</button>
+            <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}><Plus size={15} aria-hidden="true" /> Add item</button>
           </span>
         </div>
         {!order && waitingOrders.length > 0 && (
@@ -950,6 +915,27 @@ export function ReceiptForm({
             </div>
           </details>
         </div>
+      </div>
+
+      <div className="actions form-commit">
+        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0}
+          onClick={(e) => {
+            if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }
+          }}>
+          {pending ? "Posting…" : "Post GR"}
+        </button>
+        {saveDraft && (
+          <button type="submit" formAction={draftAction} formNoValidate className="btn ghost"
+            disabled={savingDraft || pending}>
+            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save as draft"}
+          </button>
+        )}
+        {order && (
+          <OffOrderConfirm open={askOffOrder} orderNo={order.docNo}
+            lines={offOrder.map((l) => ({ name: byId(l.itemId)?.name ?? "Item", qty: Number(l.qty) }))}
+            onCancel={() => setAskOffOrder(false)}
+            onConfirm={() => { setAskOffOrder(false); offOrderOk.current = true; postRef.current?.click(); offOrderOk.current = false; }} />
+        )}
       </div>
     </form>
   );
