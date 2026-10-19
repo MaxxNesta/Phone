@@ -5,6 +5,7 @@ import { sql } from "@/lib/db";
 import { SalesVoucher } from "@/components/sales-voucher";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { DocHeading } from "@/components/doc-heading";
 
 export default async function NewSalesInvoice({
   searchParams,
@@ -64,23 +65,27 @@ export default async function NewSalesInvoice({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Sales invoices", href: "/sales/invoices" },
-        ...(from ? [{ label: from.doc_no, href: `/documents/${from.id}` }] : []),
-        { label: draft ? "Resuming a draft" : "Sales voucher" },
-      ]} />
-      <div className="page-head">
-        <h1>Sales voucher</h1>
-        <HelpHint>
-          ကုန်ပစ္စည်းများသည် FIFO ကုန်ကျစရိတ်ဖြင့် ထွက်ခွာပြီး၊ ဝင်ငွေကို
-          အသိအမှတ်ပြုကာ လက်ကျန်ငွေကို ဤ Invoice တွင် ဖွင့်ပေးပါသည်။
-          <div className="subline" style={{ marginTop: "0.15rem" }}>
-            Stock leaves at its FIFO cost, revenue is recognised, and the balance opens against this invoice.
-          </div>
-        </HelpHint>
-      </div>
 
       <SalesVoucher
+        heading={{
+          back: from
+            ? { href: `/documents/${from.id}`, label: `Back to ${from.doc_no}` }
+            : { href: "/sales/invoices", label: "Back to sales invoices" },
+          trail: [
+            { label: "Sales invoices", href: "/sales/invoices" },
+            ...(from ? [{ label: from.doc_no, href: `/documents/${from.id}` }] : []),
+          ],
+          title: "New sales invoice", status: draft ? "Draft" : "New",
+          help: (
+            <HelpHint>
+              ကုန်ပစ္စည်းများသည် FIFO ကုန်ကျစရိတ်ဖြင့် ထွက်ခွာပြီး၊ ဝင်ငွေကို
+              အသိအမှတ်ပြုကာ လက်ကျန်ငွေကို ဤ Invoice တွင် ဖွင့်ပေးပါသည်။
+              <div className="subline" style={{ marginTop: "0.15rem" }}>
+                Stock leaves at its FIFO cost, revenue is recognised, and the balance opens against this invoice.
+              </div>
+            </HelpHint>
+          ),
+        }}
         retail={Boolean((co as { retail_mode?: boolean }).retail_mode)}
         initialOrderId={orderId ?? null}
         action={createSalesInvoice}

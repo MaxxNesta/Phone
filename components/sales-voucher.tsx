@@ -13,11 +13,12 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Smartphone, Copy, MoreVertical, ChevronRight } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Smartphone, Copy, MoreVertical, ChevronRight, Package, Plus } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { posSearchAction, posUnitsAction } from "@/lib/pos-actions";
+import { DocHeading } from "./doc-heading";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -132,6 +133,7 @@ export function SalesVoucher({
   customerCredit = [],
   ownership = [],
   awaiting = [],
+  heading,
   retail = false,
   initialOrderId = null,
 }: {
@@ -185,6 +187,9 @@ export function SalesVoucher({
   initialDeliveryId?: string;
   /** Orders to this customer with goods still owed. See getOpenOrdersAwaitingGoods. */
   awaiting?: AwaitingLine[];
+  /** The page heading, drawn by the form so the price level can sit in it. */
+  heading?: { back: { href: string; label: string }; trail: { label: string; href: string }[];
+    title: string; status?: string; help?: React.ReactNode };
   /** Consigned stock on hand, per item, warehouse and consignor. Owned and
    *  consigned goods share a shelf and nothing about the shelf says which
    *  is which, so the line has to be told. */
@@ -914,31 +919,26 @@ export function SalesVoucher({
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
-      {/* The document's commands, top right and always in view — the same
-          place on every document. */}
-      <div className="doc-bar">
-        <span className="vcount">
-          {lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"}
-          {lines.some((l) => (l.serials ?? []).length) && ` · ${lines.reduce((n, l) => n + (l.serials ?? []).length, 0)} phones selected`}
-          {savedAt && <span style={{ color: "var(--ok)" }}> · Draft saved {savedAt}</span>}
-        </span>
-        {saveDraft && (
-          <button type="submit" formAction={draftFormAction} className="btn ghost"
-                  formNoValidate disabled={savingDraft || pending}>
-            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save draft"}
-          </button>
-        )}
-        <button
-          type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
-          onClick={
-            shortages.length > 0 && !negativeConfirmed
-              ? () => setAskNegative(true)
-              : undefined
-          }
-          disabled={pending || total === 0 || cashTooMuch || imeiShort.length > 0}>
-          {pending ? "Posting…" : "Post invoice"}
-        </button>
-      </div>
+      {/* The heading, drawn here rather than by the page so the price level
+          this invoice is priced at can sit beside its status. */}
+      {heading && (
+        <DocHeading {...heading} badges={<>
+            {activeLevel && priceLevels.length > 1 ? (
+                <select className="levelpick" value={activeLevelId ?? ""} aria-label="Price level for this invoice"
+                  title={levelOverride ? "Changed for this invoice — the customer's own level is the default"
+                    : "The customer's price level"}
+                  onChange={(e) => chooseLevel(e.target.value)}>
+                  {priceLevels.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}{l.id === customerLevelId ? " (default)" : ""}</option>
+                  ))}
+                </select>
+              ) : activeLevel && (
+                <span className="pill ok" title="Prices suggested at this level">
+                  {activeLevel.name}
+                </span>
+              )}
+        </>}>{heading.help}</DocHeading>
+      )}
 
       {/* What the editor holds, for a draft to put back. Separate from the
           `lines` field below, which is the posting payload and has already
@@ -964,33 +964,11 @@ export function SalesVoucher({
         <input type="hidden" name="price_level_id" value={activeLevelId} />
       )}
 
-      <div className="card doc-meta compact">
-        <div className="card-head">
-          <span className="actions">
-            <span className="pill">Sales invoice</span>
-            {activeLevel && priceLevels.length > 1 ? (
-              <select className="levelpick" value={activeLevelId ?? ""} aria-label="Price level for this invoice"
-                title={levelOverride ? "Changed for this invoice — the customer's own level is the default"
-                  : "The customer's price level"}
-                onChange={(e) => chooseLevel(e.target.value)}>
-                {priceLevels.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}{l.id === customerLevelId ? " (default)" : ""}</option>
-                ))}
-              </select>
-            ) : activeLevel && (
-              <span className="pill ok" title="Prices suggested at this level">
-                {activeLevel.name}
-              </span>
-            )}
-            {nextInvoiceNo && (
-              <span className="m" style={{ color: "var(--muted)" }}>No. {nextInvoiceNo}</span>
-            )}
-          </span>
-        </div>
+      <div className="card doc-meta doc-info">
         <div className="card-body">
           {/* The five things every invoice is about, on one line; the rest
               folded away until somebody needs it. */}
-          <div className="row row-head">
+          <div className="doc-fields">
             <div className="field">
               <label htmlFor="partner_id">Customer</label>
               <PartnerPicker
@@ -1024,6 +1002,7 @@ export function SalesVoucher({
                 disabled={balance <= 0} required={balance > 0} />
             </div>
           </div>
+          <div className="doc-info-foot">
           <details className="moredetails">
             <summary>Additional details <span className="page-sub">(salesman, reference)</span></summary>
             <div className="row">
@@ -1051,6 +1030,12 @@ export function SalesVoucher({
             </div>
             </div>
           </details>
+          <span className="doc-info-aside">
+              {nextInvoiceNo && (
+                <span className="m" style={{ color: "var(--muted)" }}>No. {nextInvoiceNo}</span>
+              )}
+          </span>
+          </div>
         </div>
       </div>
 
@@ -1072,13 +1057,11 @@ export function SalesVoucher({
           Somebody billing a sale knows whether the goods have gone; they do
           not necessarily know what a delivery document is. */}
       {!retail && (
-      <div className="card receive-mode">
-        <div className="card-head">
-          <h2>Fulfilment</h2>
-          <span className="page-sub">Choose how the goods leave your business.</span>
-        </div>
+      <div className="card receive-mode doc-info">
         <div className="card-body">
-          <div className="modes" role="radiogroup" aria-label="Delivery status">
+          <div className="receive-row">
+            <span className="receive-q" id="fulfil-q">Fulfilment</span>
+          <div className="segmented" role="radiogroup" aria-labelledby="fulfil-q">
             {([
               {
                 key: "counter" as const,
@@ -1127,18 +1110,15 @@ export function SalesVoucher({
                 type="button"
                 role="radio"
                 aria-checked={fulfilMode === m.key}
-                className={`mode${fulfilMode === m.key ? " on" : ""}`}
+                className={`seg${fulfilMode === m.key ? " on" : ""}`}
                 disabled={m.disabled}
+                title={m.disabled ? m.note : `${m.lead} ${m.note}`}
                 onClick={() => chooseFulfilMode(m.key)}
               >
-                <span className="mode-icon">{m.icon}</span>
-                <span className="mode-text">
-                  <strong>{m.title}</strong>
-                  <span className="mode-lead">{m.lead}</span>
-                  <span className="mode-note">{m.note}</span>
-                </span>
+                {m.icon} {m.title}
               </button>
             ))}
+          </div>
           </div>
 
           {/* What the choice just made will do, in the three terms somebody
@@ -1147,7 +1127,7 @@ export function SalesVoucher({
               the screen that cannot be undone by editing, and a line that
               confirms it after the click is read where a card read before it
               was chosen is not. */}
-          <div className="fulfil-says">
+          <div className="fulfil-says receive-explain">
             <Check size={15} aria-hidden="true" />
             <div>
               <strong>
@@ -1225,7 +1205,7 @@ export function SalesVoucher({
 
       <div className="card">
         <div className="card-head">
-          <h2>Items</h2>
+          <h2><Package size={18} aria-hidden="true" /> Items</h2>
           {lines.some((l) => l.sourceLineId || l.orderLineId) && (
             <label className="billpart">
               <input type="checkbox" checked={billPart}
@@ -1235,7 +1215,7 @@ export function SalesVoucher({
                 : "Bill only part of what went out"}
             </label>
           )}
-          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}>Add line</button>
+          <button type="button" className="ghost tiny" onClick={() => document.getElementById("add-items-search")?.focus()}><Plus size={15} aria-hidden="true" /> Add item</button>
         </div>
         {billPart && (
           <p className="hint" style={{ padding: "0 1rem 0.5rem" }}>
@@ -1933,6 +1913,31 @@ export function SalesVoucher({
           {imeiShort.map((l) => `${items.find((i) => i.id === l.itemId)?.code} ${(l.serials ?? []).length}/${l.qty}`).join(", ")}
         </p>
       )}
+      {/* The document's commands, at the foot and kept in view — the same
+          place on every purchase and sales document. */}
+      <div className="actions form-commit">
+        <button
+          type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
+          onClick={
+            shortages.length > 0 && !negativeConfirmed
+              ? () => setAskNegative(true)
+              : undefined
+          }
+          disabled={pending || total === 0 || cashTooMuch || imeiShort.length > 0}>
+          {pending ? "Posting…" : "Post invoice"}
+        </button>
+        {saveDraft && (
+          <button type="submit" formAction={draftFormAction} className="btn ghost"
+                  formNoValidate disabled={savingDraft || pending}>
+            {savingDraft ? "Saving…" : draftId ? "Update draft" : "Save as draft"}
+          </button>
+        )}
+        <span className="page-sub">
+          {lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"}
+          {lines.some((l) => (l.serials ?? []).length) && ` · ${lines.reduce((n, l) => n + (l.serials ?? []).length, 0)} phones selected`}
+          {savedAt && <span style={{ color: "var(--ok)" }}> · Draft saved {savedAt}</span>}
+        </span>
+      </div>
     </form>
   );
 }

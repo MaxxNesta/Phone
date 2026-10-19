@@ -6516,3 +6516,11 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
 }
 /* The search shrinks to what the bar has left, beside the switcher and avatar. */
 .main > .topbar .topsearch { min-width: 0; }
+/* Sales invoice: the details toggle on the left, the price level and the
+   next number on the right, under the information row. */
+.doc-info-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-top: 12px; }
+.doc-info-foot .moredetails { flex: 1 1 auto; margin: 0; }
+.doc-info-aside { display: inline-flex; align-items: center; gap: 10px; }
+.fulfil-says.receive-explain { display: flex; gap: 10px; align-items: flex-start; border: 0; }
+.fulfil-says.receive-explain > svg { color: var(--focus); flex: none; margin-top: 2px; }
+.fulfil-says.receive-explain ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink-soft); }

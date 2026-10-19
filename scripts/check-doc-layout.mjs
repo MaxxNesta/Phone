@@ -19,6 +19,8 @@ const PAGES = [
   { path: "/sales/orders/new", itemsBy: 320 },
   { path: "/purchases/receive/new", itemsBy: 370 },
   { path: "/purchases/new", itemsBy: 440 },
+  // The sales invoice, laid out the same way (2026-10-19): 304 on a retail shop.
+  { path: "/sales/new", itemsBy: 350 },
 ];
 const SIZES = [
   { name: "desktop", width: 1440, height: 900, cols: [4, 5] },
