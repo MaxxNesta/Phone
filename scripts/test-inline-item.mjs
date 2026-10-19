@@ -66,13 +66,13 @@ try {
     price: 4500, isStocked: true,
   });
   check("creates without leaving the voucher", a.ok, a.ok ? a.item.code : a.error);
-  check("code composes from the category", a.ok && a.item.code === `${child.code}001`,
+  check("code composes from the category", a.ok && a.item.code === `${child.code}-001`,
     a.ok ? a.item.code : "");
 
   const b = await createItemInline({
     name: "ABC Eye Drop 10ml", groupId: child.id, uomId: uom.id, isStocked: true,
   });
-  check("serial auto-increments", b.ok && b.item.code === `${child.code}002`,
+  check("serial auto-increments", b.ok && b.item.code === `${child.code}-002`,
     b.ok ? b.item.code : "");
 
   // A hand-typed serial should be honoured and not disturb the sequence.
@@ -80,7 +80,7 @@ try {
     name: "Special Order Lens", groupId: child.id, serial: "900",
     uomId: uom.id, isStocked: true,
   });
-  check("explicit serial is honoured", c.ok && c.item.code === `${child.code}900`,
+  check("explicit serial is honoured", c.ok && c.item.code === `${child.code}-900`,
     c.ok ? c.item.code : "");
 
   const d = await createItemInline({
