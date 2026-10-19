@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
@@ -21,6 +22,7 @@ import { Menu, X } from "lucide-react";
  */
 export function MobileNav({ title, subtitle }: { title: string; subtitle: string }) {
   const [open, setOpen] = useState(false);
+  const n = useTranslations("nav");
   const pathname = usePathname();
 
   // Close on navigation. Tapping a link in an open drawer should land on the
@@ -50,7 +52,7 @@ export function MobileNav({ title, subtitle }: { title: string; subtitle: string
         <button
           type="button"
           className="navbar-toggle"
-          aria-label={open ? "Close menu" : "Open menu"}
+          aria-label={open ? n("closeMenu") : n("openMenu")}
           aria-expanded={open}
           aria-controls="sidebar"
           onClick={() => setOpen(!open)}

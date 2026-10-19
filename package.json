@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "smoke": "bash scripts/smoke-ui.sh",
+    "i18n:check": "node scripts/check-i18n.mjs",
+    "test:i18n": "node scripts/test-i18n.mjs",
     "test:ui": "npx tsx scripts/seed-correction-flow.mjs && bash scripts/test-ui-correction.sh",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/migrate.mjs --seed"
@@ -16,6 +18,7 @@
     "exceljs": "^4.4.0",
     "lucide-react": "^1.31.0",
     "next": "^15.5.25",
+    "next-intl": "^4.14.9",
     "postgres": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

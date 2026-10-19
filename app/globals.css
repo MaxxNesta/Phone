@@ -6468,3 +6468,34 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
    lines up with its neighbours. */
 .doc-fields .field > label { display: flex; align-items: center; gap: 4px; min-height: 1.25rem; line-height: 1.25rem; }
 .doc-fields .field > label .helphint-mark { width: 18px; height: 18px; min-height: 0; padding: 0; }
+
+/* ============================================================ language ==
+   EN | မြန်မာ in the top bar: a small segmented pair, the current one lifted. */
+.langswitch { display: inline-flex; flex: none; gap: 2px; padding: 2px; border-radius: 10px; background: var(--line-soft); }
+.langswitch-opt {
+  min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink-soft); font-size: var(--t-sm); font-weight: 500; line-height: 1;
+}
+.langswitch-opt:hover:not([aria-pressed="true"]) { color: var(--ink); }
+.langswitch-opt[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.langswitch-opt:lang(my), :lang(my) .langswitch-opt:lang(my) { font-family: var(--font-myanmar), var(--sans); }
+
+/* Burmese stacks marks above and below the line, so it needs more leading
+   than Latin, and its words run longer: labels may wrap rather than clip. */
+:root:lang(my) { --lh-base: 1.7; }
+:lang(my) body { line-height: 1.7; }
+:lang(my) .navlink-text, :lang(my) .navhead-label, :lang(my) .navsubhead { white-space: normal; line-height: 1.45; }
+:lang(my) button, :lang(my) .btn { line-height: 1.45; }
+:lang(my) th { white-space: normal; line-height: 1.45; }
+:lang(my) h1, :lang(my) h2, :lang(my) h3 { line-height: 1.5; }
+/* Phone and tablet: the top bar takes its own row above a hero heading
+   instead of floating over it — with the language switcher it no longer fits
+   beside the title. */
+@media (max-width: 900px) {
+  .main.main:has(.page-head.hero) > .topbar { position: static; width: auto; margin: 0 0 8px; }
+  .page-head.hero h1 { padding-right: 0; }
+}
+.langswitch[aria-busy="true"] { opacity: 0.7; }
+/* The search shrinks to what the bar has left, beside the switcher and avatar. */
+.main > .topbar .topsearch { min-width: 0; }

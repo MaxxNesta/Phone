@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 /**
@@ -56,16 +57,17 @@ export function useSidebarCollapsed() {
 
 export function SidebarCollapse() {
   const collapsed = useSidebarCollapsed();
+  const n = useTranslations("nav");
 
   return (
     <div className="navcollapse-row">
       <button
         type="button"
         className="navcollapse"
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        aria-label={collapsed ? n("expandNav") : n("collapseNav")}
         aria-expanded={!collapsed}
         aria-controls="sidebar"
-        title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        title={collapsed ? n("expandNav") : n("collapseNav")}
         onClick={() => setSidebarCollapsed(!collapsed)}
       >
         {collapsed

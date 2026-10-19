@@ -2,7 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
+import { savedLocale } from "./locale";
+import { LOCALE_COOKIE } from "@/i18n/config";
 import { sql } from "./db";
 import { tooManyFailures, recordFailure, clearFailures, LOGIN_LIMITS } from "./login-throttle";
 import {
@@ -55,6 +57,9 @@ export async function signIn(_prev: Result, fd: FormData): Promise<Result> {
   }
   await clearFailures(sql, email);
   await createSession(u.id);
+  // Their language comes back with them.
+  const locale = await savedLocale(u.id);
+  if (locale) (await cookies()).set(LOCALE_COOKIE, locale, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
   redirect(safeNext(str(fd, "next")));
 }
 
