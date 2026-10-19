@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "@/lib/auth";
 import { PosTill } from "@/components/pos-till";
 
-export const metadata = { title: "POS" };
+export const metadata = { title: "Counter sale" };
 
 export default async function PosPage() {
   const user = await requirePermission("pos.sell");

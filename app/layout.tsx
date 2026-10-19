@@ -133,7 +133,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             <NavLink href="/" exact><LayoutDashboard size={15} /> <span className="navlink-text">Dashboard</span></NavLink>
 
-            {may("pos.sell") && <NavLink href="/pos"><ScanLine size={15} /> <span className="navlink-text">POS / Sales</span></NavLink>}
+            {may("pos.sell") && <NavLink href="/pos"><ScanLine size={15} /> <span className="navlink-text">Counter Sale</span></NavLink>}
 
             {may("sales.view") && (
               <NavGroup label="Sales History" icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}>

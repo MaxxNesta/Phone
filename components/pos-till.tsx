@@ -524,7 +524,7 @@ export function PosTill(props: {
 
       <div className="pos3-top">
         <div className="page-head hero">
-          <h1>POS / Counter Sale</h1>
+          <h1>Counter sale</h1>
           <p className="page-sub">Fast checkout · exact IMEI tracking · receipt-ready</p>
         </div>
       </div>

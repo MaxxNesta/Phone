@@ -108,7 +108,7 @@ export default async function SalesInvoices({
         <td className="code">{shortDate(i.posting_date)}</td>
         <td>
           <span className={`pill ${i.channel === "POS" ? "posted" : "draft"}`}>
-            {i.channel === "POS" ? "POS" : "Sales invoice"}
+            {i.channel === "POS" ? "Counter sale" : "Sales invoice"}
           </span>
         </td>
         <td className="code">{i.due_date ? shortDate(i.due_date) : "—"}</td>
@@ -220,7 +220,7 @@ export default async function SalesInvoices({
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}
             filters={[{ key: "channel", allLabel: "All channels",
-                        options: [{ value: "POS", label: "POS" }, { value: "INVOICE", label: "Sales invoice" }] }]}
+                        options: [{ value: "POS", label: "Counter sale" }, { value: "INVOICE", label: "Sales invoice" }] }]}
             columns={[
               { key: "doc_no", label: "Invoice #", sortable: true },
               { key: "posting_date", label: "Date", sortable: true },
