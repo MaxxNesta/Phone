@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 export type PriceLevel = {
   id: string; code: string; name: string; sort_order: number;
@@ -25,12 +26,16 @@ export function AddPriceLevelForm({
     action as never,
     null
   );
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
+  const pr = useTranslations("prices");
   const [open, setOpen] = useState(false);
 
   if (!open) {
     return (
       <div className="actions">
-        <button type="button" onClick={() => setOpen(true)}>+ Price level</button>
+        <button type="button" onClick={() => setOpen(true)}>{pr("plusLevel")}</button>
       </div>
     );
   }
@@ -38,9 +43,9 @@ export function AddPriceLevelForm({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>New price level</h2>
+        <h2>{pr("newLevel")}</h2>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>{c("cancel")}</button>
         </span>
       </div>
       <div className="card-body">
@@ -49,22 +54,20 @@ export function AddPriceLevelForm({
 
           <div className="row">
             <div className="field">
-              <label htmlFor="pl-code">Code</label>
+              <label htmlFor="pl-code">{c("code")}</label>
               <input id="pl-code" name="code" type="text" required autoFocus placeholder="STAFF" />
-              <span className="hint">Short and typeable.</span>
+              <span className="hint">{pr("codeHint")}</span>
             </div>
             <div className="field">
-              <label htmlFor="pl-name">Name</label>
+              <label htmlFor="pl-name">{c("name")}</label>
               <input id="pl-name" name="name" type="text" required placeholder="Staff price" />
-              <span className="hint">
-                The column heading on the price list, and what a customer is put on.
-              </span>
+              <span className="hint">{pr("nameHint")}</span>
             </div>
           </div>
 
           <div className="actions">
             <button type="submit" disabled={pending}>
-              {pending ? "Saving…" : "Save price level"}
+              {pending ? c("saving") : pr("saveLevel")}
             </button>
           </div>
         </form>
@@ -82,6 +85,9 @@ export function PriceLevelRow({
   updateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   deleteAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pr = useTranslations("prices");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -103,33 +109,29 @@ export function PriceLevelRow({
             <input type="hidden" name="id" value={level.id} />
             <div className="row">
               <div className="field">
-                <label>Code</label>
+                <label>{c("code")}</label>
                 <input name="code" type="text" defaultValue={level.code} required />
               </div>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={level.name} required />
               </div>
               <div className="field">
-                <label>Order</label>
+                <label>{c("order")}</label>
                 <input name="sort_order" type="number" min={1} step={1}
                        defaultValue={level.sort_order} required />
-                <span className="hint">
-                  Lowest first. The first level is what a customer on none is quoted.
-                </span>
+                <span className="hint">{pr("orderHint")}</span>
               </div>
             </div>
             {inUse && (
               <div className="hint" style={{ marginTop: "0.4rem" }}>
-                {level.prices ?? 0} price{(level.prices ?? 0) === 1 ? "" : "s"} and{" "}
-                {level.partners ?? 0} customer{(level.partners ?? 0) === 1 ? "" : "s"} use this
-                level. Renaming it changes what it is called, not what anything costs.
+                {pr("inUse", { prices: level.prices ?? 0, partners: level.partners ?? 0 })}
               </div>
             )}
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
               <button type="button" className="ghost tiny"
-                      onClick={() => setEditing(false)}>Cancel</button>
+                      onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -142,28 +144,28 @@ export function PriceLevelRow({
       <td className="code">{level.code}</td>
       <td className="wrap">
         {level.name}
-        {first && <div className="subline">quoted when a customer is on no level</div>}
+        {first && <div className="subline">{pr("firstNote")}</div>}
       </td>
       <td className="r">{level.sort_order}</td>
       <td className="r">
         {level.prices ?? 0}
         {(level.partners ?? 0) > 0 && (
-          <div className="subline">{level.partners} customer{level.partners === 1 ? "" : "s"}</div>
+          <div className="subline">{pr("customers", { n: level.partners ?? 0 })}</div>
         )}
       </td>
       <td>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             className="ghost tiny"
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${level.name}?`}
+            title={c("deleteName", { name: level.name })}
             detail={
               inUse
-                ? `${level.prices ?? 0} price${(level.prices ?? 0) === 1 ? "" : "s"} and ${level.partners ?? 0} customer${(level.partners ?? 0) === 1 ? "" : "s"} use this level, so this will be refused.`
-                : "This cannot be undone."
+                ? pr("refused", { prices: level.prices ?? 0, partners: level.partners ?? 0 })
+                : c("cannotUndo")
             }
           >
             <input type="hidden" name="id" value={level.id} />

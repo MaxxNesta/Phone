@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { categoryCodeTakenBy } from "@/lib/item-code-actions";
+import { useTranslations } from "next-intl";
 
 type Uom = { id: string; code: string; name: string };
 type ParentOption = { id: string; code: string; name: string };
@@ -52,6 +53,9 @@ export function AddCategoryForm({
 
   // Is the code already a category's? Asked as the segment is typed, so the
   // answer is on screen before Save.
+  const t = useTranslations("categories");
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
   const [takenBy, setTakenBy] = useState<string | null>(null);
   useEffect(() => {
     setTakenBy(null);
@@ -67,10 +71,10 @@ export function AddCategoryForm({
     return (
       <div className="actions">
         <button type="button" onClick={() => setOpen(true)} disabled={nothingToChooseFrom}>
-          + {label}
+          {t("addLabel", { label })}
         </button>
         {nothingToChooseFrom && (
-          <span className="page-sub">Add a category first — a sub category needs one to go under.</span>
+          <span className="page-sub">{t("needCategoryFirst")}</span>
         )}
       </div>
     );
@@ -79,12 +83,12 @@ export function AddCategoryForm({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>New {label.toLowerCase()}</h2>
+        <h2>{t("newLabel", { label: label.toLowerCase() })}</h2>
         <span className="actions">
           {segment && (
-            <span className="m" style={{ color: "var(--link)" }}>Code will be {composed}</span>
+            <span className="m" style={{ color: "var(--link)" }}>{t("codeWillBe", { code: composed })}</span>
           )}
-          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>{c("cancel")}</button>
         </span>
       </div>
       <div className="card-body">
@@ -96,10 +100,10 @@ export function AddCategoryForm({
           <div className="row">
             {choosingParent && (
               <div className="field">
-                <label htmlFor="parent_id">Category</label>
+                <label htmlFor="parent_id">{c("category")}</label>
                 <select id="parent_id" name="parent_id" value={chosenParentId}
                   onChange={(e) => setChosenParentId(e.target.value)} required>
-                  {categories?.length === 0 && <option value="">No categories yet</option>}
+                  {categories?.length === 0 && <option value="">{t("noCategoriesYet")}</option>}
                   {categories?.map((c) => (
                     <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
                   ))}
@@ -107,7 +111,7 @@ export function AddCategoryForm({
               </div>
             )}
             <div className="field">
-              <label htmlFor="segment">Code segment</label>
+              <label htmlFor="segment">{t("codeSegment")}</label>
               <input id="segment" name="segment" type="text" required autoFocus
                 value={segment} onChange={(e) => setSegment(e.target.value)}
                 placeholder={codeHint}
@@ -115,28 +119,28 @@ export function AddCategoryForm({
                 style={takenBy ? { borderColor: "var(--bad)" } : undefined} />
               {takenBy ? (
                 <span className="hint" role="alert" style={{ color: "var(--bad)" }}>
-                  {composed} is already used by {takenBy}. Choose another code.
+                  {t("codeTaken", { code: composed, name: takenBy })}
                 </span>
               ) : (
                 <span className="hint">
                   {effectiveParentCode
-                    ? `Added to ${effectiveParentCode} to make this category's code`
-                    : "The start of every code beneath this category"}
+                    ? t("addedToParent", { code: effectiveParentCode })
+                    : t("startOfCodes")}
                 </span>
               )}
             </div>
             <div className="field">
-              <label htmlFor="name">Name</label>
+              <label htmlFor="name">{c("name")}</label>
               <input id="name" name="name" type="text" required placeholder={nameHint} />
             </div>
             <div className="field">
-              <label htmlFor="name_my">Name (Burmese)</label>
+              <label htmlFor="name_my">{f("nameBurmese")}</label>
               <input id="name_my" name="name_my" type="text" />
             </div>
           </div>
 
           <div className="actions">
-            <button type="submit" disabled={pending || !!takenBy}>{pending ? "Saving…" : `Save ${label.toLowerCase()}`}</button>
+            <button type="submit" disabled={pending || !!takenBy}>{pending ? c("saving") : t("saveLabel", { label: label.toLowerCase() })}</button>
           </div>
         </form>
       </div>

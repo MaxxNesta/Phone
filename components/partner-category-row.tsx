@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
 import { RowMenu } from "./row-menu";
+import { useTranslations } from "next-intl";
 
 type Category = {
   id: string; code: string; name: string; name_my: string | null;
@@ -29,6 +30,10 @@ export function PartnerCategoryRow({
   setActiveAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   deleteAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const t = useTranslations("partnerCats");
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never, null,
@@ -62,32 +67,32 @@ export function PartnerCategoryRow({
             <input type="hidden" name="id" value={category.id} />
             <div className="row">
               <div className="field">
-                <label htmlFor={`n-${category.id}`}>Name</label>
+                <label htmlFor={`n-${category.id}`}>{c("name")}</label>
                 <input id={`n-${category.id}`} name="name" type="text"
                        defaultValue={category.name} required />
               </div>
               <div className="field">
-                <label htmlFor={`my-${category.id}`}>Name (Burmese)</label>
+                <label htmlFor={`my-${category.id}`}>{f("nameBurmese")}</label>
                 <input id={`my-${category.id}`} name="name_my" type="text"
                        defaultValue={category.name_my ?? ""} />
               </div>
               <div className="field">
-                <label htmlFor={`o-${category.id}`}>Order</label>
+                <label htmlFor={`o-${category.id}`}>{c("order")}</label>
                 <input id={`o-${category.id}`} name="sort_order" type="number"
                        defaultValue={String(category.sort_order)} />
               </div>
             </div>
             <div className="field" style={{ marginTop: "0.75rem" }}>
-              <label htmlFor={`note-${category.id}`}>Note</label>
+              <label htmlFor={`note-${category.id}`}>{c("note")}</label>
               <input id={`note-${category.id}`} name="note" type="text"
                      defaultValue={category.note ?? ""} />
             </div>
             <div className="actions">
               <button type="submit" disabled={pending}>
-                {pending ? "Saving…" : "Save"}
+                {pending ? c("saving") : c("save")}
               </button>
               <button type="button" className="ghost" onClick={() => setEditing(false)}>
-                Cancel
+                {c("cancel")}
               </button>
             </div>
           </form>
@@ -104,7 +109,7 @@ export function PartnerCategoryRow({
       <tr>
         <td>
           <span className={`pill ${category.kind === "SUPPLIER" ? "warn" : "ok"}`}>
-            {category.kind === "SUPPLIER" ? "supplier" : "customer"}
+            {category.kind === "SUPPLIER" ? t("supplier") : t("customer")}
           </span>
         </td>
         <td className="r code">{String(category.sort_order)}</td>
@@ -132,23 +137,23 @@ export function PartnerCategoryRow({
         </td>
         <td>
           {category.is_active
-            ? <span className="pill ok">active</span>
-            : <span className="pill warn">inactive</span>}
+            ? <span className="pill ok">{pt("activeLower")}</span>
+            : <span className="pill warn">{pt("inactiveLower")}</span>}
         </td>
         <td>
-          <RowMenu label={`Actions for ${category.name}`}>
-            <button type="button" onClick={() => setEditing(true)}>Edit</button>
+          <RowMenu label={c("actionsFor", { name: category.name })}>
+            <button type="button" onClick={() => setEditing(true)}>{c("edit")}</button>
             <form action={activeFormAction}>
               <input type="hidden" name="id" value={category.id} />
               <input type="hidden" name="active" value={category.is_active ? "0" : "1"} />
               <button type="submit">
-                {category.is_active ? "Deactivate" : "Activate"}
+                {category.is_active ? c("deactivate") : c("activate")}
               </button>
             </form>
             {!inUse && (
               <form action={delFormAction}>
                 <input type="hidden" name="id" value={category.id} />
-                <button type="submit">Delete</button>
+                <button type="submit">{c("delete")}</button>
               </form>
             )}
           </RowMenu>

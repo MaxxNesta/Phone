@@ -7,11 +7,14 @@ import { AddCategoryForm } from "@/components/level-form";
 import { CategoryRow } from "@/components/category-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function Subcategories() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("categories");
+  const c = await getTranslations("common");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const nodes = await allCategories(co.id);
   const roots = childrenOf(nodes, null);
@@ -50,21 +53,17 @@ export default async function Subcategories() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Catalogue</span>
-        <h1>Sub categories</h1>
-        <HelpHint>
-          Every sub category across the whole catalogue, in one flat list —
-          the tree view groups them by category; this jumps straight to any of
-          them.
-        </HelpHint>
-        <p className="page-sub">Every sub category in one list, such as the models inside each type.</p>
+        <span className="eyebrow">{t("eyebrow")}</span>
+        <h1>{t("subsTitle")}</h1>
+        <HelpHint>{t("subsHelp")}</HelpHint>
+        <p className="page-sub">{t("subsSub")}</p>
       </div>
 
       <AddCategoryForm
         action={createCategory}
         categories={roots}
         returnTo="/items/subcategories"
-        label="Sub category"
+        label={t("labelSub")}
         codeHint="01"
         nameHint="Soft Drinks"
       />
@@ -72,26 +71,26 @@ export default async function Subcategories() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Sub categories</h2>
+            <h2>{t("subsTitle")}</h2>
             <span className="page-sub">{subs.length}</span>
           </div>
 
           {subs.length === 0 ? (
             <div className="empty">
-              None yet. Open a category and add a sub category inside it.{" "}
-              <Link href="/items/categories" style={{ color: "var(--link)" }}>Go to categories</Link>
+              {t("subsNone")}{" "}
+              <Link href="/items/categories" style={{ color: "var(--link)" }}>{t("goToCategories")}</Link>
             </div>
           ) : (
             <DataTable
               rows={rows}
-              emptyLabel="No sub categories"
-              searchPlaceholder="Search sub categories…"
+              emptyLabel={t("subsEmpty")}
+              searchPlaceholder={t("subsSearch")}
               defaultSort={{ key: "code", dir: "asc" }}
               columns={[
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Name", sortable: true },
-                { key: "parentName", label: "Category", sortable: true },
-                { key: "total", label: "Items", sortable: true, align: "r" },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: c("name"), sortable: true },
+                { key: "parentName", label: c("category"), sortable: true },
+                { key: "total", label: c("items"), sortable: true, align: "r" },
                 { key: "actions", label: "" },
               ]}
             />

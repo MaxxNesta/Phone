@@ -5,11 +5,15 @@ import { AddUnitForm } from "@/components/unit-form";
 import { UnitRow } from "@/components/unit-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function Units() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("units");
+  const c = await getTranslations("common");
+  const cat = await getTranslations("categories");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const units = (await sql`
     select u.id, u.code, u.name, u.name_my, u.is_active,
@@ -40,16 +44,10 @@ export default async function Units() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Catalogue</span>
-        <h1>Units</h1>
-        <HelpHint>
-          What quantities are counted in. Each item is stored in one base unit
-          and every quantity of it &mdash; on hand, received, sold &mdash; is
-          held in that unit, so a unit is settled when the item is created and
-          not changed underneath it afterwards. Retiring one takes it off the
-          pickers and leaves every existing item counting exactly as before.
-        </HelpHint>
-        <p className="page-sub">How products are counted and packed: piece, box, carton.</p>
+        <span className="eyebrow">{cat("eyebrow")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
+        <p className="page-sub">{t("sub")}</p>
       </div>
 
       <AddUnitForm action={createUnit} />
@@ -57,7 +55,7 @@ export default async function Units() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Units</h2>
+            <h2>{t("title")}</h2>
             <span className="page-sub">
               {units.length} total · {active} active
             </span>
@@ -71,14 +69,14 @@ export default async function Units() {
           ) : (
             <DataTable
               rows={rows}
-              emptyLabel="No units"
-              searchPlaceholder="Search units…"
+              emptyLabel={t("none")}
+              searchPlaceholder={t("search")}
               defaultSort={{ key: "name", dir: "asc" }}
               columns={[
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Name", sortable: true },
-                { key: "items", label: "Items", sortable: true, align: "r" },
-                { key: "is_active", label: "Status", sortable: true },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: c("name"), sortable: true },
+                { key: "items", label: c("items"), sortable: true, align: "r" },
+                { key: "is_active", label: c("status"), sortable: true },
                 { key: "actions", label: "" },
               ]}
             />

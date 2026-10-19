@@ -37,6 +37,8 @@ for (const f of files) {
   const src = readFileSync(f, "utf8");
   const ns = new Map([...src.matchAll(/(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?(?:useTranslations|getTranslations)\(\s*"([\w.]+)"\s*\)/g)]
     .map((m) => [m[1], m[2]]));
+  // lib/actions.ts speaks through m(key), which reads the "actions" namespace.
+  if (/async function m\(key: string/.test(src)) ns.set("m", "actions");
   for (const [v, space] of ns) {
     for (const m of src.matchAll(new RegExp(String.raw`(?<![\w.])${v}\(\s*"([\w.]+)"`, "g"))) {
       used++;

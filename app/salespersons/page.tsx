@@ -4,10 +4,15 @@ import { AddSalesmanForm } from "@/components/salesman-form";
 import { SalesmanRow } from "@/components/salesman-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function Salespersons() {
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const s = await getTranslations("salespersons");
+  const c = await getTranslations("common");
+  const l = await getTranslations("locations");
+  const pt = await getTranslations("partners");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [salesmen, locations] = (await Promise.all([
     getSalesmen(company.id),
@@ -46,13 +51,13 @@ export default async function Salespersons() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Company</span>
-        <h1>Salespersons</h1>
+        <span className="eyebrow">{l("eyebrow")}</span>
+        <h1>{s("title")}</h1>
         <HelpHint>
           Staff who get credited on a sale. Commission is reported on here,
           not paid automatically &mdash; paying it out is a payroll matter.
         </HelpHint>
-        <p className="page-sub">Staff a sale can be credited to.</p>
+        <p className="page-sub">{s("sub")}</p>
       </div>
 
       <AddSalesmanForm action={createSalesman} locations={locations} />
@@ -60,24 +65,24 @@ export default async function Salespersons() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Salespersons</h2>
+            <h2>{s("title")}</h2>
             <span className="page-sub">{salesmen.length}</span>
           </div>
 
           {salesmen.length === 0 ? (
-            <div className="empty">None yet. Add your first salesperson above.</div>
+            <div className="empty">{s("noneYet")}</div>
           ) : (
             <DataTable
               rows={rows}
-              emptyLabel="No salespersons"
-              searchPlaceholder="Search salespersons…"
+              emptyLabel={s("none")}
+              searchPlaceholder={s("search")}
               defaultSort={{ key: "code", dir: "asc" }}
               columns={[
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Name", sortable: true },
-                { key: "phone", label: "Phone", sortable: true },
-                { key: "location_name", label: "Branch", sortable: true },
-                { key: "commission_pct", label: "Commission", sortable: true, align: "r" },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: c("name"), sortable: true },
+                { key: "phone", label: pt("phone"), sortable: true },
+                { key: "location_name", label: s("branch"), sortable: true },
+                { key: "commission_pct", label: s("commissionShort"), sortable: true, align: "r" },
                 { key: "actions", label: "" },
               ]}
             />

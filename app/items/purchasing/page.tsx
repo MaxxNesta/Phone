@@ -4,6 +4,7 @@ import { SupplierItemForm, SupplierItemRow } from "@/components/supplier-item-fo
 import { HelpHint } from "@/components/help-hint";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { getTranslations } from "next-intl/server";
 
 /**
  * Purchasing terms, recorded only where they are unusual.
@@ -22,7 +23,10 @@ import { Pager } from "@/components/pager";
 export default async function PurchasingTerms({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const pu = await getTranslations("purchasing");
+  const c = await getTranslations("common");
+  const cat = await getTranslations("categories");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [rows, partners, items] = await Promise.all([
     getSupplierItems(company.id) as unknown as Promise<any[]>,
@@ -43,21 +47,10 @@ export default async function PurchasingTerms({ searchParams }: { searchParams: 
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Catalogue</span>
-        <h1>Purchasing terms</h1>
-        <HelpHint>
-          How long one item takes from one supplier, where it differs from
-          that supplier&rsquo;s usual lead time. Most items need no row here:
-          leave it blank and the supplier&rsquo;s own figure is used, and
-          failing that the company default of{" "}
-          {company.default_lead_time_days} days.
-          <br /><br />
-          This is the <strong>expected</strong> lead time — the planned
-          figure replenishment orders against. What the receipts say
-          actually happened is measured separately and shown beside it, and
-          never overwrites what you set here.
-        </HelpHint>
-        <p className="page-sub">How long each item takes to arrive from a supplier, where it differs from the usual.</p>
+        <span className="eyebrow">{cat("eyebrow")}</span>
+        <h1>{pu("title")}</h1>
+        <HelpHint>{pu("help", { days: company.default_lead_time_days })}</HelpHint>
+        <p className="page-sub">{pu("sub")}</p>
       </div>
 
       <SupplierItemForm
@@ -69,28 +62,24 @@ export default async function PurchasingTerms({ searchParams }: { searchParams: 
 
       {rows.length === 0 ? (
         <div className="empty">
-          No exceptions recorded. Every item is assumed to arrive at its
-          supplier&rsquo;s usual speed, which is usually true.
+          {pu("noExceptions")}
         </div>
       ) : (
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>Exceptions</h2>
-              <span className="page-sub">
-                {rows.length} item/supplier pair{rows.length === 1 ? "" : "s"} that
-                differ from the usual
-              </span>
+              <h2>{pu("exceptions")}</h2>
+              <span className="page-sub">{pu("exceptionsSub", { n: rows.length })}</span>
             </div>
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Item / Supplier</th>
-                    <th className="r">Usual</th>
-                    <th className="r">Override</th>
-                    <th className="r">Effective</th>
-                    <th>Their code</th><th>Note</th><th />
+                    <th>{pu("itemSupplier")}</th>
+                    <th className="r">{pu("usual")}</th>
+                    <th className="r">{pu("override")}</th>
+                    <th className="r">{pu("effective")}</th>
+                    <th>{pu("theirCode")}</th><th>{c("note")}</th><th />
                   </tr>
                 </thead>
                 <tbody>

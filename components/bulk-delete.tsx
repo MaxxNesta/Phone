@@ -4,11 +4,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { bulkDeleteItems } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 /** Ticks or clears every row checkbox on the page. */
 export function PickPage() {
+  const c = useTranslations("common");
   return (
-    <input type="checkbox" aria-label="Select all on this page"
+    <input type="checkbox" aria-label={c("selectPage")}
       onChange={(e) => document.querySelectorAll<HTMLInputElement>("input.bulk-pick")
         .forEach((b) => { b.checked = e.target.checked; b.dispatchEvent(new Event("change", { bubbles: true })); })} />
   );
@@ -24,6 +26,8 @@ export function BulkDelete({ shown, filtered }: {
   /** Whether any filter is on: "delete all shown" is offered only then. */
   filtered: boolean;
 }) {
+  const t = useTranslations("bulkDelete");
+  const c = useTranslations("common");
   const [picked, setPicked] = useState<string[]>([]);
   const [ask, setAsk] = useState<string[] | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -61,12 +65,12 @@ export function BulkDelete({ shown, filtered }: {
       {msg && <span className="page-sub">{msg}</span>}
       {picked.length > 0 && (
         <button type="button" className="danger" onClick={() => setAsk(picked)}>
-          <Trash2 size={14} aria-hidden="true" /> Delete {picked.length} selected
+          <Trash2 size={14} aria-hidden="true" /> {t("deleteSelected", { n: picked.length })}
         </button>
       )}
       {filtered && picked.length === 0 && shown.length > 0 && (
         <button type="button" className="danger" onClick={() => setAsk(shown.map((s) => s.id))}>
-          <Trash2 size={14} aria-hidden="true" /> Delete all {shown.length} shown
+          <Trash2 size={14} aria-hidden="true" /> {t("deleteShown", { n: shown.length })}
         </button>
       )}
       <dialog ref={ref} className="confirm alertish"
@@ -75,18 +79,16 @@ export function BulkDelete({ shown, filtered }: {
         {ask && (
           <div className="confirm-panel">
             <div className="confirm-icon" aria-hidden="true"><Trash2 size={18} strokeWidth={2.25} /></div>
-            <h2 className="confirm-title">Delete {ask.length} product{ask.length === 1 ? "" : "s"}?</h2>
-            <p className="confirm-detail">
-              This can&rsquo;t be undone. Anything still in stock is kept, and anything with past sales or receipts is hidden instead, so your records stay intact.
-            </p>
+            <h2 className="confirm-title">{t("confirmTitle", { n: ask.length })}</h2>
+            <p className="confirm-detail">{t("confirmDetail")}</p>
             <ul className="alert-items">
-              {ask.slice(0, 4).map((id) => <li key={id}><span>{nameOf.get(id) ?? "Product"}</span></li>)}
-              {ask.length > 4 && <li><span className="page-sub">and {ask.length - 4} more</span></li>}
+              {ask.slice(0, 4).map((id) => <li key={id}><span>{nameOf.get(id) ?? t("product")}</span></li>)}
+              {ask.length > 4 && <li><span className="page-sub">{t("andMore", { n: ask.length - 4 })}</span></li>}
             </ul>
             <div className="confirm-actions">
-              <button type="button" className="ghost" autoFocus disabled={busy} onClick={() => setAsk(null)}>Cancel</button>
+              <button type="button" className="ghost" autoFocus disabled={busy} onClick={() => setAsk(null)}>{c("cancel")}</button>
               <button type="button" className="danger-solid" disabled={busy} onClick={go}>
-                {busy ? "Deleting…" : "Delete"}
+                {busy ? t("deleting") : c("delete")}
               </button>
             </div>
           </div>

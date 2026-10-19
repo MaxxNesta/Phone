@@ -10,13 +10,18 @@ import { money, shortDate } from "@/lib/format";
 import { Stat } from "@/components/stat";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Products" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("products"))("title") };
+}
 
 type Search = Record<string, string | undefined>;
 
 export default async function Products({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("items.manage");
+  const t = await getTranslations("products");
+  const c = await getTranslations("common");
   const sp = await searchParams;
   const co = user.companyId;
 
@@ -47,44 +52,44 @@ export default async function Products({ searchParams }: { searchParams: Promise
   return (
     <>
       <div className="page-head hero">
-        <h1>Products</h1>
-        <p className="page-sub">Manage models, accessories, prices, and stock settings</p>
-        <div className="head-actions"><Link className="btn" href="/items/new"><Plus size={14} /> New Product</Link></div>
+        <h1>{t("title")}</h1>
+        <p className="page-sub">{t("sub")}</p>
+        <div className="head-actions"><Link className="btn" href="/items/new"><Plus size={14} /> {t("new")}</Link></div>
       </div>
 
       <div className="stats">
-        <Stat icon={<Package size={20} />} label="Total Products" value={rows.length} />
-        <Stat icon={<Smartphone size={20} />} tone="slate" label="Serialized Models" value={serialized} note="Tracked by IMEI / serial" />
-        <Stat icon={<Headphones size={20} />} tone="violet" label="Accessories" value={rows.length - serialized} note="Cases, chargers, cables…" />
-        <Stat icon={<AlertTriangle size={20} />} tone="amber" label="Low Stock Items" value={low} note="Need to reorder" noteTone="warn" />
+        <Stat icon={<Package size={20} />} label={t("statTotal")} value={rows.length} />
+        <Stat icon={<Smartphone size={20} />} tone="slate" label={t("statSerialized")} value={serialized} note={t("statSerializedNote")} />
+        <Stat icon={<Headphones size={20} />} tone="violet" label={t("statAccessories")} value={rows.length - serialized} note={t("statAccessoriesNote")} />
+        <Stat icon={<AlertTriangle size={20} />} tone="amber" label={t("statLow")} value={low} note={t("statLowNote")} noteTone="warn" />
       </div>
 
       <div>
           <form className="card filters" method="get" style={{ marginBottom: "var(--s3)" }}>
             <div className="card-body filter-row">
               <div className="field">
-                <label htmlFor="pq">Search</label>
-                <input id="pq" name="q" defaultValue={sp.q ?? ""} placeholder="Search product name, model, SKU…" />
+                <label htmlFor="pq">{c("search")}</label>
+                <input id="pq" name="q" defaultValue={sp.q ?? ""} placeholder={t("searchPlaceholder")} />
               </div>
               <CatalogFilterFields groups={groups as never} facets={facets} sp={sp} prefix="p" />
               <div className="field">
-                <label htmlFor="pt">Tracking</label>
+                <label htmlFor="pt">{c("tracking")}</label>
                 <select id="pt" name="tracking" defaultValue={sp.tracking ?? ""}>
-                  <option value="">All</option>
+                  <option value="">{c("all")}</option>
                   <option value="IMEI">IMEI</option>
-                  <option value="SERIAL">Serial number</option>
-                  <option value="NONE">Quantity</option>
+                  <option value="SERIAL">{c("serialNumber")}</option>
+                  <option value="NONE">{c("quantity")}</option>
                 </select>
               </div>
               <AutoApply />
-              <button className="btn ghost" data-apply>Filter</button>
+              <button className="btn ghost" data-apply>{c("filter")}</button>
             </div>
           </form>
 
 
           <div className="card" style={{ overflowX: "auto" }}>
             <div className="card-head">
-              <h2>Products</h2>
+              <h2>{t("title")}</h2>
               <BulkDelete filtered={filtered}
                 shown={list.map((r: any) => ({ id: r.id, name: [r.model, r.variant].filter(Boolean).join(" · ") }))} />
             </div>
@@ -92,16 +97,16 @@ export default async function Products({ searchParams }: { searchParams: Promise
               <thead>
                 <tr>
                   <th className="tight"><PickPage /></th>
-                  <th>Product</th>{multiBrand && <th>Brand</th>}<th>Category</th><th>Tracking</th>
-                  <th className="num">Selling price</th><th className="num">Available</th><th>Status</th>
-                  <th>Last purchase</th><th />
+                  <th>{c("product")}</th>{multiBrand && <th>{c("brand")}</th>}<th>{c("category")}</th><th>{c("tracking")}</th>
+                  <th className="num">{t("sellingPrice")}</th><th className="num">{t("available")}</th><th>{c("status")}</th>
+                  <th>{t("lastPurchase")}</th><th />
                 </tr>
               </thead>
               <tbody>
                 {pg.rows.map((r: any) => (
                   <tr key={r.id}>
                     <td className="tight">
-                      <input type="checkbox" className="bulk-pick" value={r.id} aria-label={`Select ${r.model}`} />
+                      <input type="checkbox" className="bulk-pick" value={r.id} aria-label={c("selectItem", { name: r.model })} />
                     </td>
                     <td>
                       <span className="prod">
@@ -114,19 +119,19 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     </td>
                     {multiBrand && <td>{r.brand ?? "—"}</td>}
                     <td>{r.category}</td>
-                    <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? "Serial" : r.tracks_serial ? "IMEI" : "Quantity"}</span></td>
+                    <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? c("serial") : r.tracks_serial ? "IMEI" : c("quantity")}</span></td>
                     <td className="num">{r.price != null ? money(r.price) : "—"}</td>
-                    <td className={`num ${r.status === "HEALTHY" ? "ok-qty" : "low"}`}>{r.available} units</td>
+                    <td className={`num ${r.status === "HEALTHY" ? "ok-qty" : "low"}`}>{c("units", { n: r.available })}</td>
                     <td>
                       <span className={`pill ${r.status === "HEALTHY" ? "ok" : "warn"}`}>
-                        {r.status === "HEALTHY" ? "Active" : r.status === "LOW" ? "Low stock" : "Out of stock"}
+                        {r.status === "HEALTHY" ? c("active") : r.status === "LOW" ? c("lowStock") : c("outOfStock")}
                       </span>
                     </td>
                     <td>{bought.get(r.id) ? shortDate(bought.get(r.id)) : "—"}</td>
-                    <td><Link href={`/items/${r.id}`} aria-label={`Edit ${r.name}`}>Edit</Link></td>
+                    <td><Link href={`/items/${r.id}`} aria-label={c("editItem", { name: r.name })}>{c("edit")}</Link></td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">No products match.</td></tr>}
+                {list.length === 0 && <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">{t("noMatch")}</td></tr>}
               </tbody>
             </table>
             <Pager p={pg} params={sp} />

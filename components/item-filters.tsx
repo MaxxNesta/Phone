@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 type Group = { id: string; name: string; parent_id: string | null };
 type Brand = { id: string; code: string; name: string };
@@ -47,47 +48,49 @@ export function ItemFilters({
   }
 
   const any = selected.category || selected.sub || selected.brand || selected.status;
+  const c = useTranslations("common");
+  const t = useTranslations("items");
 
   return (
     <div className="row" style={{ alignItems: "flex-end", gap: "0.5rem", marginBottom: "0.75rem" }}>
       <div className="field">
-        <label htmlFor="f-category">Category</label>
+        <label htmlFor="f-category">{c("category")}</label>
         <select id="f-category" value={selected.category} onChange={(e) => set("category", e.target.value)}>
-          <option value="">All categories</option>
+          <option value="">{t("allCategories")}</option>
           {roots.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </div>
 
       <div className="field">
-        <label htmlFor="f-sub">Sub category</label>
+        <label htmlFor="f-sub">{c("subCategory")}</label>
         <select id="f-sub" value={selected.sub} onChange={(e) => set("sub", e.target.value)}>
-          <option value="">All sub categories</option>
+          <option value="">{t("allSubs")}</option>
           {subs.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </div>
 
       {brands.length > 0 && <div className="field">
-        <label htmlFor="f-brand">Brand</label>
+        <label htmlFor="f-brand">{c("brand")}</label>
         <select id="f-brand" value={selected.brand} onChange={(e) => set("brand", e.target.value)}>
-          <option value="">All brands</option>
-          <option value="none">— no brand —</option>
+          <option value="">{t("allBrands")}</option>
+          <option value="none">{t("noBrand")}</option>
           {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
       </div>}
 
       <div className="field">
-        <label htmlFor="f-status">Status</label>
+        <label htmlFor="f-status">{c("status")}</label>
         <select id="f-status" value={selected.status} onChange={(e) => set("status", e.target.value)}>
-          <option value="">All</option>
-          <option value="active">Active</option>
-          <option value="inactive">Deactivated</option>
+          <option value="">{c("all")}</option>
+          <option value="active">{c("active")}</option>
+          <option value="inactive">{t("deactivated")}</option>
         </select>
       </div>
 
       {any && (
         <div className="actions">
           <button type="button" className="ghost" onClick={() => router.push("/items")}>
-            Clear filters
+            {c("clearFilters")}
           </button>
         </div>
       )}

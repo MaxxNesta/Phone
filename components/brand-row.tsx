@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type Brand = { id: string; code: string; name: string; name_my: string | null; is_active: boolean; items?: number };
 
@@ -19,6 +20,9 @@ export function BrandRow({
   deactivateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -47,15 +51,15 @@ export function BrandRow({
             <input type="hidden" name="id" value={brand.id} />
             <div className="row">
               <div className="field">
-                <label>Code</label>
+                <label>{c("code")}</label>
                 <input name="code" type="text" defaultValue={brand.code} required />
               </div>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={brand.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{f("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={brand.name_my ?? ""} />
               </div>
             </div>
@@ -64,8 +68,8 @@ export function BrandRow({
               Active
             </label>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -83,27 +87,27 @@ export function BrandRow({
         )}
       </td>
       <td className="r">{brand.items || ""}</td>
-      <td>{brand.is_active ? <span className="pill ok">active</span> : <span className="pill warn">inactive</span>}</td>
+      <td>{brand.is_active ? <span className="pill ok">{pt("activeLower")}</span> : <span className="pill warn">{pt("inactiveLower")}</span>}</td>
       <td>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           {brand.is_active ? (
             <form action={deactFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={brand.id} />
-              <button type="submit" className="warn tiny">Deactivate</button>
+              <button type="submit" className="warn tiny">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={brand.id} />
-              <button type="submit" className="ghost tiny">Reactivate</button>
+              <button type="submit" className="ghost tiny">{c("reactivate")}</button>
             </form>
           )}
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${brand.name}?`}
-            detail="This cannot be undone."
+            title={c("deleteName", { name: brand.name })}
+            detail={c("cannotUndo")}
           >
             <input type="hidden" name="id" value={brand.id} />
           </ConfirmDelete>

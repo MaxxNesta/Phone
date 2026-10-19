@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type Supplier = { id: string; code: string; name: string; lead_time_days: number | null };
 type Item = { id: string; code: string; name: string };
@@ -27,6 +28,8 @@ export function SupplierItemForm({
   const router = useRouter();
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  const c = useTranslations("common");
+  const pu = useTranslations("purchasing");
   const [supplierId, setSupplierId] = useState("");
 
   useEffect(() => { if (state && "ok" in state) router.refresh(); }, [state, router]);
@@ -37,19 +40,17 @@ export function SupplierItemForm({
   return (
     <section className="card">
       <div className="card-head">
-        <h2>Record an exception</h2>
-        <span className="page-sub">
-          only where this item differs from the supplier&rsquo;s usual lead time
-        </span>
+        <h2>{pu("record")}</h2>
+        <span className="page-sub">{pu("recordSub")}</span>
       </div>
       <div className="card-body">
         {state && "error" in state && <div className="alert">{state.error}</div>}
         <form action={formAction} className="attradd">
           <div className="field">
-            <label htmlFor="si_supplier">Supplier</label>
+            <label htmlFor="si_supplier">{pu("supplier")}</label>
             <select id="si_supplier" name="supplier_id" required
                     value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Choose…</option>
+              <option value="">{pu("choose")}</option>
               {suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.code} · {s.name}</option>
               ))}
@@ -57,15 +58,15 @@ export function SupplierItemForm({
             <span className="hint">
               {!chosen ? " "
                 : usual !== null
-                  ? `Usually takes ${usual} day${usual === 1 ? "" : "s"}`
-                  : `No usual figure set — falls back to ${companyDefault} days`}
+                  ? pu("usually", { n: usual })
+                  : pu("noUsual", { n: companyDefault })}
             </span>
           </div>
 
           <div className="field" style={{ flex: "2 1 16rem" }}>
-            <label htmlFor="si_item">Item</label>
+            <label htmlFor="si_item">{pu("item")}</label>
             <select id="si_item" name="item_id" required defaultValue="">
-              <option value="">Choose…</option>
+              <option value="">{pu("choose")}</option>
               {items.map((i) => (
                 <option key={i.id} value={i.id}>{i.code} · {i.name}</option>
               ))}
@@ -73,19 +74,19 @@ export function SupplierItemForm({
           </div>
 
           <div className="field">
-            <label htmlFor="si_lead">Lead time (days)</label>
+            <label htmlFor="si_lead">{pu("leadTime")}</label>
             <input id="si_lead" name="lead_time_days" type="number" min="0" max="365"
                    placeholder={usual !== null ? String(usual) : String(companyDefault)} />
-            <span className="hint">Blank means no exception</span>
+            <span className="hint">{pu("leadTimeHint")}</span>
           </div>
 
           <div className="field">
-            <label htmlFor="si_sku">Their code</label>
-            <input id="si_sku" name="supplier_sku" type="text" placeholder="Optional" />
+            <label htmlFor="si_sku">{pu("theirCode")}</label>
+            <input id="si_sku" name="supplier_sku" type="text" placeholder={pu("optional")} />
           </div>
 
           <button type="submit" className="btn" disabled={pending}>
-            {pending ? "Saving…" : "Save"}
+            {pending ? c("saving") : c("save")}
           </button>
         </form>
       </div>
@@ -116,6 +117,7 @@ export function SupplierItemRow({
    * it overrides. "21 days" alone is a number; "21 where they usually take
    * 14" is a decision somebody can check.
    */
+  const pu = useTranslations("purchasing");
   const usual = row.supplier_default_days ?? companyDefault;
   const usualFrom = row.supplier_default_days !== null ? "supplier" : "company";
   const effective = row.lead_time_days ?? usual;
@@ -128,15 +130,15 @@ export function SupplierItemRow({
         <div className="subline">{row.supplier_code} · {row.supplier_name}</div>
       </td>
       <td className="r">
-        {usual} d
-        {usualFrom === "company" && <div className="subline">company default</div>}
+        {pu("days", { n: usual })}
+        {usualFrom === "company" && <div className="subline">{pu("companyDefault")}</div>}
       </td>
       <td className="r">
         {row.lead_time_days === null
           ? <span className="page-sub">—</span>
-          : `${row.lead_time_days} d`}
+          : pu("days", { n: row.lead_time_days })}
       </td>
-      <td className="r"><strong>{effective} d</strong></td>
+      <td className="r"><strong>{pu("days", { n: effective })}</strong></td>
       <td className="code">{row.supplier_sku ?? "—"}</td>
       <td className="wrap">{row.note ?? "—"}</td>
       <td className="tight">
@@ -144,19 +146,15 @@ export function SupplierItemRow({
           action={formAction as never}
           pending={pending}
           error={state && "error" in state ? state.error : null}
-          title="Remove item override?"
+          title={pu("removeTitle")}
           detail={
             row.lead_time_days === null
-              ? `This row has no override to remove — it only records `
-                + `${row.supplier_code}'s code or a note for ${row.item_code}.`
-              : `Removing the ${row.item_name} override of ${row.lead_time_days} days `
-                + `means future replenishment calculations will use `
-                + `${row.supplier_code}'s ${usualFrom === "supplier" ? "usual" : "company default"} `
-                + `${usual} days. Purchase orders already drafted keep the lead time `
-                + `they were drafted with.`
+              ? pu("removeNothing", { supplier: row.supplier_code, item: row.item_code })
+              : pu(usualFrom === "supplier" ? "removeUsual" : "removeDefault",
+                  { item: row.item_name, days: row.lead_time_days, supplier: row.supplier_code, usual })
           }
           label=""
-          confirmLabel="Remove"
+          confirmLabel={pu("remove")}
           className="btn ghost tiny"
         >
           <input type="hidden" name="id" value={row.id} />

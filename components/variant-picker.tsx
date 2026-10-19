@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 
 export type PickerAttribute = {
   id: string; code: string; name: string;
@@ -34,6 +35,7 @@ export function VariantPicker({
   serial: string;
   name?: string;
 }) {
+  const v = useTranslations("variantPicker");
   const [on, setOn] = useState(false);
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   /** Combinations the grid offers but this product does not sell, by key.
@@ -114,15 +116,14 @@ export function VariantPicker({
   if (attributes.length === 0) {
     return (
       <p className="hint" style={{ marginTop: "1rem" }}>
-        No variant attributes are set up yet. Add Size or Colour under Master
-        data → Variant attributes, and this product can then be offered in them.
+        {v("noAttributes")}
       </p>
     );
   }
 
   return (
     <fieldset className="trackbox" style={{ marginTop: "0.75rem" }}>
-      <legend>Variants</legend>
+      <legend>{v("legend")}</legend>
 
       <label className="trackbox-opt" htmlFor="has_variants">
         <input
@@ -133,12 +134,8 @@ export function VariantPicker({
           }}
         />
         <span>
-          <strong>This product comes in variants</strong>
-          <span className="trackbox-note">
-            One item is created for each combination you keep, and those are
-            what carry the stock, the price and the barcode. This row becomes
-            the product they belong to and is not itself sold.
-          </span>
+          <strong>{v("comesInVariants")}</strong>
+          <span className="trackbox-note">{v("comesInVariantsNote")}</span>
         </span>
       </label>
 
@@ -162,7 +159,7 @@ export function VariantPicker({
                     <div className="varpick-opts">
                       {a.options.length === 0 ? (
                         <span className="hint">
-                          {a.name} has no values yet.
+                          {v("noValues", { name: a.name })}
                         </span>
                       ) : a.options.map((o) => (
                         <label key={o.id}
@@ -186,17 +183,17 @@ export function VariantPicker({
             <div className="varpreview">
               <div className="varpreview-head">
                 <strong>
-                  {kept.length} of {combos.length} will be created
+                  {v("willBeCreated", { kept: kept.length, total: combos.length })}
                 </strong>
                 {/* Only worth offering once there are enough rows for
                     clicking each one to be the tedious way round. */}
                 {combos.length > 2 && (
                   <span className="varpreview-acts">
                     <button type="button" className="linkbtn" onClick={() => setAll(true)}>
-                      All
+                      {v("all")}
                     </button>
                     <button type="button" className="linkbtn" onClick={() => setAll(false)}>
-                      None
+                      {v("none")}
                     </button>
                   </span>
                 )}
@@ -214,7 +211,7 @@ export function VariantPicker({
                           {serial ? `${serial}-${c.suffix}` : "…"}
                         </span>
                         <span className="varcombo-label">
-                          {name || "this product"} {c.label}
+                          {name || v("thisProduct")} {c.label}
                         </span>
                       </label>
                     </li>
@@ -224,8 +221,7 @@ export function VariantPicker({
 
               {kept.length === 0 && (
                 <p className="hint" style={{ marginTop: "0.5rem" }}>
-                  Nothing is ticked, so this will be saved as an ordinary item
-                  with no variants.
+                  {v("nothingTicked")}
                 </p>
               )}
             </div>

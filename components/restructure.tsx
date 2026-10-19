@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { categoryCodeTakenBy } from "@/lib/item-code-actions";
+import { useTranslations } from "next-intl";
 
 type Option = { id: string; name: string; code: string; depth: number };
 
@@ -26,6 +27,9 @@ export function Restructure({
   targets: Option[];
 }) {
   const [open, setOpen] = useState(false);
+  const t = useTranslations("categories");
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
   const [tab, setTab] = useState<"above" | "move">("above");
 
   // The category inserted above sits at the top level, so its code is its
@@ -52,7 +56,7 @@ export function Restructure({
     return (
       <div className="actions">
         <button type="button" className="ghost tiny" onClick={() => setOpen(true)}>
-          Reorganise this category
+          {t("reorganise")}
         </button>
       </div>
     );
@@ -61,13 +65,13 @@ export function Restructure({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Reorganise {categoryName}</h2>
+        <h2>{t("reorganiseName", { name: categoryName })}</h2>
         <span className="actions">
           <button type="button" className={tab === "above" ? "tiny" : "ghost tiny"}
-            onClick={() => setTab("above")}>Insert above</button>
+            onClick={() => setTab("above")}>{t("insertAbove")}</button>
           <button type="button" className={tab === "move" ? "tiny" : "ghost tiny"}
-            onClick={() => setTab("move")}>Move</button>
-          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>Close</button>
+            onClick={() => setTab("move")}>{t("move")}</button>
+          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>{c("close")}</button>
         </span>
       </div>
       <div className="card-body">
@@ -78,30 +82,29 @@ export function Restructure({
             <>
               <input type="hidden" name="target_id" value={categoryId} />
               <span className="page-sub">
-                Creates a new category in this one&rsquo;s place. {categoryName}, and
-                everything beneath it, drops one level down.
+                {t("insertAboveNote", { name: categoryName })}
               </span>
               <div className="row">
                 <div className="field">
-                  <label htmlFor="ra_code">Code segment</label>
+                  <label htmlFor="ra_code">{t("codeSegment")}</label>
                   <input id="ra_code" name="segment" type="text" required placeholder="01"
                     value={segment} onChange={(e) => setSegment(e.target.value)}
                     aria-invalid={takenBy ? true : undefined}
                     style={takenBy ? { borderColor: "var(--bad)" } : undefined} />
                   {takenBy ? (
                     <span className="hint" role="alert" style={{ color: "var(--bad)" }}>
-                      {segment.toUpperCase()} is already used by {takenBy}. Choose another code.
+                      {t("codeTaken", { code: segment.toUpperCase(), name: takenBy })}
                     </span>
                   ) : (
-                    <span className="hint">Everything beneath re-codes to match</span>
+                    <span className="hint">{t("recodes")}</span>
                   )}
                 </div>
                 <div className="field">
-                  <label htmlFor="ra_name">Name</label>
+                  <label htmlFor="ra_name">{c("name")}</label>
                   <input id="ra_name" name="name" type="text" required placeholder="Food &amp; Drink" />
                 </div>
                 <div className="field">
-                  <label htmlFor="ra_my">Name (Burmese)</label>
+                  <label htmlFor="ra_my">{f("nameBurmese")}</label>
                   <input id="ra_my" name="name_my" type="text" />
                 </div>
               </div>
@@ -110,12 +113,12 @@ export function Restructure({
             <>
               <input type="hidden" name="id" value={categoryId} />
               <span className="page-sub">
-                Everything beneath {categoryName} moves with it.
+                {t("movesWith", { name: categoryName })}
               </span>
               <div className="field">
-                <label htmlFor="rm_parent">Put it under</label>
+                <label htmlFor="rm_parent">{t("putUnder")}</label>
                 <select id="rm_parent" name="new_parent_id" defaultValue="">
-                  <option value="">Nothing — make it a top-level parent</option>
+                  <option value="">{t("topLevel")}</option>
                   {targets.map((t) => (
                     <option key={t.id} value={t.id}>
                       {" ".repeat(t.depth * 2)}{t.depth > 0 ? "└ " : ""}{t.name} ({t.code})
@@ -123,7 +126,7 @@ export function Restructure({
                   ))}
                 </select>
                 <span className="hint">
-                  Its own branch is excluded — that would detach the tree.
+                  {t("ownBranch")}
                 </span>
               </div>
             </>
@@ -133,7 +136,7 @@ export function Restructure({
 
           <div className="actions">
             <button type="submit" disabled={pending || (tab === "above" && !!takenBy)}>
-              {pending ? "Saving…" : tab === "above" ? "Insert above" : "Move category"}
+              {pending ? c("saving") : tab === "above" ? t("insertAbove") : t("moveCategory")}
             </button>
           </div>
         </form>

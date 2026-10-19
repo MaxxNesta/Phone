@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronUp, ChevronDown, X, Plus, Pencil } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 export type Option = {
   id: string; code: string; name: string; sort_order: number; used: number;
@@ -32,6 +33,8 @@ export function AttributeCard({
   remove: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
   const router = useRouter();
+  const t = useTranslations("attributes");
+  const c = useTranslations("common");
   const [value, setValue] = useState("");
   /** Which value is being renamed, and whether the attribute itself is.
    *  One at a time — two open inputs is two half-finished edits. */
@@ -71,18 +74,18 @@ export function AttributeCard({
                 as "switch this off" and a rename would deactivate it. */}
             {attribute.is_active && <input type="hidden" name="is_active" value="1" />}
             <input name="name" defaultValue={attribute.name} autoFocus
-                   aria-label={`Rename ${attribute.name}`} />
+                   aria-label={t("renameName", { name: attribute.name })} />
             <input name="name_my" defaultValue={attribute.name_my ?? ""}
-                   placeholder="Burmese" aria-label="Name in Burmese" />
-            <button type="submit" className="btn tiny">Save</button>
+                   placeholder={t("burmese")} aria-label={t("nameInBurmese")} />
+            <button type="submit" className="btn tiny">{c("save")}</button>
             <button type="button" className="btn ghost tiny"
-                    onClick={() => setRenamingAttr(false)}>Cancel</button>
+                    onClick={() => setRenamingAttr(false)}>{c("cancel")}</button>
           </form>
         ) : (
         <h2>
           {attribute.name}
           {!attribute.is_active && (
-            <span className="pill" style={{ marginLeft: "0.5rem" }}>Off</span>
+            <span className="pill" style={{ marginLeft: "0.5rem" }}>{t("off")}</span>
           )}
         </h2>
         )}
@@ -90,8 +93,8 @@ export function AttributeCard({
           <span className="m">{attribute.code}</span>
           {" · "}
           {attribute.products === 0
-            ? "not used yet"
-            : `${attribute.products} product${attribute.products === 1 ? "" : "s"}`}
+            ? t("notUsed")
+            : t("products", { n: attribute.products })}
         </span>
       </div>
 
@@ -100,7 +103,7 @@ export function AttributeCard({
 
         {attribute.options.length === 0 ? (
           <p className="hint">
-            No values yet. A size with no sizes cannot be chosen on a product.
+            {t("noValues")}
           </p>
         ) : (
           <ul className="optlist">
@@ -110,18 +113,18 @@ export function AttributeCard({
                   <form action={edAction} className="optrow-edit">
                     <input type="hidden" name="id" value={o.id} />
                     <input name="name" defaultValue={o.name} autoFocus
-                           aria-label={`Rename ${o.name}`} />
+                           aria-label={t("renameName", { name: o.name })} />
                     {/* The code built the SKU of every variant already
                         carrying it, and those are stored strings. Editable
                         only while nothing depends on it. */}
                     <input name="code" defaultValue={o.code} disabled={o.used > 0}
-                           aria-label={`Code for ${o.name}`} className="m"
+                           aria-label={t("codeFor", { name: o.name })} className="m"
                            title={o.used > 0
-                             ? `Fixed — ${o.used} variant${o.used === 1 ? "" : "s"} built a code from it`
-                             : "Used to build variant codes"} />
-                    <button type="submit" className="btn tiny">Save</button>
+                             ? t("codeFixed", { n: o.used })
+                             : t("codeUsed")} />
+                    <button type="submit" className="btn tiny">{c("save")}</button>
                     <button type="button" className="btn ghost tiny"
-                            onClick={() => setRenaming(null)}>Cancel</button>
+                            onClick={() => setRenaming(null)}>{c("cancel")}</button>
                   </form>
                 ) : (
                 <>
@@ -130,13 +133,13 @@ export function AttributeCard({
                   {o.name !== o.code && <span className="m optrow-code">{o.code}</span>}
                   {o.used > 0 && (
                     <span className="subline">
-                      {o.used} variant{o.used === 1 ? "" : "s"}
+                      {t("variants", { n: o.used })}
                     </span>
                   )}
                 </span>
                 <button type="button" className="btn ghost tiny"
                         onClick={() => setRenaming(o.id)}
-                        aria-label={`Rename ${o.name}`}>
+                        aria-label={t("renameName", { name: o.name })}>
                   <Pencil size={12} aria-hidden="true" />
                 </button>
                 {/* Hand ordered, because S/M/L/XL is not alphabetical and
@@ -145,7 +148,7 @@ export function AttributeCard({
                   <input type="hidden" name="id" value={o.id} />
                   <input type="hidden" name="direction" value="up" />
                   <button type="submit" className="btn ghost tiny" disabled={i === 0}
-                          aria-label={`Move ${o.name} up`}>
+                          aria-label={t("moveUp", { name: o.name })}>
                     <ChevronUp size={13} aria-hidden="true" />
                   </button>
                 </form>
@@ -153,14 +156,14 @@ export function AttributeCard({
                   <input type="hidden" name="id" value={o.id} />
                   <input type="hidden" name="direction" value="down" />
                   <button type="submit" className="btn ghost tiny" disabled={i === last}
-                          aria-label={`Move ${o.name} down`}>
+                          aria-label={t("moveDown", { name: o.name })}>
                     <ChevronDown size={13} aria-hidden="true" />
                   </button>
                 </form>
                 <form action={rmAction}>
                   <input type="hidden" name="id" value={o.id} />
                   <button type="submit" className="btn ghost tiny"
-                          aria-label={`Remove ${o.name}`}>
+                          aria-label={t("remove", { name: o.name })}>
                     <X size={13} aria-hidden="true" />
                   </button>
                 </form>
@@ -176,28 +179,28 @@ export function AttributeCard({
           <input
             name="code" value={value} onChange={(e) => setValue(e.target.value)}
             placeholder={attribute.code === "SIZE" ? "M" : "Red"}
-            aria-label={`New ${attribute.name} value`}
+            aria-label={t("newValue", { name: attribute.name })}
           />
           <button type="submit" className="btn ghost" disabled={!value.trim() || adding}>
-            <Plus size={13} aria-hidden="true" /> Add
+            <Plus size={13} aria-hidden="true" /> {t("add")}
           </button>
         </form>
 
         <div className="attrcard-foot">
           <button type="button" className="btn ghost tiny"
-                  onClick={() => setRenamingAttr(true)}>Rename</button>
+                  onClick={() => setRenamingAttr(true)}>{t("rename")}</button>
           <form action={upAction}>
             <input type="hidden" name="id" value={attribute.id} />
             <input type="hidden" name="name" value={attribute.name} />
             {!attribute.is_active && <input type="hidden" name="is_active" value="1" />}
             <button type="submit" className="btn ghost tiny">
-              {attribute.is_active ? "Switch off" : "Switch on"}
+              {attribute.is_active ? t("switchOff") : t("switchOn")}
             </button>
           </form>
           {attribute.products === 0 && (
             <form action={delAction}>
               <input type="hidden" name="id" value={attribute.id} />
-              <button type="submit" className="btn ghost tiny">Delete</button>
+              <button type="submit" className="btn ghost tiny">{c("delete")}</button>
             </form>
           )}
         </div>

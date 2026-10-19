@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type Unit = {
   id: string; code: string; name: string; name_my: string | null;
@@ -22,6 +23,10 @@ export function UnitRow({
   deactivateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
+  const u = useTranslations("units");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -51,15 +56,15 @@ export function UnitRow({
             <input type="hidden" name="id" value={unit.id} />
             <div className="row">
               <div className="field">
-                <label>Code</label>
+                <label>{c("code")}</label>
                 <input name="code" type="text" defaultValue={unit.code} required />
               </div>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={unit.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{f("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={unit.name_my ?? ""} />
               </div>
             </div>
@@ -74,8 +79,8 @@ export function UnitRow({
               Active
             </label>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -91,30 +96,30 @@ export function UnitRow({
         {unit.name_my && <div className="subline">{unit.name_my}</div>}
       </td>
       <td className="r">{unit.items || ""}</td>
-      <td>{unit.is_active ? <span className="pill ok">active</span> : <span className="pill warn">inactive</span>}</td>
+      <td>{unit.is_active ? <span className="pill ok">{pt("activeLower")}</span> : <span className="pill warn">{pt("inactiveLower")}</span>}</td>
       <td>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           {unit.is_active ? (
             <form action={deactFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={unit.id} />
-              <button type="submit" className="warn tiny">Deactivate</button>
+              <button type="submit" className="warn tiny">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={unit.id} />
-              <button type="submit" className="ghost tiny">Reactivate</button>
+              <button type="submit" className="ghost tiny">{c("reactivate")}</button>
             </form>
           )}
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${unit.name}?`}
+            title={c("deleteName", { name: unit.name })}
             detail={
               inUse
-                ? `${unit.items} item${unit.items === 1 ? "" : "s"} count in this unit, so this will be refused. Deactivate it instead.`
-                : "This cannot be undone."
+                ? u("inUse", { n: Number(unit.items) })
+                : c("cannotUndo")
             }
           >
             <input type="hidden" name="id" value={unit.id} />

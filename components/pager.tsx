@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Page } from "@/lib/paging";
+import { useTranslations } from "next-intl";
 
 /**
  * Previous / next under a long list, keeping every other filter in the URL.
@@ -12,6 +13,7 @@ export function Pager({ p, params, name = "page" }: {
   params: Record<string, string | string[] | undefined>;
   name?: string;
 }) {
+  const c = useTranslations("common");
   if (p.pages <= 1) return null;
   const href = (n: number) => {
     const q = new URLSearchParams();
@@ -24,16 +26,16 @@ export function Pager({ p, params, name = "page" }: {
     return s ? `?${s}` : "?";
   };
   return (
-    <nav className="dt-pager" aria-label="Pages">
-      <span className="dt-pager-count">{p.from}–{p.to} of {p.total}</span>
+    <nav className="dt-pager" aria-label={c("pages")}>
+      <span className="dt-pager-count">{c("pageRange", { from: p.from, to: p.to, total: p.total })}</span>
       <span className="dt-spacer" />
       <span className="dt-pager-nav">
         {p.page > 1
-          ? <Link className="dt-step" href={href(p.page - 1)} aria-label="Previous page"><ChevronLeft size={14} aria-hidden="true" /></Link>
+          ? <Link className="dt-step" href={href(p.page - 1)} aria-label={c("prevPage")}><ChevronLeft size={14} aria-hidden="true" /></Link>
           : <span className="dt-step" aria-disabled="true"><ChevronLeft size={14} aria-hidden="true" /></span>}
         <span className="dt-pager-page">{p.page} / {p.pages}</span>
         {p.page < p.pages
-          ? <Link className="dt-step" href={href(p.page + 1)} aria-label="Next page"><ChevronRight size={14} aria-hidden="true" /></Link>
+          ? <Link className="dt-step" href={href(p.page + 1)} aria-label={c("nextPage")}><ChevronRight size={14} aria-hidden="true" /></Link>
           : <span className="dt-step" aria-disabled="true"><ChevronRight size={14} aria-hidden="true" /></span>}
       </span>
     </nav>

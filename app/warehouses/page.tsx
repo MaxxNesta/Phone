@@ -4,6 +4,7 @@ import { AddLocationForm } from "@/components/location-form";
 import { LocationRow } from "@/components/location-row";
 import { HelpHint } from "@/components/help-hint";
 import { limitFor, type Plan } from "@/lib/plans";
+import { getTranslations } from "next-intl/server";
 
 export type Location = {
   id: string; code: string; name: string; name_my: string | null;
@@ -49,7 +50,9 @@ function treeOrder(locations: Location[]): LocationNode[] {
 
 export default async function Warehouses() {
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const l = await getTranslations("locations");
+  const c = await getTranslations("common");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const locations = (await getLocations(company.id)) as unknown as Location[];
   const nodes = treeOrder(locations);
@@ -57,8 +60,8 @@ export default async function Warehouses() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Company</span>
-        <h1>Branches &amp; warehouses</h1>
+        <span className="eyebrow">{l("eyebrow")}</span>
+        <h1>{l("title")}</h1>
         <HelpHint>
           Branches and the warehouses inside them, shown as one tree. A
           branch is a site that doesn&rsquo;t hold stock itself; each one can
@@ -66,7 +69,7 @@ export default async function Warehouses() {
           branch. Stock lives in warehouses, and the branch it rolls up to is
           what the branch-by-branch financial reports are grouped by.
         </HelpHint>
-        <p className="page-sub">Where you sell from and where stock is kept.</p>
+        <p className="page-sub">{l("sub")}</p>
       </div>
 
       {(() => {
@@ -92,18 +95,18 @@ export default async function Warehouses() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Branches &amp; warehouses</h2>
+            <h2>{l("title")}</h2>
             <span className="page-sub">{locations.length}</span>
           </div>
 
           {nodes.length === 0 ? (
-            <div className="empty">None yet. Add your first branch above, then a warehouse inside it.</div>
+            <div className="empty">{l("none")}</div>
           ) : (
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th><th>Name</th><th>Status</th><th />
+                    <th>{c("code")}</th><th>{c("name")}</th><th>{c("status")}</th><th />
                   </tr>
                 </thead>
                 <tbody>

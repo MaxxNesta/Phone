@@ -8,18 +8,22 @@ import {
   updateCategory, deactivateCategory, activateCategory, deleteCategory,
 } from "@/lib/actions";
 import { getBrands, getCompany, getVariantAttributes } from "@/lib/queries";
-import { allCategories, childrenOf, trail, depthOf, levelCounts, branchIds, levelLabel, levelLabelPlural, MAX_CATEGORY_DEPTH } from "@/lib/tree";
+import { allCategories, childrenOf, trail, depthOf, levelCounts, branchIds, MAX_CATEGORY_DEPTH } from "@/lib/tree";
 import { AddCategoryForm } from "@/components/level-form";
 import { ItemForm } from "@/components/item-form";
 import { CategoryRow } from "@/components/category-row";
 import { Restructure } from "@/components/restructure";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function CategoryLevel({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("categories");
+  const c = await getTranslations("common");
+  const dtl = await getTranslations("itemDetail");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const nodes = await allCategories(co.id);
   const here = nodes.find((n) => n.id === id);
@@ -50,8 +54,10 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
 
   const path = crumbs.map((c) => c.name).join(" → ");
   const returnTo = `/items/categories/${id}`;
-  const childLabel = levelLabel(depth + 1);
-  const childLabelPlural = levelLabelPlural(depth + 1);
+  // Two levels only: depth 0 is a category, depth 1 a sub category.
+  const label = (d: number) => (d === 0 ? t("labelCategory") : t("labelSub"));
+  const childLabel = label(depth + 1);
+  const childLabelPlural = depth + 1 === 0 ? t("pluralCategory") : t("pluralSub");
 
   const mine = new Set(branchIds(nodes, id));
   const targets = nodes
@@ -63,7 +69,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
     <>
       <div className="page-head">
         <span className="eyebrow">
-          <Link href="/items/categories" style={{ color: "var(--muted)" }}>Categories</Link>
+          <Link href="/items/categories" style={{ color: "var(--muted)" }}>{t("title")}</Link>
           {crumbs.slice(0, -1).map((c) => (
             <span key={c.id}>
               {" / "}
@@ -75,8 +81,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
         <HelpHint>
           <span className="m">{here.code}</span>
           {here.name_my ? ` · ${here.name_my}` : ""}
-          {" · "}{levelLabel(depth).toLowerCase()}
-          {" · "}{kids.length} inside, {items.length} item{items.length === 1 ? "" : "s"} here
+          {" · "}{t("detailSummary", { level: label(depth).toLowerCase(), inside: kids.length, n: items.length })}
         </HelpHint>
       </div>
 
@@ -98,22 +103,21 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>{childLabelPlural} inside {here.name}</h2>
+            <h2>{t("insideOf", { plural: childLabelPlural, name: here.name })}</h2>
             <span className="page-sub">{kids.length}</span>
           </div>
 
           {kids.length === 0 ? (
             <div className="empty">
-              Nothing inside yet. Add a {childLabel.toLowerCase()}, or put items
-              straight into {here.name} using the form below.
+              {t("nothingInside", { label: childLabel.toLowerCase(), name: here.name })}
             </div>
           ) : (
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th><th>Name</th>
-                    <th className="r">Items</th><th />
+                    <th>{c("code")}</th><th>{c("name")}</th>
+                    <th className="r">{c("items")}</th><th />
                   </tr>
                 </thead>
                 <tbody>
@@ -144,9 +148,9 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Add an item here</h2>
+            <h2>{t("addItemHere")}</h2>
             <span className="m" style={{ color: "var(--muted)" }}>
-              codes continue from {here.code}
+              {t("codesContinue", { code: here.code })}
             </span>
           </div>
           <div className="card-body">
@@ -168,20 +172,20 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Items in {here.name}</h2>
+            <h2>{t("itemsIn", { name: here.name })}</h2>
             <span className="page-sub">{items.length}</span>
           </div>
 
           {items.length === 0 ? (
-            <div className="empty">No products sit directly in this category.</div>
+            <div className="empty">{t("noDirect")}</div>
           ) : (
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th><th>Name</th><th>Unit</th>
-                    <th className="r">On hand</th><th className="r">Sale price</th>
-                    <th className="r">Stock value</th>
+                    <th>{c("code")}</th><th>{c("name")}</th><th>{c("unit")}</th>
+                    <th className="r">{t("onHand")}</th><th className="r">{t("salePrice")}</th>
+                    <th className="r">{t("stockValue")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -193,7 +197,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
                         {i.name_my && (
                           <div className="subline">{i.name_my}</div>
                         )}
-                        {!i.is_stocked && <> <span className="pill">service</span></>}
+                        {!i.is_stocked && <> <span className="pill">{dtl("service")}</span></>}
                       </td>
                       <td className="code">{i.uom_code}</td>
                       <td className="r">{qty(i.on_hand)}</td>

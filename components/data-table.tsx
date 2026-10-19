@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { Columns3, ChevronLeft, ChevronRight, Search, Download } from "lucide-react";
 import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
+import { useTranslations } from "next-intl";
 
 export type Column = {
   key: string;
@@ -67,10 +68,10 @@ const PAGE_SIZES = [10, 20, 50, 100];
 export function DataTable({
   rows,
   columns,
-  searchPlaceholder = "Search…",
+  searchPlaceholder,
   initialQuery,
   defaultSort,
-  emptyLabel = "Nothing here",
+  emptyLabel,
   footer,
   footerCells,
   csvHeader,
@@ -135,6 +136,7 @@ export function DataTable({
   // Seeded when a link arrives pointing at one row — "edit this item" from
   // the item's own page should land on that item, not on a list to search
   // through again. Still an ordinary search afterwards: it can be cleared.
+  const dt = useTranslations("dataTable");
   const [q, setQ] = useState(initialQuery ?? "");
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(defaultSort ?? null);
   const [picked, setPicked] = useState<Record<string, string>>({});
@@ -305,8 +307,8 @@ export function DataTable({
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={searchPlaceholder}
-            aria-label="Search"
+            placeholder={searchPlaceholder ?? dt("search")}
+            aria-label={dt("searchLabel")}
           />
         </label>
         {filters
@@ -333,7 +335,7 @@ export function DataTable({
         {canExport && (
           <button type="button" className="dt-tool" onClick={exportCsv} disabled={sorted.length === 0}>
             <Download size={15} aria-hidden="true" />
-            Export {sorted.length !== rows.length ? `${sorted.length} of ${rows.length}` : ""}
+            {sorted.length !== rows.length ? dt("exportSome", { shown: sorted.length, total: rows.length }) : dt("export")}
           </button>
         )}
 
@@ -345,8 +347,8 @@ export function DataTable({
               aria-expanded={pickerOpen}
               onClick={() => setPickerOpen(!pickerOpen)}
             >
-              <Columns3 size={15} aria-hidden="true" /> Columns
-              {hidden.length > 0 && <span className="dt-cols-n">{hidden.length} hidden</span>}
+              <Columns3 size={15} aria-hidden="true" /> {dt("columns")}
+              {hidden.length > 0 && <span className="dt-cols-n">{dt("hidden", { n: hidden.length })}</span>}
             </button>
             {pickerOpen && (
               <>
@@ -354,7 +356,7 @@ export function DataTable({
                     something else useful — a menu you have to dismiss twice
                     is a menu in the way. */}
                 <div className="dt-cols-scrim" onClick={() => setPickerOpen(false)} aria-hidden="true" />
-                <div className="dt-cols-menu" role="group" aria-label="Columns shown">
+                <div className="dt-cols-menu" role="group" aria-label={dt("columnsShown")}>
                   {hideable.map((c) => (
                     <label key={c.key} className="dt-cols-item">
                       <input
@@ -368,7 +370,7 @@ export function DataTable({
                   {hidden.length > 0 && (
                     <button type="button" className="ghost tiny dt-cols-reset"
                             onClick={() => { setHidden([]); if (storageKey) { try { localStorage.removeItem(`cols:${storageKey}`); } catch { /* nothing to clear */ } } }}>
-                      Show all
+                      {dt("showAll")}
                     </button>
                   )}
                 </div>
@@ -405,7 +407,7 @@ export function DataTable({
             {sorted.length === 0 && (
               <tr>
                 <td colSpan={visibleColumns.length} className="empty">
-                  {q ? "No matches" : emptyLabel}
+                  {q ? dt("noMatches") : emptyLabel ?? dt("empty")}
                 </td>
               </tr>
             )}
@@ -431,32 +433,32 @@ export function DataTable({
         <div className="dt-pager">
           <span className="dt-pager-count">
             {sorted.length <= pageSize
-              ? `${sorted.length} row${sorted.length === 1 ? "" : "s"}`
-              : `${start + 1}–${Math.min(start + pageSize, sorted.length)} of ${sorted.length}`}
+              ? dt("rows", { n: sorted.length })
+              : dt("range", { from: start + 1, to: Math.min(start + pageSize, sorted.length), total: sorted.length })}
           </span>
 
           <span className="dt-spacer" />
 
           <label className="dt-pager-size">
             <select
-              aria-label="Rows per page"
+              aria-label={dt("rowsPerPage")}
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
             >
               {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>{n} per page</option>
+                <option key={n} value={n}>{dt("perPage", { n })}</option>
               ))}
             </select>
           </label>
 
           {pageCount > 1 && (
             <span className="dt-pager-nav">
-              <button type="button" className="dt-step" aria-label="Previous page"
+              <button type="button" className="dt-step" aria-label={dt("prevPage")}
                       disabled={current === 1} onClick={() => setPage(current - 1)}>
                 <ChevronLeft size={14} aria-hidden="true" />
               </button>
               <span className="dt-pager-page">{current} / {pageCount}</span>
-              <button type="button" className="dt-step" aria-label="Next page"
+              <button type="button" className="dt-step" aria-label={dt("nextPage")}
                       disabled={current === pageCount} onClick={() => setPage(current + 1)}>
                 <ChevronRight size={14} aria-hidden="true" />
               </button>

@@ -1,4 +1,5 @@
 import type { CatalogFacets } from "@/lib/phone";
+import { useTranslations } from "next-intl";
 
 type Search = Record<string, string | undefined>;
 
@@ -28,31 +29,32 @@ export function CatalogFilterFields({ groups, facets, sp, prefix }: {
   /** Keeps ids unique when two filter bars share a page. */
   prefix: string;
 }) {
+  const c = useTranslations("common");
   const category = groups.find((g) => g.id === sp.category);
   const { modelId, brandId } = catalogSelection(sp, facets);
   return (
     <>
       {facets.brands.length > 1 && (
         <div className="field">
-          <label htmlFor={`${prefix}-brand`}>Brand</label>
+          <label htmlFor={`${prefix}-brand`}>{c("brand")}</label>
           <select id={`${prefix}-brand`} name="brand" defaultValue={brandId ?? ""}>
-            <option value="">All</option>
+            <option value="">{c("all")}</option>
             {facets.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
       )}
       <div className="field">
-        <label htmlFor={`${prefix}-cat`}>Category</label>
+        <label htmlFor={`${prefix}-cat`}>{c("category")}</label>
         <select id={`${prefix}-cat`} name="category" defaultValue={sp.category ?? ""}>
-          <option value="">All</option>
+          <option value="">{c("all")}</option>
           {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </div>
       {category && facets.models.length > 0 && (
         <div className="field">
-          <label htmlFor={`${prefix}-model`}>{category.name} model</label>
+          <label htmlFor={`${prefix}-model`}>{c("model", { category: category.name })}</label>
           <select id={`${prefix}-model`} name="model" defaultValue={modelId ?? ""}>
-            <option value="">All</option>
+            <option value="">{c("all")}</option>
             {facets.models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
@@ -62,7 +64,7 @@ export function CatalogFilterFields({ groups, facets, sp, prefix }: {
           <label htmlFor={`${prefix}-${a.id}`}>{a.name}</label>
           <select id={`${prefix}-${a.id}`} name={`a_${a.id}`}
             defaultValue={a.options.some((o) => o.id === sp[`a_${a.id}`]) ? sp[`a_${a.id}`] : ""}>
-            <option value="">All</option>
+            <option value="">{c("all")}</option>
             {a.options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </div>

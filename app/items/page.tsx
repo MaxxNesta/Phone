@@ -7,6 +7,7 @@ import { asVariant } from "@/components/variant-tags";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { ItemFilters } from "@/components/item-filters";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 type Row = {
   id: string; code: string; name: string; name_my: string | null;
@@ -34,7 +35,10 @@ export default async function Items({
 }) {
   const { category, sub, brand, status, edit } = await searchParams;
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("items");
+  const c = await getTranslations("common");
+  const f = await getTranslations("itemForm");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   // Brand filter and column only once the catalogue carries two brands.
   const multiBrand = (await getBrandsInUse(company.id)).length > 1;
@@ -186,27 +190,22 @@ export default async function Items({
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>Items</h1>
-        <HelpHint>
-          Every product and service in the catalogue. Filed under a category
-          (and sub category, if it has one), with an optional brand. How many
-          there are and what they are worth lives under Inventory &mdash; an
-          item is what the thing <em>is</em>, not how much of it is on a shelf.
-        </HelpHint>
+        <span className="eyebrow">{t("masterData")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
       </div>
 
       <div className="actions">
-        <Link href="/items/categories" className="btn ghost">Manage categories</Link>
-        <Link href="/items/brands" className="btn ghost">Manage brands</Link>
-        <Link href="/items/units" className="btn ghost">Manage units</Link>
-        <Link href="/items/import" className="btn ghost">Import</Link>
-        <Link href="/items/new" className="btn">+ Item</Link>
+        <Link href="/items/categories" className="btn ghost">{t("manageCategories")}</Link>
+        <Link href="/items/brands" className="btn ghost">{t("manageBrands")}</Link>
+        <Link href="/items/units" className="btn ghost">{t("manageUnits")}</Link>
+        <Link href="/items/import" className="btn ghost">{t("import")}</Link>
+        <Link href="/items/new" className="btn">{t("addItem")}</Link>
       </div>
 
       {editing && (
         <p className="hint" style={{ margin: "0 0 8px" }}>
-          Editing one item. <Link href="/items" className="linkish">Show all products</Link>
+          {t("editingOne")} <Link href="/items" className="linkish">{t("showAll")}</Link>
         </p>
       )}
       <ItemFilters
@@ -218,30 +217,30 @@ export default async function Items({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Catalogue</h2>
+            <h2>{t("catalogue")}</h2>
             <span className="page-sub">
               {items.length === all.length
-                ? `${all.length} items`
-                : `${items.length} of ${all.length} items`}
-              {" · "}{priced} with a purchase price
+                ? t("countAll", { n: all.length })
+                : t("countSome", { shown: items.length, total: all.length })}
+              {" · "}{t("withPrice", { n: priced })}
             </span>
           </div>
 
           {all.length === 0 ? (
             <div className="empty">
-              Nothing yet. Start with a category, then add products inside it.{" "}
-              <Link href="/items/categories" style={{ color: "var(--link)" }}>Add a category</Link>
+              {t("nothingYet")}{" "}
+              <Link href="/items/categories" style={{ color: "var(--link)" }}>{t("addCategory")}</Link>
             </div>
           ) : items.length === 0 ? (
             <div className="empty">
-              No item matches these filters.{" "}
-              <Link href="/items" style={{ color: "var(--link)" }}>Clear them</Link>
+              {t("noFilterMatch")}{" "}
+              <Link href="/items" style={{ color: "var(--link)" }}>{t("clearThem")}</Link>
             </div>
           ) : (
             <DataTable
               rows={rows}
-              emptyLabel="No items"
-              searchPlaceholder="Search items…"
+              emptyLabel={t("noItems")}
+              searchPlaceholder={t("searchItems")}
               initialQuery={edit ? (items.find((i: any) => i.id === edit)?.code ?? "") : undefined}
               defaultSort={{ key: "code", dir: "asc" }}
               csvFilename="items.csv"
@@ -250,21 +249,21 @@ export default async function Items({
               // status are wanted in a spreadsheet and would only widen a
               // table that already has ten columns.
               csvExtra={[
-                { key: "name_my", label: "Name (Burmese)" },
-                { key: "last_purchase_doc_no", label: "From invoice" },
-                { key: "last_purchase_date", label: "Invoice date" },
-                { key: "status", label: "Status" },
+                { key: "name_my", label: f("nameBurmese") },
+                { key: "last_purchase_doc_no", label: t("fromInvoice") },
+                { key: "last_purchase_date", label: t("invoiceDate") },
+                { key: "status", label: c("status") },
               ]}
               columns={[
                 { key: "photo", label: "" },
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Name", sortable: true },
-                { key: "category", label: "Category", sortable: true },
-                { key: "subcategory", label: "Sub category", sortable: true },
-                ...(multiBrand ? [{ key: "brand_name", label: "Brand", sortable: true }] : []),
-                { key: "uom_code", label: "Unit", sortable: true },
-                { key: "sale_price", label: "Selling price", sortable: true, align: "r" },
-                { key: "last_purchase_price", label: "Latest purchase price", sortable: true, align: "r" },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: c("name"), sortable: true },
+                { key: "category", label: c("category"), sortable: true },
+                { key: "subcategory", label: c("subCategory"), sortable: true },
+                ...(multiBrand ? [{ key: "brand_name", label: c("brand"), sortable: true }] : []),
+                { key: "uom_code", label: c("unit"), sortable: true },
+                { key: "sale_price", label: t("sellingPrice"), sortable: true, align: "r" },
+                { key: "last_purchase_price", label: t("latestPurchasePrice"), sortable: true, align: "r" },
                 { key: "actions", label: "" },
               ]}
             />
@@ -272,11 +271,7 @@ export default async function Items({
 
           <div className="card-body" style={{ paddingTop: 0 }}>
             <span className="page-sub">
-              <strong>Latest purchase price</strong> is read from the most recent
-              posted purchase invoice for that item &mdash; what the supplier
-              actually charged, not a figure kept on the item. It is blank for
-              anything received but not yet invoiced, and it changes on its own
-              the next time you are billed at a different price.
+              <strong>{t("latestPurchasePrice")}</strong> {t("latestPurchaseNote")}
             </span>
           </div>
         </div>

@@ -6,11 +6,15 @@ import { AddBrandForm } from "@/components/brand-form";
 import { BrandRow } from "@/components/brand-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function Brands() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("brands");
+  const c = await getTranslations("common");
+  const cat = await getTranslations("categories");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const brands = (await sql`
     select b.id, b.code, b.name, b.name_my, b.is_active, count(i.id)::int as items
@@ -38,14 +42,10 @@ export default async function Brands() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Catalogue</span>
-        <h1>Brands</h1>
-        <HelpHint>
-          A flat list, on purpose &mdash; the same brand shows up under many
-          different categories, so it doesn&rsquo;t belong on the category
-          tree itself.
-        </HelpHint>
-        <p className="page-sub">The makers products are filed under.</p>
+        <span className="eyebrow">{cat("eyebrow")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
+        <p className="page-sub">{t("sub")}</p>
       </div>
 
       {/* Owner only: the shop sells Apple, and another brand is asked twice. */}
@@ -54,7 +54,7 @@ export default async function Brands() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Brands</h2>
+            <h2>{t("title")}</h2>
             <span className="page-sub">{brands.length}</span>
           </div>
 
@@ -65,14 +65,14 @@ export default async function Brands() {
           ) : (
             <DataTable
               rows={rows}
-              emptyLabel="No brands"
-              searchPlaceholder="Search brands…"
+              emptyLabel={t("none")}
+              searchPlaceholder={t("search")}
               defaultSort={{ key: "name", dir: "asc" }}
               columns={[
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Name", sortable: true },
-                { key: "items", label: "Items", sortable: true, align: "r" },
-                { key: "is_active", label: "Status", sortable: true },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: c("name"), sortable: true },
+                { key: "items", label: c("items"), sortable: true, align: "r" },
+                { key: "is_active", label: c("status"), sortable: true },
                 { key: "actions", label: "" },
               ]}
             />

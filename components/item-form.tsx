@@ -9,6 +9,7 @@ import { ConfirmOtherBrand } from "./brand-form";
 import { ItemPhotoField } from "./item-photo-field";
 import { composeItemCode } from "@/lib/item-code";
 import { itemCodeTakenBy } from "@/lib/item-code-actions";
+import { useTranslations } from "next-intl";
 
 type Node = {
   id: string; code: string; segment: string; name: string;
@@ -34,7 +35,7 @@ const NAME_EXAMPLE: Record<string, string> = {
 type Brand = { id: string; code: string; name: string };
 
 // Category depth is capped at two: Category, then Sub category.
-const LEVELS = ["Category", "Sub category"];
+const LEVELS = ["levelCategory", "levelSub"] as const;
 
 /**
  * One dropdown per level of the tree. Choosing a category reveals the next
@@ -67,6 +68,8 @@ export function ItemForm({
    *  the state every catalogue starts in. */
   variantAttributes?: PickerAttribute[];
 }) {
+  const f = useTranslations("itemForm");
+  const c = useTranslations("common");
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never,
     null
@@ -167,7 +170,7 @@ export function ItemForm({
   // model, an accessory just by what it is.
   const typeName = nodes.find((n) => n.id === chain[0])?.name ?? "";
   const accessory = /accessor/i.test(typeName);
-  const nameLabel = !typeName ? "Model" : accessory ? "Accessory name" : `${typeName} model`;
+  const nameLabel = !typeName ? f("model") : accessory ? f("accessoryName") : f("typeModel", { type: typeName });
   const namePlaceholder = accessory ? "20W USB-C Power Adapter"
     : NAME_EXAMPLE[typeName.toLowerCase()] ?? (typeName ? `${typeName} …` : "iPhone 18");
 
@@ -186,9 +189,9 @@ export function ItemForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>Where it belongs</h2>
+          <h2>{f("whereItBelongs")}</h2>
           <span className="m" style={{ color: "var(--muted)" }}>
-            {groupCode ? `Category code ${groupCode}` : "Choose a category"}
+            {groupCode ? f("categoryCode", { code: groupCode }) : f("chooseCategory")}
           </span>
         </div>
         <div className="card-body">
@@ -196,7 +199,7 @@ export function ItemForm({
             {selects.map((s) => (
               <div className="field" key={s.depth}>
                 <label htmlFor={`lvl-${s.depth}`}>
-                  {LEVELS[s.depth] ?? `Level ${s.depth + 1}`}
+                  {LEVELS[s.depth] ? f(LEVELS[s.depth]) : f("level", { n: s.depth + 1 })}
                 </label>
                 <select
                   id={`lvl-${s.depth}`}
@@ -204,7 +207,7 @@ export function ItemForm({
                   onChange={(e) => pick(s.depth, e.target.value)}
                 >
                   <option value="">
-                    {s.depth === 0 ? "Choose…" : "— none, file it here —"}
+                    {s.depth === 0 ? f("choose") : f("noneFileHere")}
                   </option>
                   {s.options.map((o) => (
                     <option key={o.id} value={o.id}>
@@ -218,7 +221,7 @@ export function ItemForm({
 
           {selected && (
             <p className="page-sub" style={{ marginTop: "1rem" }}>
-              Filing into{" "}
+              {f("filingInto")}{" "}
               <span className="m">
                 {chain
                   .map((id) => nodes.find((n) => n.id === id)?.name)
@@ -232,15 +235,15 @@ export function ItemForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>The product</h2>
+          <h2>{f("theProduct")}</h2>
           {preview && (
-            <span className="m" style={{ color: "var(--link)" }}>Code will be {preview}</span>
+            <span className="m" style={{ color: "var(--link)" }}>{f("codeWillBe", { code: preview })}</span>
           )}
         </div>
         <div className="card-body">
           <div className="row">
             <div className="field">
-              <label htmlFor="serial">Item code</label>
+              <label htmlFor="serial">{f("itemCode")}</label>
               <input
                 id="serial" name="serial" type="text" required
                 value={serial}
@@ -251,13 +254,13 @@ export function ItemForm({
               />
               {takenBy ? (
                 <span className="hint" role="alert" style={{ color: "var(--bad)" }}>
-                  {preview} is already used by {takenBy}. Choose another code.
+                  {f("codeTaken", { code: preview, name: takenBy })}
                 </span>
               ) : (
                 <span className="hint">
                   {groupCode
-                    ? `Joined to ${groupCode} with a hyphen`
-                    : "Its own piece of the code"}
+                    ? f("joinedWithHyphen", { code: groupCode })
+                    : f("ownPiece")}
                 </span>
               )}
             </div>
@@ -269,12 +272,12 @@ export function ItemForm({
             </div>
 
             <div className="field">
-              <label htmlFor="name_my">Name (Burmese)</label>
+              <label htmlFor="name_my">{f("nameBurmese")}</label>
               <input id="name_my" name="name_my" type="text" />
             </div>
 
             <div className="field">
-              <label htmlFor="brand_select">Brand</label>
+              <label htmlFor="brand_select">{c("brand")}</label>
               {addingBrand ? (
                 <>
                   <input
@@ -286,10 +289,10 @@ export function ItemForm({
                   />
                   <span className="actions" style={{ marginTop: "0.4rem" }}>
                     <button type="button" className="tiny" disabled={brandPending || !newBrandName.trim()} onClick={() => setAskBrand(true)}>
-                      {brandPending ? "Saving…" : "Add"}
+                      {brandPending ? f("saving") : f("add")}
                     </button>
                     <button type="button" className="ghost tiny" onClick={() => { setAddingBrand(false); setBrandError(null); }}>
-                      Cancel
+                      {c("cancel")}
                     </button>
                   </span>
                   {brandError && <span className="hint" style={{ color: "var(--bad)" }}>{brandError}</span>}
@@ -299,14 +302,14 @@ export function ItemForm({
               ) : (
                 <>
                   <select id="brand_select" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-                    <option value="">— none —</option>
+                    <option value="">{f("noneOption")}</option>
                     {brandList.map((b) => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                   </select>
                   {canAddBrand && (
                     <span className="hint">
-                      <button type="button" className="ghost tiny" style={{ padding: 0 }} onClick={() => setAddingBrand(true)}>+ New brand</button>
+                      <button type="button" className="ghost tiny" style={{ padding: 0 }} onClick={() => setAddingBrand(true)}>{f("newBrand")}</button>
                     </span>
                   )}
                 </>
@@ -314,16 +317,14 @@ export function ItemForm({
             </div>
 
             <div className="field">
-              <label htmlFor="base_uom_id">Base unit</label>
+              <label htmlFor="base_uom_id">{f("baseUnit")}</label>
               <select id="base_uom_id" name="base_uom_id" required value={baseUomId}
                       onChange={(e) => setBaseUomId(e.target.value)}>
                 {uoms.map((u) => (
                   <option key={u.id} value={u.id}>{u.code} · {u.name}</option>
                 ))}
               </select>
-              <span className="hint">
-                Stock is always stored in this unit, and it cannot be changed later
-              </span>
+              <span className="hint">{f("baseUnitHint")}</span>
             </div>
 
             {/* The pack sizes were only on the edit panel, so a new item was
@@ -333,9 +334,9 @@ export function ItemForm({
             <PackSizes key={baseUomId} uoms={uoms} baseUomId={baseUomId} initial={[]} />
 
             <div className="field">
-              <label htmlFor="sale_price">Default retail price</label>
+              <label htmlFor="sale_price">{f("defaultRetailPrice")}</label>
               <input id="sale_price" name="sale_price" type="number" min="0" step="any" />
-              <span className="hint">Optional, in MMK. If this product has variants, they all start at this price; you can set each one's own price after saving.</span>
+              <span className="hint">{f("defaultRetailPriceHint")}</span>
             </div>
 
             <ItemPhotoField />
@@ -344,7 +345,7 @@ export function ItemForm({
           {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
           <label className="check" htmlFor="is_stocked" style={{ marginTop: "1rem" }}>
             <input id="is_stocked" name="is_stocked" type="checkbox" defaultChecked />
-            Stocked — this item moves through inventory
+            {f("stocked")}
           </label>
           )}
 
@@ -357,31 +358,31 @@ export function ItemForm({
               shelf life, and expiry is the extra perishables need, which has
               to belong to a batch. */}
           <fieldset className="trackbox">
-            <legend>Traceability</legend>
+            <legend>{f("traceability")}</legend>
 
             <div className="field" style={{ marginBottom: "0.75rem" }}>
-              <label>Tracked by</label>
-              <div className="paymodes tracking" role="radiogroup" aria-label="Tracked by">
+              <label>{f("trackedBy")}</label>
+              <div className="paymodes tracking" role="radiogroup" aria-label={f("trackedBy")}>
                 {TRACKING.map((t) => (
                   <button key={t.v} type="button" className="paymode" role="radio"
                     aria-pressed={tracking === t.v} aria-checked={tracking === t.v}
                     onClick={() => setTrackOverride({ root: chain[0] ?? "", v: t.v })}>
-                    {t.label}
+                    {f(`tracking.${t.v}.label`)}
                   </button>
                 ))}
               </div>
               <input type="hidden" name="identity" value={tracking} />
-              <span className="hint">{TRACKING.find((t) => t.v === tracking)?.note}
-                {tracking !== "NONE" && " Every receipt names each unit, and every sale says which one left."}</span>
+              <span className="hint">{f(`tracking.${tracking}.note`)}
+                {tracking !== "NONE" && ` ${f("trackingEach")}`}</span>
             </div>
             <div className="row" style={{ marginBottom: "0.75rem" }}>
               <div className="field">
-                <label htmlFor="warranty_months">Customer warranty (months)</label>
+                <label htmlFor="warranty_months">{f("customerWarranty")}</label>
                 <input id="warranty_months" name="warranty_months" type="number" min="0" max="120" />
-                <span className="hint">Copied onto each sale; leave blank for none</span>
+                <span className="hint">{f("customerWarrantyHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="supplier_warranty_months">Supplier warranty (months)</label>
+                <label htmlFor="supplier_warranty_months">{f("supplierWarranty")}</label>
                 <input id="supplier_warranty_months" name="supplier_warranty_months" type="number" min="0" max="120" />
               </div>
             </div>
@@ -397,11 +398,8 @@ export function ItemForm({
                 }}
               />
               <span>
-                <strong>Track batches</strong>
-                <span className="trackbox-note">
-                  Every receipt of this item says which lot the goods came from,
-                  so a recall can name the units.
-                </span>
+                <strong>{f("trackBatches")}</strong>
+                <span className="trackbox-note">{f("trackBatchesNote")}</span>
               </span>
             </label>
 
@@ -414,11 +412,11 @@ export function ItemForm({
                 onChange={(e) => setTracksExpiry(e.target.checked)}
               />
               <span>
-                <strong>Batches expire</strong>
+                <strong>{f("batchesExpire")}</strong>
                 <span className="trackbox-note">
                   {tracksBatch
-                    ? "The oldest-expiring stock is sold first, ahead of any batch that lasts longer."
-                    : "Needs batches on first — an expiry date belongs to a lot, not to the item."}
+                    ? f("batchesExpireOn")
+                    : f("batchesExpireOff")}
                 </span>
               </span>
             </label>
@@ -431,8 +429,8 @@ export function ItemForm({
             {tracksBatch && (
               <p className="trackbox-where">
                 {tracksExpiry
-                  ? "No date here — one item has many batches, each with its own. The batch number and its expiry date are typed on the document that brings the goods in: a goods receipt, a purchase bill that receives, or a stock adjustment that finds stock."
-                  : "No number here — the batch is typed on the document that brings the goods in: a goods receipt, a purchase bill that receives, or a stock adjustment that finds stock."}
+                  ? f("batchWhereExpiry")
+                  : f("batchWhere")}
               </p>
             )}
             </>)}
@@ -447,9 +445,9 @@ export function ItemForm({
 
       <div className="actions">
         <button type="submit" disabled={pending || !selectedId || !serial || !!takenBy}>
-          {pending ? "Saving…" : preview ? `Save ${preview}` : "Save item"}
+          {pending ? f("saving") : preview ? f("saveCode", { code: preview }) : f("saveItem")}
         </button>
-        {!selectedId && <span className="page-sub">Choose a category first</span>}
+        {!selectedId && <span className="page-sub">{f("chooseCategoryFirst")}</span>}
       </div>
     </form>
   );

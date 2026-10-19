@@ -4,11 +4,16 @@ import { SimpleForm } from "@/components/simple-form";
 import { HelpHint } from "@/components/help-hint";
 import { REGION_GROUPS } from "@/lib/regions";
 import { sql } from "@/lib/db";
+import { getTranslations } from "next-intl/server";
 
 export default async function NewPartner() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("partners");
+  const c = await getTranslations("common");
+  const it = await getTranslations("items");
+  const f = await getTranslations("itemForm");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
   const currencies = await sql`select code, name from currency order by code`;
   const levels = (await sql`
     select id, name from price_level where company_id = ${co.id} order by sort_order`
@@ -23,35 +28,32 @@ export default async function NewPartner() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>New business partner</h1>
-        <HelpHint>
-          A partner can be a customer, a supplier, or both — here the same company
-          often is.
-        </HelpHint>
+        <span className="eyebrow">{it("masterData")}</span>
+        <h1>{t("newTitle")}</h1>
+        <HelpHint>{t("newHelp")}</HelpHint>
       </div>
 
-      <SimpleForm action={createPartner} submitLabel="Save partner">
+      <SimpleForm action={createPartner} submitLabel={t("save")}>
         <div className="card">
-          <div className="card-head"><h2>Identity</h2></div>
+          <div className="card-head"><h2>{t("identity")}</h2></div>
           <div className="card-body">
             <div className="row">
               <div className="field">
-                <label htmlFor="code">Code</label>
+                <label htmlFor="code">{c("code")}</label>
                 <input id="code" name="code" type="text" placeholder="C-005" required />
-                <span className="hint">Unique, used on every document</span>
+                <span className="hint">{t("codeHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="name">Name</label>
+                <label htmlFor="name">{c("name")}</label>
                 <input id="name" name="name" type="text" placeholder="Golden Land Superstore" required />
               </div>
               <div className="field">
-                <label htmlFor="name_my">Name (Burmese)</label>
+                <label htmlFor="name_my">{f("nameBurmese")}</label>
                 <input id="name_my" name="name_my" type="text" placeholder="မြန်မာလို အမည်" />
-                <span className="hint">Unicode only</span>
+                <span className="hint">{t("unicodeOnly")}</span>
               </div>
               <div className="field">
-                <label htmlFor="company_name">Registered company</label>
+                <label htmlFor="company_name">{t("registeredCompany")}</label>
                 <input id="company_name" name="company_name" type="text" />
               </div>
             </div>
@@ -59,55 +61,55 @@ export default async function NewPartner() {
         </div>
 
         <div className="card">
-          <div className="card-head"><h2>Role</h2></div>
+          <div className="card-head"><h2>{t("role")}</h2></div>
           <div className="card-body">
             <div className="row">
               <label className="check" htmlFor="is_customer">
                 <input id="is_customer" name="is_customer" type="checkbox" defaultChecked />
-                Customer — we sell to them
+                {t("isCustomer")}
               </label>
               <label className="check" htmlFor="is_supplier">
                 <input id="is_supplier" name="is_supplier" type="checkbox" />
-                Supplier — we buy from them
+                {t("isSupplier")}
               </label>
             </div>
           </div>
         </div>
 
         <div className="card">
-          <div className="card-head"><h2>Terms and contact</h2></div>
+          <div className="card-head"><h2>{t("termsContact")}</h2></div>
           <div className="card-body">
             <div className="row">
               <div className="field">
-                <label htmlFor="currency">Currency</label>
+                <label htmlFor="currency">{t("currency")}</label>
                 <input id="currency" name="currency" list="currency-codes" maxLength={3}
                   placeholder="MMK" style={{ textTransform: "uppercase" }} />
                 <datalist id="currency-codes">
                   {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
                 </datalist>
-                <span className="hint">What they bill or pay in — CNY for a China supplier. Blank is kyat.</span>
+                <span className="hint">{t("currencyHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="payment_terms_days">Payment terms (days)</label>
+                <label htmlFor="payment_terms_days">{t("paymentTerms")}</label>
                 <input id="payment_terms_days" name="payment_terms_days" type="number" min="0" defaultValue={30} />
-                <span className="hint">Sets the due date on invoices</span>
+                <span className="hint">{t("paymentTermsHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="price_level_id">Price level</label>
+                <label htmlFor="price_level_id">{t("priceLevel")}</label>
                 <select id="price_level_id" name="price_level_id" defaultValue="">
-                  <option value="">Default</option>
+                  <option value="">{t("default")}</option>
                   {levels.map((l) => (
                     <option key={l.id} value={l.id}>{l.name}</option>
                   ))}
                 </select>
-                <span className="hint">Which column of the price list they buy from</span>
+                <span className="hint">{t("priceLevelHint")}</span>
               </div>
               {/* What kind of shop, for reporting. Deliberately next to the
                   price level and deliberately not doing its job: the level
                   decides what they pay, the category only says what they
                   are. */}
               <div className="field">
-                <label htmlFor="category_id">Customer category</label>
+                <label htmlFor="category_id">{t("customerCategory")}</label>
                 <select id="category_id" name="category_id" defaultValue="">
                   <option value="">Not categorised</option>
                   {cats.map((c) => (
@@ -116,14 +118,14 @@ export default async function NewPartner() {
                 </select>
                 <span className="hint">
                   {cats.length === 0
-                    ? "None set up yet — Master data → Customer categories"
-                    : "Groups them on reports. Changes no price or limit."}
+                    ? t("noCustomerCats")
+                    : t("customerCatHint")}
                 </span>
               </div>
               {/* The other axis. A company we both sell to and buy from is
                   two different things to us, so it is filed twice. */}
               <div className="field">
-                <label htmlFor="supplier_category_id">Supplier category</label>
+                <label htmlFor="supplier_category_id">{t("supplierCategory")}</label>
                 <select id="supplier_category_id" name="supplier_category_id" defaultValue="">
                   <option value="">Not categorised</option>
                   {supplierCats.map((c) => (
@@ -132,44 +134,41 @@ export default async function NewPartner() {
                 </select>
                 <span className="hint">
                   {supplierCats.length === 0
-                    ? "None set up yet — Master data → Partner categories"
-                    : "What kind of supplier, when we buy from them"}
+                    ? t("noSupplierCats")
+                    : t("supplierCatHint")}
                 </span>
               </div>
               <div className="field">
-                <label htmlFor="credit_limit">Credit limit</label>
+                <label htmlFor="credit_limit">{t("creditLimit")}</label>
                 <input id="credit_limit" name="credit_limit" type="number" min="0" step="any" />
-                <span className="hint">
-                  What they may owe at once. Blank means no limit; 0 means cash only.
-                  Checked on every credit sale.
-                </span>
+                <span className="hint">{t("creditLimitHint")}</span>
               </div>
               {/* Region groups for reporting; township stays the address
                   line it has always been. Two different jobs, which is why
                   one is a fixed list and the other is free text. */}
               <div className="field">
-                <label htmlFor="region">Region / State</label>
+                <label htmlFor="region">{t("region")}</label>
                 <select id="region" name="region" defaultValue="">
-                  <option value="">Not set</option>
+                  <option value="">{t("notSet")}</option>
                   {REGION_GROUPS.map((g) => (
                     <optgroup key={g.label} label={g.label}>
                       {g.options.map((r) => <option key={r} value={r}>{r}</option>)}
                     </optgroup>
                   ))}
                 </select>
-                <span className="hint">Groups revenue on the dashboard</span>
+                <span className="hint">{t("regionHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="township">Township</label>
+                <label htmlFor="township">{t("township")}</label>
                 <input id="township" name="township" type="text" placeholder="Bahan" />
               </div>
               <div className="field">
-                <label htmlFor="phone">Phone</label>
+                <label htmlFor="phone">{t("phone")}</label>
                 <input id="phone" name="phone" type="text" placeholder="09-..." />
               </div>
             </div>
             <div className="field" style={{ marginTop: "1rem" }}>
-              <label htmlFor="address">Address</label>
+              <label htmlFor="address">{t("address")}</label>
               <input id="address" name="address" type="text" />
             </div>
           </div>

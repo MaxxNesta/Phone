@@ -5,6 +5,7 @@ import { updatePartner, deactivatePartner, activatePartner, deletePartner } from
 import { PartnerRow } from "@/components/partner-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function Partners({
   searchParams,
@@ -12,7 +13,10 @@ export default async function Partners({
   searchParams: Promise<{ role?: string; category?: string }>;
 }) {
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("partners");
+  const c = await getTranslations("common");
+  const it = await getTranslations("items");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const { role, category } = await searchParams;
   const all = (await getPartners(company.id)) as any[];
@@ -56,7 +60,7 @@ export default async function Partners({
     sort: {
       code: p.code,
       name: p.name,
-      role: `${p.is_customer ? "Customer" : ""} ${p.is_supplier ? "Supplier" : ""}`.trim(),
+      role: `${p.is_customer ? t("customer") : ""} ${p.is_supplier ? t("supplier") : ""}`.trim(),
       region: p.region ?? "",
       township: p.township ?? "",
       price_level: p.price_level_name ?? "",
@@ -93,19 +97,19 @@ export default async function Partners({
         {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
       </datalist>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>{role === "customer" ? "Customers" : role === "supplier" ? "Suppliers" : "Business partners"}</h1>
+        <span className="eyebrow">{it("masterData")}</span>
+        <h1>{role === "customer" ? t("customers") : role === "supplier" ? t("suppliers") : t("businessPartners")}</h1>
         <HelpHint>
           {role
-            ? "A filtered view of the same partner table — one record can be both a customer and a supplier."
-            : "One table with roles rather than separate customer and supplier lists — here the same company is routinely both."}
+            ? t("filteredHelp")
+            : t("allHelp")}
         </HelpHint>
       </div>
 
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>{role === "customer" ? "Customers" : role === "supplier" ? "Suppliers" : "Partners"}</h2>
+            <h2>{role === "customer" ? t("customers") : role === "supplier" ? t("suppliers") : t("partners")}</h2>
             <span className="actions">
               {/* Only offered once categories exist, and the uncategorised
                   count is shown because a classification half filled in is
@@ -114,7 +118,7 @@ export default async function Partners({
                 <span className="page-sub">
                   <Link href={role ? `/partners?role=${role}` : "/partners"}
                         style={{ color: !category ? "var(--brand)" : "inherit" }}>
-                    All
+                    {c("all")}
                   </Link>
                   {filterCats.map((c) => (
                     <span key={c.id}>
@@ -130,34 +134,34 @@ export default async function Partners({
                       {" · "}
                       <Link href={`/partners?${role ? `role=${role}&` : ""}category=none`}
                             style={{ color: category === "none" ? "var(--brand)" : "inherit" }}>
-                        Not categorised ({uncategorised})
+                        {t("notCategorisedN", { n: uncategorised })}
                       </Link>
                     </>
                   )}
                 </span>
               )}
-              <span className="page-sub">{partners.length} records</span>
-              <Link href="/partners/new" className="btn">New partner</Link>
+              <span className="page-sub">{t("records", { n: partners.length })}</span>
+              <Link href="/partners/new" className="btn">{t("newPartner")}</Link>
             </span>
           </div>
           <DataTable
             rows={rows}
-            emptyLabel="No partners yet"
-            searchPlaceholder="Search partners…"
+            emptyLabel={t("noPartners")}
+            searchPlaceholder={t("searchPartners")}
             defaultSort={{ key: "code", dir: "asc" }}
             columns={[
-              { key: "code", label: "Code", sortable: true },
-              { key: "name", label: "Name", sortable: true },
-              { key: "role", label: "Role", sortable: true },
-              { key: "region", label: "Region", sortable: true },
-              { key: "township", label: "Township", sortable: true },
-              { key: "price_level", label: "Price level", sortable: true },
-              { key: "category", label: "Category", sortable: true },
-              { key: "payment_terms_days", label: "Terms", sortable: true, align: "r" },
-              { key: "outstanding", label: "Outstanding", sortable: true, align: "r" },
-              { key: "credit_limit", label: "Credit limit", sortable: true, align: "r" },
-              { key: "available", label: "Left to spend", sortable: true, align: "r" },
-              { key: "is_active", label: "Status", sortable: true },
+              { key: "code", label: c("code"), sortable: true },
+              { key: "name", label: c("name"), sortable: true },
+              { key: "role", label: t("role"), sortable: true },
+              { key: "region", label: t("region"), sortable: true },
+              { key: "township", label: t("township"), sortable: true },
+              { key: "price_level", label: t("priceLevel"), sortable: true },
+              { key: "category", label: c("category"), sortable: true },
+              { key: "payment_terms_days", label: t("terms"), sortable: true, align: "r" },
+              { key: "outstanding", label: t("outstanding"), sortable: true, align: "r" },
+              { key: "credit_limit", label: t("creditLimit"), sortable: true, align: "r" },
+              { key: "available", label: t("leftToSpend"), sortable: true, align: "r" },
+              { key: "is_active", label: c("status"), sortable: true },
               { key: "actions", label: "" },
             ]}
           />

@@ -8,6 +8,7 @@ import { VariantTags, asVariant } from "@/components/variant-tags";
 import { ItemThumb } from "@/components/item-thumb";
 import { HelpHint } from "@/components/help-hint";
 import { requireUser, can } from "@/lib/auth";
+import { getTranslations } from "next-intl/server";
 
 const money = (v: unknown) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -35,7 +36,12 @@ export default async function ItemPage({
   // the column is not there at all.
   const seeCost = can(await requireUser(), "cost.view");
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("itemDetail");
+  const c = await getTranslations("common");
+  const pk = await getTranslations("packSizes");
+  const f = await getTranslations("itemForm");
+  const it = await getTranslations("items");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [item] = (await sql`
     select i.id, i.code, i.name, i.name_my, i.barcode, i.is_stocked, i.is_active,
@@ -109,7 +115,7 @@ export default async function ItemPage({
     <>
       <div className="page-head">
         <span className="eyebrow">
-          <Link href="/items" className="plain">Master data</Link> · Items
+          <Link href="/items" className="plain">{it("masterData")}</Link> · {t("items")}
         </span>
         <h1>
           {item.code} · {item.name}
@@ -119,8 +125,8 @@ export default async function ItemPage({
           {item.name_my && <>{item.name_my} · </>}
           {item.parent_group_name ? `${item.parent_group_name} / ` : ""}{item.group_name}
           {item.brand_name && <> · {item.brand_name}</>}
-          {!item.is_stocked && <> · <span className="pill">service</span></>}
-          {!item.is_active && <> · <span className="pill warn">inactive</span></>}
+          {!item.is_stocked && <> · <span className="pill">{t("service")}</span></>}
+          {!item.is_active && <> · <span className="pill warn">{t("inactive")}</span></>}
         </div>
       </div>
 
@@ -133,16 +139,16 @@ export default async function ItemPage({
             row; anything else in the catalogue, opened on just itself. */}
         <Link className="btn ghost"
           href={item.parent_item_id ? `/items/${item.parent_item_id}/variants?only=${item.id}` : `/items?edit=${item.id}`}>
-          Edit this {item.parent_item_id ? "variant" : "item"}
+          {item.parent_item_id ? t("editVariant") : t("editItem")}
         </Link>
         {item.is_stocked && (
           <Link className="btn ghost" href={`/inventory/movements?item=${item.id}`}>
-            All stock movements
+            {t("allMovements")}
           </Link>
         )}
         {item.parent_item_id && (
           <Link className="btn ghost" href={`/items/${item.parent_item_id}`}>
-            {item.parent_code} · the product this varies from
+            {t("parentProduct", { code: item.parent_code })}
           </Link>
         )}
       </div>
@@ -151,42 +157,36 @@ export default async function ItemPage({
         <div className="card">
           <div className="card-head">
             <div className="headwith">
-              <h2>How it is counted</h2>
-              <HelpHint label="Base unit and packs">
-                Stock is held in the base unit and nothing else &mdash; every
-                quantity recorded against this item is a number in it, which
-                is why it is settled when the item is created and left alone
-                afterwards. A pack is a bigger unit priced and ordered in,
-                converted to the base unit the moment a line is posted.
-              </HelpHint>
+              <h2>{t("howCounted")}</h2>
+              <HelpHint label={t("baseAndPacks")}>{t("baseAndPacksHelp")}</HelpHint>
             </div>
           </div>
           <div className="card-body">
             <div className="row">
               <div className="field">
-                <label>Item code</label>
+                <label>{f("itemCode")}</label>
                 <div className="code">{item.code}</div>
               </div>
               <div className="field">
-                <label>Base unit</label>
+                <label>{f("baseUnit")}</label>
                 <div className="code">{item.uom_code}</div>
               </div>
               <div className="field">
-                <label>Valuation</label>
+                <label>{t("valuation")}</label>
                 <div className="code">{item.valuation_method}</div>
               </div>
               {item.barcode && (
                 <div className="field">
-                  <label>Barcode</label>
+                  <label>{c("barcode")}</label>
                   <div className="code">{item.barcode}</div>
                 </div>
               )}
             </div>
             <div className="field" style={{ marginTop: "var(--s2)" }}>
-              <label>Pack sizes</label>
+              <label>{pk("label")}</label>
               {packs.length === 0 ? (
                 <span className="hint">
-                  Bought and sold in {item.uom_code} only.
+                  {pk("onlyBase", { unit: item.uom_code })}
                 </span>
               ) : (
                 <ul className="plainlist">
@@ -200,10 +200,10 @@ export default async function ItemPage({
             </div>
             {(item.tracks_batch || item.tracks_expiry) && (
               <div className="field" style={{ marginTop: "var(--s2)" }}>
-                <label>Tracking</label>
+                <label>{c("tracking")}</label>
                 <div>
-                  {item.tracks_batch && <span className="pill">batches</span>}{" "}
-                  {item.tracks_expiry && <span className="pill">expiry</span>}
+                  {item.tracks_batch && <span className="pill">{t("batches")}</span>}{" "}
+                  {item.tracks_expiry && <span className="pill">{t("expiry")}</span>}
                 </div>
               </div>
             )}
@@ -212,13 +212,13 @@ export default async function ItemPage({
 
         <div className="card">
           <div className="card-head">
-            <h2>Prices</h2>
-            <span className="page-sub">today, per level</span>
+            <h2>{t("prices")}</h2>
+            <span className="page-sub">{t("pricesSub")}</span>
           </div>
           <div className="tablewrap">
             <table>
               <thead>
-                <tr><th>Level</th><th className="r">Price</th><th>Per</th><th>From</th></tr>
+                <tr><th>{t("level")}</th><th className="r">{c("price")}</th><th>{t("per")}</th><th>{t("from")}</th></tr>
               </thead>
               <tbody>
                 {prices.map((p) => (
@@ -226,7 +226,7 @@ export default async function ItemPage({
                     <td>{p.level}</td>
                     <td className="r">
                       {p.price === null
-                        ? <span className="page-sub">not priced</span>
+                        ? <span className="page-sub">{t("notPriced")}</span>
                         : <strong>{money(p.price)}</strong>}
                     </td>
                     <td className="code">{p.uom_code ?? "—"}</td>
@@ -243,19 +243,18 @@ export default async function ItemPage({
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>On hand</h2>
+              <h2>{t("onHand")}</h2>
               <span className="page-sub">
-                {qty(onHand)} {item.uom_code} across {stock.length}{" "}
-                location{stock.length === 1 ? "" : "s"}
+                {t("onHandSub", { qty: qty(onHand), unit: item.uom_code, n: stock.length })}
               </span>
             </div>
             {stock.length === 0 ? (
-              <div className="empty">None in stock.</div>
+              <div className="empty">{t("noneInStock")}</div>
             ) : (
               <div className="tablewrap">
                 <table>
                   <thead>
-                    <tr><th>Warehouse</th><th className="r">Quantity</th></tr>
+                    <tr><th>{c("warehouse")}</th><th className="r">{c("quantity")}</th></tr>
                   </thead>
                   <tbody>
                     {stock.map((s) => (
@@ -276,7 +275,7 @@ export default async function ItemPage({
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>Variants</h2>
+              <h2>{t("variants")}</h2>
               <span className="page-sub">{variants.length}</span>
             </div>
             <div className="tablewrap">
@@ -303,15 +302,15 @@ export default async function ItemPage({
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>Recent movements</h2>
-              <span className="page-sub">newest {recent.length}</span>
+              <h2>{t("recentMovements")}</h2>
+              <span className="page-sub">{t("newest", { n: recent.length })}</span>
             </div>
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Date</th><th>Document</th><th>Warehouse</th>
-                    <th className="r">Quantity</th>{seeCost && <th className="r">Unit cost</th>}
+                    <th>{c("date")}</th><th>{c("document")}</th><th>{c("warehouse")}</th>
+                    <th className="r">{c("quantity")}</th>{seeCost && <th className="r">{t("unitCost")}</th>}
                   </tr>
                 </thead>
                 <tbody>

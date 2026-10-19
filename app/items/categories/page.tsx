@@ -6,11 +6,14 @@ import { AddCategoryForm } from "@/components/level-form";
 import { CategoryRow } from "@/components/category-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function CategoriesRoot() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("categories");
+  const c = await getTranslations("common");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const nodes = await allCategories(co.id);
   const counts = await levelCounts(co.id);
@@ -39,20 +42,17 @@ export default async function CategoriesRoot() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Catalogue</span>
-        <h1>Categories</h1>
-        <HelpHint>
-          The top of your product tree. Open one to add categories inside it,
-          then keep going until you reach the products themselves.
-        </HelpHint>
-        <p className="page-sub">Product types such as iPhone, iPad and Accessories, and how each one is tracked.</p>
+        <span className="eyebrow">{t("eyebrow")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
+        <p className="page-sub">{t("sub")}</p>
       </div>
 
       <AddCategoryForm
         action={createCategory}
         parentId={null}
         returnTo="/items/categories"
-        label="Category"
+        label={t("labelCategory")}
         codeHint="01"
         nameHint="Stationary"
       />
@@ -60,26 +60,25 @@ export default async function CategoriesRoot() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Categories</h2>
+            <h2>{t("title")}</h2>
             <span className="page-sub">{roots.length}</span>
           </div>
 
           {roots.length === 0 ? (
             <div className="empty">
-              Nothing yet. Add a category &mdash; the broadest grouping you
-              use, like Food &amp; Drink or Household.
+              {t("nothingYet")}
             </div>
           ) : (
             <DataTable
               rows={rows}
-              emptyLabel="No categories"
-              searchPlaceholder="Search categories…"
+              emptyLabel={t("none")}
+              searchPlaceholder={t("search")}
               defaultSort={{ key: "code", dir: "asc" }}
               columns={[
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Name", sortable: true },
-                { key: "inside", label: "Inside", sortable: true, align: "r" },
-                { key: "total", label: "Items", sortable: true, align: "r" },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: c("name"), sortable: true },
+                { key: "inside", label: t("inside"), sortable: true, align: "r" },
+                { key: "total", label: c("items"), sortable: true, align: "r" },
                 { key: "actions", label: "" },
               ]}
             />

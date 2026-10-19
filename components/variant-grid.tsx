@@ -6,6 +6,7 @@ import type { ActionResult } from "@/lib/actions";
 import { ItemThumb } from "./item-thumb";
 import { VariantTags } from "./variant-tags";
 import type { VariantPart } from "@/lib/variants";
+import { useTranslations } from "next-intl";
 
 export type GridRow = {
   id: string; code: string; name: string;
@@ -48,6 +49,8 @@ export function VariantGrid({
   uom: string;
 }) {
   const router = useRouter();
+  const g = useTranslations("variantGrid");
+  const c = useTranslations("common");
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
 
@@ -118,7 +121,7 @@ export function VariantGrid({
       {state && "error" in state && <div className="alert">{state.error}</div>}
       {state && "ok" in state && !dirty && (
         <div className="page-sub" style={{ color: "var(--ok)", marginBottom: "0.5rem" }}>
-          Saved.
+          {g("saved")}
         </div>
       )}
 
@@ -126,29 +129,29 @@ export function VariantGrid({
         <div className="tablewrap" style={{ marginBottom: "var(--s3)" }}>
           <table>
             <caption style={{ textAlign: "left", fontWeight: 600, padding: "0 0 6px" }}>
-              Set prices by storage
+              {g("byStorage")}
               <span className="page-sub" style={{ fontWeight: 400 }}>
-                {" "}— fills every variant of that size; change a colour in its row afterwards
+                {" "}{g("byStorageNote")}
               </span>
             </caption>
             <thead>
               <tr>
-                <th>Storage</th>
-                {levels.map((l) => <th key={l.id} className="r">{l.name} price</th>)}
+                <th>{g("storage")}</th>
+                {levels.map((l) => <th key={l.id} className="r">{g("levelPrice", { level: l.name })}</th>)}
                 <th />
               </tr>
             </thead>
             <tbody>
               {storages.map((st) => (
                 <tr key={st}>
-                  <td>{st} <span className="page-sub">({initial.filter((r) => storageOf(r) === st).length} variants)</span></td>
+                  <td>{st} <span className="page-sub">{g("variantCount", { n: initial.filter((r) => storageOf(r) === st).length })}</span></td>
                   {levels.map((l) => (
                     <td key={l.id} className="narrow">
-                      <input type="number" min="0" step="any" aria-label={`${l.name} price for all ${st}`}
+                      <input type="number" min="0" step="any" aria-label={g("priceForAll", { level: l.name, storage: st })}
                         value={bulk[st]?.[l.id] ?? ""} onChange={(e) => bulkSet(st, l.id, e.target.value)} />
                     </td>
                   ))}
-                  <td><button type="button" className="ghost" onClick={() => applyStorage(st)}>Apply to {st}</button></td>
+                  <td><button type="button" className="ghost" onClick={() => applyStorage(st)}>{g("applyTo", { storage: st })}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -160,17 +163,17 @@ export function VariantGrid({
         <table>
           <thead>
             <tr>
-              <th colSpan={2}>Variant</th>
-              <th>Variant SKU</th>
-              <th>Barcode</th>
+              <th colSpan={2}>{g("variant")}</th>
+              <th>{g("variantSku")}</th>
+              <th>{c("barcode")}</th>
               {levels.map((l) => (
                 <th key={l.id} className="r">
-                  {l.name} price
-                  <div className="subline">per {uom}</div>
+                  {g("levelPrice", { level: l.name })}
+                  <div className="subline">{g("per", { unit: uom })}</div>
                 </th>
               ))}
-              <th className="r">On hand</th>
-              <th>Active</th>
+              <th className="r">{g("onHand")}</th>
+              <th>{c("active")}</th>
             </tr>
           </thead>
           <tbody>
@@ -192,23 +195,23 @@ export function VariantGrid({
                   <td className="code">{v.code}</td>
                   <td>
                     <input
-                      type="text" inputMode="numeric" aria-label={`Barcode for ${v.name}`}
+                      type="text" inputMode="numeric" aria-label={g("barcodeFor", { name: v.name })}
                       value={r.barcode} data-barcode
                       onChange={(e) => set(r.id, { barcode: e.target.value })}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); nextBarcode(e.currentTarget); } }}
-                      placeholder="scan or type"
+                      placeholder={g("scanOrType")}
                       style={dup ? { borderColor: "var(--bad)" } : undefined}
                     />
                     {dup && (
                       <div className="subline" style={{ color: "var(--bad)" }}>
-                        also on another row
+                        {g("alsoOnAnother")}
                       </div>
                     )}
                   </td>
                   {levels.map((l) => (
                     <td key={l.id} className="narrow">
                       <input
-                        type="number" min="0" step="any" aria-label={`${l.name} price for ${v.name}`}
+                        type="number" min="0" step="any" aria-label={g("priceFor", { level: l.name, name: v.name })}
                         value={r.prices[l.id]}
                         onChange={(e) => set(r.id, { prices: { ...r.prices, [l.id]: e.target.value } })}
                       />
@@ -219,7 +222,7 @@ export function VariantGrid({
                     <label className="check">
                       <input type="checkbox" checked={r.isActive}
                              onChange={(e) => set(r.id, { isActive: e.target.checked })}
-                             aria-label={`${v.name} active`} />
+                             aria-label={g("activeFor", { name: v.name })} />
                     </label>
                   </td>
                 </tr>
@@ -231,15 +234,15 @@ export function VariantGrid({
 
       <div className="actions">
         <button type="submit" disabled={pending || !dirty || clashing.size > 0}>
-          {pending ? "Saving…" : `Save ${rows.length} variant${rows.length === 1 ? "" : "s"}`}
+          {pending ? c("saving") : g("save", { n: rows.length })}
         </button>
         {clashing.size > 0 && (
           <span className="page-sub" style={{ color: "var(--bad)" }}>
-            Two rows share a barcode — a barcode names one thing on a shelf.
+            {g("barcodeClash")}
           </span>
         )}
         {!dirty && clashing.size === 0 && (
-          <span className="page-sub">Nothing changed yet.</span>
+          <span className="page-sub">{g("nothingChanged")}</span>
         )}
       </div>
     </form>

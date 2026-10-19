@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Portal } from "./portal";
+import { useTranslations } from "next-intl";
 
 /**
  * The actions for one row of a list, behind a dot menu.
@@ -21,10 +22,12 @@ import { Portal } from "./portal";
  * row was cut off at the table's edge. Portalled and placed at the button's
  * own screen position, it escapes the wrapper entirely.
  */
-export function RowMenu({ label = "Actions", children }: {
+export function RowMenu({ label, children }: {
   label?: string;
   children: React.ReactNode;
 }) {
+  const c = useTranslations("common");
+  label ??= c("actions");
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const btn = useRef<HTMLButtonElement>(null);

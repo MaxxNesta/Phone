@@ -6,10 +6,12 @@ import { allCategories } from "@/lib/tree";
 import { getBrands, getCompany, getVariantAttributes } from "@/lib/queries";
 import { ItemForm } from "@/components/item-form";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function NewItem() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
+  const t = await getTranslations("items");
   if (!co) return <div className="empty">No company found.</div>;
 
   const [nodes, uoms, brands, variantAttributes] = await Promise.all([
@@ -23,13 +25,13 @@ export default async function NewItem() {
     return (
       <>
         <div className="page-head">
-          <span className="eyebrow">Master data</span>
-          <h1>New item</h1>
+          <span className="eyebrow">{t("masterData")}</span>
+          <h1>{t("newItem")}</h1>
         </div>
         <div className="alert">
-          No categories exist yet.{" "}
+          {t("noCategories")}{" "}
           <Link href="/items/categories" style={{ textDecoration: "underline" }}>
-            Add a category first.
+            {t("addCategoryFirst")}
           </Link>
         </div>
       </>
@@ -39,12 +41,9 @@ export default async function NewItem() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>New item</h1>
-        <HelpHint>
-          Pick the category at each level. The item&rsquo;s code is built from the
-          ones above it, so the code alone tells you where a product sits.
-        </HelpHint>
+        <span className="eyebrow">{t("masterData")}</span>
+        <h1>{t("newItem")}</h1>
+        <HelpHint>{t("newItemHelp")}</HelpHint>
       </div>
 
       <ItemForm

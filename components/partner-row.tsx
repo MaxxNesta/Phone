@@ -6,6 +6,7 @@ import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { RowMenu } from "./row-menu";
 import { REGION_GROUPS } from "@/lib/regions";
+import { useTranslations } from "next-intl";
 
 // lib/db.ts opens a real Postgres connection at import time — never import
 // it into a client component. Same formatting as money() there, kept local.
@@ -52,6 +53,9 @@ export function PartnerRow({
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
   const role = useSearchParams().get("role") ?? "";
+  const t = useTranslations("partners");
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -83,25 +87,25 @@ export function PartnerRow({
             <input type="hidden" name="id" value={partner.id} />
             <div className="row">
               <div className="field">
-                <label>Code</label>
+                <label>{c("code")}</label>
                 <input name="code" type="text" defaultValue={partner.code} required />
               </div>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={partner.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{f("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={partner.name_my ?? ""} />
               </div>
               <div className="field">
-                <label>Company name</label>
+                <label>{t("companyName")}</label>
                 <input name="company_name" type="text" defaultValue={partner.company_name ?? ""} />
               </div>
               <div className="field">
-                <label>Region / State</label>
+                <label>{t("region")}</label>
                 <select name="region" defaultValue={partner.region ?? ""}>
-                  <option value="">Not set</option>
+                  <option value="">{t("notSet")}</option>
                   {REGION_GROUPS.map((g) => (
                     <optgroup key={g.label} label={g.label}>
                       {g.options.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -110,23 +114,23 @@ export function PartnerRow({
                 </select>
               </div>
               <div className="field">
-                <label>Township</label>
+                <label>{t("township")}</label>
                 <input name="township" type="text" defaultValue={partner.township ?? ""} />
               </div>
               <div className="field">
-                <label>Address</label>
+                <label>{t("address")}</label>
                 <input name="address" type="text" defaultValue={partner.address ?? ""} />
               </div>
               <div className="field">
-                <label>Phone</label>
+                <label>{t("phone")}</label>
                 <input name="phone" type="text" defaultValue={partner.phone ?? ""} />
               </div>
               <div className="field">
-                <label>Payment terms (days)</label>
+                <label>{t("paymentTerms")}</label>
                 <input name="payment_terms_days" type="number" min="0" defaultValue={partner.payment_terms_days} />
               </div>
               <div className="field">
-                <label>Currency</label>
+                <label>{t("currency")}</label>
                 <input name="currency" list="currency-codes" maxLength={3} placeholder="MMK"
                   defaultValue={partner.currency ?? ""} style={{ textTransform: "uppercase" }} />
               </div>
@@ -136,14 +140,11 @@ export function PartnerRow({
                   is for a supplier nobody has bought from yet. */}
               {partner.is_supplier && (
                 <div className="field">
-                  <label>Lead time (days)</label>
+                  <label>{t("leadTime")}</label>
                   <input name="lead_time_days" type="number" min="0" max="365"
-                         placeholder="measured from orders"
+                         placeholder={t("leadTimePlaceholder")}
                          defaultValue={partner.lead_time_days ?? ""} />
-                  <span className="hint">
-                    Only used until two receipts have been matched to orders
-                    from this supplier — after that the measured time wins.
-                  </span>
+                  <span className="hint">{t("leadTimeHint")}</span>
                 </div>
               )}
               {/* Which column of the price list this customer buys from.
@@ -151,14 +152,14 @@ export function PartnerRow({
                   the company keeps more than one column. */}
               {partner.is_customer && priceLevels.length > 1 && (
                 <div className="field">
-                  <label>Price level</label>
+                  <label>{t("priceLevel")}</label>
                   <select name="price_level_id" defaultValue={partner.price_level_id ?? ""}>
-                    <option value="">{priceLevels[0]?.name} (default)</option>
+                    <option value="">{t("defaultLevel", { name: priceLevels[0]?.name ?? "" })}</option>
                     {priceLevels.map((l) => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
                   </select>
-                  <span className="hint">Fills the price on a sales line</span>
+                  <span className="hint">{t("priceLevelLineHint")}</span>
                 </div>
               )}
               {/* Says what the shop is, not what it gets. Kept apart from
@@ -166,19 +167,19 @@ export function PartnerRow({
                   other is a price. */}
               {categories.length > 0 && (
                 <div className="field">
-                  <label>Category</label>
+                  <label>{c("category")}</label>
                   <select name="category_id" defaultValue={partner.category_id ?? ""}>
                     <option value="">Not categorised</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
-                  <span className="hint">Groups them on reports only</span>
+                  <span className="hint">{t("catReportsOnly")}</span>
                 </div>
               )}
               {partner.is_supplier && supplierCategories.length > 0 && (
                 <div className="field">
-                  <label>Supplier category</label>
+                  <label>{t("supplierCategory")}</label>
                   <select name="supplier_category_id"
                           defaultValue={partner.supplier_category_id ?? ""}>
                     <option value="">Not categorised</option>
@@ -186,36 +187,32 @@ export function PartnerRow({
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
-                  <span className="hint">What kind of supplier, when we buy</span>
+                  <span className="hint">{t("supplierCatShort")}</span>
                 </div>
               )}
               <div className="field">
-                <label>Credit limit</label>
+                <label>{t("creditLimit")}</label>
                 <input name="credit_limit" type="number" min="0" defaultValue={partner.credit_limit ?? ""} />
-                <span className="hint">
-                  As a customer: blank means no limit, 0 means cash only.
-                  Checked on every credit sale. Nothing to do with buying
-                  from them.
-                </span>
+                <span className="hint">{t("creditLimitRowHint")}</span>
               </div>
             </div>
             <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem" }}>
               <label className="check">
                 <input name="is_customer" type="checkbox" defaultChecked={partner.is_customer} />
-                Customer
+                {t("customer")}
               </label>
               <label className="check">
                 <input name="is_supplier" type="checkbox" defaultChecked={partner.is_supplier} />
-                Supplier
+                {t("supplier")}
               </label>
               <label className="check">
                 <input name="is_active" type="checkbox" defaultChecked={partner.is_active} />
-                Active
+                {c("active")}
               </label>
             </div>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -231,9 +228,9 @@ export function PartnerRow({
         {partner.name_my && <div className="subline">{partner.name_my}</div>}
       </td>
       <td>
-        {partner.is_customer && <span className="pill ok">Customer</span>}
+        {partner.is_customer && <span className="pill ok">{t("customer")}</span>}
         {partner.is_customer && partner.is_supplier && " "}
-        {partner.is_supplier && <span className="pill warn">Supplier</span>}
+        {partner.is_supplier && <span className="pill warn">{t("supplier")}</span>}
       </td>
       <td>
         {partner.region ?? <span style={{ color: "var(--muted)" }}>—</span>}
@@ -244,7 +241,7 @@ export function PartnerRow({
       <td>
         {partner.is_customer
           ? (partner.price_level_name
-              ?? <span style={{ color: "var(--muted)" }}>Default</span>)
+              ?? <span style={{ color: "var(--muted)" }}>{t("default")}</span>)
           : <span style={{ color: "var(--muted)" }}>—</span>}
       </td>
       {/* Both axes, because a partner that is both is two different
@@ -253,10 +250,10 @@ export function PartnerRow({
         {partner.category_name
           ?? <span style={{ color: "var(--muted)" }}>—</span>}
         {partner.supplier_category_name && (
-          <div className="subline">buys: {partner.supplier_category_name}</div>
+          <div className="subline">{t("buys", { name: partner.supplier_category_name })}</div>
         )}
       </td>
-      <td className="r">{partner.payment_terms_days}d</td>
+      <td className="r">{t("days", { n: partner.payment_terms_days })}</td>
       <td className="r">{Number(partner.outstanding) ? money(partner.outstanding) : "—"}</td>
       {/* What they may owe at once. Blank means nobody has set one; 0 is a
           real answer and means cash only.
@@ -268,37 +265,37 @@ export function PartnerRow({
         {!partner.is_customer
           ? <span style={{ color: "var(--muted)" }}>—</span>
           : partner.credit_limit === null
-            ? <span style={{ color: "var(--muted)" }}>No limit</span>
+            ? <span style={{ color: "var(--muted)" }}>{t("noLimit")}</span>
             : Number(partner.credit_limit) === 0
-              ? <span className="pill warn">Cash only</span>
+              ? <span className="pill warn">{t("cashOnly")}</span>
               : money(partner.credit_limit)}
       </td>
       <td className="r">
         {partner.credit_limit === null || !partner.is_customer ? (
           <span style={{ color: "var(--muted)" }}>—</span>
         ) : Number(partner.available ?? 0) < 0 ? (
-          <span className="pill overdue">{money(Math.abs(Number(partner.available)))} over</span>
+          <span className="pill overdue">{t("over", { amount: money(Math.abs(Number(partner.available))) })}</span>
         ) : (
           money(Number(partner.available ?? partner.credit_limit))
         )}
       </td>
-      <td>{partner.is_active ? <span className="pill ok">active</span> : <span className="pill warn">inactive</span>}</td>
+      <td>{partner.is_active ? <span className="pill ok">{t("activeLower")}</span> : <span className="pill warn">{t("inactiveLower")}</span>}</td>
       {/* Behind a dot menu, as on the item list. Three buttons on every row
           made the actions column wider than the names, and this table now
           carries money that needs the width more — an amount that wraps is a
           figure somebody misreads. */}
       <td className="r">
-        <RowMenu label={`Actions for ${partner.name}`}>
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
+        <RowMenu label={c("actionsFor", { name: partner.name })}>
+          <button type="button" onClick={() => setEditing(true)}>{c("edit")}</button>
           {partner.is_active ? (
             <form action={deactFormAction}>
               <input type="hidden" name="id" value={partner.id} />
-              <button type="submit" className="warn">Deactivate</button>
+              <button type="submit" className="warn">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction}>
               <input type="hidden" name="id" value={partner.id} />
-              <button type="submit">Reactivate</button>
+              <button type="submit">{c("reactivate")}</button>
             </form>
           )}
           <div className="rowmenu-sep" />
@@ -306,8 +303,8 @@ export function PartnerRow({
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${partner.name}?`}
-            detail="This cannot be undone."
+            title={c("deleteName", { name: partner.name })}
+            detail={c("cannotUndo")}
             className="danger"
           >
             <input type="hidden" name="id" value={partner.id} />

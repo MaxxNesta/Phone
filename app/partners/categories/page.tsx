@@ -5,10 +5,16 @@ import { PartnerCategoryRow } from "@/components/partner-category-row";
 import { SimpleForm } from "@/components/simple-form";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function PartnerCategories() {
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("partnerCats");
+  const c = await getTranslations("common");
+  const it = await getTranslations("items");
+  const f = await getTranslations("itemForm");
+  const pt = await getTranslations("partners");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const cats = (await getPartnerCategories(company.id)) as unknown as Array<
     Parameters<typeof PartnerCategoryRow>[0]["category"]
@@ -40,63 +46,46 @@ export default async function PartnerCategories() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>Partner categories</h1>
-        <HelpHint>
-          What kind of trade a partner is. On the customer side: a supermarket
-          chain, a township wholesaler, a corner store, a pharmacy. On the
-          supplier side: an importer, a local manufacturer, an agent.
-          <br /><br />
-          Two lists, never mixed. &ldquo;Supermarket&rdquo; describes who you
-          sell to and &ldquo;Importer&rdquo; who you buy from — they are
-          different questions about the same company, and one that is both is
-          filed on each side separately.
-          <br /><br />
-          <strong>Classification only.</strong> A category sets no price, no
-          credit limit and no payment terms. Those were agreed with the shop
-          and live on the shop, so that one customer&rsquo;s terms never depend
-          on a field edited on a different screen.
-          <br /><br />
-          Flat rather than nested: a shop is a supermarket or it is not, and a
-          second level would be filled with guesses.
-        </HelpHint>
+        <span className="eyebrow">{it("masterData")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
       </div>
 
-      <SimpleForm action={createPartnerCategory} submitLabel="Add category">
+      <SimpleForm action={createPartnerCategory} submitLabel={t("add")}>
         <div className="card">
-          <div className="card-head"><h2>New category</h2></div>
+          <div className="card-head"><h2>{t("new")}</h2></div>
           <div className="card-body">
             <div className="row">
               <div className="field">
-                <label htmlFor="kind">Side</label>
+                <label htmlFor="kind">{t("side")}</label>
                 <select id="kind" name="kind" defaultValue="CUSTOMER">
-                  <option value="CUSTOMER">Customer — what kind of shop</option>
-                  <option value="SUPPLIER">Supplier — what kind of supplier</option>
+                  <option value="CUSTOMER">{t("sideCustomer")}</option>
+                  <option value="SUPPLIER">{t("sideSupplier")}</option>
                 </select>
-                <span className="hint">Which list this belongs to</span>
+                <span className="hint">{t("sideHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="code">Code</label>
+                <label htmlFor="code">{c("code")}</label>
                 <input id="code" name="code" type="text" placeholder="SUPER" required />
               </div>
               <div className="field">
-                <label htmlFor="name">Name</label>
+                <label htmlFor="name">{c("name")}</label>
                 <input id="name" name="name" type="text" placeholder="Supermarket" required />
               </div>
               <div className="field">
-                <label htmlFor="name_my">Name (Burmese)</label>
+                <label htmlFor="name_my">{f("nameBurmese")}</label>
                 <input id="name_my" name="name_my" type="text" placeholder="မြန်မာလို အမည်" />
               </div>
               <div className="field">
-                <label htmlFor="sort_order">Order</label>
+                <label htmlFor="sort_order">{c("order")}</label>
                 <input id="sort_order" name="sort_order" type="number" defaultValue={0} />
-                <span className="hint">Where it sits on a report</span>
+                <span className="hint">{t("orderHint")}</span>
               </div>
             </div>
             <div className="field" style={{ marginTop: "1rem" }}>
-              <label htmlFor="note">Note</label>
+              <label htmlFor="note">{c("note")}</label>
               <input id="note" name="note" type="text"
-                     placeholder="What counts as this kind of shop" />
+                     placeholder={t("notePlaceholder")} />
             </div>
           </div>
         </div>
@@ -105,26 +94,23 @@ export default async function PartnerCategories() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Categories</h2>
-            <span className="page-sub">
-              {cats.length} categor{cats.length === 1 ? "y" : "ies"} · {filed} partner
-              {filed === 1 ? "" : "s"} filed
-            </span>
+            <h2>{t("categories")}</h2>
+            <span className="page-sub">{t("summary", { n: cats.length, filed })}</span>
           </div>
           <DataTable
             rows={rows}
-            emptyLabel="No categories yet"
-            searchPlaceholder="Search categories…"
+            emptyLabel={t("none")}
+            searchPlaceholder={t("search")}
             defaultSort={{ key: "sort_order", dir: "asc" }}
             columns={[
-              { key: "kind", label: "Side", sortable: true },
+              { key: "kind", label: t("side"), sortable: true },
               { key: "sort_order", label: "#", sortable: true, align: "r" },
-              { key: "code", label: "Code", sortable: true },
-              { key: "name", label: "Category", sortable: true },
-              { key: "note", label: "Note" },
-              { key: "customers", label: "Customers", sortable: true, align: "r" },
-              { key: "suppliers", label: "Suppliers", sortable: true, align: "r" },
-              { key: "is_active", label: "Status", sortable: true },
+              { key: "code", label: c("code"), sortable: true },
+              { key: "name", label: c("category"), sortable: true },
+              { key: "note", label: c("note") },
+              { key: "customers", label: pt("customers"), sortable: true, align: "r" },
+              { key: "suppliers", label: pt("suppliers"), sortable: true, align: "r" },
+              { key: "is_active", label: c("status"), sortable: true },
               { key: "actions", label: "" },
             ]}
           />

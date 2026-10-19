@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ImagePlus, UploadCloud, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Giving an item a picture, or not.
@@ -52,11 +53,12 @@ async function shrink(file: File): Promise<string> {
 export function ItemPhotoField({
   /** The photo already on the item, if it has one. */
   currentSrc,
-  label = "Photo",
+  label,
 }: {
   currentSrc?: string | null;
   label?: string;
 }) {
+  const ph = useTranslations("photo");
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(currentSrc ?? null);
   const [picked, setPicked] = useState<string>("");
@@ -69,7 +71,7 @@ export function ItemPhotoField({
     setError(null);
 
     if (!file.type.startsWith("image/")) {
-      setError("That is not an image. Choose a PNG, JPEG or WebP.");
+      setError(ph("notImage"));
       return;
     }
 
@@ -80,7 +82,7 @@ export function ItemPhotoField({
       setPreview(dataUrl);
       setRemoved(false);
     } catch {
-      setError("That image could not be read. Try a PNG, JPEG or WebP.");
+      setError(ph("unreadable"));
     } finally {
       setBusy(false);
       // Cleared so choosing the same file twice in a row still fires change.
@@ -100,7 +102,7 @@ export function ItemPhotoField({
 
   return (
     <div className="field">
-      <label htmlFor="item_photo">{label}</label>
+      <label htmlFor="item_photo">{label ?? ph("label")}</label>
 
       <input type="hidden" name="photo_data" value={picked} />
       <input type="hidden" name="photo_remove" value={removed ? "1" : ""} />
@@ -120,16 +122,16 @@ export function ItemPhotoField({
             disabled={busy}
           >
             <UploadCloud size={14} aria-hidden="true" />
-            {busy ? "Reading…" : preview ? "Change photo" : "Upload photo"}
+            {busy ? ph("reading") : preview ? ph("change") : ph("upload")}
           </button>
 
           {preview && (
             <button type="button" className="ghost tiny" onClick={clear} disabled={busy}>
-              <X size={13} aria-hidden="true" /> Remove
+              <X size={13} aria-hidden="true" /> {ph("remove")}
             </button>
           )}
 
-          <span className="hint">Optional · PNG, JPEG or WebP</span>
+          <span className="hint">{ph("hint")}</span>
         </div>
       </div>
 

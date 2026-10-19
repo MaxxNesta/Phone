@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type Salesman = {
   id: string; code: string; name: string; name_my: string | null;
@@ -26,6 +27,10 @@ export function SalesmanRow({
   deactivateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
+  const s = useTranslations("salespersons");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -54,32 +59,32 @@ export function SalesmanRow({
             <input type="hidden" name="id" value={salesman.id} />
             <div className="row">
               <div className="field">
-                <label>Code</label>
+                <label>{c("code")}</label>
                 <input name="code" type="text" defaultValue={salesman.code} required />
               </div>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={salesman.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{f("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={salesman.name_my ?? ""} />
               </div>
               <div className="field">
-                <label>Phone</label>
+                <label>{pt("phone")}</label>
                 <input name="phone" type="text" defaultValue={salesman.phone ?? ""} />
               </div>
               <div className="field">
-                <label>Branch</label>
+                <label>{s("branch")}</label>
                 <select name="location_id" defaultValue={salesman.location_id ?? ""}>
-                  <option value="">— none —</option>
+                  <option value="">{f("noneOption")}</option>
                   {locations.map((l) => (
                     <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
                   ))}
                 </select>
               </div>
               <div className="field">
-                <label>Commission %</label>
+                <label>{s("commission")}</label>
                 <input name="commission_pct" type="number" min="0" step="any"
                   defaultValue={salesman.commission_pct} />
               </div>
@@ -89,8 +94,8 @@ export function SalesmanRow({
               Active
             </label>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -111,26 +116,26 @@ export function SalesmanRow({
       <td style={{ color: "var(--muted)" }}>{salesman.location_name ?? "—"}</td>
       <td className="r">{Number(salesman.commission_pct) > 0 ? `${Number(salesman.commission_pct)}%` : "—"}</td>
       <td>
-        {salesman.is_active ? <span className="pill ok">active</span> : <span className="pill warn">inactive</span>}
+        {salesman.is_active ? <span className="pill ok">{pt("activeLower")}</span> : <span className="pill warn">{pt("inactiveLower")}</span>}
         <span className="actions" style={{ marginTop: "0.3rem" }}>
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           {salesman.is_active ? (
             <form action={deactFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={salesman.id} />
-              <button type="submit" className="warn tiny">Deactivate</button>
+              <button type="submit" className="warn tiny">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={salesman.id} />
-              <button type="submit" className="ghost tiny">Reactivate</button>
+              <button type="submit" className="ghost tiny">{c("reactivate")}</button>
             </form>
           )}
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${salesman.name}?`}
-            detail="This cannot be undone."
+            title={c("deleteName", { name: salesman.name })}
+            detail={c("cannotUndo")}
           >
             <input type="hidden" name="id" value={salesman.id} />
           </ConfirmDelete>

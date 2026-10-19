@@ -6,14 +6,14 @@ import { sql } from "@/lib/db";
 import { money, shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Partner" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("partnerDetail"))("title") };
+}
 
-const EVENT: Record<string, string> = {
-  RECEIVED: "Supplied", SOLD: "Bought", CUSTOMER_RETURN: "Returned",
-  SUPPLIER_RETURN: "Sent back", TRANSFER: "Transferred", RESTORED: "Sale voided",
-  WRITTEN_OFF: "Written off",
-};
+/** What happened to a phone between us, by stock-ledger event. */
+const EVENTS = new Set(["RECEIVED", "SOLD", "CUSTOMER_RETURN", "SUPPLIER_RETURN", "TRANSFER", "RESTORED", "WRITTEN_OFF"]);
 
 /** One customer or supplier: their documents, and every phone that passed between us. */
 export default async function Partner({ params, searchParams }: {
@@ -47,36 +47,39 @@ export default async function Partner({ params, searchParams }: {
        order by posting_date desc nulls last, created_at desc limit 100`,
   ]);
 
+  const t = await getTranslations("partnerDetail");
+  const c = await getTranslations("common");
+  const pt = await getTranslations("partners");
   const pgUnits = paginate((phones as any[]), sp.units);
   const pgDocs = paginate((docs as any[]), sp.docs);
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow"><Link href="/partners">Partners</Link></span>
+        <span className="eyebrow"><Link href="/partners">{pt("partners")}</Link></span>
         <h1>{p.name}</h1>
         <p className="page-sub">
-          {[p.code, p.is_customer && "customer", p.is_supplier && "supplier", p.phone, p.address]
+          {[p.code, p.is_customer && t("customer"), p.is_supplier && t("supplier"), p.phone, p.address]
             .filter(Boolean).join(" · ")}
         </p>
       </div>
 
       <div className="card">
-        <div className="card-head"><h2>Phones</h2><span className="page-sub">{phones.length}</span></div>
+        <div className="card-head"><h2>{t("phones")}</h2><span className="page-sub">{phones.length}</span></div>
         <div className="tablewrap">
           <table>
-            <thead><tr><th>IMEI</th><th>Model</th><th>What</th><th>Document</th><th>Date</th><th>Now</th></tr></thead>
+            <thead><tr><th>IMEI</th><th>{t("model")}</th><th>{t("what")}</th><th>{c("document")}</th><th>{c("date")}</th><th>{t("now")}</th></tr></thead>
             <tbody>
               {pgUnits.rows.map((r, i) => (
                 <tr key={i}>
                   <td className="m"><Link href={`/inventory/phones/${r.serial_id}`}>{r.imei}</Link></td>
                   <td>{r.item_name}</td>
-                  <td>{EVENT[r.event] ?? r.event}</td>
+                  <td>{EVENTS.has(r.event) ? t(`event.${r.event}`) : r.event}</td>
                   <td><Link href={`/documents/${r.document_id}`}>{r.doc_no ?? "—"}</Link></td>
                   <td>{r.posting_date ? shortDate(r.posting_date) : "—"}</td>
                   <td>{String(r.status).replace(/_/g, " ").toLowerCase()}</td>
                 </tr>
               ))}
-              {phones.length === 0 && <tr><td colSpan={6} className="page-sub">No phones yet.</td></tr>}
+              {phones.length === 0 && <tr><td colSpan={6} className="page-sub">{t("noPhones")}</td></tr>}
             </tbody>
           </table>
           <Pager p={pgUnits} params={sp} name="units" />
@@ -84,14 +87,14 @@ export default async function Partner({ params, searchParams }: {
       </div>
 
       <div className="card">
-        <div className="card-head"><h2>Documents</h2></div>
+        <div className="card-head"><h2>{t("documents")}</h2></div>
         <div className="tablewrap">
           <table>
-            <thead><tr><th>No.</th><th>Type</th><th>Date</th><th>Status</th><th className="r">Total</th></tr></thead>
+            <thead><tr><th>{t("no")}</th><th>{t("type")}</th><th>{c("date")}</th><th>{c("status")}</th><th className="r">{t("total")}</th></tr></thead>
             <tbody>
               {pgDocs.rows.map((d) => (
                 <tr key={d.id}>
-                  <td><Link href={`/documents/${d.id}`}>{d.doc_no ?? "draft"}</Link></td>
+                  <td><Link href={`/documents/${d.id}`}>{d.doc_no ?? t("draft")}</Link></td>
                   <td>{String(d.doc_type).replace(/_/g, " ").toLowerCase()}</td>
                   <td>{d.posting_date ? shortDate(d.posting_date) : "—"}</td>
                   <td>{String(d.status).toLowerCase()}</td>

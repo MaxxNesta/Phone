@@ -10,6 +10,7 @@ import { RowMenu } from "./row-menu";
 import { ItemPhotoField } from "./item-photo-field";
 import { ItemThumb } from "./item-thumb";
 import { VariantTags, type VariantPart } from "./variant-tags";
+import { useTranslations } from "next-intl";
 
 // lib/db.ts opens a real Postgres connection at import time — never import
 // it into a client component. Same formatting as money() there, kept local.
@@ -76,6 +77,11 @@ export function ItemRow({
    *  form behind it. */
   setPhotoAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const t = useTranslations("items");
+  const ft = useTranslations("itemForm");
+  const dtl = useTranslations("itemDetail");
+  const ph = useTranslations("photo");
   const [editing, setEditing] = useState(startEditing ?? false);
   const [open, setOpen] = useState(false);
   /** Which variant's photo is being changed, if any. One at a time: the
@@ -110,34 +116,34 @@ export function ItemRow({
             {state && "error" in state && <div className="alert">{state.error}</div>}
             <input type="hidden" name="id" value={item.id} />
             <span className="page-sub">
-              {item.code} — code and category are fixed here; use Manage categories to reclassify.
+              {t("fixedCode", { code: item.code })}
             </span>
             <div className="row" style={{ marginTop: "0.4rem" }}>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={item.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{ft("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={item.name_my ?? ""} />
               </div>
               <div className="field">
-                <label>Brand</label>
+                <label>{c("brand")}</label>
                 <select name="brand_id" defaultValue={item.brand_id ?? ""}>
-                  <option value="">— none —</option>
+                  <option value="">{ft("noneOption")}</option>
                   {brands.map((b) => (
                     <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
                   ))}
                 </select>
               </div>
               <div className="field">
-                <label>Unit</label>
+                <label>{c("unit")}</label>
                 <select name="base_uom_id" defaultValue={item.base_uom_id} required>
                   {uoms.map((u) => (
                     <option key={u.id} value={u.id}>{u.code} · {u.name}</option>
                   ))}
                 </select>
-                <span className="hint">What stock is counted in</span>
+                <span className="hint">{t("unitHint")}</span>
               </div>
             </div>
 
@@ -159,17 +165,17 @@ export function ItemRow({
               {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
                 <label className="check">
                   <input name="is_stocked" type="checkbox" defaultChecked={item.is_stocked} />
-                  Stocked (unchecked = service)
+                  {t("stockedOrService")}
                 </label>
               )}
               <label className="check">
                 <input name="is_active" type="checkbox" defaultChecked={item.is_active} />
-                Active
+                {c("active")}
               </label>
             </div>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -192,7 +198,7 @@ export function ItemRow({
             catalogue lists them all at once. */}
         {variants.length > 0 && (
           <button type="button" className="stmt-toggle" onClick={() => setOpen(!open)}
-                  aria-expanded={open} aria-label={`${variants.length} variants of ${item.code}`}>
+                  aria-expanded={open} aria-label={t("variantsOf", { n: variants.length, code: item.code })}>
             <ChevronRight size={13} aria-hidden="true"
                           style={{ transform: open ? "rotate(90deg)" : "none" }} />
           </button>
@@ -204,8 +210,8 @@ export function ItemRow({
       <td className="wrap">
         {item.name}
         {item.name_my && <div className="subline">{item.name_my}</div>}
-        {!item.is_stocked && <> <span className="pill">service</span></>}
-        {!item.is_active && <> <span className="pill warn">inactive</span></>}
+        {!item.is_stocked && <> <span className="pill">{dtl("service")}</span></>}
+        {!item.is_active && <> <span className="pill warn">{dtl("inactive")}</span></>}
       </td>
       <td style={{ color: "var(--muted)" }}>
         {item.parent_group_name ?? item.group_name}
@@ -242,17 +248,17 @@ export function ItemRow({
         )}
       </td>
       <td className="r">
-        <RowMenu label={`Actions for ${item.name}`}>
-          <button type="button" onClick={() => setEditing(true)}>Edit</button>
+        <RowMenu label={c("actionsFor", { name: item.name })}>
+          <button type="button" onClick={() => setEditing(true)}>{c("edit")}</button>
           {item.is_active ? (
             <form action={deactFormAction}>
               <input type="hidden" name="id" value={item.id} />
-              <button type="submit" className="warn">Deactivate</button>
+              <button type="submit" className="warn">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction}>
               <input type="hidden" name="id" value={item.id} />
-              <button type="submit">Reactivate</button>
+              <button type="submit">{c("reactivate")}</button>
             </form>
           )}
           <div className="rowmenu-sep" />
@@ -260,8 +266,8 @@ export function ItemRow({
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${item.name}?`}
-            detail="This cannot be undone."
+            title={c("deleteName", { name: item.name })}
+            detail={c("cannotUndo")}
             className="danger"
           >
             <input type="hidden" name="id" value={item.id} />
@@ -280,7 +286,7 @@ export function ItemRow({
           {/* Where somebody already is when they notice the twelve sizes
               they just made have no barcodes on them. */}
           <Link href={`/items/${item.id}/variants`} className="linkbtn">
-            Edit all {variants.length} variants — barcodes and prices →
+            {t("editAllVariants", { n: variants.length })}
           </Link>
         </td>
       </tr>
@@ -299,14 +305,14 @@ export function ItemRow({
           <td className="wrap">
             {v.name}
             <VariantTags variant={v.variant_parts} className="vartags-inline" />
-            {!v.is_active && <span className="pill" style={{ marginLeft: "0.4rem" }}>Off</span>}
+            {!v.is_active && <span className="pill" style={{ marginLeft: "0.4rem" }}>{t("off")}</span>}
             <div className="subline">
-              {v.barcode ? <span className="m">{v.barcode}</span> : "no barcode"}
-              {" \u00b7 "}{v.qty_on_hand} on hand
+              {v.barcode ? <span className="m">{v.barcode}</span> : t("noBarcode")}
+              {" \u00b7 "}{t("onHand", { n: v.qty_on_hand })}
               {" \u00b7 "}
               <button type="button" className="linkbtn"
                       onClick={() => setPhotoFor(photoFor === v.id ? null : v.id)}>
-                {v.photo_version ? "Change photo" : "Add photo"}
+                {v.photo_version ? ph("change") : t("addPhoto")}
               </button>
             </div>
           </td>
@@ -327,17 +333,17 @@ export function ItemRow({
               <form action={photoFormAction} className="variantphoto">
                 <input type="hidden" name="id" value={v.id} />
                 <ItemPhotoField
-                  label={`Photo of ${v.name}`}
+                  label={t("photoOf", { name: v.name })}
                   currentSrc={
                     v.photo_version ? `/items/${v.id}/photo?v=${v.photo_version}` : null
                   }
                 />
                 <div className="actions">
                   <button type="submit" disabled={photoPending}>
-                    {photoPending ? "Saving\u2026" : "Save photo"}
+                    {photoPending ? c("saving") : t("savePhoto")}
                   </button>
                   <button type="button" className="ghost tiny"
-                          onClick={() => setPhotoFor(null)}>Cancel</button>
+                          onClick={() => setPhotoFor(null)}>{c("cancel")}</button>
                 </div>
               </form>
             </td>

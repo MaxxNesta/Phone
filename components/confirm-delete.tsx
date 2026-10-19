@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Replaces window.confirm() for destructive row actions.
@@ -25,9 +26,9 @@ export function ConfirmDelete({
   error,
   title,
   detail,
-  label = "Delete",
-  pendingLabel = "Deleting…",
-  confirmLabel = "Delete",
+  label,
+  pendingLabel,
+  confirmLabel,
   className = "danger tiny",
   /** The confirm button. Red suits deleting; a dialog that merely
    *  wants a second look before writing something should not shout. */
@@ -51,6 +52,8 @@ export function ConfirmDelete({
   /** Hidden inputs the action needs — id, return_to, and so on. */
   children?: React.ReactNode;
 }) {
+  const c = useTranslations("common");
+  label ??= c("delete"); pendingLabel ??= c("deleting"); confirmLabel ??= c("delete");
   const ref = useRef<HTMLDialogElement>(null);
 
   // An error only arrives after a submit, which means the dialog was open;
@@ -88,7 +91,7 @@ export function ConfirmDelete({
           <form action={action} className="confirm-actions">
             {children}
             <button type="button" className="ghost" onClick={() => ref.current?.close()}>
-              Cancel
+              {c("cancel")}
             </button>
             <button type="submit" className={confirmClassName} disabled={pending}>
               {pending ? pendingLabel : confirmLabel}

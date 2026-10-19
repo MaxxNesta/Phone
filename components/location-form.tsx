@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 type Location = { id: string; code: string; name: string; depth: number; is_stock_location: boolean };
 type Kind = "office" | "warehouse";
@@ -13,6 +14,10 @@ export function AddLocationForm({
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   locations: Location[];
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
+  const l = useTranslations("locations");
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never,
     null
@@ -26,7 +31,7 @@ export function AddLocationForm({
   if (!open) {
     return (
       <div className="actions">
-        <button type="button" onClick={() => setOpen(true)}>+ Location</button>
+        <button type="button" onClick={() => setOpen(true)}>{l("plus")}</button>
       </div>
     );
   }
@@ -34,9 +39,9 @@ export function AddLocationForm({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Add new Branch or Warehouse</h2>
+        <h2>{l("addNew")}</h2>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>{c("cancel")}</button>
         </span>
       </div>
       <div className="card-body">
@@ -46,54 +51,54 @@ export function AddLocationForm({
           <input type="hidden" name="parent_id" value={kind === "warehouse" ? parentId : ""} />
 
           <div className="field">
-            <label>What is this?</label>
+            <label>{l("whatIs")}</label>
             <div className="row" style={{ gap: "1.5rem" }}>
               <label className="check">
                 <input
                   type="radio" name="kind" value="warehouse" checked={kind === "warehouse"}
                   onChange={() => setKind("warehouse")}
                 />
-                Warehouse — holds stock, sits inside an office
+                {l("warehouseLong")}
               </label>
               <label className="check">
                 <input
                   type="radio" name="kind" value="office" checked={kind === "office"}
                   onChange={() => setKind("office")}
                 />
-                Branch — a site that doesn&rsquo;t hold stock itself
+                {l("branchLong")}
               </label>
             </div>
           </div>
 
           <div className="row" style={{ marginTop: "0.5rem" }}>
             <div className="field">
-              <label htmlFor="code">Code</label>
+              <label htmlFor="code">{c("code")}</label>
               <input id="code" name="code" type="text" required autoFocus
                 placeholder={kind === "warehouse" ? "MAIN-WH" : "MDY"} />
             </div>
             <div className="field">
-              <label htmlFor="name">Name</label>
+              <label htmlFor="name">{c("name")}</label>
               <input id="name" name="name" type="text" required
                 placeholder={kind === "warehouse" ? "Main Warehouse" : "Mandalay Branch"} />
             </div>
             <div className="field">
-              <label htmlFor="name_my">Name (Burmese)</label>
+              <label htmlFor="name_my">{f("nameBurmese")}</label>
               <input id="name_my" name="name_my" type="text" />
             </div>
 
             {kind === "warehouse" && (
               <div className="field">
-                <label htmlFor="parent_id_select">Branch</label>
+                <label htmlFor="parent_id_select">{l("branch")}</label>
                 <select id="parent_id_select" value={parentId} onChange={(e) => setParentId(e.target.value)}>
-                  <option value="">— none, stands on its own —</option>
+                  <option value="">{l("standsAlone")}</option>
                   {offices.map((l) => (
                     <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
                   ))}
                 </select>
                 <span className="hint">
                   {offices.length === 0
-                    ? "No branches yet — add one first so this warehouse belongs to it"
-                    : "Which branch this warehouse belongs to. One branch can hold many warehouses."}
+                    ? l("noBranches")
+                    : l("branchHint")}
                 </span>
               </div>
             )}
@@ -101,7 +106,7 @@ export function AddLocationForm({
 
           <div className="actions" style={{ marginTop: "0.75rem" }}>
             <button type="submit" disabled={pending}>
-              {pending ? "Saving…" : kind === "warehouse" ? "Save warehouse" : "Save office"}
+              {pending ? c("saving") : kind === "warehouse" ? l("saveWarehouse") : l("saveOffice")}
             </button>
           </div>
         </form>

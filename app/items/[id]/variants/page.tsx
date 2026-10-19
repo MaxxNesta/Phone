@@ -5,6 +5,7 @@ import { saveVariantGrid } from "@/lib/actions";
 import { VariantGrid, type GridRow } from "@/components/variant-grid";
 import { variantPhotos } from "@/lib/variants";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 /**
  * One product's variants, all editable at once.
@@ -22,12 +23,15 @@ export default async function VariantsOfProduct({
   const { id } = await params;
   const { only } = await searchParams;
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const g = await getTranslations("variantGrid");
+  const c = await getTranslations("common");
+  const it = await getTranslations("items");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [parent] = await sql`
     select id, code, name, base_uom_id from item
      where id = ${id} and company_id = ${company.id}`;
-  if (!parent) return <div className="empty">No such product.</div>;
+  if (!parent) return <div className="empty">{g("noProduct")}</div>;
 
   const [uom] = await sql`select code from uom where id = ${parent.base_uom_id}`;
 
@@ -38,13 +42,12 @@ export default async function VariantsOfProduct({
     return (
       <>
         <div className="page-head">
-          <span className="eyebrow">Master data</span>
+          <span className="eyebrow">{it("masterData")}</span>
           <h1>{parent.name}</h1>
         </div>
         <div className="empty">
-          {parent.code} has no variants. A product only has them if it was
-          created with sizes or colours.{" "}
-          <Link href="/items" style={{ color: "var(--link)" }}>Back to items</Link>
+          {g("noVariants", { code: parent.code })}{" "}
+          <Link href="/items" style={{ color: "var(--link)" }}>{g("backToItems")}</Link>
         </div>
       </>
     );
@@ -73,29 +76,21 @@ export default async function VariantsOfProduct({
     <>
       <div className="page-head">
         <span className="eyebrow">
-          <Link href="/items" style={{ color: "inherit" }}>Items</Link> · {parent.code}
+          <Link href="/items" style={{ color: "inherit" }}>{it("title")}</Link> · {parent.code}
         </span>
-        <h1>{parent.name} — variants</h1>
-        <HelpHint>
-          Barcode and selling price for every size and colour, saved
-          together. A barcode names one thing on a shelf, so the same one
-          cannot be put on two variants — clashes are shown as you type and
-          refused on save.
-          <br /><br />
-          Each price level has its own column; Retail is the price the counter uses.
-        </HelpHint>
+        <h1>{g("titleVariants", { name: parent.name })}</h1>
+        <HelpHint>{g("help")}</HelpHint>
       </div>
 
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>{shown.length === rows.length ? `${rows.length} variant${rows.length === 1 ? "" : "s"}` : shown[0].name}</h2>
+            <h2>{shown.length === rows.length ? g("count", { n: rows.length }) : shown[0].name}</h2>
             {shown.length !== rows.length && (
-              <Link href={`/items/${parent.id}/variants`} className="linkish">Show all {rows.length} variants</Link>
+              <Link href={`/items/${parent.id}/variants`} className="linkish">{g("showAll", { n: rows.length })}</Link>
             )}
             <span className="page-sub">
-              scan straight into the barcode column — the field takes whatever
-              the scanner types
+              {g("scanHint")}
             </span>
           </div>
           <div className="card-body">

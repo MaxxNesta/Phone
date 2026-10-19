@@ -6,11 +6,15 @@ import { PriceRow } from "@/components/price-row";
 import { HelpHint } from "@/components/help-hint";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { getTranslations } from "next-intl/server";
 
 export default async function Prices({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("prices");
+  const c = await getTranslations("common");
+  const it = await getTranslations("items");
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [list, packs] = await Promise.all([
     getPriceList(company.id) as unknown as Promise<Array<{
@@ -74,21 +78,9 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>Price levels</h1>
-        <HelpHint>
-          What each item sells for, at each level. A customer on a level gets
-          that column filled in on their sales lines; a customer on none gets
-          the first.
-          <br /><br />
-          A price belongs to a date. Changing one adds the next price from the
-          day it applies rather than overwriting the last, so an invoice
-          raised in March keeps March&rsquo;s price — the line records what
-          was actually charged, and this list is only ever the suggestion.
-          <br /><br />
-          A price is per unit, and the unit can be a pack: an item sold in
-          cartons can carry a carton price beside its piece price.
-        </HelpHint>
+        <span className="eyebrow">{it("masterData")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
       </div>
 
       <AddPriceLevelForm action={createPriceLevel} />
@@ -96,25 +88,22 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Levels</h2>
-            <span className="page-sub">
-              {levelUse.length} level{levelUse.length === 1 ? "" : "s"} · the columns below
-            </span>
+            <h2>{t("levels")}</h2>
+            <span className="page-sub">{t("levelsSub", { n: levelUse.length })}</span>
           </div>
           {levelUse.length === 0 ? (
             <div className="empty">
-              No price levels. Add one &mdash; Wholesale, Retail &mdash; before pricing
-              anything, since a price belongs to a level.
+              {t("noLevels")}
             </div>
           ) : (
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th>
-                    <th>Name</th>
-                    <th className="r">Order</th>
-                    <th className="r">Prices</th>
+                    <th>{c("code")}</th>
+                    <th>{c("name")}</th>
+                    <th className="r">{c("order")}</th>
+                    <th className="r">{t("pricesCol")}</th>
                     <th />
                   </tr>
                 </thead>
@@ -138,21 +127,19 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Prices</h2>
-            <span className="page-sub">
-              {priced} of {items.length} item{items.length === 1 ? "" : "s"} priced
-            </span>
+            <h2>{t("prices")}</h2>
+            <span className="page-sub">{t("priced", { priced, total: items.length })}</span>
           </div>
 
           {items.length === 0 ? (
-            <div className="empty">No items yet.</div>
+            <div className="empty">{t("noItems")}</div>
           ) : (
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th>
-                    <th>Item</th>
+                    <th>{c("code")}</th>
+                    <th>{t("item")}</th>
                     {levels.map((l) => (
                       <th key={l.id} className="r">{l.name}</th>
                     ))}

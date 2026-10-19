@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type Location = {
   id: string; code: string; name: string; name_my: string | null;
@@ -37,6 +38,10 @@ export function LocationRow({
   deactivateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
+  const l = useTranslations("locations");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -71,55 +76,55 @@ export function LocationRow({
             <input type="hidden" name="parent_id" value={kind === "warehouse" ? parentId : ""} />
 
             <div className="field">
-              <label>What is this?</label>
+              <label>{l("whatIs")}</label>
               <div className="row" style={{ gap: "1.5rem" }}>
                 <label className="check">
                   <input
                     type="radio" name="kind" value="warehouse" checked={kind === "warehouse"}
                     onChange={() => setKind("warehouse")}
                   />
-                  Warehouse
+                  {l("warehouse")}
                 </label>
                 <label className="check">
                   <input
                     type="radio" name="kind" value="office" checked={kind === "office"}
                     onChange={() => setKind("office")}
                   />
-                  Branch
+                  {l("branch")}
                 </label>
               </div>
             </div>
 
             <div className="row" style={{ marginTop: "0.4rem" }}>
               <div className="field">
-                <label>Code</label>
+                <label>{c("code")}</label>
                 <input name="code" type="text" defaultValue={location.code} required />
               </div>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={location.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{f("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={location.name_my ?? ""} />
               </div>
               {kind === "office" && (
                 <>
                   <div className="field">
-                    <label>Address <span className="opt">printed on receipts</span></label>
+                    <label>{l("address")} <span className="opt">{l("printedOnReceipts")}</span></label>
                     <input name="address" type="text" maxLength={300} defaultValue={location.address ?? ""} />
                   </div>
                   <div className="field">
-                    <label>Phone</label>
+                    <label>{pt("phone")}</label>
                     <input name="phone" type="tel" maxLength={60} defaultValue={location.phone ?? ""} />
                   </div>
                 </>
               )}
               {kind === "warehouse" && (
                 <div className="field">
-                  <label>Branch</label>
+                  <label>{l("branch")}</label>
                   <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
-                    <option value="">— none, stands on its own —</option>
+                    <option value="">{l("standsAlone")}</option>
                     {offices.map((l) => (
                       <option key={l.id} value={l.id}>{l.code} · {l.name}</option>
                     ))}
@@ -129,11 +134,11 @@ export function LocationRow({
             </div>
             <label className="check" style={{ marginTop: "0.4rem" }}>
               <input name="is_active" type="checkbox" defaultChecked={location.is_active} />
-              Active
+              {c("active")}
             </label>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -154,30 +159,30 @@ export function LocationRow({
         )}
         {" "}
         {location.is_stock_location
-          ? <span className="pill ok">warehouse</span>
-          : <span className="pill">Branch</span>}
+          ? <span className="pill ok">{l("warehouseLower")}</span>
+          : <span className="pill">{l("branch")}</span>}
       </td>
-      <td>{location.is_active ? <span className="pill ok">active</span> : <span className="pill warn">inactive</span>}</td>
+      <td>{location.is_active ? <span className="pill ok">{pt("activeLower")}</span> : <span className="pill warn">{pt("inactiveLower")}</span>}</td>
       <td>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           {location.is_active ? (
             <form action={deactFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={location.id} />
-              <button type="submit" className="warn tiny">Deactivate</button>
+              <button type="submit" className="warn tiny">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={location.id} />
-              <button type="submit" className="ghost tiny">Reactivate</button>
+              <button type="submit" className="ghost tiny">{c("reactivate")}</button>
             </form>
           )}
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${location.name}?`}
-            detail="This cannot be undone."
+            title={c("deleteName", { name: location.name })}
+            detail={c("cannotUndo")}
           >
             <input type="hidden" name="id" value={location.id} />
           </ConfirmDelete>

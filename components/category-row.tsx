@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type Category = {
   id: string; code: string; name: string; name_my: string | null;
@@ -35,6 +36,9 @@ export function CategoryRow({
   deactivateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const t = useTranslations("categories");
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -67,21 +71,21 @@ export function CategoryRow({
             </span>
             <div className="row" style={{ marginTop: "0.4rem" }}>
               <div className="field">
-                <label>Name</label>
+                <label>{c("name")}</label>
                 <input name="name" type="text" defaultValue={category.name} required />
               </div>
               <div className="field">
-                <label>Name (Burmese)</label>
+                <label>{f("nameBurmese")}</label>
                 <input name="name_my" type="text" defaultValue={category.name_my ?? ""} />
               </div>
             </div>
             <label className="check" style={{ marginTop: "0.4rem" }}>
               <input name="is_active" type="checkbox" defaultChecked={category.is_active} />
-              Active
+              {c("active")}
             </label>
             <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
             </div>
           </form>
         </td>
@@ -101,7 +105,7 @@ export function CategoryRow({
         {category.name_my && (
           <div className="subline">{category.name_my}</div>
         )}
-        {!category.is_active && <> <span className="pill warn">inactive</span></>}
+        {!category.is_active && <> <span className="pill warn">{t("inactive")}</span></>}
       </td>
       {parentName !== undefined && (
         <td className="wrap" style={{ color: "var(--muted)" }}>{parentName ?? "—"}</td>
@@ -110,27 +114,27 @@ export function CategoryRow({
       <td className="r">{category.total || ""}</td>
       <td>
         <span className="actions">
-          <Link href={`/items/categories/${category.id}`} className="btn ghost tiny">Open &rarr;</Link>
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <Link href={`/items/categories/${category.id}`} className="btn ghost tiny">{c("open")}</Link>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           {category.is_active ? (
             <form action={deactFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={category.id} />
               <input type="hidden" name="return_to" value={returnTo} />
-              <button type="submit" className="warn tiny">Deactivate</button>
+              <button type="submit" className="warn tiny">{c("deactivate")}</button>
             </form>
           ) : (
             <form action={actFormAction} style={{ display: "inline" }}>
               <input type="hidden" name="id" value={category.id} />
               <input type="hidden" name="return_to" value={returnTo} />
-              <button type="submit" className="ghost tiny">Reactivate</button>
+              <button type="submit" className="ghost tiny">{c("reactivate")}</button>
             </form>
           )}
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Delete ${category.name}?`}
-            detail="This cannot be undone."
+            title={c("deleteName", { name: category.name })}
+            detail={c("cannotUndo")}
           >
             <input type="hidden" name="id" value={category.id} />
             <input type="hidden" name="return_to" value={returnTo} />

@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 /**
  * The second "yes" before a brand other than Apple exists. The shop sells
@@ -13,6 +14,8 @@ export function ConfirmOtherBrand({ open, name, busy, onCancel, onConfirm }: {
   open: boolean; name: string; busy?: boolean;
   onCancel: () => void; onConfirm: () => void;
 }) {
+  const c = useTranslations("common");
+  const b = useTranslations("brands");
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
@@ -26,10 +29,10 @@ export function ConfirmOtherBrand({ open, name, busy, onCancel, onConfirm }: {
       onClick={(e) => { if (e.target === ref.current && !busy) onCancel(); }}>
       <div className="confirm-panel">
         <div className="confirm-icon" aria-hidden="true"><AlertTriangle size={18} strokeWidth={2.25} /></div>
-        <h2 className="confirm-title">Are you sure you want to add {name ? <>&ldquo;{name}&rdquo;</> : "this brand"}?</h2>
+        <h2 className="confirm-title">{name ? b("confirmAdd", { name }) : b("confirmAddThis")}</h2>
         <div className="confirm-actions">
-          <button type="button" className="ghost" autoFocus disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" disabled={busy} onClick={onConfirm}>{busy ? "Adding…" : "Add brand"}</button>
+          <button type="button" className="ghost" autoFocus disabled={busy} onClick={onCancel}>{c("cancel")}</button>
+          <button type="button" disabled={busy} onClick={onConfirm}>{busy ? b("adding") : b("addBrand")}</button>
         </div>
       </div>
     </dialog>
@@ -41,6 +44,10 @@ export function AddBrandForm({
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const f = useTranslations("itemForm");
+  const pt = useTranslations("partners");
+  const bt = useTranslations("brands");
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never,
     null
@@ -55,7 +62,7 @@ export function AddBrandForm({
   if (!open) {
     return (
       <div className="actions">
-        <button type="button" onClick={() => setOpen(true)}>+ Brand</button>
+        <button type="button" onClick={() => setOpen(true)}>{bt("plusBrand")}</button>
       </div>
     );
   }
@@ -63,9 +70,9 @@ export function AddBrandForm({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>New brand</h2>
+        <h2>{bt("new")}</h2>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>Cancel</button>
+          <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>{c("cancel")}</button>
         </span>
       </div>
       <div className="card-body">
@@ -84,21 +91,21 @@ export function AddBrandForm({
 
           <div className="row">
             <div className="field">
-              <label htmlFor="code">Code</label>
+              <label htmlFor="code">{c("code")}</label>
               <input id="code" name="code" type="text" required autoFocus placeholder="ADVICS" />
             </div>
             <div className="field">
-              <label htmlFor="name">Name</label>
+              <label htmlFor="name">{c("name")}</label>
               <input id="name" name="name" type="text" required placeholder="Advics" />
             </div>
             <div className="field">
-              <label htmlFor="name_my">Name (Burmese)</label>
+              <label htmlFor="name_my">{f("nameBurmese")}</label>
               <input id="name_my" name="name_my" type="text" />
             </div>
           </div>
 
           <div className="actions">
-            <button type="submit" disabled={pending}>{pending ? "Saving…" : "Save brand"}</button>
+            <button type="submit" disabled={pending}>{pending ? c("saving") : bt("save")}</button>
           </div>
         </form>
       </div>

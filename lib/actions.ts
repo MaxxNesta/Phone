@@ -39,6 +39,24 @@ import {
   reopenFiscalYear,
 } from "./posting";
 import { postOnce, alreadyPosted } from "./idempotency";
+import { getTranslations } from "next-intl/server";
+import { createTranslator } from "next-intl";
+import enMessages from "../messages/en.json";
+/**
+ * A message for the person who caused it, in their interface language
+ * (messages/<locale>.json › actions). English is the fallback. Only what is
+ * shown changes; every check and every posting is the same in any language.
+ */
+async function m(key: string, values?: Record<string, string | number>): Promise<string> {
+  try {
+    return (await getTranslations("actions"))(key, values);
+  } catch {
+    // Outside a request (the scripts/ test suites call actions directly)
+    // there is no language to read: English, from the same dictionary.
+    return createTranslator({ locale: "en", messages: enMessages, namespace: "actions" })(key as never, values as never);
+  }
+}
+
 
 export type ActionResult =
   | { error: string }
@@ -165,7 +183,7 @@ export async function companyExists(): Promise<boolean> {
 
 export async function createPartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("partners.manage");
-  const toastMsg = "Partner added";
+  const toastMsg = await m("partnerAdded");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -175,13 +193,13 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
     const isCustomer = fd.get("is_customer") === "on";
     const isSupplier = fd.get("is_supplier") === "on";
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
-    if (!isCustomer && !isSupplier) return { error: "Choose customer, supplier, or both" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
+    if (!isCustomer && !isSupplier) return { error: await m("chooseRole") };
 
     const dup = await sql`
       select 1 from business_partner where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       insert into business_partner
@@ -205,7 +223,7 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
          ${str(fd, "supplier_category_id") || null},
          ${(str(fd, "currency") || "").toUpperCase() || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -227,7 +245,7 @@ function listPath(fd: FormData): string {
 
 export async function updatePartner(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("partners.manage");
-  const toastMsg = "Partner updated";
+  const toastMsg = await m("partnerUpdated");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -237,14 +255,14 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
     const isCustomer = fd.get("is_customer") === "on";
     const isSupplier = fd.get("is_supplier") === "on";
 
-    if (!id) return { error: "Choose a partner" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
-    if (!isCustomer && !isSupplier) return { error: "Choose customer, supplier, or both" };
+    if (!id) return { error: await m("choosePartner") };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
+    if (!isCustomer && !isSupplier) return { error: await m("chooseRole") };
 
     const dup = await sql`
       select 1 from business_partner where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       update business_partner set
@@ -267,7 +285,7 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -285,7 +303,7 @@ export async function deactivatePartner(_prev: unknown, fd: FormData): Promise<A
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a partner" };
+    if (!id) return { error: await m("choosePartner") };
 
     await sql`update business_partner set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -293,7 +311,7 @@ export async function deactivatePartner(_prev: unknown, fd: FormData): Promise<A
   }
 
   revalidatePath("/partners");
-  redirectWithToast("/partners", "Partner deactivated");
+  redirectWithToast("/partners", await m("partnerDeactivated"));
 }
 
 /** Puts back what deactivatePartner retired. Reactivating is always safe, so
@@ -303,7 +321,7 @@ export async function activatePartner(_prev: unknown, fd: FormData): Promise<Act
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose partner" };
+    if (!id) return { error: await m("choosePartner") };
 
     await sql`update business_partner set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -311,7 +329,7 @@ export async function activatePartner(_prev: unknown, fd: FormData): Promise<Act
   }
 
   revalidatePath("/partners");
-  redirectWithToast("/partners", "Partner reactivated");
+  redirectWithToast("/partners", await m("partnerReactivated"));
 }
 
 /** Hard delete only succeeds for a partner with no documents against them. Deactivating is the way to retire one. */
@@ -320,18 +338,18 @@ export async function deletePartner(_prev: unknown, fd: FormData): Promise<Actio
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a partner" };
+    if (!id) return { error: await m("choosePartner") };
 
     await sql`delete from business_partner where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: "This partner has documents against them — deactivate instead of deleting" };
+      return { error: await m("partnerInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/partners");
-  redirectWithToast("/partners", "Partner deleted");
+  redirectWithToast("/partners", await m("partnerDeleted"));
 }
 
 // ------------------------------------------------------ categories & items --
@@ -340,7 +358,7 @@ export async function createCategory(_prev: unknown, fd: FormData): Promise<Acti
   await requirePermission("items.manage");
   let returnTo: string | null = null;
   let composedCode: string | null = null;
-  const toastMsg = "Category added";
+  const toastMsg = await m("categoryAdded");
 
   try {
     const co = await companyId();
@@ -350,15 +368,15 @@ export async function createCategory(_prev: unknown, fd: FormData): Promise<Acti
     const parentId = str(fd, "parent_id") || null;
     returnTo = str(fd, "return_to") || null;
 
-    if (!segment) return { error: "Code segment is required" };
-    if (!name) return { error: "Name is required" };
+    if (!segment) return { error: await m("segmentRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     if (parentId) {
       const [parent] = await sql`
         select parent_id from item_group where id = ${parentId} and company_id = ${co}`;
-      if (!parent) return { error: "That category no longer exists" };
+      if (!parent) return { error: await m("categoryGone") };
       if (parent.parent_id) {
-        return { error: "Categories only nest two levels deep: Category → Sub category" };
+        return { error: await m("twoLevels") };
       }
     }
 
@@ -372,7 +390,7 @@ export async function createCategory(_prev: unknown, fd: FormData): Promise<Acti
     const dup = await sql`
       select name from item_group where company_id = ${co} and code = ${composed.code}`;
     if (dup.length) {
-      return { error: `Code ${composed.code} is already used by ${dup[0].name}` };
+      return { error: await m("codeUsedBy", { code: composed.code, name: dup[0].name }) };
     }
 
     await sql`
@@ -380,7 +398,7 @@ export async function createCategory(_prev: unknown, fd: FormData): Promise<Acti
       values (${co}, ${parentId}, ${segment}, ${composed.code}, ${name},
               ${str(fd, "name_my") || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${composedCode} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code: String(composedCode) }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -398,7 +416,7 @@ export async function createCategory(_prev: unknown, fd: FormData): Promise<Acti
  */
 export async function updateCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
-  const toastMsg = "Category updated";
+  const toastMsg = await m("categoryUpdated");
   const returnTo = str(fd, "return_to") || "/items/categories";
   const id = str(fd, "id");
 
@@ -406,8 +424,8 @@ export async function updateCategory(_prev: unknown, fd: FormData): Promise<Acti
     const co = await companyId();
     const name = str(fd, "name");
 
-    if (!id) return { error: "Choose a category" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("chooseCategory") };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql`
       update item_group set
@@ -431,7 +449,7 @@ export async function deactivateCategory(_prev: unknown, fd: FormData): Promise<
 
   try {
     const co = await companyId();
-    if (!id) return { error: "Choose a category" };
+    if (!id) return { error: await m("chooseCategory") };
 
     await sql`update item_group set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -440,7 +458,7 @@ export async function deactivateCategory(_prev: unknown, fd: FormData): Promise<
 
   revalidatePath("/items/categories");
   revalidatePath(`/items/categories/${id}`);
-  redirectWithToast(returnTo, "Category deactivated");
+  redirectWithToast(returnTo, await m("categoryDeactivated"));
 }
 
 /** Puts back what deactivateCategory retired. Reactivating is always safe, so
@@ -452,7 +470,7 @@ export async function activateCategory(_prev: unknown, fd: FormData): Promise<Ac
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a category" };
+    if (!id) return { error: await m("chooseCategory") };
 
     await sql`update item_group set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -461,7 +479,7 @@ export async function activateCategory(_prev: unknown, fd: FormData): Promise<Ac
 
   revalidatePath("/items/categories");
   revalidatePath("/items/subcategories");
-  redirectWithToast(returnTo, "Category reactivated");
+  redirectWithToast(returnTo, await m("categoryReactivated"));
 }
 
 /**
@@ -476,18 +494,18 @@ export async function deleteCategory(_prev: unknown, fd: FormData): Promise<Acti
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a category" };
+    if (!id) return { error: await m("chooseCategory") };
 
     await sql`delete from item_group where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: "This category has items or sub categories under it — deactivate it instead of deleting" };
+      return { error: await m("categoryInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/items/categories");
-  redirectWithToast(returnTo, "Category deleted");
+  redirectWithToast(returnTo, await m("categoryDeleted"));
 }
 
 /**
@@ -498,7 +516,7 @@ export async function deleteCategory(_prev: unknown, fd: FormData): Promise<Acti
  */
 export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
-  const toastMsg = "Category inserted";
+  const toastMsg = await m("categoryInserted");
 
   try {
     const co = await companyId();
@@ -507,23 +525,23 @@ export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise
     const segment = str(fd, "segment").toUpperCase();
     const name = str(fd, "name");
 
-    if (!targetId) return { error: "Choose which category to lift" };
-    if (!segment) return { error: "Code segment is required" };
-    if (!name) return { error: "Name is required" };
+    if (!targetId) return { error: await m("chooseCategoryToLift") };
+    if (!segment) return { error: await m("segmentRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql.begin(async (tx) => {
       const [target] = await tx`
         select id, parent_id from item_group
          where id = ${targetId} and company_id = ${co}`;
-      if (!target) throw new Error("That category no longer exists");
+      if (!target) throw new Error(await m("categoryGone"));
       if (target.parent_id) {
-        throw new Error("This is already a sub category — inserting above it would nest three levels deep");
+        throw new Error(await m("alreadySub"));
       }
 
       const [kid] = await tx`
         select 1 from item_group where parent_id = ${target.id} limit 1`;
       if (kid) {
-        throw new Error("This category already has sub categories inside it — they'd end up nested too deep");
+        throw new Error(await m("hasSubs"));
       }
 
       const [composed] = await tx`
@@ -531,7 +549,7 @@ export async function insertCategoryAbove(_prev: unknown, fd: FormData): Promise
 
       const [dup] = await tx`
         select name from item_group where company_id = ${co} and code = ${composed.code}`;
-      if (dup) throw new Error(`Code ${composed.code} is already used by ${dup.name}`);
+      if (dup) throw new Error(await m("codeUsedBy", { code: composed.code, name: dup.name }));
 
       const [created] = await tx`
         insert into item_group (company_id, parent_id, segment, code, name, name_my)
@@ -560,8 +578,8 @@ export async function moveCategory(_prev: unknown, fd: FormData): Promise<Action
     const id = str(fd, "id");
     const newParent = str(fd, "new_parent_id") || null;
 
-    if (!id) return { error: "Choose a category to move" };
-    if (id === newParent) return { error: "A category cannot sit under itself" };
+    if (!id) return { error: await m("chooseCategoryToMove") };
+    if (id === newParent) return { error: await m("selfParent") };
 
     if (newParent) {
       // Moving a category under one of its own descendants would detach the
@@ -574,7 +592,7 @@ export async function moveCategory(_prev: unknown, fd: FormData): Promise<Action
         )
         select 1 from descendants where id = ${newParent}`;
       if (cycle.length) {
-        return { error: "That would put the category inside its own branch" };
+        return { error: await m("ownBranch") };
       }
 
       // Categories only nest two levels deep, so the new parent must itself
@@ -582,15 +600,15 @@ export async function moveCategory(_prev: unknown, fd: FormData): Promise<Action
       // can only move to the top level (its children would land too deep).
       const [np] = await sql`
         select parent_id from item_group where id = ${newParent} and company_id = ${co}`;
-      if (!np) return { error: "That category no longer exists" };
+      if (!np) return { error: await m("categoryGone") };
       if (np.parent_id) {
-        return { error: "Categories only nest two levels deep: Category → Sub category" };
+        return { error: await m("twoLevels") };
       }
 
       const [kid] = await sql`
         select 1 from item_group where parent_id = ${id} and company_id = ${co} limit 1`;
       if (kid) {
-        return { error: "This category has sub categories of its own — move it to the top level instead" };
+        return { error: await m("hasSubsMoveTop") };
       }
     }
 
@@ -603,14 +621,14 @@ export async function moveCategory(_prev: unknown, fd: FormData): Promise<Action
 
   revalidatePath("/items/categories");
   revalidatePath("/items/new");
-  redirectWithToast("/items/categories", "Category moved");
+  redirectWithToast("/items/categories", await m("categoryMoved"));
 }
 
 export async function createItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
   let returnTo: string | null = null;
   let fullCode: string | null = null;
-  let toastMsg = "Item added";
+  let toastMsg = await m("itemAdded");
   // A product with variants lands on its variants page, where each one can be priced.
   let variantsOf: string | null = null;
 
@@ -635,14 +653,14 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
           .filter((p) => p.uomId && p.factor > 0);
       } catch {
-        return { error: "Could not read the pack sizes" };
+        return { error: await m("packsUnreadable") };
       }
       if (newPacks.some((p) => p.uomId === uomId)) {
-        return { error: "A pack has to be a different unit from the base unit" };
+        return { error: await m("packSameAsBase") };
       }
       const seen = new Set<string>();
       for (const p of newPacks) {
-        if (seen.has(p.uomId)) return { error: "The same unit is listed twice" };
+        if (seen.has(p.uomId)) return { error: await m("unitTwice") };
         seen.add(p.uomId);
       }
     }
@@ -683,20 +701,20 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       } catch { return empty; }
     })();
 
-    if (!serial) return { error: "Item code is required" };
-    if (!name) return { error: "Name is required" };
-    if (!groupId) return { error: "Choose a category" };
-    if (!uomId) return { error: "Choose a unit" };
+    if (!serial) return { error: await m("itemCodeRequired") };
+    if (!name) return { error: await m("nameRequired") };
+    if (!groupId) return { error: await m("chooseCategory") };
+    if (!uomId) return { error: await m("chooseUnit") };
 
     const [grp] = await sql`
       select code from item_group where id = ${groupId} and company_id = ${co}`;
-    if (!grp) return { error: "That category no longer exists" };
+    if (!grp) return { error: await m("categoryGone") };
 
     fullCode = composeItemCode(grp.code, serial);
     const dup = await sql`
       select name from item where company_id = ${co} and code = ${fullCode}`;
     if (dup.length) {
-      return { error: `Code ${fullCode} is already used by ${dup[0].name}` };
+      return { error: await m("codeUsedBy", { code: String(fullCode), name: dup[0].name }) };
     }
 
 
@@ -717,7 +735,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
         select name from variant_attribute
          where id in ${sql(variantPlan.attributes)}
            and identities is not null and not (${identity} = any(identities))`;
-      if (off.length > 0) return { error: `${off[0].name} is not chosen for this kind of product` };
+      if (off.length > 0) return { error: await m("notForThisKind", { name: off[0].name }) };
     }
 
     await sql.begin(async (tx) => {
@@ -800,12 +818,13 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            -- A retail shop's sale price is its retail price: the POS reads that level.
            order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1` : [];
 
+        const valueGone = await m("variantValueGone");
         const planned = variantPlan.combos.map((raw) => {
           // An option id the form invented, or one deleted between loading
           // the page and saving it, would otherwise become "undefined" in
           // the middle of a code.
           if (raw.some((id) => !byId.has(id))) {
-            throw new Error("One of the chosen variant values no longer exists");
+            throw new Error(valueGone);
           }
           const combo = ordered(raw);
           const parts = combo.map((id) => byId.get(id));
@@ -869,7 +888,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       }
     });
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${fullCode} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code: String(fullCode) }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -887,7 +906,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
  */
 export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
-  const toastMsg = "Item updated";
+  const toastMsg = await m("itemUpdated");
 
   try {
     const co = await companyId();
@@ -895,9 +914,9 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
     const name = str(fd, "name");
     const uomId = str(fd, "base_uom_id");
 
-    if (!id) return { error: "Choose an item" };
-    if (!name) return { error: "Name is required" };
-    if (!uomId) return { error: "Choose a unit" };
+    if (!id) return { error: await m("chooseItem") };
+    if (!name) return { error: await m("nameRequired") };
+    if (!uomId) return { error: await m("chooseUnit") };
 
     /* The packs this item can be bought and sold in. Never a row for the
        item's own unit: that is the base, its factor is 1 by definition, and
@@ -914,14 +933,14 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
           .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
           .filter((p) => p.uomId && p.uomId !== uomId && p.factor > 0);
       } catch {
-        return { error: "Could not read the pack sizes" };
+        return { error: await m("packsUnreadable") };
       }
       const seen = new Set<string>();
       for (const p of packs) {
-        if (seen.has(p.uomId)) return { error: "The same unit is listed twice" };
+        if (seen.has(p.uomId)) return { error: await m("unitTwice") };
         seen.add(p.uomId);
         if (p.factor === 1) {
-          return { error: "A pack holding one base unit is the base unit — leave it off the list" };
+          return { error: await m("packOfOne") };
         }
       }
     }
@@ -999,7 +1018,7 @@ export async function deactivateItem(_prev: unknown, fd: FormData): Promise<Acti
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose an item" };
+    if (!id) return { error: await m("chooseItem") };
 
     await sql`update item set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1008,7 +1027,7 @@ export async function deactivateItem(_prev: unknown, fd: FormData): Promise<Acti
 
   revalidatePath("/items");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", "Item deactivated");
+  redirectWithToast("/items", await m("itemDeactivated"));
 }
 
 /** Puts back what deactivateItem retired. Reactivating is always safe, so
@@ -1018,7 +1037,7 @@ export async function activateItem(_prev: unknown, fd: FormData): Promise<Action
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose an item" };
+    if (!id) return { error: await m("chooseItem") };
 
     await sql`update item set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1027,7 +1046,7 @@ export async function activateItem(_prev: unknown, fd: FormData): Promise<Action
 
   revalidatePath("/items");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", "Item reactivated");
+  redirectWithToast("/items", await m("itemReactivated"));
 }
 
 /** Hard delete only succeeds for an item nothing has ever touched. Deactivating is the way to retire one. */
@@ -1036,19 +1055,19 @@ export async function deleteItem(_prev: unknown, fd: FormData): Promise<ActionRe
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose an item" };
+    if (!id) return { error: await m("chooseItem") };
 
     await sql`delete from item where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: "This item has documents or stock history against it — deactivate it instead of deleting" };
+      return { error: await m("itemInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/items");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", "Item deleted");
+  redirectWithToast("/items", await m("itemDeleted"));
 }
 
 // ------------------------------------------------------------- brands --
@@ -1129,12 +1148,12 @@ export async function createTaxCode(_prev: unknown, fd: FormData): Promise<Actio
     const name = str(fd, "name");
     const rate = num(fd, "rate");
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
     if (rate < 0 || rate > 100) return { error: "A rate is a percentage between 0 and 100" };
 
     const dup = await sql`select 1 from tax_code where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     // A zero-rate code needs no accounts: nothing posts. A charging one does,
     // and both sides come from the roles rather than being chosen per code.
@@ -1155,7 +1174,7 @@ export async function createTaxCode(_prev: unknown, fd: FormData): Promise<Actio
       insert into tax_rate (company_id, tax_code_id, rate, valid_from)
       values (${co}, ${created.id}, ${rate}, ${from}::date)`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -1172,15 +1191,15 @@ export async function updateTaxCode(_prev: unknown, fd: FormData): Promise<Actio
     const name = str(fd, "name");
 
     if (!id) return { error: "Choose a tax code" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     /* The rate is not editable here — it is a dated series, changed by
        adding the next one. What this edits is the code's name, its code and
        whether it can still be chosen. */
     const dup = await sql`
       select 1 from tax_code where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       update tax_code set
@@ -1188,7 +1207,7 @@ export async function updateTaxCode(_prev: unknown, fd: FormData): Promise<Actio
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -1269,14 +1288,14 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
     const price = num(fd, "price");
     const from = str(fd, "valid_from") || new Date().toISOString().slice(0, 10);
 
-    if (!itemId) return { error: "Choose an item" };
-    if (!levelId) return { error: "Choose a price level" };
-    if (!uomId) return { error: "Choose the unit this price is per" };
-    if (!(price >= 0)) return { error: "A price cannot be negative" };
+    if (!itemId) return { error: await m("chooseItem") };
+    if (!levelId) return { error: await m("choosePriceLevel") };
+    if (!uomId) return { error: await m("choosePriceUnit") };
+    if (!(price >= 0)) return { error: await m("priceNegative") };
 
     const [item] = await sql`
       select id, code from item where id = ${itemId} and company_id = ${co}`;
-    if (!item) return { error: "That item does not belong to this company" };
+    if (!item) return { error: await m("itemNotOurs") };
 
     /* One price per item, level, unit and day. Asked for twice on the same
        day, the later answer wins — which is what somebody correcting a typo
@@ -1293,15 +1312,15 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
 
   revalidatePath("/items/prices");
   revalidatePath("/sales/new");
-  redirectWithToast("/items/prices", "Price set");
+  redirectWithToast("/items/prices", await m("priceSet"));
 }
 
 export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
   const me = await requirePermission("items.manage");
   // The shop sells Apple. Another brand is the owner's decision, made twice.
-  if (!can(me, "brands.manage")) return { error: "Only the owner can add a brand." };
-  if (fd.get("confirm_other_brand") !== "yes") return { error: "Confirm that you want to add a brand other than Apple." };
-  const toastMsg = "Brand added";
+  if (!can(me, "brands.manage")) return { error: await m("ownerOnlyBrand") };
+  if (fd.get("confirm_other_brand") !== "yes") return { error: await m("confirmOtherBrand") };
+  const toastMsg = await m("brandAdded");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -1309,17 +1328,17 @@ export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionR
 
     const name = str(fd, "name");
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`select 1 from brand where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       insert into brand (company_id, code, name, name_my)
       values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -1330,7 +1349,7 @@ export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionR
 
 export async function updateBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
-  const toastMsg = "Brand updated";
+  const toastMsg = await m("brandUpdated");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -1338,13 +1357,13 @@ export async function updateBrand(_prev: unknown, fd: FormData): Promise<ActionR
     const id = str(fd, "id");
     const name = str(fd, "name");
 
-    if (!id) return { error: "Choose a brand" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("chooseBrand") };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`
       select 1 from brand where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       update brand set
@@ -1352,7 +1371,7 @@ export async function updateBrand(_prev: unknown, fd: FormData): Promise<ActionR
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -1366,7 +1385,7 @@ export async function deactivateBrand(_prev: unknown, fd: FormData): Promise<Act
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a brand" };
+    if (!id) return { error: await m("chooseBrand") };
 
     await sql`update brand set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1374,7 +1393,7 @@ export async function deactivateBrand(_prev: unknown, fd: FormData): Promise<Act
   }
 
   revalidatePath("/items/brands");
-  redirectWithToast("/items/brands", "Brand deactivated");
+  redirectWithToast("/items/brands", await m("brandDeactivated"));
 }
 
 /** Puts back what deactivateBrand retired. Reactivating is always safe, so
@@ -1384,7 +1403,7 @@ export async function activateBrand(_prev: unknown, fd: FormData): Promise<Actio
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a brand" };
+    if (!id) return { error: await m("chooseBrand") };
 
     await sql`update brand set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1392,7 +1411,7 @@ export async function activateBrand(_prev: unknown, fd: FormData): Promise<Actio
   }
 
   revalidatePath("/items/brands");
-  redirectWithToast("/items/brands", "Brand reactivated");
+  redirectWithToast("/items/brands", await m("brandReactivated"));
 }
 
 /** Hard delete only succeeds for a brand no item has ever used. Deactivating is the way to retire one. */
@@ -1401,18 +1420,18 @@ export async function deleteBrand(_prev: unknown, fd: FormData): Promise<ActionR
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a brand" };
+    if (!id) return { error: await m("chooseBrand") };
 
     await sql`delete from brand where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: "This brand is used by one or more items — deactivate it instead of deleting" };
+      return { error: await m("brandInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/items/brands");
-  redirectWithToast("/items/brands", "Brand deleted");
+  redirectWithToast("/items/brands", await m("brandDeleted"));
 }
 
 export type NewBrandInput = { name: string; nameMy?: string; confirmed?: boolean };
@@ -1423,13 +1442,13 @@ export async function createBrandInline(
   input: NewBrandInput
 ): Promise<{ ok: true; brand: PickerBrand } | { ok: false; error: string }> {
   const me = await requirePermission("items.manage");
-  if (!can(me, "brands.manage")) return { ok: false, error: "Only the owner can add a brand." };
-  if (!input.confirmed) return { ok: false, error: "Confirm that you want to add a brand other than Apple." };
+  if (!can(me, "brands.manage")) return { ok: false, error: await m("ownerOnlyBrand") };
+  if (!input.confirmed) return { ok: false, error: await m("confirmOtherBrand") };
   try {
     const co = await companyId();
 
     const name = input.name.trim();
-    if (!name) return { ok: false, error: "Name is required" };
+    if (!name) return { ok: false, error: await m("nameRequired") };
 
     // Auto-code from the name — BRAKE PADS -> BRAKEPADS, deduped with a
     // numeric suffix if that code is already taken.
@@ -1448,7 +1467,7 @@ export async function createBrandInline(
     revalidatePath("/items/brands");
     return { ok: true, brand: { id: brand.id, code: brand.code, name: brand.name } };
   } catch (e) {
-    if (isUniqueViolation(e)) return { ok: false, error: "That brand code was just taken — try again" };
+    if (isUniqueViolation(e)) return { ok: false, error: await m("brandCodeTaken") };
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -1472,23 +1491,23 @@ export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionRe
     const co = await companyId();
     const name = str(fd, "name");
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`select 1 from uom where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       insert into uom (company_id, code, name, name_my)
       values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/items/units");
   revalidatePath("/items/new");
-  redirectWithToast("/items/units", "Unit added");
+  redirectWithToast("/items/units", await m("unitAdded"));
 }
 
 export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -1500,13 +1519,13 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
     const id = str(fd, "id");
     const name = str(fd, "name");
 
-    if (!id) return { error: "Choose a unit" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("chooseUnit") };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`
       select 1 from uom where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       update uom set
@@ -1514,12 +1533,12 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/items/units");
-  redirectWithToast("/items/units", "Unit updated");
+  redirectWithToast("/items/units", await m("unitUpdated"));
 }
 
 /**
@@ -1534,7 +1553,7 @@ export async function deactivateUnit(_prev: unknown, fd: FormData): Promise<Acti
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a unit" };
+    if (!id) return { error: await m("chooseUnit") };
 
     await sql`update uom set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1542,7 +1561,7 @@ export async function deactivateUnit(_prev: unknown, fd: FormData): Promise<Acti
   }
 
   revalidatePath("/items/units");
-  redirectWithToast("/items/units", "Unit deactivated");
+  redirectWithToast("/items/units", await m("unitDeactivated"));
 }
 
 /** Puts back what deactivateUnit retired. Reactivating is always safe, so
@@ -1552,7 +1571,7 @@ export async function activateUnit(_prev: unknown, fd: FormData): Promise<Action
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a unit" };
+    if (!id) return { error: await m("chooseUnit") };
 
     await sql`update uom set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1560,7 +1579,7 @@ export async function activateUnit(_prev: unknown, fd: FormData): Promise<Action
   }
 
   revalidatePath("/items/units");
-  redirectWithToast("/items/units", "Unit reactivated");
+  redirectWithToast("/items/units", await m("unitReactivated"));
 }
 
 /** Hard delete only succeeds for a unit nothing has ever been counted in.
@@ -1570,7 +1589,7 @@ export async function deleteUnit(_prev: unknown, fd: FormData): Promise<ActionRe
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a unit" };
+    if (!id) return { error: await m("chooseUnit") };
 
     await sql`delete from uom where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -1584,7 +1603,7 @@ export async function deleteUnit(_prev: unknown, fd: FormData): Promise<ActionRe
   }
 
   revalidatePath("/items/units");
-  redirectWithToast("/items/units", "Unit deleted");
+  redirectWithToast("/items/units", await m("unitDeleted"));
 }
 
 // ------------------------------------------------- inline item creation --
@@ -1643,9 +1662,9 @@ export async function createItemInline(
     const co = await companyId();
 
     const name = input.name.trim();
-    if (!name) return { ok: false, error: "Name is required" };
-    if (!input.groupId) return { ok: false, error: "Choose a category" };
-    if (!input.uomId) return { ok: false, error: "Choose a unit" };
+    if (!name) return { ok: false, error: await m("nameRequired") };
+    if (!input.groupId) return { ok: false, error: await m("chooseCategory") };
+    if (!input.uomId) return { ok: false, error: await m("chooseUnit") };
     // Read here rather than returned from the insert, because the picker
     // quotes quantities in it and only has the code to show.
     const [uomRow] = await sql`select code from uom where id = ${input.uomId}`;
@@ -1653,7 +1672,7 @@ export async function createItemInline(
 
     const [grp] = await sql`
       select code from item_group where id = ${input.groupId} and company_id = ${co}`;
-    if (!grp) return { ok: false, error: "That category no longer exists" };
+    if (!grp) return { ok: false, error: await m("categoryGone") };
 
     // Auto-number within the category unless the user typed a serial. Only
     // numeric serials count toward the next value; a hand-typed "A1" is left
@@ -1672,7 +1691,7 @@ export async function createItemInline(
     const dup = await sql`
       select name from item where company_id = ${co} and code = ${fullCode}`;
     if (dup.length) {
-      return { ok: false, error: `Code ${fullCode} is already used by ${dup[0].name}` };
+      return { ok: false, error: await m("codeUsedBy", { code: String(fullCode), name: dup[0].name }) };
     }
 
     const created = await sql.begin(async (tx) => {
@@ -1727,7 +1746,7 @@ export async function createItemInline(
       },
     };
   } catch (e) {
-    if (isUniqueViolation(e)) return { ok: false, error: `Code ${fullCode} is already used` };
+    if (isUniqueViolation(e)) return { ok: false, error: await m("codeUsed", { code: String(fullCode) }) };
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -1795,7 +1814,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const paymentType: "CASH" | "CREDIT" = str(fd, "payment_type") === "CASH" ? "CASH" : "CREDIT";
@@ -1910,8 +1929,8 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
     const lines = parseLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
-    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "partner_id")) return { error: await m("chooseSupplier") };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const goodsReceiptId = str(fd, "goods_receipt_id") || null;
@@ -1991,7 +2010,7 @@ export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<A
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postSalesReturn({
@@ -2031,8 +2050,8 @@ export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promis
     const lines = parseLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
-    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "partner_id")) return { error: await m("chooseSupplier") };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseReturn({
@@ -2180,7 +2199,7 @@ export async function createSalesOrder(_prev: unknown, fd: FormData): Promise<Ac
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postSalesOrder({
@@ -2220,8 +2239,8 @@ export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise
     const lines = parseOrderLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
-    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "partner_id")) return { error: await m("chooseSupplier") };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseOrder({
@@ -2263,7 +2282,7 @@ export async function createDelivery(_prev: unknown, fd: FormData): Promise<Acti
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const delivery = await postOnce(co, attemptKey(fd), (tx) => postDelivery({
@@ -2369,8 +2388,8 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
     const lines = parseFulfillmentLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
-    if (!str(fd, "partner_id")) return { error: "Choose a supplier" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "partner_id")) return { error: await m("chooseSupplier") };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postGoodsReceipt({
@@ -3764,7 +3783,7 @@ async function assertLocationAllowed(
 
 export async function createLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
-  const toastMsg = "Warehouse added";
+  const toastMsg = await m("warehouseAdded");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -3773,11 +3792,11 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
     const name = str(fd, "name");
     const parentId = str(fd, "parent_id") || null;
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`select 1 from location where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await assertLocationAllowed(co,
       { branch: !parentId, warehouse: fd.get("is_stock_location") === "on" }, null);
@@ -3787,7 +3806,7 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
       values (${co}, ${parentId}, ${code}, ${name}, ${str(fd, "name_my") || null},
               ${fd.get("is_stock_location") === "on"})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -3797,7 +3816,7 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
 
 export async function updateLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
-  const toastMsg = "Warehouse updated";
+  const toastMsg = await m("warehouseUpdated");
 
   try {
     const co = await companyId();
@@ -3807,10 +3826,10 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
     const name = str(fd, "name");
     const parentId = str(fd, "parent_id") || null;
 
-    if (!id) return { error: "Choose a warehouse" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
-    if (parentId === id) return { error: "A warehouse cannot sit under itself" };
+    if (!id) return { error: await m("chooseWarehouse") };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
+    if (parentId === id) return { error: await m("warehouseSelfParent") };
 
     if (parentId) {
       const cycle = await sql`
@@ -3820,12 +3839,12 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
           select l.id from location l join descendants d on l.parent_id = d.id
         )
         select 1 from descendants where id = ${parentId}`;
-      if (cycle.length) return { error: "That would put it inside its own branch" };
+      if (cycle.length) return { error: await m("ownBranch") };
     }
 
     const dup = await sql`
       select 1 from location where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     const [was] = await sql`
       select parent_id, is_stock_location, is_active from location where id = ${id} and company_id = ${co}`;
@@ -3860,7 +3879,7 @@ export async function deactivateLocation(_prev: unknown, fd: FormData): Promise<
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a warehouse" };
+    if (!id) return { error: await m("chooseWarehouse") };
 
     await sql`update location set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -3868,7 +3887,7 @@ export async function deactivateLocation(_prev: unknown, fd: FormData): Promise<
   }
 
   revalidatePath("/warehouses");
-  redirectWithToast("/warehouses", "Warehouse deactivated");
+  redirectWithToast("/warehouses", await m("warehouseDeactivated"));
 }
 
 /** Puts back what deactivateLocation retired, within what the package allows. */
@@ -3877,7 +3896,7 @@ export async function activateLocation(_prev: unknown, fd: FormData): Promise<Ac
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a warehouse" };
+    if (!id) return { error: await m("chooseWarehouse") };
 
     const [l] = await sql`
       select parent_id, is_stock_location, is_active from location where id = ${id} and company_id = ${co}`;
@@ -3891,7 +3910,7 @@ export async function activateLocation(_prev: unknown, fd: FormData): Promise<Ac
   }
 
   revalidatePath("/warehouses");
-  redirectWithToast("/warehouses", "Warehouse reactivated");
+  redirectWithToast("/warehouses", await m("warehouseReactivated"));
 }
 
 /**
@@ -3904,18 +3923,18 @@ export async function deleteLocation(_prev: unknown, fd: FormData): Promise<Acti
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a warehouse" };
+    if (!id) return { error: await m("chooseWarehouse") };
 
     await sql`delete from location where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: "This warehouse has documents or stock history against it — deactivate it instead of deleting" };
+      return { error: await m("warehouseInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/warehouses");
-  redirectWithToast("/warehouses", "Warehouse deleted");
+  redirectWithToast("/warehouses", await m("warehouseDeleted"));
 }
 
 // ------------------------------------------------------- salespersons --
@@ -3968,8 +3987,8 @@ export async function createVariantAttribute(_prev: unknown, fd: FormData): Prom
   try {
     const co = await companyId();
     const name = str(fd, "name");
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql`
       insert into variant_attribute (company_id, code, name, name_my, sort_order)
@@ -3977,11 +3996,11 @@ export async function createVariantAttribute(_prev: unknown, fd: FormData): Prom
               coalesce((select max(sort_order) + 1 from variant_attribute
                          where company_id = ${co}), 0))`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/items/attributes");
-  redirectWithToast("/items/attributes", `${code} added`);
+  redirectWithToast("/items/attributes", await m("codeAdded", { code }));
 }
 
 export async function updateVariantAttribute(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -3990,8 +4009,8 @@ export async function updateVariantAttribute(_prev: unknown, fd: FormData): Prom
     const co = await companyId();
     const id = str(fd, "id");
     const name = str(fd, "name");
-    if (!id) return { error: "Which attribute?" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("whichAttribute") };
+    if (!name) return { error: await m("nameRequired") };
     await sql`
       update variant_attribute
          set name = ${name}, name_my = ${str(fd, "name_my") || null},
@@ -4044,8 +4063,8 @@ export async function createVariantOption(_prev: unknown, fd: FormData): Promise
   try {
     const co = await companyId();
     const attributeId = str(fd, "attribute_id");
-    if (!attributeId) return { error: "Which attribute?" };
-    if (!code) return { error: "A value is required" };
+    if (!attributeId) return { error: await m("whichAttribute") };
+    if (!code) return { error: await m("valueRequired") };
 
     // Appended rather than sorted in: S, M, L, XL is the order somebody
     // means, and it is not the order a computer would choose.
@@ -4056,7 +4075,7 @@ export async function createVariantOption(_prev: unknown, fd: FormData): Promise
               coalesce((select max(sort_order) + 1 from variant_option
                          where attribute_id = ${attributeId}), 0))`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `${code} is already on this list` };
+    if (isUniqueViolation(e)) return { error: await m("alreadyOnList", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/items/attributes");
@@ -4114,12 +4133,12 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
   try {
     const co = await companyId();
     const parentId = str(fd, "parent_id");
-    if (!parentId) return { error: "Which product?" };
+    if (!parentId) return { error: await m("whichProduct") };
 
     const rows = JSON.parse(str(fd, "rows") || "[]") as {
       id: string; barcode: string; prices: Record<string, string>; isActive: boolean;
     }[];
-    if (rows.length === 0) return { error: "Nothing to save" };
+    if (rows.length === 0) return { error: await m("nothingToSave") };
 
     // Only this product's variants, so a crafted form cannot reach elsewhere.
     const mine = await sql`
@@ -4127,7 +4146,7 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
        where company_id = ${co} and parent_item_id = ${parentId}`;
     const byId = new Map((mine as any[]).map((r) => [r.id as string, r.code as string]));
     for (const r of rows) {
-      if (!byId.has(r.id)) return { error: "That variant does not belong to this product" };
+      if (!byId.has(r.id)) return { error: await m("variantNotOurs") };
     }
 
     // Within the batch first: two rows here can clash with each other
@@ -4189,7 +4208,7 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
     });
   } catch (e) {
     if (isUniqueViolation(e)) {
-      return { error: "Two of those share a barcode, or one is already used elsewhere." };
+      return { error: await m("barcodeShared") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -4204,8 +4223,8 @@ export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<Ac
     const co = await companyId();
     const supplierId = str(fd, "supplier_id");
     const itemId = str(fd, "item_id");
-    if (!supplierId) return { error: "Choose a supplier" };
-    if (!itemId) return { error: "Choose an item" };
+    if (!supplierId) return { error: await m("chooseSupplier") };
+    if (!itemId) return { error: await m("chooseItem") };
 
     // Blank means "no exception" and falls back to the supplier's own
     // figure. Nought would be a claim that this arrives the day it is
@@ -4213,7 +4232,7 @@ export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<Ac
     const raw = str(fd, "lead_time_days");
     const lead = raw === "" ? null : Number(raw);
     if (lead !== null && (!Number.isFinite(lead) || lead < 0 || lead > 365)) {
-      return { error: "Lead time must be between 0 and 365 days, or blank" };
+      return { error: await m("leadTimeRange") };
     }
 
     await sql`
@@ -4349,14 +4368,14 @@ export async function setVariantPhoto(_prev: unknown, fd: FormData): Promise<Act
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Which variant?" };
+    if (!id) return { error: await m("whichVariant") };
 
     const [target] = await sql`
       select parent_item_id from item where id = ${id} and company_id = ${co}`;
-    if (!target) return { error: "That item no longer exists" };
+    if (!target) return { error: await m("itemGone") };
 
     const photo = await photoFrom(fd);
-    if (!photo) return { error: "No picture was sent" };
+    if (!photo) return { error: await m("noPicture") };
 
     let replaced: string | null = null;
     await sql.begin(async (tx) => {
@@ -4407,12 +4426,12 @@ export async function updateVariantOption(_prev: unknown, fd: FormData): Promise
     const co = await companyId();
     const id = str(fd, "id");
     const name = str(fd, "name");
-    if (!id) return { error: "Which value?" };
-    if (!name) return { error: "A name is required" };
+    if (!id) return { error: await m("whichValue") };
+    if (!name) return { error: await m("aNameRequired") };
 
     const [current] = await sql`
       select code from variant_option where id = ${id} and company_id = ${co}`;
-    if (!current) return { error: "That value no longer exists" };
+    if (!current) return { error: await m("valueGone") };
 
     if (code && code !== current.code) {
       const [used] = await sql`
@@ -4432,7 +4451,7 @@ export async function updateVariantOption(_prev: unknown, fd: FormData): Promise
              code = ${code || current.code}
        where id = ${id} and company_id = ${co}`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `${code} is already on this list` };
+    if (isUniqueViolation(e)) return { error: await m("alreadyOnList", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/items/attributes");
@@ -4506,7 +4525,7 @@ export async function moveVariantOption(_prev: unknown, fd: FormData): Promise<A
       const [me] = await tx`
         select id, attribute_id, sort_order from variant_option
          where id = ${id} and company_id = ${co}`;
-      if (!me) throw new Error("That value is gone");
+      if (!me) throw new Error(await m("valueGone"));
       const [swap] = dir < 0
         ? await tx`select id, sort_order from variant_option
                     where attribute_id = ${me.attribute_id} and sort_order < ${me.sort_order}
@@ -5134,8 +5153,8 @@ export async function createPartnerCategory(_prev: unknown, fd: FormData): Promi
   try {
     const co = await companyId();
     const name = str(fd, "name");
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql`
       insert into partner_category (company_id, code, name, name_my, note, sort_order, kind)
@@ -5143,11 +5162,11 @@ export async function createPartnerCategory(_prev: unknown, fd: FormData): Promi
               ${str(fd, "note") || null}, ${num(fd, "sort_order")},
               ${str(fd, "kind") === "SUPPLIER" ? "SUPPLIER" : "CUSTOMER"})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/partners/categories");
-  redirectWithToast("/partners/categories", "Category added");
+  redirectWithToast("/partners/categories", await m("categoryAdded"));
 }
 
 export async function updatePartnerCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -5156,8 +5175,8 @@ export async function updatePartnerCategory(_prev: unknown, fd: FormData): Promi
     const co = await companyId();
     const id = str(fd, "id");
     const name = str(fd, "name");
-    if (!id) return { error: "Choose a category" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("chooseCategory") };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql`
       update partner_category
@@ -5177,7 +5196,7 @@ export async function setPartnerCategoryActive(_prev: unknown, fd: FormData): Pr
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a category" };
+    if (!id) return { error: await m("chooseCategory") };
     await sql`update partner_category set is_active = ${str(fd, "active") === "1"}
                where id = ${id} and company_id = ${co}`;
     revalidatePath("/partners/categories");
@@ -5200,7 +5219,7 @@ export async function deletePartnerCategory(_prev: unknown, fd: FormData): Promi
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a category" };
+    if (!id) return { error: await m("chooseCategory") };
 
     const [inUse] = await sql`
       select count(*)::int as n from business_partner
@@ -5236,8 +5255,8 @@ export async function createRoute(_prev: unknown, fd: FormData): Promise<ActionR
   try {
     const co = await companyId();
     const name = str(fd, "name");
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const [r] = await sql`
       insert into route (company_id, code, name, location_id, salesman_id,
@@ -5249,7 +5268,7 @@ export async function createRoute(_prev: unknown, fd: FormData): Promise<ActionR
       returning id`;
     routeId = r.id as string;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/logistics/routes");
@@ -5263,7 +5282,7 @@ export async function updateRoute(_prev: unknown, fd: FormData): Promise<ActionR
     const id = str(fd, "id");
     const name = str(fd, "name");
     if (!id) return { error: "Choose a route" };
-    if (!name) return { error: "Name is required" };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql`
       update route
@@ -5482,7 +5501,7 @@ export async function createVehicle(_prev: unknown, fd: FormData): Promise<Actio
   try {
     const co = await companyId();
     const plate = str(fd, "plate_no");
-    if (!code) return { error: "Code is required" };
+    if (!code) return { error: await m("codeRequired") };
     if (!plate) return { error: "Plate number is required — it is what the yard calls it" };
 
     await sql`
@@ -5490,7 +5509,7 @@ export async function createVehicle(_prev: unknown, fd: FormData): Promise<Actio
       values (${co}, ${code}, ${plate}, ${str(fd, "name") || null},
               ${str(fd, "capacity_note") || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/logistics/vehicles");
@@ -5538,15 +5557,15 @@ export async function createDriver(_prev: unknown, fd: FormData): Promise<Action
   try {
     const co = await companyId();
     const name = str(fd, "name");
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     await sql`
       insert into driver (company_id, code, name, name_my, phone, licence_no)
       values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
               ${str(fd, "phone") || null}, ${str(fd, "licence_no") || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath("/logistics/drivers");
@@ -5560,7 +5579,7 @@ export async function updateDriver(_prev: unknown, fd: FormData): Promise<Action
     const id = str(fd, "id");
     if (!id) return { error: "Choose a driver" };
     const name = str(fd, "name");
-    if (!name) return { error: "Name is required" };
+    if (!name) return { error: await m("nameRequired") };
     await sql`
       update driver
          set name = ${name}, name_my = ${str(fd, "name_my") || null},
@@ -5811,7 +5830,7 @@ export async function setTripStatus(_prev: unknown, fd: FormData): Promise<Actio
 
 export async function createSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
-  const toastMsg = "Salesperson added";
+  const toastMsg = await m("salespersonAdded");
   const code = str(fd, "code").toUpperCase();
 
   try {
@@ -5819,18 +5838,18 @@ export async function createSalesman(_prev: unknown, fd: FormData): Promise<Acti
 
     const name = str(fd, "name");
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`select 1 from salesman where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       insert into salesman (company_id, code, name, name_my, phone, location_id, commission_pct)
       values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null}, ${str(fd, "phone") || null},
               ${str(fd, "location_id") || null}, ${num(fd, "commission_pct")})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -5840,7 +5859,7 @@ export async function createSalesman(_prev: unknown, fd: FormData): Promise<Acti
 
 export async function updateSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
-  const toastMsg = "Salesperson updated";
+  const toastMsg = await m("salespersonUpdated");
 
   try {
     const co = await companyId();
@@ -5849,13 +5868,13 @@ export async function updateSalesman(_prev: unknown, fd: FormData): Promise<Acti
     const code = str(fd, "code").toUpperCase();
     const name = str(fd, "name");
 
-    if (!id) return { error: "Choose a salesperson" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("chooseSalesperson") };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`
       select 1 from salesman where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     await sql`
       update salesman set
@@ -5876,7 +5895,7 @@ export async function deactivateSalesman(_prev: unknown, fd: FormData): Promise<
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a salesperson" };
+    if (!id) return { error: await m("chooseSalesperson") };
 
     await sql`update salesman set is_active = false where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -5884,7 +5903,7 @@ export async function deactivateSalesman(_prev: unknown, fd: FormData): Promise<
   }
 
   revalidatePath("/salespersons");
-  redirectWithToast("/salespersons", "Salesperson deactivated");
+  redirectWithToast("/salespersons", await m("salespersonDeactivated"));
 }
 
 /** Puts back what deactivateSalesman retired. Reactivating is always safe, so
@@ -5894,7 +5913,7 @@ export async function activateSalesman(_prev: unknown, fd: FormData): Promise<Ac
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a salesperson" };
+    if (!id) return { error: await m("chooseSalesperson") };
 
     await sql`update salesman set is_active = true where id = ${id} and company_id = ${co}`;
   } catch (e) {
@@ -5902,7 +5921,7 @@ export async function activateSalesman(_prev: unknown, fd: FormData): Promise<Ac
   }
 
   revalidatePath("/salespersons");
-  redirectWithToast("/salespersons", "Salesperson reactivated");
+  redirectWithToast("/salespersons", await m("salespersonReactivated"));
 }
 
 export async function deleteSalesman(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -5910,18 +5929,18 @@ export async function deleteSalesman(_prev: unknown, fd: FormData): Promise<Acti
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a salesperson" };
+    if (!id) return { error: await m("chooseSalesperson") };
 
     await sql`delete from salesman where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: "This salesperson has documents against them — deactivate instead of deleting" };
+      return { error: await m("salespersonInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/salespersons");
-  redirectWithToast("/salespersons", "Salesperson deleted");
+  redirectWithToast("/salespersons", await m("salespersonDeleted"));
 }
 
 // ------------------------------------------------------ stock adjustments --
@@ -5961,7 +5980,7 @@ export async function createStockAdjustment(_prev: unknown, fd: FormData): Promi
     const lines = parseAdjustmentLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postStockAdjustment({
@@ -6059,7 +6078,7 @@ export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<
     const locationId = str(fd, "location_id");
     const minQty = num(fd, "min_qty");
 
-    if (!itemId) return { error: "Choose an item" };
+    if (!itemId) return { error: await m("chooseItem") };
     if (!locationId) return { error: "Choose a location" };
     await assertMyBranch(locationId);
     if (minQty <= 0) return { error: "Reorder point must be greater than zero" };
@@ -6163,12 +6182,12 @@ export async function createAccount(_prev: unknown, fd: FormData): Promise<Actio
     const type = str(fd, "account_type");
     const parentId = str(fd, "parent_id") || null;
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
     if (!ACCOUNT_TYPES.includes(type)) return { error: "Choose an account type" };
 
     const dup = await sql`select 1 from account where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     if (parentId) {
       const [p] = await sql`
@@ -6213,7 +6232,7 @@ export async function createAccount(_prev: unknown, fd: FormData): Promise<Actio
     });
 
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -6236,8 +6255,8 @@ export async function updateAccount(_prev: unknown, fd: FormData): Promise<Actio
     const isActive = fd.get("is_active") !== null;
 
     if (!id) return { error: "Choose an account" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
     if (!ACCOUNT_TYPES.includes(type)) return { error: "Choose an account type" };
     if (parentId === id) return { error: "An account cannot sit under itself" };
 
@@ -6248,7 +6267,7 @@ export async function updateAccount(_prev: unknown, fd: FormData): Promise<Actio
 
     const dup = await sql`
       select 1 from account where company_id = ${co} and code = ${code} and id <> ${id}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     const [posted] = await sql`
       select count(*)::int as n from journal_line
@@ -6454,7 +6473,7 @@ export async function addConsignmentAgreementLine(_prev: unknown, fd: FormData):
     const method = str(fd, "pricing_method");
     const value = Number(fd.get("pricing_value"));
 
-    if (!agreementId || !itemId) return { error: "Choose an item" };
+    if (!agreementId || !itemId) return { error: await m("chooseItem") };
     if (method !== "PERCENTAGE" && method !== "FIXED") return { error: "Choose a settlement method" };
     if (!Number.isFinite(value) || value <= 0) return { error: "Enter a settlement value" };
     if (method === "PERCENTAGE" && value > 100) return { error: "A percentage cannot exceed 100" };
@@ -6506,7 +6525,7 @@ export async function createConsignmentReceipt(_prev: unknown, fd: FormData): Pr
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a consignor" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postConsignmentReceipt({
@@ -6564,7 +6583,7 @@ export async function createConsignmentSale(_prev: unknown, fd: FormData): Promi
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
-    if (!str(fd, "location_id")) return { error: "Choose a warehouse" };
+    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
     const dueDays = Number(fd.get("due_days") ?? 0);
@@ -6620,8 +6639,8 @@ export async function createVolumeDiscount(_prev: unknown, fd: FormData): Promis
     const maxValue = maxRaw === "" ? null : Number(maxRaw);
     const pct = num(fd, "discount_pct");
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
     if (pct <= 0 || pct > 100) return { error: "Discount must be between 0 and 100 percent" };
     if (maxValue !== null && maxValue < minValue) {
       return { error: "The upper bound cannot be below the lower one" };
@@ -6645,7 +6664,7 @@ export async function createVolumeDiscount(_prev: unknown, fd: FormData): Promis
               ${str(fd, "valid_from") || new Date().toISOString().slice(0, 10)},
               ${str(fd, "valid_to") || null})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -7075,7 +7094,7 @@ export async function createMissingBrands(
     const co = await companyId();
     const wanted = [...new Set(names.map((n) => n.trim()).filter(Boolean))];
     if (wanted.length === 0) return { ok: true, created: 0 };
-    if (!can(me, "brands.manage")) return { ok: false, error: "Only the owner can add a brand." };
+    if (!can(me, "brands.manage")) return { ok: false, error: await m("ownerOnlyBrand") };
     const taken = new Set((await sql`select code from brand where company_id = ${co}`).map((r) => r.code as string));
 
     let created = 0;
@@ -7418,12 +7437,12 @@ export async function createPriceLevel(_prev: unknown, fd: FormData): Promise<Ac
     const co = await companyId();
     const name = str(fd, "name");
 
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const dup = await sql`
       select 1 from price_level where company_id = ${co} and code = ${code}`;
-    if (dup.length) return { error: `Code ${code} is already used` };
+    if (dup.length) return { error: await m("codeUsed", { code }) };
 
     // Last by default. A new level should not quietly become the one that
     // customers on no level get quoted.
@@ -7435,7 +7454,7 @@ export async function createPriceLevel(_prev: unknown, fd: FormData): Promise<Ac
       insert into price_level (company_id, code, name, sort_order)
       values (${co}, ${code}, ${name}, ${Number(last.next)})`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -7453,9 +7472,9 @@ export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
     const id = str(fd, "id");
     const name = str(fd, "name");
 
-    if (!id) return { error: "Choose a price level" };
-    if (!code) return { error: "Code is required" };
-    if (!name) return { error: "Name is required" };
+    if (!id) return { error: await m("choosePriceLevel") };
+    if (!code) return { error: await m("codeRequired") };
+    if (!name) return { error: await m("nameRequired") };
 
     const order = Number(str(fd, "sort_order"));
     if (!Number.isFinite(order) || order < 1) return { error: "Order must be 1 or more" };
@@ -7465,7 +7484,7 @@ export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
          set code = ${code}, name = ${name}, sort_order = ${order}
        where id = ${id} and company_id = ${co}`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: `Code ${code} is already used` };
+    if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
@@ -7479,7 +7498,7 @@ export async function deletePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
   try {
     const co = await companyId();
     const id = str(fd, "id");
-    if (!id) return { error: "Choose a price level" };
+    if (!id) return { error: await m("choosePriceLevel") };
 
     const [last] = await sql`
       select count(*)::int as n from price_level where company_id = ${co}`;
@@ -7588,7 +7607,8 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
   await requirePermission("items.manage");
   const co = await companyId();
   const wanted = [...new Set(ids)].filter((x) => UUID_RE.test(x));
-  if (wanted.length === 0) return { error: "Nothing chosen" };
+  const bt = await getTranslations("bulkDelete");
+  if (wanted.length === 0) return { error: bt("nothingChosen") };
   try {
     const result = await sql.begin(async (tx) => {
       const mine = (await tx`select id::text as id, parent_item_id::text as parent from item
@@ -7642,9 +7662,9 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
     revalidatePath("/items");
     revalidatePath("/inventory");
     revalidatePath("/items/stock");
-    const parts = [`${result.deleted} deleted`];
-    if (result.hidden) parts.push(`${result.hidden} with history hidden instead`);
-    if (result.stocked) parts.push(`${result.stocked} kept: still in stock`);
+    const parts = [bt("deleted", { n: result.deleted })];
+    if (result.hidden) parts.push(bt("hidden", { n: result.hidden }));
+    if (result.stocked) parts.push(bt("stocked", { n: result.stocked }));
     return { ok: parts.join(" · ") };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };

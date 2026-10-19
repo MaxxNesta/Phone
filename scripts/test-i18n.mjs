@@ -61,6 +61,10 @@ check("translated strings are in Myanmar script (Unicode U+1000–U+109F)", burm
 const accounting = ["nav.trialBalance", "nav.balanceSheet", "nav.incomeStatement", "nav.generalLedger",
   "nav.journalVoucher", "nav.chartOfAccounts", "nav.receivables", "nav.payables"];
 check("accounting terms stay in English for now", accounting.every((k) => my[k] === en[k]));
+// "Brand" and "Unit" stay English too (owner's decision, 2026-10-19): the
+// labels match English exactly, and no Myanmar string uses a Burmese word for them.
+check("Brand and Unit stay in English", ["nav.brands", "nav.units", "common.brand", "common.unit"].every((k) => my[k] === en[k])
+  && !Object.values(my).some((v) => v.includes("အမှတ်တံဆိပ်") || v.includes("ယူနစ်")));
 
 console.log(failed ? `\n  ${failed} FAILED` : "\n  all i18n tests pass");
 process.exit(failed ? 1 : 0);

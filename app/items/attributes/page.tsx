@@ -7,6 +7,7 @@ import {
 import { AttributeCard, type Attribute } from "@/components/attribute-card";
 import { AddAttributeForm } from "@/components/attribute-form";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 /**
  * The ways products vary.
@@ -22,7 +23,10 @@ import { HelpHint } from "@/components/help-hint";
 export default async function VariantAttributes() {
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  const t = await getTranslations("attributes");
+  const c = await getTranslations("common");
+  const cat = await getTranslations("categories");
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const attributes = (await sql`
     select a.id, a.code, a.name, a.name_my, a.is_active,
@@ -48,24 +52,17 @@ export default async function VariantAttributes() {
   return (
     <>
       <div className="page-head hero">
-        <span className="eyebrow">Settings · Catalogue</span>
-        <h1>Variant attributes</h1>
-        <HelpHint>
-          The ways a product can vary — Size, Colour, Material — and the
-          values each one takes.
-          <br /><br />
-          A product that uses them becomes a parent with one item per
-          combination, and it is those that carry the stock, the price and the
-          barcode. Most items need none of this and are unaffected.
-        </HelpHint>
-        <p className="page-sub">The options a model comes in: storage, colour, SIM and more.</p>
+        <span className="eyebrow">{cat("eyebrow")}</span>
+        <h1>{t("title")}</h1>
+        <HelpHint>{t("help")}</HelpHint>
+        <p className="page-sub">{t("sub")}</p>
       </div>
 
       <AddAttributeForm action={createVariantAttribute} />
 
       {withOptions.length === 0 ? (
         <div className="empty">
-          Nothing yet. Add Size or Colour above to start.
+          {t("nothingYet")}
         </div>
       ) : (
         <div className="attrgrid">

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 type Level = {
   levelId: string; levelName: string;
@@ -36,6 +37,8 @@ export function PriceRow({
   today: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const c = useTranslations("common");
+  const pr = useTranslations("prices");
   const [editing, setEditing] = useState<string | null>(null);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
@@ -54,12 +57,12 @@ export function PriceRow({
               </button>
             ) : (
               <button type="button" className="linkish" onClick={() => setEditing(l.levelId)}
-                      title={`From ${l.validFrom}`}>
+                      title={pr("from", { date: String(l.validFrom) })}>
                 {money(l.price)}
               </button>
             )}
             <div className="subline">
-              {l.price === null ? "no price" : `per ${row.uomCode}`}
+              {l.price === null ? pr("noPrice") : pr("perUnit", { unit: row.uomCode })}
             </div>
           </td>
         ))}
@@ -74,7 +77,7 @@ export function PriceRow({
               <input type="hidden" name="price_level_id" value={editing} />
               <div className="row">
                 <div className="field">
-                  <label>Price</label>
+                  <label>{c("price")}</label>
                   <input
                     name="price" type="number" min="0" step="any" required
                     defaultValue={row.levels.find((l) => l.levelId === editing)?.price ?? ""}
@@ -84,7 +87,7 @@ export function PriceRow({
                   </span>
                 </div>
                 <div className="field">
-                  <label>Per unit</label>
+                  <label>{pr("perUnitLabel")}</label>
                   <select name="uom_id" defaultValue={row.baseUomId}>
                     <option value={row.baseUomId}>{row.uomCode}</option>
                     {row.packs.map((p) => (
@@ -93,20 +96,20 @@ export function PriceRow({
                       </option>
                     ))}
                   </select>
-                  <span className="hint">What one of this price buys</span>
+                  <span className="hint">{pr("perUnitHint")}</span>
                 </div>
                 <div className="field">
-                  <label>Charged from</label>
+                  <label>{pr("chargedFrom")}</label>
                   <input name="valid_from" type="date" defaultValue={today} required />
-                  <span className="hint">Invoices dated before this keep the old price</span>
+                  <span className="hint">{pr("chargedFromHint")}</span>
                 </div>
               </div>
               <div className="actions">
                 <button type="submit" disabled={pending}>
-                  {pending ? "Saving…" : "Set price"}
+                  {pending ? c("saving") : pr("setPrice")}
                 </button>
                 <button type="button" className="ghost" onClick={() => setEditing(null)}>
-                  Cancel
+                  {c("cancel")}
                 </button>
               </div>
             </form>

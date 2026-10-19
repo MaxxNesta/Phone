@@ -2,27 +2,29 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DATE_PRESETS, type DatePreset, type DateRange } from "@/lib/date-range";
+import { useTranslations } from "next-intl";
 
 export { dateWindow, inDateRange, ANY_DATE, type DatePreset, type DateRange } from "@/lib/date-range";
 
 /** The preset menu, and two day fields when the range is custom. */
 export function DateFilter({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
+  const d = useTranslations("dates");
   return (
-    <div className="dt-dates" role="group" aria-label="Date">
+    <div className="dt-dates" role="group" aria-label={d("label")}>
       <select
-        aria-label="Date"
+        aria-label={d("label")}
         className={`dt-filter${value.preset ? " dt-filter-on" : ""}`}
         value={value.preset}
         onChange={(e) => onChange({ ...value, preset: e.target.value as DatePreset })}
       >
-        {DATE_PRESETS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        {DATE_PRESETS.map(([v]) => <option key={v} value={v}>{d(`preset.${v || "any"}`)}</option>)}
       </select>
       {value.preset === "custom" && (
         <>
-          <input type="date" className="dt-date" aria-label="From date" value={value.from}
+          <input type="date" className="dt-date" aria-label={d("from")} value={value.from}
             max={value.to || undefined} onChange={(e) => onChange({ ...value, from: e.target.value })} />
           <span className="dt-date-sep" aria-hidden="true">–</span>
-          <input type="date" className="dt-date" aria-label="To date" value={value.to}
+          <input type="date" className="dt-date" aria-label={d("to")} value={value.to}
             min={value.from || undefined} onChange={(e) => onChange({ ...value, to: e.target.value })} />
         </>
       )}
