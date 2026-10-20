@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSettlementData, createCustomerReceipt } from "@/lib/actions";
 import { getCompany, getBranches } from "@/lib/queries";
 import { SettlementForm } from "@/components/settlement-form";
+import { channelsAt } from "@/lib/payment-channels";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 
@@ -17,6 +18,10 @@ export default async function ReceiveFromCustomer({
   // A receipt or payment is written at the person's own branch.
   const branches = company ? await onlyMyLocations((await getBranches(company.id)) as unknown as { id: string }[]) : [];
   const today = new Date().toISOString().slice(0, 10);
+  // Mapped as the person's own branch maps them, or the company default.
+  const channels = company
+    ? await channelsAt(company.id, branches.length === 1 ? (branches[0] as { id: string }).id : null)
+    : [];
 
   if (partners.length === 0 || cashAccounts.length === 0) {
     return (
@@ -58,6 +63,7 @@ export default async function ReceiveFromCustomer({
         partners={partners as never}
         invoices={invoices as never}
         cashAccounts={cashAccounts as never}
+        channels={channels}
         branches={branches as never}
         today={today}
         initialPartnerId={partner}

@@ -3,6 +3,8 @@ import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocu
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { SalesVoucher } from "@/components/sales-voucher";
+import { channelsAt } from "@/lib/payment-channels";
+import { getCompany } from "@/lib/queries";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 import { DocHeading } from "@/components/doc-heading";
@@ -14,6 +16,10 @@ export default async function NewSalesInvoice({
 }) {
   const { delivery_id, draft: draftId, order: orderId } = await searchParams;
   const d = await getFormData();
+  const company = await getCompany();
+  // How money taken now is paid, as each location's branch maps it.
+  const channels = company ? Object.fromEntries(await Promise.all(
+    (d.locations as unknown as { id: string }[]).map(async (l) => [l.id, await channelsAt(company.id, l.id)]))) : {};
   const [co] = await sql`select id, base_currency, retail_mode from company order by created_at limit 1`;
   const categories = await allCategories(co.id);
   const deliveries = await getOpenDeliveries(co.id);
@@ -97,6 +103,7 @@ export default async function NewSalesInvoice({
         locations={d.locations as never}
         salesmen={d.salesmen as never}
         cashAccounts={d.cashAccounts as never}
+        channels={channels}
         promotions={d.promotions as never}
         volumeDiscounts={d.volumeDiscounts as never}
         currencyScale={d.currencyScale}

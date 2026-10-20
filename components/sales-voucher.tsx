@@ -3,6 +3,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
+import type { Channel } from "@/lib/payment-channels";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
 import { priceLines, type VolumeBand } from "@/lib/discount";
@@ -123,7 +124,7 @@ function addDays(iso: string, days: number) {
 }
 
 export function SalesVoucher({
-  action, saveDraft, draft, customers, items: initialItems, locations, salesmen, cashAccounts, promotions,
+  action, saveDraft, draft, customers, items: initialItems, locations, salesmen, cashAccounts, channels, promotions,
   volumeDiscounts,
   currencyScale = 4,
   currency = "",
@@ -155,6 +156,8 @@ export function SalesVoucher({
   stockByLocation: StockRow[];
   salesmen: Salesman[];
   cashAccounts: CashAccount[];
+  /** Payment channels by location (0141); replaces the account picker when set up. */
+  channels?: Record<string, Channel[]>;
   promotions: Promotion[];
   /** Decimal places this company's money has — 0 for the kyat. */
   currencyScale?: number;
@@ -257,6 +260,9 @@ export function SalesVoucher({
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
   const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">(restored?.paymentType === "CASH" ? "CASH" : "CREDIT");
   const [cashIn, setCashIn] = useState(restored?.cashIn ?? "");
+  const payChannels = (channels?.[locationId] ?? []).filter((c) => c.accountId);
+  const [payChannelId, setPayChannelId] = useState("");
+  const payChannel = payChannels.find((c) => c.id === payChannelId) ?? payChannels.find((c) => c.kind === "CASH") ?? payChannels[0];
   const [toDeliver, setToDeliver] = useState(!!restored?.toDeliver);
   /**
    * Whether the goods have gone, are going, or go later.
@@ -1603,15 +1609,35 @@ export function SalesVoucher({
                   value={cashIn} onChange={(e) => setCashIn(e.target.value)} />
                 <span className="hint">Taken now — creates a receipt against this invoice</span>
               </div>
-              <div className="field">
-                <label htmlFor="cash_account_id">Into account</label>
-                <select id="cash_account_id" name="cash_account_id"
-                  defaultValue={cashAccounts[0]?.id ?? ""} disabled={cashAmount <= 0}>
-                  {cashAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.code} · {a.name}</option>
-                  ))}
-                </select>
-              </div>
+              {payChannels.length > 0 ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="payment_channel_id">Paid by</label>
+                    <select id="payment_channel_id" name="payment_channel_id" value={payChannel?.id ?? ""}
+                      onChange={(e) => setPayChannelId(e.target.value)} disabled={cashAmount <= 0}>
+                      {payChannels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                    {payChannel && <span className="hint">Into {payChannel.accountName}</span>}
+                  </div>
+                  {payChannel && payChannel.kind !== "CASH" && cashAmount > 0 && (
+                    <div className="field">
+                      <label htmlFor="payment_reference">Transaction ID{payChannel.requiresReference && " *"}</label>
+                      <input id="payment_reference" name="payment_reference" maxLength={80} autoComplete="off"
+                        required={payChannel.requiresReference} />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="field">
+                  <label htmlFor="cash_account_id">Into account</label>
+                  <select id="cash_account_id" name="cash_account_id"
+                    defaultValue={cashAccounts[0]?.id ?? ""} disabled={cashAmount <= 0}>
+                    {cashAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.code} · {a.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="totalbar" style={{ marginTop: "0.5rem", paddingRight: 0 }}>

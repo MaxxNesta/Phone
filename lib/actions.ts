@@ -40,6 +40,7 @@ import {
 } from "./posting";
 import { postOnce, alreadyPosted } from "./idempotency";
 import { serverT } from "./i18n-server";
+import { resolveTenders, stampReceipt } from "./payment-channels";
 /**
  * A message for the person who caused it, in their interface language
  * (messages/<locale>.json › actions). English is the fallback. Only what is
@@ -1826,6 +1827,21 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // guarantee cash_in covers the total — the field stays freely editable.
     if (cashIn < roughTotal && !dueDate) return { error: "This invoice leaves a balance owing — add a due date" };
 
+    // Money taken now, by payment channel: its account at this location's
+    // branch is where the receipt posts; the receipt is labelled after.
+    const payChannelId = cashIn > 0 ? str(fd, "payment_channel_id") : "";
+    let payRef: string | null = null;
+    if (payChannelId) {
+      const r = await resolveTenders(co, str(fd, "location_id"),
+        [{ channelId: payChannelId, amount: cashIn, reference: str(fd, "payment_reference") }], null);
+      if (!r.ok) {
+        const tr = await serverT("pos");
+        return { error: tr(`tender.${r.problem.key}`, r.problem.values) };
+      }
+      fd.set("cash_account_id", r.tenders[0].channel.accountId as string);
+      payRef = r.tenders[0].reference;
+    }
+
     const input = {
       companyId: co,
       partnerId: str(fd, "partner_id"),
@@ -1874,8 +1890,9 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     if (retail && toDeliver) {
       return { error: "This shop sells at the counter: the invoice hands the goods over, so there is no deliver-later." };
     }
-    const result = await postOnce(co, attemptKey(fd), (tx) =>
-      deliveryId
+    const userId = (await requireUser()).id;
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const posted = await (deliveryId
         ? postSalesInvoice({
             ...input, deliveryId,
             // Blank means "whatever the delivery charged" — the field is only
@@ -1888,6 +1905,13 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
           : retail
             ? postRetailSale(input, tx)
             : postSaleWithDelivery(input, tx));
+      if (payChannelId) {
+        const [rc] = await tx`
+          select id from document where source_document_id = ${posted.id} and doc_type = 'CUSTOMER_RECEIPT'`;
+        if (rc) await stampReceipt(tx as never, rc.id, payChannelId, payRef, userId);
+      }
+      return posted;
+    });
 
     docId = result.id;
     toastMsg = `Invoice ${result.docNo} posted`;
@@ -2464,6 +2488,26 @@ async function settle(
   if (!str(fd, "partner_id")) {
     return { error: kind === "pay" ? "Choose a supplier" : "Choose a customer" };
   }
+  // A customer receipt names how it was paid; the channel's account at the
+  // branch taking the money is the cash side. Supplier payments still name
+  // the account directly.
+  const channelId = kind === "receive" ? str(fd, "payment_channel_id") : "";
+  let channelRef: string | null = null;
+  if (channelId) {
+    let where = str(fd, "location_id") || null;
+    if (!where && allocations[0]) {
+      const [inv] = await sql`select location_id from document where id = ${allocations[0].invoiceId} and company_id = ${co}`;
+      where = (inv?.location_id as string) ?? null;
+    }
+    const total = advance > 0 ? advance : allocations.reduce((s, a) => s + a.amount, 0);
+    const r = await resolveTenders(co, where, [{ channelId, amount: total, reference: str(fd, "payment_reference") }], null);
+    if (!r.ok) {
+      const tr = await serverT("pos");
+      return { error: tr(`tender.${r.problem.key}`, r.problem.values) };
+    }
+    fd.set("cash_account_id", r.tenders[0].channel.accountId as string);
+    channelRef = r.tenders[0].reference;
+  }
   if (!str(fd, "cash_account_id")) {
     return { error: "Choose which cash or bank account to use" };
   }
@@ -2484,8 +2528,11 @@ async function settle(
     advance,
   };
 
-  const result = await postOnce(co, attemptKey(fd), (tx) =>
-    kind === "pay" ? postSupplierPayment(input, tx) : postCustomerReceipt(input, tx));
+  const result = await postOnce(co, attemptKey(fd), async (tx) => {
+    const posted = kind === "pay" ? await postSupplierPayment(input, tx) : await postCustomerReceipt(input, tx);
+    if (channelId) await stampReceipt(tx as never, posted.id, channelId, channelRef, (await requireUser()).id);
+    return posted;
+  });
 
   return { id: result.id, docNo: result.docNo };
 }
