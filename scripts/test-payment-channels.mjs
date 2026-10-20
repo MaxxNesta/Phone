@@ -89,10 +89,19 @@ try {
   await sql`update number_series set next_value = 1`;
   const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
   const branchId = (await sql`select fn_location_branch(${loc.id}) as b`)[0].b;
-  const [item] = await sql`select id from item where company_id = ${co.id} and is_stocked and not tracks_serial and not tracks_batch
-     and is_active and not exists (select 1 from item c where c.parent_item_id = item.id) order by code limit 1`;
-  const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
-  const [cust] = await sql`select id from business_partner where company_id = ${co.id} and is_customer and code <> 'WALKIN' order by code limit 1`;
+  // Its own item and partners, removed at the end: master data is not this suite's to keep.
+  const cleanMasters = async () => {
+    await sql`delete from item where company_id = ${co.id} and code like '98%'`;
+    await sql`delete from item_group where company_id = ${co.id} and segment = '98'`;
+    await sql`delete from business_partner where company_id = ${co.id} and code in ('PC-SUP', 'PC-CUST')`;
+  };
+  await cleanMasters();
+  const [grp] = await sql`insert into item_group (company_id, segment, code, name) values (${co.id}, '98', 'x', 'Payment test') returning id`;
+  const [uom] = await sql`select id from uom where company_id = ${co.id} limit 1`;
+  const [item] = await sql`insert into item (company_id, item_group_id, serial, code, name, base_uom_id)
+     values (${co.id}, ${grp.id}, '001', 'x', 'Payment test item', ${uom.id}) returning id`;
+  const [supp] = await sql`insert into business_partner (company_id, code, name, is_supplier) values (${co.id}, 'PC-SUP', 'Payment test supplier', true) returning id`;
+  const [cust] = await sql`insert into business_partner (company_id, code, name, is_customer, payment_terms_days) values (${co.id}, 'PC-CUST', 'Payment test customer', true, 30) returning id`;
   const today = new Date().toISOString().slice(0, 10);
   await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
     lines: [{ itemId: item.id, qty: 100, unitCost: 1000 }] });
@@ -194,13 +203,15 @@ try {
 
   // ---- void -------------------------------------------------------------------
   section("voiding a split sale");
+  // The latest sale: stock rules refuse voiding one that later sales drew from.
+  const toVoid = await sale(2_850_000, [{ channelId: CASH, amount: 1_000_000 }, { channelId: KBZ, amount: 1_850_000, reference: "KBZ-0006" }]);
   c0 = await bal(cashAcct); w0 = await bal(wallet.id); r0 = await revenue();
-  await P.voidDocument({ companyId: co.id, documentId: split.id, reason: "test" });
-  rc = await receiptsOf(split.id);
+  await P.voidDocument({ companyId: co.id, documentId: toVoid.id, reason: "test" });
+  rc = await receiptsOf(toVoid.id);
   check("both tenders are reversed", rc.every((x) => x.status === "REVERSED"), rc.map((x) => x.status).join(","));
   check("  cash and wallet back down", near(await bal(cashAcct) - c0, -1_000_000) && near(await bal(wallet.id) - w0, -1_850_000));
   check("  revenue reversed", near(await revenue() - r0, -2_850_000));
-  const again = await sale(1_850_000, [{ channelId: KBZ, amount: 1_850_000, reference: "KBZ-0002" }]);
+  const again = await sale(1_850_000, [{ channelId: KBZ, amount: 1_850_000, reference: "KBZ-0006" }]);
   check("  its reference can be recorded again", Boolean(again.id));
 
   // ---- wallet to bank ------------------------------------------------------
@@ -247,6 +258,9 @@ try {
   console.error("\n  ERROR", err);
 } finally {
   await resetTransactions(sql).catch(() => {});
+  await sql`delete from item where code like '98%'`.catch(() => {});
+  await sql`delete from item_group where segment = '98'`.catch(() => {});
+  await sql`delete from business_partner where code in ('PC-SUP', 'PC-CUST')`.catch(() => {});
   await releaseTestLock(sql);
   await sql.end();
   const { sql: appSql } = await import("../lib/db.ts");
