@@ -1478,7 +1478,8 @@ export default async function DocumentPage({
               <div><dt>Currency</dt><dd className="m">{doc.currency} @ {Number(doc.exchange_rate)}</dd></div>
               <div><dt>Due</dt><dd>{doc.due_date ? shortDate(doc.due_date) : "—"}</dd></div>
               {doc.payment_type
-                ? <div><dt>Payment</dt><dd><span className="pill">{doc.payment_type}</span></dd></div>
+                ? <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? doc.payment_type}</span>
+                    {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
                 : <div><dt>Payment</dt><dd>—</dd></div>}
               {doc.salesman_name && (
                 <div><dt>Salesman</dt><dd>{doc.salesman_code} · {doc.salesman_name}</dd></div>

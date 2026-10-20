@@ -1503,6 +1503,7 @@ export async function getOpenDeliveries(companyId: string, limit: number | null 
 export async function getDocument(id: string) {
   const [doc] = await sql`
     select d.*, p.name as partner_name, p.code as partner_code,
+           (select pc.name from payment_channel pc where pc.id = d.payment_channel_id) as payment_channel_name,
            -- Which column of the price list filled this document, as it was
            -- named on the day. Read from the level rather than stored as
            -- text: a renamed level should read by its current name, since it
