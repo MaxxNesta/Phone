@@ -106,7 +106,9 @@
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "expandNav": "Expand navigation",
-    "collapseNav": "Collapse navigation"
+    "collapseNav": "Collapse navigation",
+    "paymentMethods": "Payment methods",
+    "paymentsReceived": "Payments received"
   },
   "shell": {
     "appName": "Myanmar ERP",
@@ -1017,7 +1019,24 @@
     "noLines": "The sale has no lines.",
     "discountNeedsManager": "Discounts above {pct}% need a manager.",
     "chooseAccount": "Choose a cash or bank account for each payment.",
-    "walkInFull": "A walk-in customer pays in full. Choose a customer to sell on account."
+    "walkInFull": "A walk-in customer pays in full. Choose a customer to sell on account.",
+    "tender": {
+      "channelUnknown": "That payment method is not available here",
+      "tenderAmount": "Enter an amount for {name}",
+      "channelUnmapped": "{name} has no receiving account at this branch. Set it in Settings → Payment methods.",
+      "referenceRequired": "Enter the {name} transaction ID",
+      "referenceTwice": "Reference {ref} is entered twice",
+      "overpaid": "Payments are more than the total. Only cash can give change.",
+      "noChannels": "No payment method is set up for this branch",
+      "reference": "Transaction ID",
+      "optional": "optional",
+      "referenceHint": "From the customer's {name} screen",
+      "payTo": "Pay to {name} · {number}",
+      "method": "Payment method",
+      "removeRow": "Remove payment",
+      "paid": "Paid",
+      "remaining": "Remaining"
+    }
   },
   "dashboard": {
     "title": "Dashboard",

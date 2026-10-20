@@ -216,7 +216,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavSubGroup label={n("cashBank")} match={[
                   "/finance/cash-detail", "/finance/bank-detail", "/finance/cash-receipt",
                   "/finance/cash-payment", "/finance/bank-receipt", "/finance/bank-payment",
-                  "/finance/transfer", "/finance/bank-reconciliation",
+                  "/finance/transfer", "/finance/bank-reconciliation", "/finance/payments",
                 ]}>
                   <NavLink href="/finance/cash-detail" sub>{n("cashBook")}</NavLink>
                   <NavLink href="/finance/bank-detail" sub>{n("bankBook")}</NavLink>
@@ -225,6 +225,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/finance/bank-receipt" sub>{n("bankReceipt")}</NavLink>
                   <NavLink href="/finance/bank-payment" sub>{n("bankPayment")}</NavLink>
                   <NavLink href="/finance/bank-reconciliation" sub>{n("bankReconciliation")}</NavLink>
+                  <NavLink href="/finance/payments" sub>{n("paymentsReceived")}</NavLink>
                   <NavLink href="/finance/transfer" sub>{n("interbranchTransfer")}</NavLink>
                 </NavSubGroup>
                 <NavSubGroup label={n("transactions")} match={["/finance/journal", "/finance/opening", "/finance/year-end"]}>
@@ -299,10 +300,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/settings/landed-cost-types" sub>{n("landedCostTypes")}</NavLink>
                   <NavLink href="/settings/landed-cost-templates" sub>{n("landedCostTemplates")}</NavLink>
                 </NavSubGroup>
-                <NavSubGroup label={n("accounting")} match={["/settings/accounts", "/settings/tax-codes", "/settings/currencies"]}>
+                <NavSubGroup label={n("accounting")} match={["/settings/accounts", "/settings/tax-codes", "/settings/currencies", "/settings/payment-methods"]}>
                   <NavLink href="/settings/accounts" sub>{n("chartOfAccounts")}</NavLink>
                   <NavLink href="/settings/tax-codes" sub>{n("taxCodes")}</NavLink>
                   <NavLink href="/settings/currencies" sub>{n("currencies")}</NavLink>
+                  <NavLink href="/settings/payment-methods" sub>{n("paymentMethods")}</NavLink>
                 </NavSubGroup>
                 <NavSubGroup label={n("account")} match={["/settings/plan", "/settings/users"]}>
                   <NavLink href="/settings/plan" sub>{n("package")}</NavLink>
