@@ -206,7 +206,7 @@ try {
   // The latest sale: stock rules refuse voiding one that later sales drew from.
   const toVoid = await sale(2_850_000, [{ channelId: CASH, amount: 1_000_000 }, { channelId: KBZ, amount: 1_850_000, reference: "KBZ-0006" }]);
   c0 = await bal(cashAcct); w0 = await bal(wallet.id); r0 = await revenue();
-  await P.voidDocument({ companyId: co.id, documentId: toVoid.id, reason: "test" });
+  await P.voidDocument({ documentId: toVoid.id, reason: "test", goodsBack: true });
   rc = await receiptsOf(toVoid.id);
   check("both tenders are reversed", rc.every((x) => x.status === "REVERSED"), rc.map((x) => x.status).join(","));
   check("  cash and wallet back down", near(await bal(cashAcct) - c0, -1_000_000) && near(await bal(wallet.id) - w0, -1_850_000));
