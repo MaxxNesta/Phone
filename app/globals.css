@@ -6524,3 +6524,56 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
 .fulfil-says.receive-explain { display: flex; gap: 10px; align-items: flex-start; border: 0; }
 .fulfil-says.receive-explain > svg { color: var(--focus); flex: none; margin-top: 2px; }
 .fulfil-says.receive-explain ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink-soft); }
+
+/* The search keeps its full width beside the language picker: the bar grows
+   to the left instead of the search giving up the room the picker takes. */
+@media (min-width: 901px) {
+  .main.main:has(.page-head.hero) > .topbar { width: auto; }
+  .main > .topbar .topsearch { flex: 0 1 420px; width: 420px; max-width: 420px; }
+  .page-head.hero h1 { padding-right: min(620px, 52%); }
+  .pos3-top { padding-right: min(620px, 52%); }
+  .pos3-top .page-head.hero h1 { padding-right: 0; }
+}
+
+/* ========================================================== scrollbars ==
+   Thin, rounded and quiet, as on macOS: a soft thumb on a clear track that
+   darkens under the pointer. Chrome, Edge and Safari take the full styling;
+   Firefox, which offers only colour and width, takes those. The dark sidebar
+   gets a light thumb so it stays visible on the rail. */
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--ink) 22%, transparent);
+    border-radius: 999px;
+    /* The border is the gap around the thumb: it reads as 6px wide in a 12px gutter. */
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--ink) 42%, transparent); }
+  ::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--ink) 55%, transparent); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background-color: rgb(255 255 255 / 0.22); }
+  .sidebar::-webkit-scrollbar-thumb:hover { background-color: rgb(255 255 255 / 0.4); }
+}
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 30%, transparent) transparent; }
+  .sidebar { scrollbar-color: rgb(255 255 255 / 0.25) transparent; }
+}
+
+/* ============================================================= buttons ==
+   Buttons take a small radius rather than a capsule: squarer reads as more
+   serious, and suits an accounting tool. Status tags (.pill) stay rounded —
+   they are labels, not things to press. One token, so it can be tuned. */
+:root { --btn-r: 8px; }
+button:not([class]), button.ghost, button.warn, button.danger, button.tiny, button.btn,
+a.btn, .btn, .erp-btn,
+.pos3-pill, .pos3-filter-btn, .pos3-add, .pos3-clear, .pos3-tool, .pos3-chips button,
+.pos3-showmore, .pos3-cart .complete, .segmented .seg, .langpick-btn, .aib-toggle, .aib-browse {
+  border-radius: var(--btn-r);
+}
+/* Small controls inside a track keep a radius that fits their size. */
+.pos3-stepper { border-radius: 10px; }
+.pos3-stepper button { border-radius: 7px; }
+.segmented { border-radius: 10px; }
+.paymodes .paymode { border-radius: 7px; }
