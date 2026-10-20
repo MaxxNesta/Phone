@@ -63,8 +63,7 @@ export default async function Units() {
 
           {units.length === 0 ? (
             <div className="empty">
-              Nothing yet. Add the units your items are counted in &mdash; Piece,
-              Box, Carton &mdash; before creating items, since every item needs one.
+              {t("nothingYet")}
             </div>
           ) : (
             <DataTable

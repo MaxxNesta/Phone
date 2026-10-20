@@ -60,7 +60,7 @@ export default async function Brands() {
 
           {brands.length === 0 ? (
             <div className="empty">
-              Nothing yet. Add a brand, or leave items unbranded &mdash; it&rsquo;s optional.
+              {t("nothingYet")}
             </div>
           ) : (
             <DataTable
