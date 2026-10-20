@@ -48,7 +48,7 @@ export default async function CustomerReturns() {
       </div>
 
       <div className="actions">
-        <Link href="/sales/returns/new" className="btn">+ New Return</Link>
+        <span className="head-actions"><Link href="/sales/refunds/new" className="btn ghost">Refund a customer</Link> <Link href="/sales/returns/new" className="btn">+ New Return</Link></span>
       </div>
 
       <section>

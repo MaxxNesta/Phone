@@ -1783,6 +1783,7 @@ const REL_LABEL: Record<string, string> = {
   DELIVERY: "Delivery",
   SALES_INVOICE: "Sales invoice",
   CUSTOMER_RECEIPT: "Receive payment",
+  CUSTOMER_REFUND: "Customer refund",
   SALES_RETURN: "Customer return",
   PURCHASE_ORDER: "Purchase order",
   GOODS_RECEIPT: "Goods receipt",
@@ -4497,6 +4498,7 @@ export async function getReceiptsByAccount(
 ) {
   return sql`
     -- By payment channel (0141); a receipt from before channels by its account.
+    -- Refunds count against their channel: the cash line is the money's own sign.
     select coalesce(pc.id, a.id)::text as id, coalesce(pc.name, a.name) as name,
            sum(jl.base_amount) as revenue,
            count(distinct d.id)::int as receipts
@@ -4505,9 +4507,8 @@ export async function getReceiptsByAccount(
       join account a on a.id = jl.account_id and a.is_cash_account
       left join payment_channel pc on pc.id = d.payment_channel_id
      where d.company_id = ${companyId}
-       and d.doc_type = 'CUSTOMER_RECEIPT'
+       and d.doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND')
        and d.status = 'POSTED'
-       and jl.base_amount > 0
        and d.posting_date >= ${from}::date and d.posting_date < ${to}::date
        ${locs ? sql`and d.location_id = any(${locs})` : sql``}
      group by 1, 2
@@ -4665,7 +4666,7 @@ function cashFlowPieces(companyId: string, from: string, to: string, branchId?: 
       c.journal_entry_id, c.account_id as cash_account_id,
       je.entry_no, je.entry_date, je.source_type, je.source_id,
       case
-        when je.source_type in ('CUSTOMER_RECEIPT', 'SALES_INVOICE') then 'Received from customers'
+        when je.source_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND', 'SALES_INVOICE') then 'Received from customers'
         when je.source_type = 'SUPPLIER_PAYMENT' then 'Paid to suppliers'
         when k.account_type = 'REVENUE' then 'Received from customers'
         when k.account_type = 'COGS' then 'Paid to suppliers'
@@ -4676,7 +4677,7 @@ function cashFlowPieces(companyId: string, from: string, to: string, branchId?: 
         else 'Other'
       end as category,
       case
-        when je.source_type in ('CUSTOMER_RECEIPT', 'SALES_INVOICE', 'SUPPLIER_PAYMENT')
+        when je.source_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND', 'SALES_INVOICE', 'SUPPLIER_PAYMENT')
           or k.account_type in ('REVENUE', 'COGS', 'EXPENSE') then 'operating'
         when k.account_type = 'ASSET' then 'investing'
         when k.account_type in ('EQUITY', 'LIABILITY') then 'financing'
@@ -8137,4 +8138,38 @@ export async function getPriceHistory(companyId: string, side: PriceSide, f: {
     ...r, unit_base: Number(r.unit_base) || 0,
     unit_fc: r.rate > 0 ? (Number(r.unit_base) || 0) / r.rate : Number(r.unit_base) || 0,
   }));
+}
+
+/**
+ * Customer returns that still owe the customer money back, and how much:
+ * the credit each left (on its invoice, below zero, or on account), less
+ * refunds already raised from it. The same rule postCustomerRefund applies.
+ */
+export async function getRefundableReturns(companyId: string, locs: string[] | null = null, onlyId: string | null = null) {
+  return sql`
+    with r as (
+      select d.id, d.doc_no, d.posting_date, d.partner_id, d.location_id, d.gross_total::float as total,
+             fn_current_document(d.source_document_id) as invoice_id,
+             coalesce((select sum(f.gross_total) from document f
+                        where f.source_document_id = d.id and f.doc_type = 'CUSTOMER_REFUND'
+                          and f.status = 'POSTED'), 0)::float as refunded
+        from document d
+       where d.company_id = ${companyId} and d.doc_type = 'SALES_RETURN' and d.status = 'POSTED'
+         and d.reversed_by_document_id is null
+         ${locs ? sql`and d.location_id = any(${locs})` : sql``}
+         ${onlyId ? sql`and d.id = ${onlyId}` : sql``}
+    )
+    select r.id, r.doc_no, to_char(r.posting_date, 'YYYY-MM-DD') as date, r.partner_id, p.name as customer,
+           r.location_id, r.total, r.refunded, i.doc_no as invoice_no,
+           greatest(0, least(r.total - r.refunded,
+             case when r.invoice_id is not null
+                  then greatest(0, -coalesce((select o.outstanding from v_open_item o where o.document_id = r.invoice_id), 0))
+                  else greatest(0, -coalesce((select sum(jl.base_amount) from journal_line jl
+                          where jl.company_id = ${companyId} and jl.partner_id = r.partner_id
+                            and jl.account_id = fn_system_account(${companyId}, 'CUSTOMER_ADVANCE')), 0))
+             end))::float as refundable
+      from r
+      join business_partner p on p.id = r.partner_id
+      left join document i on i.id = r.invoice_id
+     order by r.posting_date desc, r.doc_no desc`;
 }

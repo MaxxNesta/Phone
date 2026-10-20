@@ -45,7 +45,7 @@ const LABEL: Record<string, string> = {
   PURCHASE_INVOICE: "Purchase invoice", PURCHASE_RETURN: "Purchase return",
   SUPPLIER_PAYMENT: "Supplier payment", SALES_ORDER: "Sales order",
   DELIVERY: "Delivery", SALES_INVOICE: "Sales invoice",
-  SALES_RETURN: "Sales return", CUSTOMER_RECEIPT: "Customer receipt",
+  SALES_RETURN: "Sales return", CUSTOMER_RECEIPT: "Customer receipt", CUSTOMER_REFUND: "Customer refund",
   STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer", LANDED_COST: "Landed cost",
   OPENING_BALANCE: "Opening balance", CASH_VOUCHER: "Cash voucher",
   BANK_VOUCHER: "Bank voucher", JOURNAL_VOUCHER: "Journal voucher",
@@ -58,7 +58,7 @@ const SIDE: Record<string, "in" | "out"> = {
   PURCHASE_ORDER: "in", GOODS_RECEIPT: "in", PURCHASE_INVOICE: "in",
   PURCHASE_RETURN: "in", SUPPLIER_PAYMENT: "in",
   SALES_ORDER: "out", DELIVERY: "out", SALES_INVOICE: "out",
-  SALES_RETURN: "out", CUSTOMER_RECEIPT: "out",
+  SALES_RETURN: "out", CUSTOMER_RECEIPT: "out", CUSTOMER_REFUND: "out",
 };
 
 export function ErpDocumentList({

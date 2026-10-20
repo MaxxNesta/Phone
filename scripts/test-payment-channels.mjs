@@ -62,7 +62,7 @@ try {
   section("tender rules");
   const ch = (o) => ({ id: o.id ?? "c", code: "X", name: o.name ?? "KBZPay", kind: o.kind ?? "WALLET",
     requiresReference: o.req ?? true, merchantName: null, merchantNumber: null,
-    accountId: "accountId" in o ? o.accountId : "a", accountName: "A" });
+    accountId: "accountId" in o ? o.accountId : "a", accountName: "A", accountCode: "1" });
   check("a wallet without its transaction ID is refused",
     C.checkTenders([{ channel: ch({}), amount: 100, reference: null }], 100)?.key === "referenceRequired");
   check("a channel with no account here is refused",

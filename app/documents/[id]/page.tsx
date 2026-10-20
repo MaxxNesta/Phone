@@ -46,7 +46,7 @@ import {
   getDocumentBatches,
   getJournalForDocument,
   getDownstream,
-  getDocumentOutstanding,
+  getDocumentOutstanding, getRefundableReturns,
   getOpenSalesOrders,
   getOpenPurchaseOrders, getReceiptDraftForOrder,
   getChainDocuments,
@@ -114,6 +114,7 @@ const PLURAL: Record<string, string> = {
   DELIVERY: "Deliveries",
   SALES_INVOICE: "Sales invoices",
   CUSTOMER_RECEIPT: "Customer receipts",
+  CUSTOMER_REFUND: "Customer refunds",
 };
 
 /** Where an arrow labelled for it leads back to. */
@@ -562,6 +563,9 @@ export default async function DocumentPage({
   }
 
   const outstanding = isInvoice ? await getDocumentOutstanding(doc.id) : 0;
+  // A customer return that still owes the customer money back.
+  const refundable = doc.doc_type === "SALES_RETURN" && doc.status === "POSTED"
+    ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
 
   /**
    * Money this partner already handed over, waiting for a bill. Offered on the
@@ -1338,6 +1342,15 @@ export default async function DocumentPage({
           would drive it below nothing, and what that customer needs is a
           refund. Sat next to the correction actions because it is one —
           the other kind, for when their printed copy has to stay true. */}
+      {refundable > 0.5 && (
+        <div className="docactions">
+          <Link href={`/sales/refunds/new?return=${doc.id}`} className="btn">Refund</Link>
+          <span className="page-sub">
+            {Math.round(refundable).toLocaleString("en-US")} MMK is owed back to this customer. Pay it in cash, by bank or to their wallet.
+          </span>
+        </div>
+      )}
+
       {isInvoice && doc.status === "POSTED" && outstanding > 0 && (
         <div className="docactions">
           <Link

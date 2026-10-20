@@ -20,7 +20,7 @@ const LABEL: Record<string, string> = {
   PURCHASE_INVOICE: "Purchase invoice", PURCHASE_RETURN: "Purchase return",
   SUPPLIER_PAYMENT: "Supplier payment", SALES_ORDER: "Sales order",
   DELIVERY: "Delivery", SALES_INVOICE: "Sales invoice",
-  SALES_RETURN: "Sales return", CUSTOMER_RECEIPT: "Customer receipt",
+  SALES_RETURN: "Sales return", CUSTOMER_RECEIPT: "Customer receipt", CUSTOMER_REFUND: "Customer refund",
   STOCK_ADJUSTMENT: "Stock adjustment", STOCK_TRANSFER: "Stock transfer", LANDED_COST: "Landed cost",
   JOURNAL_VOUCHER: "Journal voucher", CASH_VOUCHER: "Cash voucher",
   BANK_VOUCHER: "Bank voucher", OPENING_BALANCE: "Opening balance",

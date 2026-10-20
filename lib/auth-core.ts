@@ -188,7 +188,7 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
  */
 const DOCUMENT_PERMISSIONS: Record<string, Permission> = {
   SALES_ORDER: "sales.view", SALES_INVOICE: "sales.view", SALES_RETURN: "sales.view",
-  CUSTOMER_RECEIPT: "sales.view", CREDIT_NOTE: "sales.view",
+  CUSTOMER_RECEIPT: "sales.view", CUSTOMER_REFUND: "sales.view", CREDIT_NOTE: "sales.view",
   PURCHASE_ORDER: "purchase.view", GOODS_RECEIPT: "purchase.view", PURCHASE_INVOICE: "purchase.view",
   PURCHASE_RETURN: "purchase.view", SUPPLIER_PAYMENT: "purchase.view", DEBIT_NOTE: "purchase.view",
   CONSIGNMENT_RECEIPT: "purchase.view", LANDED_COST: "cost.view",

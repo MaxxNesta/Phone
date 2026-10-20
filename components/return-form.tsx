@@ -1,11 +1,16 @@
 "use client";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
-import { Fragment, useActionState, useEffect, useState } from "react";
+import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
+import { RefundFields, type RefundState } from "./refund-fields";
+import { MoneyPreviewDialog } from "./money-preview";
+import { previewSalesReturn } from "@/lib/actions";
+import type { Channel } from "@/lib/payment-channels";
+import type { MoneyPreview } from "@/lib/refund";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -40,7 +45,10 @@ export function ReturnForm({
   salesDocs,
   prefill,
   serialPool = [],
+  channels,
 }: {
+  /** Customer returns: payment methods by location, for paying money back now. */
+  channels?: Record<string, Channel[]>;
   kind: "sales" | "purchase";
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   partners: Partner[];
@@ -87,12 +95,25 @@ export function ReturnForm({
   const [docDate, setDocDate] = useState(today);
   const [sourceDocumentId, setSourceDocumentId] = useState(prefill?.sourceDocumentId ?? "");
   const [receivedTime, setReceivedTime] = useState("");
+  // Money back: kept as credit on the customer, or paid out now.
+  const [refundMode, setRefundMode] = useState<"credit" | "now">("credit");
+  const [refund, setRefund] = useState<RefundState>({ channelId: "", amount: "", reference: "" });
+  // The review: what the posting will do, from a rolled-back dry run.
+  const formRef = useRef<HTMLFormElement>(null);
+  const confirmed = useRef(false);
+  const [review, setReview] = useState<MoneyPreview | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  // A refusal from the real posting closes the review so the reason shows.
+  useEffect(() => { if (state && "error" in state) setReview(null); }, [state]);
 
   useEffect(() => {
     setReceivedTime(new Date().toTimeString().slice(0, 5));
   }, []);
 
   const isSales = kind === "sales";
+  const methods = (channels?.[locationId] ?? []);
+  const cashMethod = methods.find((c) => c.kind === "CASH" && c.accountId);
   const byId = (id: string) => items.find((i) => i.id === id);
   const returnableDocs = (salesDocs ?? []).filter((d) => d.partner_id === partnerId);
   const sourceDoc = returnableDocs.find((d) => d.id === sourceDocumentId);
@@ -173,14 +194,34 @@ export function ReturnForm({
     return item?.is_stocked && Number(l.qty) > Number(item.on_hand);
   });
 
+  const openReview = async () => {
+    if (!formRef.current) return;
+    setReviewing(true);
+    setReviewError(null);
+    try {
+      const r = await previewSalesReturn(new FormData(formRef.current));
+      if ("error" in r) setReviewError(r.error);
+      else setReview(r.preview);
+    } finally {
+      setReviewing(false);
+    }
+  };
+
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide" ref={formRef}
+      onSubmit={(e) => {
+        // A customer return is reviewed before it posts; the confirm button
+        // submits again with the review behind it.
+        if (isSales && !confirmed.current) { e.preventDefault(); void openReview(); }
+        confirmed.current = false;
+      }}>
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
 
       {state && "error" in state && <div className="alert">{state.error}</div>}
+      {reviewError && <div className="alert">{reviewError}</div>}
 
       <input type="hidden" name="lines" value={payload} />
 
@@ -391,6 +432,41 @@ export function ReturnForm({
         </div>
       )}
 
+      {isSales && (
+        <div className="card">
+          <div className="card-head">
+            <h2>Money back</h2>
+          </div>
+          <div className="card-body pos-stack">
+            <div className="segmented" role="radiogroup" aria-label="Money back">
+              <button type="button" role="radio" aria-checked={refundMode === "credit"}
+                className={`seg${refundMode === "credit" ? " on" : ""}`} onClick={() => setRefundMode("credit")}>
+                Keep as credit
+              </button>
+              <button type="button" role="radio" aria-checked={refundMode === "now"}
+                className={`seg${refundMode === "now" ? " on" : ""}`}
+                disabled={methods.every((c) => !c.accountId)}
+                onClick={() => {
+                  setRefundMode("now");
+                  setRefund((r) => ({ ...r, channelId: r.channelId || cashMethod?.id || "", amount: r.amount || String(total || "") }));
+                }}>
+                Refund now
+              </button>
+            </div>
+            <input type="hidden" name="refund" value={refundMode} />
+            {refundMode === "credit" ? (
+              <span className="hint">
+                {sourceDocumentId
+                  ? "What the customer paid stays against the invoice; anything above what they owe can be refunded later from the return."
+                  : "The value goes on the customer's account, to use on a later sale or refund later."}
+              </span>
+            ) : (
+              <RefundFields channels={methods} value={refund} onChange={setRefund} />
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="field">
         <label htmlFor="memo">Note</label>
         <textarea id="memo" name="memo" rows={2} placeholder="Reason for the return — English or Myanmar" />
@@ -398,8 +474,8 @@ export function ReturnForm({
 
       <div className="actions">
         {serialShort && <span className="low" role="status">Name one IMEI per handset.</span>}
-        <button type="submit" disabled={pending || total === 0 || shortages.length > 0 || serialShort}>
-          {pending ? "Posting…" : `Post ${isSales ? "sales" : "purchase"} return`}
+        <button type="submit" disabled={pending || reviewing || total === 0 || shortages.length > 0 || serialShort}>
+          {pending ? "Posting…" : reviewing ? "Checking…" : isSales ? "Review return" : "Post purchase return"}
         </button>
         <span className="page-sub">
           {isSales
@@ -407,6 +483,13 @@ export function ReturnForm({
             : "Stock leaves inventory; what's owed to the supplier drops."}
         </span>
       </div>
+      {review && (
+        <MoneyPreviewDialog preview={review} busy={pending}
+          title={review.refund ? "Review return and refund" : "Review return"}
+          confirmLabel={review.refund ? "Post return and refund" : "Post return"}
+          onClose={() => setReview(null)}
+          onConfirm={() => { confirmed.current = true; formRef.current?.requestSubmit(); }} />
+      )}
     </form>
   );
 }

@@ -41,6 +41,7 @@ import {
 import { postOnce, alreadyPosted } from "./idempotency";
 import { serverT } from "./i18n-server";
 import { resolveTenders, stampReceipt } from "./payment-channels";
+import { postReturnWithRefund, refundReturn, dryRun, type RefundSpec, type MoneyPreview } from "./refund";
 /**
  * A message for the person who caused it, in their interface language
  * (messages/<locale>.json › actions). English is the fallback. Only what is
@@ -2015,34 +2016,49 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
 
 // -------------------------------------------------------------- returns --
 
+/** The return a form describes, and the refund with it if any. */
+async function salesReturnFrom(fd: FormData, co: string) {
+  const lines = parseLines(fd);
+  if (lines.length === 0) throw new Error("Add at least one line with a quantity");
+  if (!str(fd, "partner_id")) throw new Error("Choose a customer");
+  if (!str(fd, "location_id")) throw new Error(await m("chooseWarehouse"));
+  await assertMyBranch(str(fd, "location_id"));
+  const input = {
+    companyId: co,
+    partnerId: str(fd, "partner_id"),
+    locationId: str(fd, "location_id"),
+    docDate: str(fd, "doc_date"),
+    receivedAt: dateTime(fd, "doc_date", "received_time"),
+    memo: str(fd, "memo") || null,
+    reference: str(fd, "reference") || null,
+    sourceDocumentId: str(fd, "source_document_id") || null,
+    lines,
+  };
+  // Money paid back now, by payment channel. Blank amount is "everything the
+  // return leaves owed"; the engine caps it and refuses more.
+  const refund: RefundSpec = str(fd, "refund") === "now" && str(fd, "refund_channel_id")
+    ? { channelId: str(fd, "refund_channel_id"), amount: num(fd, "refund_amount"),
+        reference: str(fd, "refund_reference") || null }
+    : null;
+  return { input, refund };
+}
+
 export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("sales.return");
+  const user = await requirePermission("sales.return");
   let docId: string;
   let toastMsg = "Sales return posted";
 
   try {
     const co = await companyId();
-    const lines = parseLines(fd);
-
-    if (lines.length === 0) return { error: "Add at least one line with a quantity" };
-    if (!str(fd, "partner_id")) return { error: "Choose a customer" };
-    if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
-    await assertMyBranch(str(fd, "location_id"));
-
-    const result = await postOnce(co, attemptKey(fd), (tx) => postSalesReturn({
-      companyId: co,
-      partnerId: str(fd, "partner_id"),
-      locationId: str(fd, "location_id"),
-      docDate: str(fd, "doc_date"),
-      receivedAt: dateTime(fd, "doc_date", "received_time"),
-      memo: str(fd, "memo") || null,
-      reference: str(fd, "reference") || null,
-      sourceDocumentId: str(fd, "source_document_id") || null,
-      lines,
-    }, tx));
+    const { input, refund } = await salesReturnFrom(fd, co);
+    if (refund && !(refund.amount > 0)) return { error: "Enter the amount to refund" };
+    const tr = await serverT("pos");
+    const result = await postOnce(co, attemptKey(fd), (tx) => postReturnWithRefund(tx, input, user.id, refund, tr));
 
     docId = result.id;
-    toastMsg = `Return ${result.docNo} posted`;
+    toastMsg = result.refund
+      ? `Return ${result.docNo} posted · refund ${result.refund.docNo} paid`
+      : `Return ${result.docNo} posted`;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -2053,7 +2069,87 @@ export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<A
   revalidatePath("/ledger");
   revalidatePath("/items");
   revalidatePath("/items/stock");
+  revalidatePath("/finance/payments");
   redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+/**
+ * The return (and refund) the form would post, posted and rolled back: the
+ * review screen's figures are the engine's own. Nothing is kept.
+ */
+export async function previewSalesReturn(fd: FormData): Promise<{ ok: true; preview: MoneyPreview } | { error: string }> {
+  const user = await requirePermission("sales.return");
+  try {
+    const co = await companyId();
+    const { input, refund } = await salesReturnFrom(fd, co);
+    const tr = await serverT("pos");
+    const preview = await dryRun(co, input.partnerId, async (tx) => {
+      const r = await postReturnWithRefund(tx, input, user.id, refund, tr);
+      return { docIds: [r.id, ...(r.refund ? [r.refund.id] : [])], returnId: r.id };
+    });
+    return { ok: true, preview };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Paying back a return already posted. */
+function refundFrom(fd: FormData) {
+  if (!str(fd, "return_id")) throw new Error("Choose the return being refunded");
+  if (!str(fd, "refund_channel_id")) throw new Error("Choose how the money goes back");
+  if (!(num(fd, "refund_amount") > 0)) throw new Error("Enter the amount to refund");
+  return {
+    returnId: str(fd, "return_id"), docDate: str(fd, "doc_date"),
+    spec: { channelId: str(fd, "refund_channel_id"), amount: num(fd, "refund_amount"),
+            reference: str(fd, "refund_reference") || null },
+  };
+}
+
+async function refundScope(co: string, returnId: string) {
+  const [r] = await sql`select partner_id, location_id from document
+                         where id = ${returnId} and company_id = ${co} and doc_type = 'SALES_RETURN'`;
+  if (!r) throw new Error("That return no longer exists");
+  await assertMyBranch(r.location_id as string | null);
+  return r.partner_id as string;
+}
+
+export async function createCustomerRefund(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("sales.return");
+  let docId: string;
+  let toastMsg = "Refund paid";
+  try {
+    const co = await companyId();
+    const f = refundFrom(fd);
+    await refundScope(co, f.returnId);
+    const tr = await serverT("pos");
+    const r = await postOnce(co, attemptKey(fd), (tx) => refundReturn(tx, co, user.id, f.returnId, f.docDate, f.spec, tr));
+    docId = r.id;
+    toastMsg = `Refund ${r.docNo} paid`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/");
+  revalidatePath("/documents");
+  revalidatePath("/receivables");
+  revalidatePath("/finance/payments");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+export async function previewCustomerRefund(fd: FormData): Promise<{ ok: true; preview: MoneyPreview } | { error: string }> {
+  const user = await requirePermission("sales.return");
+  try {
+    const co = await companyId();
+    const f = refundFrom(fd);
+    const partnerId = await refundScope(co, f.returnId);
+    const tr = await serverT("pos");
+    const preview = await dryRun(co, partnerId, async (tx) => {
+      const r = await refundReturn(tx, co, user.id, f.returnId, f.docDate, f.spec, tr);
+      return { docIds: [r.id], returnId: f.returnId };
+    });
+    return { ok: true, preview };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {

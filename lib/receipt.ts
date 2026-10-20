@@ -68,7 +68,7 @@ export async function getReceipt(companyId: string, id: string, locs: string[] |
     sql`
       select coalesce(pc.name, a.name) as name, pa.amount::float as amount
         from payment_allocation pa
-        join document r on r.id = pa.payment_id and r.status = 'POSTED'
+        join document r on r.id = pa.payment_id and r.status = 'POSTED' and r.doc_type = 'CUSTOMER_RECEIPT'
         join journal_line jl on jl.journal_entry_id = r.journal_entry_id and jl.base_amount > 0
         join account a on a.id = jl.account_id
         left join payment_channel pc on pc.id = r.payment_channel_id

@@ -29,7 +29,7 @@ export default async function PaymentsReceived({
   const branch = await scopedBranch(sp.branch);
 
   const where = sql`
-        d.company_id = ${co} and d.doc_type = 'CUSTOMER_RECEIPT'
+        d.company_id = ${co} and d.doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND')
     and d.posting_date between ${from}::date and ${to}::date
     ${status === "all" ? sql`and d.status in ('POSTED', 'REVERSED')` : sql`and d.status = ${status}`}
     ${channel === "none" ? sql`and d.payment_channel_id is null` : channel ? sql`and d.payment_channel_id = ${channel}` : sql``}
@@ -38,28 +38,33 @@ export default async function PaymentsReceived({
 
   const [rows, summary, channels, branches] = await Promise.all([
     sql`
-      select d.id, d.doc_no, d.posting_date, d.posted_at, d.status, d.gross_total::float as amount, d.currency,
+      select d.id, d.doc_no, d.doc_type, d.posting_date, d.posted_at, d.status, d.currency,
+             -- A refund is money going back out: it counts against its method.
+             (case when d.doc_type = 'CUSTOMER_REFUND' then -d.gross_total else d.gross_total end)::float as amount,
              d.payment_reference, coalesce(pc.name, '—') as channel, pc.kind,
              a.code || ' · ' || a.name as account, p.name as customer, l.name as location,
              u.name as created_by, rv.doc_no as reversed_by,
              (select string_agg(i.doc_no, ', ' order by i.doc_no) from payment_allocation pa
                 join document i on i.id = pa.invoice_id where pa.payment_id = d.id) as invoices,
-             o.id as sale_id, o.doc_no as sale_no
+             o.id as sale_id, o.doc_no as sale_no, src.id as return_id, src.doc_no as return_no
         from document d
         left join payment_channel pc on pc.id = d.payment_channel_id
-        left join journal_line jl on jl.journal_entry_id = d.journal_entry_id and jl.base_amount > 0
-        left join account a on a.id = jl.account_id and a.is_cash_account
+        left join lateral (select l.account_id from journal_line l join account x on x.id = l.account_id and x.is_cash_account
+                            where l.journal_entry_id = d.journal_entry_id limit 1) jl on true
+        left join account a on a.id = jl.account_id
         left join business_partner p on p.id = d.partner_id
         left join location l on l.id = d.location_id
         left join app_user u on u.id = d.created_by_id
         left join document rv on rv.id = d.reversed_by_document_id
         left join document o on o.id = d.lifecycle_owner_id
+        left join document src on src.id = d.source_document_id and d.doc_type = 'CUSTOMER_REFUND'
        where ${where} and a.id is not null
        order by d.posting_date desc, d.posted_at desc nulls last
        limit 1000`,
     sql`
       select coalesce(pc.name, 'Not labelled') as channel, pc.kind,
-             count(*)::int as n, sum(d.gross_total)::float as amount
+             count(*)::int as n,
+             sum(case when d.doc_type = 'CUSTOMER_REFUND' then -d.gross_total else d.gross_total end)::float as amount
         from document d left join payment_channel pc on pc.id = d.payment_channel_id
        where ${where}
        group by 1, 2 order by amount desc`,
@@ -147,10 +152,11 @@ export default async function PaymentsReceived({
                     <td><Link href={`/documents/${r.id}`}>{r.doc_no}</Link></td>
                     <td>{r.channel}</td>
                     <td className="m">{r.payment_reference ?? "—"}</td>
-                    <td className="r">{money(r.amount)}</td>
+                    <td className={`r ${r.amount < 0 ? "neg" : ""}`}>{money(r.amount)}</td>
                     <td>{r.account}</td>
                     <td>{r.customer}</td>
-                    <td>{r.sale_id ? <Link href={`/documents/${r.sale_id}`}>{r.sale_no}</Link> : r.invoices ?? "Advance"}</td>
+                    <td>{r.return_id ? <>Refund · <Link href={`/documents/${r.return_id}`}>{r.return_no}</Link></>
+                      : r.sale_id ? <Link href={`/documents/${r.sale_id}`}>{r.sale_no}</Link> : r.invoices ?? "Advance"}</td>
                     <td>{r.location}</td>
                     <td>{r.created_by ?? "—"}</td>
                     <td>{r.status === "REVERSED" ? <span className="pill reversed">Voided{r.reversed_by ? ` · ${r.reversed_by}` : ""}</span> : "Posted"}</td>

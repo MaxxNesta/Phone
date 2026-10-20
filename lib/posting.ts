@@ -8100,6 +8100,114 @@ export async function postCustomerReceipt(input: SettlementInput, tx?: Transacti
   return postSettlement(input, "CUSTOMER_RECEIPT", tx);
 }
 
+/**
+ * What a sales return still lets the customer be paid back: the credit it
+ * left, less refunds already raised from it. Against an invoice the credit is
+ * what the invoice now sits below zero — a return against an unpaid invoice
+ * only reduced the debt and leaves nothing to pay out. With no invoice it is
+ * the return itself, capped by what the customer holds on account.
+ */
+export async function refundableOnReturn(tx: TransactionSql, returnId: string) {
+  const [r] = await tx`
+    select d.id, d.company_id, d.partner_id, d.doc_no, d.status, d.doc_type, d.gross_total::float as total,
+           d.location_id, fn_current_document(d.source_document_id) as invoice_id,
+           coalesce((select sum(f.gross_total) from document f
+                      where f.source_document_id = d.id and f.doc_type = 'CUSTOMER_REFUND'
+                        and f.status = 'POSTED'), 0)::float as refunded
+      from document d where d.id = ${returnId}`;
+  if (!r || r.doc_type !== "SALES_RETURN") throw new Error("A refund pays out a customer return");
+  if (r.status !== "POSTED") throw new Error(`${r.doc_no} is ${String(r.status).toLowerCase()} and cannot be refunded`);
+  let owed: number;
+  if (r.invoice_id) {
+    const [o] = await tx`select outstanding::float as o from v_open_item where document_id = ${r.invoice_id}`;
+    owed = Math.max(0, -Number(o?.o ?? 0));
+  } else {
+    const [a] = await tx`
+      select -coalesce(sum(jl.base_amount), 0)::float as held
+        from journal_line jl
+       where jl.company_id = ${r.company_id} and jl.partner_id = ${r.partner_id}
+         and jl.account_id = fn_system_account(${r.company_id}, 'CUSTOMER_ADVANCE')`;
+    owed = Math.max(0, Number(a?.held ?? 0));
+  }
+  return {
+    returnDoc: r as { id: string; company_id: string; partner_id: string; doc_no: string;
+                      location_id: string | null; invoice_id: string | null; total: number },
+    refundable: round4(Math.max(0, Math.min(Number(r.total) - Number(r.refunded), owed))),
+  };
+}
+
+/**
+ * Money paid back to a customer for a return.
+ *
+ *   Against an invoice:  Dr Accounts Receivable / Cr cash or bank
+ *                        (allocated as minus the amount: the invoice comes
+ *                        back up from below zero)
+ *   On account:          Dr Customer Advances  / Cr cash or bank
+ *
+ * The account is whatever the payment channel resolved to; nothing here names
+ * a provider. Revenue is not touched — the return already reversed it.
+ */
+export async function postCustomerRefund(input: {
+  companyId: string; returnId: string; docDate: string; cashAccountId: string; amount: number;
+  memo?: string | null; reference?: string | null;
+}, outer?: TransactionSql) {
+  const amount = round4(Number(input.amount));
+  if (!(amount > 0)) throw new Error("Enter the amount to refund");
+  return inTransaction(outer, async (tx) => {
+    // The return is locked so two refunds of it cannot both see room for themselves.
+    await tx`select id from document where id = ${input.returnId} for update`;
+    const { returnDoc: r, refundable } = await refundableOnReturn(tx, input.returnId);
+    if (r.company_id !== input.companyId) throw new Error("That return belongs to another company");
+    if (amount > refundable + 0.005) {
+      throw new Error(refundable > 0
+        ? `${r.doc_no} can be refunded up to ${refundable}; ${amount} was entered`
+        : `${r.doc_no} leaves nothing to pay back: the customer owes more than it took off`);
+    }
+    const [cash] = await tx`
+      select 1 from account where id = ${input.cashAccountId} and company_id = ${input.companyId}
+         and is_cash_account and is_postable`;
+    if (!cash) throw new Error("A refund is paid out of a cash or bank account");
+
+    const fyRows = await tx`select fn_fiscal_year_for(${input.companyId}, ${input.docDate}::date) as fy`;
+    const fiscalYear = fyRows[0]?.fy ?? null;
+    if (!fiscalYear) throw new Error(`No fiscal year covers ${input.docDate}`);
+    const { docNo } = await documentNumberFor(tx, input.companyId, "CUSTOMER_REFUND", input.docDate, null);
+
+    const [doc] = await tx`
+      insert into document
+        (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, partner_id, location_id,
+         currency, exchange_rate, status, net_total, tax_total, gross_total, memo, reference,
+         payment_type, posted_at, source_document_id)
+      values
+        (${input.companyId}, 'CUSTOMER_REFUND', ${docNo}, ${fiscalYear}, ${input.docDate}::date,
+         ${input.docDate}::date, ${r.partner_id}, ${r.location_id}, 'MMK', 1, 'POSTED',
+         ${amount}, 0, ${amount}, ${input.memo ?? `Refund for ${r.doc_no}`}, ${input.reference ?? null},
+         'CASH', now(), ${r.id})
+      returning id`;
+
+    let held: string;
+    let heldLocation: string | null = r.location_id;
+    if (r.invoice_id) {
+      const [inv] = await tx`select location_id from document where id = ${r.invoice_id}`;
+      heldLocation = (inv?.location_id as string) ?? null;
+      await tx`
+        insert into payment_allocation (company_id, payment_id, invoice_id, amount, base_amount)
+        values (${input.companyId}, ${doc.id}, ${r.invoice_id}, ${-amount}, ${-amount})`;
+      held = (await tx`select fn_resolve_control_account(${input.companyId}, 'AR_CONTROL', ${r.partner_id}) as a`)[0].a;
+    } else {
+      held = (await tx`select fn_system_account(${input.companyId}, 'CUSTOMER_ADVANCE') as a`)[0].a;
+    }
+    const entryId = await writeJournal(tx, input.companyId, input.docDate, "CUSTOMER_REFUND", doc.id,
+      `${docNo} refund for ${r.doc_no}`,
+      [
+        { accountId: held, amount, partnerId: r.partner_id, locationId: heldLocation },
+        { accountId: input.cashAccountId, amount: -amount, locationId: r.location_id },
+      ]);
+    await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
+    return { id: doc.id as string, docNo: docNo as string };
+  });
+}
+
 // =========================================================================
 // Finance vouchers
 // =========================================================================

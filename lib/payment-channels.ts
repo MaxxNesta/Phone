@@ -15,14 +15,14 @@ export type Channel = {
   id: string; code: string; name: string; kind: ChannelKind;
   requiresReference: boolean; merchantName: string | null; merchantNumber: string | null;
   /** The account it pays into at the location asked about; null = not set up there. */
-  accountId: string | null; accountName: string | null;
+  accountId: string | null; accountName: string | null; accountCode: string | null;
 };
 
 /** Active channels as the till or a receipt form at one location sees them. */
 export async function channelsAt(companyId: string, locationId: string | null, db: Sql = sql): Promise<Channel[]> {
   const rows = await db`
     select c.id, c.code, c.name, c.kind, c.requires_reference, c.merchant_name, c.merchant_number,
-           a.id as account_id, a.name as account_name
+           a.id as account_id, a.name as account_name, a.code as account_code
       from payment_channel c
       left join account a on a.id = fn_payment_channel_account(c.id, ${locationId}::uuid) and a.is_active
      where c.company_id = ${companyId} and c.is_active
@@ -30,7 +30,7 @@ export async function channelsAt(companyId: string, locationId: string | null, d
   return rows.map((r) => ({
     id: r.id, code: r.code, name: r.name, kind: r.kind,
     requiresReference: r.requires_reference, merchantName: r.merchant_name, merchantNumber: r.merchant_number,
-    accountId: r.account_id ?? null, accountName: r.account_name ?? null,
+    accountId: r.account_id ?? null, accountName: r.account_name ?? null, accountCode: r.account_code ?? null,
   }));
 }
 
@@ -96,7 +96,7 @@ export async function stampReceipt(
     await db`
       update document set payment_channel_id = ${channelId}, payment_reference = ${reference},
              created_by_id = coalesce(created_by_id, ${userId}), posted_by_id = coalesce(posted_by_id, ${userId})
-       where id = ${receiptId} and doc_type = 'CUSTOMER_RECEIPT'`;
+       where id = ${receiptId} and doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND')`;
   } catch (e) {
     if ((e as { code?: string }).code === "23505") {
       throw new Error(`Reference ${reference} has already been recorded for this payment method`);

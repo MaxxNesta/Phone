@@ -28,6 +28,7 @@ const TYPE_MARK: Record<string, { short: string; tint: string }> = {
   DELIVERY: { short: "DO", tint: "#6C5CE0" },
   SALES_INVOICE: { short: "SI", tint: "var(--warn)" },
   CUSTOMER_RECEIPT: { short: "REC", tint: "var(--brand)" },
+  CUSTOMER_REFUND: { short: "RF", tint: "var(--bad)" },
   STOCK_TRANSFER: { short: "TR", tint: "var(--muted)" },
   STOCK_ADJUSTMENT: { short: "ADJ", tint: "var(--muted)" },
 };
