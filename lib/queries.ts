@@ -4449,6 +4449,70 @@ export async function getRevenueByRegion(companyId: string, from: string, to: st
      order by revenue desc`;
 }
 
+/**
+ * Revenue by the branch each sale was made at — the retail counterpart of
+ * getRevenueByRegion. A sale is posted against a warehouse, so it rolls up one
+ * step to its branch (a sale booked at the branch itself is its own branch),
+ * the same walk getBranches and the ledger filters use.
+ *
+ * `locs` is the set of locations the reader may see (seenLocations), or null
+ * for all of them: somebody limited to one branch must not be handed the
+ * others' takings by a chart.
+ */
+export async function getRevenueByBranch(
+  companyId: string, from: string, to: string, locs: string[] | null = null,
+) {
+  return sql`
+    select br.id::text as id, br.name as name,
+           sum(d.net_total) as revenue,
+           count(*)::int    as invoices
+      from document d
+      join location l  on l.id  = d.location_id
+      join location br on br.id = coalesce(l.parent_id, l.id)
+     where d.company_id = ${companyId}
+       and d.doc_type = 'SALES_INVOICE'
+       and d.status = 'POSTED'
+       and d.posting_date >= ${from}::date and d.posting_date < ${to}::date
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
+     group by 1, 2
+     having sum(d.net_total) > 0
+     order by revenue desc`;
+}
+
+/**
+ * Money received in the window, by the cash or bank account it went into.
+ *
+ * Every tender at the till — and every later collection from a customer — is
+ * a posted customer receipt whose journal entry debits one cash or bank
+ * account. Grouping by that account is what tells KBZPay from AYA Pay from
+ * MMQR from cash: each is simply an account, so a shop that keeps one per
+ * wallet gets the breakdown with no extra data, and one that keeps a single
+ * "bank" account sees a single slice.
+ *
+ * Voided receipts are skipped (only POSTED documents count), and `locs` limits
+ * the reader to the locations they may see.
+ */
+export async function getReceiptsByAccount(
+  companyId: string, from: string, to: string, locs: string[] | null = null,
+) {
+  return sql`
+    select a.id::text as id, a.name as name,
+           sum(jl.base_amount) as revenue,
+           count(distinct d.id)::int as receipts
+      from document d
+      join journal_line jl on jl.journal_entry_id = d.journal_entry_id
+      join account a on a.id = jl.account_id and a.is_cash_account
+     where d.company_id = ${companyId}
+       and d.doc_type = 'CUSTOMER_RECEIPT'
+       and d.status = 'POSTED'
+       and jl.base_amount > 0
+       and d.posting_date >= ${from}::date and d.posting_date < ${to}::date
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
+     group by 1, 2
+     having sum(jl.base_amount) > 0
+     order by revenue desc`;
+}
+
 /** Best customers by revenue over the trailing `months` months, sales invoices only. */
 export async function getTopCustomers(companyId: string, months: number = 6, limit: number = 6) {
   return sql`

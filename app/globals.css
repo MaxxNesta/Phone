@@ -6577,3 +6577,18 @@ a.btn, .btn, .erp-btn,
 .pos3-stepper button { border-radius: 7px; }
 .segmented { border-radius: 10px; }
 .paymodes .paymode { border-radius: 7px; }
+
+/* A hero page's action button (+ New product …) sits in the same corner the
+   top bar floats over. Keep it below the bar, with a gap, and make room for
+   it under the heading so the cards beneath do not climb into it. */
+@media (min-width: 901px) {
+  .page-head.hero > .head-actions { margin-top: 18px; }
+  .page-head.hero:has(> .head-actions) { margin-bottom: 4px; }
+}
+
+/* The title of a hero page sat 8px from the top edge. Drop it so it lines up
+   with the middle of the top bar (search, language, avatar) beside it. The bar
+   is positioned from the top of the page, so only the title moves. */
+@media (min-width: 901px) {
+  .main.main:has(.page-head.hero) { padding-top: 22px; }
+}

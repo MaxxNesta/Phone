@@ -1102,6 +1102,11 @@
       "STOCK_TRANSFER": "Stock transfer",
       "STOCK_ADJUSTMENT": "Stock adjustment"
     },
-    "sales": "Sales"
+    "sales": "Sales",
+    "byBranch": "Revenue by branch",
+    "byBranchLabel": "revenue by branch",
+    "byPayment": "Payments by method",
+    "byPaymentLabel": "payments by method",
+    "receivedIn": "Money received {when}"
   }
 }

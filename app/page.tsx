@@ -11,7 +11,7 @@ import { ShareDonut } from "@/components/charts";
 import { PeriodPicker } from "@/components/period-picker";
 import { resolvePeriod, DEFAULT_PERIOD } from "@/lib/period";
 import {
-  getTopCategories, getRevenueByRegion, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
+  getTopCategories, getRevenueByRegion, getRevenueByBranch, getReceiptsByAccount, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
   getHealth,
 } from "@/lib/queries";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -67,7 +67,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // One window per donut, as on the business overview: each card's period
   // picker edits its own key in the URL and leaves the others alone.
   const period = { cat: resolvePeriod(sp.cat), reg: resolvePeriod(sp.reg),
-                   cust: resolvePeriod(sp.cust), supp: resolvePeriod(sp.supp) };
+                   cust: resolvePeriod(sp.cust), supp: resolvePeriod(sp.supp), branch: resolvePeriod(sp.branch), pay: resolvePeriod(sp.pay) };
   const hrefWith = (key: string, value: string) => {
     const next: Record<string, string> = {};
     for (const [k, v] of Object.entries(sp)) if (v && k !== "denied") next[k] = v;
@@ -77,10 +77,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     return q ? `/?${q}` : "/";
   };
   const co = user.companyId;
-  const [d, cats, regionRows, custRows, suppRows, recentDocs, health] = await Promise.all([
+  const [d, cats, regionRows, branchRows, payRows, custRows, suppRows, recentDocs, health] = await Promise.all([
     seenLocations().then((locs) => retailDashboard(co, locs)),
     getTopCategories(co, period.cat.from, period.cat.to),
     getRevenueByRegion(co, period.reg.from, period.reg.to),
+    seenLocations().then((locs) => getRevenueByBranch(co, period.branch.from, period.branch.to, locs)),
+    seenLocations().then((locs) => getReceiptsByAccount(co, period.pay.from, period.pay.to, locs)),
     getRevenueByCustomerCategory(co, period.cust.from, period.cust.to),
     getSpendBySupplierCategory(co, period.supp.from, period.supp.to),
     seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs)),
@@ -88,6 +90,11 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ]);
   const categories = cats as unknown as Share[];
   const regions = regionRows as unknown as Share[];
+  const branches = branchRows as unknown as Share[];
+  const payments = payRows as unknown as Share[];
+  // A shop whose customers have no region set has no use for a region chart;
+  // it is kept for the distributor who does, and the branch chart takes its place.
+  const hasRegions = !(regions.length === 0 || (regions.length === 1 && regions[0].id === "none"));
   const custCategories = custRows as unknown as Share[];
   const suppCategories = suppRows as unknown as Share[];
   const recent = recentDocs as unknown as {
@@ -227,20 +234,32 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </div>
           <div className="card-body"><ShareDonut data={categories} currency="MMK" /></div>
         </div>
-        <div className="card">
-          <div className="card-head">
-            <span><h2>{t("byRegion")}</h2><span className="page-sub">{t("salesIn", { when: when(period.reg) })}</span></span>
-            <PeriodPicker current={period.reg} label={t("byRegionLabel")} hrefFor={(k) => hrefWith("reg", k)} />
+        {hasRegions ? (
+          <div className="card">
+            <div className="card-head">
+              <span><h2>{t("byRegion")}</h2><span className="page-sub">{t("salesIn", { when: when(period.reg) })}</span></span>
+              <PeriodPicker current={period.reg} label={t("byRegionLabel")} hrefFor={(k) => hrefWith("reg", k)} />
+            </div>
+            <div className="card-body"><ShareDonut data={regions} currency="MMK" /></div>
           </div>
-          <div className="card-body">
-            {regions.length === 1 && regions[0].id === "none" ? (
-              <div className="empty">
-                {t("noRegion")}{" "}
-                <Link href="/partners" style={{ color: "var(--link)" }}>{t("setRegion")}</Link> {t("setRegionAfter")}
-              </div>
-            ) : <ShareDonut data={regions} currency="MMK" />}
+        ) : branches.length > 1 && (
+          <div className="card">
+            <div className="card-head">
+              <span><h2>{t("byBranch")}</h2><span className="page-sub">{t("salesIn", { when: when(period.branch) })}</span></span>
+              <PeriodPicker current={period.branch} label={t("byBranchLabel")} hrefFor={(k) => hrefWith("branch", k)} />
+            </div>
+            <div className="card-body"><ShareDonut data={branches} currency="MMK" /></div>
           </div>
-        </div>
+        )}
+        {payments.length > 1 && (
+          <div className="card">
+            <div className="card-head">
+              <span><h2>{t("byPayment")}</h2><span className="page-sub">{t("receivedIn", { when: when(period.pay) })}</span></span>
+              <PeriodPicker current={period.pay} label={t("byPaymentLabel")} hrefFor={(k) => hrefWith("pay", k)} />
+            </div>
+            <div className="card-body"><ShareDonut data={payments} currency="MMK" /></div>
+          </div>
+        )}
         {worthDrawing(custCategories) && (
           <div className="card">
             <div className="card-head">
