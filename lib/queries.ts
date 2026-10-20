@@ -4496,12 +4496,14 @@ export async function getReceiptsByAccount(
   companyId: string, from: string, to: string, locs: string[] | null = null,
 ) {
   return sql`
-    select a.id::text as id, a.name as name,
+    -- By payment channel (0141); a receipt from before channels by its account.
+    select coalesce(pc.id, a.id)::text as id, coalesce(pc.name, a.name) as name,
            sum(jl.base_amount) as revenue,
            count(distinct d.id)::int as receipts
       from document d
       join journal_line jl on jl.journal_entry_id = d.journal_entry_id
       join account a on a.id = jl.account_id and a.is_cash_account
+      left join payment_channel pc on pc.id = d.payment_channel_id
      where d.company_id = ${companyId}
        and d.doc_type = 'CUSTOMER_RECEIPT'
        and d.status = 'POSTED'
