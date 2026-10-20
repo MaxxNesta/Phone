@@ -62,16 +62,6 @@ export function PosTill(props: {
 
   const [locationId, setLocationId] = useState(props.locations[0]?.id ?? "");
   const [q, setQ] = useState("");
-  // The channels this location's branch takes; cash first, the default.
-  const channels = props.channels[locationId] ?? [];
-  const usable = channels.filter((c) => c.accountId);
-  const cashChannel = usable.find((c) => c.kind === "CASH");
-  const channel = usable.find((c) => c.id === channelId) ?? cashChannel ?? usable[0];
-  const byId = (id: string) => channels.find((c) => c.id === id);
-  const freshSplit = (): SplitRow[] => [
-    { channelId: cashChannel?.id ?? usable[0]?.id ?? "", amount: "", reference: "" },
-    { channelId: usable.find((c) => c.kind !== "CASH")?.id ?? usable[0]?.id ?? "", amount: "", reference: "" },
-  ];
   const [items, setItems] = useState<SellableItem[]>([]);
   const tr = useTranslations("pos");
   const [loaded, setLoaded] = useState(false);
@@ -93,6 +83,16 @@ export function PosTill(props: {
   const [reference, setReference] = useState("");
   const [received, setReceived] = useState("");
   const [split, setSplit] = useState<SplitRow[]>([]);
+  // The channels this location's branch takes; cash first, the default.
+  const channels = props.channels[locationId] ?? [];
+  const usable = channels.filter((c) => c.accountId);
+  const cashChannel = usable.find((c) => c.kind === "CASH");
+  const channel = usable.find((c) => c.id === channelId) ?? cashChannel ?? usable[0];
+  const byId = (id: string) => channels.find((c) => c.id === id);
+  const freshSplit = (): SplitRow[] => [
+    { channelId: cashChannel?.id ?? usable[0]?.id ?? "", amount: "", reference: "" },
+    { channelId: usable.find((c) => c.kind !== "CASH")?.id ?? usable[0]?.id ?? "", amount: "", reference: "" },
+  ];
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string; id?: string } | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   // The sale just posted, with its receipt, while the popup is open.
