@@ -347,6 +347,9 @@ values (co, 'PROMO-B10G1', 'Buy 10 get 1 free', g_bev, 10, 1, '2026-04-01');
 -- old chart this update named 1110 and 1120 — which on this one are Building
 -- and Office Equipment, and would have offered a fixed asset as a till.
 
+-- How customers pay: cash, bank, card and the Myanmar wallets (0141).
+perform fn_seed_payment_channels(co);
+
 -- Free-of-charge reasons. Stock still leaves, but the cost lands in expense
 -- rather than COGS, so a giveaway is visible instead of quietly eroding
 -- gross margin.

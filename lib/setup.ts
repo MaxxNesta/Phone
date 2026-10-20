@@ -161,6 +161,9 @@ export async function scaffoldCompany(input: SetupInput) {
         values (${co.id}, ${code}, ${name}, ${acctId(acct)})`;
     }
 
+    // How customers pay; cash and bank channels map to the chart just made.
+    await tx`select fn_seed_payment_channels(${co.id})`;
+
     // ---- locations, units, price levels, tax -----------------------------
     const [office] = await tx`
       insert into location (company_id, code, name, is_stock_location)
