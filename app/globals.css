@@ -6597,7 +6597,7 @@ a.btn, .btn, .erp-btn,
    in blue so a cashier can tell them from cash and card at a glance. */
 .pos3-cart .paychannels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pos3-cart .paychannels .paymode { min-width: 0; padding: 0 6px; }
-.paychannels .paymode span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paychannels .paymode span { white-space: normal; line-height: 1.15; font-size: 0.8125rem; text-align: left; }
 .paychannels .paymode:disabled { opacity: 0.45; cursor: not-allowed; }
 .paychannels .paymode[data-kind="WALLET"] svg,
 .paychannels .paymode[data-kind="QR"] svg { color: var(--link); }
