@@ -66,11 +66,12 @@ export async function getReceipt(companyId: string, id: string, locs: string[] |
         left join foc_reason fr on fr.id = dl.foc_reason_id
        where dl.document_id = ${id} order by dl.line_no`,
     sql`
-      select a.name, pa.amount::float as amount
+      select coalesce(pc.name, a.name) as name, pa.amount::float as amount
         from payment_allocation pa
         join document r on r.id = pa.payment_id and r.status = 'POSTED'
         join journal_line jl on jl.journal_entry_id = r.journal_entry_id and jl.base_amount > 0
         join account a on a.id = jl.account_id
+        left join payment_channel pc on pc.id = r.payment_channel_id
        where pa.invoice_id = ${id}`,
   ]);
 
@@ -79,11 +80,11 @@ export async function getReceipt(companyId: string, id: string, locs: string[] |
   // Before discount, the charged lines only; free lines are counted apart.
   const charged = lines.filter((l) => !l.free_reason);
   const free = lines.filter((l) => l.free_reason);
-  // How it was paid, in the words the cashier chose: the till records QR and
-  // card in the memo, and everything else by the account the money went to.
+  // How it was paid: by payment channel (0141). Sales from before channels
+  // carry QR or card in the memo, and otherwise the account's name.
   const memo = String(doc.memo ?? "");
   const method = /\bQR\b/.test(memo) ? "QR" : /card/i.test(memo) ? "Card"
-    : paid.length > 1 ? "Split payment" : paid.length === 1 ? String(paid[0].name) : "Credit (on account)";
+    : paid.length > 0 ? [...new Set(paid.map((p) => String(p.name)))].join(" + ") : "Credit (on account)";
 
   return {
     docNo: doc.doc_no, version: Number(doc.version), status: doc.status,

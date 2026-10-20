@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ScanLine, Smartphone, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingCart, SlidersHorizontal,
-  Store, Banknote, QrCode, CreditCard, HandCoins, TriangleAlert,
+  Store, Banknote, QrCode, CreditCard, HandCoins, TriangleAlert, Landmark, CircleEllipsis,
 } from "lucide-react";
 import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
 import type { ReceiptView } from "@/lib/receipt";
@@ -14,7 +14,8 @@ import { PosUnitPicker, PosAddedConfirm } from "./pos-unit-picker";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { priceLines, type VolumeBand } from "@/lib/discount";
-import { postedAmount, tender, fmtCents, exactText, quickAmounts } from "@/lib/pos-cash";
+import { postedAmount, tender, splitTender, fmtCents, exactText, quickAmounts } from "@/lib/pos-cash";
+import type { Channel, ChannelKind } from "@/lib/payment-channels";
 import {
   computeFacets, filterItems, reconcile, emptySelection, clearFilters, cardState, variantLine, SHELF_LIMIT,
   type Selection,
@@ -23,9 +24,13 @@ import { useTranslations } from "next-intl";
 
 type Loc = { id: string; name: string; branch: string | null };
 type Opt = { id: string; name: string; code?: string };
-type Account = { id: string; code: string; name: string; is_bank_account: boolean };
+const KIND_ICON: Record<ChannelKind, typeof Banknote> = {
+  CASH: Banknote, BANK: Landmark, WALLET: Smartphone, QR: QrCode, CARD: CreditCard, OTHER: CircleEllipsis,
+};
 type Tax = { id: string; code: string; name: string; rate: number };
-type Mode = "CASH" | "QR" | "CARD" | "CREDIT" | "SPLIT";
+/** One channel for the whole sale, several (split), or nothing now (on account). */
+type Mode = "PAY" | "CREDIT" | "SPLIT";
+type SplitRow = { channelId: string; amount: string; reference: string };
 
 type Line = {
   key: string; itemId: string; name: string; variant: string | null; photo: string | null;
@@ -44,19 +49,29 @@ const maskImei = (s: string) => (s.length > 8 ? `${s.slice(0, 4)}•••••
 const PAGE = 30;
 
 export function PosTill(props: {
-  locations: Loc[]; customers: Opt[]; salesmen: Opt[]; accounts: Account[]; taxCodes: Tax[];
+  locations: Loc[]; customers: Opt[]; salesmen: Opt[]; taxCodes: Tax[];
+  /** Active payment channels, keyed by stock location, as its branch maps them. */
+  channels: Record<string, Channel[]>;
   focReasons: Opt[];
   /** Discount bands in force today, the ones the server will apply. */
   volumeDiscounts: VolumeBand[];
   showCost: boolean; discountCeiling: number | null; defaultSalesman: string | null;
 }) {
   const noTax = props.taxCodes.find((t) => t.code === "NONE")?.id ?? props.taxCodes[0]?.id ?? "";
-  const cashAcct = props.accounts.find((a) => !a.is_bank_account) ?? props.accounts[0];
-  const bankAccts = props.accounts.filter((a) => a.is_bank_account);
   const defaultFoc = props.focReasons.find((r) => /promo/i.test(r.name))?.id ?? props.focReasons[0]?.id ?? null;
 
   const [locationId, setLocationId] = useState(props.locations[0]?.id ?? "");
   const [q, setQ] = useState("");
+  // The channels this location's branch takes; cash first, the default.
+  const channels = props.channels[locationId] ?? [];
+  const usable = channels.filter((c) => c.accountId);
+  const cashChannel = usable.find((c) => c.kind === "CASH");
+  const channel = usable.find((c) => c.id === channelId) ?? cashChannel ?? usable[0];
+  const byId = (id: string) => channels.find((c) => c.id === id);
+  const freshSplit = (): SplitRow[] => [
+    { channelId: cashChannel?.id ?? usable[0]?.id ?? "", amount: "", reference: "" },
+    { channelId: usable.find((c) => c.kind !== "CASH")?.id ?? usable[0]?.id ?? "", amount: "", reference: "" },
+  ];
   const [items, setItems] = useState<SellableItem[]>([]);
   const tr = useTranslations("pos");
   const [loaded, setLoaded] = useState(false);
@@ -73,10 +88,11 @@ export function PosTill(props: {
   const [partnerId, setPartnerId] = useState("");
   const [salesmanId, setSalesmanId] = useState(props.defaultSalesman ?? "");
   const [inclusive, setInclusive] = useState(true);
-  const [mode, setMode] = useState<Mode>("CASH");
-  const [bankId, setBankId] = useState(bankAccts[0]?.id ?? "");
+  const [mode, setMode] = useState<Mode>("PAY");
+  const [channelId, setChannelId] = useState("");
+  const [reference, setReference] = useState("");
   const [received, setReceived] = useState("");
-  const [split, setSplit] = useState([{ accountId: cashAcct?.id ?? "", amount: "" }]);
+  const [split, setSplit] = useState<SplitRow[]>([]);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string; id?: string } | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   // The sale just posted, with its receipt, while the popup is open.
@@ -290,17 +306,24 @@ export function PosTill(props: {
     // The sale's own total, whatever cash was handed over: change is not booked.
     const total = postedAmount(totals.total);
     switch (mode) {
-      case "CASH": return [{ accountId: cashAcct?.id ?? "", amount: total }];
-      case "QR": case "CARD": return [{ accountId: bankId, amount: total }];
+      case "PAY": return channel ? [{ channelId: channel.id, amount: total, reference: reference.trim() || null }] : [];
       case "CREDIT": return [];
-      case "SPLIT": return split.map((p) => ({ accountId: p.accountId, amount: Number(p.amount) || 0 }));
+      // Cash posts only what is still due; the rest of it is change.
+      case "SPLIT": return split
+        .map((p, i) => ({ channelId: p.channelId, amount: splitCalc.postedCents[i] / 100, reference: p.reference.trim() || null }))
+        .filter((p) => p.amount > 0);
     }
   };
 
   const customerName = props.customers.find((c) => c.id === partnerId)?.name ?? tr("walkIn");
-  const splitPaid = split.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const splitCalc = useMemo(
+    () => splitTender(totals.total, split.map((p) => ({ cash: byId(p.channelId)?.kind === "CASH", amount: p.amount }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [totals.total, split, channels]);
+  const payingCash = mode === "PAY" && channel?.kind === "CASH";
   const tend = useMemo(() => tender(totals.total, received), [totals.total, received]);
-  const change = mode === "CASH" ? tend.changeCents : 0;
+  // Change comes from cash only, never from a wallet or card.
+  const change = payingCash ? tend.changeCents : mode === "SPLIT" ? splitCalc.changeCents : 0;
 
   // What stops Complete sale, said in words — each is a check the server also
   // makes; the till says it first.
@@ -312,11 +335,25 @@ export function PosTill(props: {
       out.push(tr("needPrice", { names: [...new Set(unpriced.map((l) => l.name))].join(", ") }));
     }
     if (mode === "CREDIT" && !partnerId) out.push(tr("creditNeedsCustomer"));
-    if (mode === "SPLIT" && !partnerId && splitPaid < totals.total - 0.005) out.push(tr("walkInPaysFull"));
-    if (mode === "CASH" && tend.invalid) out.push(tr("cashInvalid"));
-    else if (mode === "CASH" && tend.shortCents > 0) out.push(tr("cashShort", { amount: fmtCents(tend.shortCents) }));
-    return out;
-  }, [lines, mode, partnerId, splitPaid, tend, totals.total, tr]);
+    if (mode === "PAY") {
+      if (!channel) out.push(tr("tender.noChannels"));
+      else if (channel.requiresReference && !reference.trim()) out.push(tr("tender.referenceRequired", { name: channel.name }));
+    }
+    if (mode === "SPLIT") {
+      if (splitCalc.overCents > 0) out.push(tr("tender.overpaid"));
+      else if (!partnerId && splitCalc.remainingCents > 0) out.push(tr("walkInPaysFull"));
+      split.forEach((p, i) => {
+        const c = byId(p.channelId);
+        if (splitCalc.postedCents[i] > 0 && c?.requiresReference && !p.reference.trim()) {
+          out.push(tr("tender.referenceRequired", { name: c.name }));
+        }
+      });
+    }
+    if (payingCash && tend.invalid) out.push(tr("cashInvalid"));
+    else if (payingCash && tend.shortCents > 0) out.push(tr("cashShort", { amount: fmtCents(tend.shortCents) }));
+    return [...new Set(out)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, mode, partnerId, splitCalc, tend, totals.total, tr, channel, reference, split, payingCash]);
 
   const post = () => {
     if (posting.current || issues.length > 0 || lines.length === 0) return;
@@ -327,7 +364,7 @@ export function PosTill(props: {
         setMessage(null);
         const r = await posPostSale({
           locationId, partnerId: partnerId || null, salesmanId: salesmanId || null,
-          priceIncludesTax: inclusive, memo: mode === "QR" ? "Paid by QR" : mode === "CARD" ? "Paid by card" : null,
+          priceIncludesTax: inclusive, memo: null,
           attempt,
           lines: lines.map((l) => ({
             itemId: l.itemId, qty: l.qty, unitPrice: l.unitPrice, discountPct: l.focReasonId ? 0 : l.discountPct,
@@ -348,9 +385,11 @@ export function PosTill(props: {
         setEditing(null);
         setOpen(new Set());
         setPartnerId("");
-        setMode("CASH");
+        setMode("PAY");
+        setChannelId("");
+        setReference("");
         setReceived("");
-        setSplit([{ accountId: cashAcct?.id ?? "", amount: "" }]);
+        setSplit([]);
         setAttempt(newKey());
         await loadShelf();
         scan.current?.focus();
@@ -732,16 +771,26 @@ export function PosTill(props: {
             {props.showCost && lines.length > 0 && <><dt>{tr("grossProfit")}</dt><dd>{money(totals.net - totals.cost)}</dd></>}
           </dl>
 
-          <div className="paymodes" role="group" aria-label={tr("paymentMethod")}>
-            {([["CASH", "Cash", Banknote], ["QR", "QR", QrCode], ["CARD", "Card", CreditCard], ["CREDIT", "Credit", HandCoins]] as const).map(([m, label, Icon]) => (
-              <button type="button" key={m} className="paymode" aria-pressed={mode === m}
-                disabled={(m === "QR" || m === "CARD") && bankAccts.length === 0}
-                onClick={() => setMode(m)}>
-                <Icon size={16} aria-hidden="true" /> {tr(`mode.${m}`)}
+          {mode !== "SPLIT" && (
+            <div className="paymodes paychannels" role="group" aria-label={tr("paymentMethod")}>
+              {channels.map((c) => {
+                const Icon = KIND_ICON[c.kind];
+                return (
+                  <button type="button" key={c.id} className="paymode" data-kind={c.kind}
+                    aria-pressed={mode === "PAY" && channel?.id === c.id}
+                    disabled={!c.accountId} title={c.accountId ? c.name : tr("tender.channelUnmapped", { name: c.name })}
+                    onClick={() => { setMode("PAY"); setChannelId(c.id); setReference(""); }}>
+                    <Icon size={16} aria-hidden="true" /> <span>{c.name}</span>
+                  </button>
+                );
+              })}
+              <button type="button" className="paymode" data-kind="CREDIT" aria-pressed={mode === "CREDIT"}
+                onClick={() => setMode("CREDIT")}>
+                <HandCoins size={16} aria-hidden="true" /> <span>{tr("mode.CREDIT")}</span>
               </button>
-            ))}
-          </div>
-          {mode === "CASH" && (
+            </div>
+          )}
+          {payingCash && (
             <div className="pos3-cash">
               <label htmlFor="pos-received">{tr("cashReceived")}</label>
               <div className="pos3-money">
@@ -757,43 +806,69 @@ export function PosTill(props: {
                   ))}
                 </div>
               )}
-              {change > 0 && (
-                <div className="pos3-change" role="status"><span>{tr("changeToReturn")}</span><strong>{fmtCents(change)} MMK</strong></div>
-              )}
             </div>
           )}
-          {(mode === "QR" || mode === "CARD") && bankAccts.length > 1 && (
-            <select aria-label={tr("intoAccount")} value={bankId} onChange={(e) => setBankId(e.target.value)}>
-              {bankAccts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+          {mode === "PAY" && channel && channel.kind !== "CASH" && (
+            <div className="pos3-cash">
+              <label htmlFor="pos-ref">
+                {tr("tender.reference")}{channel.requiresReference ? "" : ` (${tr("tender.optional")})`}
+              </label>
+              <input id="pos-ref" value={reference} autoFocus autoComplete="off" maxLength={80}
+                placeholder={tr("tender.referenceHint", { name: channel.name })}
+                onChange={(e) => setReference(e.target.value)} />
+              {channel.merchantNumber && (
+                <p className="hint">{tr("tender.payTo", { name: channel.merchantName ?? channel.name, number: channel.merchantNumber })}</p>
+              )}
+            </div>
           )}
           {mode === "CREDIT" && (
             <p className="hint">{partnerId ? tr("onAccount", { name: customerName }) : tr("creditNeedsCustomer")}</p>
           )}
           {mode === "SPLIT" && (
             <div className="pos-pay">
-              {split.map((p, i) => (
-                <div className="pos-pay-row" key={i}>
-                  <select aria-label={tr("account")} value={p.accountId}
-                    onChange={(e) => setSplit((ps) => ps.map((x, j) => (j === i ? { ...x, accountId: e.target.value } : x)))}>
-                    {props.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <input type="number" min={0} aria-label={tr("amount")} value={p.amount} className="pos-num"
-                    onChange={(e) => setSplit((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
-                </div>
-              ))}
+              {split.map((p, i) => {
+                const c = byId(p.channelId);
+                return (
+                  <div className="pos-pay-row" key={i}>
+                    <select aria-label={tr("tender.method")} value={p.channelId}
+                      onChange={(e) => setSplit((ps) => ps.map((x, j) => (j === i ? { ...x, channelId: e.target.value, reference: "" } : x)))}>
+                      {usable.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                    <input type="number" min={0} inputMode="decimal" aria-label={tr("amount")} value={p.amount} className="pos-num"
+                      placeholder={i === split.length - 1 && splitCalc.remainingCents > 0 ? exactText(splitCalc.remainingCents) : "0"}
+                      onChange={(e) => setSplit((ps) => ps.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} />
+                    {c && c.kind !== "CASH" && (
+                      <input aria-label={tr("tender.reference")} value={p.reference} maxLength={80} className="pos-ref"
+                        placeholder={c.requiresReference ? tr("tender.reference") : tr("tender.optional")}
+                        onChange={(e) => setSplit((ps) => ps.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
+                    )}
+                    {split.length > 2 && (
+                      <button type="button" className="pos-pay-x" aria-label={tr("tender.removeRow")}
+                        onClick={() => setSplit((ps) => ps.filter((_, j) => j !== i))}><X size={14} aria-hidden="true" /></button>
+                    )}
+                  </div>
+                );
+              })}
               <button type="button" className="linkish"
-                onClick={() => setSplit((ps) => [...ps, { accountId: bankAccts[0]?.id ?? cashAcct?.id ?? "", amount: "" }])}>
+                onClick={() => setSplit((ps) => [...ps, { channelId: usable[0]?.id ?? "", amount: "", reference: "" }])}>
                 {tr("addTender")}
               </button>
-              <p className="hint">
-                {splitPaid >= totals.total - 0.005 ? tr("paidInFull") : partnerId
-                  ? tr("goesOnAccount", { amount: money(totals.total - splitPaid) }) : tr("walkInPaysFull")}
-              </p>
+              <dl className="pos-pay-sum">
+                <dt>{tr("total")}</dt><dd>{fmtCents(splitCalc.dueCents)}</dd>
+                <dt>{tr("tender.paid")}</dt><dd>{fmtCents(splitCalc.paidCents)}</dd>
+                <dt>{tr("tender.remaining")}</dt><dd className={splitCalc.remainingCents > 0 ? "due" : ""}>{fmtCents(splitCalc.remainingCents)}</dd>
+              </dl>
+              {splitCalc.remainingCents > 0 && partnerId && (
+                <p className="hint">{tr("goesOnAccount", { amount: money(splitCalc.remainingCents / 100) })}</p>
+              )}
             </div>
           )}
+          {change > 0 && (
+            <div className="pos3-change" role="status"><span>{tr("changeToReturn")}</span><strong>{fmtCents(change)} MMK</strong></div>
+          )}
           <div className="pos3-more">
-            <button type="button" className="linkish" onClick={() => setMode(mode === "SPLIT" ? "CASH" : "SPLIT")}>
+            <button type="button" className="linkish" disabled={usable.length === 0}
+              onClick={() => { if (mode === "SPLIT") setMode("PAY"); else { setSplit(freshSplit()); setMode("SPLIT"); } }}>
               {mode === "SPLIT" ? tr("singlePayment") : tr("splitPayment")}
             </button>
             <details>

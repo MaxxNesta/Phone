@@ -6592,3 +6592,22 @@ a.btn, .btn, .erp-btn,
 @media (min-width: 901px) {
   .main.main:has(.page-head.hero) { padding-top: 22px; }
 }
+
+/* Payment channels at the till (0141): one chip per channel, wallets marked
+   in blue so a cashier can tell them from cash and card at a glance. */
+.pos3-cart .paychannels { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pos3-cart .paychannels .paymode { min-width: 0; padding: 0 6px; }
+.paychannels .paymode span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paychannels .paymode:disabled { opacity: 0.45; cursor: not-allowed; }
+.paychannels .paymode[data-kind="WALLET"] svg,
+.paychannels .paymode[data-kind="QR"] svg { color: var(--link); }
+.pos-pay-row { align-items: center; flex-wrap: wrap; }
+.pos-pay-row .pos-num { width: 110px; flex: 0 0 110px; }
+.pos-pay-row .pos-ref { flex: 1 1 100%; min-width: 0; }
+.pos-pay-x { border: 0; background: transparent; color: var(--muted); padding: 4px; border-radius: 6px; }
+.pos-pay-x:hover { background: var(--line-soft); color: var(--ink); }
+.pos-pay-sum { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 0; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.pos-pay-sum dt { color: var(--muted); }
+.pos-pay-sum dd { margin: 0; text-align: right; font-weight: 600; }
+.pos-pay-sum dd.due { color: var(--warn, #b25000); }
+.pill.info { background: color-mix(in srgb, var(--link) 12%, transparent); color: var(--link); }

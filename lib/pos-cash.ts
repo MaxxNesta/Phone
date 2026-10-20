@@ -56,3 +56,33 @@ export function quickAmounts(dueCents: number): number[] {
   const ups = steps.map((s) => Math.ceil(dueCents / s) * s);
   return [...new Set([dueCents, ...ups])].slice(0, 4);
 }
+
+/**
+ * A sale paid several ways. Digital tenders post exactly what was typed; cash
+ * posts only what is still due after them, and anything handed over past that
+ * is change from the drawer. Digital money past the total is an overpayment:
+ * there is no change to give from a wallet.
+ */
+export function splitTender(total: number, rows: { cash: boolean; amount: string }[]) {
+  const dueCents = toCents(postedAmount(total));
+  const typed = rows.map((r) => {
+    const n = Number(r.amount);
+    return r.amount.trim() === "" || !Number.isFinite(n) || n < 0 ? 0 : toCents(n);
+  });
+  const digitalCents = rows.reduce((s, r, i) => s + (r.cash ? 0 : typed[i]), 0);
+  let cashRoom = Math.max(0, dueCents - digitalCents);
+  let changeCents = 0;
+  const postedCents = rows.map((r, i) => {
+    if (!r.cash) return typed[i];
+    const take = Math.min(typed[i], cashRoom);
+    cashRoom -= take;
+    changeCents += typed[i] - take;
+    return take;
+  });
+  const paidCents = postedCents.reduce((s, c) => s + c, 0);
+  return {
+    dueCents, postedCents, paidCents, changeCents,
+    remainingCents: Math.max(0, dueCents - paidCents),
+    overCents: Math.max(0, digitalCents - dueCents),
+  };
+}

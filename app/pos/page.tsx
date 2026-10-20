@@ -2,6 +2,7 @@ import { onlyMyLocations } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "@/lib/auth";
 import { PosTill } from "@/components/pos-till";
+import { channelsAt } from "@/lib/payment-channels";
 import { getTranslations } from "next-intl/server";
 
 export async function generateMetadata() {
@@ -12,7 +13,7 @@ export default async function PosPage() {
   const user = await requirePermission("pos.sell");
   const co = user.companyId;
 
-  const [locations, customers, salesmen, accounts, taxCodes, focReasons, volumeDiscounts] = await Promise.all([
+  const [locations, customers, salesmen, taxCodes, focReasons, volumeDiscounts] = await Promise.all([
     sql`select l.id, l.name, p.name as branch from location l
           left join location p on p.id = l.parent_id
          where l.company_id = ${co} and l.is_stock_location and l.is_active
@@ -22,8 +23,6 @@ export default async function PosPage() {
     sql`select id, name, code from business_partner
          where company_id = ${co} and is_customer and is_active and code <> 'WALKIN' order by name`,
     sql`select id, name from salesman where company_id = ${co} and is_active order by name`,
-    sql`select id, code, name, is_bank_account from account
-         where company_id = ${co} and is_cash_account and is_active order by code`,
     sql`select t.id, t.code, t.name, fn_tax_rate_on(t.id, current_date)::float as rate
           from tax_code t where t.company_id = ${co} order by t.code`,
     sql`select id, name from foc_reason where company_id = ${co} order by name`,
@@ -34,13 +33,17 @@ export default async function PosPage() {
            and valid_from <= current_date and (valid_to is null or valid_to >= current_date)`,
   ]);
 
+  const mine = (await onlyMyLocations(locations as unknown as { id: string }[])) as { id: string }[];
+  // Each location's branch may pay into its own accounts.
+  const channels = Object.fromEntries(await Promise.all(mine.map(async (l) => [l.id, await channelsAt(co, l.id)])));
+
   return (
     <>
       <PosTill
-        locations={(await onlyMyLocations(locations as unknown as { id: string }[])) as never}
+        locations={mine as never}
+        channels={channels}
         customers={customers as never}
         salesmen={salesmen as never}
-        accounts={accounts as never}
         taxCodes={taxCodes as never}
         focReasons={focReasons as never}
         volumeDiscounts={volumeDiscounts as never}
