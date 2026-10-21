@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ListPlus, SlidersHorizontal, X, Smartphone, Plus } from "lucide-react";
+import { Search, ListPlus, SlidersHorizontal, X, Plus } from "lucide-react";
 import type { PickerItem } from "@/lib/actions";
 import { asVariant } from "./variant-tags";
 import { useTranslations } from "next-intl";
@@ -207,12 +207,10 @@ function byRelevance(list: PickerItem[], term: string, avail: (i: PickerItem) =>
     Number(avail(b) > 0) - Number(avail(a) > 0) || starts(a) - starts(b) || a.name.localeCompare(b.name));
 }
 
+/** The item's photo, or nothing: an empty placeholder only took space. */
 export function Thumb({ i }: { i: PickerItem }) {
-  return (
-    <span className="aib-thumb">
-      {i.photo ? <img src={i.photo} alt="" /> : <Smartphone size={16} aria-hidden="true" />}
-    </span>
-  );
+  if (!i.photo) return null;
+  return <span className="aib-thumb"><img src={i.photo} alt="" /></span>;
 }
 
 /** The catalogue as a table: tick what is wanted, set how many, add them all. */

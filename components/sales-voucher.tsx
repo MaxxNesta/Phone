@@ -14,7 +14,7 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Smartphone, Copy, MoreVertical, ChevronRight, Package, Plus } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, MoreVertical, ChevronRight, Package, Plus } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -1319,7 +1319,7 @@ export function SalesVoucher({
                     <td style={{ minWidth: 280 }}>
                       {l.orderLineId ? (
                         <span className="vprod" title="On the order — change it there">
-                          <span className="vthumb">{item?.photo ? <img src={item.photo} alt="" /> : <Smartphone size={20} aria-hidden="true" />}</span>
+                          {item?.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
                             <span className="vname codetip" data-code={item?.code ?? ""}>{item?.model ?? item?.name ?? "—"}</span>
                             <span className="vopts">{parts.map((x) => x.o).join(" · ") || "On the order"}</span>
@@ -1342,7 +1342,7 @@ export function SalesVoucher({
                         </div>
                       ) : (
                         <span className="vprod">
-                          <span className="vthumb">{item.photo ? <img src={item.photo} alt="" /> : <Smartphone size={20} aria-hidden="true" />}</span>
+                          {item.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
                             <span className="vname codetip" data-code={item.code}>{item.model ?? item.name}</span>
                             {parts.length > 0 && <span className="vopts">{parts.map((x) => x.o).join(" · ")}</span>}

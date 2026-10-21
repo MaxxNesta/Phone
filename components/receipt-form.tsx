@@ -12,7 +12,7 @@ import { MaybeSamePurchase } from "./same-purchase";
 import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { DocHeading } from "./doc-heading";
-import { Building2, Package, Smartphone, Plus, Trash2, ChevronDown } from "lucide-react";
+import { Building2, Package, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 
@@ -656,7 +656,6 @@ export function ReceiptForm({
                       <td style={{ minWidth: 240 }}>
                         {item && !picking ? (
                           <span className="prod">
-                            <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
                             <span>
                               <span className="prod-name codetip" data-code={item.code}>{item.name}</span>
                               {!l.sourceLineId && (
