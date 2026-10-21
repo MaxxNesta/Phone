@@ -131,7 +131,7 @@ try {
      the consumption says 5000. */
   const heldCode = (await sql`select code from account where id = ${r.heldId}`)[0].code;
   const toHeld = released(r, heldCode);
-  const toPromo = released(r, "6320");
+  const toPromo = released(r, "64104");
   check("the giveaway leaves stock", r4(toPromo) === 5000, `${toPromo}`);
   check("and is not counted as the cost of goods sold",
     r4(toHeld) === 30000, `shipped-not-invoiced still ${toHeld}`);
@@ -156,7 +156,7 @@ try {
     reason: "Damaged in the warehouse",
     lines: [{ itemId: item.id, qty: -4 }] });
   r = await recon();
-  const toAdj = released(r, "5300");
+  const toAdj = released(r, "59902");
   check("the write-off leaves stock", toAdj > 0, `${toAdj}`);
   check("and is not the cost of goods sold", r4(released(r, heldCode)) === 30000);
 
@@ -186,8 +186,8 @@ try {
   // Against Accounts Payable, not a purchase-return account: the goods go
   // back and so does the debt. Either way it is not cost of sales.
   check("it leaves stock against the supplier, not cost of sales",
-    released(r, "2000") > 0 && r4(released(r, heldCode)) === 30000,
-    `to AP ${released(r, "2000")}, sold still ${released(r, heldCode)}`);
+    released(r, "21101") > 0 && r4(released(r, heldCode)) === 30000,
+    `to AP ${released(r, "21101")}, sold still ${released(r, heldCode)}`);
 
   // -------------------------------------------------------------- transfers
   if (other) {

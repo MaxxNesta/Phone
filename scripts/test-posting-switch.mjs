@@ -142,14 +142,14 @@ try {
   await buy(100, 100);
   const d1 = await ship(10);
   check("the delivery puts cost in 1090, not cost of sales",
-    (await balance("14303")) === 1000 && (await balance("5000")) === 0,
-    `1090 ${await balance("14303")} / 5000 ${await balance("5000")}`);
+    (await balance("14303")) === 1000 && (await balance("51108")) === 0,
+    `1090 ${await balance("14303")} / 5000 ${await balance("51108")}`);
   await reconcile();
 
   await bill(10, d1.id);
   check("the invoice moves it to cost of sales",
-    (await balance("14303")) === 0 && (await balance("5000")) === 1000,
-    `1090 ${await balance("14303")} / 5000 ${await balance("5000")}`);
+    (await balance("14303")) === 0 && (await balance("51108")) === 1000,
+    `1090 ${await balance("14303")} / 5000 ${await balance("51108")}`);
   check("and inventory was relieved once, not twice",
     (await inventoryOut()) === 1000, `${await inventoryOut()}`);
   await reconcile();
@@ -159,7 +159,7 @@ try {
   const d2 = await ship(10);
   await bill(6, d2.id);
   check("cost of sales is the cost of the six",
-    (await balance("5000")) === 1000 + 600, `${await balance("5000")}`);
+    (await balance("51108")) === 1000 + 600, `${await balance("51108")}`);
   check("the other four stay in 1090",
     (await balance("14303")) === 400, `${await balance("14303")}`);
   await reconcile();
@@ -168,7 +168,7 @@ try {
   await bill(4, d2.id);
   check("1090 empties", (await balance("14303")) === 0, `${await balance("14303")}`);
   check("cost of sales has the whole delivery",
-    (await balance("5000")) === 2000, `${await balance("5000")}`);
+    (await balance("51108")) === 2000, `${await balance("51108")}`);
   await reconcile();
 
   // ------------------------------------------- layers at different costs
@@ -188,11 +188,11 @@ try {
   const d3 = await ship2(10);
   check("the delivery cost is both layers",
     (await balance("14303")) === 5 * 100 + 5 * 400, `${await balance("14303")}`);
-  const before5000 = await balance("5000");
+  const before5000 = await balance("51108");
   await bill2(6, d3.id);
   check("six units take the cheap layer first, not an average",
-    r2((await balance("5000")) - before5000) === 5 * 100 + 1 * 400,
-    `${r2((await balance("5000")) - before5000)} (an average would be 1,500)`);
+    r2((await balance("51108")) - before5000) === 5 * 100 + 1 * 400,
+    `${r2((await balance("51108")) - before5000)} (an average would be 1,500)`);
   check("and what is left is the dearer layer",
     (await balance("14303")) === 4 * 400, `${await balance("14303")}`);
   await reconcile();
@@ -205,13 +205,13 @@ try {
   // ------------------------------------------------------- a giveaway
   console.log("\n  a giveaway still goes to its own account\n");
   const held = await balance("14303");
-  const cogs = await balance("5000");
+  const cogs = await balance("51108");
   await ship(3, { focReasonId: promo.id, unitPrice: 0 });
   check("nothing reaches 1090", (await balance("14303")) === held,
     `${await balance("14303")}`);
-  check("nor cost of sales", (await balance("5000")) === cogs, `${await balance("5000")}`);
-  check("it went to promotion expense", (await balance("6320")) > 0,
-    `${await balance("6320")}`);
+  check("nor cost of sales", (await balance("51108")) === cogs, `${await balance("51108")}`);
+  check("it went to promotion expense", (await balance("64104")) > 0,
+    `${await balance("64104")}`);
   await reconcile();
 
   // --------------------------------------------------- a counter sale
@@ -228,12 +228,12 @@ try {
   const inv4 = await bill(10, d4.id);
   check("the invoice took the cost", (await balance("14303")) === 0,
     `${await balance("14303")}`);
-  const cogsBefore = await balance("5000");
+  const cogsBefore = await balance("51108");
 
   await P.voidDocument({ documentId: inv4.id, reason: "test", goodsBack: true });
   check("cost of sales gives it back",
-    r2(cogsBefore - (await balance("5000"))) === 1000,
-    `${r2(cogsBefore - (await balance("5000")))}`);
+    r2(cogsBefore - (await balance("51108"))) === 1000,
+    `${r2(cogsBefore - (await balance("51108")))}`);
   check("and it is sitting in 1090 again", (await balance("14303")) === 1000,
     `${await balance("14303")}`);
   const [rel] = await sql`select count(*)::int as n from sales_cost_allocation
@@ -244,7 +244,7 @@ try {
   console.log("\n  and the goods can be billed again\n");
   await bill(10, d4.id);
   check("the second invoice takes the same cost",
-    (await balance("5000")) === cogsBefore, `${await balance("5000")}`);
+    (await balance("51108")) === cogsBefore, `${await balance("51108")}`);
   check("1090 empties again", (await balance("14303")) === 0, `${await balance("14303")}`);
   await reconcile();
 
@@ -289,20 +289,20 @@ try {
   // ------------------------------------------------ the bill comes first
   console.log("\n  invoiced first, goods sent afterwards\n");
   const held7 = await balance("14303");
-  const cogs7 = await balance("5000");
+  const cogs7 = await balance("51108");
   const pending = await P.postSalesInvoice({ ...base, docDate: DAY, dueDate: DAY,
     paymentType: "CREDIT", toDeliver: true,
     lines: [{ itemId: item.id, qty: 5, unitPrice: 300 }] });
   check("the bill alone costs nothing — no goods have moved",
-    (await balance("5000")) === cogs7 && (await balance("14303")) === held7,
-    `5000 ${await balance("5000")} / 1090 ${await balance("14303")}`);
+    (await balance("51108")) === cogs7 && (await balance("14303")) === held7,
+    `5000 ${await balance("51108")} / 1090 ${await balance("14303")}`);
   await reconcile();
 
   await P.postDelivery({ ...base, docDate: DAY, sourceDocumentId: pending.id,
     lines: [{ itemId: item.id, qty: 5, unitPrice: 300 }] });
   check("sending them recognises the cost against the bill already raised",
-    r2((await balance("5000")) - cogs7) === 500,
-    `${r2((await balance("5000")) - cogs7)}`);
+    r2((await balance("51108")) - cogs7) === 500,
+    `${r2((await balance("51108")) - cogs7)}`);
   check("and leaves nothing behind in 1090",
     (await balance("14303")) === held7, `${await balance("14303")}`);
   await reconcile();
@@ -311,11 +311,11 @@ try {
   console.log("\n  a customer sends some back\n");
   const d8 = await ship(10);
   await bill(10, d8.id);
-  const cogs8 = await balance("5000");
+  const cogs8 = await balance("51108");
   await P.postSalesReturn({ ...base, docDate: DAY,
     lines: [{ itemId: item.id, qty: 3, unitPrice: 300 }] });
   check("the cost of what came back leaves cost of sales",
-    (await balance("5000")) < cogs8, `${await balance("5000")}`);
+    (await balance("51108")) < cogs8, `${await balance("51108")}`);
   await reconcile();
 
   // ------------------------------------------- write-off and internal move
@@ -352,7 +352,7 @@ try {
     r2((await sql`select coalesce(sum(jl.base_amount),0) v
         from journal_line jl join account a on a.id=jl.account_id
         join journal_entry je on je.id=jl.journal_entry_id
-       where a.code='5000' and je.entry_date = current_date`)[0].v) > 0,
+       where a.code='51108' and je.entry_date = current_date`)[0].v) > 0,
     "posted today");
   await reconcile();
 
@@ -364,7 +364,7 @@ try {
      and leave the whole cost stranded. */
   console.log("\n  one invoice billing two deliveries, through the order\n");
   const heldTwo = await balance("14303");
-  const cogsTwo = await balance("5000");
+  const cogsTwo = await balance("51108");
   const order = await P.postSalesOrder({ ...base, docDate: DAY, dueDate: DAY,
     lines: [{ itemId: item.id, qty: 10, unitPrice: 300 }] });
   await P.postDelivery({ ...base, docDate: DAY, sourceDocumentId: order.id,
@@ -383,7 +383,7 @@ try {
     paymentType: "CREDIT",
     lines: [{ itemId: item.id, qty: 10, unitPrice: 300, sourceLineId: orderLine.id }] });
   check("one invoice claims the cost of both",
-    (await balance("5000")) === r2(cogsTwo + 1000), `${await balance("5000")}`);
+    (await balance("51108")) === r2(cogsTwo + 1000), `${await balance("51108")}`);
   check("and the holding account empties",
     (await balance("14303")) === heldTwo, `${await balance("14303")}`);
   await reconcile();
@@ -395,14 +395,14 @@ try {
      exercises. */
   console.log("\n  goods issued before they were received\n");
   const heldNoStock = await balance("14303");
-  const cogsNoStock = await balance("5000");
+  const cogsNoStock = await balance("51108");
   const short = await P.postDelivery({ ...base, docDate: DAY,
     allowNegativeStock: true, negativeStockReason: "counted, not yet booked in",
     lines: [{ itemId: item2.id, qty: 50, unitPrice: 900 }] });
   check("their cost does not wait in 1090 — nothing could ever claim it",
     (await balance("14303")) === heldNoStock, `${await balance("14303")}`);
   check("it goes straight to cost of sales",
-    (await balance("5000")) > cogsNoStock, `${await balance("5000")}`);
+    (await balance("51108")) > cogsNoStock, `${await balance("51108")}`);
   await reconcile();
 
   console.log("\n  and the receipt that finally arrives\n");
@@ -426,7 +426,7 @@ try {
   await P.postSalesInvoice({ ...base, docDate: DAY, dueDate: DAY,
     paymentType: "CREDIT", deliveryId: dRe.id,
     lines: [{ itemId: item3.id, qty: 10, unitPrice: 400 }] });
-  const cogsSold = await balance("5000");
+  const cogsSold = await balance("51108");
   const heldSold = await balance("14303");
 
   // The supplier's bill says they cost 130, not the 100 that was guessed.
@@ -434,8 +434,8 @@ try {
     locationId: loc.id, docDate: DAY, dueDate: DAY, goodsReceiptId: grWrong.id,
     lines: [{ itemId: item3.id, qty: 10, unitPrice: 130, sourceLineId: grLine.id }] });
   check("the correction reaches cost of sales",
-    (await balance("5000")) === r2(cogsSold + 300),
-    `${await balance("5000")} vs ${r2(cogsSold + 300)}`);
+    (await balance("51108")) === r2(cogsSold + 300),
+    `${await balance("51108")} vs ${r2(cogsSold + 300)}`);
   check("and not the holding account, where it would be stranded",
     (await balance("14303")) === heldSold, `${await balance("14303")}`);
   await reconcile();
@@ -455,17 +455,17 @@ try {
   };
 
   const heldNow = await balance("14303");
-  const cogsNow = await balance("5000");
+  const cogsNow = await balance("51108");
   const dStmt = await ship(8);
   check("a delivery alone adds nothing to cost of sales",
-    (await isLine("5000")) === r2(cogsNow), `${await isLine("5000")} vs ${r2(cogsNow)}`);
+    (await isLine("51108")) === r2(cogsNow), `${await isLine("51108")} vs ${r2(cogsNow)}`);
   check("but it does show on the balance sheet at 1090",
     (await bsLine("14303")) === r2(heldNow + 800), `${await bsLine("14303")}`);
   await reconcile();
 
   await bill(8, dStmt.id);
   check("the invoice puts it into cost of sales",
-    (await isLine("5000")) === r2(cogsNow + 800), `${await isLine("5000")}`);
+    (await isLine("51108")) === r2(cogsNow + 800), `${await isLine("51108")}`);
   check("and 1090 clears back down",
     (await bsLine("14303")) === r2(heldNow), `${await bsLine("14303")}`);
   await reconcile();

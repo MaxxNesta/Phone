@@ -133,14 +133,14 @@ try {
 
   const gr2 = await receive(["IMEI-B1"], 1_200_000);
 
-  const cogsBeforePi = await bal("5000");
+  const cogsBeforePi = await bal("51108");
   const pi = await P.postPurchaseInvoice({
     companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY, dueDate: DAY,
     goodsReceiptId: gr1.id,
     lines: [{ itemId: phone.id, qty: 3, unitPrice: 1_000_000 }],
   });
   check("purchase invoice creates no cost of sales",
-    (await bal("5000")) === cogsBeforePi && (await entryOf(pi.id, "5000")) === 0);
+    (await bal("51108")) === cogsBeforePi && (await entryOf(pi.id, "51108")) === 0);
   check("purchase invoice clears GR/IR for what it bills",
     (await bal("14301")) === -1_200_000, `1060 = ${await bal("14301")}`);
 
@@ -167,9 +167,9 @@ try {
   const s1 = await sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["IMEI-B1"] }],
     { cashIn: 1_500_000, cashAccountId: cash.id });
   check("sale costs the exact unit, not the oldest layer",
-    (await entryOf(s1.id, "5000")) === 1_200_000, `COGS ${await entryOf(s1.id, "5000")}`);
+    (await entryOf(s1.id, "51108")) === 1_200_000, `COGS ${await entryOf(s1.id, "51108")}`);
   check("revenue and cost of sales in one entry",
-    (await entryOf(s1.id, "4000")) === -1_500_000 && (await entryOf(s1.id, "14101")) === -1_200_000);
+    (await entryOf(s1.id, "41101")) === -1_500_000 && (await entryOf(s1.id, "14101")) === -1_200_000);
   check("inventory relieved once", r2(invBefore - (await bal("14101"))) === 1_200_000);
   check("no delivery document", n((await sql`select count(*) c from document where doc_type = 'DELIVERY'`)[0].c) === docsBefore);
   check("goods-shipped-not-invoiced untouched", (await bal("14303")) === 0);
@@ -202,16 +202,16 @@ try {
   // 1,400,000 less 10% = 1,260,000; cases 40,000; net 1,300,000; tax 5% 65,000.
   check("credit sale: receivable is the gross", (await entryOf(s2.id, "13501")) === 1_365_000,
     `${await entryOf(s2.id, "13501")}`);
-  check("discount shown as contra-revenue", (await entryOf(s2.id, "4020")) === 140_000);
-  check("tax charged", (await entryOf(s2.id, "7000")) === -65_000);
-  check("phone + accessory cost together", (await entryOf(s2.id, "5000")) === 1_010_000);
+  check("discount shown as contra-revenue", (await entryOf(s2.id, "41201")) === 140_000);
+  check("tax charged", (await entryOf(s2.id, "21501")) === -65_000);
+  check("phone + accessory cost together", (await entryOf(s2.id, "51108")) === 1_010_000);
   check("accessory stock down by two",
     n((await sql`select fn_qty_on_hand(${co.id}, ${caseItem.id}, ${wh.id}) q`)[0].q) === 8);
 
   const gr3 = await receive(["IMEI-C1", "IMEI-C2"], 900_000);
   const s3 = await sell([{ itemId: phone.id, qty: 2, unitPrice: 1_300_000, serials: ["IMEI-C1", "IMEI-C2"] }],
     { cashIn: 2_600_000, cashAccountId: cash.id });
-  check("two phones on one invoice", (await entryOf(s3.id, "5000")) === 1_800_000
+  check("two phones on one invoice", (await entryOf(s3.id, "51108")) === 1_800_000
     && (await unit("IMEI-C1")).status === "SOLD" && (await unit("IMEI-C2")).status === "SOLD");
 
   console.log("\n  returns");
@@ -225,8 +225,8 @@ try {
   const ua = await unit("IMEI-A1");
   check("returned unit back on the shelf", ua.status === "IN_STOCK" && ua.was_returned);
   check("restored at its original cost", r2(ua.unit_cost) === 1_000_000
-    && (await entryOf(ret.id, "14101")) === 1_000_000 && (await entryOf(ret.id, "5000")) === -1_000_000);
-  check("revenue reversed against the invoice", (await entryOf(ret.id, "4010")) === 1_260_000
+    && (await entryOf(ret.id, "14101")) === 1_000_000 && (await entryOf(ret.id, "51108")) === -1_000_000);
+  check("revenue reversed against the invoice", (await entryOf(ret.id, "43101")) === 1_260_000
     && (await entryOf(ret.id, "13501")) === -1_323_000);
   check("one unit record, not a duplicate",
     n((await sql`select count(*) c from stock_serial where serial_no = 'IMEI-A1'`)[0].c) === 1);
@@ -234,7 +234,7 @@ try {
     () => P.postSalesReturn({ companyId: co.id, partnerId: custB.id, locationId: wh.id, docDate: DAY,
       lines: [{ itemId: phone.id, qty: 1, unitPrice: 1, serials: ["IMEI-A1"] }] }), /not out/);
   const s4 = await sell([{ itemId: phone.id, qty: 1, unitPrice: 1_450_000, serials: ["IMEI-A1"] }]);
-  check("returned unit sells again at its own cost", (await entryOf(s4.id, "5000")) === 1_000_000);
+  check("returned unit sells again at its own cost", (await entryOf(s4.id, "51108")) === 1_000_000);
 
   console.log("\n  void and amend");
   await refuses("void of a counter sale asks whether the goods are back",
@@ -242,8 +242,8 @@ try {
   const v1 = await P.voidDocument({ documentId: s1.id, reason: "keyed wrong", goodsBack: true });
   const ub = await unit("IMEI-B1");
   check("voided sale puts the unit back", ub.status === "IN_STOCK" && r2(ub.unit_cost) === 1_200_000);
-  check("void reverses revenue and cost", (await entryOf(v1.reversalId, "4000")) === 1_500_000
-    && (await entryOf(v1.reversalId, "5000")) === -1_200_000);
+  check("void reverses revenue and cost", (await entryOf(v1.reversalId, "41101")) === 1_500_000
+    && (await entryOf(v1.reversalId, "51108")) === -1_200_000);
   check("original kept, marked reversed, history written",
     (await sql`select status from document where id = ${s1.id}`)[0].status === "REVERSED"
     && n((await sql`select count(*) c from document_history where document_id = ${s1.id} and action = 'VOID'`)[0].c) === 1);
@@ -263,7 +263,7 @@ try {
   check("amendment is the next version under the same number",
     v2.version === 2 && v2.supersedes_document_id === s4.id);
   check("amended sale still costs the unit once",
-    (await entryOf(amId, "5000")) === 1_000_000 && (await unit("IMEI-A1")).out_document_id === amId);
+    (await entryOf(amId, "51108")) === 1_000_000 && (await unit("IMEI-A1")).out_document_id === amId);
   await refuses("amendment cannot swap the handset",
     () => P.amendInvoice({ companyId: co.id, documentId: amId, reason: "swap",
       invoice: { companyId: co.id, partnerId: custA.id, locationId: wh.id, docDate: DAY, dueDate: DAY,
@@ -287,7 +287,7 @@ try {
   const s5 = await P.postRetailSale({ companyId: co.id, partnerId: custA.id, locationId: wh2.id,
     docDate: DAY, dueDate: DAY, paymentType: "CREDIT",
     lines: [{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["IMEI-D1"] }] });
-  check("sold at the new branch at its own cost", (await entryOf(s5.id, "5000")) === 1_100_000);
+  check("sold at the new branch at its own cost", (await entryOf(s5.id, "51108")) === 1_100_000);
 
   console.log("\n  write-off");
   await P.postStockAdjustment({ companyId: co.id, locationId: wh.id, docDate: DAY,
@@ -345,16 +345,16 @@ try {
     select coalesce(sum(jl.base_amount), 0) v from journal_line jl
       join account a on a.id = jl.account_id join journal_entry je on je.id = jl.journal_entry_id
       join document d on d.journal_entry_id = je.id
-     where a.code = '5000' and d.doc_type = 'SALES_RETURN'`;
+     where a.code = '51108' and d.doc_type = 'SALES_RETURN'`;
   check("cost of sales = posted sales cost less returns",
-    (await bal("5000")) === r2(n(claims.v) + n(returnsCost.v)),
-    `${await bal("5000")} vs ${r2(n(claims.v) + n(returnsCost.v))}`);
+    (await bal("51108")) === r2(n(claims.v) + n(returnsCost.v)),
+    `${await bal("51108")} vs ${r2(n(claims.v) + n(returnsCost.v))}`);
   const [rev] = await sql`
     select coalesce(sum(dl.net_amount), 0) v from document_line dl join document d on d.id = dl.document_id
      where d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED' and d.company_id = ${co.id}`;
   check("net revenue in the ledger = posted invoice lines less returns",
-    r2(-((await bal("4000")) + (await bal("4020")) + (await bal("4010")))) === r2(n(rev.v) - 1_260_000),
-    `${r2(-((await bal("4000")) + (await bal("4020")) + (await bal("4010"))))} vs ${r2(n(rev.v) - 1_260_000)}`);
+    r2(-((await bal("41101")) + (await bal("41201")) + (await bal("43101")))) === r2(n(rev.v) - 1_260_000),
+    `${r2(-((await bal("41101")) + (await bal("41201")) + (await bal("43101"))))} vs ${r2(n(rev.v) - 1_260_000)}`);
 } catch (e) {
   failures++;
   console.error("\n  ERROR", e);

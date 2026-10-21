@@ -63,7 +63,7 @@ try {
   // the credit purchase is no cash flow and paying it is an investing one.
   let [assetPayable] = await sql`select id from account where company_id = ${co.id} and code = '2070'`;
   if (!assetPayable) {
-    const [cl] = await sql`select id from account where company_id = ${co.id} and code = '2-CL'`;
+    const [cl] = await sql`select id from account where company_id = ${co.id} and code = '21'`;
     [assetPayable] = await sql`
       insert into account (company_id, parent_id, code, name, account_type, is_postable, cash_flow_class, indirect_role, cash_flow_confirmed)
       values (${co.id}, ${cl?.id ?? null}, '2070', 'Fixed Asset Payable', 'LIABILITY', true, 'INVESTING', 'FIXED_ASSET', true)

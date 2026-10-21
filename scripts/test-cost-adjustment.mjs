@@ -115,7 +115,7 @@ try {
       });
     }
 
-    const cogsBefore = await balance("5000");
+    const cogsBefore = await balance("51108");
     const invBefore = await inventoryBalance();
 
     const bill = await P.postPurchaseInvoice({
@@ -127,8 +127,8 @@ try {
     return {
       gr, bill,
       toInventory: round(await inventoryBalance() - invBefore),
-      toCogs: round(await balance("5000") - cogsBefore),
-      ppv: round(await balance("5050")),
+      toCogs: round(await balance("51108") - cogsBefore),
+      ppv: round(await balance("59907")),
     };
   };
   const round = (v) => Math.round(n(v) * 100) / 100;
@@ -283,7 +283,7 @@ try {
       docDate: today, lines: [{ itemId: item.id, qty: 8 }],
     });
 
-    const cogsBefore = await balance("5000");
+    const cogsBefore = await balance("51108");
     const invBefore = await inventoryBalance();
 
     await P.postPurchaseInvoice({
@@ -293,7 +293,7 @@ try {
     });
 
     const toInv = round(await inventoryBalance() - invBefore);
-    const toCogs = round(await balance("5000") - cogsBefore);
+    const toCogs = round(await balance("51108") - cogsBefore);
 
     check("all 600 goes to inventory — none of it was sold",
       near(toInv, 600), `inventory +${toInv}`);
@@ -369,9 +369,9 @@ try {
     // re-chart would. The correction must still land where the sale did.
     const [other] = await sql`
       select id, code from account where company_id = ${co.id}
-         and code = ${"5030"} limit 1`;
+         and code = ${"51110"} limit 1`;
     const [grp] = await sql`select item_group_id from item where id = ${item.id}`;
-    const before5000 = await balance("5000");
+    const before5000 = await balance("51108");
     if (other && grp?.item_group_id) {
       await sql`
         insert into account_determination (company_id, role, account_id, item_group_id)
@@ -385,11 +385,11 @@ try {
       lines: [{ itemId: item.id, qty: 20, unitPrice: 130, sourceLineId: grLine.id }],
     });
 
-    const moved = round(await balance("5000") - before5000);
+    const moved = round(await balance("51108") - before5000);
     check("  the correction adjusts that account, not today's mapping",
       near(moved, 240), `5000 moved by ${moved}`);
     check("  and nothing landed in the re-mapped account",
-      near(await balance("5030"), 0), `5030 ${await balance("5030")}`);
+      near(await balance("51110"), 0), `5030 ${await balance("51110")}`);
 
     // Put the chart back so later runs are unaffected.
     if (other && grp?.item_group_id) {

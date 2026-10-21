@@ -229,6 +229,16 @@ export const SECTION_TYPE_LABEL: Record<string, string> = {
   "6-GA":  "Expense",
   "6-SD":  "Expense",
   "7-TX": "Tax",
+  // The customer chart (db/chart.mjs): groups are code prefixes.
+  "11": "Fixed Asset",
+  "13": "Current Asset",
+  "16": "Fixed Asset",
+  "17": "Asset",
+  "2":  "Liability",
+  "3":  "Equity",
+  "4":  "Revenue",
+  "5":  "COGS",
+  "6":  "Expense",
 };
 
 /**

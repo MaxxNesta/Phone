@@ -40,7 +40,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
-import { CHART, SYSTEM, DETERMINATION } from "../db/chart.mjs";
+import { CHART, SYSTEM, DETERMINATION, FOC_REASONS } from "../db/chart.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -84,7 +84,9 @@ if (confirm && targetHost !== envHost && named !== targetHost) {
 
 // The old chart's accounts, mapped to their home in the new one, so free-of-
 // charge reasons keep writing off to the same kind of account.
-const FOC_REMAP = { "5300": "5300", "6100": "6320" };
+// A reason the chart names keeps the account the chart gives it.
+const FOC_REMAP = { "5300": "59905", "6320": "64104", "6100": "64104" };
+const FOC_HOME = Object.fromEntries(FOC_REASONS.map(([code, , acct]) => [code, acct]));
 
 const local = url.includes("localhost") || url.includes("127.0.0.1");
 const pooled = url.includes("-pooler.") || url.includes("pgbouncer=true");
@@ -182,9 +184,15 @@ try {
        where s.account_id = a.id and s.company_id = ${co.id} and s.role = 'GRIR_CLEARING'`;
 
     await tx`select fn_seed_payment_channels(${co.id})`;
+    // Tax codes read their accounts from the tax roles, as setup does.
+    await tx`
+      update tax_code set
+        output_account_id = (select account_id from system_account where company_id = ${co.id} and role = 'OUTPUT_TAX'),
+        input_account_id  = (select account_id from system_account where company_id = ${co.id} and role = 'INPUT_TAX')
+       where company_id = ${co.id}`;
 
     for (const f of focBefore) {
-      const target = id.get(FOC_REMAP[f.acct] ?? f.acct);
+      const target = id.get(FOC_HOME[f.code] ?? FOC_REMAP[f.acct] ?? f.acct);
       if (!target) throw new Error(`FOC reason ${f.code} used account ${f.acct}, which the new chart has no home for`);
       await tx`insert into foc_reason (company_id, code, name, name_my, account_id)
                values (${co.id}, ${f.code}, ${f.name}, ${f.name_my}, ${target})`;

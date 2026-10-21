@@ -4941,14 +4941,14 @@ async function cycleWindow(
             union all
             select p.id, p.parent_id, p.code from tree p join up on p.id = up.parent_id
           )
-          select code from up where code in ('1-CA', '2-CL') limit 1
+          select code from up where code in ('1-CA', '2-CL', '13', '21') limit 1
         ) h on true
     )
     select
-      coalesce(sum(jl.base_amount) filter (where u.heading = '1-CA'), 0)::float as ca,
-     -coalesce(sum(jl.base_amount) filter (where u.heading = '2-CL'), 0)::float as cl,
+      coalesce(sum(jl.base_amount) filter (where u.heading in ('1-CA', '13')), 0)::float as ca,
+     -coalesce(sum(jl.base_amount) filter (where u.heading in ('2-CL', '21')), 0)::float as cl,
       coalesce(sum(jl.base_amount) filter (
-        where u.heading = '1-CA' and jl.account_id in (
+        where u.heading in ('1-CA', '13') and jl.account_id in (
           select account_id from account_determination
            where company_id = ${companyId} and role = 'INVENTORY')), 0)::float as inv
       from journal_line jl

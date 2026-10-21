@@ -101,21 +101,19 @@ end loop;
 
 -- -------------------------------------------------------------- accounts --
 -- The MTK chart, generated from db/chart.mjs by scripts/gen-seed-chart.mjs.
--- The same 121 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
+-- The same 215 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
 -- loads: the demo and a real company are the same shape, so a report that
 -- reads right here reads right there. Regenerate after changing the chart.
 
 -- Sections. Not postable — they are the headings the chart is read under.
 insert into account (company_id, code, name, account_type, is_postable) values
     (co, '1',      'Assets',                              'ASSET',     false),
-    (co, '2-CL',   'Current Liabilities',                 'LIABILITY',  false),
-    (co, '2-LT',   'Long-Term Liabilities',               'LIABILITY',  false),
-    (co, '3-EQ',   'Owner Equity',                        'EQUITY',    false),
-    (co, '4-SA',   'Sales',                               'REVENUE',   false),
-    (co, '4-OI',   'Other Income',                        'REVENUE',   false),
-    (co, '5-CG',   'Cost of Goods Sold',                  'COGS',      false),
-    (co, '6-EX',   'Expense',                             'EXPENSE',   false),
-    (co, '7-TX',   'Tax Account',                         'LIABILITY',  false);
+    (co, '2',      'Liabilities',                         'LIABILITY',  false),
+    (co, '3',      'Equity',                              'EQUITY',    false),
+    (co, '4',      'Revenue',                             'REVENUE',   false),
+    (co, '5',      'Cost of Goods Sold',                  'COGS',      false),
+    (co, '6',      'Expenses',                            'EXPENSE',   false),
+    (co, '7',      'Others',                              'REVENUE',   false);
 
 -- Sections nested 1 deep, under the sections above.
 insert into account (company_id, parent_id, code, name, account_type, is_postable)
@@ -125,9 +123,21 @@ from (values
     ('1', '13', 'Current Assets',                      'ASSET'::account_type),
     ('1', '16', 'Intangible Assets',                   'ASSET'::account_type),
     ('1', '17', 'Other Assets',                        'ASSET'::account_type),
-    ('6-EX', '6-GA', 'General & Administration Expenses',   'EXPENSE'::account_type),
-    ('6-EX', '6-SD', 'Selling & Distribution Expenses',     'EXPENSE'::account_type),
-    ('6-EX', '6-NO', 'Non-Operating Expenses',              'EXPENSE'::account_type)
+    ('2', '21', 'Current Liabilities',                 'LIABILITY'::account_type),
+    ('2', '23', 'Long-Term Liabilities',               'LIABILITY'::account_type),
+    ('3', '31', 'Capital Stock',                       'EQUITY'::account_type),
+    ('3', '32', 'Profit & Loss',                       'EQUITY'::account_type),
+    ('3', '33', 'Opening Balance',                     'EQUITY'::account_type),
+    ('4', '41', 'Sales',                               'REVENUE'::account_type),
+    ('4', '43', 'Return In',                           'REVENUE'::account_type),
+    ('5', '51', 'Purchase',                            'COGS'::account_type),
+    ('5', '52', 'Return Out',                          'COGS'::account_type),
+    ('5', '59', 'Adjustment',                          'COGS'::account_type),
+    ('6', '61', 'General Expenses',                    'EXPENSE'::account_type),
+    ('6', '64', 'Sales & Marketing Expenses',          'EXPENSE'::account_type),
+    ('6', '66', 'Admin Expenses',                      'EXPENSE'::account_type),
+    ('7', '71', 'Other Income',                        'REVENUE'::account_type),
+    ('7', '75', 'Currency Conversion Adjustment',      'REVENUE'::account_type)
 ) as x(parent, code, name, atype)
 join account p on p.company_id = co and p.code = x.parent;
 
@@ -150,7 +160,37 @@ from (values
     ('13', '151', 'Advance Paid',                        'ASSET'::account_type),
     ('13', '152', 'Prepaid Expenses',                    'ASSET'::account_type),
     ('16', '161', 'Software',                            'ASSET'::account_type),
-    ('17', '171', 'Deferred Expenses',                   'ASSET'::account_type)
+    ('17', '171', 'Deferred Expenses',                   'ASSET'::account_type),
+    ('21', '211', 'Accounts Payable',                    'LIABILITY'::account_type),
+    ('21', '213', 'Advance Received',                    'LIABILITY'::account_type),
+    ('21', '214', 'Consign Stock',                       'LIABILITY'::account_type),
+    ('21', '215', 'Tax Payable',                         'LIABILITY'::account_type),
+    ('23', '230', 'Long-Term Liabilities',               'LIABILITY'::account_type),
+    ('31', '311', 'Founding Shares',                     'EQUITY'::account_type),
+    ('31', '312', 'Ordinary Shares',                     'EQUITY'::account_type),
+    ('32', '322', 'Profit and Loss',                     'EQUITY'::account_type),
+    ('33', '331', 'Opening Balance',                     'EQUITY'::account_type),
+    ('41', '411', 'Sales',                               'REVENUE'::account_type),
+    ('41', '412', 'Sale Discount',                       'REVENUE'::account_type),
+    ('41', '413', 'Other Incomes',                       'REVENUE'::account_type),
+    ('43', '431', 'Return In',                           'REVENUE'::account_type),
+    ('51', '511', 'Purchase',                            'COGS'::account_type),
+    ('51', '512', 'Purchase Discount',                   'COGS'::account_type),
+    ('51', '513', 'Purchase Commission',                 'COGS'::account_type),
+    ('52', '521', 'Return Out',                          'COGS'::account_type),
+    ('59', '599', 'Adjustment',                          'COGS'::account_type),
+    ('61', '612', 'Selling & Distribution Expenses',     'EXPENSE'::account_type),
+    ('61', '615', 'Inventory Expense',                   'EXPENSE'::account_type),
+    ('64', '641', 'Marketing Expenses',                  'EXPENSE'::account_type),
+    ('66', '660', 'Phone Service Expenses',              'EXPENSE'::account_type),
+    ('66', '661', 'Administration Expenses',             'EXPENSE'::account_type),
+    ('66', '663', 'Machinery Depreciation Expenses',     'EXPENSE'::account_type),
+    ('66', '664', 'Furniture & Office Equipment Depr; Exp;',  'EXPENSE'::account_type),
+    ('66', '665', 'Vehicles Depreciation Exp;',          'EXPENSE'::account_type),
+    ('66', '666', 'Galaxy Amortisation',                 'EXPENSE'::account_type),
+    ('71', '712', 'Tax Received',                        'REVENUE'::account_type),
+    ('71', '714', 'Cash Service Income',                 'REVENUE'::account_type),
+    ('75', '755', 'Currency Conversion Adjustment',      'REVENUE'::account_type)
 ) as x(parent, code, name, atype)
 join account p on p.company_id = co and p.code = x.parent;
 
@@ -201,6 +241,7 @@ from (values
     ('143', '14301', 'GR/IR Clearing',                      'ASSET'::account_type,   false,  false,  false),
     ('143', '14302', 'Input Commercial Tax',                'ASSET'::account_type,   false,  false,  false),
     ('143', '14303', 'Goods Shipped Not Invoiced',          'ASSET'::account_type,   false,  false,  false),
+    ('143', '14304', 'Landed Cost Clearing',                'ASSET'::account_type,   false,  false,  false),
     ('151', '15101', 'Prepayment (Sup)',                    'ASSET'::account_type,   false,  false,  false),
     ('151', '15102', 'Purchase Advance',                    'ASSET'::account_type,   false,  false,  false),
     ('152', '15201', 'Prepaid Rent',                        'ASSET'::account_type,   false,  false,  false),
@@ -208,46 +249,99 @@ from (values
     ('152', '15203', 'Prepaid Delivery',                    'ASSET'::account_type,   false,  false,  false),
     ('161', '16101', 'Galaxy Software Installation',        'ASSET'::account_type,   false,  false,  false),
     ('171', '17101', 'Staff Loan',                          'ASSET'::account_type,   false,  false,  false),
-    ('2-CL', '2000', 'Accounts Payable',                    'LIABILITY'::account_type,  true,   false,  false),
-    ('2-CL', '2010', 'Salary Payable',                      'LIABILITY'::account_type,  false,  false,  false),
-    ('2-CL', '2020', 'Tax Payable',                         'LIABILITY'::account_type,  false,  false,  false),
-    ('2-CL', '2030', 'Accrued Expenses',                    'LIABILITY'::account_type,  false,  false,  false),
-    ('2-CL', '2060', 'Customer Advances',                   'LIABILITY'::account_type,  false,  false,  false),
-    ('2-LT', '2040', 'Loan Payable – Short Term',           'LIABILITY'::account_type,  false,  false,  false),
-    ('2-LT', '2050', 'Loan Payable – Long Term',            'LIABILITY'::account_type,  false,  false,  false),
-    ('3-EQ', '3000', 'Owner''s Capital',                    'EQUITY'::account_type,  false,  false,  false),
-    ('3-EQ', '3010', 'Owner''s Drawing',                    'EQUITY'::account_type,  false,  false,  false),
-    ('3-EQ', '3020', 'Retained Earnings',                   'EQUITY'::account_type,  false,  false,  false),
-    ('3-EQ', '3030', 'Opening Balance Equity',              'EQUITY'::account_type,  false,  false,  false),
-    ('4-SA', '4000', 'Sales',                               'REVENUE'::account_type,  false,  false,  false),
-    ('4-SA', '4010', 'Sales Return',                        'REVENUE'::account_type,  false,  false,  false),
-    ('4-SA', '4020', 'Sales Discount',                      'REVENUE'::account_type,  false,  false,  false),
-    ('4-SA', '4030', 'Delivery Income',                     'REVENUE'::account_type,  false,  false,  false),
-    ('4-OI', '4100', 'Other Income',                        'REVENUE'::account_type,  false,  false,  false),
-    ('5-CG', '5000', 'Cost of Goods Sold',                  'COGS'::account_type,    false,  false,  false),
-    ('5-CG', '5010', 'Purchase Return',                     'COGS'::account_type,    false,  false,  false),
-    ('5-CG', '5020', 'Purchase Discounts',                  'COGS'::account_type,    false,  false,  false),
-    ('5-CG', '5030', 'Carriage Inward',                     'COGS'::account_type,    false,  false,  false),
-    ('5-CG', '5050', 'Purchase Price Variance',             'COGS'::account_type,    false,  false,  false),
-    ('5-CG', '5300', 'Inventory Adjustment',                'COGS'::account_type,    false,  false,  false),
-    ('6-GA', '6000', 'Salary',                              'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6010', 'Rent',                                'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6020', 'Utilities – Electricity & Water',     'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6030', 'Transportation & Delivery Expense',   'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6060', 'Internet & Phone Bill',               'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6070', 'Repairs & Maintenance',               'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6080', 'Printing & Stationery',               'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6090', 'Office Supplies',                     'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6100', 'Bank Charges',                        'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6110', 'Miscellaneous Expenses',              'EXPENSE'::account_type,  false,  false,  false),
-    ('6-GA', '6160', 'Depreciation Expense',                'EXPENSE'::account_type,  false,  false,  false),
-    ('6-NO', '6400', 'Foreign Exchange Loss',               'EXPENSE'::account_type,  false,  false,  false),
-    ('6-NO', '6310', 'Advertising Expense',                 'EXPENSE'::account_type,  false,  false,  false),
-    ('6-NO', '6320', 'Promotion Expense',                   'EXPENSE'::account_type,  false,  false,  false),
-    ('6-NO', '6330', 'Commission Expenses',                 'EXPENSE'::account_type,  false,  false,  false),
-    ('6-NO', '6340', 'Delivery Charges',                    'EXPENSE'::account_type,  false,  false,  false),
-    ('7-TX', '7000', 'Commercial Tax Payable',              'LIABILITY'::account_type,  false,  false,  false),
-    ('7-TX', '7010', 'Income Tax Payable',                  'LIABILITY'::account_type,  false,  false,  false)
+    ('211', '21101', 'Accounts Payable',                    'LIABILITY'::account_type,  true,   false,  false),
+    ('211', '21108', 'Payable Expenses',                    'LIABILITY'::account_type,  false,  false,  false),
+    ('211', '21109', 'Payable (Other)',                     'LIABILITY'::account_type,  false,  false,  false),
+    ('211', '21110', 'Accrued Expense',                     'LIABILITY'::account_type,  false,  false,  false),
+    ('213', '21301', 'Sale Advance',                        'LIABILITY'::account_type,  false,  false,  false),
+    ('213', '21302', 'Prereceive Customer',                 'LIABILITY'::account_type,  false,  false,  false),
+    ('213', '21307', 'Sale Cash',                           'LIABILITY'::account_type,  false,  false,  false),
+    ('214', '21401', 'Consign Stock',                       'LIABILITY'::account_type,  false,  false,  false),
+    ('214', '21402', 'Unpaid Sold Consign',                 'LIABILITY'::account_type,  false,  false,  false),
+    ('215', '21501', 'Commercial Tax Payable',              'LIABILITY'::account_type,  false,  false,  false),
+    ('230', '23001', 'Loan',                                'LIABILITY'::account_type,  false,  false,  false),
+    ('311', '31104', 'Capital Stock',                       'EQUITY'::account_type,  false,  false,  false),
+    ('311', '31105', 'Capital',                             'EQUITY'::account_type,  false,  false,  false),
+    ('312', '31203', 'Shares -Royal',                       'EQUITY'::account_type,  false,  false,  false),
+    ('312', '31204', 'Shares -ACT',                         'EQUITY'::account_type,  false,  false,  false),
+    ('312', '31205', 'Shares -RD',                          'EQUITY'::account_type,  false,  false,  false),
+    ('322', '32201', 'Profit and Loss',                     'EQUITY'::account_type,  false,  false,  false),
+    ('331', '33101', 'Opening Balance Equity',              'EQUITY'::account_type,  false,  false,  false),
+    ('411', '41101', 'Sales (Default)',                     'REVENUE'::account_type,  false,  false,  false),
+    ('411', '41102', 'Sales(Consign)',                      'REVENUE'::account_type,  false,  false,  false),
+    ('411', '41105', 'FOC',                                 'REVENUE'::account_type,  false,  false,  false),
+    ('411', '41106', 'Delivery Income',                     'REVENUE'::account_type,  false,  false,  false),
+    ('412', '41201', 'Sales Discounts',                     'REVENUE'::account_type,  false,  false,  false),
+    ('412', '41202', 'Sales Comm',                          'REVENUE'::account_type,  false,  false,  false),
+    ('413', '41301', 'Other Incomes',                       'REVENUE'::account_type,  false,  false,  false),
+    ('431', '43101', 'Return In',                           'REVENUE'::account_type,  false,  false,  false),
+    ('431', '43103', 'ReturnIn Discount',                   'REVENUE'::account_type,  false,  false,  false),
+    ('431', '43104', 'ReturnInFOC',                         'REVENUE'::account_type,  false,  false,  false),
+    ('431', '43105', 'Return In (Charges)',                 'REVENUE'::account_type,  false,  false,  false),
+    ('511', '51101', 'Branch Transfer (Stock)',             'COGS'::account_type,    false,  false,  false),
+    ('511', '51105', 'Purchase (Consignment)',              'COGS'::account_type,    false,  false,  false),
+    ('511', '51107', 'Pur Consign Opening',                 'COGS'::account_type,    false,  false,  false),
+    ('511', '51108', 'Purchase',                            'COGS'::account_type,    false,  false,  false),
+    ('511', '51109', 'Purchase(Consign Adjust)',            'COGS'::account_type,    false,  false,  false),
+    ('511', '51110', 'Carriage Inward',                     'COGS'::account_type,    false,  false,  false),
+    ('512', '51201', 'Purchase Discounts',                  'COGS'::account_type,    false,  false,  false),
+    ('512', '51202', 'FOC Received',                        'COGS'::account_type,    false,  false,  false),
+    ('513', '51301', 'Purchase Commission',                 'COGS'::account_type,    false,  false,  false),
+    ('521', '52101', 'Purchase Return',                     'COGS'::account_type,    false,  false,  false),
+    ('521', '52102', 'ReturnOut FOC',                       'COGS'::account_type,    false,  false,  false),
+    ('599', '59902', 'Adjust amount',                       'COGS'::account_type,    false,  false,  false),
+    ('599', '59905', 'Inventory Damage',                    'COGS'::account_type,    false,  false,  false),
+    ('599', '59906', 'Damage Control A/C',                  'COGS'::account_type,    false,  false,  false),
+    ('599', '59907', 'Purchase Price Variance',             'COGS'::account_type,    false,  false,  false),
+    ('612', '61252', 'Salary',                              'EXPENSE'::account_type,  false,  false,  false),
+    ('612', '61253', 'Overtime',                            'EXPENSE'::account_type,  false,  false,  false),
+    ('612', '61254', 'Carriage Outward',                    'EXPENSE'::account_type,  false,  false,  false),
+    ('615', '61504', 'Inventory Loss',                      'EXPENSE'::account_type,  false,  false,  false),
+    ('615', '61506', 'Office Use',                          'EXPENSE'::account_type,  false,  false,  false),
+    ('641', '64102', 'Sample',                              'EXPENSE'::account_type,  false,  false,  false),
+    ('641', '64103', 'Money Adjust',                        'EXPENSE'::account_type,  false,  false,  false),
+    ('641', '64104', 'Promotion',                           'EXPENSE'::account_type,  false,  false,  false),
+    ('641', '64105', 'Packing Materials',                   'EXPENSE'::account_type,  false,  false,  false),
+    ('660', '66001', 'Exg.Rate Gain/Loss',                  'EXPENSE'::account_type,  false,  false,  false),
+    ('660', '66002', 'Warranty Service Expenses',           'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66101', 'General Expenses',                    'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66102', 'Municipal Tax',                       'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66103', 'Training Expenses',                   'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66104', 'Entertainment Expenses',              'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66105', 'Rental Charges',                      'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66106', 'Internet & Email',                    'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66107', 'Cleaning Expenses',                   'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66108', 'Insurance Expenses',                  'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66109', 'Bank Charges',                        'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66110', 'Tax & Rate : Government Fees',        'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66111', 'Software Maintenance Expenses',       'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66112', 'Meter Bill',                          'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66113', 'Printing & Stationery Expenses',      'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66114', 'Repair & Maintenance -Office Equipment',  'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66115', 'Transportation Expenses',             'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66116', 'Job Advertising Expenses',            'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66117', 'Professional Fees',                   'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66118', 'Phone Bill',                          'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66119', 'Staff Welfare',                       'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66120', 'Refreshment (water)',                 'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66121', 'Cash Excess/ Deficit',                'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66122', 'Service Charges',                     'EXPENSE'::account_type,  false,  false,  false),
+    ('661', '66123', 'Other Materials',                     'EXPENSE'::account_type,  false,  false,  false),
+    ('663', '66301', 'Depreciation For Generator/Solar',    'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66401', 'Depreciation For Save/ မီးခံသေတ္တာ',  'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66402', 'Depreciation For Table, Chair & Locker',  'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66403', 'Depreciation For Computer & Printer',  'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66404', 'Depreciation For AirCon & Freezer',   'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66405', 'Depreciation For Phone',              'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66406', 'Depreciation For Office Equipment',   'EXPENSE'::account_type,  false,  false,  false),
+    ('664', '66407', 'Depreciation For CCTV & Router',      'EXPENSE'::account_type,  false,  false,  false),
+    ('665', '66501', 'Depreciation For Cycle & EV Cycle',   'EXPENSE'::account_type,  false,  false,  false),
+    ('666', '66601', 'Amortisation For Galaxy software',    'EXPENSE'::account_type,  false,  false,  false),
+    ('712', '71204', 'Sale Tax',                            'REVENUE'::account_type,  false,  false,  false),
+    ('714', '71401', 'Service Income',                      'REVENUE'::account_type,  false,  false,  false),
+    ('714', '71402', 'Bank Interest',                       'REVENUE'::account_type,  false,  false,  false),
+    ('755', '75501', 'Currency Conversion Adjust',          'REVENUE'::account_type,  false,  false,  false),
+    ('755', '75502', 'Trial Adjust',                        'REVENUE'::account_type,  false,  false,  false)
 ) as x(parent, code, name, atype, ctrl, cash, bank)
 join account p on p.company_id = co and p.code = x.parent;
 
@@ -255,21 +349,22 @@ insert into system_account (company_id, role, account_id)
 select co, r.role, a.id
 from (values
     ('GRIR_CLEARING',               '14301'),
-    ('OPENING_BALANCE_EQUITY',      '3030'),
-    ('RETAINED_EARNINGS',           '3020'),
-    ('PURCHASE_PRICE_VARIANCE',     '5050'),
-    ('PURCHASE_DISCOUNT_RECEIVED',  '5020'),
-    ('SALES_DISCOUNT_ALLOWED',      '4020'),
-    ('PROMOTION_EXPENSE',           '6320'),
-    ('STOCK_ADJUSTMENT',            '5300'),
-    ('FX_GAIN',                     '4100'),
-    ('FX_LOSS',                     '6400'),
-    ('ROUNDING_DIFFERENCE',         '6110'),
-    ('DELIVERY_INCOME',             '4030'),
+    ('OPENING_BALANCE_EQUITY',      '33101'),
+    ('RETAINED_EARNINGS',           '32201'),
+    ('PURCHASE_PRICE_VARIANCE',     '59907'),
+    ('PURCHASE_DISCOUNT_RECEIVED',  '51201'),
+    ('SALES_DISCOUNT_ALLOWED',      '41201'),
+    ('PROMOTION_EXPENSE',           '64104'),
+    ('STOCK_ADJUSTMENT',            '59902'),
+    ('FX_GAIN',                     '66001'),
+    ('FX_LOSS',                     '66001'),
+    ('ROUNDING_DIFFERENCE',         '66121'),
+    ('DELIVERY_INCOME',             '41106'),
     ('SHIPPED_NOT_INVOICED',        '14303'),
-    ('CUSTOMER_ADVANCE',            '2060'),
+    ('LANDED_COST_CLEARING',        '14304'),
+    ('CUSTOMER_ADVANCE',            '21301'),
     ('SUPPLIER_ADVANCE',            '15102'),
-    ('OUTPUT_TAX',                  '7000'),
+    ('OUTPUT_TAX',                  '21501'),
     ('INPUT_TAX',                   '14302')
 ) as r(role, code)
 join account a on a.company_id = co and a.code = r.code;
@@ -339,11 +434,11 @@ insert into account_determination (company_id, role, item_group_id, account_id)
 select co, r.role, null, a.id
 from (values
     ('AR_CONTROL',                  '13501'),
-    ('AP_CONTROL',                  '2000'),
+    ('AP_CONTROL',                  '21101'),
     ('INVENTORY',                   '14101'),
-    ('COGS',                        '5000'),
-    ('REVENUE',                     '4000'),
-    ('SALES_RETURN',                '4010')
+    ('COGS',                        '51108'),
+    ('REVENUE',                     '41101'),
+    ('SALES_RETURN',                '43101')
 ) as r(role, code)
 join account a on a.company_id = co and a.code = r.code;
 
@@ -410,10 +505,10 @@ perform fn_seed_payment_channels(co);
 insert into foc_reason (company_id, code, name, name_my, account_id)
 select co, r.code, r.name, r.name_my, a.id
 from (values
-    ('PROMOTION', 'Promotional giveaway', 'ကြော်ငြာအတွက်', '6320'),
-    ('SAMPLE',    'Customer sample',      null,            '6320'),
-    ('OFFICE',    'Office use',           null,            '6320'),
-    ('DAMAGED',   'Damaged or expired',   null,            '5300')
+    ('PROMOTION', 'Promotional giveaway', 'ကြော်ငြာအတွက်', '64104'),
+    ('SAMPLE',    'Customer sample',      null,            '64104'),
+    ('OFFICE',    'Office use',           null,            '64104'),
+    ('DAMAGED',   'Damaged or expired',   null,            '59902')
 ) as r(code, name, name_my, acct)
 join account a on a.company_id = co and a.code = r.acct;
 
@@ -442,7 +537,7 @@ returning id into doc;
 je := seed_post(co, 'JE-000001', '2026-04-01', 'OPENING_BALANCE', doc, 'Opening capital',
       jsonb_build_array(
         jsonb_build_object('code','13201','amt', 50000000),
-        jsonb_build_object('code','3000','amt',-50000000)));
+        jsonb_build_object('code','31105','amt',-50000000)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- PURCHASE CHAIN 1 (complete): PO -> GR -> PI -> Payment --------------
@@ -496,8 +591,8 @@ returning id into doc;
 je := seed_post(co, 'JE-000003', '2026-07-12', 'PURCHASE_INVOICE', doc, 'PI-000001',
       jsonb_build_array(
         jsonb_build_object('code','14301','amt', 8510000),
-        jsonb_build_object('code','5050','amt',   20000),
-        jsonb_build_object('code','2000','amt',-8530000,'partner',s_bev)));
+        jsonb_build_object('code','59907','amt',   20000),
+        jsonb_build_object('code','21101','amt',-8530000,'partner',s_bev)));
 update document set journal_entry_id = je where id = doc;
 doc2 := doc;
 
@@ -510,7 +605,7 @@ insert into payment_allocation (company_id, payment_id, invoice_id, amount, base
 values (co, doc, doc2, 8530000, 8530000);
 je := seed_post(co, 'JE-000004', '2026-08-05', 'SUPPLIER_PAYMENT', doc, 'PAY-000001 settling PI-000001',
       jsonb_build_array(
-        jsonb_build_object('code','2000','amt', 8530000,'partner',s_bev),
+        jsonb_build_object('code','21101','amt', 8530000,'partner',s_bev),
         jsonb_build_object('code','13201','amt',-8530000)));
 update document set journal_entry_id = je where id = doc;
 
@@ -566,7 +661,7 @@ returning id into doc;
 je := seed_post(co, 'JE-000007', '2026-07-22', 'PURCHASE_INVOICE', doc, 'PI-000002',
       jsonb_build_array(
         jsonb_build_object('code','14301','amt', 6200000),
-        jsonb_build_object('code','2000','amt',-6200000,'partner',s_hou)));
+        jsonb_build_object('code','21101','amt',-6200000,'partner',s_hou)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- SALES CHAIN 1 (complete): SO -> Delivery -> Invoice -> Receipt ------
@@ -599,7 +694,7 @@ values (co, i_cola,  ygn_wh, '2026-07-28', -2000, 850, -1700000, doc),
        (co, i_water, ygn_wh, '2026-07-28', -4000, 250, -1000000, doc);
 je := seed_post(co, 'JE-000008', '2026-07-28', 'DELIVERY', doc, 'DO-000001 — cost recognised',
       jsonb_build_array(
-        jsonb_build_object('code','5000','amt', 2700000,'loc',ygn_wh),
+        jsonb_build_object('code','51108','amt', 2700000,'loc',ygn_wh),
         jsonb_build_object('code','14101','amt',-2700000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
@@ -611,7 +706,7 @@ returning id into doc;
 je := seed_post(co, 'JE-000009', '2026-07-30', 'SALES_INVOICE', doc, 'SI-000001 — revenue recognised',
       jsonb_build_array(
         jsonb_build_object('code','13501','amt', 3400000,'partner',c_shwe),
-        jsonb_build_object('code','4000','amt',-3400000)));
+        jsonb_build_object('code','41101','amt',-3400000)));
 update document set journal_entry_id = je where id = doc;
 doc2 := doc;
 
@@ -645,7 +740,7 @@ values (co, i_deterg, ygn_wh, '2026-07-05', -500, 3500, -1750000, doc),
        (co, i_soap,   ygn_wh, '2026-07-05',-1250, 1800, -2250000, doc);
 je := seed_post(co, 'JE-000011', '2026-07-05', 'DELIVERY', doc, 'DO-000002',
       jsonb_build_array(
-        jsonb_build_object('code','5000','amt', 4000000,'loc',ygn_wh),
+        jsonb_build_object('code','51108','amt', 4000000,'loc',ygn_wh),
         jsonb_build_object('code','14101','amt',-4000000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
@@ -657,7 +752,7 @@ returning id into doc;
 je := seed_post(co, 'JE-000012', '2026-07-06', 'SALES_INVOICE', doc, 'SI-000002',
       jsonb_build_array(
         jsonb_build_object('code','13501','amt', 5250000,'partner',c_golden),
-        jsonb_build_object('code','4000','amt',-5250000)));
+        jsonb_build_object('code','41101','amt',-5250000)));
 update document set journal_entry_id = je where id = doc;
 doc2 := doc;
 
@@ -693,7 +788,7 @@ values (co, i_chips,  ygn_wh, '2026-08-06', -1200, 600, -720000, doc),
        (co, i_peanut, ygn_wh, '2026-08-06', -1000, 450, -450000, doc);
 je := seed_post(co, 'JE-000014', '2026-08-06', 'DELIVERY', doc, 'DO-000003',
       jsonb_build_array(
-        jsonb_build_object('code','5000','amt', 1170000,'loc',ygn_wh),
+        jsonb_build_object('code','51108','amt', 1170000,'loc',ygn_wh),
         jsonb_build_object('code','14101','amt',-1170000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
@@ -705,7 +800,7 @@ returning id into doc;
 je := seed_post(co, 'JE-000015', '2026-08-07', 'SALES_INVOICE', doc, 'SI-000003',
       jsonb_build_array(
         jsonb_build_object('code','13501','amt', 1560000,'partner',c_aung),
-        jsonb_build_object('code','4000','amt',-1560000)));
+        jsonb_build_object('code','41101','amt',-1560000)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- SALES CHAIN 4 (open order, nothing delivered) ----------------------
@@ -738,7 +833,7 @@ insert into stock_movement (company_id, item_id, location_id, movement_date, qty
 values (co, i_cola, ygn_wh, '2026-08-09', -200, 850, -170000, doc);
 je := seed_post(co, 'JE-000016', '2026-08-09', 'DELIVERY', doc, 'DO-000004 — promotional stock',
       jsonb_build_array(
-        jsonb_build_object('code','6320','amt', 170000,'loc',ygn_wh),
+        jsonb_build_object('code','64104','amt', 170000,'loc',ygn_wh),
         jsonb_build_object('code','14101','amt',-170000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
@@ -746,11 +841,11 @@ update document set journal_entry_id = je where id = doc;
 
 je := seed_post(co, 'JE-000017', '2026-07-31', null, null, 'July salaries',
       jsonb_build_array(
-        jsonb_build_object('code','6000','amt', 4200000),
+        jsonb_build_object('code','61252','amt', 4200000),
         jsonb_build_object('code','13201','amt',-4200000)));
 je := seed_post(co, 'JE-000018', '2026-07-31', null, null, 'July warehouse rent',
       jsonb_build_array(
-        jsonb_build_object('code','6010','amt', 1500000),
+        jsonb_build_object('code','66105','amt', 1500000),
         jsonb_build_object('code','13201','amt',-1500000)));
 
 raise notice 'seed complete';

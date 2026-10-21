@@ -99,11 +99,12 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
    * distinction; a company whose chart has no such group simply shows no
    * other-income section, and the statement reads as it did before.
    */
-  const OTHER_INCOME_GROUP = "4-OI";
+  // "7" is the customer chart's Others group (db/chart.mjs).
+  const isOtherIncome = (code: string) => code === "4-OI" || code === "7";
   const NON_OPERATING_EXPENSE_GROUP = "6-NO";
   const revenueAll = buildStatement(chart, amounts, ["REVENUE"]);
-  const revenueNodes = revenueAll.nodes.filter((n) => n.code !== OTHER_INCOME_GROUP);
-  const otherNodes = revenueAll.nodes.filter((n) => n.code === OTHER_INCOME_GROUP);
+  const revenueNodes = revenueAll.nodes.filter((n) => !isOtherIncome(n.code));
+  const otherNodes = revenueAll.nodes.filter((n) => isOtherIncome(n.code));
 
   /**
    * The expense side of the same line. An exchange loss is not a cost of
