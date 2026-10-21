@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useId, useMemo, useState } from "react";
-import { Columns3, ChevronLeft, ChevronRight, Search, Download } from "lucide-react";
+import { Columns3, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, X } from "lucide-react";
 import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
 import { useTranslations } from "next-intl";
 
@@ -18,6 +18,10 @@ export type Filter = {
   /** What the "everything" option says — "All warehouses", "All statuses". */
   allLabel: string;
   options: { value: string; label: string }[];
+  /** What the active-filter chip calls it — "Region". Defaults to allLabel. */
+  label?: string;
+  /** Kept under "More filters" rather than on the bar. */
+  more?: boolean;
 };
 
 /** A field that exists only in the export — never on screen, never hideable. */
@@ -83,7 +87,10 @@ export function DataTable({
   defaultPageSize = 10,
   dateKey = "posting_date",
   defaultHidden = [],
+  initialFilters = {},
 }: {
+  /** Filter values to start from, for a link that means "only these". */
+  initialFilters?: Record<string, string>;
   /** Columns hidden until someone shows them; a saved choice wins. */
   defaultHidden?: string[];
   rows: DataRow[];
@@ -142,7 +149,8 @@ export function DataTable({
   const dt = useTranslations("dataTable");
   const [q, setQ] = useState(initialQuery ?? "");
   const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(defaultSort ?? null);
-  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<Record<string, string>>(initialFilters);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [dates, setDates] = useState<DateRange>(ANY_DATE);
   const hasDates = useMemo(
     () => rows.some((r) => typeof r.sort?.[dateKey] === "number" && (r.sort[dateKey] as number) > 0),
@@ -278,6 +286,25 @@ export function DataTable({
 
   const canExport = Boolean(csvFilename && rows.some((r) => r.csv));
 
+  const offered = filters.filter((f) => f.options.length > 1);
+  const active = offered.filter((f) => picked[f.key]);
+  const moreActive = active.filter((f) => f.more).length;
+  const setFilter = (key: string, value: string) => setPicked((p) => ({ ...p, [key]: value }));
+  const filterSelect = (f: Filter) => (
+    <select
+      key={f.key}
+      aria-label={f.allLabel}
+      value={picked[f.key] ?? ""}
+      onChange={(e) => setFilter(f.key, e.target.value)}
+      className={`dt-filter${picked[f.key] ? " dt-filter-on" : ""}`}
+    >
+      <option value="">{f.allLabel}</option>
+      {f.options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+
   // Figures sort biggest first on the first click — "which has the most"
   // is the question — and words A to Z.
   function toggleSort(key: string) {
@@ -314,22 +341,30 @@ export function DataTable({
             aria-label={dt("searchLabel")}
           />
         </label>
-        {filters
-          .filter((f) => f.options.length > 1)
-          .map((f) => (
-            <select
-              key={f.key}
-              aria-label={f.allLabel}
-              value={picked[f.key] ?? ""}
-              onChange={(e) => setPicked((p) => ({ ...p, [f.key]: e.target.value }))}
-              className="dt-filter"
-            >
-              <option value="">{f.allLabel}</option>
-              {f.options.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          ))}
+        {offered.filter((f) => !f.more).map(filterSelect)}
+
+        {offered.some((f) => f.more) && (
+          <div className="dt-cols">
+            <button type="button" className="dt-tool" aria-expanded={moreOpen}
+                    onClick={() => setMoreOpen(!moreOpen)}>
+              <SlidersHorizontal size={15} aria-hidden="true" /> {dt("moreFilters")}
+              {moreActive > 0 && <span className="dt-cols-n">{moreActive}</span>}
+            </button>
+            {moreOpen && (
+              <>
+                <div className="dt-cols-scrim" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+                <div className="dt-cols-menu dt-more-menu" role="group" aria-label={dt("moreFilters")}>
+                  {offered.filter((f) => f.more).map((f) => (
+                    <label key={f.key} className="dt-more-item">
+                      <span>{f.label ?? f.allLabel}</span>
+                      {filterSelect(f)}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {hasDates && <DateFilter value={dates} onChange={setDates} />}
 
@@ -382,6 +417,20 @@ export function DataTable({
           </div>
         )}
       </div>
+
+      {active.length > 0 && (
+        <div className="dt-chips">
+          {active.map((f) => (
+            <span key={f.key} className="dt-chip">
+              {f.label ?? f.allLabel}: {f.options.find((o) => o.value === picked[f.key])?.label ?? picked[f.key]}
+              <button type="button" aria-label={dt("removeFilter")} onClick={() => setFilter(f.key, "")}>
+                <X size={12} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+          <button type="button" className="ghost tiny" onClick={() => setPicked({})}>{dt("clearAll")}</button>
+        </div>
+      )}
 
       <div className="tablewrap">
         <table className={[tableClassName, scope].filter(Boolean).join(" ")}>

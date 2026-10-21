@@ -6684,3 +6684,127 @@ table.dt-compact td.wrap { white-space: normal; max-width: 22ch; overflow-wrap: 
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
   line-clamp: 3; overflow: hidden;
 }
+
+/* ------ filters: the ones under "More filters", and what is applied ------ */
+.dt-more-menu { min-width: 16rem; gap: 8px; padding: 10px; }
+.dt-more-item { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; color: var(--muted); font-weight: 600; }
+.dt-more-item select.dt-filter { width: 100%; }
+.dt-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line-soft); }
+.dt-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px;
+  border-radius: 999px; background: color-mix(in srgb, var(--link) 10%, transparent);
+  color: var(--ink); font-size: 0.78rem; font-weight: 500;
+}
+.dt-chip button {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; min-height: 0; padding: 0;
+  border: 0; border-radius: 999px; background: transparent; color: var(--muted);
+}
+.dt-chip button:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+
+/* ------ the Customers list ------ */
+.clamp1, .clamp2 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.clamp1 { -webkit-line-clamp: 1; line-clamp: 1; }
+.clamp2 { -webkit-line-clamp: 2; line-clamp: 2; }
+.muted { color: var(--muted); }
+table.ctable { table-layout: fixed; width: 100%; }
+table.ctable th:nth-child(1) { width: 24%; }
+table.ctable th:nth-child(2) { width: 14%; }
+table.ctable th:nth-child(3) { width: 13%; }
+table.ctable th:nth-child(4) { width: 10%; }
+table.ctable th:nth-child(5) { width: 12%; }
+table.ctable th:nth-child(6) { width: 13%; }
+table.ctable th:nth-child(7) { width: 8%; }
+table.ctable th:nth-child(8) { width: 6%; }
+table.ctable td { vertical-align: top; padding-top: 8px; padding-bottom: 8px; white-space: normal; }
+table.ctable .subline { font-size: 0.72rem; }
+.crow { cursor: pointer; }
+.crow:hover > td { background: color-mix(in srgb, var(--link) 4%, transparent); }
+.crow.is-selected > td { background: color-mix(in srgb, var(--link) 10%, transparent); }
+.crow.is-selected > td:first-child { box-shadow: inset 3px 0 0 var(--link); }
+.crow-who { overflow: hidden; }
+.crow-code { all: unset; cursor: pointer; font-weight: 700; font-size: 0.8rem; color: var(--ink); }
+.crow-code:hover { color: var(--link); }
+.crow-code:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+.crow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow-txt { overflow: hidden; }
+
+/* ------ the customer panel: beside the list, scrolling on its own ------ */
+.cpanel {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: clamp(400px, 32vw, 460px);
+  display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--line);
+  box-shadow: -12px 0 32px rgb(0 0 0 / 0.08);
+}
+/* Wide screens make room so the list stays readable beside the panel;
+   narrower ones let the panel sit over it. */
+@media (min-width: 1200px) { body.cpanel-open .main { padding-right: calc(clamp(400px, 32vw, 460px) + var(--s3)); } }
+@media (max-width: 720px) { .cpanel { width: 100%; } }
+.cpanel-head { display: flex; align-items: flex-start; gap: 8px; padding: 16px 16px 10px; border-bottom: 1px solid var(--line-soft); }
+.cpanel-title { flex: 1; min-width: 0; }
+.cpanel-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cpanel-name h2 { margin: 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpanel-x {
+  display: inline-grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0;
+  border: 0; border-radius: 8px; background: transparent; color: var(--muted);
+}
+.cpanel-x:hover { background: var(--line-soft); color: var(--ink); }
+.cpanel-tabs { display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line-soft); }
+.cpanel-tabs button {
+  height: 38px; min-height: 0; padding: 0 10px; border: 0; border-radius: 0; background: transparent;
+  color: var(--muted); font-size: 0.85rem; font-weight: 500; border-bottom: 2px solid transparent;
+}
+.cpanel-tabs button.on { color: var(--ink); font-weight: 650; border-bottom-color: var(--ink); }
+.cpanel-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px 24px; font-size: 0.85rem; }
+.cpanel-sec { margin-bottom: 14px; }
+.cpanel-sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--ink-soft); }
+.cpanel-sec-head h3 { flex: 1; margin: 0; font-size: 0.85rem; font-weight: 650; color: var(--ink); }
+.cpanel-box { padding: 10px 12px; border-radius: 10px; background: var(--ground); }
+.cpanel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.cpanel-field { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.cpanel-field span { font-size: 0.72rem; color: var(--muted); }
+.cpanel-field strong { font-weight: 500; overflow-wrap: anywhere; }
+.cpanel-link { all: unset; cursor: pointer; color: var(--link); font-size: 0.8rem; font-weight: 500; }
+.cpanel-link:hover { text-decoration: underline; }
+.cpanel-meter { margin-top: 10px; }
+.cpanel-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
+.cpanel-bar span { display: block; height: 100%; background: var(--link); border-radius: inherit; }
+.cpanel-bar span.over { background: var(--bad); }
+.cpanel-meter-legend { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
+.cpanel-note { margin-top: 8px; font-size: 0.78rem; }
+.cpanel-note.bad, .cpanel-cards strong.bad, .cpanel-state.bad { color: var(--bad); }
+.cpanel-notes { margin: 0; white-space: pre-wrap; }
+.cpanel-state { padding: 14px 4px; color: var(--muted); text-align: center; }
+.cpanel-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+.cpanel-cards.four { grid-template-columns: repeat(2, 1fr); }
+.cpanel-cards > div { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: 10px; background: var(--ground); min-width: 0; }
+.cpanel-cards span { font-size: 0.72rem; color: var(--muted); }
+.cpanel-cards strong { font-size: 0.95rem; overflow-wrap: anywhere; }
+.cpanel-explain { font-size: 0.72rem; margin: 0 0 8px; }
+.cpanel-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.8rem; }
+.cpanel-table th { text-align: left; font-size: 0.72rem; color: var(--muted); font-weight: 600; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); }
+.cpanel-table td { padding: 7px 4px; border-bottom: 1px solid var(--line-soft); vertical-align: top; overflow-wrap: anywhere; }
+.cpanel-table th:first-child { width: 42%; }
+.cpanel-table .r { text-align: right; }
+.cpanel-table .pill { font-size: 0.68rem; }
+.cpanel-expand {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; min-height: 0; padding: 0; margin-right: 2px;
+  border: 0; background: transparent; color: var(--muted); vertical-align: -3px;
+}
+.cpanel-sub > td { background: var(--ground); }
+.cpanel-pays { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cpanel-pays li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; }
+.cpanel-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+.cpanel-timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line-soft); }
+.cpanel-timeline li { position: relative; padding: 0 0 10px 6px; }
+.cpanel-timeline li::before {
+  content: ""; position: absolute; left: -21px; top: 4px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--link); box-shadow: 0 0 0 2px var(--surface);
+}
+.cpanel-timeline li.k-CUSTOMER_RECEIPT::before { background: var(--ok); }
+.cpanel-timeline li.k-VOID::before, .cpanel-timeline li.k-SALES_RETURN::before, .cpanel-timeline li.k-CUSTOMER_REFUND::before { background: var(--warn); }
+.cpanel-timeline li.k-CREATED::before { background: var(--muted); }
+.cpanel-tl-main { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.cpanel-tl-main strong { font-weight: 600; }
+.cpanel-tl-main span { margin-left: auto; font-variant-numeric: tabular-nums; }
+.cpanel-tl-meta { font-size: 0.72rem; color: var(--muted); }

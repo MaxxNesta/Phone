@@ -3,6 +3,8 @@ import { getCompany, getPartners } from "@/lib/queries";
 import { sql } from "@/lib/db";
 import { updatePartner, deactivatePartner, activatePartner, deletePartner } from "@/lib/actions";
 import { PartnerRow } from "@/components/partner-row";
+import { CustomerRow } from "@/components/customer-row";
+import { CustomerPanelProvider } from "@/components/customer-panel";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { getTranslations } from "next-intl/server";
@@ -53,6 +55,109 @@ export default async function Partners({
     role === "supplier" ? !p.supplier_category_id : !p.category_id).length;
   // The filter bar offers the side being looked at.
   const filterCats = role === "supplier" ? supplierCategories : categories;
+
+  if (role === "customer") {
+    const cp = await getTranslations("customerPanel");
+    const customers = byRole;
+    const creditKind = (p: any) =>
+      p.credit_limit === null ? "UNLIMITED"
+      : Number(p.credit_limit) === 0 ? "NONE"
+      : Number(p.available ?? p.credit_limit) < 0 ? "OVER" : "LIMIT";
+    const distinct = (vals: (string | null)[]) =>
+      [...new Set(vals.filter((v): v is string => !!v))].sort((a, b) => a.localeCompare(b));
+    const crows: DataRow[] = customers.map((p) => ({
+      key: p.id,
+      searchText: [p.code, p.name, p.name_my, p.company_name, p.member_card_id, p.region,
+                   p.township, p.phone, p.contact_person].filter(Boolean).join(" "),
+      facet: {
+        status: p.is_active ? "active" : "inactive",
+        category: p.category_id ?? "none",
+        credit: creditKind(p),
+        region: p.region ?? "",
+        township: p.township ?? "",
+        price_level: p.price_level_id ?? "default",
+        terms: String(Number(p.payment_terms_days)),
+      },
+      sort: {
+        customer: p.code,
+        company: p.company_name ?? "",
+        location: `${p.township ?? ""} ${p.region ?? ""}`.trim(),
+        price_level: p.price_level_name ?? "",
+        outstanding: Number(p.outstanding),
+        // Closest to the limit first when sorted descending; unlimited last.
+        credit: p.credit_limit === null ? Number.MAX_SAFE_INTEGER : Number(p.available ?? p.credit_limit),
+        status: p.is_active ? 1 : 0,
+      },
+      node: (
+        <CustomerRow partner={p} deactivateAction={deactivatePartner}
+          activateAction={activatePartner} deleteAction={deletePartner} />
+      ),
+    }));
+    const termDays = [...new Set(customers.map((p) => Number(p.payment_terms_days)))].sort((a, b) => a - b);
+    return (
+      <>
+        <datalist id="currency-codes">
+          {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </datalist>
+        <div className="page-head">
+          <span className="eyebrow">{it("masterData")}</span>
+          <h1>{t("customers")}</h1>
+          <HelpHint>{t("filteredHelp")}</HelpHint>
+        </div>
+        <CustomerPanelProvider customers={customers} priceLevels={priceLevels}
+          categories={categories} updateAction={updatePartner}>
+          <section>
+            <div className="card">
+              <div className="card-head">
+                <span className="page-sub">{t("records", { n: customers.length })}</span>
+                <span className="actions">
+                  <Link href="/partners/new" className="btn">{t("newPartner")}</Link>
+                </span>
+              </div>
+              <DataTable
+                rows={crows}
+                emptyLabel={t("noPartners")}
+                searchPlaceholder={cp("searchCustomers")}
+                defaultSort={{ key: "customer", dir: "asc" }}
+                tableClassName="dt-compact ctable"
+                storageKey="partners:customers:v2"
+                initialFilters={category ? { category } : {}}
+                filters={[
+                  { key: "status", label: c("status"), allLabel: cp("allStatuses"),
+                    options: [{ value: "active", label: t("activeLower") }, { value: "inactive", label: t("inactiveLower") }] },
+                  { key: "category", label: c("category"), allLabel: cp("allCategories"),
+                    options: [...categories.map((x) => ({ value: x.id, label: x.name })),
+                              { value: "none", label: t("notCategorised") }] },
+                  { key: "credit", label: cp("creditStatus"), allLabel: cp("allCredit"),
+                    options: [{ value: "LIMIT", label: cp("withinLimit") }, { value: "OVER", label: cp("overLimit") },
+                              { value: "NONE", label: cp("noCredit") }, { value: "UNLIMITED", label: cp("unlimited") }] },
+                  { key: "region", label: t("region"), allLabel: cp("allRegions"), more: true,
+                    options: distinct(customers.map((p) => p.region)).map((v) => ({ value: v, label: v })) },
+                  { key: "township", label: t("township"), allLabel: cp("allTownships"), more: true,
+                    options: distinct(customers.map((p) => p.township)).map((v) => ({ value: v, label: v })) },
+                  { key: "price_level", label: t("priceLevel"), allLabel: cp("allPriceLevels"), more: true,
+                    options: [{ value: "default", label: t("default") },
+                              ...priceLevels.map((l) => ({ value: l.id, label: l.name }))] },
+                  { key: "terms", label: t("terms"), allLabel: cp("allTerms"), more: true,
+                    options: termDays.map((d) => ({ value: String(d), label: d === 0 ? t("noCreditAllowed") : t("days", { n: d }) })) },
+                ]}
+                columns={[
+                  { key: "customer", label: cp("customer"), sortable: true },
+                  { key: "company", label: cp("company"), sortable: true },
+                  { key: "location", label: cp("location"), sortable: true },
+                  { key: "price_level", label: t("priceLevel"), sortable: true },
+                  { key: "outstanding", label: t("outstanding"), sortable: true, align: "r" },
+                  { key: "credit", label: cp("credit"), sortable: true, align: "r" },
+                  { key: "status", label: c("status"), sortable: true },
+                  { key: "actions", label: "" },
+                ]}
+              />
+            </div>
+          </section>
+        </CustomerPanelProvider>
+      </>
+    );
+  }
 
   const rows: DataRow[] = partners.map((p) => ({
     key: p.id,
