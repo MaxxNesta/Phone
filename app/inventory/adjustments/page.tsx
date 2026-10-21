@@ -6,12 +6,16 @@ import { sql } from "@/lib/db";
 import { AdjustmentForm } from "@/components/adjustment-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function NewStockAdjustment() {
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
   const d = await getFormData();
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
   const categories = await allCategories(co.id);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -19,15 +23,15 @@ export default async function NewStockAdjustment() {
     return (
       <>
         <ErpCrumbs steps={[
-          { label: "Inventory" },
-          { label: "Stock adjustment" },
+          { label: n("inventory") },
+          { label: t("adj.title") },
         ]} />
         <div className="page-head">
-          <h1>Stock adjustment</h1>
+          <h1>{t("adj.title")}</h1>
         </div>
         <div className="alert">
-          {categories.length === 0 && <div>No categories yet — add one first.</div>}
-          {d.locations.length === 0 && <div>No stock location is set up.</div>}
+          {categories.length === 0 && <div>{t("noCategoriesFirst")}</div>}
+          {d.locations.length === 0 && <div>{t("noLocation")}</div>}
         </div>
       </>
     );
@@ -36,16 +40,15 @@ export default async function NewStockAdjustment() {
   return (
     <>
       <ErpCrumbs steps={[
-        { label: "Inventory" },
-        { label: "Stock adjustment" },
+        { label: n("inventory") },
+        { label: t("adj.title") },
       ]} />
       <div className="page-head">
-        <h1>Stock adjustment</h1>
+        <h1>{t("adj.title")}</h1>
         <HelpHint>
-          Correct a count — damage, shrinkage, or what the shelf actually
-          holds versus what the ledger says.{" "}
+          {t("adj.help")}{" "}
           <Link href="/documents?type=STOCK_ADJUSTMENT" style={{ color: "var(--link)" }}>
-            Past adjustments
+            {t("pastAdjustments")}
           </Link>
         </HelpHint>
       </div>

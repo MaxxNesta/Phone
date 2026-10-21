@@ -5,10 +5,12 @@ import {
 import { createConsignmentAgreement, addConsignmentAgreementLine, getFormData } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
 import { ConsignmentHub } from "@/components/consignment-hub";
+import { getTranslations } from "next-intl/server";
 
 export default async function ConsignmentPage() {
+  const c = await getTranslations("common");
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [agreements, consignedStock, suppliers, items] = await Promise.all([
     getConsignmentAgreements(company.id) as any,

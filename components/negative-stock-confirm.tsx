@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export type Shortfall = {
   itemCode: string;
@@ -36,6 +37,8 @@ export function NegativeStockConfirm({
   onConfirm: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
 
   useEffect(() => {
     const d = ref.current;
@@ -60,22 +63,19 @@ export function NegativeStockConfirm({
         <div className="confirm-icon" aria-hidden="true">
           <AlertTriangle size={19} strokeWidth={2.25} />
         </div>
-        <h2 className="confirm-title">Insufficient recorded stock</h2>
+        <h2 className="confirm-title">{t("neg.insufficientTitle")}</h2>
         <p className="confirm-detail">
-          This will result in negative stock for
-          {shortfalls.length === 1 ? " this item" : " these items"}. Recorded
-          stock is insufficient &mdash; please confirm that the goods
-          physically exist and are available for delivery.
+          {t("neg.confirmBody", { which: shortfalls.length === 1 ? t("neg.thisItem") : t("neg.theseItems") })}
         </p>
 
         <div className="tablewrap" style={{ marginTop: "0.6rem" }}>
           <table>
             <thead>
               <tr>
-                <th>Item</th>
-                <th className="r">Required</th>
-                <th className="r">Recorded stock</th>
-                <th className="r">Projected stock</th>
+                <th>{t("item")}</th>
+                <th className="r">{t("neg.required")}</th>
+                <th className="r">{t("neg.recordedStock")}</th>
+                <th className="r">{t("neg.projected")}</th>
               </tr>
             </thead>
             <tbody>
@@ -97,14 +97,12 @@ export function NegativeStockConfirm({
         </div>
 
         <p className="confirm-detail" style={{ marginTop: "0.6rem" }}>
-          Confirming is recorded against this document, and the shortfall is
-          listed under <strong>Inventory &rarr; Negative stock</strong> until a
-          receipt covers it or it is reconciled.
+          {t("neg.confirmFoot")}
         </p>
 
         <div className="confirm-actions">
-          <button type="button" className="ghost" onClick={onCancel}>Cancel</button>
-          <button type="button" className="warn" onClick={onConfirm}>Yes, continue</button>
+          <button type="button" className="ghost" onClick={onCancel}>{c("cancel")}</button>
+          <button type="button" className="warn" onClick={onConfirm}>{t("neg.yesContinue")}</button>
         </div>
       </div>
     </dialog>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { money, qty } from "@/lib/format";
 import { createItemInline, type ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
+import { useTranslations } from "next-intl";
 
 type AgreementLine = {
   lineId: string; itemId: string; itemCode: string; itemName: string;
@@ -24,8 +25,6 @@ type ConsignedStockRow = {
 };
 type OwnedRow = { item_id: string; location_id: string; qty_on_hand: string };
 
-const basis = (method: string, value: number | string) =>
-  method === "PERCENTAGE" ? `${Number(value)}% of selling price` : `Fixed ${money(value)}/unit`;
 
 export function ConsignmentHub({
   agreements, consignedStock, ownedStock, suppliers, items,
@@ -41,6 +40,10 @@ export function ConsignmentHub({
   createAgreementAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   addLineAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
+  const basis = (method: string, value: number | string) =>
+    method === "PERCENTAGE" ? t("cons.basisPercent", { n: Number(value) }) : t("cons.basisFixed", { amount: money(value) });
   const [agState, agAction] = useActionState<ActionResult | null, FormData>(
     createAgreementAction as never, null);
   const [lineState, lineAction] = useActionState<ActionResult | null, FormData>(
@@ -94,15 +97,15 @@ export function ConsignmentHub({
   return (
     <div data-density="odoo">
       <div className="erp-panel">
-        <h1 style={{ fontSize: "var(--t-lg)", fontWeight: 600, margin: 0 }}>Consignment</h1>
+        <h1 style={{ fontSize: "var(--t-lg)", fontWeight: 600, margin: 0 }}>{t("cons.title")}</h1>
         <span style={{ marginLeft: "auto", display: "flex", gap: "0.5rem" }}>
           <Link href="/inventory/consignment/receive" className="erp-btn erp-btn-primary"
                 style={{ textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-            Receive Consignment
+            {t("cons.receive")}
           </Link>
           <Link href="/sales/consignment" className="erp-btn"
                 style={{ textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-            Consignment Sale
+            {t("cons.sale")}
           </Link>
         </span>
       </div>
@@ -110,24 +113,24 @@ export function ConsignmentHub({
       {/* ---- ownership: what is on the shelf, and whose it is ---- */}
       <div className="erp-sheet" style={{ margin: "1rem", borderRadius: "var(--erp-radius)" }}>
         <div style={{ padding: "0.6rem 0.9rem", borderBottom: "1px solid var(--erp-border)", fontWeight: 600 }}>
-          Consigned stock on hand
+          {t("cons.onHandTitle")}
         </div>
         {consignedStock.length === 0 ? (
           <div style={{ padding: "1rem", color: "var(--erp-fg-muted)" }}>
-            No consigned stock on hand. Receive some to see it here.
+            {t("cons.noneOnHand")}
           </div>
         ) : (
           <div className="erp-scroll">
             <table className="erp-table">
               <thead>
                 <tr>
-                  <th className="erp-th">Item</th>
-                  <th className="erp-th erp-num">On hand</th>
-                  <th className="erp-th erp-num">Owned</th>
-                  <th className="erp-th erp-num">Consigned</th>
-                  <th className="erp-th">Consignor</th>
-                  <th className="erp-th">Warehouse</th>
-                  <th className="erp-th">Settlement</th>
+                  <th className="erp-th">{t("item")}</th>
+                  <th className="erp-th erp-num">{t("onHand")}</th>
+                  <th className="erp-th erp-num">{t("cons.owned")}</th>
+                  <th className="erp-th erp-num">{t("cons.consigned")}</th>
+                  <th className="erp-th">{t("cons.consignor")}</th>
+                  <th className="erp-th">{c("warehouse")}</th>
+                  <th className="erp-th">{t("cons.settlement")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -164,9 +167,9 @@ export function ConsignmentHub({
       <div className="erp-sheet" style={{ margin: "1rem", borderRadius: "var(--erp-radius)" }}>
         <div style={{ padding: "0.6rem 0.9rem", borderBottom: "1px solid var(--erp-border)",
                       display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontWeight: 600 }}>Consignment agreements</span>
+          <span style={{ fontWeight: 600 }}>{t("cons.agreements")}</span>
           <button type="button" className="erp-btn" onClick={() => setNewAgreementOpen((v) => !v)}>
-            {newAgreementOpen ? "Cancel" : "+ New agreement"}
+            {newAgreementOpen ? c("cancel") : t("cons.newAgreement")}
           </button>
         </div>
 
@@ -175,37 +178,37 @@ export function ConsignmentHub({
                                             display: "flex", gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap" }}>
             <div>
               <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>
-                Consignor (supplier)
+                {t("cons.consignorSupplier")}
               </label>
               <PartnerPicker
                 partners={suppliers as never}
                 value={newAgreementPartner}
-                placeholder="Type a supplier…"
+                placeholder={t("cons.typeSupplier")}
                 disabled={suppliers.length === 0}
                 onPick={setNewAgreementPartner}
               />
               {suppliers.length === 0 && (
                 <div style={{ fontSize: "var(--erp-text-xs)", color: "var(--warn)", marginTop: "0.25rem", maxWidth: 260 }}>
-                  Every supplier already has an agreement. Add a supplier under{" "}
-                  <a href="/partners?role=supplier" style={{ color: "var(--link)" }}>Master data → Suppliers</a>{" "}
-                  to make another.
+                  {t("cons.everySupplierHas")}{" "}
+                  <a href="/partners?role=supplier" style={{ color: "var(--link)" }}>{t("cons.masterSuppliers")}</a>{" "}
+                  {t("cons.toMakeAnother")}
                 </div>
               )}
             </div>
             <div style={{ flex: 1, minWidth: 180 }}>
               <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>
-                Memo (optional)
+                {t("cons.memoOptional")}
               </label>
-              <input name="memo" type="text" placeholder="Standard terms" style={{ width: "100%" }} />
+              <input name="memo" type="text" placeholder={t("cons.standardTerms")} style={{ width: "100%" }} />
             </div>
-            <button type="submit" className="erp-btn erp-btn-primary">Create agreement</button>
+            <button type="submit" className="erp-btn erp-btn-primary">{t("cons.createAgreement")}</button>
             {agState && "error" in agState && <span style={{ color: "var(--bad)" }}>{agState.error}</span>}
           </form>
         )}
 
         {agreements.length === 0 ? (
           <div style={{ padding: "1rem", color: "var(--erp-fg-muted)" }}>
-            No consignment agreements yet. A supplier needs one before you can receive goods on their behalf.
+            {t("cons.noAgreements")}
           </div>
         ) : (
           agreements.map((ag) => (
@@ -218,7 +221,7 @@ export function ConsignmentHub({
                 </span>
                 <button type="button" className="erp-btn"
                         onClick={() => setAddingLineTo(addingLineTo === ag.id ? null : ag.id)}>
-                  {addingLineTo === ag.id ? "Cancel" : "+ Add item"}
+                  {addingLineTo === ag.id ? c("cancel") : t("cons.addItem")}
                 </button>
               </div>
 
@@ -227,33 +230,33 @@ export function ConsignmentHub({
                                                      gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap" }}>
                   <input type="hidden" name="agreement_id" value={ag.id} />
                   <div>
-                    <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>Item</label>
+                    <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>{t("item")}</label>
                     <select name="item_id" required value={newItemId}
                             onChange={(e) => setNewItemId(e.target.value)}>
-                      <option value="">Choose…</option>
+                      <option value="">{t("cons.choose")}</option>
                       {allItems.map((it) => <option key={it.id} value={it.id}>{it.code} · {it.name}</option>)}
                     </select>
                     <button type="button" className="erp-btn"
                             style={{ marginTop: "0.3rem", fontSize: "var(--erp-text-xs)" }}
                             onClick={() => { setCreatingItem((v) => !v); setItemError(null); }}>
-                      {creatingItem ? "Cancel new item" : "+ Create new item"}
+                      {creatingItem ? t("cons.cancelNewItem") : t("cons.createNewItem")}
                     </button>
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>Settlement</label>
+                    <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>{t("cons.settlement")}</label>
                     <select name="pricing_method" value={method} onChange={(e) => setMethod(e.target.value as never)}>
-                      <option value="PERCENTAGE">Percentage of selling price</option>
-                      <option value="FIXED">Fixed amount per unit</option>
+                      <option value="PERCENTAGE">{t("cons.pct")}</option>
+                      <option value="FIXED">{t("cons.fixed")}</option>
                     </select>
                   </div>
                   <div>
                     <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>
-                      {method === "PERCENTAGE" ? "Percent" : "Amount / unit"}
+                      {method === "PERCENTAGE" ? t("cons.percent") : t("cons.amountUnit")}
                     </label>
                     <input name="pricing_value" type="number" step="0.01" min="0"
                            max={method === "PERCENTAGE" ? 100 : undefined} required style={{ width: 110 }} />
                   </div>
-                  <button type="submit" className="erp-btn erp-btn-primary">Add</button>
+                  <button type="submit" className="erp-btn erp-btn-primary">{t("cons.add")}</button>
                   {lineState && "error" in lineState && <span style={{ color: "var(--bad)" }}>{lineState.error}</span>}
                 </form>
               )}
@@ -263,39 +266,37 @@ export function ConsignmentHub({
                               border: "1px solid var(--erp-border)", borderRadius: "var(--erp-radius)",
                               background: "var(--erp-surface-sunken)" }}>
                   <div style={{ fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)", marginBottom: "0.4rem" }}>
-                    New item — goes into the ordinary item master. Creating it
-                    records what the product is; it does not make the stock yours.
-                    Ownership is decided when the consignment is received.
+                    {t("cons.newItemNote")}
                   </div>
                   <div style={{ display: "flex", gap: "0.6rem", alignItems: "flex-end", flexWrap: "wrap" }}>
                     <div style={{ flex: 2, minWidth: 180 }}>
-                      <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>Name</label>
-                      <input type="text" value={itemName} placeholder="Sprite 500ml"
+                      <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>{c("name")}</label>
+                      <input type="text" value={itemName} placeholder={t("cons.namePlaceholder")}
                              onChange={(e) => setItemName(e.target.value)} style={{ width: "100%" }} />
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>Category</label>
+                      <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>{c("category")}</label>
                       <select value={itemGroupId} onChange={(e) => setItemGroupId(e.target.value)}>
-                        <option value="">Choose…</option>
-                        {categories.map((c) => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
+                        <option value="">{t("cons.choose")}</option>
+                        {categories.map((g) => <option key={g.id} value={g.id}>{g.code} · {g.name}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>Unit</label>
+                      <label style={{ display: "block", fontSize: "var(--erp-text-xs)", color: "var(--erp-fg-muted)" }}>{c("unit")}</label>
                       <select value={itemUomId} onChange={(e) => setItemUomId(e.target.value)}>
-                        <option value="">Choose…</option>
+                        <option value="">{t("cons.choose")}</option>
                         {uoms.map((u) => <option key={u.id} value={u.id}>{u.code}</option>)}
                       </select>
                     </div>
                     <button type="button" className="erp-btn erp-btn-primary"
                             disabled={savingItem || !itemName.trim() || !itemGroupId || !itemUomId}
                             onClick={submitNewItem}>
-                      {savingItem ? "Creating…" : "Create item"}
+                      {savingItem ? t("cons.creating") : t("cons.createItem")}
                     </button>
                   </div>
                   {categories.length === 0 && (
                     <div style={{ color: "var(--warn)", fontSize: "var(--erp-text-xs)", marginTop: "0.4rem" }}>
-                      No categories yet — add one under Master data first, so the item has somewhere to file.
+                      {t("cons.noCategories")}
                     </div>
                   )}
                   {itemError && <div style={{ color: "var(--bad)", fontSize: "var(--erp-text-sm)", marginTop: "0.4rem" }}>{itemError}</div>}
@@ -314,7 +315,7 @@ export function ConsignmentHub({
                           {basis(l.pricingMethod, l.pricingValue)}
                         </td>
                         <td className="erp-td erp-num">
-                          {l.onHand > 0 ? `${qty(l.onHand)} on hand` : "none on hand"}
+                          {l.onHand > 0 ? t("cons.nOnHand", { n: qty(l.onHand) }) : t("cons.noneOnHandShort")}
                         </td>
                       </tr>
                     ))}

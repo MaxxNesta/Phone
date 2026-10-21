@@ -6,10 +6,14 @@ import { reconcileNegativeStockAction } from "@/lib/actions";
 import { ReconcileStock } from "@/components/reconcile-stock";
 import { money } from "@/lib/format";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function NegativeStock() {
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const rows = (await seenRows((await getNegativeStock(company.id)) as unknown as Record<string, unknown>[])) as unknown as Parameters<
     typeof ReconcileStock
@@ -20,33 +24,30 @@ export default async function NegativeStock() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Inventory</span>
-        <h1>Negative stock &mdash; pending reconciliation</h1>
+        <span className="eyebrow">{n("inventory")}</span>
+        <h1>{t("neg.title")}</h1>
         <BranchScope />
         <HelpHint>
-          Goods that went out before anything recorded them arriving. The stock
-          was physically there; the paperwork was not, and someone confirmed
-          that at the time. Each line is waiting for a receipt, or for the
-          count below to bring the record back up to what is on the shelf.
+          {t("neg.help")}
         </HelpHint>
       </div>
 
       {rows.length === 0 ? (
         <div className="empty">
-          Nothing is pending. Recorded stock matches what has been issued.{" "}
-          <Link href="/items/stock" style={{ color: "var(--link)" }}>See stock on hand</Link>
+          {t("neg.nothing")}{" "}
+          <Link href="/items/stock" style={{ color: "var(--link)" }}>{t("neg.seeStock")}</Link>
         </div>
       ) : (
         <>
           <div className="kpis" style={{ marginBottom: "0.75rem" }}>
             <div className="kpi">
-              <span className="kpi-label">Lines pending</span>
+              <span className="kpi-label">{t("neg.linesPending")}</span>
               <span className="kpi-value">{rows.length}</span>
             </div>
             <div className="kpi">
-              <span className="kpi-label">Value owed to inventory</span>
+              <span className="kpi-label">{t("neg.valueOwed")}</span>
               <span className="kpi-value">{money(totalValue)}</span>
-              <span className="kpi-note">at what the goods were charged out at</span>
+              <span className="kpi-note">{t("neg.valueNote")}</span>
             </div>
           </div>
 
@@ -55,11 +56,7 @@ export default async function NegativeStock() {
           <div className="card" style={{ marginTop: "1rem" }}>
             <div className="card-body">
               <span className="page-sub">
-                A goods receipt for the same item and warehouse settles these on
-                its own, at whatever the supplier actually charged &mdash; and
-                any difference from the price below goes to purchase price
-                variance. Reconciling here instead is for stock that has been
-                found and counted, where no receipt is coming.
+                {t("neg.footnote")}
               </span>
             </div>
           </div>

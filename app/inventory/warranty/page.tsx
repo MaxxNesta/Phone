@@ -6,15 +6,20 @@ import { warrantyLookup, warrantiesEnding } from "@/lib/phone";
 import { shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Warranty" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("inventory"))("war.title") };
+}
 
 const STATE: Record<string, [string, string]> = {
-  ACTIVE: ["Active", "ok"], ENDING: ["Ending soon", "warn"], EXPIRED: ["Expired", "reversed"],
+  ACTIVE: ["war.stActive", "ok"], ENDING: ["war.stEnding", "warn"], EXPIRED: ["war.stExpired", "reversed"],
 };
 
 export default async function Warranty({ searchParams }: { searchParams: Promise<{ q?: string; ending?: string; page?: string }> }) {
   const user = await requirePermission("inventory.view");
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
   const sp = await searchParams;
   const { q, ending } = sp;
   // Phones sold at other branches stay out of view for someone who sees only their own.
@@ -26,27 +31,27 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
   return (
     <>
       <div className="page-head hero">
-        <h1>Warranty lookup</h1>
+        <h1>{t("war.lookup")}</h1>
         <BranchScope />
-        <p className="page-sub">By IMEI, maker&apos;s serial, invoice number or customer name</p>
+        <p className="page-sub">{t("war.sub")}</p>
       </div>
       <form className="card filters" method="get">
         <div className="card-body filter-row">
           <div className="field">
-            <label htmlFor="wq">IMEI, serial, invoice or customer</label>
-            <input id="wq" name="q" defaultValue={q ?? ""} autoFocus placeholder="Scan the IMEI" />
+            <label htmlFor="wq">{t("war.field")}</label>
+            <input id="wq" name="q" defaultValue={q ?? ""} autoFocus placeholder={t("war.scan")} />
           </div>
-          <button className="btn">Look up</button>
+          <button className="btn">{t("war.lookupBtn")}</button>
         </div>
       </form>
 
       <div className="card" style={{ overflowX: "auto" }}>
         <div className="card-head">
-          <h2>{q ? `Results for “${q}”` : `Customer warranties ending in ${Number(ending) || 30} days`}</h2>
+          <h2>{q ? t("war.resultsFor", { q }) : t("war.ending", { n: Number(ending) || 30 })}</h2>
         </div>
         <table>
           <thead>
-            <tr><th>IMEI</th><th>Model</th><th>Customer</th><th>Invoice</th><th>Sold</th><th>Warranty</th><th>Expires</th><th>Status</th></tr>
+            <tr><th>{c("imei")}</th><th>{t("war.model")}</th><th>{t("war.customer")}</th><th>{t("war.invoice")}</th><th>{t("war.sold")}</th><th>{t("war.warranty")}</th><th>{t("war.expires")}</th><th>{c("status")}</th></tr>
           </thead>
           <tbody>
             {pg.rows.map((r: any) => {
@@ -58,19 +63,19 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
                   <td>{r.customer_name ?? "—"}</td>
                   <td>{r.out_document_id ? <Link href={`/documents/${r.out_document_id}`}>{r.out_doc_no}</Link> : "—"}</td>
                   <td>{r.out_date ? shortDate(r.out_date) : "—"}</td>
-                  <td>{r.warranty_months ? `${r.warranty_months} months` : "—"}</td>
+                  <td>{r.warranty_months ? t("war.months", { n: r.warranty_months }) : "—"}</td>
                   <td>{r.warranty_expiry ? shortDate(r.warranty_expiry) : "—"}</td>
-                  <td>{st ? <span className={`pill ${st[1]}`}>{st[0]}</span> : (r.status ?? "").replace(/_/g, " ").toLowerCase() || "—"}</td>
+                  <td>{st ? <span className={`pill ${st[1]}`}>{t(st[0])}</span> : (r.status ?? "").replace(/_/g, " ").toLowerCase() || "—"}</td>
                 </tr>
               );
             })}
-            {rows.length === 0 && <tr><td colSpan={8} className="page-sub">{q ? "Nothing found." : "None ending soon."}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} className="page-sub">{q ? t("war.nothingFound") : t("war.noneEnding")}</td></tr>}
           </tbody>
         </table>
         <Pager p={pg} params={sp} />
       </div>
       <p className="page-sub">
-        Repairs and warranty claims are not built yet. A unit sent for repair is marked from its own page (Hold → Send to repair).
+        {t("war.note")}
       </p>
     </>
   );

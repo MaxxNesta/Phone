@@ -5,6 +5,7 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { useTranslations } from "next-intl";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -45,6 +46,8 @@ export function AdjustmentForm({
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
 }) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
   // One key per form: a double click or a retried request posts once.
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -133,32 +136,32 @@ export function AdjustmentForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>Warehouse and date</h2>
+          <h2>{t("adj.warehouseAndDate")}</h2>
         </div>
         <div className="card-body">
           <div className="row">
             <div className="field">
-              <label htmlFor="location_id">Warehouse</label>
+              <label htmlFor="location_id">{c("warehouse")}</label>
               <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId}
                 onChange={(e) => setLocationId(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="doc_date">Date</label>
+              <label htmlFor="doc_date">{c("date")}</label>
               <input id="doc_date" name="doc_date" type="date" value={docDate}
                 onChange={(e) => setDocDate(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="received_time">Time</label>
+              <label htmlFor="received_time">{t("time")}</label>
               <input id="received_time" name="received_time" type="time" value={receivedTime}
                 onChange={(e) => setReceivedTime(e.target.value)} />
-              <span className="hint">For found stock — orders same-day entries correctly for FIFO</span>
+              <span className="hint">{t("adj.timeHint")}</span>
             </div>
 
             <div className="field">
-              <label htmlFor="reference">Reference</label>
-              <input id="reference" name="reference" type="text" placeholder="Count sheet, incident no." />
+              <label htmlFor="reference">{t("reference")}</label>
+              <input id="reference" name="reference" type="text" placeholder={t("adj.referencePlaceholder")} />
             </div>
           </div>
         </div>
@@ -166,17 +169,17 @@ export function AdjustmentForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>Lines</h2>
-          <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
+          <h2>{t("lines")}</h2>
+          <button type="button" className="ghost tiny" onClick={addLine}>{t("allocateLine")}</button>
         </div>
 
         <div className="tablewrap">
           <table className="linetable">
             <thead>
               <tr>
-                <th>Item</th><th className="r">On hand</th>
-                <th className="r">Qty (+ found / − lost)</th><th className="r">Unit cost</th>
-                <th className="r">Value</th><th />
+                <th>{t("item")}</th><th className="r">{t("onHand")}</th>
+                <th className="r">{t("adj.qtyHead")}</th><th className="r">{t("unitCost")}</th>
+                <th className="r">{t("adj.value")}</th><th />
               </tr>
             </thead>
             <tbody>
@@ -202,7 +205,7 @@ export function AdjustmentForm({
                         <>
                           {fmt(onHandHere(item.id))}
                           <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--muted)" }}>
-                            {fmt(Number(item.on_hand))} total
+                            {t("adj.total", { n: fmt(Number(item.on_hand)) })}
                           </div>
                         </>
                       ) : "—"}
@@ -210,7 +213,7 @@ export function AdjustmentForm({
                     <td className="narrow">
                       <input type="number" step="any" value={l.qty}
                         onChange={(e) => setLine(l.key, { qty: e.target.value })}
-                        aria-label="Quantity" />
+                        aria-label={c("quantity")} />
                     </td>
                     <td className="narrow">
                       {loss ? (
@@ -220,13 +223,13 @@ export function AdjustmentForm({
                       ) : (
                         <input type="number" min="0" step="any" value={l.unitCost}
                           onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
-                          aria-label="Unit cost" />
+                          aria-label={t("unitCost")} />
                       )}
                     </td>
                     <td className="r">{fmt(amount(l))}</td>
                     <td className="tight">
                       <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label="Remove line" disabled={lines.length === 1}>×</button>
+                        aria-label={t("removeLine")} disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>
                 );
@@ -241,7 +244,7 @@ export function AdjustmentForm({
                   <tr key={`serial-${l.key}`} className="batchrow">
                     <td colSpan={6}>
                       <SerialEntry
-                        label={`${item.code} — which handsets are written off`}
+                        label={t("adj.serialLabel", { code: item.code })}
                         qty={Math.abs(Number(l.qty)) || 0}
                         value={l.serials ?? []}
                         suggestions={shelfSerials
@@ -258,20 +261,20 @@ export function AdjustmentForm({
                 return (
                   <tr key={`batch-${l.key}`} className="batchrow">
                     <td colSpan={6}>
-                      <span className="batchrow-label">{item.code} — which lot?</span>
+                      <span className="batchrow-label">{t("whichLot", { code: item.code })}</span>
                       <input
                         type="text"
                         value={l.batchNo ?? ""}
                         onChange={(e) => setLine(l.key, { batchNo: e.target.value })}
-                        placeholder="Batch number"
-                        aria-label={`Batch number for ${item.code}`}
+                        placeholder={t("batchNumber")}
+                        aria-label={t("batchNumberFor", { code: item.code })}
                       />
                       {item.tracks_expiry && (
                         <input
                           type="date"
                           value={l.expiryDate ?? ""}
                           onChange={(e) => setLine(l.key, { expiryDate: e.target.value })}
-                          aria-label={`Expiry date for ${item.code}`}
+                          aria-label={t("expiryDateFor", { code: item.code })}
                         />
                       )}
                       {/* Said, not refused. Goods do arrive already
@@ -283,14 +286,11 @@ export function AdjustmentForm({
                           it. */}
                       {l.expiryDate && docDate && l.expiryDate <= docDate ? (
                         <span className="hint" style={{ color: "var(--warn)" }}>
-                          Already expired on the adjustment date — it will post,
-                          and land in Expired on the stock page.
+                          {t("adj.expired")}
                         </span>
                       ) : (
                         <span className="hint">
-                          {item.tracks_expiry
-                            ? "Required — found stock still has a shelf life."
-                            : "Recorded so a recall can name these units."}
+                          {item.tracks_expiry ? t("adj.expiryRequired") : t("adj.lotRecorded")}
                         </span>
                       )}
                     </td>
@@ -302,31 +302,29 @@ export function AdjustmentForm({
         </div>
 
         <div className="totalbar">
-          <span style={{ color: "var(--muted)" }}>Net value</span>
+          <span style={{ color: "var(--muted)" }}>{t("adj.netValue")}</span>
           <span className="big">{fmt(total)} MMK</span>
         </div>
       </div>
 
       {shortages.length > 0 && (
         <div className="alert">
-          Not enough stock to remove for{" "}
-          {shortages.map((l) => byId(l.itemId)?.code).join(", ")}. Posting will
-          be rejected — reduce the loss quantity.
+          {t("adj.notEnough", { codes: shortages.map((l) => byId(l.itemId)?.code).join(", ") })}
         </div>
       )}
 
       <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="What this correction is for — English or Myanmar" />
+        <label htmlFor="memo">{c("note")}</label>
+        <textarea id="memo" name="memo" rows={2} placeholder={t("adj.notePlaceholder")} />
       </div>
 
       <div className="actions">
-        {serialShort && <span className="low" role="status">Name one IMEI per handset lost.</span>}
+        {serialShort && <span className="low" role="status">{t("adj.oneImeiPerHandset")}</span>}
         <button type="submit" disabled={pending || lines.every((l) => !l.itemId || Number(l.qty) === 0) || shortages.length > 0 || serialShort}>
-          {pending ? "Posting…" : "Post adjustment"}
+          {pending ? t("posting") : t("adj.post")}
         </button>
         <span className="page-sub">
-          Posts straight to stock and the ledger — Dr/Cr Inventory against the Stock Adjustment account.
+          {t("adj.postNote")}
         </span>
       </div>
     </form>

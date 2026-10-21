@@ -6,12 +6,16 @@ import { sql } from "@/lib/db";
 import { StockTransferForm } from "@/components/stock-transfer-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function NewStockTransfer() {
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
   const d = await getFormData();
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
-  if (!co) return <div className="empty">No company found.</div>;
+  if (!co) return <div className="empty">{c("noCompany")}</div>;
   const categories = await allCategories(co.id);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -19,15 +23,15 @@ export default async function NewStockTransfer() {
     return (
       <>
         <ErpCrumbs steps={[
-          { label: "Inventory" },
-          { label: "Stock transfer" },
+          { label: n("inventory") },
+          { label: t("tr.title") },
         ]} />
         <div className="page-head">
-          <h1>Stock transfer</h1>
+          <h1>{t("tr.title")}</h1>
         </div>
         <div className="alert">
-          {categories.length === 0 && <div>No categories yet — add one first.</div>}
-          {d.allLocations.length < 2 && <div>Needs at least two stock locations set up.</div>}
+          {categories.length === 0 && <div>{t("noCategoriesFirst")}</div>}
+          {d.allLocations.length < 2 && <div>{t("tr.needTwo")}</div>}
         </div>
       </>
     );
@@ -36,16 +40,15 @@ export default async function NewStockTransfer() {
   return (
     <>
       <ErpCrumbs steps={[
-        { label: "Inventory" },
-        { label: "Stock transfer" },
+        { label: n("inventory") },
+        { label: t("tr.title") },
       ]} />
       <div className="page-head">
-        <h1>Stock transfer</h1>
+        <h1>{t("tr.title")}</h1>
         <HelpHint>
-          Move stock between two of the company&rsquo;s own warehouses — the
-          company-wide total never changes, only which location holds it.{" "}
+          {t("tr.help")}{" "}
           <Link href="/documents?type=STOCK_TRANSFER" style={{ color: "var(--link)" }}>
-            Past transfers
+            {t("pastTransfers")}
           </Link>
         </HelpHint>
       </div>

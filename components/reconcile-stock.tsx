@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 type Row = {
   id: string; item_code: string; item_name: string; uom_code: string;
@@ -15,10 +16,10 @@ type Row = {
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 const qty = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 
-const SOURCE_LABEL: Record<string, string> = {
-  PURCHASE_INVOICE: "Matched purchase invoice",
-  GOODS_RECEIPT: "Goods receipt",
-  NONE: "Never purchased",
+const SOURCE_KEY: Record<string, string> = {
+  PURCHASE_INVOICE: "neg.srcInvoice",
+  GOODS_RECEIPT: "neg.srcReceipt",
+  NONE: "neg.srcNone",
 };
 
 /**
@@ -41,6 +42,8 @@ export function ReconcileStock({
   rows: Row[];
   today: string;
 }) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null
   );
@@ -61,9 +64,9 @@ export function ReconcileStock({
     <form action={formAction}>
       <div className="card">
         <div className="card-head">
-          <h2>Stock reconciliation</h2>
+          <h2>{t("neg.reconTitle")}</h2>
           <span className="page-sub">
-            {rows.length} item{rows.length === 1 ? "" : "s"} awaiting a receipt
+            {t("neg.awaiting", { n: rows.length })}
           </span>
         </div>
 
@@ -76,11 +79,11 @@ export function ReconcileStock({
             <thead>
               <tr>
                 <th style={{ width: "1%" }} />
-                <th>Item</th><th>Warehouse</th><th>Went out on</th><th>Why</th>
-                <th className="r">Quantity</th>
-                <th className="r">Inventory price</th>
-                <th>Source</th>
-                <th className="r">Adjustment value</th>
+                <th>{t("item")}</th><th>{c("warehouse")}</th><th>{t("neg.wentOutOn")}</th><th>{t("neg.why")}</th>
+                <th className="r">{c("quantity")}</th>
+                <th className="r">{t("neg.inventoryPrice")}</th>
+                <th>{t("neg.source")}</th>
+                <th className="r">{t("neg.adjValue")}</th>
               </tr>
             </thead>
             <tbody>
@@ -89,7 +92,7 @@ export function ReconcileStock({
                   <td>
                     <input type="checkbox" name="negative_stock_id" value={r.id}
                            checked={picked.has(r.id)} onChange={() => toggle(r.id)}
-                           aria-label={`Reconcile ${r.item_name}`} />
+                           aria-label={t("neg.reconcileItem", { name: r.item_name })} />
                   </td>
                   <td className="wrap">
                     <strong>{r.item_name}</strong>
@@ -109,13 +112,13 @@ export function ReconcileStock({
                       declined. It never was. */}
                   <td className="wrap">
                     {r.reason_is_legacy
-                      ? <span className="muted">Reason not recorded &mdash; legacy</span>
+                      ? <span className="muted">{t("neg.legacy")}</span>
                       : (r.confirmed_reason ?? <span className="muted">&mdash;</span>)}
                   </td>
                   <td className="r">{qty(Number(r.outstanding))} {r.uom_code}</td>
                   <td className="r">{fmt(Number(r.provisional_unit_cost))}</td>
                   <td className="wrap" style={{ color: "var(--muted)" }}>
-                    {SOURCE_LABEL[r.price_source ?? "NONE"] ?? r.price_source}
+                    {SOURCE_KEY[r.price_source ?? "NONE"] ? t(SOURCE_KEY[r.price_source ?? "NONE"]) : r.price_source}
                     {r.price_source_no && (
                       <div className="subline code">{r.price_source_no}</div>
                     )}
@@ -130,30 +133,28 @@ export function ReconcileStock({
         <div className="card-body">
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="field">
-              <label htmlFor="doc_date">Adjustment date</label>
+              <label htmlFor="doc_date">{t("neg.adjDate")}</label>
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />
             </div>
             <div className="field">
-              <label htmlFor="memo">Note</label>
+              <label htmlFor="memo">{c("note")}</label>
               <input id="memo" name="memo" type="text"
-                     placeholder="Optional — why the stock was never recorded" />
+                     placeholder={t("neg.notePlaceholder")} />
             </div>
           </div>
 
           <p className="page-sub" style={{ marginTop: "0.5rem" }}>
             {chosen.length === 0
-              ? "Choose the lines that have been found and counted."
-              : `Adds ${qty(totalUnits)} unit${totalUnits === 1 ? "" : "s"} back at ` +
-                `${fmt(totalValue)} in total, posting Dr Inventory / Cr Stock Adjustment. ` +
-                `The price is the one these goods were charged out at — not a new figure.`}
+              ? t("neg.chooseLines")
+              : t("neg.addsBack", { units: c("units", { n: qty(totalUnits) }), value: fmt(totalValue) })}
           </p>
         </div>
 
         <div className="card-body" style={{ paddingTop: 0 }}>
           <button type="submit" disabled={pending || chosen.length === 0}>
-            {pending ? "Reconciling…"
-              : chosen.length === 0 ? "Confirm adjustment"
-              : `Confirm adjustment — ${fmt(totalValue)}`}
+            {pending ? t("neg.reconciling")
+              : chosen.length === 0 ? t("neg.confirm")
+              : t("neg.confirmValue", { value: fmt(totalValue) })}
           </button>
         </div>
       </div>

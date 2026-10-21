@@ -6,6 +6,7 @@ import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { useTranslations } from "next-intl";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -44,6 +45,8 @@ export function StockTransferForm({
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
 }) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
   // One key per form: a double click or a retried request posts once.
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -121,57 +124,57 @@ export function StockTransferForm({
 
       <div className="card">
         <div className="card-head">
-          <h2>From and to</h2>
+          <h2>{t("tr.fromTo")}</h2>
         </div>
         <div className="card-body">
           <div className="row">
             <div className="field">
-              <label htmlFor="from_location_id">From warehouse</label>
+              <label htmlFor="from_location_id">{t("tr.fromWarehouse")}</label>
               <WarehouseSelect locations={locations} id="from_location_id" name="from_location_id" value={fromLocationId}
                 onChange={(e) => setFromLocationId(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="to_location_id">To warehouse</label>
+              <label htmlFor="to_location_id">{t("tr.toWarehouse")}</label>
               <WarehouseSelect locations={destinations} id="to_location_id" name="to_location_id" value={toLocationId}
                 onChange={(e) => setToLocationId(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="doc_date">Date</label>
+              <label htmlFor="doc_date">{c("date")}</label>
               <input id="doc_date" name="doc_date" type="date" value={docDate}
                 onChange={(e) => setDocDate(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="received_time">Time</label>
+              <label htmlFor="received_time">{t("time")}</label>
               <input id="received_time" name="received_time" type="time" value={receivedTime}
                 onChange={(e) => setReceivedTime(e.target.value)} />
-              <span className="hint">When it actually arrived at the destination — orders FIFO correctly</span>
+              <span className="hint">{t("tr.timeHint")}</span>
             </div>
 
             <div className="field">
-              <label htmlFor="reference">Reference</label>
-              <input id="reference" name="reference" type="text" placeholder="Delivery run, driver, vehicle" />
+              <label htmlFor="reference">{t("reference")}</label>
+              <input id="reference" name="reference" type="text" placeholder={t("tr.referencePlaceholder")} />
             </div>
           </div>
 
-          {sameLocation && <div className="alert" style={{ marginTop: "0.75rem" }}>Choose two different warehouses.</div>}
+          {sameLocation && <div className="alert" style={{ marginTop: "0.75rem" }}>{t("tr.twoDifferent")}</div>}
         </div>
       </div>
 
       <div className="card">
         <div className="card-head">
-          <h2>Lines</h2>
-          <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
+          <h2>{t("lines")}</h2>
+          <button type="button" className="ghost tiny" onClick={addLine}>{t("allocateLine")}</button>
         </div>
 
         <div className="tablewrap">
           <table className="linetable">
             <thead>
               <tr>
-                <th>Item</th><th className="r">Available here</th>
-                <th className="r">Qty to move</th><th />
+                <th>{t("item")}</th><th className="r">{t("tr.availableHere")}</th>
+                <th className="r">{t("tr.qtyToMove")}</th><th />
               </tr>
             </thead>
             <tbody>
@@ -193,23 +196,23 @@ export function StockTransferForm({
                       />
                     </td>
                     <td className="r" style={{ color: short ? "var(--bad)" : undefined }}>
-                      {item ? (item.is_stocked ? fmt(availableHere(item.id)) : "service") : "—"}
+                      {item ? (item.is_stocked ? fmt(availableHere(item.id)) : t("service")) : "—"}
                     </td>
                     <td className="narrow">
                       <input type="number" min="0" step="any" value={l.qty}
                         onChange={(e) => setLine(l.key, { qty: e.target.value })}
-                        aria-label="Quantity" />
+                        aria-label={c("quantity")} />
                     </td>
                     <td className="tight">
                       <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label="Remove line" disabled={lines.length === 1}>×</button>
+                        aria-label={t("removeLine")} disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>
                   {item?.tracks_serial && (
                     <tr className="batchrow">
                       <td colSpan={4}>
                         <SerialEntry
-                          label={`${item.code} — which handsets move`}
+                          label={t("tr.serialLabel", { code: item.code })}
                           qty={Number(l.qty) || 0}
                           value={l.serials ?? []}
                           suggestions={shelfSerials
@@ -234,28 +237,23 @@ export function StockTransferForm({
 
       {shortages.length > 0 && !negativeConfirmed && (
         <div className="alert">
-          <strong>Recorded stock is insufficient</strong> at the source
-          warehouse for {shortages.map((l) => byId(l.itemId)?.code).join(", ")}.
-          Reduce the quantity, or confirm the goods physically exist &mdash;
-          posting will ask before recording negative stock.
+          <strong>{t("tr.insufficient")}</strong>{" "}
+          {t("tr.insufficientBody", { codes: shortages.map((l) => byId(l.itemId)?.code).join(", ") })}
         </div>
       )}
 
       {shortages.length > 0 && negativeConfirmed && (
         <div className="alert">
-          <strong>Confirmed:</strong> the goods physically exist at the source
-          though the record shows fewer. This will post negative stock there,
-          listed under Inventory &rarr; Negative stock until a receipt covers
-          it.{" "}
+          <strong>{t("tr.confirmed")}</strong> {t("tr.confirmedBody")}{" "}
           <button type="button" className="ghost tiny"
-                  onClick={() => setNegativeConfirmed(false)}>Undo</button>
+                  onClick={() => setNegativeConfirmed(false)}>{t("undo")}</button>
           {/* Required by the engine, so it is asked here rather than refused
               after the fact. A confirmation without a reason records that
               somebody clicked, not what they knew. */}
           <div className="field" style={{ marginTop: "0.5rem" }}>
-            <label htmlFor="neg_reason">Why the books are short</label>
+            <label htmlFor="neg_reason">{t("tr.whyShort")}</label>
             <input id="neg_reason" type="text" required
-                   placeholder="e.g. supplier delivery not yet entered"
+                   placeholder={t("tr.whyShortPlaceholder")}
                    value={negativeReason}
                    onChange={(e) => setNegativeReason(e.target.value)} />
           </div>
@@ -286,12 +284,12 @@ export function StockTransferForm({
       />
 
       <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="What this move is for — English or Myanmar" />
+        <label htmlFor="memo">{c("note")}</label>
+        <textarea id="memo" name="memo" rows={2} placeholder={t("tr.notePlaceholder")} />
       </div>
 
       <div className="actions">
-        {serialShort && <span className="low" role="status">Pick one IMEI per handset moving.</span>}
+        {serialShort && <span className="low" role="status">{t("tr.oneImeiPerHandset")}</span>}
         <button
           type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
           onClick={
@@ -305,10 +303,10 @@ export function StockTransferForm({
             lines.every((l) => !l.itemId || Number(l.qty) <= 0)
           }
         >
-          {pending ? "Posting…" : "Post transfer"}
+          {pending ? t("posting") : t("tr.post")}
         </button>
         <span className="page-sub">
-          Leaves the source at its FIFO cost and reopens at the destination at that same cost.
+          {t("tr.postNote")}
         </span>
       </div>
     </form>
