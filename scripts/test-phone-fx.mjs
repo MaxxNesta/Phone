@@ -113,11 +113,13 @@ try {
   check("…the debt comes down at its own rate", r2((await open(pi.id)).fc_outstanding) === 4000
     && r2((await open(pi.id)).outstanding) === 1_800_000);
   check("…and the difference is FX loss", r2((await bal("66001")) - fxLossBefore) === 20_000);
+  // Gain and loss share 66001 on the customer's chart, so measure the move.
+  const fxBeforeP2 = await bal("66001");
   const p2 = await P.postSupplierPayment({ companyId: co.id, partnerId: sz.id, docDate: DAY,
     cashAccountId: bank.id, currency: "CNY", exchangeRate: 440.123, locationId: wh.id,
     allocations: [{ invoiceId: pi.id, amount: 4000 }] });
   check("final payment leaves nothing owing, to the kyat", !(await open(pi.id)));
-  check("gain on the second part", (await bal("41301")) === r2(-(1_800_000 - 4000 * 440.123)));
+  check("gain on the second part", r2((await bal("66001")) - fxBeforeP2) === r2(-(1_800_000 - 4000 * 440.123)));
   await refuses("cannot overpay", () => P.postSupplierPayment({ companyId: co.id, partnerId: sz.id,
     docDate: DAY, cashAccountId: bank.id, currency: "CNY", exchangeRate: 450, locationId: wh.id,
     allocations: [{ invoiceId: pi.id, amount: 1 }] }), /outstanding|no longer|POSTED|settled/i);
@@ -140,13 +142,13 @@ try {
     docDate: DAY, dueDate: DAY, currency: "CNY", exchangeRate: 470,
     lines: [{ itemId: charger.id, qty: 10, unitPrice: 100 }] });
   check("receive-and-bill in yuan uses one rate", r2((await open(pi2.id)).outstanding) === 470_000);
-  const gainBefore = await bal("41301");
+  const gainBefore = await bal("66001");
   await P.applyAdvance({ companyId: co.id, invoiceId: pi2.id, docDate: DAY,
     allocations: [{ paymentId: adv.id, amount: 1000 }] });
   check("bill settled by the advance", !(await open(pi2.id)));
   check("advance used up", !(await sql`select 1 from v_partner_advance where payment_id = ${adv.id}`)[0]);
   check("gain: debt carried at 470, paid with yuan bought at 450",
-    r2((await bal("41301")) - gainBefore) === -20_000);
+    r2((await bal("66001")) - gainBefore) === -20_000);
 
   console.log("\n  return and sale");
   const pr = await P.postPurchaseReturn({ companyId: co.id, partnerId: sz.id, locationId: wh.id,
