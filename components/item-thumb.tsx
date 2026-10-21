@@ -1,4 +1,5 @@
 import { Image as ImageIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * The item's picture at the size a list can afford.
@@ -19,6 +20,7 @@ import { Image as ImageIcon } from "lucide-react";
  * wrong.
  */
 export function ItemThumb({ src, name }: { src: string | null; name: string }) {
+  const t = useTranslations("items");
   if (!src) {
     return (
       <span className="item-thumb item-thumb-empty" aria-hidden="true">
@@ -31,6 +33,6 @@ export function ItemThumb({ src, name }: { src: string | null; name: string }) {
     // eslint-disable-next-line @next/next/no-img-element -- served straight
     // from the database by a route of our own; next/image would proxy and
     // re-encode something already encoded to exactly this purpose.
-    <img className="item-thumb" src={src} alt={`Photo of ${name}`} width={25} height={25} loading="lazy" />
+    <img className="item-thumb" src={src} alt={t("photoOf", { name })} width={25} height={25} loading="lazy" />
   );
 }

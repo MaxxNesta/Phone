@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, ListPlus, SlidersHorizontal, X, Smartphone, Plus } from "lucide-react";
 import type { PickerItem } from "@/lib/actions";
 import { asVariant } from "./variant-tags";
+import { useTranslations } from "next-intl";
 
 type Node = { id: string; name: string; parent_id: string | null };
 export type Pick = { itemId: string; qty: number };
@@ -23,7 +24,7 @@ export function itemLabel(i: PickerItem) {
  * back after every add so the next scan needs no click.
  */
 export function AddItemsBar({
-  items, categories, onAdd, onEnter, available, availLabel = "Available", empty = "Nothing matches.", title, sub, stockToggle = false,
+  items, categories, onAdd, onEnter, available, availLabel: availLabelProp, empty: emptyProp, title, sub, stockToggle = false,
 }: {
   /** What the number column means here — "Outstanding" against an order. */
   availLabel?: string;
@@ -41,6 +42,9 @@ export function AddItemsBar({
   /** Selling: start the catalogue on what is in stock. */
   stockToggle?: boolean;
 }) {
+  const pk = useTranslations("picker");
+  const availLabel = availLabelProp ?? pk("available");
+  const empty = emptyProp ?? pk("nothingMatches");
   const box = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
@@ -111,33 +115,33 @@ export function AddItemsBar({
     const exact = items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase());
     const pick = exact.length === 1 ? exact[0] : hits[hi];
     if (pick) add([{ itemId: pick.id, qty: 1 }]);
-    else setMsg(`Nothing matches ${t}.`);
+    else setMsg(pk("nothingMatchesTerm", { term: t }));
   }
 
   const setOpt = (a: string, o: string) => setF((x) => ({ ...x, opts: { ...x.opts, [a]: o } }));
   const filterFields = (
     <div className="aib-filters">
-      <label>Category<select value={f.category} onChange={(e) => setF({ ...NONE, category: e.target.value })}>
-        <option value="">All categories</option>
+      <label>{pk("category")}<select value={f.category} onChange={(e) => setF({ ...NONE, category: e.target.value })}>
+        <option value="">{pk("allCategories")}</option>
         {facets.cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select></label>
       {facets.brands.length > 1 && (
-        <label>Brand<select value={f.brand} onChange={(e) => setF((x) => ({ ...x, brand: e.target.value, model: "", opts: {} }))}>
-          <option value="">All brands</option>
+        <label>{pk("brand")}<select value={f.brand} onChange={(e) => setF((x) => ({ ...x, brand: e.target.value, model: "", opts: {} }))}>
+          <option value="">{pk("allBrands")}</option>
           {facets.brands.map((b) => <option key={b}>{b}</option>)}
         </select></label>
       )}
-      <label>Model<select value={f.model} onChange={(e) => setF((x) => ({ ...x, model: e.target.value, opts: {} }))}>
-        <option value="">All models</option>
+      <label>{pk("model")}<select value={f.model} onChange={(e) => setF((x) => ({ ...x, model: e.target.value, opts: {} }))}>
+        <option value="">{pk("allModels")}</option>
         {facets.models.map((m) => <option key={m}>{m}</option>)}
       </select></label>
       {facets.attrs.map(({ a, opts }) => (
         <label key={a}>{a}<select value={f.opts[a] ?? ""} onChange={(e) => setOpt(a, e.target.value)}>
-          <option value="">All</option>
+          <option value="">{pk("all")}</option>
           {opts.map((o) => <option key={o}>{o}</option>)}
         </select></label>
       ))}
-      {filtering && <button type="button" className="linkish" onClick={() => setF(NONE)}>Clear</button>}
+      {filtering && <button type="button" className="linkish" onClick={() => setF(NONE)}>{pk("clear")}</button>}
     </div>
   );
 
@@ -146,10 +150,10 @@ export function AddItemsBar({
       <div className="aib-row">
         <div className="aib-search">
           <Search size={17} aria-hidden="true" />
-          <input ref={box} id="add-items-search" value={q} autoComplete="off" aria-label="Search items"
+          <input ref={box} id="add-items-search" value={q} autoComplete="off" aria-label={pk("searchItems")}
             onFocus={() => q.trim() && setListing(true)}
             onBlur={() => setListing(false)}
-            placeholder="Search by name, SKU, item code, or scan barcode…"
+            placeholder={pk("searchPlaceholder")}
             onChange={(e) => { setQ(e.target.value); setMsg(null); setListing(true); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") { e.preventDefault(); enter(); }
@@ -158,7 +162,7 @@ export function AddItemsBar({
               else if (e.key === "Escape") { setQ(""); setListing(false); }
             }} />
           {listing && hits.length > 0 && (
-            <div className="aib-hits" role="listbox" aria-label="Matching items">
+            <div className="aib-hits" role="listbox" aria-label={pk("matchingItems")}>
               {hits.map((i, n) => (
                 <button key={i.id} type="button" className="aib-hit" role="option" aria-selected={n === hi}
                   // Kept from taking the focus, so the list is still there for the click.
@@ -175,10 +179,10 @@ export function AddItemsBar({
         </div>
         <button type="button" className="btn ghost aib-toggle" aria-expanded={showFilters}
           onClick={() => setShowFilters((s) => !s)}>
-          <SlidersHorizontal size={15} aria-hidden="true" /> Filters{filtering ? " •" : ""}
+          <SlidersHorizontal size={15} aria-hidden="true" /> {pk("filters")}{filtering ? " •" : ""}
         </button>
         <button type="button" className="btn aib-browse" onClick={() => setBrowsing(true)}>
-          <ListPlus size={16} aria-hidden="true" /> Browse / Add multiple
+          <ListPlus size={16} aria-hidden="true" /> {pk("browseAdd")}
         </button>
       </div>
       {msg && <p className="hint low" role="status">{msg}</p>}
@@ -218,6 +222,7 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
   title: string; sub?: string; filters: React.ReactNode; stockToggle: boolean;
   onClose: () => void; onAdd: (p: Pick[]) => void;
 }) {
+  const pk = useTranslations("picker");
   const [q, setQ] = useState("");
   const [inStock, setInStock] = useState(stockToggle);
   const [chosen, setChosen] = useState<Record<string, number>>({});
@@ -241,18 +246,18 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
       <aside className="aib-drawer" role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <div><h2>{title}</h2>{sub && <p className="page-sub">{sub}</p>}</div>
-          <button type="button" className="aib-x" onClick={onClose} aria-label="Close"><X size={18} /></button>
+          <button type="button" className="aib-x" onClick={onClose} aria-label={pk("close")}><X size={18} /></button>
         </header>
         <div className="aib-search">
           <Search size={17} aria-hidden="true" />
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off"
-            placeholder="Name, SKU, item code or barcode…" aria-label="Search the catalogue" />
+            placeholder={pk("catalogueSearch")} aria-label={pk("searchCatalogue")} />
         </div>
         {filters}
         {stockToggle && (
           <div className="scopetabs" style={{ margin: "4px 0 0" }}>
-            <button type="button" className="scopetab" data-active={inStock} onClick={() => setInStock(true)}>In stock</button>
-            <button type="button" className="scopetab" data-active={!inStock} onClick={() => setInStock(false)}>All items</button>
+            <button type="button" className="scopetab" data-active={inStock} onClick={() => setInStock(true)}>{pk("inStock")}</button>
+            <button type="button" className="scopetab" data-active={!inStock} onClick={() => setInStock(false)}>{pk("allItems")}</button>
           </div>
         )}
         <div className="aib-tablewrap">
@@ -260,7 +265,7 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
             <thead>
               <tr>
                 <th className="tight">
-                  <input type="checkbox" aria-label="Select all shown"
+                  <input type="checkbox" aria-label={pk("selectAllShown")}
                     checked={shown.length > 0 && shown.every((i) => i.id in chosen)}
                     onChange={(e) => setChosen((c) => {
                       const n = { ...c };
@@ -268,7 +273,7 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
                       return n;
                     })} />
                 </th>
-                <th>Product variant</th><th>SKU</th><th className="r">{availLabel}</th><th className="r">Qty</th>
+                <th>{pk("productVariant")}</th><th>{pk("sku")}</th><th className="r">{availLabel}</th><th className="r">{pk("qty")}</th>
               </tr>
             </thead>
             <tbody>
@@ -278,7 +283,7 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
                   toggle(i.id);
                 }}>
                   <td className="tight"><input type="checkbox" checked={i.id in chosen} onChange={() => toggle(i.id)}
-                    aria-label={`Select ${itemLabel(i)}`} /></td>
+                    aria-label={pk("selectItem", { name: itemLabel(i) })} /></td>
                   <td><span className="aib-prod"><Thumb i={i} />
                     <span className="aib-name"><strong>{itemLabel(i)}</strong>
                       <small>{[i.brand, i.model].filter(Boolean).join(" / ")}</small></span></span></td>
@@ -286,7 +291,7 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
                   <td className={`r aib-avail${avail(i) > 0 ? " ok" : ""}`}>{avail(i)}</td>
                   <td className="r">
                     <input type="number" min={1} className="aib-qty" value={chosen[i.id] ?? ""} placeholder="0"
-                      aria-label={`Quantity of ${itemLabel(i)}`}
+                      aria-label={pk("quantityOf", { name: itemLabel(i) })}
                       onChange={(e) => {
                         const n = Math.max(0, Math.floor(Number(e.target.value) || 0));
                         setChosen((c) => {
@@ -298,17 +303,17 @@ function Browse({ items, match, avail, availLabel, empty, title, sub, filters, s
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={5} className="page-sub">{q || items.length ? "Nothing matches." : empty}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={5} className="page-sub">{q || items.length ? pk("nothingMatches") : empty}</td></tr>}
             </tbody>
           </table>
-          {rows.length > shown.length && <p className="hint low">Showing 200 of {rows.length}. Search or filter to narrow.</p>}
+          {rows.length > shown.length && <p className="hint low">{pk("showing200", { n: rows.length })}</p>}
         </div>
         <footer>
-          <span className="page-sub">{count} variant{count === 1 ? "" : "s"} selected</span>
-          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <span className="page-sub">{pk("nSelected", { n: count })}</span>
+          <button type="button" className="btn ghost" onClick={onClose}>{pk("cancel")}</button>
           <button type="button" className="btn" disabled={count === 0}
             onClick={() => onAdd(Object.entries(chosen).map(([itemId, qty]) => ({ itemId, qty })))}>
-            <Plus size={15} aria-hidden="true" /> Add selected items
+            <Plus size={15} aria-hidden="true" /> {pk("addSelected")}
           </button>
         </footer>
       </aside>

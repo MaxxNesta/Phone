@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { previewItemImport, itemImportTemplate, createMissingMasterData } from "@/lib/actions";
 import { FileDrop, type Upload } from "./file-drop";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 type Issue = { row: number; column?: string; message: string };
 type Registrable = {
@@ -37,6 +38,8 @@ const TEMPLATE_EXAMPLE = [
 export function ItemImport({ action }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const t = useTranslations("itemImport");
+  const c = useTranslations("common");
   const [state, formAction, posting] = useActionState<ActionResult | null, FormData>(action as never, null);
   const [csv, setCsv] = useState("");
   const [format, setFormat] = useState<"csv" | "xlsx">("csv");
@@ -131,8 +134,8 @@ export function ItemImport({ action }: {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>1 · The file</h2>
-            <span className="page-sub">Excel (.xlsx) or CSV — upload the workbook directly, no need to convert it</span>
+            <h2>{t("step1")}</h2>
+            <span className="page-sub">{t("step1Sub")}</span>
           </div>
           <div className="card-body">
             <FileDrop
@@ -145,25 +148,23 @@ export function ItemImport({ action }: {
             <div className="row" style={{ alignItems: "flex-end", marginTop: "0.75rem" }}>
               <div className="actions">
                 <button type="button" onClick={downloadTemplate} disabled={gettingTemplate}>
-                  {gettingTemplate ? "Preparing…" : "Download Excel template"}
+                  {gettingTemplate ? t("preparing") : t("downloadExcel")}
                 </button>
-                <button type="button" className="ghost" onClick={downloadCsvTemplate}>CSV instead</button>
+                <button type="button" className="ghost" onClick={downloadCsvTemplate}>{t("csvInstead")}</button>
               </div>
             </div>
 
             <div className="alert" style={{ marginTop: "0.75rem" }}>
-              <strong>Format the Barcode column as Text before you fill it.</strong>{" "}
-              Excel treats a long barcode as a number otherwise, which drops any leading zero
-              and rounds anything past fifteen digits — damage done in the sheet, before the
-              file gets here.{" "}
+              <strong>{t("barcodeText")}</strong>{" "}
+              {t("barcodeWhy")}{" "}
               {!picked
-                ? "The Excel template above already has that column formatted, so filling it in is enough."
+                ? t("barcodeTemplate")
                 : format === "xlsx"
-                  ? "Reading the workbook directly avoids the other half of the problem: a barcode merely displayed as 8.85E+12 is stored exactly, and comes through intact."
-                  : "Saving as CSV can also write out the displayed 8.85123E+12 in place of the real number, losing the digits that tell two products apart — uploading the .xlsx avoids that."}
+                  ? t("barcodeXlsx")
+                  : t("barcodeCsv")}
             </div>
 
-            {checking && <p className="page-sub">Checking the file…</p>}
+            {checking && <p className="page-sub">{t("checking")}</p>}
             {readError && <div className="alert">{readError}</div>}
           </div>
         </div>
@@ -173,34 +174,34 @@ export function ItemImport({ action }: {
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>2 · What this would do</h2>
+              <h2>{t("step2")}</h2>
               <span className="page-sub">{filename}</span>
             </div>
 
             <div className="kpis" style={{ margin: "0.75rem" }}>
               <div className="kpi">
-                <span className="kpi-label">New items</span>
+                <span className="kpi-label">{t("newItems")}</span>
                 <span className="kpi-value">{plan.summary.newItems}</span>
-                <span className="kpi-note">created when you confirm</span>
+                <span className="kpi-note">{t("newNote")}</span>
               </div>
               <div className="kpi">
-                <span className="kpi-label">Already here</span>
+                <span className="kpi-label">{t("alreadyHere")}</span>
                 <span className="kpi-value">{plan.summary.existingItems}</span>
-                <span className="kpi-note">matched by barcode, left untouched</span>
+                <span className="kpi-note">{t("alreadyNote")}</span>
               </div>
               <div className="kpi">
-                <span className="kpi-label">Rows read</span>
+                <span className="kpi-label">{t("rowsRead")}</span>
                 <span className="kpi-value">{plan.summary.rows}</span>
-                <span className="kpi-note">one row per item</span>
+                <span className="kpi-note">{t("rowsNote")}</span>
               </div>
               <div className="kpi">
-                <span className="kpi-label">Errors</span>
+                <span className="kpi-label">{t("errors")}</span>
                 <span className="kpi-value" style={{ color: plan.errors.length ? "var(--bad)" : undefined }}>
                   {plan.errors.length}
                 </span>
               </div>
               <div className="kpi">
-                <span className="kpi-label">Warnings</span>
+                <span className="kpi-label">{t("warnings")}</span>
                 <span className="kpi-value" style={{ color: plan.warnings.length ? "var(--warn)" : undefined }}>
                   {plan.warnings.length}
                 </span>
@@ -211,28 +212,23 @@ export function ItemImport({ action }: {
               <div className="card-body">
                 <div className="alert">
                   <strong>
-                    {plan.missing.length} name{plan.missing.length === 1 ? " is" : "s are"} not
-                    registered yet.
+                    {t("missingTitle", { n: plan.missing.length })}
                   </strong>{" "}
-                  A category, sub category or brand named in the file has to exist here before
-                  an item can point at it — so that items share one spelling of each rather than
-                  carrying their own, which is how Coca-Cola, Coca Cola and COKE end up as three
-                  brands with a share of the sales each. Add the ones you want; correct the sheet
-                  for the rest.
+                  {t("missingBody")}
 
                   <div style={{ margin: "0.75rem 0 0.5rem" }}>
                     {(["category", "subcategory", "brand"] as const).map((kind) => {
                       const group = plan.missing.filter((m) => m.kind === kind);
                       if (group.length === 0) return null;
                       const label =
-                        kind === "category" ? "Categories"
-                        : kind === "subcategory" ? "Sub categories"
-                        : "Brands";
+                        kind === "category" ? t("kindCategory")
+                        : kind === "subcategory" ? t("kindSub")
+                        : t("kindBrand");
                       return (
                         <div key={kind} style={{ marginBottom: "0.6rem" }}>
                           <div className="page-sub" style={{ marginBottom: "0.25rem" }}>
                             {label} ({group.length})
-                            {kind === "subcategory" && " — created under their category"}
+                            {kind === "subcategory" && t("createdUnder")}
                           </div>
                           <div className="tablewrap">
                             <table>
@@ -242,12 +238,12 @@ export function ItemImport({ action }: {
                                     <td className="wrap">
                                       <strong>{m.name}</strong>
                                       {m.parent && (
-                                        <span style={{ color: "var(--muted)" }}> under {m.parent}</span>
+                                        <span style={{ color: "var(--muted)" }}>{t("underParent", { parent: m.parent })}</span>
                                       )}
                                       <div className="subline" style={{ color: "var(--muted)" }}>
                                         {m.rows.length === 1
-                                          ? `row ${m.rows[0]}`
-                                          : `${m.rows.length} rows — ${m.rows.slice(0, 6).join(", ")}${m.rows.length > 6 ? "…" : ""}`}
+                                          ? t("rowOne", { n: m.rows[0] })
+                                          : t("rowsMany", { n: m.rows.length, list: `${m.rows.slice(0, 6).join(", ")}${m.rows.length > 6 ? "…" : ""}` })}
                                       </div>
                                     </td>
                                     <td className="wrap">
@@ -257,8 +253,7 @@ export function ItemImport({ action }: {
                                           it makes two. */}
                                       {m.similarTo && (
                                         <span style={{ color: "var(--warn)" }}>
-                                          Looks like &ldquo;{m.similarTo}&rdquo;, which already
-                                          exists — check the sheet before adding a second.
+                                          {t("looksLike", { name: m.similarTo })}
                                         </span>
                                       )}
                                     </td>
@@ -269,7 +264,7 @@ export function ItemImport({ action }: {
                                         onClick={() => register([m])}
                                         disabled={addingBrands || checking}
                                       >
-                                        {addingBrands && pendingName === m.name ? "Adding…" : "Add"}
+                                        {addingBrands && pendingName === m.name ? t("adding") : t("add")}
                                       </button>
                                     </td>
                                   </tr>
@@ -285,14 +280,14 @@ export function ItemImport({ action }: {
                   <button type="button" onClick={() => register(plan.missing)}
                           disabled={addingBrands || checking}>
                     {addingBrands && pendingName === "*all*"
-                      ? "Adding…"
-                      : `Add all ${plan.missing.length}`}
+                      ? t("adding")
+                      : t("addAll", { n: plan.missing.length })}
                   </button>
                   <a href="/items/categories" className="btn ghost" style={{ marginLeft: "0.4rem" }}>
-                    Manage categories
+                    {t("manageCategories")}
                   </a>
                   <a href="/items/brands" className="btn ghost" style={{ marginLeft: "0.4rem" }}>
-                    Manage brands
+                    {t("manageBrands")}
                   </a>
                 </div>
               </div>
@@ -301,22 +296,19 @@ export function ItemImport({ action }: {
             {plan.rows.length > 0 && (
               <>
                 <div className="card-head" style={{ borderTop: "1px solid var(--line)" }}>
-                  <h2 style={{ fontSize: "var(--t-md)" }}>Item master</h2>
+                  <h2 style={{ fontSize: "var(--t-md)" }}>{t("itemMaster")}</h2>
                   <span className="page-sub">
-                    what will exist as products — no stock and no cost until a goods receipt
-                    or an opening stock adjustment gives them one. <strong>Code</strong> is the
-                    identifier the item will carry: its category&rsquo;s code followed by the
-                    Stock ID. A blank Stock ID is given the next number in that category.
+                    {t("itemMasterNote")} {t("codeNote")}
                   </span>
                 </div>
                 <div className="tablewrap">
                   <table>
                     <thead>
                       <tr>
-                        <th>Row</th><th>Barcode</th><th>Stock ID</th><th>Code</th>
-                        <th>Stock name</th><th>Category</th><th>Sub category</th>
-                        <th>Brand</th><th>Unit</th>
-                        <th className="r">Selling price</th><th />
+                        <th>{t("colRow")}</th><th>{t("colBarcode")}</th><th>{t("colStockId")}</th><th>{t("colCode")}</th>
+                        <th>{t("colStockName")}</th><th>{t("colCategory")}</th><th>{t("colSub")}</th>
+                        <th>{t("colBrand")}</th><th>{t("colUnit")}</th>
+                        <th className="r">{t("colPrice")}</th><th />
                       </tr>
                     </thead>
                     <tbody>
@@ -327,7 +319,7 @@ export function ItemImport({ action }: {
                           <td className="code">
                             {r.serial}
                             {r.serialAssigned && (
-                              <div className="subline" style={{ color: "var(--muted)" }}>assigned</div>
+                              <div className="subline" style={{ color: "var(--muted)" }}>{t("assigned")}</div>
                             )}
                           </td>
                           <td className="code"><strong>{r.code}</strong></td>
@@ -346,7 +338,7 @@ export function ItemImport({ action }: {
                           </td>
                           <td>
                             <span className={`pill ${r.isNew ? "" : "ok"}`}>
-                              {r.isNew ? "new" : "existing"}
+                              {r.isNew ? t("pillNew") : t("pillExisting")}
                             </span>
                           </td>
                         </tr>
@@ -361,7 +353,7 @@ export function ItemImport({ action }: {
               <div className="tablewrap">
                 <table>
                   <thead>
-                    <tr><th>Row</th><th>Column</th><th>Must be fixed before importing</th></tr>
+                    <tr><th>{t("colRow")}</th><th>{t("colColumn")}</th><th>{t("mustFix")}</th></tr>
                   </thead>
                   <tbody>
                     {plan.errors.slice(0, 200).map((e, i) => (
@@ -373,7 +365,7 @@ export function ItemImport({ action }: {
                     ))}
                     {plan.errors.length > 200 && (
                       <tr><td colSpan={3} className="empty">
-                        …and {plan.errors.length - 200} more. Fix these first.
+                        {t("andMoreFix", { n: plan.errors.length - 200 })}
                       </td></tr>
                     )}
                   </tbody>
@@ -385,7 +377,7 @@ export function ItemImport({ action }: {
               <div className="tablewrap">
                 <table>
                   <thead>
-                    <tr><th>Row</th><th>Column</th><th>Worth a look, but will not stop the import</th></tr>
+                    <tr><th>{t("colRow")}</th><th>{t("colColumn")}</th><th>{t("worthLook")}</th></tr>
                   </thead>
                   <tbody>
                     {plan.warnings.slice(0, 50).map((w, i) => (
@@ -396,7 +388,7 @@ export function ItemImport({ action }: {
                       </tr>
                     ))}
                     {plan.warnings.length > 50 && (
-                      <tr><td colSpan={3} className="empty">…and {plan.warnings.length - 50} more.</td></tr>
+                      <tr><td colSpan={3} className="empty">{t("andMore", { n: plan.warnings.length - 50 })}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -408,7 +400,7 @@ export function ItemImport({ action }: {
 
       <section>
         <div className="card">
-          <div className="card-head"><h2>3 · Import</h2></div>
+          <div className="card-head"><h2>{t("step3")}</h2></div>
           <form action={formAction} className="form">
             <input type="hidden" name="csv" value={csv} />
             <input type="hidden" name="format" value={format} />
@@ -418,17 +410,17 @@ export function ItemImport({ action }: {
 
               <p className="page-sub">
                 {blocked
-                  ? "Upload a file with no errors to continue."
-                  : `Creates ${plan!.summary.newItems} item${plan!.summary.newItems === 1 ? "" : "s"}` +
+                  ? t("uploadFirst")
+                  : t("creates", { n: plan!.summary.newItems }) +
                     (plan!.summary.existingItems > 0
-                      ? `, leaving the ${plan!.summary.existingItems} already here as they are`
+                      ? t("leaving", { n: plan!.summary.existingItems })
                       : "") +
-                    `. Nothing is posted and no stock moves — all of it lands or none of it does.`}
+                    t("nothingPosted")}
               </p>
             </div>
             <div className="card-body" style={{ paddingTop: 0 }}>
               <button type="submit" disabled={blocked || posting || checking}>
-                {posting ? "Importing…" : "Confirm import"}
+                {posting ? t("importing") : t("confirmImport")}
               </button>
             </div>
           </form>

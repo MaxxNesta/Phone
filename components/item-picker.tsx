@@ -7,12 +7,12 @@ import { ExternalLink } from "lucide-react";
 import { createItemInline, type PickerItem } from "@/lib/actions";
 import { Thumb, itemLabel } from "./add-items-bar";
 import { VariantTags, asVariant } from "@/components/variant-tags";
+import { useTranslations } from "next-intl";
 
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Uom = { id: string; code: string; name: string };
 
 // Category depth is capped at two: Category, then Sub category.
-const LEVELS = ["Category", "Sub category"];
 /** Exactly this item, as against merely containing the text. */
 const isExact = (i: PickerItem, q: string) =>
   (i.barcode ?? "").toLowerCase() === q || i.code.toLowerCase() === q;
@@ -42,6 +42,9 @@ export function ItemPicker({
   onCreated: (item: PickerItem) => void;
   mode: "sales" | "purchase";
 }) {
+  const pk = useTranslations("picker");
+  const cm = useTranslations("common");
+  const LEVELS = [cm("category"), cm("subCategory")];
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -183,7 +186,7 @@ export function ItemPicker({
           type="button"
           className="pickedbtn"
           onClick={() => { setOpen(true); setQuery(""); }}
-          title="Change item"
+          title={pk("changeItem")}
         >
           <Thumb i={selected} />
           <span className="aib-name">
@@ -196,8 +199,8 @@ export function ItemPicker({
           target="_blank"
           rel="noopener noreferrer"
           className="pickedopen"
-          title={`Open ${selected.code} in master data — new tab`}
-          aria-label={`Open ${selected.code} in master data in a new tab`}
+          title={pk("openMaster", { code: selected.code })}
+          aria-label={pk("openMasterAria", { code: selected.code })}
         >
           <ExternalLink size={13} aria-hidden="true" />
         </Link>
@@ -211,7 +214,7 @@ export function ItemPicker({
         type="text"
         value={query}
         autoFocus={open}
-        placeholder="Scan, or type a code or name…"
+        placeholder={pk("scanOrType")}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); setCreating(false); }}
         onFocus={() => setOpen(true)}
         /**
@@ -233,7 +236,7 @@ export function ItemPicker({
           const pick = exactOne ?? (matches.length === 1 ? matches[0] : null);
           if (pick) { onPick(pick.id); setOpen(false); setQuery(""); }
         }}
-        aria-label="Find an item"
+        aria-label={pk("findItem")}
       />
 
       {open && !creating && rect && createPortal(
@@ -254,14 +257,14 @@ export function ItemPicker({
                 </span>
                 <span className="picker-meta">
                   {i.is_stocked
-                    ? `${fmt(Number(i.on_hand))} on hand`
-                    : "service"}
+                    ? pk("nOnHand", { n: fmt(Number(i.on_hand)) })
+                    : pk("service")}
                 </span>
               </button>
             ))
           ) : (
             <div className="picker-empty">
-              No item matches &ldquo;{query}&rdquo;
+              {pk("noMatch", { query })}
             </div>
           )}
 
@@ -271,7 +274,7 @@ export function ItemPicker({
               className="picker-row picker-create"
               onClick={() => { setCreating(true); setError(null); }}
             >
-              + Create &ldquo;{query.trim()}&rdquo; as a new item
+              {pk("createAs", { name: query.trim() })}
             </button>
           )}
         </div>,
@@ -281,22 +284,22 @@ export function ItemPicker({
       {creating && rect && createPortal(
         <div ref={panelRef} className="picker picker-form" style={{ position: "fixed", top: rect.top, left: rect.left }}>
           <div className="picker-head">
-            <strong>New item</strong>
+            <strong>{pk("newItem")}</strong>
             <button type="button" className="ghost tiny" onClick={() => setCreating(false)}>
-              Cancel
+              {cm("cancel")}
             </button>
           </div>
 
           {error && <div className="alert" style={{ margin: "0 0 0.6rem" }}>{error}</div>}
 
           <div className="field">
-            <label>Name</label>
+            <label>{cm("name")}</label>
             <div className="readout">{query.trim()}</div>
           </div>
 
           {selects.map((s) => (
             <div className="field" key={s.depth}>
-              <label>{LEVELS[s.depth] ?? `Level ${s.depth + 1}`}</label>
+              <label>{LEVELS[s.depth] ?? pk("level", { n: s.depth + 1 })}</label>
               <select
                 value={s.value}
                 onChange={(e) => {
@@ -304,7 +307,7 @@ export function ItemPicker({
                   setChain(id ? [...chain.slice(0, s.depth), id] : chain.slice(0, s.depth));
                 }}
               >
-                <option value="">{s.depth === 0 ? "Choose…" : "— file it here —"}</option>
+                <option value="">{s.depth === 0 ? pk("choose") : pk("fileHere")}</option>
                 {s.options.map((o) => (
                   <option key={o.id} value={o.id}>{o.segment} · {o.name}</option>
                 ))}
@@ -313,7 +316,7 @@ export function ItemPicker({
           ))}
 
           <div className="field">
-            <label>Unit</label>
+            <label>{cm("unit")}</label>
             <select value={uomId} onChange={(e) => setUomId(e.target.value)}>
               {uoms.map((u) => (
                 <option key={u.id} value={u.id}>{u.code} · {u.name}</option>
@@ -322,21 +325,21 @@ export function ItemPicker({
           </div>
 
           <div className="field">
-            <label>{mode === "sales" ? "Sale price" : "Purchase price"}</label>
+            <label>{mode === "sales" ? pk("salePrice") : pk("purchasePrice")}</label>
             <input type="number" min="0" step="any" value={price}
               onChange={(e) => setPrice(e.target.value)} placeholder="0" />
           </div>
 
           <label className="check" style={{ margin: "0.4rem 0" }}>
             <input type="checkbox" checked={stocked} onChange={(e) => setStocked(e.target.checked)} />
-            Stocked
+            {pk("stocked")}
           </label>
 
           <div className="actions">
             <button type="button" onClick={submitNew} disabled={pending || !groupId}>
-              {pending ? "Creating…" : groupCode ? `Create under ${groupCode}` : "Create"}
+              {pending ? pk("creating") : groupCode ? pk("createUnder", { code: groupCode }) : pk("create")}
             </button>
-            {!groupId && <span className="hint">Choose a category</span>}
+            {!groupId && <span className="hint">{pk("chooseCategory")}</span>}
           </div>
         </div>,
         document.body

@@ -3,10 +3,13 @@ import { getCompany, getImportBatches } from "@/lib/queries";
 import { runItemImport } from "@/lib/actions";
 import { ItemImport } from "@/components/item-import";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 export default async function ImportItems() {
+  const t = await getTranslations("itemImport");
+  const c = await getTranslations("common");
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const batches = (await getImportBatches(company.id)) as unknown as Array<{
     id: string; ref: string; filename: string; row_count: number;
@@ -16,20 +19,12 @@ export default async function ImportItems() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>Import items</h1>
+        <span className="eyebrow">{t("eyebrow")}</span>
+        <h1>{t("title")}</h1>
         <HelpHint>
-          The item master, from a spreadsheet — what the items <em>are</em>, not
-          how many there are. Quantity and cost are the result of stock
-          documents, so they are not on this sheet; a new item exists with no
-          stock until a goods receipt or an opening stock adjustment gives it
-          some. The spreadsheet is the input and this database stays the source
-          of truth: a row naming a category, brand or unit that does not exist
-          here is refused rather than creating one, because two spellings of the
-          same category is the mess an importer is supposed to prevent. Nothing
-          is written until you confirm, and then all of it is written or none.
+          {t("help")}
         </HelpHint>
-        <Link href="/items" className="btn ghost">Back to items</Link>
+        <Link href="/items" className="btn ghost">{t("backToItems")}</Link>
       </div>
 
       <ItemImport action={runItemImport} />
@@ -37,19 +32,19 @@ export default async function ImportItems() {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Past imports</h2>
+            <h2>{t("pastImports")}</h2>
             <span className="page-sub">{batches.length}</span>
           </div>
           {batches.length === 0 ? (
-            <div className="empty">Nothing imported yet.</div>
+            <div className="empty">{t("nothingYet")}</div>
           ) : (
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Reference</th><th>File</th><th>When</th>
-                    <th className="r">Rows</th><th className="r">Items created</th>
-                    <th className="r">Documents</th><th>Status</th>
+                    <th>{t("reference")}</th><th>{t("file")}</th><th>{t("when")}</th>
+                    <th className="r">{t("rows")}</th><th className="r">{t("itemsCreated")}</th>
+                    <th className="r">{t("documents")}</th><th>{c("status")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -65,7 +60,7 @@ export default async function ImportItems() {
                       <td className="r">{b.documents}</td>
                       <td>
                         <span className={`pill ${b.status === "COMPLETED" ? "ok" : "overdue"}`}>
-                          {b.status.toLowerCase()}
+                          {t.has(`status.${b.status}`) ? t(`status.${b.status}`) : b.status.toLowerCase()}
                         </span>
                       </td>
                     </tr>
