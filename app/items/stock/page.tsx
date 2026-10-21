@@ -20,6 +20,7 @@ import { ExpiryBands } from "@/components/expiry-bands";
 import { AddReorderPointForm } from "@/components/reorder-point-form";
 import { ReorderPointRow } from "@/components/reorder-point-row";
 import { AccountPicker } from "@/components/account-picker";
+import { getTranslations } from "next-intl/server";
 
 type Row = {
   id: string; code: string; name: string; name_my: string | null;
@@ -44,9 +45,11 @@ export default async function Stock({
                         view?: string; product?: string }>;
 }) {
   const { location, zeros, group, view, product } = await searchParams;
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
   const showZeros = zeros === "1";
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const [items, reserved, incoming, lowStock, reorderPoints, locations, stockByLocation, consigned,
          batches, expiryBands, variantStock] = await Promise.all([
@@ -179,7 +182,7 @@ export default async function Stock({
      * disagree because one is computed from the other.
      */
     const members: Row[] = kids.length > 0 ? kids : [i];
-    const sum = (f: (r: Row) => number) => members.reduce((t, m) => t + f(m), 0);
+    const sum = (f: (r: Row) => number) => members.reduce((acc, m) => acc + f(m), 0);
     const onHand = sum((m) => onHandOf(m.id, Number(m.qty_on_hand)));
     const valueOnHand = sum((m) => valueOf(m.id, Number(m.value_on_hand)));
     const reservedQty = sum((m) => reservedOf(m.id));
@@ -255,9 +258,9 @@ export default async function Stock({
         ids.add(r.location_id);
       }
     }
-    for (const c of consignedHere) {
-      if (itemIds.includes(c.item_id) && here(c.location_id) && Number(c.on_hand) !== 0) {
-        ids.add(c.location_id);
+    for (const cr of consignedHere) {
+      if (itemIds.includes(cr.item_id) && here(cr.location_id) && Number(cr.on_hand) !== 0) {
+        ids.add(cr.location_id);
       }
     }
 
@@ -270,13 +273,13 @@ export default async function Stock({
           name: loc?.name ?? "",
           onHand: stockByLocation
             .filter((r) => itemIds.includes(r.item_id) && r.location_id === locationId)
-            .reduce((t, r) => t + Number(r.qty_on_hand), 0),
+            .reduce((sum, r) => sum + Number(r.qty_on_hand), 0),
           consigned: consignedHere
-            .filter((c) => itemIds.includes(c.item_id) && c.location_id === locationId)
-            .reduce((t, c) => t + Number(c.on_hand), 0),
+            .filter((cr) => itemIds.includes(cr.item_id) && cr.location_id === locationId)
+            .reduce((sum, cr) => sum + Number(cr.on_hand), 0),
           reserved: reserved
             .filter((x) => itemIds.includes(x.item_id) && x.location_id === locationId)
-            .reduce((t, x) => t + Number(x.reserved_qty), 0),
+            .reduce((sum, x) => sum + Number(x.reserved_qty), 0),
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code));
@@ -354,7 +357,7 @@ export default async function Stock({
       sort: {
         code: i.code,
         name: i.name,
-        ownership: consignors.length > 0 ? `Consignment ${consignors.join(" ")}` : "Company-owned",
+        ownership: consignors.length > 0 ? t("stk.consignmentName", { names: consignors.join(" ") }) : t("stk.companyOwned"),
         group_name: category,
         brand_name: i.brand_name ?? "",
         uom_code: i.uom_code,
@@ -374,8 +377,8 @@ export default async function Stock({
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Master data</span>
-        <h1>Stock</h1>
+        <span className="eyebrow">{t("stk.eyebrow")}</span>
+        <h1>{t("stk.title")}</h1>
         <BranchScope />
       </div>
 
@@ -384,27 +387,27 @@ export default async function Stock({
       <div className="filterbar">
         {reorderableLocations.length > 1 && (
           <AccountPicker
-            accounts={[{ id: "all", code: "—", name: "All warehouses" }, ...reorderableLocations]}
+            accounts={[{ id: "all", code: "—", name: t("stk.allWarehouses") }, ...reorderableLocations]}
             selectedId={selectedLocationId}
             basePath="/items/stock"
             paramName="location"
-            label="Warehouse"
+            label={c("warehouse")}
             keep={{ zeros: showZeros ? "1" : undefined }}
           />
         )}
         <div className="field">
-          <label>Items</label>
+          <label>{t("stk.itemsLabel")}</label>
           {/* Links rather than a control with state: the page is already
               addressable by its query, and this way the choice survives a
               reload and can be bookmarked like the warehouse beside it. */}
           <div className="scopetabs" style={{ margin: 0 }}>
             <Link scroll={false} className="scopetab" data-active={!showZeros}
                   href={`/items/stock${allLocations ? "" : `?location=${selectedLocationId}`}`}>
-              In stock
+              {t("stk.inStock")}
             </Link>
             <Link scroll={false} className="scopetab" data-active={showZeros}
                   href={`/items/stock?${allLocations ? "" : `location=${selectedLocationId}&`}zeros=1`}>
-              All items
+              {t("stk.allItems")}
             </Link>
           </div>
         </div>
@@ -435,9 +438,9 @@ export default async function Stock({
             <Boxes size={17} aria-hidden="true" />
           </span>
           <span className="kpi-body">
-            <span className="kpi-label">Stock value</span>
+            <span className="kpi-label">{t("stk.stockValue")}</span>
             <span className="kpi-value">{money(totalValue)}</span>
-            <span className="kpi-note">{skuCount} item{skuCount === 1 ? "" : "s"} in stock</span>
+            <span className="kpi-note">{t("stk.itemsInStock", { n: skuCount })}</span>
           </span>
         </div>
 
@@ -449,12 +452,12 @@ export default async function Stock({
             <AlertTriangle size={17} aria-hidden="true" />
           </span>
           <span className="kpi-body">
-            <span className="kpi-label">Low stock</span>
+            <span className="kpi-label">{t("stk.lowStock")}</span>
             <span className="kpi-value" style={{ color: lowStock.length > 0 ? "var(--bad)" : undefined }}>
               {lowStock.length}
             </span>
             <span className="kpi-note">
-              item/warehouse pair{lowStock.length === 1 ? "" : "s"} out of stock or below reorder point
+              {t("stk.lowPairs", { n: lowStock.length })}
             </span>
           </span>
         </div>
@@ -467,9 +470,9 @@ export default async function Stock({
             <PackageCheck size={17} aria-hidden="true" />
           </span>
           <span className="kpi-body">
-            <span className="kpi-label">Incoming</span>
+            <span className="kpi-label">{t("stk.incoming")}</span>
             <span className="kpi-value">{incoming.length}</span>
-            <span className="kpi-note">item/warehouse pair{incoming.length === 1 ? "" : "s"} on an open purchase order</span>
+            <span className="kpi-note">{t("stk.incomingPairs", { n: incoming.length })}</span>
           </span>
         </div>
 
@@ -481,9 +484,9 @@ export default async function Stock({
             <TrendingDown size={17} aria-hidden="true" />
           </span>
           <span className="kpi-body">
-            <span className="kpi-label">Reserved</span>
+            <span className="kpi-label">{t("stk.reserved")}</span>
             <span className="kpi-value">{reserved.length}</span>
-            <span className="kpi-note">item/warehouse pair{reserved.length === 1 ? "" : "s"} committed to an open sales order</span>
+            <span className="kpi-note">{t("stk.reservedPairs", { n: reserved.length })}</span>
           </span>
         </div>
 
@@ -495,13 +498,13 @@ export default async function Stock({
             <HandCoins size={17} aria-hidden="true" />
           </span>
           <span className="kpi-body">
-            <span className="kpi-label">Consigned</span>
+            <span className="kpi-label">{t("stk.consigned")}</span>
             <span className="kpi-value">
               <Link href="/inventory/consignment" style={{ color: "inherit" }}>{consignedHere.length}</Link>
             </span>
             <span className="kpi-note">
-              item/warehouse/consignor combination{consignedHere.length === 1 ? "" : "s"} on hand but not owned
-              {!allLocations && " at this warehouse"}
+              {t("stk.consignedCombos", { n: consignedHere.length })}
+              {!allLocations && t("stk.atThisWarehouse")}
             </span>
           </span>
         </div>
@@ -518,15 +521,15 @@ export default async function Stock({
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>Low stock</h2>
-              <span className="page-sub">out of stock, or below the reorder point set on that item and warehouse</span>
+              <h2>{t("stk.lowTitle")}</h2>
+              <span className="page-sub">{t("stk.lowSub")}</span>
             </div>
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th><th>Item</th><th>Warehouse</th><th>Status</th>
-                    <th className="r">On hand</th><th className="r">Reorder point</th>
+                    <th>{c("code")}</th><th>{t("item")}</th><th>{c("warehouse")}</th><th>{c("status")}</th>
+                    <th className="r">{t("onHand")}</th><th className="r">{t("stk.reorderPoint")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -537,7 +540,7 @@ export default async function Stock({
                       <td className="code">{r.location_code}</td>
                       <td>
                         <span className={`pill ${r.reason === "out_of_stock" ? "overdue" : "warn"}`}>
-                          {r.reason === "out_of_stock" ? "Out of stock" : "Below reorder"}
+                          {r.reason === "out_of_stock" ? t("stk.outOfStock") : t("stk.belowReorder")}
                         </span>
                       </td>
                       <td className="r" style={{ color: Number(r.qty_on_hand) <= 0 ? "var(--bad)" : undefined }}>
@@ -557,16 +560,16 @@ export default async function Stock({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Reorder points</h2>
-            <span className="page-sub">{reorderPoints.length} set</span>
+            <h2>{t("stk.reorderPoints")}</h2>
+            <span className="page-sub">{t("stk.nSet", { n: reorderPoints.length })}</span>
           </div>
           {(
             <div className="tablewrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th><th>Item</th><th>Warehouse</th>
-                    <th className="r">Reorder point</th><th />
+                    <th>{c("code")}</th><th>{t("item")}</th><th>{c("warehouse")}</th>
+                    <th className="r">{t("stk.reorderPoint")}</th><th />
                   </tr>
                 </thead>
                 <tbody>
@@ -588,8 +591,8 @@ export default async function Stock({
 
       {hasVariants && (
         <div className="scopetabs viewtabs">
-          {([["list", "List view"], ["grouped", "Grouped by product"],
-             ["matrix", "Matrix"]] as const).map(([key, label]) => {
+          {([["list", t("stk.viewList")], ["grouped", t("stk.viewGrouped")],
+             ["matrix", t("stk.viewMatrix")]] as const).map(([key, label]) => {
             const q = new URLSearchParams();
             if (!allLocations) q.set("location", selectedLocationId);
             if (showZeros) q.set("zeros", "1");
@@ -609,10 +612,10 @@ export default async function Stock({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Stock position</h2>
+            <h2>{t("stk.position")}</h2>
             <span className="page-sub">
-              {skuCount} item{skuCount === 1 ? "" : "s"} in stock
-              {foldedAny && ` \u00b7 ${visible.length} row${visible.length === 1 ? "" : "s"}`}
+              {t("stk.itemsInStock", { n: skuCount })}
+              {foldedAny && ` \u00b7 ${t("stk.rowsCount", { n: visible.length })}`}
               {!allLocations && ` · ${reorderableLocations.find((l) => l.id === selectedLocationId)?.name ?? ""}`}
             </span>
           </div>
@@ -621,17 +624,16 @@ export default async function Stock({
             <div className="empty">
               {allLocations ? (
                 <>
-                  Nothing in stock. An item appears here once goods are received
-                  against it.{" "}
+                  {t("stk.nothingInStock")}{" "}
                   <Link href="/items/stock?zeros=1" style={{ color: "var(--link)" }}>
-                    Show all items
+                    {t("stk.showAllItems")}
                   </Link>
                 </>
               ) : (
                 <>
-                  Nothing held, reserved or on its way at this warehouse.{" "}
+                  {t("stk.nothingHere")}{" "}
                   <Link href={`/items/stock?location=${selectedLocationId}&zeros=1`}
-                        style={{ color: "var(--link)" }}>Show all items</Link>
+                        style={{ color: "var(--link)" }}>{t("stk.showAllItems")}</Link>
                 </>
               )}
             </div>
@@ -639,30 +641,30 @@ export default async function Stock({
             <StockTable
               rows={rows}
               consignmentItemIds={visible.filter((i) => i.consignedQty > 0).map((i) => i.id)}
-              emptyLabel="No stocked items"
-              searchPlaceholder="Search stock…"
+              emptyLabel={t("stk.noStockedItems")}
+              searchPlaceholder={t("stk.searchStock")}
               defaultSort={{ key: "code", dir: "asc" }}
               columns={[
                 // No label: the chevron column is a control, not a field.
                 { key: "expand", label: "" },
-                { key: "code", label: "Code", sortable: true },
-                { key: "name", label: "Item", sortable: true },
-                { key: "ownership", label: "Ownership", sortable: true },
-                { key: "group_name", label: "Category", sortable: true },
-                ...(multiBrand ? [{ key: "brand_name", label: "Brand", sortable: true }] : []),
-                { key: "uom_code", label: "Unit", sortable: true },
-                { key: "onHand", label: "On hand", sortable: true, align: "r" },
+                { key: "code", label: c("code"), sortable: true },
+                { key: "name", label: t("item"), sortable: true },
+                { key: "ownership", label: t("stk.colOwnership"), sortable: true },
+                { key: "group_name", label: c("category"), sortable: true },
+                ...(multiBrand ? [{ key: "brand_name", label: c("brand"), sortable: true }] : []),
+                { key: "uom_code", label: c("unit"), sortable: true },
+                { key: "onHand", label: t("onHand"), sortable: true, align: "r" },
                 ...(anyConsigned
-                  ? [{ key: "consignedQty", label: "Consigned", sortable: true, align: "r" as const }]
+                  ? [{ key: "consignedQty", label: t("stk.consigned"), sortable: true, align: "r" as const }]
                   : []),
-                { key: "reservedQty", label: "Reserved", sortable: true, align: "r" },
-                { key: "available", label: "Available", sortable: true, align: "r" },
-                { key: "incomingQty", label: "Incoming", sortable: true, align: "r" },
-                { key: "projected", label: "Projected", sortable: true, align: "r" },
-                { key: "value_on_hand", label: "Value (MMK)", sortable: true, align: "r" },
+                { key: "reservedQty", label: t("stk.reserved"), sortable: true, align: "r" },
+                { key: "available", label: t("stk.colAvailable"), sortable: true, align: "r" },
+                { key: "incomingQty", label: t("stk.incoming"), sortable: true, align: "r" },
+                { key: "projected", label: t("stk.colProjected"), sortable: true, align: "r" },
+                { key: "value_on_hand", label: t("stk.colValue"), sortable: true, align: "r" },
               ]}
               footerCells={{
-                span: <>Total stock value{!allLocations ? " at this warehouse" : ""}</>,
+                span: <>{t("stk.totalValue")}{!allLocations ? t("stk.atThisWarehouse") : ""}</>,
                 cells: { value_on_hand: money(totalValue) },
               }}
             />

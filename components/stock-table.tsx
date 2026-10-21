@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Layers, Home, Users } from "lucide-react";
 import { DataTable, type DataRow, type Column } from "./data-table";
+import { useTranslations } from "next-intl";
 
 type Scope = "all" | "owned" | "consigned";
 
@@ -34,6 +35,7 @@ export function StockTable({
   emptyLabel?: string;
   footerCells?: { span: React.ReactNode; cells: Record<string, React.ReactNode> };
 }) {
+  const t = useTranslations("inventory");
   const [scope, setScope] = useState<Scope>("all");
 
   const consigned = useMemo(() => new Set(consignmentItemIds), [consignmentItemIds]);
@@ -51,26 +53,26 @@ export function StockTable({
   );
 
   const tabs: { key: Scope; label: string; icon: React.ReactNode }[] = [
-    { key: "all", label: "All stock", icon: <Layers size={14} aria-hidden="true" /> },
-    { key: "owned", label: "Company-owned", icon: <Home size={14} aria-hidden="true" /> },
-    { key: "consigned", label: "Consignment", icon: <Users size={14} aria-hidden="true" /> },
+    { key: "all", label: t("stk.allStock"), icon: <Layers size={14} aria-hidden="true" /> },
+    { key: "owned", label: t("stk.companyOwned"), icon: <Home size={14} aria-hidden="true" /> },
+    { key: "consigned", label: t("stk.consignment"), icon: <Users size={14} aria-hidden="true" /> },
   ];
 
   return (
     <>
-      <div className="scopetabs" role="group" aria-label="Ownership">
-        {tabs.map((t) => (
+      <div className="scopetabs" role="group" aria-label={t("stk.colOwnership")}>
+        {tabs.map((tab) => (
           <button
-            key={t.key}
+            key={tab.key}
             type="button"
             className="scopetab"
-            data-active={scope === t.key}
-            aria-pressed={scope === t.key}
-            onClick={() => setScope(t.key)}
+            data-active={scope === tab.key}
+            aria-pressed={scope === tab.key}
+            onClick={() => setScope(tab.key)}
           >
-            {t.icon}
-            {t.label}
-            <span className="scopetab-n">{counts[t.key]}</span>
+            {tab.icon}
+            {tab.label}
+            <span className="scopetab-n">{counts[tab.key]}</span>
           </button>
         ))}
       </div>
@@ -80,8 +82,8 @@ export function StockTable({
         searchPlaceholder={searchPlaceholder}
         defaultSort={defaultSort}
         emptyLabel={
-          scope === "consigned" ? "Nothing on hand from a consignor"
-            : scope === "owned" ? "Nothing company-owned on hand"
+          scope === "consigned" ? t("stk.nothingConsigned")
+            : scope === "owned" ? t("stk.nothingOwned")
               : emptyLabel
         }
         footerCells={footerCells}

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useTranslations } from "next-intl";
 
 type ReorderPoint = {
   id: string; item_code: string; item_name: string; location_code: string; min_qty: string | number;
@@ -17,6 +18,8 @@ export function ReorderPointRow({
   updateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   deleteAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never,
@@ -44,8 +47,8 @@ export function ReorderPointRow({
               name="min_qty" type="number" min="0" step="any" required autoFocus
               defaultValue={point.min_qty} style={{ width: "7rem" }}
             />
-            <button type="submit" className="ghost tiny" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-            <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>Cancel</button>
+            <button type="submit" className="ghost tiny" disabled={pending}>{pending ? c("saving") : c("save")}</button>
+            <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
           </form>
         </td>
       </tr>
@@ -60,16 +63,16 @@ export function ReorderPointRow({
       <td className="r">{point.min_qty}</td>
       <td>
         <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>{c("edit")}</button>
           <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
-            title={`Remove the reorder point for ${point.item_name}?`}
-            detail="The item stays; only the reorder threshold at this warehouse is removed."
-            label="Remove"
-            pendingLabel="Removing…"
-            confirmLabel="Remove"
+            title={t("rp.removeTitle", { name: point.item_name })}
+            detail={t("rp.removeDetail")}
+            label={t("rp.remove")}
+            pendingLabel={t("rp.removing")}
+            confirmLabel={t("rp.remove")}
           >
             <input type="hidden" name="id" value={point.id} />
           </ConfirmDelete>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { ItemThumb } from "./item-thumb";
 import { variantPhotos, type VariantPart } from "@/lib/variants";
 
@@ -34,7 +35,7 @@ export type VariantStockRow = {
 const qty = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const money = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-export function VariantStock({
+export async function VariantStock({
   rows, groupBy, basePath, keep = {},
 }: {
   rows: VariantStockRow[];
@@ -44,6 +45,7 @@ export function VariantStock({
   /** Other query parameters this page owns, so switching tab keeps them. */
   keep?: Record<string, string | undefined>;
 }) {
+  const t = await getTranslations("inventory");
   const withParts = rows.filter((r) => r.parts && r.parts.length > 0);
   if (withParts.length === 0) return null;
 
@@ -97,9 +99,9 @@ export function VariantStock({
     <section>
       <div className="card">
         <div className="card-head">
-          <h2>By {active.name.toLowerCase()}</h2>
+          <h2>{t("var.by", { name: active.name })}</h2>
           <span className="page-sub">
-            the same stock as the table above, folded — totals are its lines added up
+            {t("var.sameStock")}
           </span>
         </div>
 
@@ -109,7 +111,7 @@ export function VariantStock({
               {attrList.map((a) => (
                 <Link key={a.id} scroll={false} className="scopetab" data-active={a.id === active.id}
                       href={href(a.id)}>
-                  By {a.name.toLowerCase()}
+                  {t("var.by", { name: a.name })}
                 </Link>
               ))}
             </div>
@@ -160,13 +162,13 @@ export function VariantStock({
                   <span className="m">{head.parent_code}</span>
                   <strong>{head.parent_name}</strong>
                   <span className="page-sub">
-                    {variants.length} variant{variants.length === 1 ? "" : "s"}
-                    {unit ? ` \u00b7 counted in ${unit}` : ""}
-                    {!hasBreakdown ? ` \u00b7 varies by ${active.name.toLowerCase()} only` : ""}
+                    {t("var.nVariants", { n: variants.length })}
+                    {unit ? ` \u00b7 ${t("var.countedIn", { unit })}` : ""}
+                    {!hasBreakdown ? ` \u00b7 ${t("var.variesOnly", { name: active.name })}` : ""}
                   </span>
                   {!unit && (
                     <span className="pill warn">
-                      mixed units: {units.join(", ")} — totals not comparable
+                      {t("var.mixedUnits", { units: units.join(", ") })}
                     </span>
                   )}
                 </div>
@@ -175,11 +177,11 @@ export function VariantStock({
                   <thead>
                     <tr>
                       <th colSpan={showThumbs ? 2 : 1}>{active.name}</th>
-                      {hasBreakdown && <th>Breakdown</th>}
+                      {hasBreakdown && <th>{t("var.breakdown")}</th>}
                       <th className="r">
-                        On hand{unit ? ` (${unit})` : ""}
+                        {unit ? t("var.onHandUnit", { unit }) : t("onHand")}
                       </th>
-                      <th className="r">Value (MMK)</th>
+                      <th className="r">{t("stk.colValue")}</th>
                     </tr>
                   </thead>
                   <tbody>

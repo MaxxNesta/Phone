@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronRight, Home, Users } from "lucide-react";
 import { VariantTags, type VariantPart } from "@/components/variant-tags";
 import { ItemThumb } from "./item-thumb";
+import { useTranslations } from "next-intl";
 
 /**
  * One item's stock position, with the detail folded underneath it.
@@ -102,6 +103,8 @@ export function StockRow(
   { item, columnCount, showConsigned, showBrand = false }:
   { item: StockRowItem; columnCount: number; showConsigned: boolean; showBrand?: boolean }
 ) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
   const [open, setOpen] = useState(false);
   // A model can come in hundreds of combinations; the few on the shelf are
   // what this panel is for. The rest stay one click away.
@@ -133,7 +136,7 @@ export function StockRow(
             type="button"
             className="rowexpand"
             aria-expanded={open}
-            aria-label={open ? `Hide details for ${item.name}` : `Show details for ${item.name}`}
+            aria-label={open ? t("row.hideDetails", { name: item.name }) : t("row.showDetails", { name: item.name })}
             onClick={() => setOpen(!open)}
           >
             <ChevronRight size={14} aria-hidden="true" />
@@ -168,7 +171,7 @@ export function StockRow(
             <>
               <Link href="/inventory/consignment" className="ownpill" data-kind="consigned">
                 <Users size={11} aria-hidden="true" />
-                Consignment
+                {t("stk.consignment")}
               </Link>
               {/* Whose it is, under the badge rather than inside it: one
                   consignor's name is short and three are not, and a cell that
@@ -178,7 +181,7 @@ export function StockRow(
           ) : (
             <span className="ownpill" data-kind="owned">
               <Home size={11} aria-hidden="true" />
-              Company-owned
+              {t("stk.companyOwned")}
             </span>
           )}
         </td>
@@ -228,14 +231,14 @@ export function StockRow(
             {item.variants.length > 0 && (
               <div className="stockvariants">
                 <h3>
-                  Variants
+                  {t("row.variants")}
                   <span className="page-sub">
                     {allVariants
-                      ? `All ${item.variants.length} on this product`
-                      : `${live.length} in stock of ${item.variants.length}`}
+                      ? t("row.allOnProduct", { n: item.variants.length })
+                      : t("row.inStockOf", { live: live.length, total: item.variants.length })}
                     {item.variants.length > live.length && (
                       <>{" · "}<button type="button" className="linkish" onClick={() => setAllVariants(!allVariants)}>
-                        {allVariants ? "Only in stock" : `Show all ${item.variants.length}`}
+                        {allVariants ? t("row.onlyInStock") : t("row.showAllN", { n: item.variants.length })}
                       </button></>
                     )}
                   </span>
@@ -244,19 +247,19 @@ export function StockRow(
                   <table>
                     <thead>
                       <tr>
-                        <th colSpan={2}>Variant</th>
-                        <th>Code</th>
-                        <th>Unit</th>
-                        <th className="r">On hand</th>
-                        <th className="r">Reserved</th>
-                        <th className="r">Available</th>
-                        <th className="r">Incoming</th>
-                        <th className="r">Value (MMK)</th>
+                        <th colSpan={2}>{t("ph.variant")}</th>
+                        <th>{c("code")}</th>
+                        <th>{c("unit")}</th>
+                        <th className="r">{t("onHand")}</th>
+                        <th className="r">{t("stk.reserved")}</th>
+                        <th className="r">{t("stk.colAvailable")}</th>
+                        <th className="r">{t("stk.incoming")}</th>
+                        <th className="r">{t("stk.colValue")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {shownVariants.length === 0 && (
-                        <tr><td colSpan={9} className="page-sub">None of its variants are in stock.</td></tr>
+                        <tr><td colSpan={9} className="page-sub">{t("row.noneVariantsInStock")}</td></tr>
                       )}
                       {shownVariants.map((v) => (
                         <tr key={v.id}>
@@ -293,30 +296,30 @@ export function StockRow(
 
             <div className="stockdetail">
               <section className="stockpanel">
-                <h3>Item details</h3>
+                <h3>{t("row.itemDetails")}</h3>
                 <dl className="stockpanel-kv">
-                  <div><dt>Item code</dt><dd className="code">{item.code}</dd></div>
-                  <div><dt>Item name</dt><dd>{item.name}</dd></div>
-                  <div><dt>Category</dt><dd>{item.category}</dd></div>
-                  <div><dt>Unit</dt><dd className="code">{item.uomCode}</dd></div>
-                  <div><dt>Brand</dt><dd>{item.brandName ?? DASH}</dd></div>
-                  <div><dt>Barcode</dt><dd className="code">{item.barcode ?? DASH}</dd></div>
+                  <div><dt>{t("row.itemCode")}</dt><dd className="code">{item.code}</dd></div>
+                  <div><dt>{t("row.itemName")}</dt><dd>{item.name}</dd></div>
+                  <div><dt>{c("category")}</dt><dd>{item.category}</dd></div>
+                  <div><dt>{c("unit")}</dt><dd className="code">{item.uomCode}</dd></div>
+                  <div><dt>{c("brand")}</dt><dd>{item.brandName ?? DASH}</dd></div>
+                  <div><dt>{c("barcode")}</dt><dd className="code">{item.barcode ?? DASH}</dd></div>
                 </dl>
               </section>
 
               <section className="stockpanel">
-                <h3>Stock by warehouse</h3>
+                <h3>{t("row.stockByWarehouse")}</h3>
                 {item.warehouses.length === 0 ? (
-                  <p className="hint">This item has never been held anywhere.</p>
+                  <p className="hint">{t("row.neverHeld")}</p>
                 ) : (
                   <table className="stockpanel-table">
                     <thead>
                       <tr>
-                        <th>Warehouse</th>
-                        <th className="r">On hand</th>
-                        {anyConsigned && <th className="r">Consigned</th>}
-                        <th className="r">Reserved</th>
-                        <th className="r">Available</th>
+                        <th>{c("warehouse")}</th>
+                        <th className="r">{t("onHand")}</th>
+                        {anyConsigned && <th className="r">{t("stk.consigned")}</th>}
+                        <th className="r">{t("stk.reserved")}</th>
+                        <th className="r">{t("stk.colAvailable")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -339,7 +342,7 @@ export function StockRow(
                         what happens to be listed above. */}
                     <tfoot>
                       <tr>
-                        <td>Total</td>
+                        <td>{t("row.total")}</td>
                         <td className="r">{qty(item.onHand)}</td>
                         {anyConsigned && (
                           <td className="r">{qty(item.consignedQty)}</td>
@@ -361,31 +364,31 @@ export function StockRow(
               {item.tracksBatch && (
                 <section className="stockpanel stockpanel-wide">
                   <h3>
-                    Batches on hand
+                    {t("row.batchesOnHand")}
                     {expiringSoon > 0 && (
                       <span className="pill warn" style={{ marginLeft: "0.5rem" }}>
-                        {expiringSoon} expiring
+                        {t("row.nExpiring", { n: expiringSoon })}
                       </span>
                     )}
                     {expired > 0 && (
                       <span className="pill overdue" style={{ marginLeft: "0.4rem" }}>
-                        {expired} expired
+                        {t("row.nExpired", { n: expired })}
                       </span>
                     )}
                   </h3>
                   {item.batches.length === 0 ? (
                     <div className="empty">
-                      Nothing batched on hand.
-                      {item.onHand > 0 && " What is here arrived before batches were tracked."}
+                      {t("row.nothingBatched")}
+                      {item.onHand > 0 && ` ${t("row.beforeBatches")}`}
                     </div>
                   ) : (
                     <table className="stockpanel-table">
                       <thead>
                         <tr>
-                          <th>Batch</th>
-                          <th>Warehouse</th>
-                          {item.tracksExpiry && <th>Expires</th>}
-                          <th className="r">On hand</th>
+                          <th>{t("row.batch")}</th>
+                          <th>{c("warehouse")}</th>
+                          {item.tracksExpiry && <th>{t("row.expires")}</th>}
+                          <th className="r">{t("onHand")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -403,12 +406,12 @@ export function StockRow(
                                   {b.expiryDate ?? DASH}
                                   {state === "expired" && (
                                     <span className="pill overdue" style={{ marginLeft: "0.4rem" }}>
-                                      {Math.abs(d as number)}d ago
+                                      {t("row.daysAgo", { n: Math.abs(d as number) })}
                                     </span>
                                   )}
                                   {state === "soon" && (
                                     <span className="pill warn" style={{ marginLeft: "0.4rem" }}>
-                                      {d}d left
+                                      {t("row.daysLeft", { n: d as number })}
                                     </span>
                                   )}
                                 </td>
@@ -422,14 +425,14 @@ export function StockRow(
                   )}
                   {item.tracksExpiry && item.batches.length > 1 && (
                     <div className="hint">
-                      Sold earliest-expiry first, so {item.batches[0].batchNo} leaves before the rest.
+                      {t("row.earliestFirst", { batch: item.batches[0].batchNo ?? "" })}
                     </div>
                   )}
                 </section>
               )}
 
               <section className="stockpanel">
-                <h3>Pricing</h3>
+                <h3>{t("row.pricing")}</h3>
                 {/* The last price paid, the bill it was paid on, and what the
                     units actually on the shelf cost.
 
@@ -445,11 +448,11 @@ export function StockRow(
                     row this panel opened from, two inches above. */}
                 <dl className="stockpanel-kv">
                   <div>
-                    <dt>Latest purchase price</dt>
+                    <dt>{t("row.latestPrice")}</dt>
                     <dd className="r">{item.lastCost ? money(item.lastCost) : DASH}</dd>
                   </div>
                   <div>
-                    <dt>From invoice</dt>
+                    <dt>{t("row.fromInvoice")}</dt>
                     <dd>
                       {item.lastCostDocNo
                         ? (item.lastCostDocId
@@ -460,17 +463,17 @@ export function StockRow(
                     </dd>
                   </div>
                   <div>
-                    <dt>Invoice date</dt>
+                    <dt>{t("row.invoiceDate")}</dt>
                     <dd>{item.lastCostDate ?? DASH}</dd>
                   </div>
                   <div>
-                    <dt>Average cost</dt>
+                    <dt>{t("row.averageCost")}</dt>
                     <dd className="r">{averageCost === null ? DASH : money(averageCost)}</dd>
                   </div>
                 </dl>
                 {consigned && (
                   <p className="hint">
-                    Consigned units are held but not owned, so they carry no value here.
+                    {t("row.consignedNoValue")}
                   </p>
                 )}
               </section>

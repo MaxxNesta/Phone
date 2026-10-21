@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LabelList,
@@ -39,6 +40,7 @@ export function StockMatrix({
   basePath: string;
   keep?: Record<string, string | undefined>;
 }) {
+  const t = useTranslations("inventory");
   const withParts = useMemo(
     () => rows.filter((r) => r.parts && r.parts.length > 0), [rows]);
 
@@ -83,8 +85,7 @@ export function StockMatrix({
   if (products.length === 0) {
     return (
       <div className="empty">
-        No product has variants yet. Create one with sizes or colours and it
-        appears here as a grid.
+        {t("mat.noVariants")}
       </div>
     );
   }
@@ -94,7 +95,7 @@ export function StockMatrix({
       {/* Which product. A list rather than a dropdown: the pictures are the
           fastest way to find a garment, and a select cannot show them. */}
       <aside className="card matrixpick">
-        <div className="card-head"><h2>Products</h2></div>
+        <div className="card-head"><h2>{t("mat.products")}</h2></div>
         <div className="matrixpick-list">
           {products.map((p) => {
             const shot = photos.pictureFor(p.variants[0]);
@@ -110,7 +111,7 @@ export function StockMatrix({
                   <span className="m">{p.code}</span>
                   <strong>{p.name}</strong>
                   <span className="page-sub">
-                    {p.variants.length} variant{p.variants.length === 1 ? "" : "s"}
+                    {t("var.nVariants", { n: p.variants.length })}
                     {` · ${qty(total)} ${p.unit}`}
                   </span>
                 </span>
@@ -132,6 +133,7 @@ function ProductMatrix({
              unit: string; variants: VariantStockRow[] };
   photos: ReturnType<typeof variantPhotos>;
 }) {
+  const t = useTranslations("inventory");
   const vs = product.variants;
 
   // The attributes this product varies by, in its declared order.
@@ -197,9 +199,8 @@ function ProductMatrix({
               <strong>{product.name}</strong>
             </div>
             <span className="page-sub">
-              {product.category} · counted in {product.unit} ·{" "}
-              {vs.length} variant{vs.length === 1 ? "" : "s"} ·{" "}
-              {qty(grand)} {product.unit} on hand
+              {t("mat.headSub", { category: product.category, unit: product.unit,
+                variants: t("var.nVariants", { n: vs.length }), qty: qty(grand) })}
             </span>
           </div>
         </div>
@@ -210,7 +211,7 @@ function ProductMatrix({
               <tr>
                 <th>{colAttr ? `${rowAttr.name} / ${colAttr.name}` : rowAttr.name}</th>
                 {colOpts.map((c) => <th key={c.id} className="r">{c.label}</th>)}
-                <th className="r">Total</th>
+                <th className="r">{t("mat.total")}</th>
               </tr>
             </thead>
             <tbody>
@@ -233,7 +234,7 @@ function ProductMatrix({
                           const v = cell(r.id, c.id);
                           return (
                             <td key={c.id} className="r"
-                                title={v ? v.code : "not created"}>
+                                title={v ? v.code : t("mat.notCreated")}>
                               {/* An em dash is a combination that was never
                                   made; a grey nought is one that exists and
                                   has run out. They are different answers. */}
@@ -254,7 +255,7 @@ function ProductMatrix({
             </tbody>
             <tfoot>
               <tr>
-                <td><strong>Total</strong></td>
+                <td><strong>{t("mat.total")}</strong></td>
                 {colOpts.map((c) => (
                   <td key={c.id} className="r"><strong>{qty(rowTotal(c.id))}</strong></td>
                 ))}
@@ -267,9 +268,7 @@ function ProductMatrix({
         {missing > 0 && (
           <div className="card-body" style={{ paddingTop: 0 }}>
             <span className="page-sub">
-              {missing} combination{missing === 1 ? "" : "s"} of{" "}
-              {rowOpts.length * Math.max(colOpts.length, 1)} not created —
-              those cells read “—” rather than nought.
+              {t("mat.missing", { n: missing, of: rowOpts.length * Math.max(colOpts.length, 1) })}
             </span>
           </div>
         )}
@@ -281,8 +280,8 @@ function ProductMatrix({
           {byRow.length > 1 && (
             <div className="card">
               <div className="card-head">
-                <h2>By {rowAttr.name.toLowerCase()}</h2>
-                <span className="page-sub">{product.unit} on hand</span>
+                <h2>{t("var.by", { name: rowAttr.name })}</h2>
+                <span className="page-sub">{t("mat.unitOnHand", { unit: product.unit })}</span>
               </div>
               <div className="card-body" style={{ height: "14rem" }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -309,8 +308,8 @@ function ProductMatrix({
           {byCol.length > 1 && colAttr && (
             <div className="card">
               <div className="card-head">
-                <h2>By {colAttr.name.toLowerCase()}</h2>
-                <span className="page-sub">share of {qty(grand)} {product.unit}</span>
+                <h2>{t("var.by", { name: colAttr.name })}</h2>
+                <span className="page-sub">{t("mat.shareOf", { qty: qty(grand), unit: product.unit })}</span>
               </div>
               <div className="card-body matrixdonut">
                 <div style={{ height: "14rem", flex: "1 1 11rem", minWidth: 0 }}>

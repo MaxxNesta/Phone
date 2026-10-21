@@ -1,4 +1,5 @@
 import { money } from "@/lib/format";
+import { getTranslations } from "next-intl/server";
 
 /**
  * Shelf life left, as bands, worst first.
@@ -21,13 +22,17 @@ export const EXPIRY_BANDS = [
   { band: "D61_90",  label: "61–90 days", colour: "#F2D06B", ink: "#8A6A00" },
   { band: "OVER_90", label: "Over 90 days", colour: "#7FBF9B", ink: "#2F6B4F" },
 ] as const;
+// The English labels above stay for anything that reads them directly; the
+// card itself speaks from inventory.life.<band>.
 
 type Row = { band: string; batches: number; qty: string; value: string };
 
-export function ExpiryBands({ bands }: { bands: Row[] }) {
+export async function ExpiryBands({ bands }: { bands: Row[] }) {
+  const t = await getTranslations("inventory");
   const by = new Map(bands.map((b) => [b.band, b]));
   const rows = EXPIRY_BANDS.map((b) => ({
     ...b,
+    label: t(`life.${b.band}`),
     value: Number(by.get(b.band)?.value ?? 0),
     batches: Number(by.get(b.band)?.batches ?? 0),
   }));
@@ -39,15 +44,15 @@ export function ExpiryBands({ bands }: { bands: Row[] }) {
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Shelf life</h2>
+        <h2>{t("life.title")}</h2>
         <span className="page-sub">
           {atRisk > 0 ? (
             <>
               <strong style={{ color: "var(--bad)" }}>{money(atRisk)}</strong>
-              {" "}expired or expiring within 30 days
+              {" "}{t("life.atRisk")}
             </>
           ) : (
-            <>All stock has more than 30 days left</>
+            <>{t("life.allFine")}</>
           )}
         </span>
       </div>
@@ -83,7 +88,7 @@ export function ExpiryBands({ bands }: { bands: Row[] }) {
                 </span>
                 <span className="aging-pct">
                   {r.batches > 0
-                    ? `${r.batches} batch${r.batches === 1 ? "" : "es"}`
+                    ? t("life.nBatches", { n: r.batches })
                     : ""}
                 </span>
               </dd>

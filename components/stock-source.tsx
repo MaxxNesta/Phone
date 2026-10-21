@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export type Pool = {
   /** "OWNED", or the consignor's id. */
@@ -17,29 +18,40 @@ export type OwnershipSplit = {
   consigned: { consignorId: string; code: string; name: string; qty: number }[];
 };
 
-/** Every pool this item sits in at this warehouse, in the order to offer them. */
-export function poolsFor(split: OwnershipSplit | undefined): Pool[] {
+/**
+ * Every pool this item sits in at this warehouse, in the order to offer them.
+ * `t` is the "inventory" translator; without one the words are English.
+ */
+export function poolsFor(split: OwnershipSplit | undefined, t?: (key: string, values?: Record<string, string | number>) => string): Pool[] {
   if (!split) return [];
+  const say = t ?? ((key: string, v?: Record<string, string | number>) => ENGLISH[key].replace(/\{(\w+)\}/g, (_, k) => String(v?.[k] ?? "")));
   const pools: Pool[] = [{
     key: "OWNED",
-    label: "Company-owned stock",
-    sub: "Your own inventory",
+    label: say("src.owned"),
+    sub: say("src.ownedSub"),
     qty: split.owned,
-    effect: "Drawn from your FIFO layers, and their cost becomes cost of sales.",
+    effect: say("src.ownedEffect"),
   }];
   for (const c of split.consigned) {
     pools.push({
       key: c.consignorId,
-      label: `Consignment — ${c.name}`,
-      sub: `Owned by ${c.name}`,
+      label: say("src.consignmentOf", { name: c.name }),
+      sub: say("src.ownedBy", { name: c.name }),
       qty: c.qty,
-      effect:
-        "Not your inventory, so your stock value does not change. Selling it "
-        + "creates what you owe the consignor, settled at the agreed rate.",
+      effect: say("src.consignedEffect"),
     });
   }
   return pools;
 }
+
+const ENGLISH: Record<string, string> = {
+  "src.owned": "Company-owned stock",
+  "src.ownedSub": "Your own inventory",
+  "src.ownedEffect": "Drawn from your FIFO layers, and their cost becomes cost of sales.",
+  "src.consignmentOf": "Consignment — {name}",
+  "src.ownedBy": "Owned by {name}",
+  "src.consignedEffect": "Not your inventory, so your stock value does not change. Selling it creates what you owe the consignor, settled at the agreed rate.",
+};
 
 /**
  * Which pool a line takes its goods from.
@@ -65,6 +77,8 @@ export function StockSourceDialog({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
 
   useEffect(() => {
     const d = ref.current;
@@ -82,15 +96,15 @@ export function StockSourceDialog({
     >
       <div className="confirm-panel sourcepanel">
         <div className="card-head">
-          <h2>Stock source — {itemLabel}</h2>
-          <button type="button" className="ghost tiny" aria-label="Close" onClick={onClose}>
+          <h2>{t("src.title", { item: itemLabel })}</h2>
+          <button type="button" className="ghost tiny" aria-label={c("close")} onClick={onClose}>
             <X size={14} aria-hidden="true" />
           </button>
         </div>
 
         <div className="card-body">
           {pools.length === 0 && (
-            <p className="hint">Nothing is on hand for this item at this warehouse.</p>
+            <p className="hint">{t("src.nothingOnHand")}</p>
           )}
           {pools.map((p) => {
             const chosen = p.key === value;
@@ -111,7 +125,7 @@ export function StockSourceDialog({
                   </span>
                   <span className="poolsub">{p.sub}</span>
                   <span className={`poolqty ${empty ? "none" : ""}`}>
-                    {empty ? "None available" : `Available: ${p.qty} pcs`}
+                    {empty ? t("src.noneAvailable") : t("src.available", { n: p.qty })}
                   </span>
                   <span className="pooleffect">{p.effect}</span>
                 </span>

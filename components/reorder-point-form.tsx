@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useTranslations } from "next-intl";
 
 /** A model and the variants on its shelves; a plain item has none. */
 type Model = { id: string; name: string; category: string; variants: { id: string; parts: { a: string; o: string }[] }[] };
@@ -24,6 +25,8 @@ export function AddReorderPointForm({
   /** Reorder points already set: when it changes, the save went through. */
   count: number;
 }) {
+  const t = useTranslations("inventory");
+  const c = useTranslations("common");
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never,
     null
@@ -59,32 +62,32 @@ export function AddReorderPointForm({
   return (
     <>
       <button type="button" className="btn" onClick={() => setOpen(true)} disabled={nothingToChooseFrom}
-        title={nothingToChooseFrom ? "Needs at least one stocked item and one warehouse" : undefined}>
-        + Reorder point
+        title={nothingToChooseFrom ? t("rp.needs") : undefined}>
+        {t("rp.new")}
       </button>
       <dialog ref={ref} className="confirm sheetish"
         onCancel={(e) => { e.preventDefault(); setOpen(false); }}
         onClick={(e) => { if (e.target === ref.current) setOpen(false); }}>
         <form action={formAction} className="confirm-panel">
-          <h2 className="confirm-title">New reorder point</h2>
-          <p className="confirm-detail">Flag an item at a warehouse once its stock drops below this.</p>
+          <h2 className="confirm-title">{t("rp.newTitle")}</h2>
+          <p className="confirm-detail">{t("rp.newDetail")}</p>
           {state && "error" in state && <div className="alert" style={{ marginTop: 10 }}>{state.error}</div>}
 
           <div className="sheet-fields">
             <input type="hidden" name="item_id" value={itemId} />
             <div className="sheet-row">
               <div className="field">
-                <label htmlFor="rp-cat">Category</label>
+                <label htmlFor="rp-cat">{c("category")}</label>
                 <select id="rp-cat" value={category} onChange={(e) => {
                   setCategory(e.target.value);
                   setModelId(items.find((m) => m.category === e.target.value)?.id ?? "");
                   setPicked({});
                 }}>
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
               <div className="field">
-                <label htmlFor="rp-item">{category ? `${category} model` : "Model"}</label>
+                <label htmlFor="rp-item">{category ? c("model", { category }) : t("rp.model")}</label>
                 <select id="rp-item" value={modelId} onChange={(e) => { setModelId(e.target.value); setPicked({}); }}>
                   {models.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                 </select>
@@ -105,7 +108,7 @@ export function AddReorderPointForm({
                           if (e.target.value) next[a] = e.target.value;
                           setPicked(next);
                         }}>
-                        <option value="">Choose…</option>
+                        <option value="">{t("rp.choose")}</option>
                         {opts.map((o) => <option key={o} value={o}>{o}</option>)}
                       </select>
                     </div>
@@ -117,21 +120,21 @@ export function AddReorderPointForm({
               <input type="hidden" name="location_id" value={locations[0].id} />
             ) : (
               <div className="field">
-                <label htmlFor="rp-loc">Warehouse</label>
+                <label htmlFor="rp-loc">{c("warehouse")}</label>
                 <select id="rp-loc" name="location_id" required>
                   {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </div>
             )}
             <div className="field">
-              <label htmlFor="rp-min">Reorder point</label>
+              <label htmlFor="rp-min">{t("stk.reorderPoint")}</label>
               <input id="rp-min" name="min_qty" type="number" min="0" step="any" required placeholder="2" />
             </div>
           </div>
 
           <div className="confirm-actions">
-            <button type="button" className="ghost" onClick={() => setOpen(false)}>Cancel</button>
-            <button type="submit" disabled={pending || !itemId}>{pending ? "Saving…" : "Save"}</button>
+            <button type="button" className="ghost" onClick={() => setOpen(false)}>{c("cancel")}</button>
+            <button type="submit" disabled={pending || !itemId}>{pending ? c("saving") : c("save")}</button>
           </div>
         </form>
       </dialog>
