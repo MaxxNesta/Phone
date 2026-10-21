@@ -6669,3 +6669,8 @@ dialog.mp::backdrop { background: rgb(0 0 0 / 0.36); -webkit-backdrop-filter: bl
 .refund-from { font-size: 0.8125rem; color: var(--muted); }
 .refund-from b { color: var(--ink); }
 .card-body.pos-stack > .segmented { align-self: flex-start; }
+/* Advances on account, by payment method. */
+.adv-methods { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 var(--s3); }
+.adv-method { display: inline-flex; gap: 8px; align-items: baseline; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8125rem; background: var(--surface); }
+.adv-method span { color: var(--muted); }
+.adv-method b { font-variant-numeric: tabular-nums; }

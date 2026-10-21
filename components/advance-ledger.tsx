@@ -42,15 +42,21 @@ export function AdvanceLedger({
   const onAccount = advances.reduce((s, r) => s + r.remaining, 0);
   const taken = advances.reduce((s, r) => s + r.taken, 0);
   const applied = advances.reduce((s, r) => s + r.applied, 0);
+  // What is still held (or paid ahead), split by how the money moved.
+  const byMethod = [...advances.reduce((m, r) => {
+    if (r.remaining > 0.0001) m.set(r.method ?? "Not labelled", (m.get(r.method ?? "Not labelled") ?? 0) + r.remaining);
+    return m;
+  }, new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 
   const rows: DataRow[] = shown.map((r) => ({
     key: r.id,
-    searchText: [r.doc_no, r.partner_code, r.partner_name,
+    searchText: [r.doc_no, r.partner_code, r.partner_name, r.method, r.reference,
       ...r.applications.map((a) => `${a.invoice_no} ${a.application_no ?? ""}`)]
       .filter(Boolean).join(" "),
     sort: {
       doc_date: r.doc_date,
       partner_name: r.partner_name ?? "",
+      method: r.method ?? "",
       taken: r.taken,
       applied: r.applied,
       remaining: r.remaining,
@@ -61,6 +67,9 @@ export function AdvanceLedger({
       partner_code: r.partner_code,
       partner_name: r.partner_name,
       branch: r.branch ?? "",
+      method: r.method ?? "",
+      reference: r.reference ?? "",
+      account: r.account ?? "",
       taken: r.taken,
       applied: r.applied,
       remaining: r.remaining,
@@ -78,6 +87,13 @@ export function AdvanceLedger({
               {r.partner_code}{r.branch ? ` · ${r.branch}` : ""}
             </div>
           </td>
+          <td className="wrap">
+            {r.method
+              ? <span className={`pill ${r.method_kind === "WALLET" || r.method_kind === "QR" ? "info" : ""}`}>{r.method}</span>
+              : <span style={{ color: "var(--muted)" }}>—</span>}
+            {r.reference && <div className="m">{r.reference}</div>}
+            {r.account && <div className="m" style={{ color: "var(--muted)" }}>{r.account}</div>}
+          </td>
           <td className="r">{money(r.taken)}</td>
           <td className="r">{r.applied > 0 ? money(r.applied) : "—"}</td>
           <td className="r">
@@ -92,7 +108,7 @@ export function AdvanceLedger({
         {r.applications.map((a) => (
           <tr key={a.invoice_id + (a.application_id ?? "")} className="adv-applied">
             <td />
-            <td colSpan={3}>
+            <td colSpan={4}>
               <span className="adv-mark" aria-hidden="true">↳</span>
               <span className="adv-when">{shortDate(a.applied_on)}</span>
               {a.application_no
@@ -138,6 +154,14 @@ export function AdvanceLedger({
         </div>
       </div>
 
+      {byMethod.length > 0 && (
+        <div className="adv-methods" aria-label="On account by method">
+          {byMethod.map(([m, v]) => (
+            <span key={m} className="adv-method"><span>{m}</span><b>{money(v)}</b></span>
+          ))}
+        </div>
+      )}
+
       <div className="flow">
         {TABS.map(([value, label]) => (
           <Link
@@ -174,13 +198,14 @@ export function AdvanceLedger({
               { key: "doc_date", label: "Date", sortable: true },
               { key: "doc_no", label: "Document" },
               { key: "partner_name", label: who, sortable: true },
+              { key: "method", label: "Method", sortable: true },
               { key: "taken", label: sales ? "Taken" : "Paid", sortable: true, align: "r" },
               { key: "applied", label: "Applied", sortable: true, align: "r" },
               { key: "remaining", label: "Left", sortable: true, align: "r" },
             ]}
             footer={
               <tr>
-                <td colSpan={3}>Total</td>
+                <td colSpan={4}>Total</td>
                 <td className="r">{money(taken)}</td>
                 <td className="r">{money(applied)}</td>
                 <td className="r">{money(onAccount)}</td>

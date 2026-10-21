@@ -5833,6 +5833,12 @@ export type AdvanceRow = {
   partner_code: string;
   partner_name: string;
   branch: string | null;
+  /** How the money came in or went out (0141), and the wallet or bank's own ID. */
+  method: string | null;
+  method_kind: string | null;
+  reference: string | null;
+  /** The cash or bank account it moved through. */
+  account: string | null;
   taken: number;
   applied: number;
   remaining: number;
@@ -5895,12 +5901,16 @@ export async function getAdvanceLedger(
     select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as doc_date,
            d.partner_id, p.code as partner_code, p.name as partner_name,
            l.name as branch,
+           pc.name as method, pc.kind as method_kind, d.payment_reference as reference,
+           (select x.code || ' · ' || x.name from journal_line jl join account x on x.id = jl.account_id
+             where jl.journal_entry_id = d.journal_entry_id and x.is_cash_account limit 1) as account,
            d.gross_total::float                                    as taken,
            coalesce(a.applied, 0)::float                           as applied,
            (d.gross_total - coalesce(a.applied, 0))::float         as remaining
       from document d
       join business_partner p on p.id = d.partner_id
       left join location l on l.id = d.location_id
+      left join payment_channel pc on pc.id = d.payment_channel_id
       left join (
             select pa.payment_id, sum(pa.amount) as applied
               from payment_allocation pa

@@ -5,6 +5,7 @@ import type { ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
 import { CurrencyRate, type FxOption } from "./currency-rate";
 import type { Channel } from "@/lib/payment-channels";
+import { ChannelPicker } from "./channel-picker";
 
 type Partner = { id: string; code: string; name: string; currency?: string | null };
 type CashAccount = { id: string; code: string; name: string };
@@ -44,7 +45,7 @@ export function SettlementForm({
   fx,
   channels,
 }: {
-  /** Receipts: how the customer paid. Replaces the account picker when given. */
+  /** How the money moved. Replaces the account picker when given (kyat payments). */
   channels?: Channel[];
   /** Currencies and latest rates: a bill owed in yuan is paid in yuan. */
   fx?: { base: string; options: FxOption[] };
@@ -69,8 +70,6 @@ export function SettlementForm({
 
   const [partnerId, setPartnerId] = useState(initialPartnerId ?? "");
   const usable = (channels ?? []).filter((c) => c.accountId);
-  const [channelId, setChannelId] = useState(usable.find((c) => c.kind === "CASH")?.id ?? usable[0]?.id ?? "");
-  const channel = usable.find((c) => c.id === channelId);
 
   /** What the invoice this screen was opened for still owes, if any. */
   const prefill = (forPartner: string): Record<string, string> => {
@@ -209,27 +208,9 @@ export function SettlementForm({
               />
             </div>
 
-            {!isPay && usable.length > 0 ? (
-              <>
-                <div className="field">
-                  <label htmlFor="payment_channel_id">Payment method</label>
-                  <select id="payment_channel_id" name="payment_channel_id" required
-                    value={channelId} onChange={(e) => setChannelId(e.target.value)}>
-                    {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                  {channel && <span className="hint">Into {channel.accountName}</span>}
-                </div>
-                {channel && channel.kind !== "CASH" && (
-                  <div className="field">
-                    <label htmlFor="payment_reference">
-                      Transaction ID{channel.requiresReference && <span aria-hidden="true"> *</span>}
-                    </label>
-                    <input id="payment_reference" name="payment_reference" type="text" maxLength={80}
-                      autoComplete="off" required={channel.requiresReference}
-                      placeholder={`From the customer's ${channel.name} screen`} />
-                  </div>
-                )}
-              </>
+            {usable.length > 0 && (!isPay || currency === base) ? (
+              <ChannelPicker channels={channels ?? []} direction={isPay ? "out" : "in"}
+                label={isPay ? "Paid by" : "Payment method"} />
             ) : (
               <div className="field">
                 <label htmlFor="cash_account_id">{isPay ? "Paid from" : "Received into"}</label>

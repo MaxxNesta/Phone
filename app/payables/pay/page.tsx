@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSettlementData, createSupplierPayment } from "@/lib/actions";
 import { getCompany, getBranches } from "@/lib/queries";
 import { SettlementForm } from "@/components/settlement-form";
+import { channelsAt } from "@/lib/payment-channels";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 
@@ -17,6 +18,9 @@ export default async function PaySupplier({
   // A receipt or payment is written at the person's own branch.
   const branches = company ? await onlyMyLocations((await getBranches(company.id)) as unknown as { id: string }[]) : [];
   const today = new Date().toISOString().slice(0, 10);
+  const channels = company
+    ? await channelsAt(company.id, branches.length === 1 ? (branches[0] as { id: string }).id : null)
+    : [];
 
   if (partners.length === 0 || cashAccounts.length === 0) {
     return (
@@ -55,6 +59,7 @@ export default async function PaySupplier({
       <SettlementForm
         kind="pay"
         action={createSupplierPayment}
+        channels={channels}
         partners={partners as never}
         invoices={invoices as never}
         cashAccounts={cashAccounts as never}

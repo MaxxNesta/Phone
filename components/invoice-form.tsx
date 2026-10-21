@@ -13,6 +13,8 @@ import { useBackHere } from "./back-here";
 import { HelpHint } from "./help-hint";
 import { PackageCheck, Truck, Clock, Package, Plus } from "lucide-react";
 import { AddItemsBar, type Pick } from "./add-items-bar";
+import { ChannelPicker } from "./channel-picker";
+import type { Channel } from "@/lib/payment-channels";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -87,6 +89,7 @@ export function InvoiceForm({
   categories,
   uoms,
   cashAccounts,
+  channels,
   goodsReceipts,
   initialGoodsReceiptId,
   awaiting = [],
@@ -108,6 +111,8 @@ export function InvoiceForm({
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
   cashAccounts?: CashAccount[];
+  /** Purchases paid now: payment methods by location (kyat only). */
+  channels?: Record<string, Channel[]>;
   /** Orders to this partner with goods still owed. See getOpenOrdersAwaitingGoods. */
   awaiting?: AwaitingLine[];
   /** Open (unmatched) goods receipts this invoice can match against — purchase only. */
@@ -1113,6 +1118,10 @@ export function InvoiceForm({
                 <span className="hint">Leave blank for a fully credit purchase</span>
               </div>
 
+              {!foreign && (channels?.[locationId] ?? []).some((c) => c.accountId) ? (
+                <ChannelPicker key={locationId} channels={channels?.[locationId] ?? []} direction="out"
+                  label="Paid by" disabled={!Number(cashOut)} />
+              ) : (
               <div className="field">
                 <label htmlFor="cash_account_id">Paid from</label>
                 <select id="cash_account_id" name="cash_account_id" value={cashAccountId}
@@ -1124,6 +1133,7 @@ export function InvoiceForm({
                   ))}
                 </select>
               </div>
+              )}
             </div>
             {cashOverpaid && (
               <div className="alert" style={{ marginTop: "0.5rem" }}>

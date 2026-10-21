@@ -3,6 +3,7 @@ import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, get
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { InvoiceForm } from "@/components/invoice-form";
+import { channelsAt } from "@/lib/payment-channels";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
@@ -28,6 +29,9 @@ export default async function NewPurchaseInvoice({
       }
     : null;
   const categories = await allCategories(co.id);
+  // How a bill paid now leaves the shop, as each location's branch maps it.
+  const channels = Object.fromEntries(await Promise.all(
+    (locations as unknown as { id: string }[]).map(async (l) => [l.id, await channelsAt(co.id, l.id)])));
   const goodsReceipts = await getOpenGoodsReceipts(co.id);
   // Raised from one receipt's own page: the crumb names it, so the way back
   // leads to that document rather than to a list the reader never came from.
@@ -94,6 +98,7 @@ export default async function NewPurchaseInvoice({
         uoms={uoms as never}
         today={today}
         cashAccounts={cashAccounts as never}
+        channels={channels}
         goodsReceipts={goodsReceipts as never}
         initialGoodsReceiptId={goods_receipt_id}
         awaiting={awaiting}

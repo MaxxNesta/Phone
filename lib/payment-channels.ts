@@ -96,7 +96,7 @@ export async function stampReceipt(
     await db`
       update document set payment_channel_id = ${channelId}, payment_reference = ${reference},
              created_by_id = coalesce(created_by_id, ${userId}), posted_by_id = coalesce(posted_by_id, ${userId})
-       where id = ${receiptId} and doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND')`;
+       where id = ${receiptId} and doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND', 'SUPPLIER_PAYMENT')`;
   } catch (e) {
     if ((e as { code?: string }).code === "23505") {
       throw new Error(`Reference ${reference} has already been recorded for this payment method`);

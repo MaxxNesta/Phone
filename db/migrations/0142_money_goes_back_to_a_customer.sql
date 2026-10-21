@@ -118,9 +118,10 @@ begin
 end;
 $$;
 
--- One posted payment per channel and reference, refunds included.
+-- One posted payment per channel and reference: receipts, refunds, and
+-- payments to suppliers, which take a payment method the same way.
 drop index if exists document_payment_reference_once;
 create unique index document_payment_reference_once
     on document (company_id, doc_type, payment_channel_id, lower(payment_reference))
  where payment_channel_id is not null and payment_reference is not null and status = 'POSTED'
-   and doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND');
+   and doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND', 'SUPPLIER_PAYMENT');

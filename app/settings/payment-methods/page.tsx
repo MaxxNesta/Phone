@@ -35,9 +35,9 @@ export default async function PaymentMethods() {
         <span className="eyebrow">Settings · Finance</span>
         <h1>Payment methods</h1>
         <HelpHint>
-          How customers pay, and which cash or bank account each method&rsquo;s money lands in.
-          The till and customer receipts offer the active methods that have an account. A branch
-          can pay into its own account. Wallet money moved to the bank later is a transfer
+          How money comes in and goes out, and which cash or bank account each method uses. The
+          till, customer receipts and refunds, supplier payments and advances offer the active
+          methods that have an account. A branch can use its own account. Wallet money moved to the bank later is a transfer
           (Finance → Transfer); it is not new revenue. A method that has been used cannot be
           deleted, only deactivated, so past receipts keep their label.
         </HelpHint>

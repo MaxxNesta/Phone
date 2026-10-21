@@ -247,6 +247,44 @@ try {
   e = await refused(() => sale(100_000, [{ channelId: unmapped.id, amount: 100_000, reference: "Q1" }]));
   check("a channel with no account is refused at the till", /channelUnmapped/.test(e ?? ""), e ?? "posted");
 
+  // ---- advances and supplier payments -----------------------------------------
+  section("advances and supplier payments by method");
+  const tender = async (ch, amount, reference) => {
+    const r = await C.resolveTenders(co.id, loc.id, [{ channelId: ch, amount, reference }], null);
+    if (!r.ok) throw new Error(r.problem.key);
+    return r.tenders[0];
+  };
+  let t = await tender(KBZ, 300_000, "KBZ-ADV1");
+  const custAdv = await sql.begin(async (tx) => {
+    const p = await P.postCustomerReceipt({ companyId: co.id, partnerId: cust.id, docDate: today,
+      cashAccountId: t.channel.accountId, allocations: [], advance: 300_000, locationId: loc.id }, tx);
+    await C.stampReceipt(tx, p.id, KBZ, t.reference);
+    return p;
+  });
+  const custLedger = (await Q.getAdvanceLedger(co.id, "CUSTOMER")).find((a) => a.id === custAdv.id);
+  check("a customer advance by KBZPay is listed with its method and ID",
+    custLedger?.method === "KBZPay" && custLedger?.reference === "KBZ-ADV1" && /KBZPay/.test(custLedger?.account ?? ""),
+    `${custLedger?.method} ${custLedger?.reference} ${custLedger?.account}`);
+
+  const b0 = await bal(bankAcct);
+  t = await tender(BANK, 200_000, "BT-0001");
+  const suppAdv = await sql.begin(async (tx) => {
+    const p = await P.postSupplierPayment({ companyId: co.id, partnerId: supp.id, docDate: today,
+      cashAccountId: t.channel.accountId, allocations: [], advance: 200_000, locationId: loc.id }, tx);
+    await C.stampReceipt(tx, p.id, BANK, t.reference);
+    return p;
+  });
+  const suppLedger = (await Q.getAdvanceLedger(co.id, "SUPPLIER")).find((a) => a.id === suppAdv.id);
+  check("a supplier advance by bank transfer is listed with its method and ID",
+    suppLedger?.method === "Bank Transfer" && suppLedger?.reference === "BT-0001");
+  check("  and leaves the bank account", near(await bal(bankAcct) - b0, -200_000));
+  e = await refused(() => sql.begin(async (tx) => {
+    const p = await P.postSupplierPayment({ companyId: co.id, partnerId: supp.id, docDate: today,
+      cashAccountId: bankAcct, allocations: [], advance: 50_000, locationId: loc.id }, tx);
+    await C.stampReceipt(tx, p.id, BANK, "bt-0001");
+  }));
+  check("  a bank transfer ID already recorded for a supplier is refused", /already been recorded/.test(e ?? ""), e ?? "posted");
+
   // ---- reporting ---------------------------------------------------------------
   section("the dashboard chart groups by channel");
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);

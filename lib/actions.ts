@@ -1961,6 +1961,22 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
     // overdue on the Payables page no matter how old it got.
     if (cashOut < roughTotal && !dueDate) return { error: "This invoice leaves a balance owing — add a due date" };
 
+    // Paid now, by payment channel (in kyat): the channel's account at this
+    // branch pays it, and the payment is labelled after posting.
+    const fx0 = fxFields(fd);
+    const payChannelId = cashOut > 0 && !(fx0.currency && fx0.currency !== "MMK") ? str(fd, "payment_channel_id") : "";
+    let payRef: string | null = null;
+    if (payChannelId) {
+      const r = await resolveTenders(co, str(fd, "location_id"),
+        [{ channelId: payChannelId, amount: cashOut, reference: str(fd, "payment_reference") }], null);
+      if (!r.ok) {
+        const tr = await serverT("pos");
+        return { error: tr(`tender.${r.problem.key}`, r.problem.values) };
+      }
+      fd.set("cash_account_id", r.tenders[0].channel.accountId as string);
+      payRef = r.tenders[0].reference;
+    }
+
     const input = {
       companyId: co,
       ...fxFields(fd),
@@ -1985,12 +2001,20 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
     // later). "Received now" and "match an existing receipt" are mutually
     // exclusive — the form only shows one at a time.
     const receivedNow = !goodsReceiptId && fd.get("received_now") !== null;
-    const result = await postOnce(co, attemptKey(fd), (tx) =>
-      goodsReceiptId
+    const userId = (await requireUser()).id;
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const posted = await (goodsReceiptId
         ? postPurchaseInvoice({ ...input, goodsReceiptId }, tx)
         : receivedNow
           ? postPurchaseWithReceipt(input, tx)
           : postPurchaseInvoice(input, tx));
+      if (payChannelId) {
+        const [pay] = await tx`
+          select id from document where source_document_id = ${posted.id} and doc_type = 'SUPPLIER_PAYMENT'`;
+        if (pay) await stampReceipt(tx as never, pay.id, payChannelId, payRef, userId);
+      }
+      return posted;
+    });
 
     docId = result.id;
     toastMsg = `Invoice ${result.docNo} posted`;
@@ -2584,10 +2608,11 @@ async function settle(
   if (!str(fd, "partner_id")) {
     return { error: kind === "pay" ? "Choose a supplier" : "Choose a customer" };
   }
-  // A customer receipt names how it was paid; the channel's account at the
-  // branch taking the money is the cash side. Supplier payments still name
-  // the account directly.
-  const channelId = kind === "receive" ? str(fd, "payment_channel_id") : "";
+  // How the money moved — cash, bank, a wallet — names the account: the
+  // channel's account at the branch taking or paying it. A payment in a
+  // foreign currency still names its account directly (its own yuan account).
+  const foreign = Boolean(fxFields(fd).currency && fxFields(fd).currency !== "MMK");
+  const channelId = foreign ? "" : str(fd, "payment_channel_id");
   let channelRef: string | null = null;
   if (channelId) {
     let where = str(fd, "location_id") || null;

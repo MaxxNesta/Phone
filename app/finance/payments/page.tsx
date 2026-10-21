@@ -15,7 +15,7 @@ export const metadata = { title: "Payments received" };
 export default async function PaymentsReceived({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; channel?: string; branch?: string; status?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; channel?: string; branch?: string; status?: string; dir?: string }>;
 }) {
   const user = await requirePermission("accounting.view");
   const co = user.companyId;
@@ -25,11 +25,14 @@ export default async function PaymentsReceived({
   const to = /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? "") ? sp.to! : today;
   const status = sp.status === "all" || sp.status === "REVERSED" ? sp.status : "POSTED";
   const channel = sp.channel || "";
+  // Money in (receipts, less refunds) or money out (payments to suppliers).
+  const out = sp.dir === "out";
+  const types = out ? ["SUPPLIER_PAYMENT"] : ["CUSTOMER_RECEIPT", "CUSTOMER_REFUND"];
   const locs = await seenLocations();
   const branch = await scopedBranch(sp.branch);
 
   const where = sql`
-        d.company_id = ${co} and d.doc_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND')
+        d.company_id = ${co} and d.doc_type = any(${types})
     and d.posting_date between ${from}::date and ${to}::date
     ${status === "all" ? sql`and d.status in ('POSTED', 'REVERSED')` : sql`and d.status = ${status}`}
     ${channel === "none" ? sql`and d.payment_channel_id is null` : channel ? sql`and d.payment_channel_id = ${channel}` : sql``}
@@ -78,7 +81,7 @@ export default async function PaymentsReceived({
     <>
       <div className="page-head hero">
         <span className="eyebrow">Accounting · Cash & bank</span>
-        <h1>Payments received</h1>
+        <h1>{out ? "Payments made" : "Payments received"}</h1>
         <HelpHint>
           Every payment taken from customers, at the till or on a receipt, by how it was paid. Check a
           wallet&rsquo;s own statement against the transaction IDs here; the account itself is matched in
@@ -86,7 +89,13 @@ export default async function PaymentsReceived({
         </HelpHint>
       </div>
 
+      <div className="segmented" style={{ marginBottom: "var(--s3)" }}>
+        <Link className={`seg${out ? "" : " on"}`} href="/finance/payments">Received</Link>
+        <Link className={`seg${out ? " on" : ""}`} href="/finance/payments?dir=out">Paid out</Link>
+      </div>
+
       <form className="filterbar" method="get" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end", marginBottom: "var(--s3)" }}>
+        {out && <input type="hidden" name="dir" value="out" />}
         <div className="field"><label htmlFor="from">From</label><input id="from" name="from" type="date" defaultValue={from} /></div>
         <div className="field"><label htmlFor="to">To</label><input id="to" name="to" type="date" defaultValue={to} /></div>
         <div className="field">
@@ -142,7 +151,7 @@ export default async function PaymentsReceived({
               <thead>
                 <tr>
                   <th>Date</th><th>Receipt</th><th>Method</th><th>Transaction ID</th><th className="r">Amount</th>
-                  <th>Into</th><th>Customer</th><th>For</th><th>Branch</th><th>By</th><th>Status</th>
+                  <th>{out ? "From" : "Into"}</th><th>{out ? "Supplier" : "Customer"}</th><th>For</th><th>Branch</th><th>By</th><th>Status</th>
                 </tr>
               </thead>
               <tbody>
