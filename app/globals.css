@@ -6668,3 +6668,4 @@ dialog.mp::backdrop { background: rgb(0 0 0 / 0.36); -webkit-backdrop-filter: bl
 .refund-methods .paymode:disabled { opacity: 0.45; }
 .refund-from { font-size: 0.8125rem; color: var(--muted); }
 .refund-from b { color: var(--ink); }
+.card-body.pos-stack > .segmented { align-self: flex-start; }
