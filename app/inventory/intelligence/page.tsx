@@ -11,6 +11,7 @@ import { VariantTags, asVariant } from "@/components/variant-tags";
 import { ItemThumb } from "@/components/item-thumb";
 import { variantPhotos } from "@/lib/variants";
 import { HelpHint } from "@/components/help-hint";
+import { getTranslations } from "next-intl/server";
 
 /**
  * What the stock is doing for the business, as against where it is.
@@ -26,9 +27,9 @@ import { HelpHint } from "@/components/help-hint";
  */
 
 const TABS = [
-  { key: "matched", label: "Profitability" },
-  { key: "period", label: "Revenue vs COGS" },
-  { key: "aging", label: "Inventory aging" },
+  { key: "matched" },
+  { key: "period" },
+  { key: "aging" },
 ] as const;
 
 /**
@@ -53,10 +54,10 @@ const asDate = (v: string | undefined) =>
  * ledger these are summaries of, so "why is this number what it is" is
  * answered by the rows behind it rather than by another summary.
  */
-function ItemLink({ id, code }: { id: string; code: string }) {
+function ItemLink({ id, code, title }: { id: string; code: string; title: string }) {
   return (
     <Link href={`/inventory/movements?item=${id}`} className="m"
-          style={{ color: "var(--link)" }} title="Stock movements for this item">
+          style={{ color: "var(--link)" }} title={title}>
       {code}
     </Link>
   );
@@ -71,8 +72,11 @@ export default async function InventoryIntelligence({
                           location?: string }>;
 }) {
   const sp = await searchParams;
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "matched";
 
@@ -115,9 +119,9 @@ export default async function InventoryIntelligence({
   const from = asDate(sp.from)
     ?? new Date(today.getTime() - 365 * 86400000).toISOString().slice(0, 10);
 
-  const href = (t: string) => {
+  const href = (tabKey: string) => {
     const q = new URLSearchParams();
-    if (t !== "matched") q.set("tab", t);
+    if (tabKey !== "matched") q.set("tab", tabKey);
     if (asDate(sp.from)) q.set("from", sp.from!);
     if (asDate(sp.to)) q.set("to", sp.to!);
     if (locationId) q.set("location", locationId);
@@ -128,22 +132,19 @@ export default async function InventoryIntelligence({
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Inventory</span>
-        <h1>Inventory intelligence</h1>
+        <span className="eyebrow">{n("inventory")}</span>
+        <h1>{t("int.title")}</h1>
         <BranchScope />
         <HelpHint>
-          Which products earn their shelf space, and which have been sitting
-          on it. Worked out from the ledger when this page loads — the
-          revenue is what the invoices say and the cost is what the stock
-          ledger released, so both tie to the profit and loss exactly.
+          {t("int.help")}
         </HelpHint>
       </div>
 
       <div className="scopetabs viewtabs">
-        {TABS.map((t) => (
-          <Link key={t.key} className="scopetab" data-active={tab === t.key}
-                href={href(t.key)}>
-            {t.label}
+        {TABS.map((tb) => (
+          <Link key={tb.key} className="scopetab" data-active={tab === tb.key}
+                href={href(tb.key)}>
+            {t(`int.tab.${tb.key}`)}
           </Link>
         ))}
       </div>
@@ -151,11 +152,11 @@ export default async function InventoryIntelligence({
       <div className="filterbar">
         {warehouses.length > 1 && (
           <AccountPicker
-            accounts={[{ id: "all", code: "\u2014", name: "All warehouses" }, ...warehouses]}
+            accounts={[{ id: "all", code: "\u2014", name: t("sum.allWarehouses") }, ...warehouses]}
             selectedId={chosen}
             basePath="/inventory/intelligence"
             paramName="location"
-            label="Warehouse"
+            label={c("warehouse")}
             keep={{ tab: tab === "matched" ? undefined : tab,
                     from: asDate(sp.from) ?? undefined,
                     to: asDate(sp.to) ?? undefined }}
@@ -165,22 +166,22 @@ export default async function InventoryIntelligence({
       <form method="get" action="/inventory/intelligence" className="daterange">
         {tab !== "matched" && <input type="hidden" name="tab" value={tab} />}
         <div className="field">
-          <label htmlFor="from">From</label>
+          <label htmlFor="from">{c("from")}</label>
           <input id="from" name="from" type="date" defaultValue={from}
                  max={todayIso} />
         </div>
         <div className="field">
-          <label htmlFor="to">To</label>
+          <label htmlFor="to">{c("to")}</label>
           <input id="to" name="to" type="date" defaultValue={toShown}
                  max={todayIso} />
           {clamped && (
             <span className="hint" style={{ color: "var(--warn)" }}>
-              pulled back to today — nothing is posted ahead
+              {t("int.pulledBack")}
             </span>
           )}
         </div>
         {locationId && <input type="hidden" name="location" value={locationId} />}
-        <button type="submit" className="btn ghost">Apply</button>
+        <button type="submit" className="btn ghost">{c("apply")}</button>
       </form>
       )}
 
@@ -188,7 +189,7 @@ export default async function InventoryIntelligence({
             screen it was downloaded from. */}
         <div className="field exportfield">
           <label>&nbsp;</label>
-          <Link className="btn ghost" href={exportHref}>Export CSV</Link>
+          <Link className="btn ghost" href={exportHref}>{t("int.exportCsv")}</Link>
         </div>
       </div>
 
@@ -205,6 +206,7 @@ async function Profitability({
   companyId, from, to, shown, locationId,
 }: { companyId: string; from: string; to: string; shown: string;
      locationId: string | null }) {
+  const t = await getTranslations("inventory");
   const [rows, variantStock] = await Promise.all([
     getVariantProfitability(companyId, from, to, locationId) as unknown as Promise<any[]>,
     getVariantStock(companyId) as unknown as Promise<any[]>,
@@ -217,8 +219,8 @@ async function Profitability({
   };
   const showThumbs = anyPhoto(rows.map((r: any) => r.id), srcOf);
 
-  const revenue = rows.reduce((t, r) => t + Number(r.revenue), 0);
-  const cogs = rows.reduce((t, r) => t + Number(r.cogs), 0);
+  const revenue = rows.reduce((acc, r) => acc + Number(r.revenue), 0);
+  const cogs = rows.reduce((acc, r) => acc + Number(r.cogs), 0);
   const margin = revenue - cogs;
 
   /**
@@ -235,7 +237,7 @@ async function Profitability({
   if (rows.length === 0) {
     return (
       <div className="empty">
-        Nothing was sold or shipped in that period.
+        {t("int.nothingSold")}
       </div>
     );
   }
@@ -245,26 +247,26 @@ async function Profitability({
       <div className="kpis kpis-tiled">
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Revenue</span>
+            <span className="kpi-label">{t("int.revenue")}</span>
             <span className="kpi-value">{money(revenue)}</span>
-            <span className="kpi-note">invoiced in this period</span>
+            <span className="kpi-note">{t("int.invoicedPeriod")}</span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Cost of goods</span>
+            <span className="kpi-label">{t("int.costOfGoods")}</span>
             <span className="kpi-value">{money(cogs)}</span>
-            <span className="kpi-note">released by the stock ledger</span>
+            <span className="kpi-note">{t("int.releasedLedger")}</span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Gross margin</span>
+            <span className="kpi-label">{t("int.grossMargin")}</span>
             <span className="kpi-value" style={{ color: margin < 0 ? "var(--bad)" : undefined }}>
               {money(margin)}
             </span>
             <span className="kpi-note">
-              {revenue > 0 ? `${pct(margin / revenue)} of revenue` : "no revenue"}
+              {revenue > 0 ? t("int.pctRevenue", { pct: pct(margin / revenue) }) : t("int.noRevenue")}
             </span>
           </span>
         </div>
@@ -273,14 +275,9 @@ async function Profitability({
       {mismatched > 0 && (
         <div className="card" style={{ marginBottom: "var(--s3)" }}>
           <div className="card-body">
-            <strong>{mismatched} item{mismatched === 1 ? "" : "s"} billed and shipped
-            in different quantities this period.</strong>
+            <strong>{t("int.mismatched", { n: mismatched })}</strong>
             <div className="page-sub" style={{ marginTop: "0.3rem" }}>
-              An invoice recognises the revenue and a delivery releases the
-              cost, and they need not fall in the same window — goods shipped
-              but not yet billed show a cost with no revenue against it, and
-              the margin on that row reads worse than the trade really was.
-              The quantities are shown so the gap is visible.
+              {t("int.mismatchBody")}
             </div>
           </div>
         </div>
@@ -289,22 +286,21 @@ async function Profitability({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>By item</h2>
+            <h2>{t("int.byItem")}</h2>
             <span className="page-sub">
-              {shortDate(from)} to {shortDate(shown)} · ties to Sales and Cost of
-              goods sold in the ledger
+              {t("int.range", { from: shortDate(from), to: shortDate(shown) })} · {t("int.tiesTo")}
             </span>
           </div>
           <div className="tablewrap">
             <table>
               <thead>
                 <tr>
-                  <th colSpan={showThumbs ? 2 : 1}>Item</th>
-                  <th className="r">Sold</th>
-                  <th className="r">Revenue</th>
-                  <th className="r">Shipped</th>
-                  <th className="r">Cost</th>
-                  <th className="r">Margin</th>
+                  <th colSpan={showThumbs ? 2 : 1}>{t("item")}</th>
+                  <th className="r">{t("int.sold")}</th>
+                  <th className="r">{t("int.revenue")}</th>
+                  <th className="r">{t("int.shipped")}</th>
+                  <th className="r">{t("int.cost")}</th>
+                  <th className="r">{t("int.margin")}</th>
                   <th className="r">%</th>
                 </tr>
               </thead>
@@ -321,7 +317,7 @@ async function Profitability({
                         </td>
                       )}
                       <td className="wrap">
-                        <ItemLink id={r.id} code={r.code} />
+                        <ItemLink id={r.id} code={r.code} title={t("int.moveTitle")} />
                         <div className="subline">
                           {r.name}
                           <VariantTags variant={asVariant(r.variant)} className="vartags-inline" />
@@ -331,7 +327,7 @@ async function Profitability({
                       <td className="r">{money(rev)}</td>
                       <td className="r" style={{ color: gap ? "var(--warn)" : undefined }}>
                         {fmtQty(String(r.qty_shipped))}
-                        {gap && <div className="subline">not the same</div>}
+                        {gap && <div className="subline">{t("int.notSame")}</div>}
                       </td>
                       <td className="r">{money(Number(r.cogs))}</td>
                       <td className="r" style={{ color: m < 0 ? "var(--bad)" : undefined }}>
@@ -346,7 +342,7 @@ async function Profitability({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={showThumbs ? 3 : 2}><strong>Total</strong></td>
+                  <td colSpan={showThumbs ? 3 : 2}><strong>{t("int.total")}</strong></td>
                   <td className="r"><strong>{money(revenue)}</strong></td>
                   <td />
                   <td className="r"><strong>{money(cogs)}</strong></td>
@@ -367,6 +363,7 @@ async function Profitability({
 async function Aging({
   companyId, locationId,
 }: { companyId: string; locationId: string | null }) {
+  const t = await getTranslations("inventory");
   const [rows, variantStock] = await Promise.all([
     getInventoryAging(companyId, locationId) as unknown as Promise<any[]>,
     getVariantStock(companyId) as unknown as Promise<any[]>,
@@ -380,22 +377,22 @@ async function Aging({
   const showThumbs = anyPhoto(rows.map((r: any) => r.id), srcOf);
 
   if (rows.length === 0) {
-    return <div className="empty">Nothing is in stock, so nothing is aging.</div>;
+    return <div className="empty">{t("int.nothingAging")}</div>;
   }
 
-  const total = rows.reduce((t, r) => t + Number(r.value), 0);
+  const total = rows.reduce((acc, r) => acc + Number(r.value), 0);
   const n = (r: any, k: string) => Number(r[k] ?? 0);
-  const bucket = (k: string) => rows.reduce((t, r) => t + n(r, k), 0);
+  const bucket = (k: string) => rows.reduce((acc, r) => acc + n(r, k), 0);
   /** Over ninety days is the conventional line for "this is not moving". */
   const slow = bucket("v90") + bucket("v180");
   const weightedAge = total > 0
-    ? Math.round(rows.reduce((t, r) => t + Number(r.avg_age ?? 0) * Number(r.value), 0) / total)
+    ? Math.round(rows.reduce((acc, r) => acc + Number(r.avg_age ?? 0) * Number(r.value), 0) / total)
     : 0;
 
   const BUCKETS = [
-    { key: "v0", label: "0–30 d" }, { key: "v30", label: "31–60 d" },
-    { key: "v60", label: "61–90 d" }, { key: "v90", label: "91–180 d" },
-    { key: "v180", label: "180 d +" },
+    { key: "v0", label: t("int.b0") }, { key: "v30", label: t("int.b30") },
+    { key: "v60", label: t("int.b60") }, { key: "v90", label: t("int.b90") },
+    { key: "v180", label: t("int.b180") },
   ] as const;
 
   return (
@@ -403,27 +400,27 @@ async function Aging({
       <div className="kpis kpis-tiled">
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Stock value</span>
+            <span className="kpi-label">{t("int.ageStockValue")}</span>
             <span className="kpi-value">{money(total)}</span>
-            <span className="kpi-note">ties to the stock page exactly</span>
+            <span className="kpi-note">{t("int.tiesStock")}</span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Sitting over 90 days</span>
+            <span className="kpi-label">{t("int.sitting90")}</span>
             <span className="kpi-value" style={{ color: slow > 0 ? "var(--warn)" : undefined }}>
               {money(slow)}
             </span>
             <span className="kpi-note">
-              {total > 0 ? `${pct(slow / total)} of the money on the shelf` : "—"}
+              {total > 0 ? t("int.pctShelf", { pct: pct(slow / total) }) : "—"}
             </span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Average age</span>
-            <span className="kpi-value">{weightedAge} d</span>
-            <span className="kpi-note">weighted by value, not by units</span>
+            <span className="kpi-label">{t("int.avgAge")}</span>
+            <span className="kpi-value">{t("int.nDay", { n: weightedAge })}</span>
+            <span className="kpi-note">{t("int.weighted")}</span>
           </span>
         </div>
       </div>
@@ -431,22 +428,20 @@ async function Aging({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>By item, as it stands today</h2>
+            <h2>{t("int.asItStands")}</h2>
             <span className="page-sub">
-              read from the FIFO layers, so it adds up to stock on hand ·
-              consigned goods are excluded, being nobody&rsquo;s capital but
-              the consignor&rsquo;s
+              {t("int.agingSub")}
             </span>
           </div>
           <div className="tablewrap">
             <table>
               <thead>
                 <tr>
-                  <th colSpan={showThumbs ? 2 : 1}>Item</th>
-                  <th className="r">On hand</th>
-                  <th className="r">Value</th>
-                  <th className="r">Avg age</th>
-                  <th className="r">Oldest</th>
+                  <th colSpan={showThumbs ? 2 : 1}>{t("item")}</th>
+                  <th className="r">{t("int.onHand")}</th>
+                  <th className="r">{t("int.value")}</th>
+                  <th className="r">{t("int.colAvgAge")}</th>
+                  <th className="r">{t("int.oldest")}</th>
                   {BUCKETS.map((b) => <th key={b.key} className="r">{b.label}</th>)}
                 </tr>
               </thead>
@@ -459,7 +454,7 @@ async function Aging({
                       </td>
                     )}
                     <td className="wrap">
-                      <ItemLink id={r.id} code={r.code} />
+                      <ItemLink id={r.id} code={r.code} title={t("int.moveTitle")} />
                       <div className="subline">
                         {r.name}
                         <VariantTags variant={asVariant(r.variant)} className="vartags-inline" />
@@ -467,9 +462,9 @@ async function Aging({
                     </td>
                     <td className="r">{fmtQty(String(r.qty))} {r.uom_code}</td>
                     <td className="r">{money(Number(r.value))}</td>
-                    <td className="r">{r.avg_age} d</td>
+                    <td className="r">{t("int.nDay", { n: r.avg_age })}</td>
                     <td className="r">
-                      {r.oldest_days} d
+                      {t("int.nDay", { n: r.oldest_days })}
                       <div className="subline">{shortDate(r.oldest)}</div>
                     </td>
                     {BUCKETS.map((b) => (
@@ -485,7 +480,7 @@ async function Aging({
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={showThumbs ? 3 : 2}><strong>Total</strong></td>
+                  <td colSpan={showThumbs ? 3 : 2}><strong>{t("int.total")}</strong></td>
                   <td className="r"><strong>{money(total)}</strong></td>
                   <td colSpan={2} />
                   {BUCKETS.map((b) => (
@@ -514,6 +509,7 @@ async function Matched({
   companyId, from, to, shown, locationId,
 }: { companyId: string; from: string; to: string; shown: string;
      locationId: string | null }) {
+  const t = await getTranslations("inventory");
   const [rows, variantStock] = await Promise.all([
     getMatchedProfitability(companyId, from, to, locationId) as unknown as Promise<any[]>,
     getVariantStock(companyId) as unknown as Promise<any[]>,
@@ -527,48 +523,48 @@ async function Matched({
   const showThumbs = anyPhoto(rows.map((r: any) => r.id), srcOf);
 
   if (rows.length === 0) {
-    return <div className="empty">Nothing was invoiced in that period.</div>;
+    return <div className="empty">{t("int.nothingInvoiced")}</div>;
   }
 
   const n = (r: any, k: string) => Number(r[k] ?? 0);
-  const revenue = rows.reduce((t, r) => t + n(r, "revenue"), 0);
-  const matchedRev = rows.reduce((t, r) => t + n(r, "revenue_matched"), 0);
-  const cost = rows.reduce((t, r) => t + n(r, "cost"), 0);
+  const revenue = rows.reduce((acc, r) => acc + n(r, "revenue"), 0);
+  const matchedRev = rows.reduce((acc, r) => acc + n(r, "revenue_matched"), 0);
+  const cost = rows.reduce((acc, r) => acc + n(r, "cost"), 0);
   const margin = matchedRev - cost;
   const unmatchedRev = revenue - matchedRev;
-  const byItem = rows.reduce((t, r) => t + n(r, "n_by_item"), 0);
-  const partShipped = rows.reduce((t, r) => t + n(r, "n_part_shipped"), 0);
-  const returned = rows.reduce((t, r) => t + n(r, "n_returned"), 0);
+  const byItem = rows.reduce((acc, r) => acc + n(r, "n_by_item"), 0);
+  const partShipped = rows.reduce((acc, r) => acc + n(r, "n_part_shipped"), 0);
+  const returned = rows.reduce((acc, r) => acc + n(r, "n_returned"), 0);
 
   return (
     <>
       <div className="kpis kpis-tiled">
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Matched revenue</span>
+            <span className="kpi-label">{t("int.matchedRevenue")}</span>
             <span className="kpi-value">{money(matchedRev)}</span>
             <span className="kpi-note">
               {unmatchedRev > 0
-                ? `${money(unmatchedRev)} more invoiced with no goods to cost`
-                : "every invoiced line found its goods"}
+                ? t("int.moreInvoiced", { amount: money(unmatchedRev) })
+                : t("int.everyFound")}
             </span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Cost of those units</span>
+            <span className="kpi-label">{t("int.costOfUnits")}</span>
             <span className="kpi-value">{money(cost)}</span>
-            <span className="kpi-note">the FIFO layers they actually drew on</span>
+            <span className="kpi-note">{t("int.fifoDrew")}</span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Gross margin</span>
+            <span className="kpi-label">{t("int.grossMargin")}</span>
             <span className="kpi-value" style={{ color: margin < 0 ? "var(--bad)" : undefined }}>
               {money(margin)}
             </span>
             <span className="kpi-note">
-              {matchedRev > 0 ? `${pct(margin / matchedRev)} of matched revenue` : "nothing matched"}
+              {matchedRev > 0 ? t("int.pctMatched", { pct: pct(margin / matchedRev) }) : t("int.nothingMatched")}
             </span>
           </span>
         </div>
@@ -579,39 +575,30 @@ async function Matched({
       {(unmatchedRev > 0 || byItem > 0 || partShipped > 0 || returned > 0) && (
         <div className="card" style={{ marginBottom: "var(--s3)" }}>
           <div className="card-body">
-            <strong>How these were matched</strong>
+            <strong>{t("int.howMatched")}</strong>
             <ul className="matchnotes">
               {byItem > 0 && (
                 <li>
-                  <span className="pill">by item</span>
-                  {byItem} line{byItem === 1 ? "" : "s"} found their goods through
-                  the delivery the invoice names, matched on the item rather than
-                  the line. Exact whenever that delivery lists the item once.
+                  <span className="pill">{t("int.pillByItem")}</span>
+                  {t("int.byItemNote", { n: byItem })}
                 </li>
               )}
               {partShipped > 0 && (
                 <li>
-                  <span className="pill warn">part shipped</span>
-                  {partShipped} line{partShipped === 1 ? "" : "s"} billed more
-                  than has gone out. Only the delivered units are costed and
-                  only their share of the revenue is matched; the rest is
-                  carried as unmatched until the goods follow.
+                  <span className="pill warn">{t("int.pillPart")}</span>
+                  {t("int.partNote", { n: partShipped })}
                 </li>
               )}
               {returned > 0 && (
                 <li>
-                  <span className="pill">returns</span>
-                  {returned} return line{returned === 1 ? "" : "s"} taken off
-                  both sides — the revenue and the cost the goods originally
-                  left at, not today&rsquo;s.
+                  <span className="pill">{t("int.pillReturns")}</span>
+                  {t("int.returnsNote", { n: returned })}
                 </li>
               )}
               {unmatchedRev > 0 && (
                 <li>
-                  <span className="pill overdue">unmatched</span>
-                  {money(unmatchedRev)} of revenue has no goods to cost against,
-                  usually invoiced before shipping. Left out of the margin
-                  entirely rather than counted as pure profit.
+                  <span className="pill overdue">{t("int.pillUnmatched")}</span>
+                  {t("int.unmatchedNote", { amount: money(unmatchedRev) })}
                 </li>
               )}
             </ul>
@@ -622,26 +609,25 @@ async function Matched({
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>By item</h2>
+            <h2>{t("int.byItem")}</h2>
             <span className="page-sub">
-              {shortDate(from)} to {shortDate(shown)} · cost taken from the FIFO
-              layers each sale drew on
+              {t("int.range", { from: shortDate(from), to: shortDate(shown) })} · {t("int.costMatchedSub")}
             </span>
           </div>
           <div className="tablewrap">
             <table>
               <thead>
                 <tr>
-                  <th colSpan={showThumbs ? 2 : 1}>Item</th>
-                  <th className="r">Sold</th>
+                  <th colSpan={showThumbs ? 2 : 1}>{t("item")}</th>
+                  <th className="r">{t("int.sold")}</th>
                   <th className="r">
-                    Revenue
-                    <div className="subline">invoiced</div>
+                    {t("int.revenue")}
+                    <div className="subline">{t("int.invoiced")}</div>
                   </th>
-                  <th className="r">Cost</th>
-                  <th className="r">Margin</th>
+                  <th className="r">{t("int.cost")}</th>
+                  <th className="r">{t("int.margin")}</th>
                   <th className="r">%</th>
-                  <th>Matched</th>
+                  <th>{t("int.matched")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -656,7 +642,7 @@ async function Matched({
                         </td>
                       )}
                       <td className="wrap">
-                        <ItemLink id={r.id} code={r.code} />
+                        <ItemLink id={r.id} code={r.code} title={t("int.moveTitle")} />
                         <div className="subline">
                           {r.name}
                           <VariantTags variant={asVariant(r.variant)} className="vartags-inline" />
@@ -676,24 +662,24 @@ async function Matched({
                       <td>
                         <span className="vartags">
                           {n(r, "n_exact") > 0 && (
-                            <span className="vartag">exact {n(r, "n_exact")}</span>
+                            <span className="vartag">{t("int.tagExact", { n: n(r, "n_exact") })}</span>
                           )}
                           {n(r, "n_by_item") > 0 && (
-                            <span className="vartag">by item {n(r, "n_by_item")}</span>
+                            <span className="vartag">{t("int.tagByItem", { n: n(r, "n_by_item") })}</span>
                           )}
                           {n(r, "n_unmatched") > 0 && (
                             <span className="vartag" style={{ color: "var(--bad)" }}>
-                              unmatched {n(r, "n_unmatched")}
+                              {t("int.tagUnmatched", { n: n(r, "n_unmatched") })}
                             </span>
                           )}
                           {n(r, "n_part_shipped") > 0 && (
                             <span className="vartag" style={{ color: "var(--warn)" }}>
-                              part shipped {n(r, "n_part_shipped")}
+                              {t("int.tagPart", { n: n(r, "n_part_shipped") })}
                             </span>
                           )}
                           {n(r, "n_returned") > 0 && (
                             <span className="vartag">
-                              returns {n(r, "n_returned")}
+                              {t("int.tagReturns", { n: n(r, "n_returned") })}
                             </span>
                           )}
                         </span>
@@ -714,17 +700,17 @@ async function Matched({
               <tfoot>
                 <tr>
                   <td colSpan={showThumbs ? 3 : 2}>
-                    <strong>Total invoiced revenue</strong>
+                    <strong>{t("int.totalInvoiced")}</strong>
                   </td>
                   <td className="r"><strong>{money(revenue)}</strong></td>
                   <td colSpan={4} />
                 </tr>
                 <tr>
                   <td colSpan={showThumbs ? 3 : 2}>
-                    <strong>Matched revenue</strong>
+                    <strong>{t("int.matchedRevenueRow")}</strong>
                     {unmatchedRev > 0 && (
                       <div className="subline">
-                        {money(unmatchedRev)} not yet costed, left out below
+                        {t("int.notYetCosted", { amount: money(unmatchedRev) })}
                       </div>
                     )}
                   </td>

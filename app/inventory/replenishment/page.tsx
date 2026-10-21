@@ -15,6 +15,7 @@ import { HelpHint } from "@/components/help-hint";
 import { ReplenishOrderButton } from "@/components/replenish-order-button";
 import { draftOrderFromReplenishment } from "@/lib/actions";
 import { replenishment, type ReplenishRow } from "@/lib/replenish";
+import { getTranslations } from "next-intl/server";
 
 /**
  * What to buy, and by when.
@@ -40,8 +41,11 @@ export default async function Replenishment({
   searchParams: Promise<{ window?: string; cover?: string; location?: string }>;
 }) {
   const sp = await searchParams;
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
   const company = await getCompany();
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const windowDays = WINDOWS.includes(Number(sp.window) as never) ? Number(sp.window) : 30;
   const coverDays = COVERS.includes(Number(sp.cover) as never) ? Number(sp.cover) : 30;
@@ -122,47 +126,44 @@ export default async function Replenishment({
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Inventory</span>
-        <h1>Replenishment</h1>
+        <span className="eyebrow">{n("inventory")}</span>
+        <h1>{t("rep.title")}</h1>
         <BranchScope />
         <HelpHint>
-          What has been going out, what is left, and how much to buy to cover
-          the next stretch. Every figure is worked out from the stock ledger
-          when this page loads — nothing is stored and nothing is forecast, so
-          each line can be checked against the item&rsquo;s own stock card.
+          {t("rep.help")}
         </HelpHint>
       </div>
 
       <div className="filterbar">
         {stockLocations.length > 1 && (
           <AccountPicker
-            accounts={[{ id: "all", code: "—", name: "All warehouses" }, ...stockLocations]}
+            accounts={[{ id: "all", code: "—", name: t("sum.allWarehouses") }, ...stockLocations]}
             selectedId={chosen}
             basePath="/inventory/replenishment"
             paramName="location"
-            label="Warehouse"
+            label={c("warehouse")}
             keep={{ window: windowDays !== 30 ? String(windowDays) : undefined,
                     cover: coverDays !== 30 ? String(coverDays) : undefined }}
           />
         )}
         <div className="field">
-          <label>Sales measured over</label>
+          <label>{t("rep.salesOver")}</label>
           <div className="scopetabs" style={{ margin: 0 }}>
             {WINDOWS.map((w) => (
               <Link key={w} className="scopetab" data-active={w === windowDays}
                     href={href({ window: w === 30 ? undefined : String(w) })}>
-                {w} days
+                {t("rep.nDays", { n: w })}
               </Link>
             ))}
           </div>
         </div>
         <div className="field">
-          <label>Buy enough to cover</label>
+          <label>{t("rep.buyCover")}</label>
           <div className="scopetabs" style={{ margin: 0 }}>
-            {COVERS.map((c) => (
-              <Link key={c} className="scopetab" data-active={c === coverDays}
-                    href={href({ cover: c === 30 ? undefined : String(c) })}>
-                {c} days
+            {COVERS.map((cv) => (
+              <Link key={cv} className="scopetab" data-active={cv === coverDays}
+                    href={href({ cover: cv === 30 ? undefined : String(cv) })}>
+                {t("rep.nDays", { n: cv })}
               </Link>
             ))}
           </div>
@@ -172,30 +173,30 @@ export default async function Replenishment({
       <div className="kpis kpis-tiled">
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">To order</span>
+            <span className="kpi-label">{t("rep.toOrder")}</span>
             <span className="kpi-value">{rows.length}</span>
             <span className="kpi-note">
-              item{rows.length === 1 ? "" : "s"} short of {coverDays} days&rsquo; cover
+              {t("rep.shortOfCover", { n: rows.length, days: coverDays })}
             </span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">Order today</span>
+            <span className="kpi-label">{t("rep.orderToday")}</span>
             <span className="kpi-value" style={{ color: urgent > 0 ? "var(--bad)" : undefined }}>
               {urgent}
             </span>
             <span className="kpi-note">
-              will run out before a new order could arrive
+              {t("rep.runOutBefore")}
             </span>
           </span>
         </div>
         <div className="kpi">
           <span className="kpi-body">
-            <span className="kpi-label">No sales to go on</span>
+            <span className="kpi-label">{t("rep.noSales")}</span>
             <span className="kpi-value">{quiet.length}</span>
             <span className="kpi-note">
-              below a reorder point with nothing sold in {windowDays} days
+              {t("rep.belowNothing", { n: windowDays })}
             </span>
           </span>
         </div>
@@ -203,33 +204,28 @@ export default async function Replenishment({
 
       {rows.length === 0 ? (
         <div className="empty">
-          Nothing needs ordering for the next {coverDays} days, measured on the
-          last {windowDays}.
+          {t("rep.nothingNeeds", { cover: coverDays, window: windowDays })}
         </div>
       ) : (
         [...bySupplier.entries()].map(([key, list]) => (
           <section key={key}>
             <div className="card">
               <div className="card-head">
-                <h2>{key === "\u0000none" ? "No supplier on record" : key}</h2>
+                <h2>{key === "\u0000none" ? t("rep.noSupplier") : key}</h2>
                 <span className="page-sub">
-                  {list.length} item{list.length === 1 ? "" : "s"}
+                  {t("rep.nItems", { n: list.length })}
                   {/* Measured belongs to the supplier, so it is said once
                       here. Expected can differ item by item, so it has a
                       column of its own. */}
                   {list[0].measuredDays !== null &&
-                    ` · actually taking ${list[0].measuredDays} day${
-                      list[0].measuredDays === 1 ? "" : "s"} over ${
-                      list[0].measuredSample} receipt${
-                      list[0].measuredSample === 1 ? "" : "s"}`}
+                    ` · ${t("rep.measured", { days: list[0].measuredDays, n: list[0].measuredSample })}`}
                 </span>
               </div>
 
               {key === "\u0000none" && (
                 <div className="card-body" style={{ paddingBottom: 0 }}>
                   <span className="page-sub">
-                    Nothing has been bought from anybody for these, so the
-                    company default of {list[0].leadTime} days is assumed.
+                    {t("rep.defaultAssumed", { n: list[0].leadTime })}
                   </span>
                 </div>
               )}
@@ -238,15 +234,15 @@ export default async function Replenishment({
                 <table>
                   <thead>
                     <tr>
-                      <th colSpan={2}>Item</th>
-                      <th className="r">On hand</th>
-                      <th className="r">Reserved</th>
-                      <th className="r">Incoming</th>
-                      <th className="r">Per day</th>
-                      <th className="r">Lead</th>
-                      <th className="r">Runs out in</th>
-                      <th>Order by</th>
-                      <th className="r">Suggest</th>
+                      <th colSpan={2}>{t("item")}</th>
+                      <th className="r">{t("onHand")}</th>
+                      <th className="r">{t("stk.reserved")}</th>
+                      <th className="r">{t("stk.incoming")}</th>
+                      <th className="r">{t("rep.perDay")}</th>
+                      <th className="r">{t("rep.lead")}</th>
+                      <th className="r">{t("rep.runsOutIn")}</th>
+                      <th>{t("rep.orderBy")}</th>
+                      <th className="r">{t("rep.suggest")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -273,30 +269,30 @@ export default async function Replenishment({
                         <td className="r">{r.perDay}</td>
                         <td className="r">
                           <span title={
-                            r.leadSource === "item" ? "Set on this item from this supplier"
-                            : r.leadSource === "supplier" ? "This supplier's usual lead time"
-                            : "Company default — nothing set for this supplier"}>
-                            {r.leadTime} d
+                            r.leadSource === "item" ? t("rep.leadItem")
+                            : r.leadSource === "supplier" ? t("rep.leadSupplier")
+                            : t("rep.leadDefault")}>
+                            {t("int.nDay", { n: r.leadTime })}
                           </span>
                           {r.leadSource === "item" && (
-                            <span className="page-sub"> item</span>
+                            <span className="page-sub"> {t("rep.item")}</span>
                           )}
                           {/* Never acted on, only raised. The figure above
                               is what somebody configured and it stays that
                               way until they change it. */}
                           {r.reviewSuggested && (
                             <div className="subline" style={{ color: "var(--warn)" }}>
-                              actually {r.measuredDays} d — review
+                              {t("rep.actuallyReview", { n: r.measuredDays ?? 0 })}
                             </div>
                           )}
                         </td>
                         <td className="r">
-                          {r.daysLeft === null ? "—" : `${Math.floor(r.daysLeft)} d`}
+                          {r.daysLeft === null ? "—" : t("int.nDay", { n: Math.floor(r.daysLeft) })}
                         </td>
                         <td>
                           <span className={`pill ${
                             r.urgency === "now" ? "overdue" : r.urgency === "soon" ? "warn" : ""}`}>
-                            {r.urgency === "now" ? "today" : r.orderBy ?? "—"}
+                            {r.urgency === "now" ? t("rep.today") : r.orderBy ?? "—"}
                           </span>
                         </td>
                         <td className="r">
@@ -313,7 +309,7 @@ export default async function Replenishment({
                 <ReplenishOrderButton
                   action={draftOrderFromReplenishment}
                   supplierId={list[0].supplierId}
-                  supplierName={key === "\u0000none" ? "no supplier" : key}
+                  supplierName={key === "\u0000none" ? t("rep.noSupplierShort") : key}
                   lines={list.map((r) => ({
                     itemId: r.id, qty: r.suggest,
                     unitPrice: lastCost.get(r.id) ?? undefined,
@@ -324,8 +320,7 @@ export default async function Replenishment({
                   }))}
                 />
                 <span className="page-sub" style={{ marginLeft: "0.6rem" }}>
-                  Puts these {list.length} line{list.length === 1 ? "" : "s"} on a
-                  draft order you can edit before posting.
+                  {t("rep.putsLines", { n: list.length })}
                 </span>
               </div>
             </div>
@@ -337,22 +332,20 @@ export default async function Replenishment({
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>Below a reorder point, but nothing sold</h2>
+              <h2>{t("rep.quietTitle")}</h2>
               <span className="page-sub">
-                no issues in {windowDays} days, so there is no rate to work from
+                {t("rep.quietSub", { n: windowDays })}
               </span>
             </div>
             <div className="card-body" style={{ paddingBottom: 0 }}>
               <span className="page-sub">
-                These are short of the minimum somebody set, but the suggestion
-                above is built from what actually sells and these have sold
-                nothing. Judgement, not arithmetic.
+                {t("rep.quietBody")}
               </span>
             </div>
             <div className="tablewrap">
               <table>
                 <thead>
-                  <tr><th>Code</th><th>Item</th><th className="r">Short by</th></tr>
+                  <tr><th>{c("code")}</th><th>{t("item")}</th><th className="r">{t("rep.shortBy")}</th></tr>
                 </thead>
                 <tbody>
                   {quiet.map((q) => (
