@@ -6804,7 +6804,8 @@ table.ctable .subline { font-size: 0.72rem; }
   border: 0; background: transparent; color: var(--muted); vertical-align: -3px;
 }
 .cpanel-sub > td { background: var(--ground); }
-.cpanel-pays { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cpanel-pays { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
+.cpanel-pays .page-sub { font-size: inherit; }
 .cpanel-pays li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; }
 .cpanel-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
 .cpanel-timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--line-soft); }
