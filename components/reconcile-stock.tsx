@@ -146,7 +146,7 @@ export function ReconcileStock({
           <p className="page-sub" style={{ marginTop: "0.5rem" }}>
             {chosen.length === 0
               ? t("neg.chooseLines")
-              : t("neg.addsBack", { units: c("units", { n: qty(totalUnits) }), value: fmt(totalValue) })}
+              : t("neg.addsBack", { units: c("units", { n: totalUnits }), value: fmt(totalValue) })}
           </p>
         </div>
 

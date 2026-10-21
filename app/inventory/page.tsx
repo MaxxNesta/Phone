@@ -11,19 +11,24 @@ import { money, dateTime } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Inventory" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("nav"))("inventory") };
+}
 
 const TYPE: Record<string, [string, string]> = {
-  GOODS_RECEIPT: ["Purchase", "ok"], SALES_INVOICE: ["Sale", "posted"], DELIVERY: ["Sale", "posted"],
-  STOCK_TRANSFER: ["Transfer", "draft"], STOCK_ADJUSTMENT: ["Adjustment", "warn"],
-  SALES_RETURN: ["Return", "warn"], PURCHASE_RETURN: ["To supplier", "warn"],
+  GOODS_RECEIPT: ["sum.typePurchase", "ok"], SALES_INVOICE: ["sum.typeSale", "posted"], DELIVERY: ["sum.typeSale", "posted"],
+  STOCK_TRANSFER: ["sum.typeTransfer", "draft"], STOCK_ADJUSTMENT: ["sum.typeAdjustment", "warn"],
+  SALES_RETURN: ["sum.typeReturn", "warn"], PURCHASE_RETURN: ["sum.typeToSupplier", "warn"],
 };
 
 type Search = Record<string, string | undefined>;
 
 export default async function InventorySummary({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("inventory.view");
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
   const sp = await searchParams;
   const co = user.companyId;
   const seeCost = can(user, "cost.view");
@@ -70,8 +75,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) if (v && k !== "by" && k !== "page") q.set(k, v);
     if (!byWarehouse) q.set("by", "warehouse");
-    const t = q.toString();
-    return t ? `/inventory?${t}` : "/inventory";
+    const qs = q.toString();
+    return qs ? `/inventory?${qs}` : "/inventory";
   })();
 
   // What is on the shelf, unless asked for the whole catalogue. Looking for
@@ -82,8 +87,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(sp)) if (v && k !== "all" && k !== "page") q.set(k, v);
     if (all) q.set("all", "1");
-    const t = q.toString();
-    return t ? `/inventory?${t}` : "/inventory";
+    const qs = q.toString();
+    return qs ? `/inventory?${qs}` : "/inventory";
   };
   // Sorted on the server, across every page rather than the 25 on screen.
   // Figures biggest first on the first click, words A to Z.
@@ -106,8 +111,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     const { v } = SORTS[sortKey];
     shown.sort((a: any, b: any) => {
       const x = v(a), y = v(b);
-      const c = x < y ? -1 : x > y ? 1 : 0;
-      return sortDir === "asc" ? c : -c;
+      const cmp = x < y ? -1 : x > y ? 1 : 0;
+      return sortDir === "asc" ? cmp : -cmp;
     });
   }
   const sortHref = (key: string) => {
@@ -132,39 +137,39 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   return (
     <>
       <div className="page-head hero">
-        <h1>Inventory</h1>
+        <h1>{t("sum.title")}</h1>
         <BranchScope />
-        <p className="page-sub">Stock summary across all stores and warehouses</p>
+        <p className="page-sub">{t("sum.sub")}</p>
         {can(user, "inventory.manage") && (
-          <div className="head-actions"><Link className="btn" href="/inventory/adjustments">+ Stock Adjustment</Link></div>
+          <div className="head-actions"><Link className="btn" href="/inventory/adjustments">{t("sum.addAdjustment")}</Link></div>
         )}
       </div>
 
       <div className="stats">
-        {seeCost && <Stat icon={<Boxes size={20} />} label="Total Stock Value" value={`${compact(total)} MMK`} note="At FIFO cost" />}
-        <Stat icon={<Package size={20} />} tone="slate" label="Available Units" value={`${units.toLocaleString()} units`} />
-        <Stat icon={<Lock size={20} />} tone="violet" label="Reserved Units" value={`${reserved} units`} note="Reserved or in repair" />
-        <Stat icon={<AlertTriangle size={20} />} tone="amber" label="Low Stock Items" value={`${low.length} items`}
-          note={low.length ? "Requires attention" : "All healthy"} noteTone={low.length ? "warn" : "up"} />
+        {seeCost && <Stat icon={<Boxes size={20} />} label={t("sum.totalValue")} value={`${compact(total)} MMK`} note={t("sum.atFifo")} />}
+        <Stat icon={<Package size={20} />} tone="slate" label={t("sum.availableUnits")} value={c("units", { n: units })} />
+        <Stat icon={<Lock size={20} />} tone="violet" label={t("sum.reservedUnits")} value={c("units", { n: reserved })} note={t("sum.reservedNote")} />
+        <Stat icon={<AlertTriangle size={20} />} tone="amber" label={t("sum.lowItems")} value={t("sum.lowCount", { n: low.length })}
+          note={low.length ? t("sum.needsAttention") : t("sum.allHealthy")} noteTone={low.length ? "warn" : "up"} />
       </div>
 
       <form className="card filters" method="get">
         <div className="card-body filter-row">
           <div className="field">
-            <label htmlFor="iq">Search</label>
-            <input id="iq" name="q" defaultValue={sp.q ?? ""} placeholder="Search product, SKU, model…" />
+            <label htmlFor="iq">{c("search")}</label>
+            <input id="iq" name="q" defaultValue={sp.q ?? ""} placeholder={t("sum.searchPlaceholder")} />
           </div>
           <CatalogFilterFields groups={groups as never} facets={facets} sp={sp} prefix="i" />
           {manyWarehouses && (
             <div className="field">
-              <label htmlFor="il">{branchOpts.length > 1 ? "Branch & warehouse" : "Warehouse"}</label>
+              <label htmlFor="il">{branchOpts.length > 1 ? t("sum.branchWarehouse") : c("warehouse")}</label>
               <select id="il" name="location" defaultValue={sp.location ?? ""}>
-                <option value="">{branchOpts.length > 1 ? "All branches" : "All warehouses"}</option>
+                <option value="">{branchOpts.length > 1 ? t("sum.allBranches") : t("sum.allWarehouses")}</option>
                 {branchOpts.length > 1 && allLocs.filter((l) => !l.branch_id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 {branchOpts.length > 1
                   ? branchOpts.map((b) => (
                       <optgroup key={b.id} label={b.name}>
-                        <option value={b.id}>All of {b.name}</option>
+                        <option value={b.id}>{t("sum.allOf", { name: b.name })}</option>
                         {allLocs.filter((l) => l.branch_id === b.id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                       </optgroup>
                     ))
@@ -175,40 +180,40 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           {byWarehouse && <input type="hidden" name="by" value="warehouse" />}
           {sp.all === "1" && <input type="hidden" name="all" value="1" />}
           <div className="field">
-            <label htmlFor="is">Stock status</label>
+            <label htmlFor="is">{t("sum.stockStatus")}</label>
             <select id="is" name="status" defaultValue={sp.status ?? ""}>
-              <option value="">All</option>
-              <option value="HEALTHY">Healthy</option>
-              <option value="LOW">Low stock</option>
-              <option value="OUT">Out of stock</option>
+              <option value="">{c("all")}</option>
+              <option value="HEALTHY">{t("healthy")}</option>
+              <option value="LOW">{c("lowStock")}</option>
+              <option value="OUT">{c("outOfStock")}</option>
             </select>
           </div>
           <AutoApply />
-          <button className="btn ghost" data-apply>Filter</button>
+          <button className="btn ghost" data-apply>{c("filterBtn")}</button>
         </div>
       </form>
 
       <div className="card" style={{ overflowX: "auto", marginBottom: "var(--s3)" }}>
         <div className="card-head">
-          <h2>Inventory Summary</h2>
+          <h2>{t("sum.tableTitle")}</h2>
           <span className="actions">
             <span className="scopetabs" style={{ margin: 0 }}>
-              <Link className="scopetab" data-active={!allItems} href={scopeHref(false)}>In stock</Link>
-              <Link className="scopetab" data-active={allItems} href={scopeHref(true)}>All items</Link>
+              <Link className="scopetab" data-active={!allItems} href={scopeHref(false)}>{t("sum.inStock")}</Link>
+              <Link className="scopetab" data-active={allItems} href={scopeHref(true)}>{c("allItems")}</Link>
             </span>
             {manyWarehouses && (
-              <Link href={toggleHref} className="dt-tool">{byWarehouse ? "Hide warehouses" : "Show by warehouse"}</Link>
+              <Link href={toggleHref} className="dt-tool">{byWarehouse ? t("sum.hideWarehouses") : t("sum.showByWarehouse")}</Link>
             )}
           </span>
         </div>
         <table>
           <thead>
             <tr>
-              <Th k="product" label="Product" />{multiBrand && <Th k="brand" label="Brand" />}<Th k="category" label="Category" />
+              <Th k="product" label={t("sum.product")} />{multiBrand && <Th k="brand" label={c("brand")} />}<Th k="category" label={c("category")} />
               {shownLocs.map((l: any) => <th key={l.id} className="num">{l.name}</th>)}
-              <Th k="reserved" label="Reserved" num /><Th k="available" label="Available" num />
-              {seeCost && <><Th k="cost" label="Avg / FIFO cost" num /><Th k="value" label="Stock value" num /></>}
-              <Th k="status" label="Status" />
+              <Th k="reserved" label={t("sum.reserved")} num /><Th k="available" label={t("sum.available")} num />
+              {seeCost && <><Th k="cost" label={t("sum.avgCost")} num /><Th k="value" label={t("sum.stockValue")} num /></>}
+              <Th k="status" label={c("status")} />
             </tr>
           </thead>
           <tbody>
@@ -234,14 +239,14 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                 </>}
                 <td>
                   <span className={`pill ${r.status === "HEALTHY" ? "ok" : "warn"}`}>
-                    {r.status === "HEALTHY" ? "Healthy" : r.status === "LOW" ? "Low stock" : "Out of stock"}
+                    {r.status === "HEALTHY" ? t("healthy") : r.status === "LOW" ? c("lowStock") : c("outOfStock")}
                   </span>
                 </td>
               </tr>
             ))}
             {shown.length === 0 && (
               <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">
-                {allItems ? "No products match." : <>Nothing in stock matches. <Link href={scopeHref(true)}>Show all items</Link></>}
+                {allItems ? t("sum.noMatch") : <>{t("sum.nothingInStock")} <Link href={scopeHref(true)}>{t("sum.showAllItems")}</Link></>}
               </td></tr>
             )}
           </tbody>
@@ -251,12 +256,13 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
       <div className="section-grid">
         <div className="card" style={{ overflowX: "auto" }}>
-          <div className="card-head"><h2>Recent Stock Movements</h2><Link href="/inventory/movements">View all</Link></div>
+          <div className="card-head"><h2>{t("sum.recentMoves")}</h2><Link href="/inventory/movements">{c("viewAll")}</Link></div>
           <table>
-            <thead><tr><th>Date &amp; time</th><th>Type</th><th>Product</th><th className="num">Qty</th><th>From → To</th><th>User</th></tr></thead>
+            <thead><tr><th>{t("sum.dateTime")}</th><th>{t("sum.type")}</th><th>{t("sum.product")}</th><th className="num">{t("qty")}</th><th>{t("sum.fromTo")}</th><th>{t("sum.user")}</th></tr></thead>
             <tbody>
               {moves.map((m: any) => {
-                const [label, tone] = TYPE[m.doc_type] ?? [m.doc_type ?? "Movement", "draft"];
+                const [labelKey, tone] = TYPE[m.doc_type] ?? [null, "draft"];
+                const label = labelKey ? t(labelKey) : (m.doc_type ?? t("sum.movement"));
                 const route = m.doc_type === "STOCK_TRANSFER" ? `${m.location} → ${m.other_location ?? ""}`
                   : m.qty > 0 ? `→ ${m.location}` : m.location;
                 return (
@@ -274,9 +280,9 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           </table>
         </div>
         <div className="card">
-          <div className="card-head"><h2>Low Stock Alerts</h2><Link href="/inventory?status=LOW">View all</Link></div>
+          <div className="card-head"><h2>{t("sum.lowAlerts")}</h2><Link href="/inventory?status=LOW">{c("viewAll")}</Link></div>
           <table>
-            <thead><tr><th>Product</th><th className="num">Current</th><th className="num">Min.</th></tr></thead>
+            <thead><tr><th>{t("sum.product")}</th><th className="num">{t("sum.current")}</th><th className="num">{t("sum.min")}</th></tr></thead>
             <tbody>
               {low.slice(0, 8).map((r: any) => (
                 <tr key={r.id}>
@@ -285,7 +291,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
                 </tr>
               ))}
-              {low.length === 0 && <tr><td colSpan={3} className="page-sub">Nothing low.</td></tr>}
+              {low.length === 0 && <tr><td colSpan={3} className="page-sub">{t("sum.nothingLow")}</td></tr>}
             </tbody>
           </table>
         </div>

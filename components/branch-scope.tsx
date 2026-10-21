@@ -2,6 +2,7 @@ import { MapPin } from "lucide-react";
 import { sql } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
+import { getTranslations } from "next-intl/server";
 
 /**
  * Says whose figures a page shows when the person sees only their own branch.
@@ -10,6 +11,7 @@ import { seenLocations } from "@/lib/branch-scope";
  * company with a single branch, where there is no other scope to confuse it with.
  */
 export async function BranchScope() {
+  const c = await getTranslations("common");
   const [user, seen] = await Promise.all([currentUser(), seenLocations()]);
   if (!user || !seen) return null;
   const branches = await sql`
@@ -18,9 +20,9 @@ export async function BranchScope() {
   if (branches.length < 2) return null;
   const mine = branches.find((b) => seen.includes(b.id as string));
   return (
-    <span className="branch-scope" title="You see this branch only. An administrator can change this in Settings → Users.">
+    <span className="branch-scope" title={c("branchOnlyHint")}>
       <MapPin size={14} aria-hidden="true" />
-      {mine ? mine.name : "No branch assigned"}
+      {mine ? mine.name : c("noBranchAssigned")}
     </span>
   );
 }

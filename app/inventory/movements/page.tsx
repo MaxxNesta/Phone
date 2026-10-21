@@ -12,8 +12,8 @@ import { AccountPicker } from "@/components/account-picker";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { requireUser, can } from "@/lib/auth";
+import { getTranslations } from "next-intl/server";
 
-const label = (t: string) => t.replace(/_/g, " ").toLowerCase();
 
 /** Only a real date gets through; anything else is treated as not set. */
 const asDate = (v: string | undefined) =>
@@ -25,10 +25,14 @@ export default async function StockMovements({
   searchParams: Promise<{ item?: string; from?: string; to?: string }>;
 }) {
   const { item, from: rawFrom, to: rawTo } = await searchParams;
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
+  const label = (ty: string) => (t.has(`docType.${ty}`) ? t(`docType.${ty}`) : ty.replace(/_/g, " ").toLowerCase());
   const company = await getCompany();
   // Cost per movement is for those who may see cost; without it the column is not sent.
   const seeCost = can(await requireUser(), "cost.view");
-  if (!company) return <div className="empty">No company found.</div>;
+  if (!company) return <div className="empty">{c("noCompany")}</div>;
 
   const from = asDate(rawFrom);
   const to = asDate(rawTo);
@@ -132,7 +136,7 @@ export default async function StockMovements({
               already here. Said in the batch column because both quantity
               columns are correctly empty, and a row with nothing in either
               otherwise reads as a movement that failed to record. */}
-          {Number(r.qty) === 0 ? "revaluation" : r.batch_no ?? "—"}
+          {Number(r.qty) === 0 ? t("mov.revaluation") : r.batch_no ?? "—"}
         </td>
         <td className="r">{Number(r.qty) > 0 ? qty(r.qty) : ""}</td>
         <td className="r">{Number(r.qty) < 0 ? qty(String(-Number(r.qty))) : ""}</td>
@@ -145,15 +149,15 @@ export default async function StockMovements({
   }));
 
   const columns = [
-    { key: "date", label: "Date" },
-    ...(!oneItem ? [{ key: "item", label: "Item" }] : []),
-    { key: "document", label: "Document" },
-    { key: "location", label: "Location" },
-    { key: "batch", label: "Batch" },
-    { key: "in", label: "In", align: "r" as const },
-    { key: "out", label: "Out", align: "r" as const },
-    ...(seeCost ? [{ key: "cost", label: "Unit cost", align: "r" as const }] : []),
-    ...(oneItem ? [{ key: "balance", label: "Balance", align: "r" as const }] : []),
+    { key: "date", label: c("date") },
+    ...(!oneItem ? [{ key: "item", label: t("item") }] : []),
+    { key: "document", label: c("document") },
+    { key: "location", label: t("mov.location") },
+    { key: "batch", label: t("mov.batch") },
+    { key: "in", label: t("mov.in"), align: "r" as const },
+    { key: "out", label: t("mov.out"), align: "r" as const },
+    ...(seeCost ? [{ key: "cost", label: t("unitCost"), align: "r" as const }] : []),
+    ...(oneItem ? [{ key: "balance", label: t("mov.balance"), align: "r" as const }] : []),
   ];
 
   const dated = Boolean(from || to);
@@ -161,28 +165,25 @@ export default async function StockMovements({
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Inventory</span>
-        <h1>Stock movements</h1>
+        <span className="eyebrow">{n("inventory")}</span>
+        <h1>{t("mov.title")}</h1>
         <BranchScope />
         <HelpHint>
-          Every receipt, delivery, transfer, and adjustment, in order — and a
-          running balance once one item is chosen, which makes it a stock
-          card. Nothing here is stored separately; it&rsquo;s the same
-          append-only ledger the Stock page sums.
+          {t("mov.help")}
         </HelpHint>
       </div>
 
       {items.length === 0 ? (
-        <div className="empty">No stocked items yet.</div>
+        <div className="empty">{t("mov.noStocked")}</div>
       ) : (
         <>
           <div className="filterbar">
             <AccountPicker
-              accounts={[{ id: "all", code: "—", name: "All items" }, ...items]}
+              accounts={[{ id: "all", code: "—", name: c("allItems") }, ...items]}
               selectedId={selected?.id ?? "all"}
               basePath="/inventory/movements"
               paramName="item"
-              label="Item"
+              label={t("item")}
               keep={{ from: from ?? undefined, to: to ?? undefined }}
             />
 
@@ -191,18 +192,18 @@ export default async function StockMovements({
             <form method="get" action="/inventory/movements" className="daterange">
               <input type="hidden" name="item" value={selected?.id ?? "all"} />
               <div className="field">
-                <label htmlFor="from">From</label>
+                <label htmlFor="from">{c("from")}</label>
                 <input id="from" name="from" type="date" defaultValue={from ?? ""} />
               </div>
               <div className="field">
-                <label htmlFor="to">To</label>
+                <label htmlFor="to">{c("to")}</label>
                 <input id="to" name="to" type="date" defaultValue={to ?? ""} />
               </div>
-              <button type="submit" className="btn ghost">Apply</button>
+              <button type="submit" className="btn ghost">{c("apply")}</button>
               {dated && (
                 <Link className="btn ghost"
                       href={`/inventory/movements${selected ? `?item=${selected.id}` : ""}`}>
-                  Clear
+                  {c("clear")}
                 </Link>
               )}
             </form>
@@ -221,15 +222,14 @@ export default async function StockMovements({
                     </span>
                   </h2>
                 ) : (
-                  <h2>All items</h2>
+                  <h2>{c("allItems")}</h2>
                 )}
                 <span className="page-sub">
-                  {ordered.length} movement{ordered.length === 1 ? "" : "s"}
-                  {dated && ` · ${from ? shortDate(from) : "the start"} to ${
-                    to ? shortDate(to) : "today"}`}
+                  {t("mov.count", { n: ordered.length })}
+                  {dated && ` · ${t("mov.range", { from: from ? shortDate(from) : t("mov.theStart"), to: to ? shortDate(to) : t("mov.today") })}`}
                   {oneItem
-                    ? ` · on hand ${qty(String(balance))}`
-                    : ` · ${qty(String(moved))} units moved`}
+                    ? ` · ${t("mov.onHandNow", { n: qty(String(balance)) })}`
+                    : ` · ${t("mov.unitsMoved", { n: qty(String(moved)) })}`}
                 </span>
               </div>
 
@@ -239,7 +239,7 @@ export default async function StockMovements({
               {oneItem && from && (
                 <div className="card-body" style={{ paddingBottom: 0 }}>
                   <span className="page-sub">
-                    Balance carried in from before {shortDate(from)}:{" "}
+                    {t("mov.carriedIn", { date: shortDate(from) })}{" "}
                     <strong>{qty(String(opening))}</strong>
                   </span>
                 </div>
@@ -248,10 +248,10 @@ export default async function StockMovements({
               {ordered.length === 0 ? (
                 <div className="empty">
                   {dated
-                    ? "Nothing moved in that period."
+                    ? t("mov.nothingPeriod")
                     : oneItem
-                      ? "Nothing has moved on this item yet."
-                      : "Nothing has moved yet."}
+                      ? t("mov.nothingItem")
+                      : t("mov.nothingYet")}
                 </div>
               ) : (
                 // Search only, deliberately no sort — Balance is a running
@@ -260,8 +260,8 @@ export default async function StockMovements({
                 // still historically accurate.
                 <DataTable
                   rows={tableRows}
-                  emptyLabel="No matches"
-                  searchPlaceholder="Search movements…"
+                  emptyLabel={t("mov.noMatches")}
+                  searchPlaceholder={t("mov.searchPlaceholder")}
                   columns={columns}
                 />
               )}

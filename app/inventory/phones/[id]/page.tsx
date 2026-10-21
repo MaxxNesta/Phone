@@ -5,21 +5,18 @@ import { requirePermission, can } from "@/lib/auth";
 import { serialDetail } from "@/lib/phone";
 import { money, shortDate, dateTime } from "@/lib/format";
 import { SerialHoldForm } from "@/components/serial-hold-form";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Device" };
-
-const label = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
-
-const EVENT: Record<string, string> = {
-  RECEIVED: "Received", SOLD: "Sold", CUSTOMER_RETURN: "Returned by customer",
-  SUPPLIER_RETURN: "Returned to supplier", TRANSFER: "Transferred", RESTORED: "Sale voided — back in stock",
-  WRITTEN_OFF: "Written off", HOLD: "Held", RELEASE: "Released",
-  // Amounts stay on the landed cost itself, which only those who see cost can open.
-  LANDED_COST: "Landed cost", COST_LAYER_SPLIT: "Costed on its own (for a landed cost)",
-};
+export async function generateMetadata() {
+  return { title: (await getTranslations("inventory"))("dev.metaTitle") };
+}
 
 export default async function Handset({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission("inventory.view");
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const n = await getTranslations("nav");
+  const label = (s: string) => (t.has(`status.${s}`) ? t(`status.${s}`) : s);
   const { id } = await params;
   const d = await serialDetail(user.companyId, id);
   // A phone at another branch is not found by someone who sees only their own.
@@ -32,58 +29,58 @@ export default async function Handset({ params }: { params: Promise<{ id: string
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow"><Link href="/inventory/phones">IMEI / Serial Tracking</Link></span>
+        <span className="eyebrow"><Link href="/inventory/phones">{n("imeiTracking")}</Link></span>
         <h1 className="m">
           {u.imei}{" "}
           <span className={`pill ${u.status === "IN_STOCK" ? "ok" : u.status === "SOLD" ? "posted" : "warn"}`}>
             {label(u.status)}
           </span>
-          {u.was_returned && <span className="pill warn">returned before</span>}
+          {u.was_returned && <span className="pill warn">{t("dev.returnedBefore")}</span>}
         </h1>
         <p className="page-sub">{u.item_name} · {u.location_name}</p>
       </div>
 
       <div className="grid2">
         <div className="card">
-          <div className="card-head"><h2>The unit</h2></div>
+          <div className="card-head"><h2>{t("dev.theUnit")}</h2></div>
           <div className="card-body">
             <dl className="facts">
-              <dt>Model</dt><dd>{u.model_name}{u.brand_name ? ` (${u.brand_name})` : ""}</dd>
-              <dt>Variant</dt><dd>{[u.storage, u.colour].filter(Boolean).join(" / ") || u.item_name}</dd>
-              <dt>IMEI 2</dt><dd className="m">{u.imei2 ?? "—"}</dd>
-              <dt>Maker's serial</dt><dd className="m">{u.device_serial ?? "—"}</dd>
-              {can(user, "cost.view") && <><dt>Cost</dt><dd className="num">{money(u.unit_cost)}</dd></>}
-              <dt>Notes</dt><dd>{u.notes ?? "—"}</dd>
+              <dt>{t("ph.model")}</dt><dd>{u.model_name}{u.brand_name ? ` (${u.brand_name})` : ""}</dd>
+              <dt>{t("ph.variant")}</dt><dd>{[u.storage, u.colour].filter(Boolean).join(" / ") || u.item_name}</dd>
+              <dt>{t("dev.imei2")}</dt><dd className="m">{u.imei2 ?? "—"}</dd>
+              <dt>{t("dev.makerSerial")}</dt><dd className="m">{u.device_serial ?? "—"}</dd>
+              {can(user, "cost.view") && <><dt>{t("ph.cost")}</dt><dd className="num">{money(u.unit_cost)}</dd></>}
+              <dt>{t("dev.notes")}</dt><dd>{u.notes ?? "—"}</dd>
             </dl>
           </div>
         </div>
 
         <div className="card">
-          <div className="card-head"><h2>Where it came from, where it went</h2></div>
+          <div className="card-head"><h2>{t("dev.whereFromTo")}</h2></div>
           <div className="card-body">
             <dl className="facts">
-              <dt>Supplier</dt><dd>{u.supplier_id ? <Link href={`/partners/${u.supplier_id}`}>{u.supplier_name}</Link> : "—"}</dd>
-              <dt>Warehouse / branch</dt><dd>{u.location_name}</dd>
-              <dt>Goods receipt</dt><dd>{docLink(u.received_document_id, u.received_on)} · {u.received_date ? shortDate(u.received_date) : ""}</dd>
-              <dt>Supplier warranty</dt>
-              <dd>{u.supplier_warranty_months ? `${u.supplier_warranty_months} months, to ${shortDate(u.supplier_warranty_expiry)}` : "—"}</dd>
-              <dt>Sale</dt><dd>{docLink(u.out_document_id, u.out_doc_no)}{u.out_date ? ` · ${shortDate(u.out_date)}` : ""}</dd>
-              <dt>Customer</dt><dd>{u.customer_id ? <Link href={`/partners/${u.customer_id}`}>{u.customer_name}</Link> : "—"}</dd>
-              <dt>Customer warranty</dt>
-              <dd>{u.warranty_expiry ? `${u.warranty_months} months, to ${shortDate(u.warranty_expiry)}` : "—"}</dd>
+              <dt>{t("ph.supplier")}</dt><dd>{u.supplier_id ? <Link href={`/partners/${u.supplier_id}`}>{u.supplier_name}</Link> : "—"}</dd>
+              <dt>{t("dev.warehouseBranch")}</dt><dd>{u.location_name}</dd>
+              <dt>{t("dev.goodsReceipt")}</dt><dd>{docLink(u.received_document_id, u.received_on)} · {u.received_date ? shortDate(u.received_date) : ""}</dd>
+              <dt>{t("dev.supplierWarranty")}</dt>
+              <dd>{u.supplier_warranty_months ? t("dev.monthsTo", { months: u.supplier_warranty_months, date: shortDate(u.supplier_warranty_expiry) }) : "—"}</dd>
+              <dt>{t("dev.sale")}</dt><dd>{docLink(u.out_document_id, u.out_doc_no)}{u.out_date ? ` · ${shortDate(u.out_date)}` : ""}</dd>
+              <dt>{t("dev.customer")}</dt><dd>{u.customer_id ? <Link href={`/partners/${u.customer_id}`}>{u.customer_name}</Link> : "—"}</dd>
+              <dt>{t("dev.customerWarranty")}</dt>
+              <dd>{u.warranty_expiry ? t("dev.monthsTo", { months: u.warranty_months, date: shortDate(u.warranty_expiry) }) : "—"}</dd>
             </dl>
           </div>
         </div>
       </div>
 
       <div className="card">
-        <div className="card-head"><h2>Timeline</h2></div>
+        <div className="card-head"><h2>{t("dev.timeline")}</h2></div>
         <ol className="unittimeline">
           {events.map((e: any, i: number) => (
             <li key={i} className={`tl-${e.event.toLowerCase()}${e.status === "REVERSED" ? " tl-voided" : ""}`}>
               <div className="tl-what">
-                {e.event === "SOLD" && events.slice(0, i).some((x: any) => x.event === "SOLD") ? "Resold" : EVENT[e.event] ?? e.event}
-                {e.status === "REVERSED" && " (voided)"}
+                {e.event === "SOLD" && events.slice(0, i).some((x: any) => x.event === "SOLD") ? t("dev.resold") : t.has(`dev.ev.${e.event}`) ? t(`dev.ev.${e.event}`) : e.event}
+                {e.status === "REVERSED" && ` ${t("dev.voided")}`}
                 {e.document_id && <> · {docLink(e.document_id, e.doc_no)}</>}
               </div>
               <div className="tl-detail">
@@ -91,7 +88,7 @@ export default async function Handset({ params }: { params: Promise<{ id: string
                   e.partner_name,
                   [e.from_location, e.to_location].filter(Boolean).join(" → "),
                   e.note,
-                  e.acted_by && `by ${e.acted_by}`].filter(Boolean).join(" · ")}
+                  e.acted_by && t("dev.by", { name: e.acted_by })].filter(Boolean).join(" · ")}
               </div>
             </li>
           ))}
@@ -103,7 +100,7 @@ export default async function Handset({ params }: { params: Promise<{ id: string
       )}
       {holds.length > 0 && (
         <p className="page-sub">
-          Holds: {holds.map((h: any) => `${h.kind.toLowerCase()} ${shortDate(h.created_at)}${h.released_at ? `–${shortDate(h.released_at)}` : " (open)"}`).join(", ")}
+          {t("dev.holds")} {holds.map((h: any) => `${t.has(`dev.holdKind.${h.kind}`) ? t(`dev.holdKind.${h.kind}`) : h.kind.toLowerCase()} ${shortDate(h.created_at)}${h.released_at ? `–${shortDate(h.released_at)}` : ` ${t("dev.open")}`}`).join(", ")}
         </p>
       )}
     </>

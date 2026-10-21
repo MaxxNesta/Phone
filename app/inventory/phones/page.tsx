@@ -10,16 +10,21 @@ import { money, shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { AutoApply } from "@/components/auto-apply";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "Phone stock" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("inventory"))("ph.metaTitle") };
+}
 
 const STATUSES = ["IN_STOCK", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
-const label = (s: string) => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, " ");
 
 type Search = Record<string, string | undefined>;
 
 export default async function PhoneStock({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("inventory.view");
+  const t = await getTranslations("inventory");
+  const c = await getTranslations("common");
+  const label = (s: string) => (t.has(`status.${s}`) ? t(`status.${s}`) : s);
   const sp = await searchParams;
   const f = {
     q: sp.q || undefined, locationId: sp.location || undefined, brand: sp.brand || undefined,
@@ -43,9 +48,9 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   if (exact.length === 1) redirect(`/inventory/phones/${exact[0].serial_id}`);
   const value = showCost ? rows.reduce((s, r: any) => s + Number(r.unit_cost ?? 0), 0) : 0;
 
-  const select = (name: string, options: { v: string; l: string }[], current?: string, all = "All") => (
+  const select = (name: string, options: { v: string; l: string }[], current?: string, all = c("all")) => (
     <div className="field">
-      <label htmlFor={`f-${name}`}>{name.charAt(0).toUpperCase() + name.slice(1)}</label>
+      <label htmlFor={`f-${name}`}>{t(`ph.${name}`)}</label>
       <select id={`f-${name}`} name={name} defaultValue={current ?? ""}>
         <option value="">{all}</option>
         {options.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -57,32 +62,32 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head hero">
-        <h1>IMEI / Serial Tracking</h1>
+        <h1>{t("ph.title")}</h1>
         <BranchScope />
-        <p className="page-sub">Scan or search an IMEI to see that phone’s whole life</p>
+        <p className="page-sub">{t("ph.sub")}</p>
         {can(user, "inventory.manage") && (
-          <div className="head-actions"><Link className="btn" href="/purchases/receive/new">+ Receive Stock</Link></div>
+          <div className="head-actions"><Link className="btn" href="/purchases/receive/new">{t("ph.receive")}</Link></div>
         )}
       </div>
 
       <div className="stats">
-        <Stat icon={<Smartphone size={20} />} label="Available Phones" value={k.available}
-          note={`+${k.received_week} received this week`} noteTone="up" />
-        <Stat icon={<Lock size={20} />} tone="violet" label="Reserved" value={k.reserved}
-          note={k.repair ? `${k.repair} in repair` : "Held for customers"} />
-        <Stat icon={<TrendingUp size={20} />} tone="slate" label="Sold This Month" value={k.sold_month}
-          note={k.sold_last_month ? `${k.sold_last_month} last month` : undefined} />
+        <Stat icon={<Smartphone size={20} />} label={t("ph.available")} value={k.available}
+          note={t("ph.receivedWeek", { n: k.received_week })} noteTone="up" />
+        <Stat icon={<Lock size={20} />} tone="violet" label={t("ph.reserved")} value={k.reserved}
+          note={k.repair ? t("ph.inRepair", { n: k.repair }) : t("ph.heldForCustomers")} />
+        <Stat icon={<TrendingUp size={20} />} tone="slate" label={t("ph.soldMonth")} value={k.sold_month}
+          note={k.sold_last_month ? t("ph.soldLastMonth", { n: k.sold_last_month }) : undefined} />
         {showCost && (
-          <Stat icon={<Wallet size={20} />} tone="amber" label="Stock Value" value={`${compact(k.value)} MMK`}
-            note="FIFO acquisition cost" noteTone="warn" />
+          <Stat icon={<Wallet size={20} />} tone="amber" label={t("ph.stockValue")} value={`${compact(k.value)} MMK`}
+            note={t("ph.fifoCost")} noteTone="warn" />
         )}
       </div>
 
       <form className="card filters" method="get">
         <div className="card-body filter-row">
           <div className="field">
-            <label htmlFor="f-q">IMEI, serial or model</label>
-            <input id="f-q" name="q" defaultValue={sp.q ?? ""} placeholder="Scan or type" autoFocus />
+            <label htmlFor="f-q">{t("ph.field")}</label>
+            <input id="f-q" name="q" defaultValue={sp.q ?? ""} placeholder={t("ph.scanOrType")} autoFocus />
           </div>
           {manyWarehouses && select("location", facets.locations.map((l: any) => ({ v: l.id, l: l.name })), sp.location)}
           {multiBrand && select("brand", facets.brands.map((v) => ({ v, l: v })), sp.brand)}
@@ -90,15 +95,15 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
           {select("storage", facets.storages.map((v) => ({ v, l: v })), sp.storage)}
           {select("colour", facets.colours.map((v) => ({ v, l: v })), sp.colour)}
           <div className="field">
-            <label htmlFor="f-status">Status</label>
+            <label htmlFor="f-status">{c("status")}</label>
             <select id="f-status" name="status" defaultValue={sp.status ?? (sp.q ? "ALL" : "IN_STOCK")}>
-              <option value="ALL">All</option>
+              <option value="ALL">{c("all")}</option>
               {STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
             </select>
           </div>
           {select("supplier", facets.suppliers.map((s: any) => ({ v: s.id, l: s.name })), sp.supplier)}
           <AutoApply />
-          <div className="filter-go"><button className="btn ghost" data-apply>Filter</button></div>
+          <div className="filter-go"><button className="btn ghost" data-apply>{c("filterBtn")}</button></div>
         </div>
       </form>
 
@@ -106,9 +111,9 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
         <table>
           <thead>
             <tr>
-              <th>Model</th>{multiBrand && <th>Brand</th>}<th>Variant</th><th>IMEI / Serial</th>{manyWarehouses && <th>Location</th>}
-              {showCost && <th className="num">Cost</th>}<th className="num">Price</th>
-              <th>Status</th><th className="num">Age</th><th>Warranty</th>
+              <th>{t("ph.model")}</th>{multiBrand && <th>{t("ph.brand")}</th>}<th>{t("ph.variant")}</th><th>{t("ph.imeiSerial")}</th>{manyWarehouses && <th>{t("ph.location")}</th>}
+              {showCost && <th className="num">{t("ph.cost")}</th>}<th className="num">{c("price")}</th>
+              <th>{c("status")}</th><th className="num">{t("ph.age")}</th><th>{t("ph.warranty")}</th>
             </tr>
           </thead>
           <tbody>
@@ -130,14 +135,14 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
                   <span className={`pill ${u.status === "IN_STOCK" ? "ok" : u.status === "SOLD" ? "posted" : "warn"}`}>
                     {label(u.status)}
                   </span>
-                  {u.was_returned && <span className="pill warn">returned</span>}
+                  {u.was_returned && <span className="pill warn">{t("ph.returned")}</span>}
                 </td>
-                <td className="num">{u.status === "IN_STOCK" ? `${u.age_days} d` : "—"}</td>
-                <td>{u.warranty_expiry ? `to ${shortDate(u.warranty_expiry)}` : "—"}</td>
+                <td className="num">{u.status === "IN_STOCK" ? t("ph.days", { n: u.age_days }) : "—"}</td>
+                <td>{u.warranty_expiry ? t("ph.toDate", { date: shortDate(u.warranty_expiry) }) : "—"}</td>
               </tr>
             ))}
             {units.length === 0 && (
-              <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">No handsets match.</td></tr>
+              <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">{t("ph.noMatch")}</td></tr>
             )}
           </tbody>
         </table>
