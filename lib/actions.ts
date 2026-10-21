@@ -199,7 +199,7 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
       insert into business_partner
         (company_id, code, name, name_my, company_name, is_customer, is_supplier,
          region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
-         category_id, supplier_category_id, currency)
+         category_id, supplier_category_id, currency, member_card_id)
       values
         (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
          ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier},
@@ -215,7 +215,8 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
          -- nothing about what they are charged or allowed to owe.
          ${str(fd, "category_id") || null},
          ${str(fd, "supplier_category_id") || null},
-         ${(str(fd, "currency") || "").toUpperCase() || null})`;
+         ${(str(fd, "currency") || "").toUpperCase() || null},
+         ${str(fd, "member_card_id") || null})`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -262,6 +263,7 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
       update business_partner set
         code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
         company_name = ${str(fd, "company_name") || null},
+        member_card_id = ${str(fd, "member_card_id") || null},
         is_customer = ${isCustomer}, is_supplier = ${isSupplier},
         region = ${asRegion(str(fd, "region"))},
         township = ${str(fd, "township") || null}, address = ${str(fd, "address") || null},

@@ -2070,7 +2070,7 @@ export async function getStockByLocation(companyId: string) {
 
 export async function getPartners(companyId: string) {
   return sql`
-    select bp.id, bp.code, bp.name, bp.name_my, bp.company_name,
+    select bp.id, bp.code, bp.name, bp.name_my, bp.company_name, bp.member_card_id,
            bp.is_customer, bp.is_supplier, bp.is_active,
            bp.region, bp.township, bp.address, bp.phone,
            bp.payment_terms_days, bp.currency, bp.lead_time_days, bp.credit_limit, bp.price_level_id,

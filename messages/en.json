@@ -496,6 +496,8 @@
     "days": "{n}d",
     "noLimit": "No limit",
     "cashOnly": "Cash only",
+    "noCreditAllowed": "No credit allowed",
+    "memberCard": "Member card",
     "over": "{amount} over",
     "activeLower": "active",
     "inactiveLower": "inactive"

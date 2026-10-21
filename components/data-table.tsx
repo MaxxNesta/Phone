@@ -82,7 +82,10 @@ export function DataTable({
   storageKey,
   defaultPageSize = 10,
   dateKey = "posting_date",
+  defaultHidden = [],
 }: {
+  /** Columns hidden until someone shows them; a saved choice wins. */
+  defaultHidden?: string[];
   rows: DataRow[];
   columns: Column[];
   searchPlaceholder?: string;
@@ -144,7 +147,7 @@ export function DataTable({
   const hasDates = useMemo(
     () => rows.some((r) => typeof r.sort?.[dateKey] === "number" && (r.sort[dateKey] as number) > 0),
     [rows, dateKey]);
-  const [hidden, setHidden] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[]>(defaultHidden);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);

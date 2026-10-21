@@ -6674,3 +6674,13 @@ dialog.mp::backdrop { background: rgb(0 0 0 / 0.36); -webkit-backdrop-filter: bl
 .adv-method { display: inline-flex; gap: 8px; align-items: baseline; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 0.8125rem; background: var(--surface); }
 .adv-method span { color: var(--muted); }
 .adv-method b { font-variant-numeric: tabular-nums; }
+
+/* A dense master-data list: smaller type, and long text wraps to at most
+   three lines instead of widening the table. */
+table.dt-compact { font-size: 0.8rem; }
+table.dt-compact th { font-size: 0.72rem; }
+table.dt-compact td.wrap { white-space: normal; max-width: 22ch; overflow-wrap: anywhere; }
+.clamp3 {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+  line-clamp: 3; overflow: hidden;
+}

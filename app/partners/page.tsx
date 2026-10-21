@@ -56,10 +56,12 @@ export default async function Partners({
 
   const rows: DataRow[] = partners.map((p) => ({
     key: p.id,
-    searchText: [p.code, p.name, p.name_my, p.region, p.township].filter(Boolean).join(" "),
+    searchText: [p.code, p.name, p.name_my, p.company_name, p.member_card_id, p.region, p.township].filter(Boolean).join(" "),
     sort: {
       code: p.code,
       name: p.name,
+      company_name: p.company_name ?? "",
+      member: p.member_card_id ?? "",
       role: `${p.is_customer ? t("customer") : ""} ${p.is_supplier ? t("supplier") : ""}`.trim(),
       region: p.region ?? "",
       township: p.township ?? "",
@@ -149,10 +151,15 @@ export default async function Partners({
             emptyLabel={t("noPartners")}
             searchPlaceholder={t("searchPartners")}
             defaultSort={{ key: "code", dir: "asc" }}
+            tableClassName="dt-compact"
+            storageKey={`partners:${role ?? "all"}`}
+            defaultHidden={role === "customer" ? ["price_level", "outstanding"] : []}
             columns={[
               { key: "code", label: c("code"), sortable: true },
               { key: "name", label: c("name"), sortable: true },
-              { key: "role", label: t("role"), sortable: true },
+              { key: "company_name", label: t("companyName"), sortable: true },
+              ...(role !== "supplier" ? [{ key: "member", label: t("memberCard"), sortable: true }] : []),
+              ...(!role ? [{ key: "role", label: t("role"), sortable: true }] : []),
               { key: "region", label: t("region"), sortable: true },
               { key: "township", label: t("township"), sortable: true },
               { key: "price_level", label: t("priceLevel"), sortable: true },

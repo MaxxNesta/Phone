@@ -15,6 +15,7 @@ const money = (v: string | number | null | undefined) =>
 
 type Partner = {
   id: string; code: string; name: string; name_my: string | null; company_name: string | null;
+  member_card_id: string | null;
   is_customer: boolean; is_supplier: boolean; is_active: boolean;
   region: string | null;
   /** Which column of the price list this customer buys from. */
@@ -101,6 +102,10 @@ export function PartnerRow({
               <div className="field">
                 <label>{t("companyName")}</label>
                 <input name="company_name" type="text" defaultValue={partner.company_name ?? ""} />
+              </div>
+              <div className="field">
+                <label>{t("memberCard")}</label>
+                <input name="member_card_id" type="text" defaultValue={partner.member_card_id ?? ""} />
               </div>
               <div className="field">
                 <label>{t("region")}</label>
@@ -220,23 +225,33 @@ export function PartnerRow({
     );
   }
 
+  const dash = <span style={{ color: "var(--muted)" }}>—</span>;
+  // The customer and supplier lists already say which they are; the role
+  // column earns its place only on the list that mixes both. Member cards
+  // are a customer thing.
   return (
     <tr>
       <td className="code">{partner.code}</td>
-      <td className="wrap">
-        {partner.name}
+      <td className="wrap" title={partner.name}>
+        <div className="clamp3">{partner.name}</div>
         {partner.name_my && <div className="subline">{partner.name_my}</div>}
       </td>
-      <td>
-        {partner.is_customer && <span className="pill ok">{t("customer")}</span>}
-        {partner.is_customer && partner.is_supplier && " "}
-        {partner.is_supplier && <span className="pill warn">{t("supplier")}</span>}
+      <td className="wrap" title={partner.company_name ?? undefined}>
+        {partner.company_name ? <div className="clamp3">{partner.company_name}</div> : dash}
       </td>
+      {role !== "supplier" && <td>{partner.member_card_id ?? dash}</td>}
+      {!role && (
+        <td>
+          {partner.is_customer && <span className="pill ok">{t("customer")}</span>}
+          {partner.is_customer && partner.is_supplier && " "}
+          {partner.is_supplier && <span className="pill warn">{t("supplier")}</span>}
+        </td>
+      )}
       <td>
         {partner.region ?? <span style={{ color: "var(--muted)" }}>—</span>}
       </td>
       <td className="wrap">
-        {partner.township ?? <span style={{ color: "var(--muted)" }}>—</span>}
+        {partner.township ? <div className="clamp3">{partner.township}</div> : dash}
       </td>
       <td>
         {partner.is_customer
@@ -253,7 +268,11 @@ export function PartnerRow({
           <div className="subline">{t("buys", { name: partner.supplier_category_name })}</div>
         )}
       </td>
-      <td className="r">{t("days", { n: partner.payment_terms_days })}</td>
+      <td className="r">
+        {Number(partner.payment_terms_days) === 0 && partner.is_customer && role !== "supplier"
+          ? <span style={{ color: "var(--muted)" }}>{t("noCreditAllowed")}</span>
+          : t("days", { n: partner.payment_terms_days })}
+      </td>
       <td className="r">{Number(partner.outstanding) ? money(partner.outstanding) : "—"}</td>
       {/* What they may owe at once. Blank means nobody has set one; 0 is a
           real answer and means cash only.
@@ -267,7 +286,7 @@ export function PartnerRow({
           : partner.credit_limit === null
             ? <span style={{ color: "var(--muted)" }}>{t("noLimit")}</span>
             : Number(partner.credit_limit) === 0
-              ? <span className="pill warn">{t("cashOnly")}</span>
+              ? <span className="pill warn">{t("noCreditAllowed")}</span>
               : money(partner.credit_limit)}
       </td>
       <td className="r">

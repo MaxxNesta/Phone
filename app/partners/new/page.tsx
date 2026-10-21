@@ -56,6 +56,10 @@ export default async function NewPartner() {
                 <label htmlFor="company_name">{t("registeredCompany")}</label>
                 <input id="company_name" name="company_name" type="text" />
               </div>
+              <div className="field">
+                <label htmlFor="member_card_id">{t("memberCard")}</label>
+                <input id="member_card_id" name="member_card_id" type="text" />
+              </div>
             </div>
           </div>
         </div>

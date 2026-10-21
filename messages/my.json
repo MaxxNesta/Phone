@@ -496,6 +496,8 @@
     "days": "{n} ရက်",
     "noLimit": "ကန့်သတ်ချက် မရှိ",
     "cashOnly": "ငွေသားသာ",
+    "noCreditAllowed": "အကြွေး ခွင့်မပြု",
+    "memberCard": "အသင်းဝင်ကတ်",
     "over": "{amount} ကျော်",
     "activeLower": "အသုံးပြုဆဲ",
     "inactiveLower": "ရပ်ထားသည်"
