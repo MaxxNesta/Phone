@@ -60,17 +60,20 @@ export function CustomerPanelProvider({
     if (!selected) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSelected(null); };
     window.addEventListener("keydown", onKey);
-    document.body.classList.add("cpanel-open");
-    return () => { window.removeEventListener("keydown", onKey); document.body.classList.remove("cpanel-open"); };
+    return () => window.removeEventListener("keydown", onKey);
   }, [selected]);
 
   return (
     <PanelCtx.Provider value={{ selected, open }}>
-      {children}
-      {partner && (
-        <CustomerPanel key={partner.id} partner={partner} priceLevels={priceLevels}
-          categories={categories} updateAction={updateAction} onClose={() => setSelected(null)} />
-      )}
+      {/* The panel is a column beside the page, starting level with its
+          heading, so the list narrows rather than disappearing under it. */}
+      <div className={`cpanel-layout${partner ? " has-panel" : ""}`}>
+        <div className="cpanel-main">{children}</div>
+        {partner && (
+          <CustomerPanel key={partner.id} partner={partner} priceLevels={priceLevels}
+            categories={categories} updateAction={updateAction} onClose={() => setSelected(null)} />
+        )}
+      </div>
     </PanelCtx.Provider>
   );
 }
@@ -264,7 +267,7 @@ function Sales({ partner }: { partner: Partner }) {
   const [busy, setBusy] = useState(false);
   const more = (offset: number) => {
     setBusy(true);
-    customerSales(partner.id, offset).then((p) => setPages((x) => [...x, p]))
+    customerSales(partner.id, offset).then((p) => setPages((x) => (offset === 0 ? [p] : [...x, p])))
       .catch((e) => setError(String(e?.message ?? e))).finally(() => setBusy(false));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -327,7 +330,7 @@ function Invoices({ partner }: { partner: Partner }) {
   const [openInv, setOpenInv] = useState<string | null>(null);
   const more = (offset: number) => {
     setBusy(true);
-    customerInvoices(partner.id, offset).then((p) => setPages((x) => [...x, p]))
+    customerInvoices(partner.id, offset).then((p) => setPages((x) => (offset === 0 ? [p] : [...x, p])))
       .catch((e) => setError(String(e?.message ?? e))).finally(() => setBusy(false));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -454,7 +457,7 @@ function ActivityTab({ partner }: { partner: Partner }) {
   const load = (offset: number) => {
     setState("loading");
     customerActivity(partner.id, offset)
-      .then((r) => { setRows((x) => [...x, ...r.rows]); setMore(r.more); setState("ready"); })
+      .then((r) => { setRows((x) => (offset === 0 ? r.rows : [...x, ...r.rows])); setMore(r.more); setState("ready"); })
       .catch((e) => setState(String(e?.message ?? e)));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps

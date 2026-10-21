@@ -99,13 +99,13 @@ export default async function Partners({
         <datalist id="currency-codes">
           {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
         </datalist>
-        <div className="page-head">
-          <span className="eyebrow">{it("masterData")}</span>
-          <h1>{t("customers")}</h1>
-          <HelpHint>{t("filteredHelp")}</HelpHint>
-        </div>
         <CustomerPanelProvider customers={customers} priceLevels={priceLevels}
           categories={categories} updateAction={updatePartner}>
+          <div className="page-head">
+            <span className="eyebrow">{it("masterData")}</span>
+            <h1>{t("customers")}</h1>
+            <HelpHint>{t("filteredHelp")}</HelpHint>
+          </div>
           <section>
             <div className="card">
               <div className="card-head">

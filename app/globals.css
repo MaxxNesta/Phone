@@ -6729,17 +6729,25 @@ table.ctable .subline { font-size: 0.72rem; }
 .crow-txt { overflow: hidden; }
 
 /* ------ the customer panel: beside the list, scrolling on its own ------ */
-.cpanel {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
-  width: clamp(400px, 32vw, 460px);
-  display: flex; flex-direction: column;
-  background: var(--surface); border-left: 1px solid var(--line);
-  box-shadow: -12px 0 32px rgb(0 0 0 / 0.08);
+.cpanel-layout.has-panel {
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(380px, 30vw, 440px);
+  gap: var(--s3); align-items: start;
 }
-/* Wide screens make room so the list stays readable beside the panel;
-   narrower ones let the panel sit over it. */
-@media (min-width: 1200px) { body.cpanel-open .main { padding-right: calc(clamp(400px, 32vw, 460px) + var(--s3)); } }
-@media (max-width: 720px) { .cpanel { width: 100%; } }
+.cpanel-main { min-width: 0; }
+/* Level with the page heading, under the top bar; it stays in view while the
+   list scrolls and scrolls on its own inside. */
+.cpanel {
+  position: sticky; top: 8px; z-index: 5;
+  height: calc(100vh - 96px); min-height: 420px;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.08);
+}
+/* Not enough width for two columns: the panel sits over the list instead. */
+@media (max-width: 1100px) {
+  .cpanel-layout.has-panel { display: block; }
+  .cpanel { position: fixed; top: 8px; right: 8px; bottom: 8px; height: auto; width: min(440px, calc(100vw - 16px)); z-index: 40; }
+}
 .cpanel-head { display: flex; align-items: flex-start; gap: 8px; padding: 16px 16px 10px; border-bottom: 1px solid var(--line-soft); }
 .cpanel-title { flex: 1; min-width: 0; }
 .cpanel-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -6784,7 +6792,11 @@ table.ctable .subline { font-size: 0.72rem; }
 .cpanel-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.8rem; }
 .cpanel-table th { text-align: left; font-size: 0.72rem; color: var(--muted); font-weight: 600; padding: 6px 4px; border-bottom: 1px solid var(--line-soft); }
 .cpanel-table td { padding: 7px 4px; border-bottom: 1px solid var(--line-soft); vertical-align: top; overflow-wrap: anywhere; }
-.cpanel-table th:first-child { width: 42%; }
+.cpanel-table th:nth-child(1) { width: 36%; }
+.cpanel-table th:nth-child(2) { width: 20%; }
+.cpanel-table th:nth-child(3) { width: 18%; }
+.cpanel-table th:nth-child(4) { width: 26%; }
+.cpanel-table .pill { white-space: normal; text-align: center; line-height: 1.2; }
 .cpanel-table .r { text-align: right; }
 .cpanel-table .pill { font-size: 0.68rem; }
 .cpanel-expand {
