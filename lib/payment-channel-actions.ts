@@ -30,7 +30,7 @@ async function walletAccount(db: Sql, co: string, name: string): Promise<string>
     select id from account where company_id = ${co} and lower(name) = lower(${name}) and is_cash_account and is_postable`;
   if (have) return have.id as string;
   const [bank] = await db`
-    select parent_id from account where company_id = ${co} and is_bank_account order by (code = '1010') desc, code limit 1`;
+    select parent_id from account where company_id = ${co} and is_bank_account order by code limit 1`;
   const [free] = await db`
     select c::text as code from generate_series(1011, 1019) c
      where not exists (select 1 from account where company_id = ${co} and code = c::text) limit 1`;

@@ -145,7 +145,7 @@ try {
   const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
   const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier and is_active order by code limit 1`;
   const [cust] = await sql`select id from business_partner where company_id = ${co.id} and is_customer and is_active order by code limit 1`;
-  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '1000'`;
+  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '13101'`;
   const [grp] = await sql`select id from item_group where company_id = ${co.id} order by code limit 1`;
   const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;
   const today = new Date().toISOString().slice(0, 10);

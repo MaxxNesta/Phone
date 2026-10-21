@@ -3,7 +3,8 @@ import { sql } from "@/lib/db";
 import { getCompany, getChartOfAccounts } from "@/lib/queries";
 import { createAccount, updateAccount, deactivateAccount, activateAccount, deleteAccount, confirmCashFlowSuggestions } from "@/lib/actions";
 import { AddAccountForm } from "@/components/account-form";
-import { AccountRow, type CoaAccount } from "@/components/account-row";
+import type { CoaAccount } from "@/components/account-row";
+import { CoaTree } from "@/components/coa-tree";
 import { HelpHint } from "@/components/help-hint";
 
 const TABS: [string, string][] = [["", "All"], ["active", "Active"], ["inactive", "Deactivated"]];
@@ -36,25 +37,12 @@ export default async function ChartOfAccounts({
    * on screen and never be drawn at all. Anything whose parent is not in the
    * set being drawn is a root of that set.
    */
-  function walk(within: CoaAccount[], parentId: string | null, depth: number): React.ReactNode[] {
+  function walk(within: CoaAccount[], parentId: string | null, depth: number): { id: string; depth: number }[] {
     const ids = new Set(within.map((a) => a.id));
     const isRoot = (a: CoaAccount) => a.parent_id === null || !ids.has(a.parent_id);
     return within
       .filter((a) => (parentId === null ? isRoot(a) : a.parent_id === parentId))
-      .flatMap((a) => [
-        <AccountRow
-          key={a.id}
-          account={a}
-          accounts={accounts}
-          depth={depth}
-          currencies={currencies}
-          updateAction={updateAccount}
-          deactivateAction={deactivateAccount}
-          activateAction={activateAccount}
-          deleteAction={deleteAccount}
-        />,
-        ...walk(within, a.id, depth + 1),
-      ]);
+      .flatMap((a) => [{ id: a.id, depth }, ...walk(within, a.id, depth + 1)]);
   }
 
   /**
@@ -66,21 +54,9 @@ export default async function ChartOfAccounts({
    * is a thing to find, reactivate or delete, and its position in the
    * hierarchy is not what is being asked about.
    */
-  const body =
+  const rows =
     status === "inactive"
-      ? inactive.map((a) => (
-          <AccountRow
-            key={a.id}
-            account={a}
-            accounts={accounts}
-            depth={0}
-            currencies={currencies}
-            updateAction={updateAccount}
-            deactivateAction={deactivateAccount}
-            activateAction={activateAccount}
-            deleteAction={deleteAccount}
-          />
-        ))
+      ? inactive.map((a) => ({ id: a.id, depth: 0 }))
       : status === "active"
         ? walk(active, null, 0)
         : walk(accounts, null, 0);
@@ -170,16 +146,12 @@ export default async function ChartOfAccounts({
                 : "No accounts are active."}
             </div>
           ) : (
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Code</th><th>Name</th><th>Type</th><th /><th />
-                  </tr>
-                </thead>
-                <tbody>{body}</tbody>
-              </table>
-            </div>
+            <CoaTree
+              rows={rows}
+              accounts={accounts}
+              currencies={currencies}
+              actions={{ update: updateAccount, deactivate: deactivateAccount, activate: activateAccount, remove: deleteAccount }}
+            />
           )}
         </div>
       </section>

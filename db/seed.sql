@@ -101,15 +101,13 @@ end loop;
 
 -- -------------------------------------------------------------- accounts --
 -- The MTK chart, generated from db/chart.mjs by scripts/gen-seed-chart.mjs.
--- The same 65 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
+-- The same 121 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
 -- loads: the demo and a real company are the same shape, so a report that
 -- reads right here reads right there. Regenerate after changing the chart.
 
 -- Sections. Not postable — they are the headings the chart is read under.
 insert into account (company_id, code, name, account_type, is_postable) values
-    (co, '1-CA',   'Current Assets',                      'ASSET',     false),
-    (co, '1-FA',   'Non-Current Assets (Fixed Assets)',   'ASSET',     false),
-    (co, '1-IA',   'Intangible Assets',                   'ASSET',     false),
+    (co, '1',      'Assets',                              'ASSET',     false),
     (co, '2-CL',   'Current Liabilities',                 'LIABILITY',  false),
     (co, '2-LT',   'Long-Term Liabilities',               'LIABILITY',  false),
     (co, '3-EQ',   'Owner Equity',                        'EQUITY',    false),
@@ -119,13 +117,40 @@ insert into account (company_id, code, name, account_type, is_postable) values
     (co, '6-EX',   'Expense',                             'EXPENSE',   false),
     (co, '7-TX',   'Tax Account',                         'LIABILITY',  false);
 
--- Two sections sit under Expense rather than beside it.
+-- Sections nested 1 deep, under the sections above.
 insert into account (company_id, parent_id, code, name, account_type, is_postable)
 select co, p.id, x.code, x.name, x.atype, false
 from (values
+    ('1', '11', 'Fixed Assets',                        'ASSET'::account_type),
+    ('1', '13', 'Current Assets',                      'ASSET'::account_type),
+    ('1', '16', 'Intangible Assets',                   'ASSET'::account_type),
+    ('1', '17', 'Other Assets',                        'ASSET'::account_type),
     ('6-EX', '6-GA', 'General & Administration Expenses',   'EXPENSE'::account_type),
     ('6-EX', '6-SD', 'Selling & Distribution Expenses',     'EXPENSE'::account_type),
     ('6-EX', '6-NO', 'Non-Operating Expenses',              'EXPENSE'::account_type)
+) as x(parent, code, name, atype)
+join account p on p.company_id = co and p.code = x.parent;
+
+-- Sections nested 2 deep, under the sections above.
+insert into account (company_id, parent_id, code, name, account_type, is_postable)
+select co, p.id, x.code, x.name, x.atype, false
+from (values
+    ('11', '113', 'Machinery',                           'ASSET'::account_type),
+    ('11', '114', 'Furniture and Office Equipment',      'ASSET'::account_type),
+    ('11', '115', 'Vehicles',                            'ASSET'::account_type),
+    ('11', '121', 'Accumulated Depreciation',            'ASSET'::account_type),
+    ('13', '131', 'Cash',                                'ASSET'::account_type),
+    ('13', '132', 'Bank',                                'ASSET'::account_type),
+    ('13', '133', 'Credit Card',                         'ASSET'::account_type),
+    ('13', '135', 'Accounts Receivable',                 'ASSET'::account_type),
+    ('13', '138', 'Advance (Other Department)',          'ASSET'::account_type),
+    ('13', '141', 'Inventory',                           'ASSET'::account_type),
+    ('13', '142', 'I.B.S.T',                             'ASSET'::account_type),
+    ('13', '143', 'Clearing & Tax',                      'ASSET'::account_type),
+    ('13', '151', 'Advance Paid',                        'ASSET'::account_type),
+    ('13', '152', 'Prepaid Expenses',                    'ASSET'::account_type),
+    ('16', '161', 'Software',                            'ASSET'::account_type),
+    ('17', '171', 'Deferred Expenses',                   'ASSET'::account_type)
 ) as x(parent, code, name, atype)
 join account p on p.company_id = co and p.code = x.parent;
 
@@ -134,24 +159,55 @@ insert into account (company_id, parent_id, code, name, account_type,
                      is_control, is_cash_account, is_bank_account)
 select co, p.id, x.code, x.name, x.atype, x.ctrl, x.cash, x.bank
 from (values
-    ('1-CA', '1000', 'Cash on Hand',                        'ASSET'::account_type,   false,  true,   false),
-    ('1-CA', '1010', 'Cash at Bank',                        'ASSET'::account_type,   false,  true,   true),
-    ('1-CA', '1020', 'Petty Cash',                          'ASSET'::account_type,   false,  true,   false),
-    ('1-CA', '1030', 'Accounts Receivable',                 'ASSET'::account_type,   true,   false,  false),
-    ('1-CA', '1040', 'Inventory',                           'ASSET'::account_type,   false,  false,  false),
-    ('1-CA', '1050', 'Prepaid Expenses',                    'ASSET'::account_type,   false,  false,  false),
-    ('1-CA', '1060', 'GR/IR Clearing',                      'ASSET'::account_type,   false,  false,  false),
-    ('1-CA', '1070', 'Supplier Advances',                   'ASSET'::account_type,   false,  false,  false),
-    ('1-CA', '1080', 'Input Commercial Tax',                'ASSET'::account_type,   false,  false,  false),
-    ('1-CA', '1090', 'Goods Shipped Not Invoiced',          'ASSET'::account_type,   false,  false,  false),
-    ('1-FA', '1100', 'Land',                                'ASSET'::account_type,   false,  false,  false),
-    ('1-FA', '1110', 'Building',                            'ASSET'::account_type,   false,  false,  false),
-    ('1-FA', '1120', 'Office Equipment',                    'ASSET'::account_type,   false,  false,  false),
-    ('1-FA', '1130', 'Furniture & Fixtures',                'ASSET'::account_type,   false,  false,  false),
-    ('1-FA', '1140', 'Vehicle',                             'ASSET'::account_type,   false,  false,  false),
-    ('1-FA', '1190', 'Accumulated Depreciation',            'ASSET'::account_type,   false,  false,  false),
-    ('1-IA', '1200', 'Software',                            'ASSET'::account_type,   false,  false,  false),
-    ('1-IA', '1210', 'Accumulated Amortization',            'ASSET'::account_type,   false,  false,  false),
+    ('113', '11301', 'Generator & Solar',                   'ASSET'::account_type,   false,  false,  false),
+    ('114', '11401', 'Save/မီးခံသေတ္တာ',                    'ASSET'::account_type,   false,  false,  false),
+    ('114', '11402', 'Table, Chair & Locker',               'ASSET'::account_type,   false,  false,  false),
+    ('114', '11403', 'Computer & Printer',                  'ASSET'::account_type,   false,  false,  false),
+    ('114', '11404', 'AirCon & Freezer',                    'ASSET'::account_type,   false,  false,  false),
+    ('114', '11405', 'Phone',                               'ASSET'::account_type,   false,  false,  false),
+    ('114', '11406', 'Office Equipment',                    'ASSET'::account_type,   false,  false,  false),
+    ('114', '11407', 'CCTV & Router',                       'ASSET'::account_type,   false,  false,  false),
+    ('115', '11501', 'Cycle & EV Cycle',                    'ASSET'::account_type,   false,  false,  false),
+    ('121', '12101', 'Accumulated Dep; Save/မီးခံသေတ္တာ',   'ASSET'::account_type,   false,  false,  false),
+    ('121', '12102', 'Accumulated Dep; Table, Chair & Locker',  'ASSET'::account_type,   false,  false,  false),
+    ('121', '12103', 'Accumulated Dep; Computer & Printer',  'ASSET'::account_type,   false,  false,  false),
+    ('121', '12104', 'Accumulated Dep; AirCon & Freezer',   'ASSET'::account_type,   false,  false,  false),
+    ('121', '12105', 'Accumulated Dep; Phone',              'ASSET'::account_type,   false,  false,  false),
+    ('121', '12106', 'Accumulated Dep; Office Equipment',   'ASSET'::account_type,   false,  false,  false),
+    ('121', '12107', 'Accumulated Dep; Cycle & EV Cycle',   'ASSET'::account_type,   false,  false,  false),
+    ('121', '12108', 'Accumulated Dep; CCTV & Router',      'ASSET'::account_type,   false,  false,  false),
+    ('121', '12109', 'Accumulated Dep; Generator & Solar',  'ASSET'::account_type,   false,  false,  false),
+    ('121', '12110', 'Accumulated Amor; Galaxy Software',   'ASSET'::account_type,   false,  false,  false),
+    ('131', '13101', 'Cash Account',                        'ASSET'::account_type,   false,  true,   false),
+    ('131', '13102', 'Suspense Cash',                       'ASSET'::account_type,   false,  true,   false),
+    ('131', '13103', 'Yuan Cash',                           'ASSET'::account_type,   false,  true,   false),
+    ('132', '13201', 'UAB Bank Call Account',               'ASSET'::account_type,   false,  true,   true),
+    ('132', '13202', 'KBZ Bank Current Account',            'ASSET'::account_type,   false,  true,   true),
+    ('132', '13203', 'Yoma Bank Flexi Account',             'ASSET'::account_type,   false,  true,   true),
+    ('132', '13204', 'AYA Bank Account',                    'ASSET'::account_type,   false,  true,   true),
+    ('132', '13205', 'CB Bank Account',                     'ASSET'::account_type,   false,  true,   true),
+    ('132', '13206', 'Daw Nan Yu War',                      'ASSET'::account_type,   false,  true,   true),
+    ('132', '13207', 'MMQR (UAB)',                          'ASSET'::account_type,   false,  true,   true),
+    ('132', '13208', 'UAB Bank (Cheque) Account',           'ASSET'::account_type,   false,  true,   true),
+    ('132', '13209', 'KBZ Bank (Cheque) Account',           'ASSET'::account_type,   false,  true,   true),
+    ('132', '13210', 'Yoma Bank (Cheque) Account',          'ASSET'::account_type,   false,  true,   true),
+    ('132', '13211', 'AYA Bank (Cheque) Account',           'ASSET'::account_type,   false,  true,   true),
+    ('132', '13212', 'CB Bank (Cheque) Account',            'ASSET'::account_type,   false,  true,   true),
+    ('133', '13301', 'Credit Card',                         'ASSET'::account_type,   false,  true,   true),
+    ('135', '13501', 'Accounts Receivable',                 'ASSET'::account_type,   true,   false,  false),
+    ('138', '13801', 'Advance',                             'ASSET'::account_type,   false,  false,  false),
+    ('141', '14101', 'Inventory (Opening)',                 'ASSET'::account_type,   false,  false,  false),
+    ('142', '14201', 'Branch Stock Transfer',               'ASSET'::account_type,   false,  false,  false),
+    ('143', '14301', 'GR/IR Clearing',                      'ASSET'::account_type,   false,  false,  false),
+    ('143', '14302', 'Input Commercial Tax',                'ASSET'::account_type,   false,  false,  false),
+    ('143', '14303', 'Goods Shipped Not Invoiced',          'ASSET'::account_type,   false,  false,  false),
+    ('151', '15101', 'Prepayment (Sup)',                    'ASSET'::account_type,   false,  false,  false),
+    ('151', '15102', 'Purchase Advance',                    'ASSET'::account_type,   false,  false,  false),
+    ('152', '15201', 'Prepaid Rent',                        'ASSET'::account_type,   false,  false,  false),
+    ('152', '15202', 'Prepaid Tax',                         'ASSET'::account_type,   false,  false,  false),
+    ('152', '15203', 'Prepaid Delivery',                    'ASSET'::account_type,   false,  false,  false),
+    ('161', '16101', 'Galaxy Software Installation',        'ASSET'::account_type,   false,  false,  false),
+    ('171', '17101', 'Staff Loan',                          'ASSET'::account_type,   false,  false,  false),
     ('2-CL', '2000', 'Accounts Payable',                    'LIABILITY'::account_type,  true,   false,  false),
     ('2-CL', '2010', 'Salary Payable',                      'LIABILITY'::account_type,  false,  false,  false),
     ('2-CL', '2020', 'Tax Payable',                         'LIABILITY'::account_type,  false,  false,  false),
@@ -198,7 +254,7 @@ join account p on p.company_id = co and p.code = x.parent;
 insert into system_account (company_id, role, account_id)
 select co, r.role, a.id
 from (values
-    ('GRIR_CLEARING',               '1060'),
+    ('GRIR_CLEARING',               '14301'),
     ('OPENING_BALANCE_EQUITY',      '3030'),
     ('RETAINED_EARNINGS',           '3020'),
     ('PURCHASE_PRICE_VARIANCE',     '5050'),
@@ -210,11 +266,11 @@ from (values
     ('FX_LOSS',                     '6400'),
     ('ROUNDING_DIFFERENCE',         '6110'),
     ('DELIVERY_INCOME',             '4030'),
-    ('SHIPPED_NOT_INVOICED',        '1090'),
+    ('SHIPPED_NOT_INVOICED',        '14303'),
     ('CUSTOMER_ADVANCE',            '2060'),
-    ('SUPPLIER_ADVANCE',            '1070'),
+    ('SUPPLIER_ADVANCE',            '15102'),
     ('OUTPUT_TAX',                  '7000'),
-    ('INPUT_TAX',                   '1080')
+    ('INPUT_TAX',                   '14302')
 ) as r(role, code)
 join account a on a.company_id = co and a.code = r.code;
 
@@ -282,9 +338,9 @@ values (co, 'NONE', 'No Commercial Tax', 0) returning id into tax_none;
 insert into account_determination (company_id, role, item_group_id, account_id)
 select co, r.role, null, a.id
 from (values
-    ('AR_CONTROL',                  '1030'),
+    ('AR_CONTROL',                  '13501'),
     ('AP_CONTROL',                  '2000'),
-    ('INVENTORY',                   '1040'),
+    ('INVENTORY',                   '14101'),
     ('COGS',                        '5000'),
     ('REVENUE',                     '4000'),
     ('SALES_RETURN',                '4010')
@@ -342,10 +398,8 @@ insert into promotion (company_id, code, name, discount_pct, valid_from) values
 insert into promotion (company_id, code, name, item_group_id, buy_qty, free_qty, valid_from)
 values (co, 'PROMO-B10G1', 'Buy 10 get 1 free', g_bev, 10, 1, '2026-04-01');
 
--- Cash and bank flags come with the chart above (1000 Cash on Hand, 1010
--- Cash at Bank, 1020 Petty Cash), so there is nothing to set here. On the
--- old chart this update named 1110 and 1120 — which on this one are Building
--- and Office Equipment, and would have offered a fixed asset as a till.
+-- Cash and bank flags come with the chart above (131 Cash, 132 Bank), so
+-- there is nothing to set here.
 
 -- How customers pay: cash, bank, card and the Myanmar wallets (0141).
 perform fn_seed_payment_channels(co);
@@ -387,7 +441,7 @@ values (co, 'OPENING_BALANCE', 'OB-000001', fy, '2026-04-01', '2026-04-01',
 returning id into doc;
 je := seed_post(co, 'JE-000001', '2026-04-01', 'OPENING_BALANCE', doc, 'Opening capital',
       jsonb_build_array(
-        jsonb_build_object('code','1010','amt', 50000000),
+        jsonb_build_object('code','13201','amt', 50000000),
         jsonb_build_object('code','3000','amt',-50000000)));
 update document set journal_entry_id = je where id = doc;
 
@@ -427,8 +481,8 @@ values (co, i_cola,  ygn_wh, '2026-07-10',  5000,  850, 4250000, doc),
 
 je := seed_post(co, 'JE-000002', '2026-07-10', 'GOODS_RECEIPT', doc, 'GR-000001 from Myanmar Beverage',
       jsonb_build_array(
-        jsonb_build_object('code','1040','amt', 8510000,'loc',ygn_wh),
-        jsonb_build_object('code','1060','amt',-8510000)));
+        jsonb_build_object('code','14101','amt', 8510000,'loc',ygn_wh),
+        jsonb_build_object('code','14301','amt',-8510000)));
 update document set journal_entry_id = je where id = doc;
 
 -- Supplier invoice: billed 8,530,000 against a 8,510,000 receipt.
@@ -441,7 +495,7 @@ values (co, 'PURCHASE_INVOICE', 'PI-000001', fy, '2026-07-12', '2026-07-12', '20
 returning id into doc;
 je := seed_post(co, 'JE-000003', '2026-07-12', 'PURCHASE_INVOICE', doc, 'PI-000001',
       jsonb_build_array(
-        jsonb_build_object('code','1060','amt', 8510000),
+        jsonb_build_object('code','14301','amt', 8510000),
         jsonb_build_object('code','5050','amt',   20000),
         jsonb_build_object('code','2000','amt',-8530000,'partner',s_bev)));
 update document set journal_entry_id = je where id = doc;
@@ -457,7 +511,7 @@ values (co, doc, doc2, 8530000, 8530000);
 je := seed_post(co, 'JE-000004', '2026-08-05', 'SUPPLIER_PAYMENT', doc, 'PAY-000001 settling PI-000001',
       jsonb_build_array(
         jsonb_build_object('code','2000','amt', 8530000,'partner',s_bev),
-        jsonb_build_object('code','1010','amt',-8530000)));
+        jsonb_build_object('code','13201','amt',-8530000)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- PURCHASE CHAIN 2 (goods in, invoice not yet received) ---------------
@@ -479,8 +533,8 @@ values (co, i_chips,  ygn_wh, '2026-08-03', 4000, 600, 2400000, doc),
        (co, i_peanut, ygn_wh, '2026-08-03', 2000, 450,  900000, doc);
 je := seed_post(co, 'JE-000005', '2026-08-03', 'GOODS_RECEIPT', doc, 'GR-000002 — supplier invoice outstanding',
       jsonb_build_array(
-        jsonb_build_object('code','1040','amt', 3300000,'loc',ygn_wh),
-        jsonb_build_object('code','1060','amt',-3300000)));
+        jsonb_build_object('code','14101','amt', 3300000,'loc',ygn_wh),
+        jsonb_build_object('code','14301','amt',-3300000)));
 update document set journal_entry_id = je where id = doc;
 
 -- Household goods, invoiced and paid.
@@ -500,8 +554,8 @@ values (co, i_deterg, ygn_wh, '2026-07-20', 1000, 3500, 3500000, doc),
        (co, i_soap,   ygn_wh, '2026-07-20', 1500, 1800, 2700000, doc);
 je := seed_post(co, 'JE-000006', '2026-07-20', 'GOODS_RECEIPT', doc, 'GR-000003',
       jsonb_build_array(
-        jsonb_build_object('code','1040','amt', 6200000,'loc',ygn_wh),
-        jsonb_build_object('code','1060','amt',-6200000)));
+        jsonb_build_object('code','14101','amt', 6200000,'loc',ygn_wh),
+        jsonb_build_object('code','14301','amt',-6200000)));
 update document set journal_entry_id = je where id = doc;
 
 insert into document (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, due_date,
@@ -511,7 +565,7 @@ values (co, 'PURCHASE_INVOICE', 'PI-000002', fy, '2026-07-22', '2026-07-22', '20
 returning id into doc;
 je := seed_post(co, 'JE-000007', '2026-07-22', 'PURCHASE_INVOICE', doc, 'PI-000002',
       jsonb_build_array(
-        jsonb_build_object('code','1060','amt', 6200000),
+        jsonb_build_object('code','14301','amt', 6200000),
         jsonb_build_object('code','2000','amt',-6200000,'partner',s_hou)));
 update document set journal_entry_id = je where id = doc;
 
@@ -546,7 +600,7 @@ values (co, i_cola,  ygn_wh, '2026-07-28', -2000, 850, -1700000, doc),
 je := seed_post(co, 'JE-000008', '2026-07-28', 'DELIVERY', doc, 'DO-000001 — cost recognised',
       jsonb_build_array(
         jsonb_build_object('code','5000','amt', 2700000,'loc',ygn_wh),
-        jsonb_build_object('code','1040','amt',-2700000,'loc',ygn_wh)));
+        jsonb_build_object('code','14101','amt',-2700000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
 insert into document (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, due_date,
@@ -556,7 +610,7 @@ values (co, 'SALES_INVOICE', 'SI-000001', fy, '2026-07-30', '2026-07-30', '2026-
 returning id into doc;
 je := seed_post(co, 'JE-000009', '2026-07-30', 'SALES_INVOICE', doc, 'SI-000001 — revenue recognised',
       jsonb_build_array(
-        jsonb_build_object('code','1030','amt', 3400000,'partner',c_shwe),
+        jsonb_build_object('code','13501','amt', 3400000,'partner',c_shwe),
         jsonb_build_object('code','4000','amt',-3400000)));
 update document set journal_entry_id = je where id = doc;
 doc2 := doc;
@@ -570,8 +624,8 @@ insert into payment_allocation (company_id, payment_id, invoice_id, amount, base
 values (co, doc, doc2, 3400000, 3400000);
 je := seed_post(co, 'JE-000010', '2026-08-08', 'CUSTOMER_RECEIPT', doc, 'RC-000001 settling SI-000001',
       jsonb_build_array(
-        jsonb_build_object('code','1010','amt', 3400000),
-        jsonb_build_object('code','1030','amt',-3400000,'partner',c_shwe)));
+        jsonb_build_object('code','13201','amt', 3400000),
+        jsonb_build_object('code','13501','amt',-3400000,'partner',c_shwe)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- SALES CHAIN 2 (invoiced, overdue, partly paid) ----------------------
@@ -592,7 +646,7 @@ values (co, i_deterg, ygn_wh, '2026-07-05', -500, 3500, -1750000, doc),
 je := seed_post(co, 'JE-000011', '2026-07-05', 'DELIVERY', doc, 'DO-000002',
       jsonb_build_array(
         jsonb_build_object('code','5000','amt', 4000000,'loc',ygn_wh),
-        jsonb_build_object('code','1040','amt',-4000000,'loc',ygn_wh)));
+        jsonb_build_object('code','14101','amt',-4000000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
 insert into document (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, due_date,
@@ -602,7 +656,7 @@ values (co, 'SALES_INVOICE', 'SI-000002', fy, '2026-07-06', '2026-07-06', '2026-
 returning id into doc;
 je := seed_post(co, 'JE-000012', '2026-07-06', 'SALES_INVOICE', doc, 'SI-000002',
       jsonb_build_array(
-        jsonb_build_object('code','1030','amt', 5250000,'partner',c_golden),
+        jsonb_build_object('code','13501','amt', 5250000,'partner',c_golden),
         jsonb_build_object('code','4000','amt',-5250000)));
 update document set journal_entry_id = je where id = doc;
 doc2 := doc;
@@ -618,8 +672,8 @@ insert into payment_allocation (company_id, payment_id, invoice_id, amount, base
 values (co, doc, doc2, 2000000, 2000000);
 je := seed_post(co, 'JE-000013', '2026-08-01', 'CUSTOMER_RECEIPT', doc, 'RC-000002 part payment of SI-000002',
       jsonb_build_array(
-        jsonb_build_object('code','1010','amt', 2000000),
-        jsonb_build_object('code','1030','amt',-2000000,'partner',c_golden)));
+        jsonb_build_object('code','13201','amt', 2000000),
+        jsonb_build_object('code','13501','amt',-2000000,'partner',c_golden)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- SALES CHAIN 3 (invoiced, unpaid, not yet due) -----------------------
@@ -640,7 +694,7 @@ values (co, i_chips,  ygn_wh, '2026-08-06', -1200, 600, -720000, doc),
 je := seed_post(co, 'JE-000014', '2026-08-06', 'DELIVERY', doc, 'DO-000003',
       jsonb_build_array(
         jsonb_build_object('code','5000','amt', 1170000,'loc',ygn_wh),
-        jsonb_build_object('code','1040','amt',-1170000,'loc',ygn_wh)));
+        jsonb_build_object('code','14101','amt',-1170000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
 insert into document (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, due_date,
@@ -650,7 +704,7 @@ values (co, 'SALES_INVOICE', 'SI-000003', fy, '2026-08-07', '2026-08-07', '2026-
 returning id into doc;
 je := seed_post(co, 'JE-000015', '2026-08-07', 'SALES_INVOICE', doc, 'SI-000003',
       jsonb_build_array(
-        jsonb_build_object('code','1030','amt', 1560000,'partner',c_aung),
+        jsonb_build_object('code','13501','amt', 1560000,'partner',c_aung),
         jsonb_build_object('code','4000','amt',-1560000)));
 update document set journal_entry_id = je where id = doc;
 
@@ -685,7 +739,7 @@ values (co, i_cola, ygn_wh, '2026-08-09', -200, 850, -170000, doc);
 je := seed_post(co, 'JE-000016', '2026-08-09', 'DELIVERY', doc, 'DO-000004 — promotional stock',
       jsonb_build_array(
         jsonb_build_object('code','6320','amt', 170000,'loc',ygn_wh),
-        jsonb_build_object('code','1040','amt',-170000,'loc',ygn_wh)));
+        jsonb_build_object('code','14101','amt',-170000,'loc',ygn_wh)));
 update document set journal_entry_id = je where id = doc;
 
 -- ---- Operating expenses -------------------------------------------------
@@ -693,11 +747,11 @@ update document set journal_entry_id = je where id = doc;
 je := seed_post(co, 'JE-000017', '2026-07-31', null, null, 'July salaries',
       jsonb_build_array(
         jsonb_build_object('code','6000','amt', 4200000),
-        jsonb_build_object('code','1010','amt',-4200000)));
+        jsonb_build_object('code','13201','amt',-4200000)));
 je := seed_post(co, 'JE-000018', '2026-07-31', null, null, 'July warehouse rent',
       jsonb_build_array(
         jsonb_build_object('code','6010','amt', 1500000),
-        jsonb_build_object('code','1010','amt',-1500000)));
+        jsonb_build_object('code','13201','amt',-1500000)));
 
 raise notice 'seed complete';
 end

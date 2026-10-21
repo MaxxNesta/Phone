@@ -41,7 +41,12 @@ export function AccountRow({
   deactivateAction,
   activateAction,
   deleteAction,
+  folded,
+  onToggle,
 }: {
+  /** Set on a heading row: whether its accounts are hidden, and how to flip it. */
+  folded?: boolean;
+  onToggle?: () => void;
   account: CoaAccount;
   accounts: CoaAccount[];
   depth: number;
@@ -192,7 +197,15 @@ export function AccountRow({
         {isHeading ? "" : account.code}
       </td>
       <td className="wrap" style={{ paddingLeft: isHeading ? `${1 + depth * 1.4}rem` : undefined }}>
-        <strong style={{ fontWeight: isHeading ? 700 : 400 }}>{account.name}</strong>
+        {onToggle ? (
+          <button type="button" onClick={onToggle} aria-expanded={!folded}
+            style={{ all: "unset", cursor: "pointer", fontWeight: 700 }}>
+            <span aria-hidden style={{ display: "inline-block", width: "1.1em", transition: "transform .15s", transform: folded ? "rotate(-90deg)" : "none" }}>▾</span>
+            {account.name}
+          </button>
+        ) : (
+          <strong style={{ fontWeight: isHeading ? 700 : 400 }}>{account.name}</strong>
+        )}
         {account.name_my && (
           <div className="subline" style={{ fontWeight: 400 }}>{account.name_my}</div>
         )}

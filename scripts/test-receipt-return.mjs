@@ -105,7 +105,7 @@ try {
      where a.is_control and a.account_type = 'LIABILITY' and jl.company_id = ${co.id}`)[0].v);
   const inventory = async () => n((await sql`select coalesce(sum(jl.base_amount), 0)::float v
      from journal_line jl join account a on a.id = jl.account_id
-     where a.code = '1040' and jl.company_id = ${co.id}`)[0].v);
+     where a.code = '14101' and jl.company_id = ${co.id}`)[0].v);
   const onHand = async () => n((await sql`select coalesce(sum(qty), 0)::float q
      from stock_movement where company_id = ${co.id} and item_id = ${item.id}`)[0].q);
   const billable = async () => (await Q.getOpenGoodsReceipts(co.id))

@@ -64,7 +64,7 @@ try {
   };
   const phone = await ensure("FX-PHONE", "Redmi Note 15", { tracks_serial: true });
   const charger = await ensure("FX-CHG", "Charger", {});
-  const [bank] = await sql`select id from account where company_id = ${co.id} and code = '1010'`;
+  const [bank] = await sql`select id from account where company_id = ${co.id} and code = '13201'`;
   const DAY = (await sql`select to_char(current_date,'YYYY-MM-DD') as d`)[0].d;
   const bal = async (code) => r2((await sql`
     select coalesce(sum(jl.base_amount), 0) v from journal_line jl join account a on a.id = jl.account_id
@@ -83,7 +83,7 @@ try {
     currency: "CNY", lines: [{ itemId: phone.id, qty: 2, unitCost: 3000, serials: ["FX-1", "FX-2"] }] });
   const [grDoc] = await sql`select currency, exchange_rate, gross_total from document where id = ${gr.id}`;
   check("receipt uses the rate on file", grDoc.currency === "CNY" && n(grDoc.exchange_rate) === 450);
-  check("stock valued in kyat at that rate", r2(grDoc.gross_total) === 2_700_000 && (await bal("1040")) === 2_700_000);
+  check("stock valued in kyat at that rate", r2(grDoc.gross_total) === 2_700_000 && (await bal("14101")) === 2_700_000);
 
   const pi = await P.postPurchaseInvoice({ companyId: co.id, partnerId: sz.id, locationId: wh.id,
     docDate: DAY, dueDate: DAY, goodsReceiptId: gr.id, currency: "CNY", exchangeRate: 480,
@@ -91,7 +91,7 @@ try {
   const [piDoc] = await sql`select exchange_rate, gross_total from document where id = ${pi.id}`;
   check("bill for a yuan receipt takes the receipt's rate, not its own",
     n(piDoc.exchange_rate) === 450 && r2(piDoc.gross_total) === 2_700_000);
-  check("GR/IR clears exactly, no variance", (await bal("1060")) === 0 && (await bal("5050")) === 0);
+  check("GR/IR clears exactly, no variance", (await bal("14301")) === 0 && (await bal("5050")) === 0);
   const [apLine] = await sql`
     select jl.currency, jl.amount, jl.exchange_rate, jl.base_amount from document d
       join journal_line jl on jl.journal_entry_id = d.journal_entry_id
@@ -109,7 +109,7 @@ try {
   const p1 = await P.postSupplierPayment({ companyId: co.id, partnerId: sz.id, docDate: DAY,
     cashAccountId: bank.id, currency: "CNY", exchangeRate: 460, locationId: wh.id,
     allocations: [{ invoiceId: pi.id, amount: 2000 }] });
-  check("part payment: bank pays at today's rate", (await bal("1010")) === -920_000);
+  check("part payment: bank pays at today's rate", (await bal("13201")) === -920_000);
   check("…the debt comes down at its own rate", r2((await open(pi.id)).fc_outstanding) === 4000
     && r2((await open(pi.id)).outstanding) === 1_800_000);
   check("…and the difference is FX loss", r2((await bal("6400")) - fxLossBefore) === 20_000);

@@ -110,8 +110,8 @@ try {
   });
   check("the receipt posts with no invoice at all", !!adv.docNo, adv.docNo);
   check("  the money is held as a liability, not as a receivable",
-    near(await balance("2060"), -20000) && near(await balance("1030"), 0),
-    `2060 ${await balance("2060")} · AR ${await balance("1030")}`);
+    near(await balance("2060"), -20000) && near(await balance("13501"), 0),
+    `2060 ${await balance("2060")} · AR ${await balance("13501")}`);
   check("  and it shows as available on account", near(await available(cust.id), 20000),
     `${await available(cust.id)}`);
   await invariants("after taking it");
@@ -203,8 +203,8 @@ try {
     allocations: [], advance: 30000, memo: "Deposit on next order",
   });
   check("it is held as an asset, not as a payable",
-    near(await balance("1070"), 30000) && near(await available(supp.id), 30000),
-    `1070 ${await balance("1070")} · available ${await available(supp.id)}`);
+    near(await balance("15102"), 30000) && near(await available(supp.id), 30000),
+    `1070 ${await balance("15102")} · available ${await available(supp.id)}`);
 
   const bill = await P.postPurchaseInvoice({
     companyId: co.id, partnerId: supp.id, locationId: loc.id,
@@ -214,7 +214,7 @@ try {
   await P.applyAdvance({ companyId: co.id, invoiceId: bill.id, docDate: today,
     allocations: [{ paymentId: paid.id, amount: 30000 }] });
   check("applying it relieves the bill", near(await owes(bill.id), 10000), `${await owes(bill.id)}`);
-  check("  and the asset is used up", near(await balance("1070"), 0), `${await balance("1070")}`);
+  check("  and the asset is used up", near(await balance("15102"), 0), `${await balance("15102")}`);
   await invariants("after the supplier side");
 
   // ---- part of an advance, kept for next time -----------------------------

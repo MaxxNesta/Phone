@@ -18,38 +18,91 @@
  * before any digit, so each section lands immediately ahead of its accounts.
  * They are never displayed — the Code column is blank on a section row. */
 export const CHART = [
-  ["1-CA",  "Current Assets",                    "ASSET",     false],
-  ["1000",  "Cash on Hand",                      "ASSET",     true,  { cash: true }],
+  // Assets are three groups deep, the customer's own layout: the group codes
+  // are the prefixes of the account codes beneath them (1 → 11 → 113 → 11301),
+  // so `order by code` still reads top-down.
+  ["1",     "Assets",                            "ASSET",     false],
+  ["11",    "Fixed Assets",                      "ASSET",     false, { under: "1" }],
+  ["113",   "Machinery",                         "ASSET",     false, { under: "11" }],
+  ["11301", "Generator & Solar",                 "ASSET",     true],
+  ["114",   "Furniture and Office Equipment",    "ASSET",     false, { under: "11" }],
+  ["11401", "Save/မီးခံသေတ္တာ",                  "ASSET",     true],
+  ["11402", "Table, Chair & Locker",             "ASSET",     true],
+  ["11403", "Computer & Printer",                "ASSET",     true],
+  ["11404", "AirCon & Freezer",                  "ASSET",     true],
+  ["11405", "Phone",                             "ASSET",     true],
+  ["11406", "Office Equipment",                  "ASSET",     true],
+  ["11407", "CCTV & Router",                     "ASSET",     true],
+  ["115",   "Vehicles",                          "ASSET",     false, { under: "11" }],
+  ["11501", "Cycle & EV Cycle",                  "ASSET",     true],
+  ["121",   "Accumulated Depreciation",          "ASSET",     false, { under: "11" }],
+  ["12101", "Accumulated Dep; Save/မီးခံသေတ္တာ", "ASSET",     true],
+  ["12102", "Accumulated Dep; Table, Chair & Locker", "ASSET", true],
+  ["12103", "Accumulated Dep; Computer & Printer", "ASSET",   true],
+  ["12104", "Accumulated Dep; AirCon & Freezer", "ASSET",     true],
+  ["12105", "Accumulated Dep; Phone",            "ASSET",     true],
+  ["12106", "Accumulated Dep; Office Equipment", "ASSET",     true],
+  ["12107", "Accumulated Dep; Cycle & EV Cycle", "ASSET",     true],
+  ["12108", "Accumulated Dep; CCTV & Router",    "ASSET",     true],
+  ["12109", "Accumulated Dep; Generator & Solar", "ASSET",    true],
+  ["12110", "Accumulated Amor; Galaxy Software", "ASSET",     true],
+  ["13",    "Current Assets",                    "ASSET",     false, { under: "1" }],
+  ["131",   "Cash",                              "ASSET",     false, { under: "13" }],
+  ["13101", "Cash Account",                      "ASSET",     true,  { cash: true }],
+  ["13102", "Suspense Cash",                     "ASSET",     true,  { cash: true }],
+  ["13103", "Yuan Cash",                         "ASSET",     true,  { cash: true }],
   // Both flags, deliberately. is_bank_account puts it in the bank book; the
   // payment and sales screens ask for is_cash_account, and a bank account you
   // cannot pay a supplier from is not much of a bank account. The cash book
-  // asks for "cash and not bank", so this still stays out of it.
-  ["1010",  "Cash at Bank",                      "ASSET",     true,  { cash: true, bank: true }],
-  ["1020",  "Petty Cash",                        "ASSET",     true,  { cash: true }],
-  ["1030",  "Accounts Receivable",               "ASSET",     true,  { control: true }],
-  ["1040",  "Inventory",                         "ASSET",     true],
-  ["1050",  "Prepaid Expenses",                  "ASSET",     true],
-  ["1060",  "GR/IR Clearing",                    "ASSET",     true,  { added: true }],
-  // Paid to a supplier before they billed us. Ours until they do.
-  ["1070",  "Supplier Advances",                 "ASSET",     true,  { added: true }],
+  // asks for "cash and not bank", so these still stay out of it.
+  ["132",   "Bank",                              "ASSET",     false, { under: "13" }],
+  ["13201", "UAB Bank Call Account",             "ASSET",     true,  { cash: true, bank: true }],
+  ["13202", "KBZ Bank Current Account",          "ASSET",     true,  { cash: true, bank: true }],
+  ["13203", "Yoma Bank Flexi Account",           "ASSET",     true,  { cash: true, bank: true }],
+  ["13204", "AYA Bank Account",                  "ASSET",     true,  { cash: true, bank: true }],
+  ["13205", "CB Bank Account",                   "ASSET",     true,  { cash: true, bank: true }],
+  ["13206", "Daw Nan Yu War",                    "ASSET",     true,  { cash: true, bank: true }],
+  ["13207", "MMQR (UAB)",                        "ASSET",     true,  { cash: true, bank: true }],
+  ["13208", "UAB Bank (Cheque) Account",         "ASSET",     true,  { cash: true, bank: true }],
+  ["13209", "KBZ Bank (Cheque) Account",         "ASSET",     true,  { cash: true, bank: true }],
+  ["13210", "Yoma Bank (Cheque) Account",        "ASSET",     true,  { cash: true, bank: true }],
+  ["13211", "AYA Bank (Cheque) Account",         "ASSET",     true,  { cash: true, bank: true }],
+  ["13212", "CB Bank (Cheque) Account",          "ASSET",     true,  { cash: true, bank: true }],
+  ["133",   "Credit Card",                       "ASSET",     false, { under: "13" }],
+  ["13301", "Credit Card",                       "ASSET",     true,  { cash: true, bank: true }],
+  ["135",   "Accounts Receivable",               "ASSET",     false, { under: "13" }],
+  ["13501", "Accounts Receivable",               "ASSET",     true,  { control: true }],
+  ["138",   "Advance (Other Department)",        "ASSET",     false, { under: "13" }],
+  ["13801", "Advance",                           "ASSET",     true],
+  ["141",   "Inventory",                         "ASSET",     false, { under: "13" }],
+  ["14101", "Inventory (Opening)",               "ASSET",     true],
+  ["142",   "I.B.S.T",                           "ASSET",     false, { under: "13" }],
+  ["14201", "Branch Stock Transfer",             "ASSET",     true],
+  // Not in the customer's chart; the posting engine needs all three.
+  ["143",   "Clearing & Tax",                    "ASSET",     false, { under: "13" }],
+  ["14301", "GR/IR Clearing",                    "ASSET",     true,  { added: true }],
   // Commercial tax paid on purchases, creditable against tax charged on
   // sales. An asset while it is still owed back to us, not an expense — a
   // trader who expenses it pays it twice.
-  ["1080",  "Input Commercial Tax",              "ASSET",     true,  { added: true }],
+  ["14302", "Input Commercial Tax",              "ASSET",     true,  { added: true }],
   // The sales mirror of GR/IR. Goods have left and nobody has been billed
   // for them, so their cost is out of inventory and not yet cost of sales.
   // Nothing posts here yet — see docs/03-decisions.md, D8.
-  ["1090",  "Goods Shipped Not Invoiced",        "ASSET",     true,  { added: true }],
-  ["1-FA",  "Non-Current Assets (Fixed Assets)", "ASSET",     false],
-  ["1100",  "Land",                              "ASSET",     true],
-  ["1110",  "Building",                          "ASSET",     true],
-  ["1120",  "Office Equipment",                  "ASSET",     true],
-  ["1130",  "Furniture & Fixtures",              "ASSET",     true],
-  ["1140",  "Vehicle",                           "ASSET",     true],
-  ["1190",  "Accumulated Depreciation",          "ASSET",     true],
-  ["1-IA",  "Intangible Assets",                 "ASSET",     false],
-  ["1200",  "Software",                          "ASSET",     true],
-  ["1210",  "Accumulated Amortization",          "ASSET",     true],
+  ["14303", "Goods Shipped Not Invoiced",        "ASSET",     true,  { added: true }],
+  ["151",   "Advance Paid",                      "ASSET",     false, { under: "13" }],
+  ["15101", "Prepayment (Sup)",                  "ASSET",     true],
+  // Paid to a supplier before they billed us. Ours until they do.
+  ["15102", "Purchase Advance",                  "ASSET",     true],
+  ["152",   "Prepaid Expenses",                  "ASSET",     false, { under: "13" }],
+  ["15201", "Prepaid Rent",                      "ASSET",     true],
+  ["15202", "Prepaid Tax",                       "ASSET",     true],
+  ["15203", "Prepaid Delivery",                  "ASSET",     true],
+  ["16",    "Intangible Assets",                 "ASSET",     false, { under: "1" }],
+  ["161",   "Software",                          "ASSET",     false, { under: "16" }],
+  ["16101", "Galaxy Software Installation",      "ASSET",     true],
+  ["17",    "Other Assets",                      "ASSET",     false, { under: "1" }],
+  ["171",   "Deferred Expenses",                 "ASSET",     false, { under: "17" }],
+  ["17101", "Staff Loan",                        "ASSET",     true],
   ["2-CL",  "Current Liabilities",               "LIABILITY", false],
   ["2000",  "Accounts Payable",                  "LIABILITY", true,  { control: true }],
   ["2010",  "Salary Payable",                    "LIABILITY", true],
@@ -126,7 +179,7 @@ export const CHART = [
 // does not fail — it posts, balanced, to the wrong account, which is the
 // failure mode migration 0022 exists to record.
 export const SYSTEM = {
-  GRIR_CLEARING: "1060", OPENING_BALANCE_EQUITY: "3030", RETAINED_EARNINGS: "3020",
+  GRIR_CLEARING: "14301", OPENING_BALANCE_EQUITY: "3030", RETAINED_EARNINGS: "3020",
   PURCHASE_PRICE_VARIANCE: "5050", PURCHASE_DISCOUNT_RECEIVED: "5020",
   SALES_DISCOUNT_ALLOWED: "4020", PROMOTION_EXPENSE: "6320", STOCK_ADJUSTMENT: "5300",
 
@@ -146,19 +199,19 @@ export const SYSTEM = {
   // Reserved. Cost of sales is still recognised on the delivery, so nothing
   // resolves this role yet; it exists so the account and the role land
   // together rather than in two migrations months apart.
-  SHIPPED_NOT_INVOICED: "1090",
+  SHIPPED_NOT_INVOICED: "14303",
 
   // Money that moved before the invoice did. Deliberately not the control
   // accounts: an advance has no open item, so parking it in receivables would
   // put the ledger and the subledger out of step the moment it was taken —
   // and it is not a receivable anyway. It is something owed to the customer
   // until the goods go, and something owed to us until the supplier delivers.
-  CUSTOMER_ADVANCE: "2060", SUPPLIER_ADVANCE: "1070",
+  CUSTOMER_ADVANCE: "2060", SUPPLIER_ADVANCE: "15102",
 
   // Commercial tax. Charged on a sale it is money held for the revenue
   // department, never income; paid on a purchase it is creditable against
   // what we charge, so it sits in assets until it is set off.
-  OUTPUT_TAX: "7000", INPUT_TAX: "1080",
+  OUTPUT_TAX: "7000", INPUT_TAX: "14302",
 };
 
 // COGS points at 5000 "Purchase" — they are the same account here. The
@@ -169,7 +222,7 @@ export const SYSTEM = {
 // job, and a second "Cost of Goods Sold" beside it would be the same thing
 // under two names.
 export const DETERMINATION = {
-  AR_CONTROL: "1030", AP_CONTROL: "2000", INVENTORY: "1040",
+  AR_CONTROL: "13501", AP_CONTROL: "2000", INVENTORY: "14101",
   COGS: "5000", REVENUE: "4000", SALES_RETURN: "4010",
 };
 

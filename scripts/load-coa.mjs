@@ -131,6 +131,11 @@ try {
     await tx`delete from foc_reason where company_id = ${co.id}`;
     await tx`update tax_code set output_account_id = null, input_account_id = null where company_id = ${co.id}`;
     await tx`update business_partner set ar_control_id = null, ap_control_id = null where company_id = ${co.id}`;
+    // Channels and landed-cost types point at accounts too. Channels are
+    // re-mapped below by the same rule a new company gets; a landed-cost
+    // type's clearing account is optional and is chosen again on its screen.
+    await tx`delete from payment_channel_account where company_id = ${co.id}`;
+    await tx`update landed_cost_type set clearing_account_id = null where company_id = ${co.id}`;
     await tx`delete from account_determination where company_id = ${co.id}`;
     await tx`delete from system_account where company_id = ${co.id}`;
     await tx`delete from account where company_id = ${co.id}`;
@@ -175,6 +180,8 @@ try {
       update account a set subledger = 'PURCHASE_MATCHING'
         from system_account s
        where s.account_id = a.id and s.company_id = ${co.id} and s.role = 'GRIR_CLEARING'`;
+
+    await tx`select fn_seed_payment_channels(${co.id})`;
 
     for (const f of focBefore) {
       const target = id.get(FOC_REMAP[f.acct] ?? f.acct);

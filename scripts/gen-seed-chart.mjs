@@ -29,7 +29,7 @@ for (const [code, name, type, postable, flags = {}] of CHART) {
 
 let out = `-- -------------------------------------------------------------- accounts --
 -- The MTK chart, generated from db/chart.mjs by scripts/gen-seed-chart.mjs.
--- The same 65 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
+-- The same ${CHART.length} accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
 -- loads: the demo and a real company are the same shape, so a report that
 -- reads right here reads right there. Regenerate after changing the chart.
 
@@ -39,18 +39,25 @@ insert into account (company_id, code, name, account_type, is_postable) values
 out += tops.map(([c, n, t]) =>
   `    (co, ${w(q(c) + ",", 9)} ${w(q(n) + ",", 38)} ${w(q(t) + ",", 12)} false)`).join(",\n") + ";\n";
 
+// One statement per depth: an insert cannot join to rows it is inserting, so
+// a section under a nested section waits for the level above it.
+const depthOf = new Map(tops.map(([c]) => [c, 0]));
+for (const [c, , , u] of nested) depthOf.set(c, depthOf.get(u) + 1);
+for (let d = 1; nested.some(([c]) => depthOf.get(c) === d); d++) {
 out += `
--- Two sections sit under Expense rather than beside it.
+-- Sections nested ${d} deep, under the sections above.
 insert into account (company_id, parent_id, code, name, account_type, is_postable)
 select co, p.id, x.code, x.name, x.atype, false
 from (values
 `;
-out += nested.map(([c, n, t, u]) =>
+out += nested.filter(([c]) => depthOf.get(c) === d).map(([c, n, t, u]) =>
   `    (${q(u)}, ${q(c)}, ${w(q(n) + ",", 38)} ${q(t)}::account_type)`).join(",\n");
 out += `
 ) as x(parent, code, name, atype)
 join account p on p.company_id = co and p.code = x.parent;
-
+`;
+}
+out += `
 -- Postable accounts, each under the section it follows in the chart.
 insert into account (company_id, parent_id, code, name, account_type,
                      is_control, is_cash_account, is_bank_account)
@@ -85,7 +92,7 @@ if (start < 0 || end < 0) {
   console.error("  Could not find the accounts block in db/seed.sql.");
   process.exit(1);
 }
-const inSeed = seed.slice(start, end).trimEnd();
+const inSeed = seed.slice(start, end).replace(/\r\n/g, "\n").trimEnd();
 if (inSeed === out.trimEnd()) {
   console.log(`  db/seed.sql matches db/chart.mjs — ${CHART.length} accounts.`);
   process.exit(0);

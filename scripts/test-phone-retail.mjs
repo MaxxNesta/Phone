@@ -88,7 +88,7 @@ try {
     { tracks_serial: true, warranty_months: 6 });
   const caseItem = await ensureItem("PH-CASE", "Clear case", { tracks_serial: false });
   const [ct5] = await sql`select id from tax_code where company_id = ${co.id} and code = 'CT5'`;
-  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '1000'`;
+  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '13101'`;
 
   const DAY = (await sql`select to_char(current_date,'YYYY-MM-DD') as d`)[0].d;
   const bal = async (code) => r2((await sql`
@@ -142,7 +142,7 @@ try {
   check("purchase invoice creates no cost of sales",
     (await bal("5000")) === cogsBeforePi && (await entryOf(pi.id, "5000")) === 0);
   check("purchase invoice clears GR/IR for what it bills",
-    (await bal("1060")) === -1_200_000, `1060 = ${await bal("1060")}`);
+    (await bal("14301")) === -1_200_000, `1060 = ${await bal("14301")}`);
 
   await refuses("purchase return to the wrong supplier refused",
     () => P.postPurchaseReturn({ companyId: co.id, partnerId: supp2.id, locationId: wh.id,
@@ -153,7 +153,7 @@ try {
     lines: [{ itemId: phone.id, qty: 1, unitPrice: 1_000_000, serials: ["IMEI-A3"] }] });
   check("purchase return sends back the exact unit",
     (await unit("IMEI-A3"))?.status === "RETURNED_TO_SUPPLIER");
-  check("purchase return relieves that unit's cost", (await entryOf(pr.id, "1040")) === -1_000_000);
+  check("purchase return relieves that unit's cost", (await entryOf(pr.id, "14101")) === -1_000_000);
 
   console.log("\n  counter sale");
   await sql`insert into stock_serial_hold (company_id, serial_id, kind)
@@ -163,16 +163,16 @@ try {
   await sql`update stock_serial_hold set released_at = now() where released_at is null`;
 
   const docsBefore = n((await sql`select count(*) c from document where doc_type = 'DELIVERY'`)[0].c);
-  const invBefore = await bal("1040");
+  const invBefore = await bal("14101");
   const s1 = await sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["IMEI-B1"] }],
     { cashIn: 1_500_000, cashAccountId: cash.id });
   check("sale costs the exact unit, not the oldest layer",
     (await entryOf(s1.id, "5000")) === 1_200_000, `COGS ${await entryOf(s1.id, "5000")}`);
   check("revenue and cost of sales in one entry",
-    (await entryOf(s1.id, "4000")) === -1_500_000 && (await entryOf(s1.id, "1040")) === -1_200_000);
-  check("inventory relieved once", r2(invBefore - (await bal("1040"))) === 1_200_000);
+    (await entryOf(s1.id, "4000")) === -1_500_000 && (await entryOf(s1.id, "14101")) === -1_200_000);
+  check("inventory relieved once", r2(invBefore - (await bal("14101"))) === 1_200_000);
   check("no delivery document", n((await sql`select count(*) c from document where doc_type = 'DELIVERY'`)[0].c) === docsBefore);
-  check("goods-shipped-not-invoiced untouched", (await bal("1090")) === 0);
+  check("goods-shipped-not-invoiced untouched", (await bal("14303")) === 0);
   check("cash sale settled at the counter",
     n((await sql`select outstanding from v_open_item where document_id = ${s1.id}`)[0]?.outstanding) === 0);
   const u1 = await unit("IMEI-B1");
@@ -200,8 +200,8 @@ try {
     ],
   });
   // 1,400,000 less 10% = 1,260,000; cases 40,000; net 1,300,000; tax 5% 65,000.
-  check("credit sale: receivable is the gross", (await entryOf(s2.id, "1030")) === 1_365_000,
-    `${await entryOf(s2.id, "1030")}`);
+  check("credit sale: receivable is the gross", (await entryOf(s2.id, "13501")) === 1_365_000,
+    `${await entryOf(s2.id, "13501")}`);
   check("discount shown as contra-revenue", (await entryOf(s2.id, "4020")) === 140_000);
   check("tax charged", (await entryOf(s2.id, "7000")) === -65_000);
   check("phone + accessory cost together", (await entryOf(s2.id, "5000")) === 1_010_000);
@@ -225,9 +225,9 @@ try {
   const ua = await unit("IMEI-A1");
   check("returned unit back on the shelf", ua.status === "IN_STOCK" && ua.was_returned);
   check("restored at its original cost", r2(ua.unit_cost) === 1_000_000
-    && (await entryOf(ret.id, "1040")) === 1_000_000 && (await entryOf(ret.id, "5000")) === -1_000_000);
+    && (await entryOf(ret.id, "14101")) === 1_000_000 && (await entryOf(ret.id, "5000")) === -1_000_000);
   check("revenue reversed against the invoice", (await entryOf(ret.id, "4010")) === 1_260_000
-    && (await entryOf(ret.id, "1030")) === -1_323_000);
+    && (await entryOf(ret.id, "13501")) === -1_323_000);
   check("one unit record, not a duplicate",
     n((await sql`select count(*) c from stock_serial where serial_no = 'IMEI-A1'`)[0].c) === 1);
   await refuses("cannot return it twice",
@@ -315,15 +315,15 @@ try {
   console.log("\n  reconciliation");
   const [tb] = await sql`select coalesce(sum(base_amount), 0) v from journal_line where company_id = ${co.id}`;
   check("trial balance balances", r2(tb.v) === 0);
-  check("1090 never used", (await bal("1090")) === 0);
+  check("1090 never used", (await bal("14303")) === 0);
   const [stockValue] = await sql`
     select coalesce(sum((l.qty_received - coalesce(c.q, 0)) * (l.unit_cost + coalesce(a.d, 0))), 0) v
       from stock_lot l
       left join (select lot_id, sum(qty) q from stock_lot_consumption group by lot_id) c on c.lot_id = l.id
       left join (select lot_id, sum(delta_unit_cost) d from stock_lot_adjustment group by lot_id) a on a.lot_id = l.id
      where l.company_id = ${co.id}`;
-  check("inventory GL equals the valued stock layers", r2(stockValue.v) === (await bal("1040")),
-    `${r2(stockValue.v)} vs ${await bal("1040")}`);
+  check("inventory GL equals the valued stock layers", r2(stockValue.v) === (await bal("14101")),
+    `${r2(stockValue.v)} vs ${await bal("14101")}`);
   const [serialVal] = await sql`
     select count(*) c, coalesce(sum(unit_cost), 0) v from v_stock_serial
      where item_id = ${phone.id} and status = 'IN_STOCK'`;

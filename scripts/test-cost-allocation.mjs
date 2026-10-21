@@ -76,7 +76,7 @@ try {
   console.log("\n  somewhere for shipped-not-billed cost to sit\n");
   const [acct] = await sql`
     select a.id, a.name, a.account_type, a.is_postable
-      from account a where a.company_id = ${co.id} and a.code = '1090'`;
+      from account a where a.company_id = ${co.id} and a.code = '14303'`;
   check("1090 exists", !!acct, acct?.name);
   check("  and is an asset, not an expense",
     acct?.account_type === "ASSET", String(acct?.account_type));

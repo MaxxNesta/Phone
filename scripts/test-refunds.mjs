@@ -81,7 +81,7 @@ try {
   let [wallet] = await sql`select id from account where company_id = ${co.id} and lower(name) = 'kbzpay' and is_cash_account`;
   if (!wallet) {
     [wallet] = await sql`insert into account (company_id, parent_id, code, name, account_type, is_cash_account, is_bank_account)
-      select ${co.id}, parent_id, '1019', 'KBZPay', 'ASSET', true, true from account where company_id = ${co.id} and code = '1010' returning id`;
+      select ${co.id}, parent_id, '1019', 'KBZPay', 'ASSET', true, true from account where company_id = ${co.id} and code = '13201' returning id`;
   }
   await sql`delete from payment_channel_account where channel_id = ${KBZ}`;
   await sql`insert into payment_channel_account (company_id, channel_id, account_id) values (${co.id}, ${KBZ}, ${wallet.id})`;

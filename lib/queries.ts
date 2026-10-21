@@ -44,7 +44,7 @@ export async function getKpis(companyId: string) {
     select coalesce(sum(jl.base_amount), 0) as total
       from journal_line jl
       join account a on a.id = jl.account_id
-     where jl.company_id = ${companyId} and a.code in ('1110', '1120')`;
+     where jl.company_id = ${companyId} and a.is_cash_account`;
 
   /**
    * Money that has changed hands with no invoice against it yet — customers'
@@ -8030,7 +8030,8 @@ export async function getShippedNotInvoicedBalance(companyId: string) {
            coalesce((select sum(jl.base_amount) from journal_line jl
                       where jl.account_id = a.id), 0) as balance
       from account a
-     where a.company_id = ${companyId} and a.code = '1090'`) as unknown as
+      join system_account s on s.account_id = a.id and s.role = 'SHIPPED_NOT_INVOICED'
+     where a.company_id = ${companyId}`) as unknown as
     Array<{ id: string; code: string; name: string; balance: string }>;
   if (!row) return null;
   return { ...row, balance: Number(row.balance) };
