@@ -112,6 +112,8 @@ export default async function Items({
     (!status || (status === "active" ? i.is_active : !i.is_active))
   );
 
+  // The photo column exists only once something has a photo to put in it.
+  const anyPhoto = all.some((i) => i.photo_version);
   const categoryName = (i: Row) => i.parent_group_name ?? i.group_name;
   const subName = (i: Row) => (i.parent_group_name ? i.group_name : "");
 
@@ -167,6 +169,7 @@ export default async function Items({
         }}
         brands={brands}
         showBrand={multiBrand}
+        showPhoto={anyPhoto}
         uoms={uoms}
         updateAction={updateItem}
         deactivateAction={deactivateItem}
@@ -255,7 +258,7 @@ export default async function Items({
                 { key: "status", label: c("status") },
               ]}
               columns={[
-                { key: "photo", label: "" },
+                ...(anyPhoto ? [{ key: "photo", label: "" }] : []),
                 { key: "code", label: c("code"), sortable: true },
                 { key: "name", label: c("name"), sortable: true },
                 { key: "category", label: c("category"), sortable: true },

@@ -56,7 +56,10 @@ export function ItemRow({
   startEditing,
   retail,
   showBrand = true,
+  showPhoto = true,
 }: {
+  /** Off when nothing in the list has a photo, so no empty column is kept for one. */
+  showPhoto?: boolean;
   /** Hidden while the shop carries a single brand. */
   showBrand?: boolean;
   /** Phone retail: every item is stocked, so the switch is not offered. */
@@ -186,12 +189,14 @@ export function ItemRow({
   return (
     <>
     <tr>
-      <td className="thumbcell">
-        <ItemThumb
-          src={item.photo_version ? `/items/${item.id}/photo?v=${item.photo_version}` : null}
-          name={item.name}
-        />
-      </td>
+      {showPhoto && (
+        <td className="thumbcell">
+          <ItemThumb
+            src={item.photo_version ? `/items/${item.id}/photo?v=${item.photo_version}` : null}
+            name={item.name}
+          />
+        </td>
+      )}
       <td className="code">
         {/* A product that varies opens to show what it varies into. The
             twelve rows are still twelve items; this is only whether the
@@ -295,12 +300,14 @@ export function ItemRow({
     {open && variants.map((v) => (
       <Fragment key={v.id}>
         <tr className="variantrow">
-          <td className="variantrow-thumb">
-            <ItemThumb
-              src={v.photo_version ? `/items/${v.id}/photo?v=${v.photo_version}` : null}
-              name={v.name}
-            />
-          </td>
+          {showPhoto && (
+            <td className="variantrow-thumb">
+              <ItemThumb
+                src={v.photo_version ? `/items/${v.id}/photo?v=${v.photo_version}` : null}
+                name={v.name}
+              />
+            </td>
+          )}
           <td className="code">{v.code}</td>
           <td className="wrap">
             {v.name}
