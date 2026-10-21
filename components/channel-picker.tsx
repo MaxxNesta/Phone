@@ -28,11 +28,11 @@ export function ChannelPicker({ channels, label, direction, disabled = false }: 
       {c && c.kind !== "CASH" && !disabled && (
         <div className="field">
           <label htmlFor="payment_reference">
-            Transaction ID{c.requiresReference && <span aria-hidden="true"> *</span>}
+            Transaction ID
           </label>
           <input id="payment_reference" name="payment_reference" type="text" maxLength={80}
             autoComplete="off" required={c.requiresReference}
-            placeholder={direction === "in" ? `From the customer's ${c.name} screen` : `From the ${c.name} transfer`} />
+            placeholder={direction === "in" ? `From the customer's ${c.name} screen` : `${c.name} reference`} />
         </div>
       )}
     </>
