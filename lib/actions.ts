@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
-import { composeItemCode, firstFreeNumber, MODEL_CODE, modelItemCode } from "./item-code";
+import { composeItemCode, firstFreeNumber, MODEL_CODE, modelItemCode, optionLabel } from "./item-code";
 import { redirect } from "next/navigation";
 import { money, sql } from "./db";
 import { parseCsv, planImport, type MasterData } from "./import-items";
@@ -884,8 +884,9 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           ({ item_id: item.id, attribute_id: attributeId, sort_order: order })))}`;
 
         const optionRows = await tx`
-          select id, code, name, attribute_id from variant_option
-           where id = any(${[...new Set(variantPlan.combos.flat())]})`;
+          select o.id, o.code, o.name, o.attribute_id, a.name as attribute_name
+            from variant_option o join variant_attribute a on a.id = o.attribute_id
+           where o.id = any(${[...new Set(variantPlan.combos.flat())]})`;
         const byId = new Map(optionRows.map((o: any) => [o.id, o]));
 
         // The declared order of the attributes, so a shirt is "M / Red" and
@@ -920,7 +921,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           const combo = ordered(raw);
           const parts = combo.map((id) => byId.get(id));
           const suffix = parts.map((p: any) => p.code).join("-");
-          const label = parts.map((p: any) => p.name).join(" / ");
+          const label = parts.map((p: any) => optionLabel(p.attribute_name, p.name)).join(" / ");
           // A cellular iPad or Watch has an IMEI where the Wi-Fi one has
           // only a serial: the variant says which.
           const childIdentity = identity === "SERIAL"

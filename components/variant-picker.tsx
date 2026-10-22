@@ -5,7 +5,7 @@ import {
   HardDrive, Palette, Smartphone, Wifi, Cpu, Ruler, Globe2, MemoryStick, Tag,
   Search, CheckCircle2, AlertCircle, Wand2, ChevronLeft, ChevronRight,
 } from "lucide-react";
-import { modelItemCode } from "@/lib/item-code";
+import { modelItemCode, optionLabel } from "@/lib/item-code";
 
 export type PickerAttribute = {
   id: string; code: string; name: string;
@@ -56,7 +56,8 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
     let rows: { attributeId: string; id: string; label: string }[][] = [[]];
     for (const p of plan) {
       const opts = p.attribute.options.filter((o) => p.optionIds.includes(o.id));
-      rows = rows.flatMap((c) => opts.map((o) => [...c, { attributeId: p.attribute.id, id: o.id, label: o.name }]));
+      rows = rows.flatMap((c) => opts.map((o) => [...c,
+        { attributeId: p.attribute.id, id: o.id, label: optionLabel(p.attribute.name, o.name) }]));
     }
     return rows.map((parts) => ({
       key: parts.map((p) => p.id).join("|"),
@@ -193,7 +194,7 @@ export function VariantPreview({ v, mode, prefix, nextNo, name }: {
               onChange={(e) => setFilter((f) => ({ ...f, [p.attribute.id]: e.target.value }))}>
               <option value="">{p.attribute.name}</option>
               {p.attribute.options.filter((o) => p.optionIds.includes(o.id)).map((o) => (
-                <option key={o.id} value={o.name}>{o.name}</option>
+                <option key={o.id} value={optionLabel(p.attribute.name, o.name)}>{optionLabel(p.attribute.name, o.name)}</option>
               ))}
             </select>
           ))}
