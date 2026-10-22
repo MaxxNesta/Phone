@@ -23,9 +23,9 @@ export const modelItemCode = (prefix: string, n: number) => prefix + String(n).p
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function firstFreeNumber(db: any, co: string, prefix: string): Promise<number> {
   const [r] = await db`
-    select coalesce(max(substring(code from ${prefix.length + 1})::bigint), 0) + 1 as n
+    select coalesce(max(substring(code from ${prefix.length + 1}::int)::bigint), 0) + 1 as n
       from item
-     where company_id = ${co} and left(code, ${prefix.length}) = ${prefix}
-       and substring(code from ${prefix.length + 1}) ~ '^[0-9]{1,12}$'`;
+     where company_id = ${co} and left(code, ${prefix.length}::int) = ${prefix}
+       and substring(code from ${prefix.length + 1}::int) ~ '^[0-9]{1,12}$'`;
   return Number(r.n);
 }
