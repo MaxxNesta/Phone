@@ -65,7 +65,8 @@ try {
   await add("ZQ007", true);
   await add("ZQ010A", true);
   await add("ZQX01", true);
-  check("next under ZQ is one past the highest number", (await firstFreeNumber(sql, co.id, "ZQ")) === 11);
+  const nextZq = await firstFreeNumber(sql, co.id, "ZQ");
+  check("next under ZQ is one past the highest number", nextZq === 11, String(nextZq));
   check("  and it is written with three digits", modelItemCode("ZQ", 11) === "ZQ011");
   check("a prefix nobody uses starts at 1", (await firstFreeNumber(sql, co.id, "ZQNEW")) === 1);
 
