@@ -54,9 +54,12 @@ export function ItemPhotoField({
   /** The photo already on the item, if it has one. */
   currentSrc,
   label,
+  tile = false,
 }: {
   currentSrc?: string | null;
   label?: string;
+  /** The product form: a link until there is a photo, then a large tile. */
+  tile?: boolean;
 }) {
   const ph = useTranslations("photo");
   const input = useRef<HTMLInputElement>(null);
@@ -100,6 +103,49 @@ export function ItemPhotoField({
     if (input.current) input.current.value = "";
   }
 
+  const fileInput = (
+    <input
+      ref={input}
+      id="item_photo"
+      type="file"
+      className="visually-hidden"
+      tabIndex={-1}
+      accept={ACCEPT}
+      onChange={(e) => take(e.target.files?.[0])}
+    />
+  );
+
+  /* The product form's layout: no empty box taking room — only a link until
+     a photo is chosen, then the photo itself, large, beside the details. */
+  if (tile) {
+    return (
+      <div className={preview ? "pf2-photo" : "pf2-photo-empty"}>
+        <input type="hidden" name="photo_data" value={picked} />
+        <input type="hidden" name="photo_remove" value={removed ? "1" : ""} />
+        {preview ? (
+          <>
+            <img src={preview} alt="" />
+            <div className="pf2-photo-acts">
+              <button type="button" className="ghost tiny" onClick={() => input.current?.click()} disabled={busy}>
+                <UploadCloud size={14} aria-hidden="true" /> {busy ? ph("reading") : ph("change")}
+              </button>
+              <button type="button" className="ghost tiny" onClick={clear} disabled={busy} aria-label={ph("remove")}>
+                <X size={13} aria-hidden="true" />
+              </button>
+            </div>
+            <span className="hint">{ph("hint")}</span>
+          </>
+        ) : (
+          <button type="button" className="pf2-link" onClick={() => input.current?.click()} disabled={busy}>
+            <ImagePlus size={15} aria-hidden="true" /> {busy ? ph("reading") : "Add photo"}
+          </button>
+        )}
+        {error && <span className="hint" style={{ color: "var(--bad)" }}>{error}</span>}
+        {fileInput}
+      </div>
+    );
+  }
+
   return (
     <div className="field">
       <label htmlFor="item_photo">{label ?? ph("label")}</label>
@@ -137,15 +183,7 @@ export function ItemPhotoField({
 
       {error && <span className="hint" style={{ color: "var(--bad)" }}>{error}</span>}
 
-      <input
-        ref={input}
-        id="item_photo"
-        type="file"
-        className="visually-hidden"
-        tabIndex={-1}
-        accept={ACCEPT}
-        onChange={(e) => take(e.target.files?.[0])}
-      />
+      {fileInput}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { VariantPicker, type PickerAttribute } from "./variant-picker";
+import { useVariantPlan, VariantOptions, VariantPreview, type PickerAttribute } from "./variant-picker";
 import { PackSizes } from "./pack-sizes";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions";
@@ -9,7 +9,9 @@ import { ConfirmOtherBrand } from "./brand-form";
 import { ItemPhotoField } from "./item-photo-field";
 import { MODEL_CODE, modelItemCode } from "@/lib/item-code";
 import { nextModelNumber } from "@/lib/actions";
-import { Hash, Sparkles, PenLine, Info, Package, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, PenLine, Smartphone, Barcode, Boxes, Plus, Check } from "lucide-react";
+import { HelpHint } from "./help-hint";
 import { itemCodeTakenBy } from "@/lib/item-code-actions";
 import { useTranslations } from "next-intl";
 
@@ -128,7 +130,7 @@ export function ItemForm({
   const [chain, setChain] = useState<string[]>(initialChain);
   // A product that comes in variants is not sold itself: its variants carry the codes.
   const [hasVariants, setHasVariants] = useState(false);
-  const [codesReady, setCodesReady] = useState(true);
+  const [showWarranty, setShowWarranty] = useState(false);
   // Controlled only so the variant preview can name the product it is
   // about to make twelve of.
   const [itemName, setItemName] = useState("");
@@ -157,10 +159,9 @@ export function ItemForm({
   const tracking = trackOverride && trackOverride.root === chain[0] ? trackOverride.v : typeIdentity;
   const groupCode = selected?.code ?? "";
 
-  /* Item code assignment, chosen first. Auto numbers under a model code
-     (the category's code unless another is typed) from the next free
-     number; manual takes the code as typed — for the product itself, or for
-     each variant in the preview. */
+  /* Item codes. Auto numbers under a model code (the category's code unless
+     another is typed) from the next free number; manual takes the code as
+     typed — for the product itself, or for each variant in the preview. */
   const [codeMode, setCodeMode] = useState<"model" | "manual">("model");
   const [modelCode, setModelCode] = useState("");
   const [manualCode, setManualCode] = useState("");
@@ -180,6 +181,9 @@ export function ItemForm({
   const manualSingle = codeMode === "manual" && !hasVariants;
   const preview = manualSingle ? manualCode.trim().toUpperCase() : "";
 
+  const attributes = (variantAttributes ?? []).filter((a) => !a.identities || a.identities.includes(tracking));
+  const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "");
+
   // Is the typed code already somebody's? Asked a moment after typing stops,
   // so the answer is on screen before Save, not in an error after it.
   const [takenBy, setTakenBy] = useState<string | null>(null);
@@ -192,13 +196,17 @@ export function ItemForm({
     }, 300);
     return () => { stale = true; window.clearTimeout(t); };
   }, [preview]);
-  const codeOk = codeMode === "model" ? prefixOk : hasVariants ? codesReady : !!preview;
-  const canSave = !pending && !!selectedId && codeOk && !takenBy && (!hasVariants || codesReady);
+
+  const infoDone = !!selectedId && itemName.trim() !== "" && !!baseUomId;
+  const codesDone = codeMode === "model" ? prefixOk : hasVariants ? plan.ready : !!preview && !takenBy;
+  const variantsDone = !hasVariants || plan.kept.length > 0;
+  const canSave = !pending && infoDone && codesDone && variantsDone && plan.ready;
+
   // The name field speaks the type's language: an iPad is named as an iPad
   // model, an accessory just by what it is.
   const typeName = nodes.find((n) => n.id === chain[0])?.name ?? "";
   const accessory = /accessor/i.test(typeName);
-  const nameLabel = !typeName ? f("model") : accessory ? f("accessoryName") : f("typeModel", { type: typeName });
+  const nameLabel = accessory ? "Product name" : typeName ? `${typeName} model` : "Product name";
   const namePlaceholder = accessory ? "20W USB-C Power Adapter"
     : NAME_EXAMPLE[typeName.toLowerCase()] ?? (typeName ? `${typeName} …` : "iPhone 18");
 
@@ -207,301 +215,339 @@ export function ItemForm({
     setChain(id ? [...chain.slice(0, depth), id] : chain.slice(0, depth));
   }
 
+  /** Where the person is, at a glance; each step jumps to its section. */
+  const steps = [
+    { id: "pf-info", label: "Product information", done: infoDone },
+    { id: "pf-codes", label: "Item codes", done: codesDone },
+    { id: "pf-tracking", label: "Traceability", done: true },
+    ...(hasVariants ? [
+      { id: "pf-variants", label: "Variants", done: plan.kept.length > 0 },
+      { id: "pf-review", label: "Review", done: plan.ready && plan.kept.length > 0 },
+    ] : []),
+  ];
+
+  const saveButton = (
+    <button type="submit" className="pf2-save" disabled={!canSave}>
+      {pending ? "Saving…" : hasVariants && plan.kept.length > 0
+        ? `Save ${plan.kept.length} ${plan.kept.length === 1 ? "variant" : "variants"}` : "Save product"}
+    </button>
+  );
+
   return (
-    <form action={formAction} className="form wide pf">
+    <form action={formAction} className="form pf2">
       <input type="hidden" name="item_group_id" value={selectedId} />
       <input type="hidden" name="brand_id" value={brandId} />
       <input type="hidden" name="return_to" value={returnTo} />
       <input type="hidden" name="code_mode" value={codeMode} />
       <input type="hidden" name="model_code" value={codeMode === "model" ? prefix : ""} />
       <input type="hidden" name="serial" value={manualSingle ? preview : ""} />
+      <input type="hidden" name="identity" value={tracking} />
 
-      {/* Save stays in reach while the form scrolls. */}
-      <div className="pf-bar">
-        <span className="pf-bar-code">
-          {codeMode === "model"
-            ? (firstCode ? f("firstCodeWillBe", { code: firstCode }) : f("chooseModelCode"))
-            : preview ? f("codeWillBe", { code: preview }) : hasVariants ? f("manualVariantsHint") : f("typeItemCode")}
+      {/* Progress first, actions beside it, both in reach while the form scrolls. */}
+      <div className="pf2-bar">
+        <ol className="pf2-steps">
+          {steps.map((s, i) => (
+            <li key={s.id} className={s.done ? "done" : undefined}>
+              <a href={`#${s.id}`}>
+                <span className="dot">{s.done ? <Check size={11} strokeWidth={3} aria-hidden="true" /> : i + 1}</span>
+                {s.label}
+              </a>
+            </li>
+          ))}
+        </ol>
+        <span className="pf2-bar-acts">
+          <Link href={returnTo} className="btn ghost">Cancel</Link>
+          {saveButton}
         </span>
-        <button type="submit" disabled={!canSave}>
-          {pending ? f("saving") : f("saveProduct")}
-        </button>
       </div>
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
-      {/* 1 — how codes are made, first, because everything below is named by it. */}
-      <section className="card pf-card pf-accent">
-        <div className="pf-head">
-          <span className="pf-step">1</span>
-          <span className="pf-icon tone-blue"><Hash size={16} aria-hidden="true" /></span>
-          <div className="pf-title">
-            <h2>{f("codeAssignment")} <span className="pf-badge">{f("required")}</span></h2>
-            <p>{f("codeAssignmentSub")}</p>
-          </div>
-        </div>
-        <div className="pf-body">
-          <div className="pf-choices" role="radiogroup" aria-label={f("codeAssignment")}>
-            {([
-              ["model", Sparkles, "autoTitle", "autoDesc", "autoExample"],
-              ["manual", PenLine, "manualTitle", "manualDesc", "manualExample"],
-            ] as const).map(([mode, Icon, title, desc, ex]) => (
-              <button key={mode} type="button" role="radio" aria-checked={codeMode === mode}
-                className={`pf-choice${codeMode === mode ? " on" : ""}`} onClick={() => setCodeMode(mode)}>
-                <span className="pf-choice-icon"><Icon size={18} aria-hidden="true" /></span>
-                <span className="pf-choice-text">
-                  <strong>{f(title)}</strong>
-                  <span>{f(desc)}</span>
-                  <em>{f(ex)}</em>
-                </span>
-                <span className="pf-radio" aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-
-          {codeMode === "model" ? (
-            <div className="pf-split">
-              <div className="field">
-                <label htmlFor="model_code_input">{f("modelCode")}</label>
-                <input id="model_code_input" type="text" value={modelCode} placeholder={groupCode || "IPC"}
-                  onChange={(e) => setModelCode(e.target.value)} style={{ textTransform: "uppercase" }}
-                  aria-invalid={prefix && !prefixOk ? true : undefined} />
-                <span className="hint">
-                  {!prefix ? f("chooseModelCode") : !prefixOk ? f("modelCodeChars")
-                    : firstCode ? f("firstCodeWillBe", { code: firstCode }) : f("checking")}
-                </span>
+      <div className={`pf2-grid${hasVariants ? " split" : ""}`}>
+        <div className="pf2-col">
+          {/* 1 — what the product is, and whether it comes in configurations. */}
+          <section className="card pf2-card" id="pf-info">
+            <div className="pf2-head">
+              <span className="pf2-step">1</span>
+              <div className="pf2-title">
+                <h2>Product information</h2>
+                <HelpHint label="About product information">
+                  The category decides how the product is filed and tracked; the name is what appears on
+                  receipts and in search. Turn on variants when the product comes in configurations — storage,
+                  colour, region — that are each stocked and priced on their own.
+                </HelpHint>
               </div>
-              <div className="pf-info">
-                <Info size={15} aria-hidden="true" />
-                <span><strong>{f("howItWorks")}</strong> {f("howItWorksBody")}</span>
-              </div>
+              <label className="pf2-toggle" htmlFor="has_variants">
+                <input id="has_variants" type="checkbox" role="switch" checked={hasVariants}
+                  onChange={(e) => setHasVariants(e.target.checked)} />
+                <span className="track" aria-hidden="true" />
+                <span>This product comes in variants</span>
+              </label>
             </div>
-          ) : manualSingle ? (
-            <div className="pf-split">
-              <div className="field">
-                <label htmlFor="item_code_input">{f("itemCode")}</label>
-                <input id="item_code_input" type="text" value={manualCode} placeholder="ADP01"
-                  onChange={(e) => setManualCode(e.target.value)} style={{
-                    textTransform: "uppercase", ...(takenBy ? { borderColor: "var(--bad)" } : {}) }}
-                  aria-invalid={takenBy ? true : undefined} />
-                {takenBy
-                  ? <span className="hint" role="alert" style={{ color: "var(--bad)" }}>{f("codeTaken", { code: preview, name: takenBy })}</span>
-                  : <span className="hint">{f("itemCodeManualHint")}</span>}
-              </div>
-              <div className="pf-info">
-                <Info size={15} aria-hidden="true" />
-                <span>{f("manualVariantsLater")}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="pf-info">
-              <Info size={15} aria-hidden="true" />
-              <span>{f("manualVariantsHint")}</span>
-            </div>
-          )}
-        </div>
-      </section>
+            <div className="pf2-body pf2-info">
+              <ItemPhotoField tile />
+              <div className="pf2-fields">
+                {selects.map((sel) => (
+                  <div className="field" key={sel.depth}>
+                    <label htmlFor={`lvl-${sel.depth}`}>{sel.depth === 0 ? "Category" : "Sub category"}<b>*</b></label>
+                    <select id={`lvl-${sel.depth}`} value={sel.value} onChange={(e) => pick(sel.depth, e.target.value)}>
+                      <option value="">{sel.depth === 0 ? "Choose…" : "— file directly here —"}</option>
+                      {sel.options.map((o) => (
+                        <option key={o.id} value={o.id}>{o.segment} · {o.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
 
-      {/* 2 — what the product is. */}
-      <section className="card pf-card">
-        <div className="pf-head">
-          <span className="pf-step">2</span>
-          <span className="pf-icon tone-orange"><Package size={16} aria-hidden="true" /></span>
-          <div className="pf-title">
-            <h2>{f("basicInfo")}</h2>
-            <p>
-              {selected
-                ? <>{f("filingInto")} <span className="m">{chain.map((id) => nodes.find((n) => n.id === id)?.name).filter(Boolean).join(" → ")}</span></>
-                : f("chooseCategory")}
-            </p>
-          </div>
-        </div>
-        <div className="pf-body">
-          <div className="row">
-            {selects.map((sel) => (
-              <div className="field" key={sel.depth}>
-                <label htmlFor={`lvl-${sel.depth}`}>
-                  {LEVELS[sel.depth] ? f(LEVELS[sel.depth]) : f("level", { n: sel.depth + 1 })}
-                </label>
-                <select id={`lvl-${sel.depth}`} value={sel.value} onChange={(e) => pick(sel.depth, e.target.value)}>
-                  <option value="">{sel.depth === 0 ? f("choose") : f("noneFileHere")}</option>
-                  {sel.options.map((o) => (
-                    <option key={o.id} value={o.id}>{o.segment} · {o.name}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-
-            <div className="field">
-              <label htmlFor="name">{nameLabel}</label>
-              <input id="name" name="name" type="text" required placeholder={namePlaceholder}
-                     value={itemName} onChange={(e) => setItemName(e.target.value)} />
-            </div>
-
-            <div className="field">
-              <label htmlFor="name_my">{f("nameBurmese")}</label>
-              <input id="name_my" name="name_my" type="text" />
-            </div>
-
-            <div className="field">
-              <label htmlFor="brand_select">{c("brand")}</label>
-              {addingBrand ? (
-                <>
-                  <input
-                    id="brand_select" type="text" autoFocus
-                    value={newBrandName}
-                    onChange={(e) => setNewBrandName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (newBrandName.trim()) setAskBrand(true); } }}
-                    placeholder="Advics"
-                  />
-                  <span className="actions" style={{ marginTop: "0.4rem" }}>
-                    <button type="button" className="tiny" disabled={brandPending || !newBrandName.trim()} onClick={() => setAskBrand(true)}>
-                      {brandPending ? f("saving") : f("add")}
-                    </button>
-                    <button type="button" className="ghost tiny" onClick={() => { setAddingBrand(false); setBrandError(null); }}>
-                      {c("cancel")}
-                    </button>
-                  </span>
-                  {brandError && <span className="hint" style={{ color: "var(--bad)" }}>{brandError}</span>}
-                  <ConfirmOtherBrand open={askBrand} name={newBrandName.trim()} busy={brandPending}
-                    onCancel={() => setAskBrand(false)} onConfirm={addBrand} />
-                </>
-              ) : (
-                <>
-                  <select id="brand_select" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-                    <option value="">{f("noneOption")}</option>
-                    {brandList.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
-                  {canAddBrand && (
-                    <span className="hint">
-                      <button type="button" className="ghost tiny" style={{ padding: 0 }} onClick={() => setAddingBrand(true)}>{f("newBrand")}</button>
+                <div className="field">
+                  <label htmlFor="brand_select">Brand</label>
+                  {addingBrand ? (
+                    <>
+                      <span className="pf2-inline">
+                        <input
+                          id="brand_select" type="text" autoFocus
+                          value={newBrandName}
+                          onChange={(e) => setNewBrandName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (newBrandName.trim()) setAskBrand(true); } }}
+                          placeholder="Brand name"
+                        />
+                        <button type="button" className="tiny" disabled={brandPending || !newBrandName.trim()} onClick={() => setAskBrand(true)}>
+                          {brandPending ? "Saving…" : "Add"}
+                        </button>
+                        <button type="button" className="ghost tiny" onClick={() => { setAddingBrand(false); setBrandError(null); }}>
+                          {c("cancel")}
+                        </button>
+                      </span>
+                      {brandError && <span className="hint" style={{ color: "var(--bad)" }}>{brandError}</span>}
+                      <ConfirmOtherBrand open={askBrand} name={newBrandName.trim()} busy={brandPending}
+                        onCancel={() => setAskBrand(false)} onConfirm={addBrand} />
+                    </>
+                  ) : (
+                    <span className="pf2-inline">
+                      <select id="brand_select" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+                        <option value="">— none —</option>
+                        {brandList.map((b) => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                      {canAddBrand && (
+                        <button type="button" className="ghost tiny" onClick={() => setAddingBrand(true)}>
+                          <Plus size={13} aria-hidden="true" /> New brand
+                        </button>
+                      )}
                     </span>
                   )}
-                </>
-              )}
+                </div>
+
+                <div className="field">
+                  <label htmlFor="name">{nameLabel}<b>*</b></label>
+                  <input id="name" name="name" type="text" required placeholder={namePlaceholder}
+                         value={itemName} onChange={(e) => setItemName(e.target.value)} />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="name_my">Name (Burmese)</label>
+                  <input id="name_my" name="name_my" type="text" placeholder={itemName || "Optional"} />
+                </div>
+
+                <div className="field">
+                  <label htmlFor="base_uom_id">Base unit<b>*</b>
+                    <HelpHint label="About the base unit">Stock is always counted in this unit, and it cannot be changed once the product is saved.</HelpHint>
+                  </label>
+                  <select id="base_uom_id" name="base_uom_id" required value={baseUomId}
+                          onChange={(e) => setBaseUomId(e.target.value)}>
+                    {uoms.map((u) => (
+                      <option key={u.id} value={u.id}>{u.code} · {u.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="sale_price">Default retail price
+                    <HelpHint label="About the default price">Optional. With variants, they all start at this price; set each one's own price after saving.</HelpHint>
+                  </label>
+                  <span className="pf2-money">
+                    <span>MMK</span>
+                    <input id="sale_price" name="sale_price" type="number" min="0" step="any" placeholder="0" />
+                  </span>
+                </div>
+
+                <div className="pf2-wide">
+                  <PackSizes key={baseUomId} uoms={uoms} baseUomId={baseUomId} initial={[]} />
+                </div>
+
+                {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
+                  <label className="check pf2-wide" htmlFor="is_stocked">
+                    <input id="is_stocked" name="is_stocked" type="checkbox" defaultChecked />
+                    {f("stocked")}
+                  </label>
+                )}
+              </div>
             </div>
+          </section>
 
-            <div className="field">
-              <label htmlFor="base_uom_id">{f("baseUnit")}</label>
-              <select id="base_uom_id" name="base_uom_id" required value={baseUomId}
-                      onChange={(e) => setBaseUomId(e.target.value)}>
-                {uoms.map((u) => (
-                  <option key={u.id} value={u.id}>{u.code} · {u.name}</option>
-                ))}
-              </select>
-              <span className="hint">{f("baseUnitHint")}</span>
+          {/* 2 — how codes are made. */}
+          <section className="card pf2-card" id="pf-codes">
+            <div className="pf2-head">
+              <span className="pf2-step">2</span>
+              <div className="pf2-title">
+                <h2>Item code assignment</h2>
+                <HelpHint label="About item codes">
+                  {hasVariants
+                    ? "Each variant gets its own item code. Auto numbers them under one model code from the next free number; manual lets you type each one, for example to keep the codes you used before."
+                    : "Auto gives the product the next free number under a model code; manual keeps exactly the code you type."}
+                </HelpHint>
+              </div>
             </div>
-
-            {/* Pack sizes belong where the unit is set: the supplier has just
-                said how many come in a carton. */}
-            <PackSizes key={baseUomId} uoms={uoms} baseUomId={baseUomId} initial={[]} />
-
-            <div className="field">
-              <label htmlFor="sale_price">{f("defaultRetailPrice")}</label>
-              <input id="sale_price" name="sale_price" type="number" min="0" step="any" />
-              <span className="hint">{f("defaultRetailPriceHint")}</span>
-            </div>
-
-            <ItemPhotoField />
-          </div>
-
-          {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
-          <label className="check" htmlFor="is_stocked" style={{ marginTop: "0.75rem" }}>
-            <input id="is_stocked" name="is_stocked" type="checkbox" defaultChecked />
-            {f("stocked")}
-          </label>
-          )}
-        </div>
-      </section>
-
-      {/* 3 — how each unit is named and guaranteed. Two batch switches rather
-          than one: a batch is traceability, expiry is the extra perishables
-          need, and expiry has to belong to a batch. */}
-      <section className="card pf-card">
-        <div className="pf-head">
-          <span className="pf-step">3</span>
-          <span className="pf-icon tone-teal"><ShieldCheck size={16} aria-hidden="true" /></span>
-          <div className="pf-title">
-            <h2>{f("traceability")}</h2>
-            <p>{f(`tracking.${tracking}.note`)}{tracking !== "NONE" && ` ${f("trackingEach")}`}</p>
-          </div>
-        </div>
-        <div className="pf-body">
-          <div className="row">
-            <div className="field">
-              <label>{f("trackedBy")}</label>
-              <div className="paymodes tracking" role="radiogroup" aria-label={f("trackedBy")}>
-                {TRACKING.map((t) => (
-                  <button key={t.v} type="button" className="paymode" role="radio"
-                    aria-pressed={tracking === t.v} aria-checked={tracking === t.v}
-                    onClick={() => setTrackOverride({ root: chain[0] ?? "", v: t.v })}>
-                    {f(`tracking.${t.v}.label`)}
+            <div className="pf2-body">
+              <div className="pf2-seg" role="radiogroup" aria-label="Item code assignment">
+                {([
+                  ["model", Sparkles, "Auto-assign codes", hasVariants ? "One model code; every variant numbered from the next free number." : "The next free number under a model code."],
+                  ["manual", PenLine, "Assign manually", hasVariants ? "Type a unique item code for each variant." : "Type the item code yourself."],
+                ] as const).map(([mode, Icon, title, desc]) => (
+                  <button key={mode} type="button" role="radio" aria-checked={codeMode === mode}
+                    className={`pf2-option${codeMode === mode ? " on" : ""}`} onClick={() => setCodeMode(mode)}>
+                    <span className="pf2-radio" aria-hidden="true" />
+                    <Icon size={17} aria-hidden="true" />
+                    <span className="txt"><strong>{title}</strong><span>{desc}</span></span>
                   </button>
                 ))}
               </div>
-              <input type="hidden" name="identity" value={tracking} />
-            </div>
-            <div className="field">
-              <label htmlFor="warranty_months">{f("customerWarranty")}</label>
-              <input id="warranty_months" name="warranty_months" type="number" min="0" max="120" />
-              <span className="hint">{f("customerWarrantyHint")}</span>
-            </div>
-            <div className="field">
-              <label htmlFor="supplier_warranty_months">{f("supplierWarranty")}</label>
-              <input id="supplier_warranty_months" name="supplier_warranty_months" type="number" min="0" max="120" />
-            </div>
-          </div>
 
-          {!retail && (<>
-          <label className="trackbox-opt" htmlFor="tracks_batch">
-            <input
-              id="tracks_batch" name="tracks_batch" type="checkbox"
-              checked={tracksBatch}
-              onChange={(e) => {
-                setTracksBatch(e.target.checked);
-                if (!e.target.checked) setTracksExpiry(false);
-              }}
-            />
-            <span>
-              <strong>{f("trackBatches")}</strong>
-              <span className="trackbox-note">{f("trackBatchesNote")}</span>
-            </span>
-          </label>
+              {codeMode === "model" ? (
+                <div className="field pf2-codefield">
+                  <label htmlFor="model_code_input">Model code<b>*</b>
+                    <HelpHint label="How auto codes work">
+                      Type a short model code, such as VT. The {hasVariants ? "variants are" : "product is"} numbered
+                      under it from the next number nobody has used: VT001, VT002… The numbers are taken again when you
+                      save, so two people saving at once never share one.
+                    </HelpHint>
+                  </label>
+                  <input id="model_code_input" type="text" value={modelCode} placeholder={groupCode || "IPC"}
+                    onChange={(e) => setModelCode(e.target.value)} style={{ textTransform: "uppercase" }}
+                    aria-invalid={prefix && !prefixOk ? true : undefined} />
+                  <span className="hint">
+                    {!prefix ? "Type a model code, e.g. VT." : !prefixOk ? "Letters and digits only."
+                      : firstCode ? <>First code will be <strong>{firstCode}</strong></> : "Checking the next number…"}
+                  </span>
+                </div>
+              ) : manualSingle ? (
+                <div className="field pf2-codefield">
+                  <label htmlFor="item_code_input">Item code<b>*</b>
+                    <HelpHint label="About manual codes">The whole code, kept exactly as typed — no category prefix is added.</HelpHint>
+                  </label>
+                  <input id="item_code_input" type="text" value={manualCode} placeholder="ADP01"
+                    onChange={(e) => setManualCode(e.target.value)} style={{
+                      textTransform: "uppercase", ...(takenBy ? { borderColor: "var(--bad)" } : {}) }}
+                    aria-invalid={takenBy ? true : undefined} />
+                  {takenBy
+                    ? <span className="hint" role="alert" style={{ color: "var(--bad)" }}>{preview} is already used by {takenBy}.</span>
+                    : <span className="hint">Kept exactly as typed.</span>}
+                </div>
+              ) : (
+                <p className="hint pf2-note">Type each variant's code in the Variant preview.</p>
+              )}
+            </div>
+          </section>
 
-          <label className={`trackbox-opt sub${tracksBatch ? "" : " off"}`} htmlFor="tracks_expiry">
-            <input
-              id="tracks_expiry" name="tracks_expiry" type="checkbox"
-              checked={tracksExpiry}
-              disabled={!tracksBatch}
-              onChange={(e) => setTracksExpiry(e.target.checked)}
-            />
-            <span>
-              <strong>{f("batchesExpire")}</strong>
-              <span className="trackbox-note">{tracksBatch ? f("batchesExpireOn") : f("batchesExpireOff")}</span>
-            </span>
-          </label>
+          {/* 3 — how stock is tracked: a separate question from whether it has variants. */}
+          <section className="card pf2-card" id="pf-tracking">
+            <div className="pf2-head">
+              <span className="pf2-step">3</span>
+              <div className="pf2-title">
+                <h2>Traceability</h2>
+                <HelpHint label="About traceability">
+                  How each unit is told apart in stock. IMEI and serial number name every unit, so a sale,
+                  a return or a warranty claim points at one phone; quantity only counts them.
+                </HelpHint>
+              </div>
+              {!showWarranty && (
+                <button type="button" className="pf2-link" onClick={() => setShowWarranty(true)}>
+                  <Plus size={13} aria-hidden="true" /> Add warranty
+                </button>
+              )}
+            </div>
+            <div className="pf2-body">
+              <div className="pf2-seg three" role="radiogroup" aria-label="Tracked by">
+                {TRACKING.map((t) => {
+                  const Icon = t.v === "IMEI" ? Smartphone : t.v === "SERIAL" ? Barcode : Boxes;
+                  return (
+                    <button key={t.v} type="button" role="radio" aria-checked={tracking === t.v}
+                      className={`pf2-option${tracking === t.v ? " on" : ""}`}
+                      onClick={() => setTrackOverride({ root: chain[0] ?? "", v: t.v })}>
+                      <span className="pf2-radio" aria-hidden="true" />
+                      <Icon size={17} aria-hidden="true" />
+                      <span className="txt"><strong>{t.label}</strong><span>{t.v === "IMEI" ? "Each unit has an IMEI" : t.v === "SERIAL" ? "Each unit has a serial" : "Counted, not named"}</span></span>
+                    </button>
+                  );
+                })}
+              </div>
 
-          {/* The date is not the item's: one item has many lots, each with
-              its own, so it is asked for per batch on the way in. */}
-          {tracksBatch && (
-            <p className="trackbox-where">{tracksExpiry ? f("batchWhereExpiry") : f("batchWhere")}</p>
+              {showWarranty && (
+                <div className="pf2-fields" style={{ marginTop: 10 }}>
+                  <div className="field">
+                    <label htmlFor="warranty_months">Customer warranty (months)
+                      <HelpHint label="About customer warranty">Copied onto each sale; leave blank for none.</HelpHint>
+                    </label>
+                    <input id="warranty_months" name="warranty_months" type="number" min="0" max="120" />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="supplier_warranty_months">Supplier warranty (months)</label>
+                    <input id="supplier_warranty_months" name="supplier_warranty_months" type="number" min="0" max="120" />
+                  </div>
+                </div>
+              )}
+
+              {!retail && (<>
+                <label className="trackbox-opt" htmlFor="tracks_batch">
+                  <input
+                    id="tracks_batch" name="tracks_batch" type="checkbox"
+                    checked={tracksBatch}
+                    onChange={(e) => {
+                      setTracksBatch(e.target.checked);
+                      if (!e.target.checked) setTracksExpiry(false);
+                    }}
+                  />
+                  <span><strong>{f("trackBatches")}</strong></span>
+                </label>
+                <label className={`trackbox-opt sub${tracksBatch ? "" : " off"}`} htmlFor="tracks_expiry">
+                  <input
+                    id="tracks_expiry" name="tracks_expiry" type="checkbox"
+                    checked={tracksExpiry}
+                    disabled={!tracksBatch}
+                    onChange={(e) => setTracksExpiry(e.target.checked)}
+                  />
+                  <span><strong>{f("batchesExpire")}</strong></span>
+                </label>
+              </>)}
+            </div>
+          </section>
+
+          {/* 4 — the configurations, picked as values. */}
+          {hasVariants && (
+            <section className="card pf2-card" id="pf-variants">
+              <div className="pf2-head">
+                <span className="pf2-step">4</span>
+                <div className="pf2-title">
+                  <h2>Variants</h2>
+                  <HelpHint label="About variants">
+                    Pick the values this product comes in. Every combination becomes its own stocked item with its
+                    own code, price and barcode; drop any combination you do not sell in the preview.
+                  </HelpHint>
+                </div>
+              </div>
+              <div className="pf2-body">
+                <VariantOptions attributes={attributes} v={plan} />
+              </div>
+            </section>
           )}
-          </>)}
         </div>
-      </section>
 
-      {/* 4 and 5 — the variants and what will be created. This form creates;
-          adding variants to a product with stock and history is not offered here. */}
-      <VariantPicker name={itemName} mode={codeMode} prefix={prefixOk ? prefix : ""} nextNo={nextNo}
-        onActive={setHasVariants} onCodesReady={setCodesReady}
-        attributes={(variantAttributes ?? []).filter((a) => !a.identities || a.identities.includes(tracking))} />
-
-      <div className="actions">
-        <button type="submit" disabled={!canSave}>
-          {pending ? f("saving") : f("saveProduct")}
-        </button>
-        {!selectedId && <span className="page-sub">{f("chooseCategoryFirst")}</span>}
+        {/* 5 — what will be created, beside the form while it is filled in. */}
+        {hasVariants && (
+          <div className="pf2-side">
+            <VariantPreview v={plan} mode={codeMode} prefix={prefixOk ? prefix : ""} nextNo={nextNo} name={itemName} />
+          </div>
+        )}
       </div>
     </form>
   );
