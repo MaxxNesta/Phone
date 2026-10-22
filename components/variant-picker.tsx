@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { nextModelNumber } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { Layers, ListChecks, CheckCircle2, AlertCircle, Wand2 } from "lucide-react";
+import { modelItemCode } from "@/lib/item-code";
 
 export type PickerAttribute = {
   id: string; code: string; name: string;
@@ -12,61 +13,42 @@ export type PickerAttribute = {
 };
 
 /**
- * Turning one product into the things that sit on a shelf.
+ * Turning one product into the things that sit on a shelf: the Variants card
+ * (which attributes and values) and the Variant preview card (what will be
+ * created, under which codes).
  *
  * Off by default and silent when off, because most of a trading catalogue
- * has no variants: a tin of condensed milk is one item and stays one. The
- * panel only appears once somebody says this product is different.
+ * has no variants. Ticking Black, White, S, M and L describes six
+ * combinations, and a shop that stocks Black in all three sizes but White
+ * only in M sells four of them, so each combination can be dropped in the
+ * preview — the grid is the starting point, not the answer.
  *
- * Ticking Black, White, S, M and L describes six combinations, and a shop
- * that stocks Black in all three sizes but White only in M sells four of
- * them. So the combinations are listed and each one can be dropped — the
- * grid is the starting point, not the answer. Generating all six and
- * expecting somebody to delete two afterwards makes two dead items that
- * reports have to keep explaining.
- *
- * What it produces is a plan, not the items — the server builds those, so
- * that a form replayed or a request repeated cannot make two sets.
+ * How codes are given is chosen at the top of the form (`mode`): numbered
+ * under a model code, shown here as they will be assigned, or typed for each
+ * variant in the preview. What this produces is a plan, not the items — the
+ * server builds those, so a form replayed cannot make two sets.
  */
 export function VariantPicker({
-  attributes, serial, name = "", modelCodeDefault = "", onActive,
+  attributes, name = "", mode, prefix, nextNo, onActive, onCodesReady,
 }: {
-  /** The category's code, offered as the model code to start from. */
-  modelCodeDefault?: string;
-  /** Told when variants are switched on or off, so the form can stop asking
-   *  for a code of the product's own. */
-  onActive?: (on: boolean) => void;
   attributes: PickerAttribute[];
-  /** Shown in the preview so the generated codes are visible before saving. */
-  serial: string;
   name?: string;
+  /** From the form's Item code assignment. */
+  mode: "model" | "manual";
+  /** The model code, upper-cased, and the first free number under it. */
+  prefix: string;
+  nextNo: number | null;
+  /** Told when variants are switched on or off. */
+  onActive?: (on: boolean) => void;
+  /** Told whether every variant has a usable code, so Save can wait. */
+  onCodesReady?: (ready: boolean) => void;
 }) {
   const v = useTranslations("variantPicker");
   const [on, setOn] = useState(false);
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
-  /** Combinations the grid offers but this product does not sell, by key.
-   *  Held as exclusions rather than inclusions so that ticking another
-   *  colour adds its combinations already on, which is what is wanted
-   *  nearly every time. */
+  /** Combinations offered but not sold, by key. Exclusions rather than
+   *  inclusions, so ticking another colour adds its combinations already on. */
   const [dropped, setDropped] = useState<Set<string>>(new Set());
-  /** Auto composes each variant's code; manual takes the shop's own, one per
-   *  variant, exactly as typed (IPC010). */
-  const [mode, setMode] = useState<"model" | "manual">("model");
-  const [modelCode, setModelCode] = useState("");
-  const prefix = (modelCode || modelCodeDefault).trim().toUpperCase();
-  /** The first free number under the prefix, for the preview; the server
-   *  takes it again when saving, so two people saving at once cannot share. */
-  const [nextNo, setNextNo] = useState<number | null>(null);
-  useEffect(() => {
-    if (mode !== "model" || !prefix) { setNextNo(null); return; }
-    let live = true;
-    const t = setTimeout(() => {
-      nextModelNumber(prefix).then((n) => { if (live) setNextNo(n); }).catch(() => live && setNextNo(null));
-    }, 300);
-    return () => { live = false; clearTimeout(t); };
-  }, [mode, prefix]);
-  const modelCodeAt = (i: number) =>
-    prefix && nextNo !== null ? prefix + String(nextNo + i).padStart(3, "0") : prefix ? prefix + "…" : "…";
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [start, setStart] = useState("");
 
@@ -80,10 +62,7 @@ export function VariantPicker({
   const toggleOption = (attrId: string, optId: string) =>
     setChosen((c) => {
       const have = c[attrId] ?? [];
-      return {
-        ...c,
-        [attrId]: have.includes(optId) ? have.filter((x) => x !== optId) : [...have, optId],
-      };
+      return { ...c, [attrId]: have.includes(optId) ? have.filter((x) => x !== optId) : [...have, optId] };
     });
 
   // Only attributes with something ticked count: one with none would multiply
@@ -95,27 +74,24 @@ export function VariantPicker({
     [attributes, chosen],
   );
 
-  /** Every combination the choices describe, in the order the attributes
-   *  are declared, so a shirt is "M / Red" and never "Red / M". */
+  /** Every combination, in the order the attributes are declared, so a shirt
+   *  is "M / Red" and never "Red / M". */
   const combos = useMemo(() => {
     if (plan.length === 0) return [];
     let rows: { id: string; code: string; label: string }[][] = [[]];
     for (const p of plan) {
       const attr = attributes.find((a) => a.id === p.attributeId)!;
       const opts = attr.options.filter((o) => p.optionIds.includes(o.id));
-      rows = rows.flatMap((c) => opts.map((o) =>
-        [...c, { id: o.id, code: o.code, label: o.name }]));
+      rows = rows.flatMap((c) => opts.map((o) => [...c, { id: o.id, code: o.code, label: o.name }]));
     }
     return rows.map((parts) => ({
       key: parts.map((p) => p.id).join("|"),
       optionIds: parts.map((p) => p.id),
-      suffix: parts.map((p) => p.code).join("-"),
       label: parts.map((p) => p.label).join(" / "),
     }));
   }, [plan, attributes]);
 
   const kept = combos.filter((c) => !dropped.has(c.key));
-
   const toggleCombo = (key: string) =>
     setDropped((d) => {
       const next = new Set(d);
@@ -123,215 +99,175 @@ export function VariantPicker({
       return next;
     });
 
-  const setAll = (keep: boolean) =>
-    setDropped(keep ? new Set() : new Set(combos.map((c) => c.key)));
-
-  /**
-   * What the server is asked to build.
-   *
-   * The attributes travel separately from the combinations because they are
-   * different facts: the attributes are what this product varies by and are
-   * recorded against the parent even for a combination nobody stocks, while
-   * the combinations are the items to create.
-   */
-  const payload = useMemo(() => JSON.stringify({
-    attributes: plan.map((p) => p.attributeId),
-    combos: kept.map((c) => c.optionIds),
-    ...(mode === "manual"
-      ? { codes: kept.map((c) => (codes[c.key] ?? "").trim().toUpperCase()) }
-      : { modelCode: prefix }),
-  }), [plan, kept, mode, codes, prefix]);
+  const typed = (key: string) => (codes[key] ?? "").trim().toUpperCase();
+  const codeAt = (i: number) =>
+    prefix && nextNo !== null ? modelItemCode(prefix, nextNo + i) : prefix ? `${prefix}…` : "…";
 
   /** Codes typed twice in this list, flagged as they are typed. */
   const twice = useMemo(() => {
     const n = new Map<string, number>();
-    for (const c of kept) {
-      const v = (codes[c.key] ?? "").trim().toUpperCase();
-      if (v) n.set(v, (n.get(v) ?? 0) + 1);
-    }
-    return new Set([...n].filter(([, k]) => k > 1).map(([v]) => v));
+    for (const c of kept) { const t = typed(c.key); if (t) n.set(t, (n.get(t) ?? 0) + 1); }
+    return new Set([...n].filter(([, k]) => k > 1).map(([t]) => t));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kept, codes]);
+  const missing = mode === "manual" ? kept.filter((c) => !typed(c.key)).length : 0;
+  const ready = !on || kept.length === 0 || (mode === "model" ? !!prefix : missing === 0 && twice.size === 0);
+  useEffect(() => { onCodesReady?.(ready); }, [ready, onCodesReady]);
 
   /** IPC010 down the list: IPC010, IPC011, IPC012… keeping the zeros. */
   const fillDown = () => {
     const m = start.trim().toUpperCase().match(/^(.*?)(\d+)$/);
     if (!m) return;
-    const [, prefix, digits] = m;
+    const [, p, digits] = m;
     setCodes((cur) => {
       const next = { ...cur };
-      kept.forEach((c, i) => {
-        next[c.key] = prefix + String(Number(digits) + i).padStart(digits.length, "0");
-      });
+      kept.forEach((c, i) => { next[c.key] = p + String(Number(digits) + i).padStart(digits.length, "0"); });
       return next;
     });
   };
 
+  /**
+   * What the server is asked to build. The attributes travel apart from the
+   * combinations: they are what the product varies by, recorded even for a
+   * combination nobody stocks, while the combinations are the items to make.
+   */
+  const payload = useMemo(() => JSON.stringify({
+    attributes: plan.map((p) => p.attributeId),
+    combos: kept.map((c) => c.optionIds),
+    ...(mode === "manual" ? { codes: kept.map((c) => typed(c.key)) } : { modelCode: prefix }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [plan, kept, mode, codes, prefix]);
+
   if (attributes.length === 0) {
-    return (
-      <p className="hint" style={{ marginTop: "1rem" }}>
-        {v("noAttributes")}
-      </p>
-    );
+    return <p className="hint" style={{ marginTop: "1rem" }}>{v("noAttributes")}</p>;
   }
 
   return (
-    <fieldset className="trackbox" style={{ marginTop: "0.75rem" }}>
-      <legend>{v("legend")}</legend>
-
-      <label className="trackbox-opt" htmlFor="has_variants">
-        <input
-          id="has_variants" type="checkbox" checked={on}
-          onChange={(e) => {
-            setOn(e.target.checked);
-            onActive?.(e.target.checked);
-            if (!e.target.checked) { setChosen({}); setDropped(new Set()); }
-          }}
-        />
-        <span>
-          <strong>{v("comesInVariants")}</strong>
-          <span className="trackbox-note">{v("comesInVariantsNote")}</span>
-        </span>
-      </label>
-
-      {on && (
-        <>
-          <input type="hidden" name="variant_plan" value={payload} />
-
-          <div className="varpick">
-            {attributes.map((a) => {
-              const picked = chosen[a.id];
-              return (
-                <div key={a.id} className="varpick-attr">
-                  <label className="check">
-                    <input
-                      type="checkbox" checked={a.id in chosen}
-                      onChange={() => toggleAttribute(a.id)}
-                    />
-                    <strong>{a.name}</strong>
-                  </label>
-                  {a.id in chosen && (
-                    <div className="varpick-opts">
-                      {a.options.length === 0 ? (
-                        <span className="hint">
-                          {v("noValues", { name: a.name })}
-                        </span>
-                      ) : a.options.map((o) => (
-                        <label key={o.id}
-                               className={`varchip${picked?.includes(o.id) ? " on" : ""}`}>
-                          <input
-                            type="checkbox"
-                            checked={picked?.includes(o.id) ?? false}
-                            onChange={() => toggleOption(a.id, o.id)}
-                          />
-                          {o.name}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+    <>
+      <section className="card pf-card">
+        <div className="pf-head">
+          <span className="pf-step">4</span>
+          <span className="pf-icon tone-violet"><Layers size={16} aria-hidden="true" /></span>
+          <div className="pf-title">
+            <h2>{v("variantsTitle")}</h2>
+            <p>{v("variantsSub")}</p>
           </div>
-
-          {combos.length > 0 && (
-            <div className="varpreview">
-              <div className="varpreview-head">
-                <strong>
-                  {v("willBeCreated", { kept: kept.length, total: combos.length })}
-                </strong>
-                {/* Only worth offering once there are enough rows for
-                    clicking each one to be the tedious way round. */}
-                {combos.length > 2 && (
-                  <span className="varpreview-acts">
-                    <button type="button" className="linkbtn" onClick={() => setAll(true)}>
-                      {v("all")}
-                    </button>
-                    <button type="button" className="linkbtn" onClick={() => setAll(false)}>
-                      {v("none")}
-                    </button>
-                  </span>
-                )}
-              </div>
-
-              <fieldset className="varcodes">
-                <legend>{v("codesLabel")}</legend>
-                <label className="check">
-                  <input type="radio" name="variant_code_mode" checked={mode === "model"}
-                    onChange={() => setMode("model")} />
-                  <span><strong>{v("autoCodes")}</strong> <span className="hint">{v("autoCodesNote")}</span></span>
-                </label>
-                {mode === "model" && (
-                  <div className="varfill">
-                    <input type="text" value={modelCode} placeholder={modelCodeDefault || "IPC"}
-                      aria-label={v("modelCode")} onChange={(e) => setModelCode(e.target.value)}
-                      style={{ textTransform: "uppercase" }} />
-                    <span className="hint">{prefix ? v("modelCodeNext", { first: modelCodeAt(0) }) : v("modelCodeNeeded")}</span>
+          <label className="pf-switch" htmlFor="has_variants">
+            <input id="has_variants" type="checkbox" checked={on}
+              onChange={(e) => {
+                setOn(e.target.checked);
+                onActive?.(e.target.checked);
+                if (!e.target.checked) { setChosen({}); setDropped(new Set()); }
+              }} />
+            <span>{v("comesInVariants")}</span>
+          </label>
+        </div>
+        {on && (
+          <div className="pf-body">
+            <input type="hidden" name="variant_plan" value={payload} />
+            <div className="pf-attrs">
+              {attributes.map((a) => {
+                const picked = chosen[a.id];
+                return (
+                  <div key={a.id} className={`pf-attr${a.id in chosen ? " on" : ""}`}>
+                    <label className="check">
+                      <input type="checkbox" checked={a.id in chosen} onChange={() => toggleAttribute(a.id)} />
+                      <strong>{a.name}</strong>
+                    </label>
+                    {a.id in chosen && (
+                      <div className="varpick-opts">
+                        {a.options.length === 0
+                          ? <span className="hint">{v("noValues", { name: a.name })}</span>
+                          : a.options.map((o) => (
+                            <label key={o.id} className={`varchip${picked?.includes(o.id) ? " on" : ""}`}>
+                              <input type="checkbox" checked={picked?.includes(o.id) ?? false}
+                                onChange={() => toggleOption(a.id, o.id)} />
+                              {o.name}
+                            </label>
+                          ))}
+                      </div>
+                    )}
                   </div>
-                )}
-                <label className="check">
-                  <input type="radio" name="variant_code_mode" checked={mode === "manual"}
-                    onChange={() => setMode("manual")} />
-                  <span><strong>{v("manualCodes")}</strong> <span className="hint">{v("manualCodesNote")}</span></span>
-                </label>
-              </fieldset>
-              {mode === "manual" && kept.length > 0 && (
-                <div className="varfill">
-                  <input type="text" value={start} placeholder="IPC010" aria-label={v("firstCode")}
-                    onChange={(e) => setStart(e.target.value)} style={{ textTransform: "uppercase" }} />
-                  <button type="button" className="ghost tiny" onClick={fillDown}
-                    disabled={!/\d$/.test(start.trim())}>
-                    {v("fillDown")}
-                  </button>
-                </div>
-              )}
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
 
-              <ul className="varcombos">
+      {on && combos.length > 0 && (
+        <section className="card pf-card">
+          <div className="pf-head">
+            <span className="pf-step">5</span>
+            <span className="pf-icon tone-green"><ListChecks size={16} aria-hidden="true" /></span>
+            <div className="pf-title">
+              <h2>{v("previewTitle")}</h2>
+              <p>{v("willBeCreated", { kept: kept.length, total: combos.length })}</p>
+            </div>
+            {mode === "manual" && (
+              <div className="pf-fill">
+                <input type="text" value={start} placeholder="IPC010" aria-label={v("firstCode")}
+                  onChange={(e) => setStart(e.target.value)} />
+                <button type="button" className="ghost tiny" onClick={fillDown} disabled={!/\d$/.test(start.trim())}>
+                  <Wand2 size={14} aria-hidden="true" /> {v("fillDown")}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="pf-body flush">
+            <table className="pf-table">
+              <thead>
+                <tr>
+                  <th className="pf-keep">
+                    <input type="checkbox" aria-label={v("all")} checked={kept.length === combos.length}
+                      onChange={(e) => setDropped(e.target.checked ? new Set() : new Set(combos.map((c) => c.key)))} />
+                  </th>
+                  <th className="pf-n">#</th>
+                  <th className="pf-code">{v("itemCode")}</th>
+                  <th>{v("variant")}</th>
+                  <th>{v("previewName")}</th>
+                </tr>
+              </thead>
+              <tbody>
                 {combos.map((c) => {
                   const keep = !dropped.has(c.key);
-                  const typed = (codes[c.key] ?? "").trim().toUpperCase();
+                  const at = kept.indexOf(c);
+                  const t = typed(c.key);
+                  const bad = keep && mode === "manual" && (!t || twice.has(t));
                   return (
-                    <li key={c.key}>
-                      <label className={`varcombo${keep ? " on" : ""}`}>
-                        <input type="checkbox" checked={keep}
-                               onChange={() => toggleCombo(c.key)} />
-                        {mode === "model" || !keep ? (
-                          <span className="m">
-                            {keep ? modelCodeAt(kept.indexOf(c)) : "—"}
-                          </span>
-                        ) : (
-                          <input type="text" className="m varcode" value={codes[c.key] ?? ""}
-                            aria-label={v("codeFor", { name: c.label })} placeholder={v("code")}
-                            onChange={(e) => setCodes((x) => ({ ...x, [c.key]: e.target.value }))}
-                            onClick={(e) => e.preventDefault()}
-                            style={{
-                              textTransform: "uppercase",
-                              ...(typed && twice.has(typed) ? { borderColor: "var(--bad)" } : {}),
-                            }} />
-                        )}
-                        <span className="varcombo-label">
-                          {name || v("thisProduct")} {c.label}
-                        </span>
-                      </label>
-                    </li>
+                    <tr key={c.key} className={keep ? undefined : "off"}>
+                      <td className="pf-keep">
+                        <input type="checkbox" checked={keep} onChange={() => toggleCombo(c.key)}
+                          aria-label={c.label} />
+                      </td>
+                      <td className="pf-n">{keep ? at + 1 : "—"}</td>
+                      <td className="pf-code">
+                        {!keep ? <span className="muted">—</span>
+                          : mode === "model" ? <span className="m">{codeAt(at)}</span>
+                          : (
+                            <input type="text" className={`m varcode${bad && t ? " bad" : ""}`} value={codes[c.key] ?? ""}
+                              aria-label={v("codeFor", { name: c.label })} placeholder={v("code")}
+                              onChange={(e) => setCodes((x) => ({ ...x, [c.key]: e.target.value }))} />
+                          )}
+                      </td>
+                      <td>{c.label}</td>
+                      <td className="muted">{name || v("thisProduct")} {c.label}</td>
+                    </tr>
                   );
                 })}
-              </ul>
-              {mode === "manual" && twice.size > 0 && (
-                <p className="hint" style={{ color: "var(--bad)" }}>{v("codeTwiceHere")}</p>
-              )}
-              {mode === "manual" && kept.some((c) => !(codes[c.key] ?? "").trim()) && (
-                <p className="hint">{v("codesStillEmpty")}</p>
-              )}
-
-              {kept.length === 0 && (
-                <p className="hint" style={{ marginTop: "0.5rem" }}>
-                  {v("nothingTicked")}
-                </p>
-              )}
-            </div>
-          )}
-        </>
+              </tbody>
+            </table>
+          </div>
+          <div className={`pf-status${ready ? " ok" : " bad"}`}>
+            {ready ? <CheckCircle2 size={15} aria-hidden="true" /> : <AlertCircle size={15} aria-hidden="true" />}
+            {kept.length === 0 ? v("nothingTicked")
+              : mode === "model" && !prefix ? v("modelCodeNeeded")
+              : twice.size > 0 ? v("codeTwiceHere")
+              : missing > 0 ? v("codesMissingN", { n: missing })
+              : v("codesReady", { n: kept.length })}
+          </div>
+        </section>
       )}
-    </fieldset>
+    </>
   );
 }

@@ -744,7 +744,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       } catch { return empty; }
     })();
 
-    if (!serial && variantPlan.combos.length === 0) return { error: await m("itemCodeRequired") };
+    if (!serial && variantPlan.combos.length === 0 && str(fd, "code_mode") !== "model") return { error: await m("itemCodeRequired") };
     if (!name) return { error: await m("nameRequired") };
     if (!groupId) return { error: await m("chooseCategory") };
     if (!uomId) return { error: await m("chooseUnit") };
@@ -753,24 +753,39 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       select code from item_group where id = ${groupId} and company_id = ${co}`;
     if (!grp) return { error: await m("categoryGone") };
 
+    /* How a product without variants gets its code, from the form's code
+       assignment: numbered under a model code (VT005), or typed whole and kept
+       as typed (ADP01). Neither — an older form — composes it from the
+       category, as before. With variants the variants carry the codes. */
+    const codeMode = str(fd, "code_mode");
+    const single = variantPlan.combos.length === 0;
+    const singleModel = single && codeMode === "model" ? str(fd, "model_code").toUpperCase() : null;
+    const singleManual = single && codeMode === "manual";
+    if (singleModel !== null && !MODEL_CODE.test(singleModel)) return { error: await m("modelCodeInvalid") };
+    if (singleManual && !/^[A-Z0-9][A-Z0-9._/-]{0,39}$/.test(serial)) {
+      return { error: serial ? await m("variantCodeInvalid", { code: serial }) : await m("itemCodeRequired") };
+    }
+
     // A product with variants is not sold itself, so its own code may be left
     // blank: it is numbered within the category, as a quick-added item is.
-    if (!serial) {
+    if (!serial && singleModel === null) {
       const [next] = await sql`
         select coalesce(max(serial::int), 0) + 1 as n from item
          where company_id = ${co} and item_group_id = ${groupId} and serial ~ '^[0-9]+$'`;
       serial = String(next.n).padStart(3, "0");
     }
 
-    fullCode = composeItemCode(grp.code, serial);
-    const dup = await sql`
-      select name from item where company_id = ${co} and code = ${fullCode}`;
-    if (dup.length) {
-      return { error: await m("codeUsedBy", { code: String(fullCode), name: dup[0].name }) };
+    if (singleModel === null) {
+      fullCode = singleManual ? serial : composeItemCode(grp.code, serial);
+      const dup = await sql`
+        select name from item where company_id = ${co} and code = ${fullCode}`;
+      if (dup.length) {
+        return { error: await m("codeUsedBy", { code: String(fullCode), name: dup[0].name }) };
+      }
     }
 
     if (variantPlan.codes) {
-      const problem = await manualCodeProblem(co, variantPlan.codes, variantPlan.combos.length, [fullCode]);
+      const problem = await manualCodeProblem(co, variantPlan.codes, variantPlan.combos.length, fullCode ? [fullCode] : []);
       if (problem) return { error: problem };
     }
     if (variantPlan.modelCode !== null && !MODEL_CODE.test(variantPlan.modelCode)) {
@@ -798,12 +813,20 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     }
 
     await sql.begin(async (tx) => {
+      // Numbered under the model code here, under a lock on the prefix, so
+      // two products saved together cannot both take VT005.
+      if (singleModel !== null) {
+        await tx`select pg_advisory_xact_lock(hashtext(${co + ":" + singleModel}))`;
+        serial = modelItemCode(singleModel, await firstFreeNumber(tx, co, singleModel));
+        fullCode = serial;
+      }
       const [item] = await tx`
         insert into item
-          (company_id, item_group_id, brand_id, serial, code, name, name_my, base_uom_id, is_stocked,
+          (company_id, item_group_id, brand_id, serial, code, code_is_manual, name, name_my, base_uom_id, is_stocked,
            tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months)
         values
-          (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${name}, ${str(fd, "name_my") || null},
+          (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${singleModel !== null || singleManual},
+           ${name}, ${str(fd, "name_my") || null},
            ${uomId}, ${fd.get("is_stocked") !== null},
            -- Expiry without batches is a date attached to nothing, so the
            -- second is only honoured when the first is on.

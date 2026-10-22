@@ -6829,3 +6829,108 @@ table.ctable .subline { font-size: 0.72rem; }
 .varfill { display: flex; gap: 8px; align-items: center; margin: 0 0 4px 26px; flex-wrap: wrap; }
 .varfill input { width: 9rem; height: 32px; min-height: 0; }
 input.varcode { width: 8.5rem; height: 28px; min-height: 0; padding: 0 6px; font-size: 0.8rem; }
+
+/* ------ Add product: numbered sections, code assignment first ------ */
+.form.pf { display: flex; flex-direction: column; gap: 12px; }
+.form.pf > .card { margin: 0; }
+.pf-bar {
+  position: sticky; top: 8px; z-index: 6;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  border: 1px solid var(--line-soft); box-shadow: 0 4px 16px rgb(0 0 0 / 0.06);
+}
+.pf-bar-code { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pf-bar button[type="submit"] { background: var(--focus); color: #fff; border-color: var(--focus); }
+.pf-bar button[type="submit"]:disabled { opacity: 0.45; }
+
+.pf-card { border-radius: 14px; }
+.pf-accent { border: 1.5px solid color-mix(in srgb, var(--focus) 55%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 8%, transparent); }
+.pf-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.pf-step {
+  flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--focus); color: #fff; font-size: 0.78rem; font-weight: 700;
+}
+.pf-icon { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; }
+.tone-blue   { background: color-mix(in srgb, #0A84FF 14%, transparent); color: #0A64C8; }
+.tone-orange { background: color-mix(in srgb, #FF9F0A 16%, transparent); color: #B86E00; }
+.tone-teal   { background: color-mix(in srgb, #30B0C7 16%, transparent); color: #1B7F92; }
+.tone-violet { background: color-mix(in srgb, #8E5CF7 15%, transparent); color: #6A3FD0; }
+.tone-green  { background: color-mix(in srgb, #34C759 16%, transparent); color: #1F8A3B; }
+.pf-title { flex: 1; min-width: 0; }
+.pf-title h2 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+.pf-title p { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+.pf-badge {
+  font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--focus) 12%, transparent); color: var(--focus);
+}
+.pf-body { padding: 12px 16px 14px; }
+.pf-body.flush { padding: 0; }
+.pf-body .row { margin: 0; }
+
+.pf-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 760px) { .pf-choices { grid-template-columns: 1fr; } }
+button.pf-choice {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px;
+  border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface);
+  transition: border-color .15s, background .15s, box-shadow .15s;
+}
+button.pf-choice:hover { border-color: color-mix(in srgb, var(--focus) 45%, var(--line)); }
+button.pf-choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button.pf-choice.on {
+  border-color: var(--focus); background: color-mix(in srgb, var(--focus) 6%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 14%, transparent);
+}
+.pf-choice-icon {
+  flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 9px;
+  background: var(--line-soft); color: var(--ink-soft);
+}
+.pf-choice.on .pf-choice-icon { background: var(--focus); color: #fff; }
+.pf-choice-text { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pf-choice-text strong { font-size: 0.92rem; }
+.pf-choice-text span { font-size: 0.8rem; color: var(--muted); line-height: 1.35; }
+.pf-choice-text em {
+  align-self: flex-start; margin-top: 4px; font-style: normal; font-size: 0.74rem; font-family: var(--mono);
+  padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--focus) 9%, transparent); color: var(--focus);
+}
+.pf-radio { flex: none; width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); margin-top: 2px; }
+.pf-choice.on .pf-radio { border-color: var(--focus); box-shadow: inset 0 0 0 4px var(--surface); background: var(--focus); }
+
+.pf-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; align-items: start; }
+@media (max-width: 760px) { .pf-split { grid-template-columns: 1fr; } }
+.pf-split .field { margin: 0; }
+.pf-info {
+  display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--focus) 7%, transparent); color: var(--ink-soft); font-size: 0.8rem; line-height: 1.4;
+}
+.pf-split .pf-info { margin-top: 0; }
+.pf-info svg { flex: none; margin-top: 2px; color: var(--focus); }
+
+.pf-switch { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.pf-attrs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px 16px; }
+.pf-attr { padding: 6px 8px; border-radius: 10px; }
+.pf-attr.on { background: var(--ground); }
+.pf-attr .varpick-opts { margin-top: 6px; }
+
+.pf-fill { display: flex; align-items: center; gap: 6px; }
+.pf-fill input { width: 8.5rem; height: 30px; min-height: 0; text-transform: uppercase; }
+.pf-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.pf-table th {
+  text-align: left; font-size: 0.72rem; font-weight: 600; color: var(--muted);
+  padding: 7px 10px; background: var(--ground); border-bottom: 1px solid var(--line-soft);
+}
+.pf-table td { padding: 6px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+.pf-table tr.off td { color: var(--muted); text-decoration: line-through; }
+.pf-table tr.off td.pf-keep { text-decoration: none; }
+.pf-keep { width: 32px; }
+.pf-n { width: 36px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pf-code { width: 150px; font-weight: 600; }
+input.varcode.bad { border-color: var(--bad); }
+.pf-status {
+  display: flex; align-items: center; gap: 6px; padding: 9px 16px; font-size: 0.8rem; font-weight: 500;
+  border-top: 1px solid var(--line-soft);
+}
+.pf-status.ok { color: var(--ok); }
+.pf-status.bad { color: var(--warn); }
