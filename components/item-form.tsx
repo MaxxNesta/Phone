@@ -339,7 +339,7 @@ export function ItemForm({
                 </div>
 
                 <div className="field">
-                  <label htmlFor="name">{nameLabel}<b>*</b></label>
+                  <label htmlFor="name">{nameLabel}</label>
                   <input id="name" name="name" type="text" required placeholder={namePlaceholder}
                          value={itemName} onChange={(e) => setItemName(e.target.value)} />
                 </div>
@@ -350,7 +350,7 @@ export function ItemForm({
                 </div>
 
                 <div className="field">
-                  <label htmlFor="base_uom_id">Base unit<b>*</b>
+                  <label htmlFor="base_uom_id">Base unit
                     <HelpHint label="About the base unit">Stock is always counted in this unit, and it cannot be changed once the product is saved.</HelpHint>
                   </label>
                   <select id="base_uom_id" name="base_uom_id" required value={baseUomId}
