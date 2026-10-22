@@ -42,6 +42,7 @@ const luhn = (body) => {
   return body + ((10 - (sum % 10)) % 10);
 };
 
+const madeGroups = [];
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   if (!/\bDEV\b/i.test(String(co.name)) || process.env.ALLOW_DESTRUCTIVE_TESTS !== "1") {
@@ -57,7 +58,14 @@ try {
   const [loc, loc2] = locs;
   const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier and is_active order by code limit 1`;
   const [cust] = await sql`select id from business_partner where company_id = ${co.id} and is_customer and is_active and credit_limit is null order by code limit 1`;
-  const [grp] = await sql`select id from item_group where company_id = ${co.id} and identity = 'IMEI' order by code limit 1`;
+  // A phone category of its own when the database has none, removed at the end:
+  // the suite needs one, and whether DEV happens to carry phones is not its business.
+  let [grp] = await sql`select id from item_group where company_id = ${co.id} and identity = 'IMEI' order by code limit 1`;
+  if (!grp) {
+    [grp] = await sql`insert into item_group (company_id, segment, name, identity)
+                      values (${co.id}, 'LCI', 'Landed cost test phones', 'IMEI') returning id`;
+    madeGroups.push(grp.id);
+  }
   const [accGrp] = await sql`select id from item_group where company_id = ${co.id} and identity = 'NONE' order by code limit 1`;
   const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;
   const [user] = await sql`select id from app_user where company_id = ${co.id} order by created_at limit 1`;
@@ -580,6 +588,13 @@ try {
   console.error("\n  error:", e.stack ?? e.message, "\n");
   process.exitCode = 1;
 } finally {
+  if (madeGroups.length) {
+    await resetTransactions(sql).catch(() => {});
+    await sql`delete from item_uom where item_id in (select id from item where item_group_id = any(${madeGroups}))`.catch(() => {});
+    await sql`delete from item_price where item_id in (select id from item where item_group_id = any(${madeGroups}))`.catch(() => {});
+    await sql`delete from item where item_group_id = any(${madeGroups})`.catch(() => {});
+    await sql`delete from item_group where id = any(${madeGroups})`.catch(() => {});
+  }
   await releaseTestLock(sql);
   await sql.end({ timeout: 5 });
 }
