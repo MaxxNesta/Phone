@@ -125,6 +125,8 @@ export function ItemForm({
 
   const [chain, setChain] = useState<string[]>(initialChain);
   const [serial, setSerial] = useState("");
+  // A product that comes in variants is not sold itself, so its own code is optional.
+  const [hasVariants, setHasVariants] = useState(false);
   // Controlled only so the variant preview can name the product it is
   // about to make twelve of.
   const [itemName, setItemName] = useState("");
@@ -245,10 +247,10 @@ export function ItemForm({
             <div className="field">
               <label htmlFor="serial">{f("itemCode")}</label>
               <input
-                id="serial" name="serial" type="text" required
+                id="serial" name="serial" type="text" required={!hasVariants}
                 value={serial}
                 onChange={(e) => setSerial(e.target.value)}
-                placeholder="001"
+                placeholder={hasVariants ? f("codeOptional") : "001"}
                 aria-invalid={takenBy ? true : undefined}
                 style={takenBy ? { borderColor: "var(--bad)" } : undefined}
               />
@@ -438,13 +440,13 @@ export function ItemForm({
 
           {/* This form creates; adding variants to a product that already has
               stock and history is a larger question and is not offered here. */}
-          <VariantPicker serial={serial} name={itemName}
+          <VariantPicker serial={serial} name={itemName} modelCodeDefault={groupCode} onActive={setHasVariants}
             attributes={(variantAttributes ?? []).filter((a) => !a.identities || a.identities.includes(tracking))} />
         </div>
       </div>
 
       <div className="actions">
-        <button type="submit" disabled={pending || !selectedId || !serial || !!takenBy}>
+        <button type="submit" disabled={pending || !selectedId || (!serial && !hasVariants) || !!takenBy}>
           {pending ? f("saving") : preview ? f("saveCode", { code: preview }) : f("saveItem")}
         </button>
         {!selectedId && <span className="page-sub">{f("chooseCategoryFirst")}</span>}

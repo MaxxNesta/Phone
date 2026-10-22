@@ -288,7 +288,8 @@
     "batchWhere": "No number here — the batch is typed on the document that brings the goods in: a goods receipt, a purchase bill that receives, or a stock adjustment that finds stock.",
     "saveCode": "Save {code}",
     "saveItem": "Save item",
-    "chooseCategoryFirst": "Choose a category first"
+    "chooseCategoryFirst": "Choose a category first",
+    "codeOptional": "Optional with variants"
   },
   "items": {
     "newItem": "New item",
@@ -347,7 +348,21 @@
     "none": "None",
     "thisProduct": "this product",
     "nothingTicked": "Nothing is ticked, so this will be saved as an ordinary item with no variants.",
-    "noAttributes": "No variant attributes are set up yet. Add Size or Colour under Master data → Variant attributes, and this product can then be offered in them."
+    "noAttributes": "No variant attributes are set up yet. Add Size or Colour under Master data → Variant attributes, and this product can then be offered in them.",
+    "codesLabel": "Item code assignment",
+    "autoCodes": "Auto-assign codes from Model Code",
+    "manualCodes": "Enter item codes manually",
+    "autoCodesNote": "Type one model code; the variants are numbered under it from the next free number (IPC001, IPC002…).",
+    "modelCode": "Model code",
+    "modelCodeNext": "First code will be {first}",
+    "modelCodeNeeded": "Type the model code, e.g. IPC.",
+    "manualCodesNote": "Type each variant's own code, e.g. IPC010. It is used exactly as typed.",
+    "firstCode": "First code",
+    "fillDown": "Fill down from this code",
+    "codeFor": "Code for {name}",
+    "code": "Code",
+    "codeTwiceHere": "The same code is typed for two variants.",
+    "codesStillEmpty": "Every ticked variant needs a code before saving."
   },
   "packSizes": {
     "label": "Pack sizes",
@@ -723,7 +738,10 @@
     "help": "Barcode and selling price for every size and colour, saved together. A barcode names one thing on a shelf, so the same one cannot be put on two variants — clashes are shown as you type and refused on save. Each price level has its own column; Retail is the price the counter uses.",
     "count": "{n, plural, one {# variant} other {# variants}}",
     "showAll": "Show all {n} variants",
-    "scanHint": "scan straight into the barcode column — the field takes whatever the scanner types"
+    "scanHint": "scan straight into the barcode column — the field takes whatever the scanner types",
+    "codeFor": "Code for {name}",
+    "codeEmpty": "Every variant needs a code.",
+    "codeClash": "Two variants have the same code."
   },
   "prices": {
     "title": "Price levels",
@@ -882,7 +900,11 @@
     "codeUsedBy": "Code {code} is already used by {name}",
     "alreadyOnList": "{code} is already on this list",
     "notForThisKind": "{name} is not chosen for this kind of product",
-    "codeAdded": "{code} added"
+    "codeAdded": "{code} added",
+    "modelCodeInvalid": "Type a model code of letters and digits, e.g. IPC.",
+    "variantCodesMissing": "Every variant needs a code.",
+    "variantCodeInvalid": "{code} is not a usable code. Use letters, digits and - . _ / only.",
+    "variantCodeTwice": "Code {code} is typed for two variants."
   },
   "pos": {
     "title": "Counter sale",

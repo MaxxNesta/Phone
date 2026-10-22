@@ -6821,3 +6821,11 @@ table.ctable .subline { font-size: 0.72rem; }
 .cpanel-tl-main strong { font-weight: 600; }
 .cpanel-tl-main span { margin-left: auto; font-variant-numeric: tabular-nums; }
 .cpanel-tl-meta { font-size: 0.72rem; color: var(--muted); }
+
+/* ------ variant codes: numbered under a model code, or the shop's own ------ */
+.varcodes { border: 0; padding: 0; margin: 10px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.varcodes legend { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+.varcodes .check { align-items: flex-start; }
+.varfill { display: flex; gap: 8px; align-items: center; margin: 0 0 4px 26px; flex-wrap: wrap; }
+.varfill input { width: 9rem; height: 32px; min-height: 0; }
+input.varcode { width: 8.5rem; height: 28px; min-height: 0; padding: 0 6px; font-size: 0.8rem; }

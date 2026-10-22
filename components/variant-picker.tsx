@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { nextModelNumber } from "@/lib/actions";
 import { useTranslations } from "next-intl";
 
 export type PickerAttribute = {
@@ -28,8 +29,13 @@ export type PickerAttribute = {
  * that a form replayed or a request repeated cannot make two sets.
  */
 export function VariantPicker({
-  attributes, serial, name = "",
+  attributes, serial, name = "", modelCodeDefault = "", onActive,
 }: {
+  /** The category's code, offered as the model code to start from. */
+  modelCodeDefault?: string;
+  /** Told when variants are switched on or off, so the form can stop asking
+   *  for a code of the product's own. */
+  onActive?: (on: boolean) => void;
   attributes: PickerAttribute[];
   /** Shown in the preview so the generated codes are visible before saving. */
   serial: string;
@@ -43,6 +49,26 @@ export function VariantPicker({
    *  colour adds its combinations already on, which is what is wanted
    *  nearly every time. */
   const [dropped, setDropped] = useState<Set<string>>(new Set());
+  /** Auto composes each variant's code; manual takes the shop's own, one per
+   *  variant, exactly as typed (IPC010). */
+  const [mode, setMode] = useState<"model" | "manual">("model");
+  const [modelCode, setModelCode] = useState("");
+  const prefix = (modelCode || modelCodeDefault).trim().toUpperCase();
+  /** The first free number under the prefix, for the preview; the server
+   *  takes it again when saving, so two people saving at once cannot share. */
+  const [nextNo, setNextNo] = useState<number | null>(null);
+  useEffect(() => {
+    if (mode !== "model" || !prefix) { setNextNo(null); return; }
+    let live = true;
+    const t = setTimeout(() => {
+      nextModelNumber(prefix).then((n) => { if (live) setNextNo(n); }).catch(() => live && setNextNo(null));
+    }, 300);
+    return () => { live = false; clearTimeout(t); };
+  }, [mode, prefix]);
+  const modelCodeAt = (i: number) =>
+    prefix && nextNo !== null ? prefix + String(nextNo + i).padStart(3, "0") : prefix ? prefix + "…" : "…";
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  const [start, setStart] = useState("");
 
   const toggleAttribute = (id: string) =>
     setChosen((c) => {
@@ -111,7 +137,34 @@ export function VariantPicker({
   const payload = useMemo(() => JSON.stringify({
     attributes: plan.map((p) => p.attributeId),
     combos: kept.map((c) => c.optionIds),
-  }), [plan, kept]);
+    ...(mode === "manual"
+      ? { codes: kept.map((c) => (codes[c.key] ?? "").trim().toUpperCase()) }
+      : { modelCode: prefix }),
+  }), [plan, kept, mode, codes, prefix]);
+
+  /** Codes typed twice in this list, flagged as they are typed. */
+  const twice = useMemo(() => {
+    const n = new Map<string, number>();
+    for (const c of kept) {
+      const v = (codes[c.key] ?? "").trim().toUpperCase();
+      if (v) n.set(v, (n.get(v) ?? 0) + 1);
+    }
+    return new Set([...n].filter(([, k]) => k > 1).map(([v]) => v));
+  }, [kept, codes]);
+
+  /** IPC010 down the list: IPC010, IPC011, IPC012… keeping the zeros. */
+  const fillDown = () => {
+    const m = start.trim().toUpperCase().match(/^(.*?)(\d+)$/);
+    if (!m) return;
+    const [, prefix, digits] = m;
+    setCodes((cur) => {
+      const next = { ...cur };
+      kept.forEach((c, i) => {
+        next[c.key] = prefix + String(Number(digits) + i).padStart(digits.length, "0");
+      });
+      return next;
+    });
+  };
 
   if (attributes.length === 0) {
     return (
@@ -130,6 +183,7 @@ export function VariantPicker({
           id="has_variants" type="checkbox" checked={on}
           onChange={(e) => {
             setOn(e.target.checked);
+            onActive?.(e.target.checked);
             if (!e.target.checked) { setChosen({}); setDropped(new Set()); }
           }}
         />
@@ -199,17 +253,61 @@ export function VariantPicker({
                 )}
               </div>
 
+              <fieldset className="varcodes">
+                <legend>{v("codesLabel")}</legend>
+                <label className="check">
+                  <input type="radio" name="variant_code_mode" checked={mode === "model"}
+                    onChange={() => setMode("model")} />
+                  <span><strong>{v("autoCodes")}</strong> <span className="hint">{v("autoCodesNote")}</span></span>
+                </label>
+                {mode === "model" && (
+                  <div className="varfill">
+                    <input type="text" value={modelCode} placeholder={modelCodeDefault || "IPC"}
+                      aria-label={v("modelCode")} onChange={(e) => setModelCode(e.target.value)}
+                      style={{ textTransform: "uppercase" }} />
+                    <span className="hint">{prefix ? v("modelCodeNext", { first: modelCodeAt(0) }) : v("modelCodeNeeded")}</span>
+                  </div>
+                )}
+                <label className="check">
+                  <input type="radio" name="variant_code_mode" checked={mode === "manual"}
+                    onChange={() => setMode("manual")} />
+                  <span><strong>{v("manualCodes")}</strong> <span className="hint">{v("manualCodesNote")}</span></span>
+                </label>
+              </fieldset>
+              {mode === "manual" && kept.length > 0 && (
+                <div className="varfill">
+                  <input type="text" value={start} placeholder="IPC010" aria-label={v("firstCode")}
+                    onChange={(e) => setStart(e.target.value)} style={{ textTransform: "uppercase" }} />
+                  <button type="button" className="ghost tiny" onClick={fillDown}
+                    disabled={!/\d$/.test(start.trim())}>
+                    {v("fillDown")}
+                  </button>
+                </div>
+              )}
+
               <ul className="varcombos">
                 {combos.map((c) => {
                   const keep = !dropped.has(c.key);
+                  const typed = (codes[c.key] ?? "").trim().toUpperCase();
                   return (
                     <li key={c.key}>
                       <label className={`varcombo${keep ? " on" : ""}`}>
                         <input type="checkbox" checked={keep}
                                onChange={() => toggleCombo(c.key)} />
-                        <span className="m">
-                          {serial ? `${serial}-${c.suffix}` : "…"}
-                        </span>
+                        {mode === "model" || !keep ? (
+                          <span className="m">
+                            {keep ? modelCodeAt(kept.indexOf(c)) : "—"}
+                          </span>
+                        ) : (
+                          <input type="text" className="m varcode" value={codes[c.key] ?? ""}
+                            aria-label={v("codeFor", { name: c.label })} placeholder={v("code")}
+                            onChange={(e) => setCodes((x) => ({ ...x, [c.key]: e.target.value }))}
+                            onClick={(e) => e.preventDefault()}
+                            style={{
+                              textTransform: "uppercase",
+                              ...(typed && twice.has(typed) ? { borderColor: "var(--bad)" } : {}),
+                            }} />
+                        )}
                         <span className="varcombo-label">
                           {name || v("thisProduct")} {c.label}
                         </span>
@@ -218,6 +316,12 @@ export function VariantPicker({
                   );
                 })}
               </ul>
+              {mode === "manual" && twice.size > 0 && (
+                <p className="hint" style={{ color: "var(--bad)" }}>{v("codeTwiceHere")}</p>
+              )}
+              {mode === "manual" && kept.some((c) => !(codes[c.key] ?? "").trim()) && (
+                <p className="hint">{v("codesStillEmpty")}</p>
+              )}
 
               {kept.length === 0 && (
                 <p className="hint" style={{ marginTop: "0.5rem" }}>

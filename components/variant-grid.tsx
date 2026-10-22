@@ -56,6 +56,7 @@ export function VariantGrid({
 
   const [rows, setRows] = useState(() => initial.map((r) => ({
     id: r.id,
+    code: r.code,
     barcode: r.barcode ?? "",
     prices: Object.fromEntries(levels.map((l) => [l.id, priceOf(r, l.id)])),
     isActive: r.is_active,
@@ -89,7 +90,19 @@ export function VariantGrid({
     return new Set([...count.entries()].filter(([, n]) => n > 1).map(([b]) => b));
   }, [rows]);
 
+  /** Codes typed twice in this grid. */
+  const codeClash = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const r of rows) {
+      const k = r.code.trim().toUpperCase();
+      if (k) count.set(k, (count.get(k) ?? 0) + 1);
+    }
+    return new Set([...count.entries()].filter(([, n]) => n > 1).map(([k]) => k));
+  }, [rows]);
+  const codeEmpty = rows.some((r) => !r.code.trim());
+
   const dirty = rows.some((r, i) =>
+    r.code.trim().toUpperCase() !== initial[i].code ||
     r.barcode !== (initial[i].barcode ?? "") ||
     levels.some((l) => r.prices[l.id] !== priceOf(initial[i], l.id)) ||
     r.isActive !== initial[i].is_active);
@@ -192,7 +205,15 @@ export function VariantGrid({
                     <VariantTags className="vartags-inline"
                       variant={v.parts?.map((x) => ({ a: x.attribute, o: x.option })) ?? null} />
                   </td>
-                  <td className="code">{v.code}</td>
+                  {/* The shop's own code (IPC010) can be typed here; the generated
+                      one stays until somebody does. */}
+                  <td className="narrow">
+                    <input type="text" aria-label={g("codeFor", { name: v.name })}
+                      value={r.code} onChange={(e) => set(r.id, { code: e.target.value })}
+                      style={{ textTransform: "uppercase", minWidth: "9rem",
+                               ...(codeClash.has(r.code.trim().toUpperCase()) || !r.code.trim()
+                                 ? { borderColor: "var(--bad)" } : {}) }} />
+                  </td>
                   <td>
                     <input
                       type="text" inputMode="numeric" aria-label={g("barcodeFor", { name: v.name })}
@@ -233,9 +254,14 @@ export function VariantGrid({
       </div>
 
       <div className="actions">
-        <button type="submit" disabled={pending || !dirty || clashing.size > 0}>
+        <button type="submit" disabled={pending || !dirty || clashing.size > 0 || codeClash.size > 0 || codeEmpty}>
           {pending ? c("saving") : g("save", { n: rows.length })}
         </button>
+        {(codeClash.size > 0 || codeEmpty) && (
+          <span className="page-sub" style={{ color: "var(--bad)" }}>
+            {codeEmpty ? g("codeEmpty") : g("codeClash")}
+          </span>
+        )}
         {clashing.size > 0 && (
           <span className="page-sub" style={{ color: "var(--bad)" }}>
             {g("barcodeClash")}

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
-import { composeItemCode } from "./item-code";
+import { composeItemCode, firstFreeNumber, MODEL_CODE, modelItemCode } from "./item-code";
 import { redirect } from "next/navigation";
 import { money, sql } from "./db";
 import { parseCsv, planImport, type MasterData } from "./import-items";
@@ -49,6 +49,39 @@ import { postReturnWithRefund, refundReturn, dryRun, type RefundSpec, type Money
  */
 async function m(key: string, values?: Record<string, string | number>): Promise<string> {
   return (await serverT("actions"))(key as never, values as never);
+}
+
+/**
+ * What is wrong with codes typed by hand for variants, or null. One per
+ * variant, none blank, none twice, none already on another item — and none
+ * equal to a code this same save is about to use (`alsoTaking`). `except` is
+ * the items being renamed, which may keep the code they already have.
+ */
+async function manualCodeProblem(
+  co: string, codes: string[], expected: number, alsoTaking: string[] = [], except: string[] = [],
+): Promise<string | null> {
+  if (codes.length !== expected || codes.some((c) => !c)) return m("variantCodesMissing");
+  const bad = codes.find((c) => !/^[A-Z0-9][A-Z0-9._/-]{0,39}$/.test(c));
+  if (bad) return m("variantCodeInvalid", { code: bad });
+  const seen = new Set<string>();
+  for (const c of codes) {
+    if (seen.has(c) || alsoTaking.includes(c)) return m("variantCodeTwice", { code: c });
+    seen.add(c);
+  }
+  const [used] = await sql`
+    select code, name from item
+     where company_id = ${co} and code = any(${codes})
+       and id <> all(${except}::uuid[])
+     limit 1`;
+  return used ? m("codeUsedBy", { code: used.code, name: used.name }) : null;
+}
+
+/** For the product form's preview: where model-code numbering would start. */
+export async function nextModelNumber(prefix: string): Promise<number | null> {
+  await requirePermission("items.manage");
+  const p = String(prefix ?? "").trim().toUpperCase();
+  if (!MODEL_CODE.test(p)) return null;
+  return firstFreeNumber(sql, await companyId(), p);
 }
 
 
@@ -637,7 +670,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     const co = await companyId();
     returnTo = str(fd, "return_to") || null;
 
-    const serial = str(fd, "serial").toUpperCase();
+    let serial = str(fd, "serial").toUpperCase();
     const name = str(fd, "name");
     const groupId = str(fd, "item_group_id");
     const uomId = str(fd, "base_uom_id");
@@ -682,8 +715,10 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
      * decides them: a shop selling Black in S/M/L and White only in M asks
      * for four, not the six the grid would produce.
      */
-    const variantPlan: { attributes: string[]; combos: string[][] } = (() => {
-      const empty = { attributes: [] as string[], combos: [] as string[][] };
+    const variantPlan: {
+      attributes: string[]; combos: string[][]; codes: string[] | null; modelCode: string | null;
+    } = (() => {
+      const empty = { attributes: [] as string[], combos: [] as string[][], codes: null, modelCode: null };
       const raw = str(fd, "variant_plan");
       if (!raw) return empty;
       try {
@@ -698,11 +733,18 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
         // Neither half means anything alone: attributes with no combinations
         // build nothing, and combinations with no attributes leave the parent
         // unable to say what it varies by. Either way it is an ordinary item.
-        return attributes.length > 0 && combos.length > 0 ? { attributes, combos } : empty;
+        // Codes typed by hand, one per combination in the same order, when the
+        // form was on its Manual codes tab. Absent means compose them.
+        const codes: string[] | null = Array.isArray(parsed?.codes)
+          ? parsed.codes.map((c: unknown) => String(c ?? "").trim().toUpperCase()) : null;
+        // Or one model code (IPC) the variants are numbered under: IPC001, IPC002…
+        const modelCode = !codes && typeof parsed?.modelCode === "string"
+          ? parsed.modelCode.trim().toUpperCase() : null;
+        return attributes.length > 0 && combos.length > 0 ? { attributes, combos, codes, modelCode } : empty;
       } catch { return empty; }
     })();
 
-    if (!serial) return { error: await m("itemCodeRequired") };
+    if (!serial && variantPlan.combos.length === 0) return { error: await m("itemCodeRequired") };
     if (!name) return { error: await m("nameRequired") };
     if (!groupId) return { error: await m("chooseCategory") };
     if (!uomId) return { error: await m("chooseUnit") };
@@ -711,6 +753,15 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       select code from item_group where id = ${groupId} and company_id = ${co}`;
     if (!grp) return { error: await m("categoryGone") };
 
+    // A product with variants is not sold itself, so its own code may be left
+    // blank: it is numbered within the category, as a quick-added item is.
+    if (!serial) {
+      const [next] = await sql`
+        select coalesce(max(serial::int), 0) + 1 as n from item
+         where company_id = ${co} and item_group_id = ${groupId} and serial ~ '^[0-9]+$'`;
+      serial = String(next.n).padStart(3, "0");
+    }
+
     fullCode = composeItemCode(grp.code, serial);
     const dup = await sql`
       select name from item where company_id = ${co} and code = ${fullCode}`;
@@ -718,6 +769,13 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       return { error: await m("codeUsedBy", { code: String(fullCode), name: dup[0].name }) };
     }
 
+    if (variantPlan.codes) {
+      const problem = await manualCodeProblem(co, variantPlan.codes, variantPlan.combos.length, [fullCode]);
+      if (problem) return { error: problem };
+    }
+    if (variantPlan.modelCode !== null && !MODEL_CODE.test(variantPlan.modelCode)) {
+      return { error: await m("modelCodeInvalid") };
+    }
 
     // Before the transaction: re-encoding is the slow part and the part most
     // likely to be refused, and an unreadable file should fail the save rather
@@ -820,7 +878,16 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1` : [];
 
         const valueGone = await m("variantValueGone");
-        const planned = variantPlan.combos.map((raw) => {
+        /* Numbered under the model code, from the first free number, inside
+           this transaction and under a lock on the prefix, so two products
+           saved at the same moment cannot both take IPC004. */
+        if (variantPlan.modelCode) {
+          await tx`select pg_advisory_xact_lock(hashtext(${co + ":" + variantPlan.modelCode}))`;
+          const first = await firstFreeNumber(tx, co, variantPlan.modelCode);
+          variantPlan.codes = variantPlan.combos.map((_, i) =>
+            modelItemCode(variantPlan.modelCode!, first + i));
+        }
+        const planned = variantPlan.combos.map((raw, at) => {
           // An option id the form invented, or one deleted between loading
           // the page and saving it, would otherwise become "undefined" in
           // the middle of a code.
@@ -839,7 +906,10 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
             combo,
             row: {
               company_id: co, item_group_id: groupId, parent_item_id: item.id,
-              serial: serial + "-" + suffix,
+              // A typed code is the whole code (IPC010); otherwise it is
+              // composed from the product's piece and the options.
+              serial: variantPlan.codes ? variantPlan.codes[at] : serial + "-" + suffix,
+              code_is_manual: Boolean(variantPlan.codes),
               name: name + " " + label, name_my: nameMy ? nameMy + " " + label : null,
               base_uom_id: uomId, valuation_method: "FIFO",
               is_stocked: fd.get("is_stocked") !== null, brand_id: brandId,
@@ -4304,6 +4374,8 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
 
     const rows = JSON.parse(str(fd, "rows") || "[]") as {
       id: string; barcode: string; prices: Record<string, string>; isActive: boolean;
+      /** The code, when somebody typed one; unchanged codes are left alone. */
+      code?: string;
     }[];
     if (rows.length === 0) return { error: await m("nothingToSave") };
 
@@ -4344,6 +4416,21 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
       }
     }
 
+    // Codes typed on the grid: only the ones that changed, each becoming the
+    // variant's whole code exactly as typed (IPC010).
+    const renamed = rows
+      .map((r) => ({ id: r.id, code: String(r.code ?? "").trim().toUpperCase() }))
+      .filter((r) => r.code !== "" && r.code !== byId.get(r.id));
+    if (rows.some((r) => r.code !== undefined && !String(r.code).trim())) {
+      return { error: await m("variantCodesMissing") };
+    }
+    if (renamed.length > 0) {
+      const kept = rows.filter((r) => !renamed.some((x) => x.id === r.id)).map((r) => byId.get(r.id)!);
+      const problem = await manualCodeProblem(co, renamed.map((r) => r.code), renamed.length, kept,
+        renamed.map((r) => r.id));
+      if (problem) return { error: problem };
+    }
+
     // Every level the company has, each saved as its own column.
     const levels = await sql<{ id: string }[]>`select id from price_level where company_id = ${co}`;
 
@@ -4354,6 +4441,12 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
         update item i set barcode = v.barcode, is_active = v.is_active
           from jsonb_to_recordset(${tx.json(flags)}::jsonb) as v(id uuid, barcode text, is_active boolean)
          where i.id = v.id and i.company_id = ${co}`;
+      if (renamed.length > 0) {
+        await tx`
+          update item i set serial = v.code, code_is_manual = true
+            from jsonb_to_recordset(${tx.json(renamed)}::jsonb) as v(id uuid, code text)
+           where i.id = v.id and i.company_id = ${co}`;
+      }
       for (const level of levels) {
         const given = rows.filter((r) => r.prices && level.id in r.prices)
           .map((r) => ({ id: r.id, price: r.prices[level.id].trim() === "" ? null : Number(r.prices[level.id]) }));
