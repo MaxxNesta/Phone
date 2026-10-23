@@ -240,7 +240,9 @@ try {
     pay: [[cash[0].id, 5_000_000], [second.id, 3_045_000]] });
   const vs = await R.receiptView(co.id, split.id, null, { bind: true });
   const hs = render(vs);
-  check("split: method Split payment with both amounts", vs.data.paymentMethod === "Split payment" && vs.data.paid.length === 2,
+  // Since payment channels (0141) a split names both methods — "Cash + KBZPay" —
+  // rather than the bare "Split payment" it used to print.
+  check("split: both methods named, both amounts", vs.data.paid.length === 2 && / \+ /.test(vs.data.paymentMethod),
     `${vs.data.paymentMethod} ${vs.data.paid.length}`);
   check("multiple IMEIs on one line both print", hs.includes(sn1[1]) && hs.includes(sn1[2]));
   check("line discount shown and total is after discount", /Discount 10%/.test(hs) && Math.abs(vs.data.total - 8_045_000) < 0.01, String(vs.data.total));

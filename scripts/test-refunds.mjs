@@ -54,6 +54,7 @@ const cleanMasters = async (co) => {
 };
 
 let coId = null;
+let kbzBefore = null;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   coId = co.id;
@@ -78,11 +79,16 @@ try {
 
   const channel = async (code) => (await sql`select id from payment_channel where company_id = ${co.id} and code = ${code}`)[0].id;
   const CASH = await channel("CASH"), KBZ = await channel("KBZPAY");
-  let [wallet] = await sql`select id from account where company_id = ${co.id} and lower(name) = 'kbzpay' and is_cash_account`;
+  // A wallet account of the test's own: a real KBZPay account, active or
+  // retired, is never borrowed, and the channel's own mapping is put back.
+  let [wallet] = await sql`select id from account where company_id = ${co.id} and code = 'T-KBZPAY'`;
   if (!wallet) {
     [wallet] = await sql`insert into account (company_id, parent_id, code, name, account_type, is_cash_account, is_bank_account)
-      select ${co.id}, parent_id, '1019', 'KBZPay', 'ASSET', true, true from account where company_id = ${co.id} and code = '13201' returning id`;
+      select ${co.id}, parent_id, 'T-KBZPAY', 'KBZPay (test)', 'ASSET', true, true from account
+       where company_id = ${co.id} and is_bank_account and is_postable order by code limit 1 returning id`;
   }
+  kbzBefore = { channel: KBZ, wallet: wallet.id,
+    rows: await sql`select company_id, channel_id, branch_id, account_id from payment_channel_account where channel_id = ${KBZ}` };
   await sql`delete from payment_channel_account where channel_id = ${KBZ}`;
   await sql`insert into payment_channel_account (company_id, channel_id, account_id) values (${co.id}, ${KBZ}, ${wallet.id})`;
   const cashAcct = (await sql`select fn_payment_channel_account(${CASH}, ${loc.id}) as a`)[0].a;
@@ -186,6 +192,12 @@ try {
   bad++;
   console.error("\n  ERROR", err);
 } finally {
+  if (kbzBefore) {
+    await resetTransactions(sql).catch(() => {});
+    await sql`delete from payment_channel_account where channel_id = ${kbzBefore.channel}`.catch(() => {});
+    for (const r of kbzBefore.rows) await sql`insert into payment_channel_account ${sql(r)}`.catch(() => {});
+    await sql`delete from account where id = ${kbzBefore.wallet}`.catch(() => {});
+  }
   await resetTransactions(sql).catch(() => {});
   if (coId) await cleanMasters(coId).catch(() => {});
   await releaseTestLock(sql);
