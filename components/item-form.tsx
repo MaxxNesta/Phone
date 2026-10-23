@@ -181,7 +181,13 @@ export function ItemForm({
   const manualSingle = codeMode === "manual" && !hasVariants;
   const preview = manualSingle ? manualCode.trim().toUpperCase() : "";
 
-  const attributes = (variantAttributes ?? []).filter((a) => !a.identities || a.identities.includes(tracking));
+  // Offered for this kind of product and this brand: Memory is the Mac's,
+  // RAM is everyone's but Apple's.
+  const brand = brandList.find((b) => b.id === brandId);
+  const brandCodes = brand ? [brand.code.toUpperCase(), brand.name.toUpperCase()] : [];
+  const attributes = (variantAttributes ?? []).filter((a) =>
+    (!a.identities || a.identities.includes(tracking)) &&
+    !(a.not_for_brands ?? []).some((code) => brandCodes.includes(code.toUpperCase())));
   const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "");
 
   // Is the typed code already somebody's? Asked a moment after typing stops,

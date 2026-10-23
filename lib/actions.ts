@@ -810,6 +810,13 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
          where id in ${sql(variantPlan.attributes)}
            and identities is not null and not (${identity} = any(identities))`;
       if (off.length > 0) return { error: await m("notForThisKind", { name: off[0].name }) };
+      if (brandId) {
+        const notBrand = await sql`
+          select a.name from variant_attribute a, brand b
+           where a.id in ${sql(variantPlan.attributes)} and b.id = ${brandId}
+             and (upper(b.code) = any(a.not_for_brands) or upper(b.name) = any(a.not_for_brands))`;
+        if (notBrand.length > 0) return { error: await m("notForThisKind", { name: notBrand[0].name }) };
+      }
     }
 
     await sql.begin(async (tx) => {
