@@ -541,7 +541,7 @@ export async function inventorySummary(companyId: string, f: {
         from qty group by item_id
     )
     select i.id, i.name, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
-           g.name as category, b.name as brand, i.tracks_serial, i.identity,
+           g.name as category, coalesce(gp.name, g.name) as top_category, b.name as brand, i.tracks_serial, i.identity,
            coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
            -- company_id first so stock_serial(company_id, item_id) is used per row.
            (select count(*)::int from stock_serial_hold h join stock_serial s on s.id = h.serial_id
@@ -559,6 +559,7 @@ export async function inventorySummary(companyId: string, f: {
       left join item p on p.id = i.parent_item_id
       left join brand b on b.id = coalesce(p.brand_id, i.brand_id)
       left join item_group g on g.id = i.item_group_id
+      left join item_group gp on gp.id = g.parent_id
       left join per on per.item_id = i.id
      where i.company_id = ${companyId} and i.is_active and i.is_stocked
        and not exists (select 1 from item c where c.parent_item_id = i.id)
