@@ -2100,7 +2100,7 @@ export async function getItems(companyId: string) {
   return sql`
     select i.id, i.code, i.name, i.name_my, i.item_group_id, i.brand_id,
            i.base_uom_id, i.is_stocked, i.is_active,
-           i.tracks_batch, i.tracks_expiry,
+           i.tracks_batch, i.tracks_expiry, i.tracks_serial,
            i.parent_item_id,
            -- How many things on a shelf this one product is. Zero for an
            -- ordinary item, which is nearly all of them; the catalogue folds

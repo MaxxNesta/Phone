@@ -1,95 +1,63 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Layers, Home, Users } from "lucide-react";
-import { DataTable, type DataRow, type Column } from "./data-table";
-import { useTranslations } from "next-intl";
-
-type Scope = "all" | "owned" | "consigned";
+import { useRouter } from "next/navigation";
+import { DataTable, type DataRow, type Column, type Filter } from "./data-table";
 
 /**
- * Wraps DataTable with the ownership picker.
+ * The Stock page's table, with the page's own choices in its bar.
  *
- * Two checkboxes said the same thing three ways: both ticked, neither ticked,
- * one ticked. Neither ticked is a table showing nothing, which is a state
- * worth having only if somebody wants it, and nobody does. Three exclusive
- * tabs carry the same choices with one fewer, and each one says how many rows
- * it holds before it is picked — a Consignment tab reading 0 answers the
- * question without being clicked.
+ * Warehouse and "in stock or everything" change what the server sends, so
+ * they navigate; status, category and ownership narrow what is already here,
+ * so they are the table's own filters. Both sit on one line after the search,
+ * the way the inventory summary reads.
  */
 export function StockTable({
-  rows,
-  consignmentItemIds,
-  columns,
-  searchPlaceholder,
-  defaultSort,
-  emptyLabel,
-  footerCells,
+  rows, columns, filters, searchPlaceholder, defaultSort, emptyLabel, footerCells, toolbarStart, toolbarEnd,
 }: {
   rows: DataRow[];
-  /** Row keys (item ids) that currently carry consigned stock. */
-  consignmentItemIds: string[];
   columns: Column[];
+  filters?: Filter[];
   searchPlaceholder?: string;
   defaultSort?: { key: string; dir: "asc" | "desc" };
   emptyLabel?: string;
   footerCells?: { span: React.ReactNode; cells: Record<string, React.ReactNode> };
+  toolbarStart?: React.ReactNode;
+  toolbarEnd?: React.ReactNode;
 }) {
-  const t = useTranslations("inventory");
-  const [scope, setScope] = useState<Scope>("all");
-
-  const consigned = useMemo(() => new Set(consignmentItemIds), [consignmentItemIds]);
-
-  const counts = {
-    all: rows.length,
-    consigned: rows.filter((r) => consigned.has(r.key)).length,
-    owned: rows.filter((r) => !consigned.has(r.key)).length,
-  };
-
-  const filtered = useMemo(
-    () => rows.filter((r) =>
-      scope === "all" ? true : consigned.has(r.key) ? scope === "consigned" : scope === "owned"),
-    [rows, consigned, scope]
-  );
-
-  const tabs: { key: Scope; label: string; icon: React.ReactNode }[] = [
-    { key: "all", label: t("stk.allStock"), icon: <Layers size={14} aria-hidden="true" /> },
-    { key: "owned", label: t("stk.companyOwned"), icon: <Home size={14} aria-hidden="true" /> },
-    { key: "consigned", label: t("stk.consignment"), icon: <Users size={14} aria-hidden="true" /> },
-  ];
-
   return (
-    <>
-      <div className="scopetabs" role="group" aria-label={t("stk.colOwnership")}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            className="scopetab"
-            data-active={scope === tab.key}
-            aria-pressed={scope === tab.key}
-            onClick={() => setScope(tab.key)}
-          >
-            {tab.icon}
-            {tab.label}
-            <span className="scopetab-n">{counts[tab.key]}</span>
-          </button>
-        ))}
-      </div>
-      <DataTable
-        rows={filtered}
-        columns={columns}
-        searchPlaceholder={searchPlaceholder}
-        defaultSort={defaultSort}
-        emptyLabel={
-          scope === "consigned" ? t("stk.nothingConsigned")
-            : scope === "owned" ? t("stk.nothingOwned")
-              : emptyLabel
-        }
-        footerCells={footerCells}
-        tableClassName="stocktable"
-        storageKey="stock"
-      />
-    </>
+    <DataTable
+      rows={rows}
+      columns={columns}
+      filters={filters}
+      searchPlaceholder={searchPlaceholder}
+      defaultSort={defaultSort}
+      emptyLabel={emptyLabel}
+      footerCells={footerCells}
+      tableClassName="stocktable"
+      storageKey="stock2"
+      toolbarStart={toolbarStart}
+      toolbarEnd={toolbarEnd}
+    />
+  );
+}
+
+/** A select in the table's bar that changes one query parameter of the page. */
+export function ParamSelect({ param, value, options, label, keep }: {
+  param: string; value: string; label: string;
+  options: { value: string; label: string }[];
+  /** The other parameters this page is carrying. */
+  keep: Record<string, string | undefined>;
+}) {
+  const router = useRouter();
+  return (
+    <select aria-label={label} value={value} className={`dt-filter${value ? " dt-filter-on" : ""}`}
+      onChange={(e) => {
+        const q = new URLSearchParams();
+        for (const [k, v] of Object.entries({ ...keep, [param]: e.target.value })) if (v) q.set(k, v);
+        const qs = q.toString();
+        router.push(`${window.location.pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+      }}>
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
   );
 }

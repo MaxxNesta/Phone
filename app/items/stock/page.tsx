@@ -10,7 +10,8 @@ import {
 } from "@/lib/queries";
 import { createReorderPoint, updateReorderPoint, deleteReorderPoint } from "@/lib/actions";
 import { type DataRow } from "@/components/data-table";
-import { StockTable } from "@/components/stock-table";
+import { StockTable, ParamSelect } from "@/components/stock-table";
+import { HelpHint } from "@/components/help-hint";
 import { StockRow, type StockRowItem } from "@/components/stock-row";
 import { asVariant } from "@/components/variant-tags";
 import { variantPhotos } from "@/lib/variants";
@@ -19,7 +20,6 @@ import { StockMatrix } from "@/components/stock-matrix";
 import { ExpiryBands } from "@/components/expiry-bands";
 import { AddReorderPointForm } from "@/components/reorder-point-form";
 import { ReorderPointRow } from "@/components/reorder-point-row";
-import { AccountPicker } from "@/components/account-picker";
 import { getTranslations } from "next-intl/server";
 
 type Row = {
@@ -27,7 +27,7 @@ type Row = {
   item_group_id: string; group_name: string; parent_group_name: string | null;
   brand_name: string | null; barcode: string | null;
   uom_code: string; qty_on_hand: string; value_on_hand: string; is_stocked: boolean;
-  tracks_batch: boolean; tracks_expiry: boolean;
+  tracks_batch: boolean; tracks_expiry: boolean; tracks_serial: boolean;
   last_purchase_price: string | null;
   last_purchase_document_id: string | null;
   last_purchase_doc_no: string | null;
@@ -152,8 +152,8 @@ export default async function Stock({
     consignedHere.filter((r) => r.item_id === itemId).reduce((s, r) => s + Number(r.on_hand), 0);
 
   // A product with variants is a name for a group and cannot hold stock —
-  // fn_document_line_not_parent refuses it on any document line. Left in, it
-  // is a row that can never have a number in any column.
+  // fn_document_line_not_parent refuses it on any document line — so the
+  // line is each variant on its own, named by its product.
   const childrenOf = new Map<string, Row[]>();
   for (const i of items) {
     if (!i.parent_item_id) continue;
@@ -161,218 +161,162 @@ export default async function Stock({
     list.push(i);
     childrenOf.set(i.parent_item_id, list);
   }
+  const byId = new Map(items.map((i) => [i.id, i]));
 
-  /**
-   * What gets a line.
-   *
-   * An ordinary stocked item, or a product that has variants. A variant is
-   * not a line of its own here — twelve of them would bury the rest of the
-   * catalogue — so it folds under its product and the chevron opens it.
-   */
-  const listable = items.filter((i) =>
-    i.variant_count > 0 || (i.is_stocked && !i.parent_item_id));
+  /** What gets a line: anything that can sit on a shelf. */
+  const sellable = items.filter((i) => i.is_stocked && i.variant_count === 0);
+  const lowIds = new Set(lowStock.map((r) => r.item_id));
 
-  const stocked = listable.map((i) => {
-    const kids = childrenOf.get(i.id) ?? [];
-    /**
-     * A product with variants holds nothing itself — the guard in 0107
-     * refuses it on any document line — so its figures are its variants
-     * added up. That makes the parent line a summary of the rows beneath
-     * it rather than a stock position of its own, and the two can never
-     * disagree because one is computed from the other.
-     */
-    const members: Row[] = kids.length > 0 ? kids : [i];
-    const sum = (f: (r: Row) => number) => members.reduce((acc, m) => acc + f(m), 0);
-    const onHand = sum((m) => onHandOf(m.id, Number(m.qty_on_hand)));
-    const valueOnHand = sum((m) => valueOf(m.id, Number(m.value_on_hand)));
-    const reservedQty = sum((m) => reservedOf(m.id));
-    const incomingQty = sum((m) => incomingOf(m.id));
-    const consignedQty = sum((m) => consignedOf(m.id));
+  const stocked = sellable.map((i) => {
+    const onHand = onHandOf(i.id, Number(i.qty_on_hand));
+    const valueOnHand = valueOf(i.id, Number(i.value_on_hand));
+    const reservedQty = reservedOf(i.id);
+    const incomingQty = incomingOf(i.id);
+    const consignedQty = consignedOf(i.id);
     const available = onHand - reservedQty;
-    const projected = available + incomingQty;
-    return { ...i, kids, members, onHand, valueOnHand, reservedQty,
-             incomingQty, consignedQty, available, projected };
+    return { ...i, onHand, valueOnHand, reservedQty, incomingQty, consignedQty, available,
+             projected: available + incomingQty,
+             model: (i.parent_item_id && byId.get(i.parent_item_id)?.name) || i.name,
+             status: (onHand <= 0 ? "OUT" : lowIds.has(i.id) ? "LOW" : "IN") as StockRowItem["status"] };
   });
-  /**
-   * Which items this view is about: the ones with a stock position.
-   *
-   * Held, reserved, on its way, or standing on consignment — any of those is
-   * a position. None of them is one, and a row of zeroes across every column
-   * is not an answer to "what is in stock", it is the catalogue restated. The
-   * catalogue is a screen of its own.
-   *
-   * The same rule whichever warehouse is chosen, including all of them. An
-   * earlier version kept the zeroes on the company-wide view on the grounds
-   * that they feed Low stock — they do not. That tile runs its own query off
-   * the reorder points and has its own section on this page, so an item that
-   * has run out is reported there, by name, with the point it fell below.
-   */
+  // Held, reserved, on its way or on consignment is a position; none of them
+  // is the catalogue restated, which is a screen of its own.
   const visible = showZeros
     ? stocked
     : stocked.filter((i) =>
         i.onHand !== 0 || i.reservedQty !== 0 || i.incomingQty !== 0 || i.consignedQty !== 0);
 
   const totalValue = visible.reduce((s, i) => s + i.valueOnHand, 0);
+  const totalOnHand = visible.reduce((s, i) => s + i.onHand, 0);
+
+  const consignorsOf = (itemId: string) =>
+    Array.from(new Set(consignedHere.filter((r) => r.item_id === itemId).map((r) => r.consignor_name)));
 
   /**
-   * How many things are actually in stock, as against how many lines.
-   *
-   * Since a product folds its variants into one row, counting rows would
-   * report a shirt in four sizes as one item in stock. The figure people
-   * check against a count is the number of sellable things holding a
-   * position, so that is what is counted — the rows are just how they are
-   * arranged on screen.
+   * Where an item actually sits — owned or consigned — and only the chosen
+   * warehouse when one is picked.
    */
-  const holdsPosition = (m: Row) =>
-    onHandOf(m.id, Number(m.qty_on_hand)) !== 0 || reservedOf(m.id) !== 0 ||
-    incomingOf(m.id) !== 0 || consignedOf(m.id) !== 0;
-  const skuCount = visible.reduce((n, i) => n + i.members.filter(holdsPosition).length, 0);
-  const foldedAny = visible.some((i) => i.kids.length > 0);
-
-  /** Which consignors an item's held-but-unowned stock belongs to. */
-  const consignorsOf = (itemIds: string[]) =>
-    Array.from(new Set(
-      consignedHere.filter((r) => itemIds.includes(r.item_id)).map((r) => r.consignor_name)
-    ));
-
-  /**
-   * Where an item actually sits. Only warehouses holding some of it, and only
-   * the chosen one when a location is picked — a panel listing every empty
-   * warehouse is a longer answer to a shorter question.
-   */
-  const warehousesOf = (itemIds: string[]) => {
+  const warehousesOf = (itemId: string) => {
     const here = (locId: string) => allLocations || locId === selectedLocationId;
-
-    /**
-     * Every warehouse holding any of this item, owned or not.
-     *
-     * Consigned stock was missing, so a consignor's goods sitting on the shelf
-     * produced "this item has never been held anywhere" — said about twelve
-     * units somebody could walk over and touch. It is not the company's stock
-     * and never joins On hand, but where it physically is is exactly what this
-     * panel is for.
-     */
     const ids = new Set<string>();
     for (const r of stockByLocation) {
-      if (itemIds.includes(r.item_id) && here(r.location_id) && Number(r.qty_on_hand) !== 0) {
-        ids.add(r.location_id);
-      }
+      if (r.item_id === itemId && here(r.location_id) && Number(r.qty_on_hand) !== 0) ids.add(r.location_id);
     }
     for (const cr of consignedHere) {
-      if (itemIds.includes(cr.item_id) && here(cr.location_id) && Number(cr.on_hand) !== 0) {
-        ids.add(cr.location_id);
-      }
+      if (cr.item_id === itemId && here(cr.location_id) && Number(cr.on_hand) !== 0) ids.add(cr.location_id);
     }
-
     return [...ids]
       .map((locationId) => {
         const loc = locations.find((l) => l.id === locationId);
         return {
-          locationId,
-          code: loc?.code ?? "—",
-          name: loc?.name ?? "",
-          onHand: stockByLocation
-            .filter((r) => itemIds.includes(r.item_id) && r.location_id === locationId)
+          locationId, code: loc?.code ?? "—", name: loc?.name ?? "",
+          onHand: stockByLocation.filter((r) => r.item_id === itemId && r.location_id === locationId)
             .reduce((sum, r) => sum + Number(r.qty_on_hand), 0),
-          consigned: consignedHere
-            .filter((cr) => itemIds.includes(cr.item_id) && cr.location_id === locationId)
+          consigned: consignedHere.filter((cr) => cr.item_id === itemId && cr.location_id === locationId)
             .reduce((sum, cr) => sum + Number(cr.on_hand), 0),
-          reserved: reserved
-            .filter((x) => itemIds.includes(x.item_id) && x.location_id === locationId)
+          reserved: reserved.filter((x) => x.item_id === itemId && x.location_id === locationId)
             .reduce((sum, x) => sum + Number(x.reserved_qty), 0),
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code));
   };
 
-  // A column nobody can put a number in is a column that costs width for
-  // nothing — and thirteen is where this table stops fitting.
   const anyConsigned = stocked.some((i) => i.consignedQty > 0);
-  // Brand only once the catalogue carries more than one.
   const multiBrand = (await getBrandsInUse(company.id)).length > 1;
-  const STOCK_COLUMNS = (anyConsigned ? 13 : 12) + (multiBrand ? 1 : 0);
+  const STOCK_COLUMNS = anyConsigned ? 10 : 9;
+  const STATUS = { IN: "In stock", LOW: "Low stock", OUT: "Out of stock" } as const;
 
   const rows: DataRow[] = visible.map((i) => {
-    const ids = i.members.map((m) => m.id);
-    const consignors = consignorsOf(ids);
+    const consignors = consignorsOf(i.id);
     const category = i.parent_group_name ? `${i.parent_group_name} / ${i.group_name}` : i.group_name;
-
+    const variant = asVariant(i.variant);
     const rowItem: StockRowItem = {
-      id: i.id,
-      code: i.code,
-      name: i.name,
-      nameMy: i.name_my,
-      itemGroupId: i.item_group_id,
-      category,
-      uomCode: i.uom_code,
-      barcode: i.barcode,
-      brandName: i.brand_name,
-      onHand: i.onHand,
-      consignedQty: i.consignedQty,
-      reservedQty: i.reservedQty,
-      available: i.available,
-      incomingQty: i.incomingQty,
-      projected: i.projected,
-      valueOnHand: i.valueOnHand,
-      lastCost: i.last_purchase_price,
-      lastCostDocNo: i.last_purchase_doc_no,
+      id: i.id, code: i.code, name: i.name, nameMy: i.name_my, model: i.model,
+      itemGroupId: i.item_group_id, category, uomCode: i.uom_code,
+      barcode: i.barcode, brandName: i.brand_name,
+      onHand: i.onHand, consignedQty: i.consignedQty, reservedQty: i.reservedQty, available: i.available,
+      incomingQty: i.incomingQty, projected: i.projected, valueOnHand: i.valueOnHand,
+      lastCost: i.last_purchase_price, lastCostDocNo: i.last_purchase_doc_no,
       lastCostDocId: i.last_purchase_document_id,
       lastCostDate: i.last_purchase_date ? shortDate(i.last_purchase_date) : null,
-      consignors,
-      warehouses: warehousesOf(ids),
-      variant: asVariant(i.variant),
-      photoSrc: photoSrcOf(i),
-      // The things on the shelf, folded under the product they belong to.
-      variants: i.kids.map((k) => ({
-        id: k.id,
-        code: k.code,
-        name: k.name,
-        variant: asVariant(k.variant),
-        photoSrc: photoSrcOf(k),
-        uomCode: k.uom_code,
-        onHand: onHandOf(k.id, Number(k.qty_on_hand)),
-        reservedQty: reservedOf(k.id),
-        incomingQty: incomingOf(k.id),
-        valueOnHand: valueOf(k.id, Number(k.value_on_hand)),
+      consignors, warehouses: warehousesOf(i.id), variant, photoSrc: photoSrcOf(i),
+      tracksBatch: !!i.tracks_batch, tracksExpiry: !!i.tracks_batch && !!i.tracks_expiry,
+      tracksSerial: !!i.tracks_serial, status: i.status,
+      batches: batches.filter((b) => b.item_id === i.id).map((b) => ({
+        locationCode: b.location_code, batchNo: b.batch_no, expiryDate: b.expiry_date,
+        daysLeft: b.days_left === null ? null : Number(b.days_left), qty: Number(b.qty),
       })),
-      tracksBatch: !!i.tracks_batch,
-      tracksExpiry: !!i.tracks_batch && !!i.tracks_expiry,
-      batches: batches
-        .filter((b) => ids.includes(b.item_id))
-        .map((b) => ({
-          locationCode: b.location_code,
-          batchNo: b.batch_no,
-          expiryDate: b.expiry_date,
-          daysLeft: b.days_left === null ? null : Number(b.days_left),
-          qty: Number(b.qty),
-        })),
     };
-
     return {
       key: i.id,
-      searchText: [i.code, i.name, i.name_my, i.group_name, i.parent_group_name, i.barcode, i.brand_name,
-                   // so searching "red" finds the red one
-                   ...(asVariant(i.variant) ?? []).flatMap((v) => [v.a, v.o]),
-                   ...consignors].filter(Boolean).join(" "),
-      sort: {
-        code: i.code,
-        name: i.name,
-        ownership: consignors.length > 0 ? t("stk.consignmentName", { names: consignors.join(" ") }) : t("stk.companyOwned"),
-        group_name: category,
-        brand_name: i.brand_name ?? "",
-        uom_code: i.uom_code,
-        onHand: i.onHand,
-        consignedQty: i.consignedQty,
-        reservedQty: i.reservedQty,
-        available: i.available,
-        incomingQty: i.incomingQty,
-        projected: i.projected,
-        value_on_hand: i.valueOnHand,
-        last_cost: Number(i.last_purchase_price ?? 0),
+      searchText: [i.code, i.name, i.model, i.name_my, i.group_name, i.parent_group_name, i.barcode, i.brand_name,
+                   ...(variant ?? []).flatMap((v) => [v.a, v.o]), ...consignors].filter(Boolean).join(" "),
+      facet: {
+        status: i.status,
+        category: i.parent_group_name ?? i.group_name,
+        ownership: consignors.length > 0 ? "consigned" : "owned",
+        brand: i.brand_name ?? "",
       },
-      node: <StockRow item={rowItem} columnCount={STOCK_COLUMNS} showConsigned={anyConsigned} showBrand={multiBrand} />,
+      sort: {
+        name: `${i.model} ${(variant ?? []).map((v) => v.o).join(" ")}`,
+        code: i.code,
+        onHand: i.onHand, consignedQty: i.consignedQty, reservedQty: i.reservedQty, available: i.available,
+        avg_cost: i.onHand > 0 ? i.valueOnHand / i.onHand : 0,
+        value_on_hand: i.valueOnHand,
+        status: i.status === "OUT" ? 0 : i.status === "LOW" ? 1 : 2,
+      },
+      node: <StockRow item={rowItem} columnCount={STOCK_COLUMNS} showConsigned={anyConsigned} />,
     };
   });
+
+  const facetOptions = (vals: (string | null)[]) =>
+    [...new Set(vals.filter((v): v is string => !!v))].sort().map((v) => ({ value: v, label: v }));
+  const keep = {
+    location: allLocations ? undefined : selectedLocationId,
+    zeros: showZeros ? "1" : undefined,
+    view: mode === "list" ? undefined : mode,
+  };
+
+  const scopeControls = (
+    <>
+      {reorderableLocations.length > 1 && (
+        <ParamSelect param="location" label={c("warehouse")} keep={keep}
+          value={allLocations ? "" : selectedLocationId}
+          options={[{ value: "", label: t("stk.allWarehouses") },
+                    ...reorderableLocations.map((l) => ({ value: l.id, label: l.name || l.code }))]} />
+      )}
+      <ParamSelect param="zeros" label="Stock" keep={keep} value={showZeros ? "1" : ""}
+        options={[{ value: "", label: "Stock: In stock" }, { value: "1", label: "Stock: All items" }]} />
+    </>
+  );
+  const viewSwitch = hasVariants && (
+    <div className="seg" role="group" aria-label="View">
+      {([["list", t("stk.viewList")], ["grouped", t("stk.viewGrouped")],
+         ["matrix", t("stk.viewMatrix")]] as const).map(([key, label]) => {
+        const q = new URLSearchParams();
+        if (!allLocations) q.set("location", selectedLocationId);
+        if (showZeros) q.set("zeros", "1");
+        if (key !== "list") q.set("view", key);
+        const qs = q.toString();
+        return (
+          <Link key={key} scroll={false} data-active={mode === key} aria-current={mode === key || undefined}
+                href={`/items/stock${qs ? `?${qs}` : ""}`}>{label}</Link>
+        );
+      })}
+    </div>
+  );
+
+  const kpi = (icon: React.ReactNode, tone: string, label: string, value: React.ReactNode, hint: string, bad = false) => (
+    <div className="kpi">
+      <span className="kpi-icon" style={{ color: tone, background: `color-mix(in srgb, ${tone} 12%, transparent)` }}>
+        {icon}
+      </span>
+      <span className="kpi-body">
+        <span className="kpi-label">{label} <HelpHint label={label}>{hint}</HelpHint></span>
+        <span className="kpi-value" style={{ color: bad ? "var(--bad)" : undefined }}>{value}</span>
+      </span>
+    </div>
+  );
 
   return (
     <>
@@ -382,231 +326,19 @@ export default async function Stock({
         <BranchScope />
       </div>
 
-      {/* Both filters on one line: each narrows the same list, and a warehouse
-          chosen here must not silently discard the other one. */}
-      <div className="filterbar">
-        {reorderableLocations.length > 1 && (
-          <AccountPicker
-            accounts={[{ id: "all", code: "—", name: t("stk.allWarehouses") }, ...reorderableLocations]}
-            selectedId={selectedLocationId}
-            basePath="/items/stock"
-            paramName="location"
-            label={c("warehouse")}
-            keep={{ zeros: showZeros ? "1" : undefined }}
-          />
-        )}
-        <div className="field">
-          <label>{t("stk.itemsLabel")}</label>
-          {/* Links rather than a control with state: the page is already
-              addressable by its query, and this way the choice survives a
-              reload and can be bookmarked like the warehouse beside it. */}
-          <div className="scopetabs" style={{ margin: 0 }}>
-            <Link scroll={false} className="scopetab" data-active={!showZeros}
-                  href={`/items/stock${allLocations ? "" : `?location=${selectedLocationId}`}`}>
-              {t("stk.inStock")}
-            </Link>
-            <Link scroll={false} className="scopetab" data-active={showZeros}
-                  href={`/items/stock?${allLocations ? "" : `location=${selectedLocationId}&`}zeros=1`}>
-              {t("stk.allItems")}
-            </Link>
-          </div>
-        </div>
-        <div className="filterbar-end">
-          <AddReorderPointForm
-            action={createReorderPoint}
-            // A model with its variants: the point is set on the variant, which
-            // is what sits on a shelf.
-            items={listable.map((i) => ({
-              id: i.id, name: i.name, category: i.parent_group_name ?? i.group_name,
-              variants: (childrenOf.get(i.id) ?? []).map((k) => ({ id: k.id, parts: asVariant(k.variant) ?? [] })),
-            }))}
-            locations={reorderableLocations}
-            count={reorderPoints.length}
-          />
-        </div>
+      <div className="kpis kpis-tiled kpis-compact">
+        {kpi(<Boxes size={16} aria-hidden="true" />, "var(--link)", t("stk.stockValue"), money(totalValue),
+          t("stk.itemsInStock", { n: visible.filter((i) => i.onHand !== 0).length }))}
+        {kpi(<AlertTriangle size={16} aria-hidden="true" />, "var(--warn)", t("stk.lowStock"), lowStock.length,
+          t("stk.lowPairs", { n: lowStock.length }), lowStock.length > 0)}
+        {kpi(<PackageCheck size={16} aria-hidden="true" />, "#3B6FD4", t("stk.incoming"), incoming.length,
+          t("stk.incomingPairs", { n: incoming.length }))}
+        {kpi(<TrendingDown size={16} aria-hidden="true" />, "#C2610A", t("stk.reserved"), reserved.length,
+          t("stk.reservedPairs", { n: reserved.length }))}
+        {kpi(<HandCoins size={16} aria-hidden="true" />, "#6C5CE0", t("stk.consigned"),
+          <Link href="/inventory/consignment" style={{ color: "inherit" }}>{consignedHere.length}</Link>,
+          t("stk.consignedCombos", { n: consignedHere.length }) + (allLocations ? "" : t("stk.atThisWarehouse")))}
       </div>
-
-      {/* Each figure gets its own tinted mark. Five tiles of identical grey
-          text is five things to read; a colour and a shape per tile is one
-          thing to recognise. */}
-      <div className="kpis kpis-tiled">
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "var(--link)",
-            background: "color-mix(in srgb, var(--brand) 12%, transparent)",
-          }}>
-            <Boxes size={17} aria-hidden="true" />
-          </span>
-          <span className="kpi-body">
-            <span className="kpi-label">{t("stk.stockValue")}</span>
-            <span className="kpi-value">{money(totalValue)}</span>
-            <span className="kpi-note">{t("stk.itemsInStock", { n: skuCount })}</span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "var(--warn)",
-            background: "color-mix(in srgb, var(--warn) 14%, transparent)",
-          }}>
-            <AlertTriangle size={17} aria-hidden="true" />
-          </span>
-          <span className="kpi-body">
-            <span className="kpi-label">{t("stk.lowStock")}</span>
-            <span className="kpi-value" style={{ color: lowStock.length > 0 ? "var(--bad)" : undefined }}>
-              {lowStock.length}
-            </span>
-            <span className="kpi-note">
-              {t("stk.lowPairs", { n: lowStock.length })}
-            </span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "#3B6FD4",
-            background: "color-mix(in srgb, #3B6FD4 12%, transparent)",
-          }}>
-            <PackageCheck size={17} aria-hidden="true" />
-          </span>
-          <span className="kpi-body">
-            <span className="kpi-label">{t("stk.incoming")}</span>
-            <span className="kpi-value">{incoming.length}</span>
-            <span className="kpi-note">{t("stk.incomingPairs", { n: incoming.length })}</span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "#C2610A",
-            background: "color-mix(in srgb, #C2610A 12%, transparent)",
-          }}>
-            <TrendingDown size={17} aria-hidden="true" />
-          </span>
-          <span className="kpi-body">
-            <span className="kpi-label">{t("stk.reserved")}</span>
-            <span className="kpi-value">{reserved.length}</span>
-            <span className="kpi-note">{t("stk.reservedPairs", { n: reserved.length })}</span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "#6C5CE0",
-            background: "color-mix(in srgb, #6C5CE0 12%, transparent)",
-          }}>
-            <HandCoins size={17} aria-hidden="true" />
-          </span>
-          <span className="kpi-body">
-            <span className="kpi-label">{t("stk.consigned")}</span>
-            <span className="kpi-value">
-              <Link href="/inventory/consignment" style={{ color: "inherit" }}>{consignedHere.length}</Link>
-            </span>
-            <span className="kpi-note">
-              {t("stk.consignedCombos", { n: consignedHere.length })}
-              {!allLocations && t("stk.atThisWarehouse")}
-            </span>
-          </span>
-        </div>
-      </div>
-
-      {/* Only for a company that actually holds perishable stock. Most of a
-          trading catalogue never expires, and a band chart reading zero
-          forever is a question nobody asked kept on the screen. It appears
-          the moment an item tracks expiry and has some on hand, and
-          disappears again when the last dated batch is gone. */}
-      {expiryBands.length > 0 && <ExpiryBands bands={expiryBands} />}
-
-      {lowStock.length > 0 && (
-        <section>
-          <div className="card">
-            <div className="card-head">
-              <h2>{t("stk.lowTitle")}</h2>
-              <span className="page-sub">{t("stk.lowSub")}</span>
-            </div>
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{c("code")}</th><th>{t("item")}</th><th>{c("warehouse")}</th><th>{c("status")}</th>
-                    <th className="r">{t("onHand")}</th><th className="r">{t("stk.reorderPoint")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lowStock.map((r) => (
-                    <tr key={`${r.item_id}-${r.location_id}`}>
-                      <td className="code">{r.item_code}</td>
-                      <td className="wrap">{r.item_name}</td>
-                      <td className="code">{r.location_code}</td>
-                      <td>
-                        <span className={`pill ${r.reason === "out_of_stock" ? "overdue" : "warn"}`}>
-                          {r.reason === "out_of_stock" ? t("stk.outOfStock") : t("stk.belowReorder")}
-                        </span>
-                      </td>
-                      <td className="r" style={{ color: Number(r.qty_on_hand) <= 0 ? "var(--bad)" : undefined }}>
-                        {qty(r.qty_on_hand)}
-                      </td>
-                      <td className="r">{r.min_qty !== null ? qty(r.min_qty) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {reorderPoints.length > 0 && (
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>{t("stk.reorderPoints")}</h2>
-            <span className="page-sub">{t("stk.nSet", { n: reorderPoints.length })}</span>
-          </div>
-          {(
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{c("code")}</th><th>{t("item")}</th><th>{c("warehouse")}</th>
-                    <th className="r">{t("stk.reorderPoint")}</th><th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {reorderPoints.map((p) => (
-                    <ReorderPointRow
-                      key={p.id}
-                      point={p}
-                      updateAction={updateReorderPoint}
-                      deleteAction={deleteReorderPoint}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-      )}
-
-      {hasVariants && (
-        <div className="scopetabs viewtabs">
-          {([["list", t("stk.viewList")], ["grouped", t("stk.viewGrouped")],
-             ["matrix", t("stk.viewMatrix")]] as const).map(([key, label]) => {
-            const q = new URLSearchParams();
-            if (!allLocations) q.set("location", selectedLocationId);
-            if (showZeros) q.set("zeros", "1");
-            if (key !== "list") q.set("view", key);
-            const qs = q.toString();
-            return (
-              <Link key={key} scroll={false} className="scopetab" data-active={mode === key}
-                    href={`/items/stock${qs ? `?${qs}` : ""}`}>
-                {label}
-              </Link>
-            );
-          })}
-        </div>
-      )}
 
       {mode === "list" && (
       <section>
@@ -614,63 +346,52 @@ export default async function Stock({
           <div className="card-head">
             <h2>{t("stk.position")}</h2>
             <span className="page-sub">
-              {t("stk.itemsInStock", { n: skuCount })}
-              {foldedAny && ` \u00b7 ${t("stk.rowsCount", { n: visible.length })}`}
+              {t("stk.itemsInStock", { n: visible.length })} · {qty(totalOnHand)} units
               {!allLocations && ` · ${reorderableLocations.find((l) => l.id === selectedLocationId)?.name ?? ""}`}
             </span>
           </div>
-
-          {visible.length === 0 ? (
-            <div className="empty">
-              {allLocations ? (
-                <>
-                  {t("stk.nothingInStock")}{" "}
-                  <Link href="/items/stock?zeros=1" style={{ color: "var(--link)" }}>
-                    {t("stk.showAllItems")}
-                  </Link>
-                </>
-              ) : (
-                <>
-                  {t("stk.nothingHere")}{" "}
-                  <Link href={`/items/stock?location=${selectedLocationId}&zeros=1`}
-                        style={{ color: "var(--link)" }}>{t("stk.showAllItems")}</Link>
-                </>
-              )}
-            </div>
-          ) : (
-            <StockTable
-              rows={rows}
-              consignmentItemIds={visible.filter((i) => i.consignedQty > 0).map((i) => i.id)}
-              emptyLabel={t("stk.noStockedItems")}
-              searchPlaceholder={t("stk.searchStock")}
-              defaultSort={{ key: "code", dir: "asc" }}
-              columns={[
-                // No label: the chevron column is a control, not a field.
-                { key: "expand", label: "" },
-                { key: "code", label: c("code"), sortable: true },
-                { key: "name", label: t("item"), sortable: true },
-                { key: "ownership", label: t("stk.colOwnership"), sortable: true },
-                { key: "group_name", label: c("category"), sortable: true },
-                ...(multiBrand ? [{ key: "brand_name", label: c("brand"), sortable: true }] : []),
-                { key: "uom_code", label: c("unit"), sortable: true },
-                { key: "onHand", label: t("onHand"), sortable: true, align: "r" },
-                ...(anyConsigned
-                  ? [{ key: "consignedQty", label: t("stk.consigned"), sortable: true, align: "r" as const }]
-                  : []),
-                { key: "reservedQty", label: t("stk.reserved"), sortable: true, align: "r" },
-                { key: "available", label: t("stk.colAvailable"), sortable: true, align: "r" },
-                { key: "incomingQty", label: t("stk.incoming"), sortable: true, align: "r" },
-                { key: "projected", label: t("stk.colProjected"), sortable: true, align: "r" },
-                { key: "value_on_hand", label: t("stk.colValue"), sortable: true, align: "r" },
-              ]}
-              footerCells={{
-                span: <>{t("stk.totalValue")}{!allLocations ? t("stk.atThisWarehouse") : ""}</>,
-                cells: { value_on_hand: money(totalValue) },
-              }}
-            />
-          )}
+          <StockTable
+            rows={rows}
+            emptyLabel={showZeros ? t("stk.noStockedItems") : t("stk.nothingInStock")}
+            searchPlaceholder="Search product, SKU, barcode…"
+            defaultSort={{ key: "name", dir: "asc" }}
+            toolbarStart={scopeControls}
+            toolbarEnd={viewSwitch}
+            filters={[
+              { key: "status", allLabel: "All status", label: "Status",
+                options: (["IN", "LOW", "OUT"] as const).map((s) => ({ value: s, label: STATUS[s] })) },
+              { key: "category", allLabel: "All categories", label: c("category"), more: true,
+                options: facetOptions(visible.map((i) => i.parent_group_name ?? i.group_name)) },
+              ...(multiBrand ? [{ key: "brand", allLabel: "All brands", label: c("brand"), more: true,
+                options: facetOptions(visible.map((i) => i.brand_name)) }] : []),
+              ...(anyConsigned ? [{ key: "ownership", allLabel: "All ownership", label: t("stk.colOwnership"), more: true,
+                options: [{ value: "owned", label: t("stk.companyOwned") }, { value: "consigned", label: t("stk.consignment") }] }] : []),
+            ]}
+            columns={[
+              { key: "expand", label: "" },
+              { key: "name", label: "Product", sortable: true },
+              { key: "code", label: "SKU", sortable: true },
+              { key: "onHand", label: t("onHand"), sortable: true, align: "r" },
+              ...(anyConsigned
+                ? [{ key: "consignedQty", label: t("stk.consigned"), sortable: true, align: "r" as const }]
+                : []),
+              { key: "reservedQty", label: t("stk.reserved"), sortable: true, align: "r" },
+              { key: "available", label: t("stk.colAvailable"), sortable: true, align: "r" },
+              { key: "avg_cost", label: "Avg. cost", sortable: true, align: "r" },
+              { key: "value_on_hand", label: t("stk.colValue"), sortable: true, align: "r" },
+              { key: "status", label: c("status"), sortable: true },
+            ]}
+            footerCells={{
+              span: <>{t("stk.totalValue")}{!allLocations ? t("stk.atThisWarehouse") : ""}</>,
+              cells: { onHand: qty(totalOnHand), value_on_hand: money(totalValue) },
+            }}
+          />
         </div>
       </section>
+      )}
+
+      {mode !== "list" && (
+        <div className="dt-bar">{scopeControls}<span className="dt-spacer" />{viewSwitch}</div>
       )}
 
       {mode === "grouped" && (
@@ -692,6 +413,83 @@ export default async function Stock({
                   zeros: showZeros ? "1" : undefined }}
         />
       )}
+
+      {/* Only for a company that actually holds perishable stock. */}
+      {expiryBands.length > 0 && <ExpiryBands bands={expiryBands} />}
+
+      <div className="grid2 stk-below">
+        <div className="card">
+          <div className="card-head">
+            <h2>{t("stk.lowTitle")}</h2>
+            <span className="page-sub">{t("stk.lowSub")}</span>
+          </div>
+          {lowStock.length === 0 ? <div className="empty">Nothing is below its reorder point.</div> : (
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("item")}</th><th>{c("warehouse")}</th><th>{c("status")}</th>
+                    <th className="r">{t("onHand")}</th><th className="r">{t("stk.reorderPoint")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lowStock.map((r) => (
+                    <tr key={`${r.item_id}-${r.location_id}`}>
+                      <td className="wrap">{r.item_name}<span className="subline code"> · {r.item_code}</span></td>
+                      <td className="code">{r.location_code}</td>
+                      <td>
+                        <span className={`pill ${r.reason === "out_of_stock" ? "overdue" : "warn"}`}>
+                          {r.reason === "out_of_stock" ? t("stk.outOfStock") : t("stk.belowReorder")}
+                        </span>
+                      </td>
+                      <td className="r" style={{ color: Number(r.qty_on_hand) <= 0 ? "var(--bad)" : undefined }}>
+                        {qty(r.qty_on_hand)}
+                      </td>
+                      <td className="r">{r.min_qty !== null ? qty(r.min_qty) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-head">
+            <h2>{t("stk.reorderPoints")}</h2>
+            <span className="page-sub">{t("stk.nSet", { n: reorderPoints.length })}</span>
+            <span className="dt-spacer" />
+            <AddReorderPointForm
+              action={createReorderPoint}
+              // A model with its variants: the point is set on the variant, which
+              // is what sits on a shelf.
+              items={items.filter((i) => i.variant_count > 0 || (i.is_stocked && !i.parent_item_id)).map((i) => ({
+                id: i.id, name: i.name, category: i.parent_group_name ?? i.group_name,
+                variants: (childrenOf.get(i.id) ?? []).map((k) => ({ id: k.id, parts: asVariant(k.variant) ?? [] })),
+              }))}
+              locations={reorderableLocations}
+              count={reorderPoints.length}
+            />
+          </div>
+          {reorderPoints.length === 0 ? <div className="empty">No reorder points set.</div> : (
+            <div className="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{c("code")}</th><th>{t("item")}</th><th>{c("warehouse")}</th>
+                    <th className="r">{t("stk.reorderPoint")}</th><th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {reorderPoints.map((p) => (
+                    <ReorderPointRow key={p.id} point={p} updateAction={updateReorderPoint} deleteAction={deleteReorderPoint} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </>
   );
 }

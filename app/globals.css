@@ -7185,3 +7185,65 @@ a.inv-export { display: inline-flex; align-items: center; gap: 6px; height: 36px
 .inv-mini .clip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inv-mini .bad, .inv-table .bad { color: var(--bad); font-weight: 600; }
 .inv-mini .ok-qty { color: var(--ok); font-weight: 600; }
+
+/* --------------------------------------------- stock page, per variant ---- */
+
+/* Five figures in one short strip: the caption's explanation lives behind its
+   "?" so each tile is a label and a number. */
+.kpis-compact { gap: var(--s2); margin-bottom: var(--s3); }
+.kpis-compact .kpi { padding: 0.6rem 0.8rem; align-items: center; min-height: 0; }
+.kpis-compact .kpi-icon { width: 30px; height: 30px; border-radius: 8px; }
+.kpis-compact .kpi-body { gap: 2px; }
+.kpis-compact .kpi-label { display: inline-flex; align-items: center; gap: 4px; }
+.kpis-compact .kpi-value { font-size: 1.15rem; line-height: 1.2; }
+
+.stk-prod {
+  display: flex; align-items: center; gap: 0.6rem; text-align: left;
+  background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer;
+}
+.stk-thumb { width: 34px; height: 34px; border-radius: 7px; object-fit: cover; background: var(--line-soft); flex: none; }
+.stk-sub { display: block; font-size: var(--t-sm); color: var(--muted); }
+.stocktable td.stk-onhand { color: var(--link); font-weight: 600; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg > a { padding: 0.38rem 0.75rem; font-size: var(--t-sm); color: var(--ink); text-decoration: none; }
+.seg > a + a { border-left: 1px solid var(--line); }
+.seg > a[data-active="true"] { background: var(--brand); color: #fff; }
+
+.stk-tabs {
+  position: sticky; left: 0;
+  display: flex; gap: var(--s3); padding: 0 var(--s3); margin-bottom: var(--s3);
+  border-bottom: 1px solid var(--line); width: min(100%, max(320px, calc(100vw - 17rem)));
+}
+.stk-tabs button {
+  background: none; border: 0; padding: 0.6rem 0; margin-bottom: -1px; cursor: pointer;
+  font: inherit; font-size: var(--t-sm); color: var(--muted); border-bottom: 2px solid transparent;
+}
+.stk-tabs button.on { color: var(--link); border-bottom-color: var(--link); font-weight: 600; }
+.stockdetail-row > td > .stk-detail,
+.stockdetail-row > td > .stk-table.wide,
+.stockdetail-row > td > .hint {
+  position: sticky; left: 0; margin: 0 var(--s3);
+  width: calc(min(100%, max(320px, calc(100vw - 17rem))) - 2 * var(--s3));
+}
+.stk-detail { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.stk-detail > section {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: var(--s3);
+}
+.stk-detail > section.wide { grid-column: 1 / -1; }
+.stk-detail h3 { font-size: var(--t-sm); font-weight: 600; margin: 0 0 var(--s2); }
+.stk-kv { margin: 0; display: grid; gap: 6px; }
+.stk-kv > div { display: flex; justify-content: space-between; gap: var(--s2); font-size: var(--t-sm); }
+.stk-kv dt { color: var(--muted); }
+.stk-kv dd { margin: 0; text-align: right; }
+.stk-kv > div.total { border-top: 1px solid var(--line); padding-top: 6px; font-weight: 600; }
+.stk-kv > div.total dt { color: var(--ink); }
+.stk-table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+.stk-table.wide { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.stk-table th, .stk-table td { padding: 5px 8px; border-bottom: 1px solid var(--line-soft); text-align: left; }
+.stk-table th.r, .stk-table td.r { text-align: right; }
+.stk-table th { color: var(--muted); font-weight: 500; }
+.stk-table tfoot td { font-weight: 600; border-bottom: 0; border-top: 1px solid var(--line); }
+.stk-table .ok-qty { color: var(--link); }
+.stk-below { margin-top: var(--s3); }
+.stockdetail-row .hint { font-size: var(--t-sm); color: var(--muted); padding: var(--s2) 0; margin: 0; }

@@ -88,7 +88,13 @@ export function DataTable({
   dateKey = "posting_date",
   defaultHidden = [],
   initialFilters = {},
+  toolbarStart,
+  toolbarEnd,
 }: {
+  /** Controls of the page's own, placed in this table's bar: after the search
+   *  (a warehouse, a scope) and at its far end (a view switch). */
+  toolbarStart?: React.ReactNode;
+  toolbarEnd?: React.ReactNode;
   /** Filter values to start from, for a link that means "only these". */
   initialFilters?: Record<string, string>;
   /** Columns hidden until someone shows them; a saved choice wins. */
@@ -341,6 +347,7 @@ export function DataTable({
             aria-label={dt("searchLabel")}
           />
         </label>
+        {toolbarStart}
         {offered.filter((f) => !f.more).map(filterSelect)}
 
         {offered.some((f) => f.more) && (
@@ -369,6 +376,7 @@ export function DataTable({
         {hasDates && <DateFilter value={dates} onChange={setDates} />}
 
         <span className="dt-spacer" />
+        {toolbarEnd}
 
         {canExport && (
           <button type="button" className="dt-tool" onClick={exportCsv} disabled={sorted.length === 0}>
