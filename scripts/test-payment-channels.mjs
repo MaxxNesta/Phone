@@ -115,7 +115,7 @@ try {
   let [wallet] = await sql`select id from account where company_id = ${co.id} and code = 'T-KBZPAY'`;
   if (!wallet) {
     [wallet] = await sql`insert into account (company_id, parent_id, code, name, account_type, is_cash_account, is_bank_account)
-      select ${co.id}, parent_id, 'T-KBZPAY', 'KBZPay (test)', 'ASSET', true, true from account
+      select ${co.id}, parent_id, 'T-KBZPAY', 'KBZPay', 'ASSET', true, true from account
        where company_id = ${co.id} and is_bank_account and is_postable order by code limit 1 returning id`;
   }
   kbzBefore = { channel: KBZ, wallet: wallet.id,
