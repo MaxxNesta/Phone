@@ -320,12 +320,13 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <section className="card inv-panel">
           <div className="inv-panel-head"><h2>Low stock items</h2><Link href={`/inventory${qsWithout(sp, ["status", "page"], { status: "LOW" })}`}>{c("viewAll")}</Link></div>
           <table className="inv-mini">
-            <thead><tr><th>Product</th><th>Category</th><th className="num">Available</th><th className="num">Reorder level</th></tr></thead>
+            <colgroup><col style={{ width: "42%" }} /><col style={{ width: "26%" }} /><col style={{ width: "15%" }} /><col style={{ width: "17%" }} /></colgroup>
+            <thead><tr><th>Product</th><th>Category</th><th className="num">Available</th><th className="num">Reorder</th></tr></thead>
             <tbody>
               {low.slice(0, 5).map((r) => (
                 <tr key={r.id}>
                   <td className="clip" title={`${r.model} ${r.variant ?? ""}`}>{r.model}{r.variant ? ` ${r.variant}` : ""}</td>
-                  <td>{r.top_category ?? r.category}</td>
+                  <td className="clip">{r.top_category ?? r.category}</td>
                   <td className="num bad">{r.available}</td>
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
                 </tr>
@@ -337,6 +338,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <section className="card inv-panel">
           <div className="inv-panel-head"><h2>Recent stock movements</h2><Link href="/inventory/movements">{c("viewAll")}</Link></div>
           <table className="inv-mini">
+            <colgroup><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "30%" }} /><col style={{ width: "28%" }} /><col style={{ width: "12%" }} /></colgroup>
             <thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Product</th><th className="num">Qty</th></tr></thead>
             <tbody>
               {moves.map((m: any) => {
@@ -345,7 +347,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                   <tr key={m.id}>
                     <td>{new Date(m.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
                     <td><span className={`pill ${tone}`}>{label}</span></td>
-                    <td>{m.document_id ? <Link href={`/documents/${m.document_id}`}>{m.doc_no ?? "—"}</Link> : "—"}</td>
+                    <td className="clip" title={m.doc_no ?? ""}>{m.document_id ? <Link href={`/documents/${m.document_id}`}>{m.doc_no ?? "—"}</Link> : "—"}</td>
                     <td className="clip" title={m.item}>{m.item}</td>
                     <td className={`num ${m.qty > 0 ? "ok-qty" : "bad"}`}>{m.qty > 0 ? `+${m.qty}` : m.qty}</td>
                   </tr>
