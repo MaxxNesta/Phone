@@ -7108,3 +7108,9 @@ input.pf2-code.empty { border-color: color-mix(in srgb, var(--warn) 55%, var(--l
 .pf2-status.ok { color: var(--ok); }
 .pf2-status.bad { color: var(--warn); }
 .pf2-empty { padding: 22px 16px; text-align: center; color: var(--muted); font-size: 0.82rem; }
+
+/* ------ no photo, no placeholder: the text takes the room ------ */
+.pos3-card.nophoto { grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr auto; }
+.pos3-card > .pos3-badge { top: 8px; right: 8px; }
+.pos3-line:not(:has(> .pos3-line-img)):not(.nested) { grid-template-columns: minmax(0, 1fr); }
+.pos3-group-head:not(:has(> .pos3-line-img)) { grid-template-columns: minmax(0, 1fr) auto; }

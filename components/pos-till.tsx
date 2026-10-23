@@ -410,9 +410,7 @@ export function PosTill(props: {
     const noPrice = !l.focReasonId && !(l.unitPrice > 0);
     return (
       <div className={`pos3-line${l.focReasonId ? " free" : ""}`} key={l.key}>
-        <span className="pos3-line-img">
-          {l.photo ? <img src={l.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}
-        </span>
+        {l.photo && <span className="pos3-line-img"><img src={l.photo} alt="" /></span>}
         <div className="pos3-line-main">
           <div className="pos3-line-top">
             <div>
@@ -651,11 +649,11 @@ export function PosTill(props: {
                   const inCart = lines.filter((l) => l.itemId === i.id).reduce((s, l) => s + l.qty, 0);
                   const st = cardState(i);
                   return (
-                    <article key={i.id} className={`pos3-card ${st}`}>
-                      <span className="pos3-img">
-                        {i.photo ? <img src={i.photo} alt="" loading="lazy" decoding="async" /> : <Smartphone size={28} aria-hidden="true" />}
-                        {inCart > 0 && <span className="pos3-badge" aria-label={tr("inCart", { n: inCart })}>{inCart}</span>}
-                      </span>
+                    <article key={i.id} className={`pos3-card ${st}${i.photo ? "" : " nophoto"}`}>
+                      {i.photo && (
+                        <span className="pos3-img"><img src={i.photo} alt="" loading="lazy" decoding="async" /></span>
+                      )}
+                      {inCart > 0 && <span className="pos3-badge" aria-label={tr("inCart", { n: inCart })}>{inCart}</span>}
                       <div className="pos3-info">
                         <h3 className="pos3-name">{i.model}</h3>
                         {variantLine(i) && <p className="pos3-sub">{variantLine(i)}</p>}
@@ -726,9 +724,7 @@ export function PosTill(props: {
                 <div className={`pos3-group${first.focReasonId ? " free" : ""}`} key={g.key}>
                   <button type="button" className="pos3-group-head" aria-expanded={isOpen}
                     onClick={() => setOpen((o) => { const n = new Set(o); if (n.has(g.key)) n.delete(g.key); else n.add(g.key); return n; })}>
-                    <span className="pos3-line-img">
-                      {first.photo ? <img src={first.photo} alt="" /> : <Smartphone size={18} aria-hidden="true" />}
-                    </span>
+                    {first.photo && <span className="pos3-line-img"><img src={first.photo} alt="" /></span>}
                     <span className="pos3-group-text">
                       <span className="pos3-line-name">{first.name}</span>
                       {first.variant && <span className="pos3-line-sub">{first.variant}</span>}

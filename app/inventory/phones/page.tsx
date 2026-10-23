@@ -121,7 +121,6 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
               <tr key={u.serial_id} className="link">
                 <td>
                   <span className="prod">
-                    <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
                     <span className="prod-text"><span className="prod-name clamp2" title={u.model_name}>{u.model_name}</span></span>
                   </span>
                 </td>

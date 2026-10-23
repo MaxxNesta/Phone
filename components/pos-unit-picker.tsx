@@ -27,11 +27,10 @@ function useDialogKeys(root: React.RefObject<HTMLElement | null>, onClose: () =>
   }, [onClose, root]);
 }
 
-const Photo = ({ item, size }: { item: SellableItem; size: number }) => (
-  <span className="pu-photo" style={{ width: size, height: size * 1.2 }}>
-    {item.photo ? <img src={item.photo} alt="" /> : <Smartphone size={size * 0.4} aria-hidden="true" />}
-  </span>
-);
+/** The real photo, or nothing — no placeholder box. */
+const Photo = ({ item, size }: { item: SellableItem; size: number }) => item.photo ? (
+  <span className="pu-photo" style={{ width: size, height: size * 1.2 }}><img src={item.photo} alt="" /></span>
+) : null;
 
 /**
  * Which units of a serialised variant go on the sale: a centered sheet with the

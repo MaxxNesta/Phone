@@ -161,7 +161,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             {d.topModels.length === 0 && <p className="page-sub">{t("noPhonesSold")}</p>}
             {d.topModels.slice(0, 5).map((m: any) => (
               <div className="listrow" key={m.model}>
-                <span className="thumb"><Smartphone size={18} aria-hidden="true" /></span>
                 <span className="grow prod-text"><div className="prod-name clamp2" title={m.model}>{m.model}</div><div className="prod-sub">{t("sold", { n: m.sold })}</div></span>
                 <span className="num">{compact(m.revenue)}</span>
               </div>
