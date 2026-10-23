@@ -33,7 +33,10 @@ export async function firstFreeNumber(db: any, co: string, prefix: string): Prom
 /**
  * How an option reads in a variant's name and the preview: a region is its
  * code alone — "LL/A – USA" becomes "LL/A" — so "iPhone 17 256 GB / Black /
- * LL/A" stays short. The chips keep the full name for choosing.
+ * LL/A" stays short. RAM says it is RAM — "256 GB / 8 GB" would not say
+ * which is which. The chips keep the plain name for choosing.
  */
 export const optionLabel = (attributeName: string, optionName: string) =>
-  /region|market/i.test(attributeName) ? optionName.split(/\s+[–—-]\s+/)[0] : optionName;
+  /region|market/i.test(attributeName) ? optionName.split(/\s+[–—-]\s+/)[0]
+  : /^ram$/i.test(attributeName.trim()) && !/ram/i.test(optionName) ? `${optionName} RAM`
+  : optionName;
