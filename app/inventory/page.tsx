@@ -214,18 +214,28 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </Link>
       </div>
 
-      <div className="inv-charts">
+      {/* The sales report's chart row: two equal cards, the same frame, only
+          the chart inside differs. The bars keep the donut's colours. */}
+      <section className={seeCost ? "grid2 chartrow" : undefined}>
         {seeCost && (
-          <section className="card inv-panel">
-            <div className="inv-panel-head"><h2>Stock value by category</h2></div>
-            <ShareDonut data={donut} currency="MMK" emptyLabel="Nothing in stock yet." />
-          </section>
+          <div className="card">
+            <div className="card-head"><h2>Stock value by category</h2><span className="page-sub">MMK, at cost</span></div>
+            <div className="card-body">
+              <div className="chartbox">
+                <ShareDonut data={donut} currency="MMK" emptyLabel="Nothing in stock yet." />
+              </div>
+            </div>
+          </div>
         )}
-        <section className="card inv-panel">
-          <div className="inv-panel-head"><h2>Stock quantity by category</h2></div>
-          {bars.length ? <MeasureBars data={bars} format="plain" height={230} /> : <div className="empty">Nothing in stock yet.</div>}
-        </section>
-      </div>
+        <div className="card">
+          <div className="card-head"><h2>Stock quantity by category</h2><span className="page-sub">units on hand</span></div>
+          <div className="card-body">
+            <div className="chartbox">
+              {bars.length ? <MeasureBars data={bars} format="plain" height={280} /> : <div className="empty">Nothing in stock yet.</div>}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="card inv-panel">
         <div className="inv-panel-head">
