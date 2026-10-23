@@ -14,6 +14,7 @@
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import postgres from "postgres";
+import { snapshotMasters, removeNewMasters } from "./masters-cleanup.mjs";
 
 const QUIET = 12, LIMIT = 240;
 // test-empty deletes every item and category: it is run on its own, never in a sweep.
@@ -67,6 +68,9 @@ const run = (name) => new Promise((resolve) => {
   });
 });
 
+// What exists before the run, so whatever the suites add can be taken away
+// afterwards — DEV keeps the shop's own categories, not "Branch Test".
+const before = await snapshotMasters(sql);
 const results = [];
 for (const name of suites) {
   await sql`delete from test_run_lock`.catch(() => {});
@@ -82,6 +86,9 @@ for (const name of suites) {
 }
 
 await sql`delete from test_run_lock`.catch(() => {});
+const removed = await removeNewMasters(sql, before).catch((e) => ({ error: String(e.message ?? e) }));
+console.log(`
+  removed what the suites added: ${JSON.stringify(removed)}`);
 // Suites that rebuild the company leave their own name behind; keep the
 // environment recognisable.
 await sql`update company set name = ${co.name}`;

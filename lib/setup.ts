@@ -186,6 +186,9 @@ export async function scaffoldCompany(input: SetupInput) {
     // Apple types (iPhone, iPad, Mac…) with their tracking, and the variant
     // lists they are picked by (migrations 0121, 0122).
     await tx`select fn_seed_apple_catalogue(${co.id})`;
+    // The rest of what the shop sells — Android, laptops, audio, accessories,
+    // SIM cards, services — and its brands (migration 0149).
+    await tx`select fn_seed_retail_catalogue(${co.id})`;
 
     await tx`
       insert into price_level (company_id, code, name, sort_order) values
