@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { reorderChoices } from "@/lib/stock-detail";
 import { useTranslations } from "next-intl";
 
 /** A model and the variants on its shelves; a plain item has none. */
@@ -15,12 +16,10 @@ type Location = { id: string; code: string; name: string };
  */
 export function AddReorderPointForm({
   action,
-  items,
   locations,
   count,
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
-  items: Model[];
   locations: Location[];
   /** Reorder points already set: when it changes, the save went through. */
   count: number;
@@ -33,14 +32,26 @@ export function AddReorderPointForm({
   );
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
-  const nothingToChooseFrom = items.length === 0 || locations.length === 0;
+  // The catalogue to choose from, fetched the first time the form opens.
+  const [items, setItems] = useState<Model[] | null>(null);
+  const nothingToChooseFrom = locations.length === 0 || (items !== null && items.length === 0);
+  useEffect(() => {
+    if (!open || items) return;
+    reorderChoices().then((list) => {
+      setItems(list);
+      const first = [...new Set(list.map((m) => m.category))].sort()[0] ?? "";
+      setCategory(first);
+      setModelId(list.find((m) => m.category === first)?.id ?? "");
+    }).catch(() => setItems([]));
+  }, [open, items]);
+  const all = items ?? [];
 
   // Model, then each option in turn — storage, colour, SIM — offering only
   // what that model actually comes in, down to the one variant.
-  const categories = [...new Set(items.map((m) => m.category))].sort();
-  const [category, setCategory] = useState(categories[0] ?? "");
-  const models = items.filter((m) => m.category === category);
-  const [modelId, setModelId] = useState(models[0]?.id ?? "");
+  const categories = [...new Set(all.map((m) => m.category))].sort();
+  const [category, setCategory] = useState("");
+  const models = all.filter((m) => m.category === category);
+  const [modelId, setModelId] = useState("");
   const [picked, setPicked] = useState<Record<string, string>>({});
   const model = models.find((m) => m.id === modelId);
   const attrs = model ? [...new Set(model.variants.flatMap((v) => v.parts.map((p) => p.a)))] : [];
@@ -72,6 +83,7 @@ export function AddReorderPointForm({
           <h2 className="confirm-title">{t("rp.newTitle")}</h2>
           <p className="confirm-detail">{t("rp.newDetail")}</p>
           {state && "error" in state && <div className="alert" style={{ marginTop: 10 }}>{state.error}</div>}
+          {items === null && <p className="confirm-detail" aria-busy="true">Loading…</p>}
 
           <div className="sheet-fields">
             <input type="hidden" name="item_id" value={itemId} />
@@ -80,7 +92,7 @@ export function AddReorderPointForm({
                 <label htmlFor="rp-cat">{c("category")}</label>
                 <select id="rp-cat" value={category} onChange={(e) => {
                   setCategory(e.target.value);
-                  setModelId(items.find((m) => m.category === e.target.value)?.id ?? "");
+                  setModelId(all.find((m) => m.category === e.target.value)?.id ?? "");
                   setPicked({});
                 }}>
                   {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}

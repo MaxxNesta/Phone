@@ -117,3 +117,32 @@ export async function stockCost(itemId: string): Promise<StockCost | null> {
     totalUnitCost: unitCost + rows.reduce((s, l) => s + l.perUnit, 0),
   };
 }
+
+export type ReorderChoice = { id: string; name: string; category: string; variants: { id: string; parts: { a: string; o: string }[] }[] };
+
+/**
+ * What a reorder point can be set on: every model with its variants, and
+ * every plain stocked item. Asked when the form opens, not sent with the
+ * page — a catalogue of 1,500 variants was most of the Stock page's weight.
+ */
+export async function reorderChoices(): Promise<ReorderChoice[]> {
+  const user = await requirePermission("inventory.view");
+  const rows = await sql`
+    select i.id, i.name, coalesce(pg.name, g.name) as category,
+           coalesce((select json_agg(json_build_object('id', k.id, 'parts',
+                      coalesce((select json_agg(json_build_object('a', a.name, 'o', o.name)
+                                                order by coalesce(iva.sort_order, 0), a.name)
+                                  from item_variant_option ivo
+                                  join variant_option o on o.id = ivo.option_id
+                                  join variant_attribute a on a.id = o.attribute_id
+                                  left join item_variant_attribute iva on iva.item_id = i.id and iva.attribute_id = a.id
+                                 where ivo.item_id = k.id), '[]'::json)) order by k.code)
+                       from item k where k.parent_item_id = i.id), '[]'::json) as variants
+      from item i
+      join item_group g on g.id = i.item_group_id
+      left join item_group pg on pg.id = g.parent_id
+     where i.company_id = ${user.companyId} and i.is_active and i.parent_item_id is null
+       and (i.is_stocked or exists (select 1 from item k where k.parent_item_id = i.id))
+     order by i.name`;
+  return rows as unknown as ReorderChoice[];
+}

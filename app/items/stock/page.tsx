@@ -500,12 +500,6 @@ export default async function Stock({
             <span className="dt-spacer" />
             <AddReorderPointForm
               action={createReorderPoint}
-              // A model with its variants: the point is set on the variant, which
-              // is what sits on a shelf.
-              items={items.filter((i) => i.variant_count > 0 || (i.is_stocked && !i.parent_item_id)).map((i) => ({
-                id: i.id, name: i.name, category: i.parent_group_name ?? i.group_name,
-                variants: (childrenOf.get(i.id) ?? []).map((k) => ({ id: k.id, parts: asVariant(k.variant) ?? [] })),
-              }))}
               locations={reorderableLocations}
               count={reorderPoints.length}
             />
