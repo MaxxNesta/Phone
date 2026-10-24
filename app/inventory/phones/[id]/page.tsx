@@ -96,7 +96,7 @@ export default async function Handset({ params }: { params: Promise<{ id: string
       </div>
 
       {can(user, "inventory.manage") && (u.status === "IN_STOCK" || u.hold_kind) && (
-        <SerialHoldForm serialId={u.serial_id} held={u.hold_kind} />
+        <div id="hold"><SerialHoldForm serialId={u.serial_id} held={u.hold_kind} /></div>
       )}
       {holds.length > 0 && (
         <p className="page-sub">

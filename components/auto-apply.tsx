@@ -78,10 +78,21 @@ export function AutoApply() {
     // from reloading the whole page when they press Enter.
     const onSubmit = (e: Event) => { e.preventDefault(); submit(); };
     form.addEventListener("submit", onSubmit);
+    // A search box marked data-live applies as it is typed, once typing pauses —
+    // one request per pause, not one per key.
+    let timer: number | undefined;
+    const onInput = (e: Event) => {
+      if (!(e.target as HTMLElement).hasAttribute?.("data-live")) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(submit, 350);
+    };
+    form.addEventListener("input", onInput);
 
     return () => {
+      window.clearTimeout(timer);
       form.removeEventListener("change", submit);
       form.removeEventListener("submit", onSubmit);
+      form.removeEventListener("input", onInput);
     };
   }, [router]);
 

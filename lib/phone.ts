@@ -137,10 +137,23 @@ export type PhoneStockFilter = {
   locs?: string[] | null;
 };
 
-export async function phoneStock(companyId: string, f: PhoneStockFilter) {
+/**
+ * One page of units, paged in SQL: `total` is how many match the filters,
+ * whatever the page. Size 0 returns every match (capped), for callers that
+ * still need the list whole.
+ */
+export async function phoneStock(companyId: string, f: PhoneStockFilter & { page?: number; size?: number } = {}) {
   const like = f.q ? `%${f.q.trim()}%` : null;
-  return sql`
+  const size = f.size ?? 0;
+  const offset = size > 0 ? (Math.max(1, f.page ?? 1) - 1) * size : 0;
+  const rows = await sql`
     select v.serial_id, v.imei, v.imei2, v.device_serial, v.item_id, v.item_name, v.model_name,
+           i.code as item_code, count(*) over ()::int as total_count,
+           case when i.photo_updated_at is not null
+                  then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
+                when p.photo_updated_at is not null
+                  then '/items/' || p.id || '/photo?v=' || to_char(p.photo_updated_at, 'YYYYMMDDHH24MISSMS')
+           end as photo,
            v.brand_name, ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour,
            v.location_id, v.location_name, br.name as branch_name,
            v.unit_cost::float as unit_cost, ${RETAIL_PRICE}::float as price,
@@ -149,10 +162,11 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter) {
            v.was_returned, v.was_transferred
       from v_stock_serial v
       join item i on i.id = v.item_id
+      left join item p on p.id = i.parent_item_id
       left join location loc on loc.id = v.location_id
       left join location br on br.id = coalesce(loc.parent_id, loc.id)
      where v.company_id = ${companyId}
-       and (${like}::text is null or v.imei ilike ${like} or v.imei2 ilike ${like}
+       and (${like}::text is null or v.imei ilike ${like} or v.imei2 ilike ${like} or i.code ilike ${like}
             or v.device_serial ilike ${like} or v.item_name ilike ${like} or v.model_name ilike ${like})
        and (${f.locationId ?? null}::uuid is null or v.location_id = ${f.locationId ?? null}
             or loc.parent_id = ${f.locationId ?? null})
@@ -163,8 +177,9 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter) {
        and (${f.colour ?? null}::text is null or ${optionMatching(COLOUR_RE)} = ${f.colour ?? null})
        and (${f.status ?? null}::text is null or v.status = ${f.status ?? null})
        and (${f.supplierId ?? null}::uuid is null or v.supplier_id = ${f.supplierId ?? null})
-     order by v.status = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date
-     limit 500`;
+     order by v.status = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date, v.imei
+     limit ${size > 0 ? size : 500} offset ${offset}`;
+  return Object.assign(rows, { total: rows.length ? Number((rows[0] as any).total_count) : 0 });
 }
 
 /**
@@ -198,6 +213,8 @@ const phoneStockOverview = cache(async (companyId: string) => {
                   from location where company_id = ${companyId} and is_active), '[]') as locations,
       (select count(*) filter (where status = 'IN_STOCK') from v)::int as available,
       (select count(*) filter (where status = 'IN_STOCK' and received_date > current_date - 7) from v)::int as received_week,
+      (select count(*) from v)::int as total,
+      (select count(*) filter (where status = 'SOLD') from v)::int as sold,
       (select count(*) filter (where status = 'RESERVED') from v)::int as reserved,
       (select count(*) filter (where status = 'REPAIR') from v)::int as repair,
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date)) from v)::int as sold_month,
@@ -501,6 +518,7 @@ function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnTyp
 export async function serialKpis(companyId: string) {
   const r = await phoneStockOverview(companyId);
   return { available: r.available as number, received_week: r.received_week as number,
+           total: r.total as number, sold: r.sold as number,
            reserved: r.reserved as number, repair: r.repair as number, sold_month: r.sold_month as number,
            sold_last_month: r.sold_last_month as number, value: r.value as number };
 }
