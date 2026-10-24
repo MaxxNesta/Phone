@@ -6,7 +6,6 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { createBrandInline, type PickerBrand } from "@/lib/actions";
 import { ConfirmOtherBrand } from "./brand-form";
-import { ItemPhotoField } from "./item-photo-field";
 import { MODEL_CODE, modelItemCode } from "@/lib/item-code";
 import { nextModelNumber } from "@/lib/actions";
 import Link from "next/link";
@@ -301,7 +300,7 @@ export function ItemForm({
               </label>
             </div>
             <div className="pf2-body pf2-info">
-              <ItemPhotoField tile />
+              {/* Photos are not offered here yet. */}
               <div className="pf2-fields">
                 {selects.map((sel) => (
                   <div className="field" key={sel.depth}>

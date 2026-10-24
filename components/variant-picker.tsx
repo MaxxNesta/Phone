@@ -395,7 +395,7 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
           : v.undecided.length > 0 ? `${v.undecided.length} ${v.undecided.length === 1 ? "variant has" : "variants have"} the same configuration as another — use the existing one or keep it separate.`
           : v.twice.size > 0 ? "The same code is typed for two variants."
           : v.missing > 0 ? `${v.missing} ${v.missing === 1 ? "variant still needs" : "variants still need"} a code.`
-          : `${v.kept.length} unique item ${v.kept.length === 1 ? "code" : "codes"} ready to create.`}
+          : `${v.kept.length} ${v.kept.length === 1 ? "variant" : "variants"} of ${name.trim() || "this product"} ${v.kept.length === 1 ? "is" : "are"} ready to create.`}
       </div>
 
       {asking && byKey.get(asking) && byKey.get(v.similar.get(asking)!) && (() => {
