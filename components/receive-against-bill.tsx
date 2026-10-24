@@ -8,6 +8,7 @@ import { Lock } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { RelatedDocumentsPanel } from "./related-documents";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
+import { TrackMode } from "./track-mode";
 
 type BillLine = {
   lineId: string;
@@ -16,6 +17,8 @@ type BillLine = {
   itemName: string;
   /** Each unit is named by IMEI. */
   tracksSerial?: boolean;
+  /** Optional tracking: this receipt may name each unit or count them. */
+  optionalSerial?: boolean;
   uomCode: string | null;
   billedQty: number;
   receivedQty: number;
@@ -93,6 +96,9 @@ export function ReceiveAgainstBill({
 
   /** IMEIs scanned per bill line, for the lines that are phones. */
   const [scans, setScans] = useState<Record<string, ScannedSerial[]>>({});
+  // Optional tracking, per bill line: true when this receipt names its units.
+  const [withSerials, setWithSerials] = useState<Record<string, boolean>>({});
+  const named = (l: BillLine) => !!l.tracksSerial || (!!l.optionalSerial && !!withSerials[l.lineId]);
 
   const entered = (l: BillLine) => Number(receiving[l.lineId]) || 0;
   const unitOf = (l: BillLine) => (l.uomCode ? ` ${l.uomCode}` : "");
@@ -157,12 +163,12 @@ export function ReceiveAgainstBill({
         // from here by the engine, which resolves the version that stands —
         // naming it from the browser would freeze a stale one.
         sourceLineId: l.lineId,
-        serials: (scans[l.lineId] ?? []).map((x) => x.serial),
-        unitDetails: (scans[l.lineId] ?? []).filter((x) => x.imei2)
+        serials: (named(l) ? scans[l.lineId] ?? [] : []).map((x) => x.serial),
+        unitDetails: (named(l) ? scans[l.lineId] ?? [] : []).filter((x) => x.imei2)
           .map((x) => ({ serial: x.serial, imei2: x.imei2 })),
       }))
   );
-  const serialShort = bill.lines.some((l) => l.tracksSerial && entered(l) > 0
+  const serialShort = bill.lines.some((l) => named(l) && entered(l) > 0
     && (scans[l.lineId]?.length ?? 0) !== entered(l));
 
   return (
@@ -271,14 +277,22 @@ export function ReceiveAgainstBill({
                   </td>
                   <td className="r">{money(entered(l) * l.unitPrice)}</td>
                 </tr>
-                {l.tracksSerial && (
+                {l.optionalSerial && (
+                  <tr className="batchrow">
+                    <td colSpan={7}>
+                      <TrackMode code={l.itemCode} on={!!withSerials[l.lineId]}
+                        onChange={(on) => setWithSerials((m) => ({ ...m, [l.lineId]: on }))} />
+                    </td>
+                  </tr>
+                )}
+                {named(l) && (
                   <tr className="batchrow">
                     <td colSpan={7}>
                       <SerialEntry
-                        label={`${l.itemCode} — IMEI of each unit`}
+                        label={`${l.itemCode} — ${l.optionalSerial ? "serial number" : "IMEI"} of each unit`}
                         qty={entered(l)}
                         value={scans[l.lineId] ?? []}
-                        withImei2
+                        withImei2={!l.optionalSerial}
                         onChange={(v) => {
                           setScans((m) => ({ ...m, [l.lineId]: v }));
                           // Scanning drives the quantity until one is typed.

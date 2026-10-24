@@ -65,7 +65,7 @@ export default async function VariantsOfProduct({
 
   const shown = only && rows.some((r) => r.id === only) ? rows.filter((r) => r.id === only) : rows;
   const gridRows: GridRow[] = shown.map((r) => ({
-    id: r.id, code: r.code, name: r.name,
+    id: r.id, code: r.code, name: r.name, nameIsCustom: !!r.name_is_custom, twins: r.twins ?? null,
     barcode: r.barcode, prices: r.prices,
     is_active: r.is_active, on_hand: r.on_hand,
     photoSrc: srcOf(r.id),
@@ -100,6 +100,7 @@ export default async function VariantsOfProduct({
               rows={gridRows}
               levels={levels}
               uom={uom?.code ?? ""}
+              productName={parent.name}
             />
           </div>
         </div>

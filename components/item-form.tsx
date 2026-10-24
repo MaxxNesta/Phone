@@ -10,7 +10,7 @@ import { ItemPhotoField } from "./item-photo-field";
 import { MODEL_CODE, modelItemCode } from "@/lib/item-code";
 import { nextModelNumber } from "@/lib/actions";
 import Link from "next/link";
-import { Sparkles, PenLine, Smartphone, Barcode, Boxes, Plus, Check } from "lucide-react";
+import { Sparkles, PenLine, Smartphone, Barcode, Boxes, Plus, Check, ScanLine } from "lucide-react";
 import { HelpHint } from "./help-hint";
 import { itemCodeTakenBy } from "@/lib/item-code-actions";
 import { useTranslations } from "next-intl";
@@ -24,6 +24,7 @@ type Node = {
 const TRACKING = [
   { v: "IMEI", label: "IMEI", note: "iPhone, cellular iPad and Watch. IMEI 2 and serial kept beside it." },
   { v: "SERIAL", label: "Serial number", note: "Mac, Wi-Fi iPad, AirPods. One serial per unit." },
+  { v: "OPTIONAL", label: "Optional", note: "Each receipt chooses: a serial for every unit, or a count." },
   { v: "NONE", label: "Quantity only", note: "Cases, cables, chargers. Counted, not named." },
 ] as const;
 type Uom = { id: string; code: string; name: string };
@@ -56,7 +57,10 @@ export function ItemForm({
   variantAttributes,
   retail,
   canAddBrand,
+  canKeepDuplicates,
 }: {
+  /** May keep two variants of one configuration on purpose (items.duplicates). */
+  canKeepDuplicates?: boolean;
   /** Owner only (brands.manage): the shop sells Apple. */
   canAddBrand?: boolean;
   /** Phone retail: nothing expires and nothing is recalled by lot, so the
@@ -188,7 +192,7 @@ export function ItemForm({
   const attributes = (variantAttributes ?? []).filter((a) =>
     (!a.identities || a.identities.includes(tracking)) &&
     !(a.not_for_brands ?? []).some((code) => brandCodes.includes(code.toUpperCase())));
-  const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "");
+  const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "", tracking);
 
   // Is the typed code already somebody's? Asked a moment after typing stops,
   // so the answer is on screen before Save, not in an error after it.
@@ -473,16 +477,17 @@ export function ItemForm({
               )}
             </div>
             <div className="pf2-body">
-              <div className="pf2-seg three" role="radiogroup" aria-label="Tracked by">
+              <div className="pf2-seg four" role="radiogroup" aria-label="Tracked by">
                 {TRACKING.map((t) => {
-                  const Icon = t.v === "IMEI" ? Smartphone : t.v === "SERIAL" ? Barcode : Boxes;
+                  const Icon = t.v === "IMEI" ? Smartphone : t.v === "SERIAL" ? Barcode : t.v === "OPTIONAL" ? ScanLine : Boxes;
                   return (
                     <button key={t.v} type="button" role="radio" aria-checked={tracking === t.v}
                       className={`pf2-option${tracking === t.v ? " on" : ""}`}
                       onClick={() => setTrackOverride({ root: chain[0] ?? "", v: t.v })}>
                       <span className="pf2-radio" aria-hidden="true" />
                       <Icon size={17} aria-hidden="true" />
-                      <span className="txt"><strong>{t.label}</strong><span>{t.v === "IMEI" ? "Each unit has an IMEI" : t.v === "SERIAL" ? "Each unit has a serial" : "Counted, not named"}</span></span>
+                      <span className="txt"><strong>{t.label}</strong><span>{t.v === "IMEI" ? "Each unit has an IMEI" : t.v === "SERIAL" ? "Each unit has a serial"
+                        : t.v === "OPTIONAL" ? "Serials when the receipt has them" : "Counted, not named"}</span></span>
                     </button>
                   );
                 })}
@@ -551,7 +556,8 @@ export function ItemForm({
         {/* 5 — what will be created, beside the form while it is filled in. */}
         {hasVariants && (
           <div className="pf2-side">
-            <VariantPreview v={plan} mode={codeMode} prefix={prefixOk ? prefix : ""} nextNo={nextNo} name={itemName} />
+            <VariantPreview v={plan} mode={codeMode} prefix={prefixOk ? prefix : ""} nextNo={nextNo} name={itemName}
+              canKeepDuplicates={canKeepDuplicates} />
           </div>
         )}
       </div>

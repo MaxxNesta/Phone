@@ -1,6 +1,8 @@
 import { setItemPhoneSettings } from "@/lib/phone-actions";
 
-const LABEL: Record<string, string> = { IMEI: "IMEI", SERIAL: "Serial number", NONE: "Quantity only" };
+const LABEL: Record<string, string> = {
+  IMEI: "IMEI", SERIAL: "Serial number", OPTIONAL: "Optional serial number", NONE: "Quantity only",
+};
 
 /** How each unit is named, and the warranties, for one item on its detail page. */
 export function PhoneSettings({ item }: {
@@ -17,8 +19,13 @@ export function PhoneSettings({ item }: {
         <input type="hidden" name="id" value={item.id} />
         <div className="field">
           <label htmlFor="ps-id">Tracked by{variants > 0 ? ` — all ${variants} variants` : ""}</label>
-          <select id="ps-id" name="identity" defaultValue={identity} disabled={variants === 0 && item.has_moved}>
-            {Object.entries(LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {/* Once stock has moved, only Optional can still be chosen: it takes
+              named and counted units alike, so nothing on the shelf is wrong. */}
+          <select id="ps-id" name="identity" defaultValue={identity}
+            disabled={variants === 0 && item.has_moved && identity === "OPTIONAL"}>
+            {Object.entries(LABEL)
+              .filter(([v]) => !(variants === 0 && item.has_moved) || v === identity || v === "OPTIONAL")
+              .map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
         <div className="field">
@@ -35,10 +42,11 @@ export function PhoneSettings({ item }: {
       </div>
       <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
         IMEI for iPhone and cellular iPad or Watch; serial number for Mac, Wi-Fi iPad and AirPods;
-        quantity only for accessories. A cellular variant of a serial-number product is tracked by IMEI.
+        quantity only for accessories. Optional lets each receipt choose: a serial for every unit, or a count.
+        A cellular variant of a serial-number product is tracked by IMEI.
         {variants > 0 && ` ${item.variants_tracked} of ${variants} variants are tracked unit by unit.`}
-        {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting.`}
-        {variants === 0 && item.has_moved && " Tracking is fixed once stock has moved: units already on the shelf were never named."}
+        {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting, unless the choice is Optional.`}
+        {variants === 0 && item.has_moved && " Once stock has moved, tracking can only change to Optional: units already on the shelf keep how they were recorded."}
       </p>
     </form>
   );

@@ -567,8 +567,13 @@ export async function getVariantGrid(companyId: string, parentId: string) {
               sort_order, code`;
 
   const rows = await sql`
-    select i.id, i.code, i.name, i.barcode, i.is_active, i.base_uom_id,
+    select i.id, i.code, i.name, i.name_is_custom, i.barcode, i.is_active, i.base_uom_id,
            to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS') as photo_version,
+           -- Another code for the same configuration (42MM / Black beside 42 / Black).
+           (select string_agg(t.code, ', ' order by t.code) from v_item_physical me
+              join v_item_physical o on o.physical_key = me.physical_key and o.item_id <> me.item_id
+              join item t on t.id = o.item_id
+             where me.item_id = i.id) as twins,
            coalesce(s.qty_on_hand, 0) as on_hand,
            (select json_object_agg(x.price_level_id, x.price) from (
               select distinct on (price_level_id) price_level_id, price from item_price
@@ -590,7 +595,7 @@ export async function getVariantGrid(companyId: string, parentId: string) {
       left join (select item_id, sum(qty_on_hand) as qty_on_hand
                    from v_stock_on_hand group by item_id) s on s.item_id = i.id
      where i.company_id = ${companyId} and i.parent_item_id = ${parentId}
-     group by i.id, i.code, i.name, i.barcode, i.is_active, i.base_uom_id,
+     group by i.id, i.code, i.name, i.name_is_custom, i.barcode, i.is_active, i.base_uom_id,
               i.photo_updated_at, s.qty_on_hand
      order by i.code`;
 
@@ -1186,7 +1191,7 @@ export async function getBillReceiptContext(companyId: string, invoiceId: string
   const own = await sql`
     select dl.id, dl.item_id, dl.base_qty as qty, dl.net_amount as net,
            dl.unit_price, dl.source_line_id,
-           i.code as item_code, i.name as item_name, u.code as uom_code, i.tracks_serial
+           i.code as item_code, i.name as item_name, u.code as uom_code, i.tracks_serial, i.identity
       from document_line dl
       join item i on i.id = dl.item_id
       join uom u on u.id = i.base_uom_id
@@ -1235,6 +1240,7 @@ export async function getBillReceiptContext(companyId: string, invoiceId: string
       itemId: l.item_id as string,
       itemCode: l.item_code as string,
       tracksSerial: Boolean(l.tracks_serial),
+      optionalSerial: l.identity === "OPTIONAL",
       itemName: l.item_name as string,
       uomCode: (l.uom_code ?? null) as string | null,
       billedQty: Number(l.qty),
@@ -2100,7 +2106,7 @@ export async function getItems(companyId: string) {
   return sql`
     select i.id, i.code, i.name, i.name_my, i.item_group_id, i.brand_id,
            i.base_uom_id, i.is_stocked, i.is_active,
-           i.tracks_batch, i.tracks_expiry, i.tracks_serial,
+           i.tracks_batch, i.tracks_expiry, i.tracks_serial, i.identity,
            i.parent_item_id,
            -- How many things on a shelf this one product is. Zero for an
            -- ordinary item, which is nearly all of them; the catalogue folds

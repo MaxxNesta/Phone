@@ -1521,9 +1521,13 @@ async function planFifoConsumption(
    * is drawn. What changes is which layer that is — and it should be, since
    * the cost of a sale ought to follow the goods that physically left.
    */
+  // An item tracked optionally keeps named and anonymous units on the same
+  // layers; drawn without names, only the anonymous part of each is there.
+  const optional = await isOptionalTracking(tx, itemId);
+  const named = optional ? tx`fn_lot_named_on_hand(sl.id)` : tx`0`;
   const lots = await tx`
     select sl.id, sl.unit_cost + coalesce(a.delta, 0) as unit_cost,
-           sl.qty_received - coalesce(sum(c.qty), 0) as remaining
+           sl.qty_received - coalesce(sum(c.qty), 0) - ${named} as remaining
       from stock_lot sl
       left join stock_lot_consumption c on c.lot_id = sl.id
       left join lateral (
@@ -1533,7 +1537,7 @@ async function planFifoConsumption(
      where sl.company_id = ${companyId} and sl.item_id = ${itemId} and sl.location_id = ${locationId}
      group by sl.id, sl.unit_cost, a.delta, sl.qty_received, sl.received_date, sl.created_at,
               sl.expiry_date
-    having sl.qty_received - coalesce(sum(c.qty), 0) > 0.0001
+    having sl.qty_received - coalesce(sum(c.qty), 0) - ${named} > 0.0001
      -- Two lines of one receipt arrive at the same moment, so the receipt's
      -- own line order decides between them, then the layer's id: a tie left
      -- to the database put line 2 ahead of line 1 on some runs and not others.
@@ -1560,6 +1564,10 @@ async function planFifoConsumption(
   let priceSource = "NONE";
 
   if (need > 0.0001) {
+    if (optional && !allowNegative && await namedOnHand(tx, companyId, itemId, locationId) > 0) {
+      throw new Error("Not enough of this item without a serial number here. The units recorded "
+        + "with serial numbers leave by their serials — scan or pick them.");
+    }
     if (!allowNegative) {
       throw new Error("Not enough stock in any lot at this location to cover the quantity requested");
     }
@@ -1898,11 +1906,43 @@ async function planConsignmentConsumption(
  * Asked once per posting rather than per line, because a receipt of twenty
  * lines would otherwise ask twenty times for an answer that does not change.
  */
-async function serialTracking(tx: TransactionSql, itemIds: string[]) {
+async function serialTracking(tx: TransactionSql, lines: { itemId: string; serials?: string[] }[]) {
+  const itemIds = [...new Set(lines.map((l) => l.itemId))];
   if (itemIds.length === 0) return new Set<string>();
   const rows = await tx`
-    select id from item where id = any(${itemIds}) and tracks_serial`;
-  return new Set((rows as unknown as { id: string }[]).map((r) => r.id));
+    select id, code, identity from item
+     where id = any(${itemIds}) and identity in ('IMEI', 'SERIAL', 'OPTIONAL')`;
+  const named = new Set<string>();
+  for (const r of rows as unknown as { id: string; code: string; identity: string }[]) {
+    if (r.identity !== "OPTIONAL") { named.add(r.id); continue; }
+    // Optional: this document names every unit of the item or none of them.
+    // Half a carton named would leave nobody able to say which half.
+    const mine = lines.filter((l) => l.itemId === r.id);
+    const withSerials = mine.filter((l) => (l.serials ?? []).some((s) => s.trim())).length;
+    if (withSerials === mine.length) named.add(r.id);
+    else if (withSerials > 0) {
+      throw new Error(`${r.code}: record serial numbers on every line of it on this document, or on none.`);
+    }
+  }
+  return named;
+}
+
+/** Whether an item's units may be named or not, receipt by receipt. */
+async function isOptionalTracking(tx: TransactionSql, itemId: string) {
+  const [r] = await tx`select identity from item where id = ${itemId}`;
+  return r?.identity === "OPTIONAL";
+}
+
+/**
+ * Units of an optional item here that carry a serial. Stock without serials
+ * is what is left beside them, and an issue without serials may take only
+ * that — a named watch leaves by its name or not at all.
+ */
+async function namedOnHand(tx: TransactionSql, companyId: string, itemId: string, locationId: string) {
+  const [r] = await tx`
+    select coalesce(sum(fn_lot_named_on_hand(sl.id)), 0)::float as n from stock_lot sl
+     where sl.company_id = ${companyId} and sl.item_id = ${itemId} and sl.location_id = ${locationId}`;
+  return Number(r.n);
 }
 
 /**
@@ -2881,7 +2921,7 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
    * one in another warehouse, or one that has already gone out — each is a
    * different mistake and each is refused here, before a movement is written.
    */
-  const serialTracked = await serialTracking(tx, input.lines.map((l) => l.itemId));
+  const serialTracked = await serialTracking(tx, input.lines);
   assertSerials(input.lines, serialTracked, "issue");
   // Locked and checked here, before a document exists, so a bad scan is
   // refused whole. Each unit's layer is what the planner then draws.
@@ -3784,16 +3824,20 @@ async function issueStockLine(tx: TransactionSql, a: {
   focReasonId?: string | null; allowNegative: boolean; negativeStockReason?: string | null;
 }) {
   const [item] = await tx`
-    select code, name, tracks_serial from item where id = ${a.itemId}`;
+    select code, name, tracks_serial, identity from item where id = ${a.itemId}`;
+  // Optional tracking: named when the line names its units.
+  const optional = item.identity === "OPTIONAL";
+  const named = item.tracks_serial || (optional && (a.serials ?? []).some((s) => s.trim()));
 
   let units: SerialUnit[] | undefined;
-  if (item.tracks_serial) {
+  if (named) {
     units = await claimSerials(tx, a.companyId, a.itemId, a.locationId, a.serials ?? []);
   } else {
     // Same rule a delivery applies: short needs a confirmation and a reason.
     const [{ on_hand }] = await tx`
       select fn_qty_on_hand(${a.companyId}, ${a.itemId}, ${a.locationId}) as on_hand`;
-    const onHand = Number(on_hand);
+    // What can leave without a name is what has none.
+    const onHand = Number(on_hand) - (optional ? await namedOnHand(tx, a.companyId, a.itemId, a.locationId) : 0);
     if (onHand < a.qty && !a.allowNegative) {
       throw new Error(
         `Not enough ${item.code} (${item.name}) at this location — ${onHand} on hand, ${a.qty} requested`);
@@ -3873,7 +3917,7 @@ async function _postSalesInvoice(
     if (input.lines.some((l) => l.source === "CONSIGNMENT")) {
       throw new Error("Consigned goods are sold through the delivery flow, not at the counter.");
     }
-    assertSerials(input.lines, await serialTracking(tx, input.lines.map((l) => l.itemId)), "sell");
+    assertSerials(input.lines, await serialTracking(tx, input.lines), "sell");
   }
 
   // An amendment is the sanctioned way to change an agreed price and carries
@@ -4536,7 +4580,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
 
   // Refused before anything is written, so a carton with a missing IMEI is
   // rejected whole rather than half-received.
-  const serialTracked = await serialTracking(tx, input.lines.map((l) => l.itemId));
+  const serialTracked = await serialTracking(tx, input.lines);
   assertSerials(input.lines, serialTracked, "receive");
 
     const { companyId, partnerId, locationId, docDate } = input;
@@ -6295,8 +6339,10 @@ async function _postStockAdjustment(
       /* A phone found or lost has a name. Found stock with an IMEI is a
          receipt — it needs a supplier and a cost — so an increase is refused;
          a loss writes off the exact units. */
-      const [{ tracks_serial: named }] = await tx`
-        select tracks_serial from item where id = ${line.itemId}`;
+      const [{ tracks_serial: required, identity }] = await tx`
+        select tracks_serial, identity from item where id = ${line.itemId}`;
+      // Optional tracking: a loss names its units when they have names.
+      const named = required || (identity === "OPTIONAL" && (line.serials ?? []).some((s) => s.trim()));
       let units: SerialUnit[] | undefined;
       if (named) {
         if (line.qty > 0) {
@@ -6457,7 +6503,7 @@ export async function postStockTransfer(input: TransferInput, outer?: Transactio
   return inTransaction(outer, async (tx) => {
     const { companyId, fromLocationId, toLocationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
-    const serialTrackedT = await serialTracking(tx, lines.map((l) => l.itemId));
+    const serialTrackedT = await serialTracking(tx, lines);
     assertSerials(lines, serialTrackedT, "transfer");
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
@@ -6953,7 +6999,7 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
   return inTransaction(outer, async (tx) => {
     const { companyId, partnerId, locationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
-    const serialTrackedR = await serialTracking(tx, input.lines.map((l) => l.itemId));
+    const serialTrackedR = await serialTracking(tx, input.lines);
     assertSerials(input.lines, serialTrackedR, "take back");
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
@@ -7064,6 +7110,29 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         // With no source named there is nothing to read, so it falls back to
         // what stock here is worth right now.
         const taken = returnedSoFar.get(line.itemId) ?? 0;
+        // Optional tracking: what left without names may come back without
+        // them, and no more. A watch sold by its serial returns by it, or the
+        // serial would stay "sold" while the watch sat on the shelf.
+        if (!serialTrackedR.has(line.itemId) && input.sourceDocumentId
+            && await isOptionalTracking(tx, line.itemId)) {
+          const [left] = await tx`
+            with docs as (
+              select d.id from document d
+               where d.id = ${input.sourceDocumentId} or d.lifecycle_owner_id = ${input.sourceDocumentId}
+                  or d.id = (select source_document_id from document where id = ${input.sourceDocumentId}))
+            select coalesce(sum(-m.qty), 0)::float as out_qty,
+                   (select count(*) from stock_serial_issue si
+                      join stock_movement m2 on m2.id = si.stock_movement_id
+                     where m2.document_id in (select id from docs) and m2.item_id = ${line.itemId}
+                       and fn_serial_issue_stands(si.stock_movement_id))::float as named
+              from stock_movement m
+             where m.document_id in (select id from docs) and m.item_id = ${line.itemId} and m.qty < 0`;
+          const anonymous = Number(left.out_qty) - Number(left.named);
+          if (Number(left.named) > 0 && taken + line.qty > anonymous + 0.0001) {
+            throw new Error(`Line ${lineNo}: ${left.named} of these left with serial numbers on that sale. `
+              + `Name the units coming back.`);
+          }
+        }
         // A named unit carries its own cost back; FIFO slices are for the
         // anonymous goods beside it.
         const units = serialTrackedR.has(line.itemId)
@@ -7234,7 +7303,7 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
 
   return inTransaction(outer, async (tx) => {
     const { companyId, partnerId, locationId, docDate } = input;
-    const serialTrackedP = await serialTracking(tx, input.lines.map((l) => l.itemId));
+    const serialTrackedP = await serialTracking(tx, input.lines);
     assertSerials(input.lines, serialTrackedP, "send back");
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
@@ -11105,13 +11174,15 @@ export async function postOpeningBatch(input: OpeningBatchInput, outer?: Transac
         lineNo += 1;
         const value = lineValue(l);
         const [item] = await tx`
-          select code, base_uom_id, is_stocked, tracks_serial from item
+          select code, base_uom_id, is_stocked, tracks_serial, identity from item
            where id = ${l.itemId} and company_id = ${companyId}`;
         if (!item) throw new Error("Opening stock names an item that does not exist");
         if (!item.is_stocked) {
           throw new Error("Opening stock names an item that is not stocked");
         }
         const units = (l.units ?? []).map((u) => ({ ...u, serial: u.serial.trim() })).filter((u) => u.serial);
+        // Optional tracking: named units when the line lists them, a counted layer when not.
+        if (item.identity === "OPTIONAL" && units.length > 0) item.tracks_serial = true;
         if (item.tracks_serial) {
           assertSerials([{ itemId: l.itemId, qty: l.qty, serials: units.map((u) => u.serial) }],
             new Set([l.itemId]), "open with");

@@ -2,6 +2,7 @@
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
+import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
@@ -12,7 +13,7 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Location = { id: string; code: string; name: string };
 type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
-type Line = { key: number; itemId: string; qty: string; serials?: ScannedSerial[] };
+type Line = { key: number; itemId: string; qty: string; serials?: ScannedSerial[]; withSerials?: boolean };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
@@ -70,6 +71,8 @@ export function StockTransferForm({
   }, []);
 
   const byId = (id: string) => items.find((i) => i.id === id);
+  /** Names every unit: always for IMEI and SERIAL items, by choice for OPTIONAL ones. */
+  const named = (l: Line): boolean => !!byId(l.itemId)?.tracks_serial || (byId(l.itemId)?.identity === "OPTIONAL" && !!l.withSerials);
 
   const onHandAtFrom = useMemo(() => {
     const m = new Map<string, number>();
@@ -95,9 +98,9 @@ export function StockTransferForm({
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), serials: (l.serials ?? []).map((x) => x.serial) }))
+      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial) }))
   );
-  const serialShort = lines.some((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
+  const serialShort = lines.some((l) => named(l) && Number(l.qty) > 0
     && (l.serials?.length ?? 0) !== Number(l.qty));
 
   const sameLocation = fromLocationId && toLocationId && fromLocationId === toLocationId;
@@ -208,7 +211,14 @@ export function StockTransferForm({
                         aria-label={t("removeLine")} disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>
-                  {item?.tracks_serial && (
+                  {item?.identity === "OPTIONAL" && (
+                    <tr className="batchrow">
+                      <td colSpan={4}>
+                        <TrackMode code={item.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
+                      </td>
+                    </tr>
+                  )}
+                  {item && named(l) && (
                     <tr className="batchrow">
                       <td colSpan={4}>
                         <SerialEntry

@@ -59,7 +59,7 @@ export async function setItemPhoneSettings(fd: FormData) {
       from item i where i.id = ${id} and i.company_id = ${user.companyId}`;
   if (!item) throw new Error("That item does not exist");
   const asked = String(fd.get("identity") ?? "");
-  const wanted = ["IMEI", "SERIAL", "NONE"].includes(asked) ? asked
+  const wanted = ["IMEI", "SERIAL", "OPTIONAL", "NONE"].includes(asked) ? asked
     : fd.get("tracks_serial") !== null ? "IMEI" : "NONE";
   const warranty = monthsOf(fd, "warranty_months");
   const supplierWarranty = monthsOf(fd, "supplier_warranty_months");
@@ -70,6 +70,9 @@ export async function setItemPhoneSettings(fd: FormData) {
   await sql`
     update item i set
            identity = case
+             -- Optional takes named and counted units alike, so it is the one
+             -- change still safe once stock has moved.
+             when ${wanted} = 'OPTIONAL' then 'OPTIONAL'
              when exists (select 1 from stock_movement m where m.item_id = i.id) then i.identity
              when ${wanted} = 'SERIAL' and exists (
                select 1 from item_variant_option ivo join variant_option o on o.id = ivo.option_id

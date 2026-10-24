@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
 import { composeItemCode, firstFreeNumber, MODEL_CODE, modelItemCode, optionLabel } from "./item-code";
+import { physicalKey, repeats } from "./variant-identity";
 import { redirect } from "next/navigation";
 import { money, sql } from "./db";
 import { parseCsv, planImport, type MasterData } from "./import-items";
@@ -659,7 +660,7 @@ export async function moveCategory(_prev: unknown, fd: FormData): Promise<Action
 }
 
 export async function createItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("items.manage");
+  const me = await requirePermission("items.manage");
   let returnTo: string | null = null;
   let fullCode: string | null = null;
   let toastMsg = await m("itemAdded");
@@ -717,8 +718,15 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
      */
     const variantPlan: {
       attributes: string[]; combos: string[][]; codes: string[] | null; modelCode: string | null;
+      /** Per combination: a typed name, or null for the generated one. */
+      names: (string | null)[];
+      /** Per combination: IMEI, SERIAL, OPTIONAL or NONE, or null for the product's. */
+      tracking: (string | null)[];
+      /** Per combination: kept on purpose beside an identical one. */
+      separate: boolean[];
     } = (() => {
-      const empty = { attributes: [] as string[], combos: [] as string[][], codes: null, modelCode: null };
+      const empty = { attributes: [] as string[], combos: [] as string[][], codes: null, modelCode: null,
+                      names: [], tracking: [], separate: [] };
       const raw = str(fd, "variant_plan");
       if (!raw) return empty;
       try {
@@ -740,7 +748,13 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
         // Or one model code (IPC) the variants are numbered under: IPC001, IPC002…
         const modelCode = !codes && typeof parsed?.modelCode === "string"
           ? parsed.modelCode.trim().toUpperCase() : null;
-        return attributes.length > 0 && combos.length > 0 ? { attributes, combos, codes, modelCode } : empty;
+        const list = <T,>(k: string, f: (x: unknown) => T): T[] =>
+          Array.isArray(parsed?.[k]) ? parsed[k].map(f) : combos.map(() => f(null));
+        const names = list("names", (x) => (typeof x === "string" && x.trim() ? x.trim().slice(0, 200) : null));
+        const tracking = list("tracking", (x) => (["IMEI", "SERIAL", "OPTIONAL", "NONE"].includes(String(x)) ? String(x) : null));
+        const separate = list("separate", (x) => x === true);
+        return attributes.length > 0 && combos.length > 0
+          ? { attributes, combos, codes, modelCode, names, tracking, separate } : empty;
       } catch { return empty; }
     })();
 
@@ -799,7 +813,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
     // How each unit is named: IMEI, serial number, or not at all. The older
     // yes/no switch still means IMEI where a form sends only that.
-    const identity = (["IMEI", "SERIAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
+    const identity = (["IMEI", "SERIAL", "OPTIONAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
       ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
 
     // An option not offered for this kind of product — Memory on an iPhone —
@@ -909,6 +923,26 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            order by (code = 'RETAIL' and (select retail_mode from company where id = ${co})) desc, sort_order, code limit 1` : [];
 
         const valueGone = await m("variantValueGone");
+
+        /* The same physical configuration twice — 42MM / Black beside 42 /
+           Black. Refused unless the form says each later one is kept on
+           purpose, and only someone allowed to keep duplicates may say so;
+           those are recorded as acknowledged by them. */
+        const keyOf = (combo: string[]) => physicalKey(combo.map((id) => {
+          const o: any = byId.get(id);
+          return { attributeId: String(o?.attribute_id ?? ""), name: String(o?.name ?? id) };
+        }));
+        const dupOf = repeats(variantPlan.combos.map(keyOf));
+        for (const [i, j] of dupOf) {
+          if (!variantPlan.separate[i]) {
+            const label = (c: string[]) => c.map((id) => (byId.get(id) as any)?.name ?? "?").join(" / ");
+            throw new Error(`${label(variantPlan.combos[i])} is the same configuration as ${label(variantPlan.combos[j])}. `
+              + "Use the existing variant, or keep it separate on purpose.");
+          }
+          if (!can(me, "items.duplicates")) {
+            throw new Error("Only a manager or administrator can keep two variants of the same configuration.");
+          }
+        }
         /* Numbered under the model code, from the first free number, inside
            this transaction and under a lock on the prefix, so two products
            saved at the same moment cannot both take IPC004. */
@@ -931,8 +965,10 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           const label = parts.map((p: any) => optionLabel(p.attribute_name, p.name)).join(" / ");
           // A cellular iPad or Watch has an IMEI where the Wi-Fi one has
           // only a serial: the variant says which.
-          const childIdentity = identity === "SERIAL"
-            && parts.some((p: any) => /cellular/i.test(p.name)) ? "IMEI" : identity;
+          // Unless the person chose otherwise for this one in the preview.
+          const childIdentity = variantPlan.tracking[at] ?? (identity === "SERIAL"
+            && parts.some((p: any) => /cellular/i.test(p.name)) ? "IMEI" : identity);
+          const custom = variantPlan.names[at];
           return {
             combo,
             row: {
@@ -941,7 +977,8 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
               // composed from the product's piece and the options.
               serial: variantPlan.codes ? variantPlan.codes[at] : serial + "-" + suffix,
               code_is_manual: Boolean(variantPlan.codes),
-              name: name + " " + label, name_my: nameMy ? nameMy + " " + label : null,
+              name: custom ?? name + " " + label, name_is_custom: custom !== null,
+              name_my: nameMy ? nameMy + " " + label : null,
               base_uom_id: uomId, valuation_method: "FIFO",
               is_stocked: fd.get("is_stocked") !== null, brand_id: brandId,
               tracks_batch: fd.get("tracks_batch") !== null,
@@ -949,6 +986,8 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
               identity: childIdentity,
               warranty_months: months(fd, "warranty_months"),
               supplier_warranty_months: months(fd, "supplier_warranty_months"),
+              duplicate_ack_by: dupOf.has(at) ? me.id : null,
+              duplicate_ack_at: dupOf.has(at) ? new Date() : null,
             },
           };
         });
@@ -1733,8 +1772,8 @@ export type PickerItem = {
   tracks_batch?: boolean; tracks_expiry?: boolean;
   /** Each unit is named by IMEI / serial: the form asks for one per unit. */
   tracks_serial?: boolean;
-  /** IMEI, SERIAL or NONE: how each unit is named on a receipt. */
-  identity?: "IMEI" | "SERIAL" | "NONE";
+  /** IMEI, SERIAL, OPTIONAL (each receipt says) or NONE: how each unit is named on a receipt. */
+  identity?: "IMEI" | "SERIAL" | "OPTIONAL" | "NONE";
   /** Which size, which colour — `[{a: "Colour", o: "Red"}]`. Null for an
    *  ordinary item, which is most of a catalogue. Typed loosely because it
    *  arrives as json; asVariant() in variant-tags is what checks it. */
@@ -4407,12 +4446,14 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
       id: string; barcode: string; prices: Record<string, string>; isActive: boolean;
       /** The code, when somebody typed one; unchanged codes are left alone. */
       code?: string;
+      /** The name as shown; nameCustom says it was typed rather than generated. */
+      name?: string; nameCustom?: boolean;
     }[];
     if (rows.length === 0) return { error: await m("nothingToSave") };
 
     // Only this product's variants, so a crafted form cannot reach elsewhere.
     const mine = await sql`
-      select id, code from item
+      select id, code, name, name_is_custom from item
        where company_id = ${co} and parent_item_id = ${parentId}`;
     const byId = new Map((mine as any[]).map((r) => [r.id as string, r.code as string]));
     for (const r of rows) {
@@ -4462,6 +4503,15 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
       if (problem) return { error: problem };
     }
 
+    // Names typed over the generated ones, kept as typed; Reset sends the
+    // generated name back with nameCustom off.
+    const current = new Map((mine as any[]).map((r) => [r.id as string, r]));
+    if (rows.some((r) => r.name !== undefined && !String(r.name).trim())) return { error: "Every variant needs a name." };
+    const named = rows
+      .filter((r) => r.name !== undefined)
+      .map((r) => ({ id: r.id, name: String(r.name).trim().slice(0, 200), custom: !!r.nameCustom }))
+      .filter((r) => r.name !== current.get(r.id).name || r.custom !== !!current.get(r.id).name_is_custom);
+
     // Every level the company has, each saved as its own column.
     const levels = await sql<{ id: string }[]>`select id from price_level where company_id = ${co}`;
 
@@ -4472,6 +4522,12 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
         update item i set barcode = v.barcode, is_active = v.is_active
           from jsonb_to_recordset(${tx.json(flags)}::jsonb) as v(id uuid, barcode text, is_active boolean)
          where i.id = v.id and i.company_id = ${co}`;
+      if (named.length > 0) {
+        await tx`
+          update item i set name = v.name, name_is_custom = v.custom
+            from jsonb_to_recordset(${tx.json(named)}::jsonb) as v(id uuid, name text, custom boolean)
+           where i.id = v.id and i.company_id = ${co}`;
+      }
       if (renamed.length > 0) {
         await tx`
           update item i set serial = v.code, code_is_manual = true

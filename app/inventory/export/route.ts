@@ -23,6 +23,7 @@ export async function GET(req: Request) {
   const warehouse = whOpts.some((l) => l.id === sp.wh) ? sp.wh : undefined;
   const facets = await catalogFacets(co, sp.category || undefined, sp.brand || undefined);
   const { rows } = await inventorySummary(co, {
+    combine: true,
     locationId: warehouse, locs: warehouse ? seen : sp.branch ? whOpts.map((l) => l.id as string) : seen,
     q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, facets),
     status: sp.status || undefined,
@@ -33,9 +34,9 @@ export async function GET(req: Request) {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = ["Product", "Variant", "Category", "Brand", "On hand", "Reserved", "Available",
+  const head = ["Product", "Variant", "Codes", "Category", "Brand", "On hand", "Reserved", "Available",
     ...(seeCost ? ["Avg FIFO cost (MMK)", "Stock value (MMK)"] : []), "Status"];
-  const lines = shown.map((r: any) => [r.model, r.variant ?? "", r.category, r.brand ?? "", r.qty, r.reserved, r.available,
+  const lines = shown.map((r: any) => [r.model, r.variant ?? "", (r.codes ?? []).join(" "), r.category, r.brand ?? "", r.qty, r.reserved, r.available,
     ...(seeCost ? [r.avg_cost != null ? Math.round(Number(r.avg_cost)) : "", Math.round(Number(r.value))] : []),
     r.status === "HEALTHY" ? "In stock" : r.status === "LOW" ? "Low stock" : "Out of stock"].map(quote).join(","));
   // A BOM, so Excel opens Burmese names as UTF-8.

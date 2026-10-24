@@ -7,9 +7,15 @@ import { ItemThumb } from "./item-thumb";
 import { VariantTags } from "./variant-tags";
 import type { VariantPart } from "@/lib/variants";
 import { useTranslations } from "next-intl";
+import { RotateCcw } from "lucide-react";
+import { optionLabel } from "@/lib/item-code";
 
 export type GridRow = {
   id: string; code: string; name: string;
+  /** The name was typed, not generated from the product and its values. */
+  nameIsCustom?: boolean;
+  /** Other codes for the same physical configuration, e.g. "IW007". */
+  twins?: string | null;
   barcode: string | null;
   /** The current price at each level, by level id. */
   prices: Record<string, string | number> | null;
@@ -39,8 +45,10 @@ const storageOf = (r: GridRow) =>
   r.parts?.find((x) => /storage|capacity/i.test(x.attribute))?.option ?? null;
 
 export function VariantGrid({
-  action, parentId, rows: initial, levels, uom,
+  action, parentId, rows: initial, levels, uom, productName,
 }: {
+  /** The product the generated names start with. */
+  productName: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   parentId: string;
   rows: GridRow[];
@@ -54,9 +62,14 @@ export function VariantGrid({
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
 
+  // The generated name: the product's, then each value — what Reset puts back.
+  const defaultName = (r: GridRow) =>
+    `${productName} ${(r.parts ?? []).map((x) => optionLabel(x.attribute, x.option)).join(" / ")}`.trim();
   const [rows, setRows] = useState(() => initial.map((r) => ({
     id: r.id,
     code: r.code,
+    name: r.name,
+    nameCustom: !!r.nameIsCustom,
     barcode: r.barcode ?? "",
     prices: Object.fromEntries(levels.map((l) => [l.id, priceOf(r, l.id)])),
     isActive: r.is_active,
@@ -103,6 +116,7 @@ export function VariantGrid({
 
   const dirty = rows.some((r, i) =>
     r.code.trim().toUpperCase() !== initial[i].code ||
+    r.name.trim() !== initial[i].name ||
     r.barcode !== (initial[i].barcode ?? "") ||
     levels.some((l) => r.prices[l.id] !== priceOf(initial[i], l.id)) ||
     r.isActive !== initial[i].is_active);
@@ -199,7 +213,19 @@ export function VariantGrid({
                     <ItemThumb src={v.photoSrc} name={v.name} />
                   </td>
                   <td className="wrap">
-                    {v.name}
+                    <span className="pf2-name vg-name">
+                      <input type="text" value={r.name} aria-label={`Name of ${v.code}`}
+                        className={r.nameCustom ? "custom" : undefined}
+                        onChange={(e) => set(r.id, { name: e.target.value, nameCustom: e.target.value.trim() !== defaultName(v) })} />
+                      {r.nameCustom && (
+                        <button type="button" className="pf2-reset" title="Reset to default name"
+                          aria-label={`Reset the name of ${v.code}`}
+                          onClick={() => set(r.id, { name: defaultName(v), nameCustom: false })}>
+                          <RotateCcw size={12} aria-hidden="true" />
+                        </button>
+                      )}
+                      {v.twins && <span className="pf2-similar kept" title={`Same configuration as ${v.twins}`}>Same as {v.twins}</span>}
+                    </span>
                     {/* lib/variants carries the ids for grouping; the tag
                         only needs the two words. */}
                     <VariantTags className="vartags-inline"

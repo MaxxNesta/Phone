@@ -164,6 +164,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
               presetGroupId={id}
               retail={Boolean((await getCompany())?.retail_mode)}
               canAddBrand={can((await currentUser())!, "brands.manage")}
+              canKeepDuplicates={can((await currentUser())!, "items.duplicates")}
             />
           </div>
         </div>

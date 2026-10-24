@@ -2,6 +2,7 @@
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
+import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
@@ -16,7 +17,7 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
-type Line = { key: number; itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[] };
+type Line = { key: number; itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; withSerials?: boolean };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
   partner_id: string; rates?: Record<string, number>;
   /** A purchase made in a foreign currency, and its rate. */
@@ -115,6 +116,8 @@ export function ReturnForm({
   const methods = (channels?.[locationId] ?? []);
   const cashMethod = methods.find((c) => c.kind === "CASH" && c.accountId);
   const byId = (id: string) => items.find((i) => i.id === id);
+  /** Names every unit: always for IMEI and SERIAL items, by choice for OPTIONAL ones. */
+  const named = (l: Line): boolean => !!byId(l.itemId)?.tracks_serial || (byId(l.itemId)?.identity === "OPTIONAL" && !!l.withSerials);
   const returnableDocs = (salesDocs ?? []).filter((d) => d.partner_id === partnerId);
   const sourceDoc = returnableDocs.find((d) => d.id === sourceDocumentId);
   /** The purchase was in yuan (or another currency): prices are entered in it. */
@@ -181,9 +184,9 @@ export function ReturnForm({
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
       .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0,
-                     serials: (l.serials ?? []).map((x) => x.serial) }))
+                     serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial) }))
   );
-  const serialShort = lines.some((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
+  const serialShort = lines.some((l) => named(l) && Number(l.qty) > 0
     && (l.serials?.length ?? 0) !== Number(l.qty));
 
   // Only a purchase return removes stock — a sales return adds it, so
@@ -384,7 +387,14 @@ export function ReturnForm({
                         aria-label="Remove line" disabled={lines.length === 1}>×</button>
                     </td>
                   </tr>
-                  {item?.tracks_serial && (
+                  {item?.identity === "OPTIONAL" && (
+                    <tr className="batchrow">
+                      <td colSpan={6}>
+                        <TrackMode code={item.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
+                      </td>
+                    </tr>
+                  )}
+                  {item && named(l) && (
                     <tr className="batchrow">
                       <td colSpan={6}>
                         <SerialEntry

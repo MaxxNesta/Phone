@@ -2,6 +2,7 @@
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
@@ -17,6 +18,8 @@ type Line = {
   batchNo?: string; expiryDate?: string;
   /** The handsets lost, for a decrease of an item tracked by IMEI. */
   serials?: ScannedSerial[];
+  /** Optional tracking: this line names its units. */
+  withSerials?: boolean;
 };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -68,6 +71,8 @@ export function AdjustmentForm({
   }, []);
 
   const byId = (id: string) => items.find((i) => i.id === id);
+  /** Names every unit: always for IMEI and SERIAL items, by choice for OPTIONAL ones. */
+  const named = (l: Line): boolean => !!byId(l.itemId)?.tracks_serial || (byId(l.itemId)?.identity === "OPTIONAL" && !!l.withSerials);
 
   // Company-wide on_hand on Item can say there's stock to remove when this
   // specific warehouse has none — same reasoning as the sales voucher.
@@ -102,7 +107,7 @@ export function AdjustmentForm({
   const amount = (l: Line) => (Number(l.qty) || 0) * effectiveCost(l);
   const total = lines.reduce((s, l) => s + amount(l), 0);
 
-  const serialShort = lines.some((l) => isLoss(l) && byId(l.itemId)?.tracks_serial
+  const serialShort = lines.some((l) => isLoss(l) && named(l)
     && (l.serials?.length ?? 0) !== Math.abs(Number(l.qty)));
 
   const payload = JSON.stringify(
@@ -112,7 +117,7 @@ export function AdjustmentForm({
         itemId: l.itemId,
         qty: Number(l.qty),
         unitCost: !isLoss(l) && l.unitCost !== "" ? Number(l.unitCost) : "",
-        serials: (l.serials ?? []).map((x) => x.serial),
+        serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial),
         // Found stock arrives, so it names its lot like any other arrival.
         // A loss sends nothing: FIFO decides which layers it takes.
         batchNo: isLoss(l) ? "" : (l.batchNo ?? ""),
@@ -238,7 +243,14 @@ export function AdjustmentForm({
                   the same as a goods receipt — the engine refuses it
                   otherwise. Only on an increase: a loss consumes layers that
                   already exist and FIFO chooses them. */}
-              {lines.filter((l) => isLoss(l) && byId(l.itemId)?.tracks_serial).map((l) => {
+              {lines.filter((l) => isLoss(l) && byId(l.itemId)?.identity === "OPTIONAL").map((l) => (
+                <tr key={`mode-${l.key}`} className="batchrow">
+                  <td colSpan={6}>
+                    <TrackMode code={byId(l.itemId)!.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
+                  </td>
+                </tr>
+              ))}
+              {lines.filter((l) => isLoss(l) && named(l)).map((l) => {
                 const item = byId(l.itemId)!;
                 return (
                   <tr key={`serial-${l.key}`} className="batchrow">

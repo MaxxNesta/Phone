@@ -71,9 +71,9 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
   const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
   const [overview, table, facets, moves, groups, trend] = await Promise.all([
-    inventorySummary(co, scope),
+    inventorySummary(co, { ...scope, combine: true }),
     facetsP.then((f) => inventorySummary(co, {
-      ...scope, q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
+      ...scope, combine: true, q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
       status: sp.status || undefined,
     })),
     facetsP,
@@ -291,6 +291,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                       {r.photo && <span className="thumb"><img src={r.photo} alt="" /></span>}
                       <span className="prod-text">
                         <div className="prod-name clamp2" title={r.model}>{r.model}{r.variant ? ` ${r.variant}` : ""}</div>
+                        {r.codes?.length > 1 && <div className="subline" title="One configuration kept under these codes">{r.codes.join(" · ")}</div>}
                       </span>
                     </span>
                   </td>

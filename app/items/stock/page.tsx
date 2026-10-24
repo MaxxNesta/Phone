@@ -27,7 +27,7 @@ type Row = {
   item_group_id: string; group_name: string; parent_group_name: string | null;
   brand_name: string | null; barcode: string | null;
   uom_code: string; qty_on_hand: string; value_on_hand: string; is_stocked: boolean;
-  tracks_batch: boolean; tracks_expiry: boolean; tracks_serial: boolean;
+  tracks_batch: boolean; tracks_expiry: boolean; tracks_serial: boolean; identity: string;
   last_purchase_price: string | null;
   last_purchase_document_id: string | null;
   last_purchase_doc_no: string | null;
@@ -241,7 +241,7 @@ export default async function Stock({
       lastCostDate: i.last_purchase_date ? shortDate(i.last_purchase_date) : null,
       consignors, warehouses: warehousesOf(i.id), variant, photoSrc: photoSrcOf(i),
       tracksBatch: !!i.tracks_batch, tracksExpiry: !!i.tracks_batch && !!i.tracks_expiry,
-      tracksSerial: !!i.tracks_serial, status: i.status,
+      tracksSerial: !!i.tracks_serial || i.identity === "OPTIONAL", status: i.status,
       batches: batches.filter((b) => b.item_id === i.id).map((b) => ({
         locationCode: b.location_code, batchNo: b.batch_no, expiryDate: b.expiry_date,
         daysLeft: b.days_left === null ? null : Number(b.days_left), qty: Number(b.qty),

@@ -11,6 +11,7 @@ import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
 import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { AddItemsBar, type Pick } from "./add-items-bar";
+import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
 import { Building2, Package, Plus, Trash2, ChevronDown } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
@@ -49,6 +50,8 @@ type Line = {
   orderLineId?: string | null;
   /** The handsets in the box, for an item tracked by IMEI. */
   serials?: UnitRow[];
+  /** Optional tracking: this receipt records a serial for every unit. */
+  withSerials?: boolean;
   /** What the purchase order still owes on this line, when receiving one. */
   ordered?: number;
 };
@@ -187,6 +190,8 @@ export function ReceiptForm({
   }, []);
 
   const byId = (id: string) => items.find((i) => i.id === id);
+  /** Every unit on this line gets a serial: always for IMEI and SERIAL items, by choice for OPTIONAL ones. */
+  const named = (l: Line) => !!byId(l.itemId)?.tracks_serial || (byId(l.itemId)?.identity === "OPTIONAL" && !!l.withSerials);
   const openInvoices = (purchaseInvoices ?? []).filter((d) => d.partner_id === partnerId);
   const waitingOrders = partnerId ? (openOrders?.[partnerId] ?? []) : [];
 
@@ -358,8 +363,8 @@ export function ReceiptForm({
         sourceLineId: l.sourceLineId ?? null,
         batchNo: l.batchNo?.trim() || null,
         expiryDate: l.expiryDate || null,
-        serials: (l.serials ?? []).map((x) => x.serial.trim()).filter(Boolean),
-        unitDetails: (l.serials ?? []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
+        serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial.trim()).filter(Boolean),
+        unitDetails: (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
           .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
       }))
   );
@@ -369,7 +374,7 @@ export function ReceiptForm({
   const entered = (l: Line) => (l.serials ?? []).filter((x) => x.serial.trim()).length;
   // IMEI for phones and cellular devices; a serial number for Macs, AirPods
   // and Wi-Fi iPads.
-  const modeOf = (l: Line): UnitMode => (byId(l.itemId)?.identity === "SERIAL" ? "SERIAL" : "IMEI");
+  const modeOf = (l: Line): UnitMode => (byId(l.itemId)?.identity === "IMEI" ? "IMEI" : "SERIAL");
   // Every IMEI and serial on the receipt, checked against the books as it is
   // scanned: a phone already received is flagged on its row, not at Post.
   const [onFile, setOnFile] = useState<OnFile>({});
@@ -381,9 +386,9 @@ export function ReceiptForm({
     const t = setTimeout(() => { serialsOnFile(serialKey.split(",")).then(setOnFile).catch(() => {}); }, 300);
     return () => clearTimeout(t);
   }, [serialKey]);
-  const serialShort = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0
+  const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
     && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
-  const tracked = lines.filter((l) => byId(l.itemId)?.tracks_serial && Number(l.qty) > 0);
+  const tracked = lines.filter((l) => named(l) && Number(l.qty) > 0);
   const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
   const supplier = suppliers.find((s) => s.id === partnerId) ?? null;
   const units = lines.reduce((s, l) => s + (l.itemId ? Number(l.qty) || 0 : 0), 0);
@@ -710,7 +715,11 @@ export function ReceiptForm({
                           style={billedLine ? { background: "var(--ground)", cursor: "not-allowed" } : undefined} />
                       </td>
                       <td>
-                        {item?.tracks_serial ? (
+                        {item?.identity === "OPTIONAL" && (
+                          <TrackMode code={item.code} on={!!l.withSerials} note={false}
+                            onChange={(on) => { setLine(l.key, { withSerials: on }); if (on) setImeiKey(l.key); }} />
+                        )}
+                        {named(l) ? (
                           <span className="gr-imei">
                             <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? [], modeOf(l), onFile) ? "ok" : "warn"}`}>
                               {n} / {q} entered
@@ -718,7 +727,7 @@ export function ReceiptForm({
                             <button type="button" className="dt-tool" onClick={() => setImeiKey(l.key)}
                               disabled={q === 0}>{modeOf(l) === "SERIAL" ? "View serials" : "View IMEIs"}</button>
                           </span>
-                        ) : item?.variant ? (
+                        ) : item?.variant && item.identity !== "OPTIONAL" ? (
                           <Link href={`/items/${item.id}`} target="_blank" className="subline">Not tracked — turn on</Link>
                         ) : (
                           <span className="subline">—</span>

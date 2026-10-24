@@ -520,6 +520,13 @@ export async function inventorySummary(companyId: string, f: {
   brandId?: string;
   /** The locations the reader may see (seenLocations); null for every one. */
   locs?: string[] | null;
+  /**
+   * One row per physical configuration: variants kept under two codes for
+   * the same thing (42MM / Black and 42 / Black) are added up once, under
+   * the lower code. Each unit of stock sits on exactly one item, so the sum
+   * never counts a unit twice.
+   */
+  combine?: boolean;
 }) {
   const like = f.q ? `%${f.q.trim()}%` : null;
   const opts = f.optionIds ?? [];
@@ -540,7 +547,8 @@ export async function inventorySummary(companyId: string, f: {
              jsonb_object_agg(location_id, qty) as by_loc
         from qty group by item_id
     )
-    select i.id, i.name, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
+    select i.id, i.code, i.name, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
+           vp.canonical_item_id, coalesce(vp.members, 1)::int as members,
            g.name as category, coalesce(gp.name, g.name) as top_category, b.name as brand, i.tracks_serial, i.identity,
            coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
            -- company_id first so stock_serial(company_id, item_id) is used per row.
@@ -561,6 +569,7 @@ export async function inventorySummary(companyId: string, f: {
       left join item_group g on g.id = i.item_group_id
       left join item_group gp on gp.id = g.parent_id
       left join per on per.item_id = i.id
+      left join v_item_physical vp on vp.item_id = i.id
      where i.company_id = ${companyId} and i.is_active and i.is_stocked
        and not exists (select 1 from item c where c.parent_item_id = i.id)
        and (${like}::text is null or i.name ilike ${like} or i.code ilike ${like}
@@ -575,7 +584,8 @@ export async function inventorySummary(companyId: string, f: {
      order by coalesce(per.qty, 0) > 0 desc, coalesce(p.name, i.name), i.name
      -- ponytail: whole catalogue in one read; paginate in SQL past ~5k variants.
      limit 5000`;
-  const withStatus = rows.map((r: any) => {
+  const merged = f.combine ? combinePhysical(rows as any[]) : (rows as any[]).map((r) => ({ ...r, codes: [r.code] }));
+  const withStatus = merged.map((r: any) => {
     const available = Number(r.qty) - Number(r.reserved);
     const low = r.min_qty != null ? Number(r.qty) <= Number(r.min_qty)
       : r.tracks_serial ? Number(r.qty) <= 2 : Number(r.qty) <= 0;
@@ -585,6 +595,39 @@ export async function inventorySummary(companyId: string, f: {
     locations,
     rows: f.status ? withStatus.filter((r) => r.status === f.status) : withStatus,
   };
+}
+
+/**
+ * Rows of one physical configuration folded into the first of them (the
+ * canonical, lowest code): quantities, values, holds and per-warehouse counts
+ * added, average cost recomputed from the sums, every code kept.
+ */
+function combinePhysical(rows: any[]) {
+  const out: any[] = [];
+  const at = new Map<string, any>();
+  for (const r of rows) {
+    const key = Number(r.members) > 1 && r.canonical_item_id ? String(r.canonical_item_id) : `self:${r.id}`;
+    const into = at.get(key);
+    if (!into) {
+      const row = { ...r, codes: [r.code], by_loc: { ...(r.by_loc ?? {}) } };
+      at.set(key, row);
+      out.push(row);
+      continue;
+    }
+    into.codes.push(r.code);
+    into.qty = Number(into.qty) + Number(r.qty);
+    into.value = Number(into.value) + Number(r.value);
+    into.reserved = Number(into.reserved) + Number(r.reserved);
+    if (r.min_qty != null) into.min_qty = Number(into.min_qty ?? 0) + Number(r.min_qty);
+    for (const [loc, q] of Object.entries(r.by_loc ?? {})) into.by_loc[loc] = Number(into.by_loc[loc] ?? 0) + Number(q);
+    // The canonical one names the row, whichever of the pair was read first.
+    if (r.id === r.canonical_item_id) Object.assign(into, { id: r.id, name: r.name, variant: r.variant, photo: r.photo ?? into.photo, price: r.price });
+  }
+  for (const r of out) {
+    r.codes.sort();
+    r.avg_cost = Number(r.qty) > 0 ? Number(r.value) / Number(r.qty) : null;
+  }
+  return out;
 }
 
 export type CatalogFacets = {

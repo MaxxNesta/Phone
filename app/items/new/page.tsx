@@ -55,6 +55,7 @@ export default async function NewItem() {
         returnTo="/items"
         retail={Boolean((await getCompany())?.retail_mode)}
         canAddBrand={can((await currentUser())!, "brands.manage")}
+        canKeepDuplicates={can((await currentUser())!, "items.duplicates")}
       />
     </>
   );
