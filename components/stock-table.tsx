@@ -12,8 +12,10 @@ import { DataTable, type DataRow, type Column, type Filter } from "./data-table"
  * the way the inventory summary reads.
  */
 export function StockTable({
-  rows, columns, filters, searchPlaceholder, defaultSort, emptyLabel, footerCells, toolbarStart, toolbarEnd,
+  rows, columns, filters, searchPlaceholder, defaultSort, emptyLabel, footerCells, toolbarStart, toolbarEnd, server,
 }: {
+  /** One page searched and sorted by the server (see DataTable). */
+  server?: React.ComponentProps<typeof DataTable>["server"];
   rows: DataRow[];
   columns: Column[];
   filters?: Filter[];
@@ -37,6 +39,7 @@ export function StockTable({
       storageKey="stock2"
       toolbarStart={toolbarStart}
       toolbarEnd={toolbarEnd}
+      server={server}
     />
   );
 }

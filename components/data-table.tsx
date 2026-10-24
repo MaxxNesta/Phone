@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useEffect, useId, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Columns3, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, X } from "lucide-react";
 import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
 import { useTranslations } from "next-intl";
@@ -90,7 +91,18 @@ export function DataTable({
   initialFilters = {},
   toolbarStart,
   toolbarEnd,
+  server,
 }: {
+  /**
+   * The rows are one page the server already searched, filtered, sorted and
+   * cut — for a list too long to send whole. The controls look the same and
+   * write their state to the URL (q, f_<key>, sort, dir, page, size) instead
+   * of filtering here; the page reads it back and sends the next page.
+   */
+  server?: {
+    total: number; page: number; pageSize: number; q: string;
+    sort: { key: string; dir: "asc" | "desc" } | null; filters: Record<string, string>;
+  };
   /** Controls of the page's own, placed in this table's bar: after the search
    *  (a warehouse, a scope) and at its far end (a view switch). */
   toolbarStart?: React.ReactNode;
@@ -153,9 +165,20 @@ export function DataTable({
   // the item's own page should land on that item, not on a list to search
   // through again. Still an ordinary search afterwards: it can be cleared.
   const dt = useTranslations("dataTable");
-  const [q, setQ] = useState(initialQuery ?? "");
-  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(defaultSort ?? null);
-  const [picked, setPicked] = useState<Record<string, string>>(initialFilters);
+  const [q, setQ] = useState(server?.q ?? initialQuery ?? "");
+  const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(server ? server.sort : defaultSort ?? null);
+  const [picked, setPicked] = useState<Record<string, string>>(server?.filters ?? initialFilters);
+  const router = useRouter();
+  const [navigating, startNav] = useTransition();
+  const typing = useRef<number | undefined>(undefined);
+  /** Server mode: change the URL, keeping every other parameter; page 1 unless paging. */
+  const nav = (patch: Record<string, string | null>) => {
+    const u = new URLSearchParams(window.location.search);
+    for (const [k, v] of Object.entries(patch)) { if (v) u.set(k, v); else u.delete(k); }
+    if (!("page" in patch)) u.delete("page");
+    const qs = u.toString();
+    startNav(() => router.replace(`${window.location.pathname}${qs ? `?${qs}` : ""}`, { scroll: false }));
+  };
   const [moreOpen, setMoreOpen] = useState(false);
   const [dates, setDates] = useState<DateRange>(ANY_DATE);
   const hasDates = useMemo(
@@ -163,8 +186,10 @@ export function DataTable({
     [rows, dateKey]);
   const [hidden, setHidden] = useState<string[]>(defaultHidden);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const [page, setPageHere] = useState(1);
+  const [pageSize, setSizeHere] = useState(server?.pageSize ?? defaultPageSize);
+  const setPage = (n: number) => (server ? nav({ page: n > 1 ? String(n) : null }) : setPageHere(n));
+  const setPageSize = (n: number) => { setSizeHere(n); if (server) nav({ size: String(n) }); };
 
   // A column with no heading is a control — the expand chevron, the row menu,
   // a thumbnail. There is nothing to name it by in a menu, and hiding it
@@ -221,6 +246,7 @@ export function DataTable({
     : 0;
 
   const filtered = useMemo(() => {
+    if (server) return rows;
     const needle = q.trim().toLowerCase();
     const chosen = Object.entries(picked).filter(([, v]) => v);
     const window = hasDates ? dateWindow(dates) : null;
@@ -233,10 +259,10 @@ export function DataTable({
       }
       return chosen.every(([k, v]) => r.facet?.[k] === v);
     });
-  }, [rows, q, picked, hasDates, dates, dateKey]);
+  }, [rows, q, picked, hasDates, dates, dateKey, server]);
 
   const sorted = useMemo(() => {
-    if (!sort) return filtered;
+    if (!sort || server) return filtered;
     const copy = [...filtered];
     copy.sort((a, b) => {
       const av = a.sort?.[sort.key] ?? "";
@@ -246,16 +272,17 @@ export function DataTable({
       return sort.dir === "asc" ? cmp : -cmp;
     });
     return copy;
-  }, [filtered, sort]);
+  }, [filtered, sort, server]);
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const total = server ? server.total : sorted.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
   // Searching down to two results while sitting on page 7 would otherwise show
   // an empty table and no clue why.
-  const current = Math.min(page, pageCount);
+  const current = server ? Math.min(server.page, pageCount) : Math.min(page, pageCount);
   const start = (current - 1) * pageSize;
-  const shown = sorted.slice(start, start + pageSize);
+  const shown = server ? sorted : sorted.slice(start, start + pageSize);
 
-  useEffect(() => { setPage(1); }, [q, picked, pageSize, sort]);
+  useEffect(() => { if (!server) setPageHere(1); }, [q, picked, pageSize, sort, server]);
 
   /**
    * Exports what is on screen — search applied, in the order displayed, and
@@ -290,12 +317,16 @@ export function DataTable({
     URL.revokeObjectURL(a.href);
   }
 
-  const canExport = Boolean(csvFilename && rows.some((r) => r.csv));
+  // An export of one page is not the list; a server-paged table has none.
+  const canExport = !server && Boolean(csvFilename && rows.some((r) => r.csv));
 
   const offered = filters.filter((f) => f.options.length > 1);
   const active = offered.filter((f) => picked[f.key]);
   const moreActive = active.filter((f) => f.more).length;
-  const setFilter = (key: string, value: string) => setPicked((p) => ({ ...p, [key]: value }));
+  const setFilter = (key: string, value: string) => {
+    setPicked((p) => ({ ...p, [key]: value }));
+    if (server) nav({ [`f_${key}`]: value || null });
+  };
   const filterSelect = (f: Filter) => (
     <select
       key={f.key}
@@ -315,11 +346,10 @@ export function DataTable({
   // is the question — and words A to Z.
   function toggleSort(key: string) {
     const first = columns.find((c) => c.key === key)?.align === "r" ? "desc" : "asc";
-    setSort((s) => {
-      if (!s || s.key !== key) return { key, dir: first };
-      if (s.dir === first) return { key, dir: first === "asc" ? "desc" : "asc" };
-      return null;
-    });
+    const next = !sort || sort.key !== key ? { key, dir: first as "asc" | "desc" }
+      : sort.dir === first ? { key, dir: (first === "asc" ? "desc" : "asc") as "asc" | "desc" } : null;
+    setSort(next);
+    if (server) nav({ sort: next?.key ?? null, dir: next?.dir ?? null });
   }
 
   return (
@@ -342,7 +372,15 @@ export function DataTable({
           <input
             type="search"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              if (server) {
+                // One request per pause in typing, not one per key.
+                const v = e.target.value;
+                window.clearTimeout(typing.current);
+                typing.current = window.setTimeout(() => nav({ q: v.trim() || null }), 350);
+              }
+            }}
             placeholder={searchPlaceholder ?? dt("search")}
             aria-label={dt("searchLabel")}
           />
@@ -441,7 +479,7 @@ export function DataTable({
       )}
 
       <div className="tablewrap">
-        <table className={[tableClassName, scope].filter(Boolean).join(" ")}>
+        <table className={[tableClassName, scope].filter(Boolean).join(" ")} style={navigating ? { opacity: 0.55 } : undefined} aria-busy={navigating || undefined}>
           <thead>
             <tr>
               {columns.map((c) => (
@@ -489,12 +527,12 @@ export function DataTable({
         </table>
       </div>
 
-      {sorted.length > 0 && (
+      {total > 0 && (
         <div className="dt-pager">
           <span className="dt-pager-count">
-            {sorted.length <= pageSize
-              ? dt("rows", { n: sorted.length })
-              : dt("range", { from: start + 1, to: Math.min(start + pageSize, sorted.length), total: sorted.length })}
+            {total <= pageSize
+              ? dt("rows", { n: total })
+              : dt("range", { from: start + 1, to: Math.min(start + pageSize, total), total })}
           </span>
 
           <span className="dt-spacer" />

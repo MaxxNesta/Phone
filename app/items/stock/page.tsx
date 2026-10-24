@@ -41,10 +41,10 @@ type Row = {
 export default async function Stock({
   searchParams,
 }: {
-  searchParams: Promise<{ location?: string; zeros?: string; group?: string;
-                        view?: string; product?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { location, zeros, group, view, product } = await searchParams;
+  const sp = await searchParams;
+  const { location, zeros, group, view, product } = sp;
   const t = await getTranslations("inventory");
   const c = await getTranslations("common");
   const showZeros = zeros === "1";
@@ -235,10 +235,54 @@ export default async function Stock({
   const STOCK_COLUMNS = anyConsigned ? 10 : 9;
   const STATUS = { IN: "In stock", LOW: "Low stock", OUT: "Out of stock" } as const;
 
-  const rows: DataRow[] = visible.map((i) => {
+  /*
+   * Searched, filtered, sorted and cut to one page here, so the browser gets
+   * the page it shows and not the catalogue: 1,849 rows with their detail was
+   * 3.2 MB a load. The table's controls write q, f_<key>, sort, dir, page and
+   * size to the URL and this reads them back.
+   */
+  const lite = visible.map((i) => {
     const consignors = consignorsOf(i.id);
-    const category = i.parent_group_name ? `${i.parent_group_name} / ${i.group_name}` : i.group_name;
     const variant = asVariant(i.variant);
+    return {
+      i, consignors, variant,
+      searchText: [i.code, i.name, i.model, i.name_my, i.group_name, i.parent_group_name, i.barcode, i.brand_name,
+                   ...(variant ?? []).flatMap((v) => [v.a, v.o]), ...consignors].filter(Boolean).join(" ").toLowerCase(),
+      facet: {
+        status: i.status,
+        category: i.parent_group_name ?? i.group_name,
+        ownership: consignors.length > 0 ? "consigned" : "owned",
+        brand: i.brand_name ?? "",
+      } as Record<string, string>,
+      sort: {
+        name: `${i.model} ${(variant ?? []).map((v) => v.o).join(" ")}`,
+        code: i.code,
+        onHand: i.onHand, consignedQty: i.consignedQty, reservedQty: i.reservedQty, available: i.available,
+        avg_cost: i.onHand > 0 ? i.valueOnHand / i.onHand : 0,
+        value_on_hand: i.valueOnHand,
+        status: i.status === "OUT" ? 0 : i.status === "LOW" ? 1 : 2,
+      } as Record<string, string | number>,
+    };
+  });
+  const needle = (sp.q ?? "").trim().toLowerCase();
+  const chosen = Object.fromEntries(Object.entries(sp)
+    .filter(([k, v]) => k.startsWith("f_") && v).map(([k, v]) => [k.slice(2), v as string]));
+  const matched = lite.filter((r) => (!needle || r.searchText.includes(needle))
+    && Object.entries(chosen).every(([k, v]) => r.facet[k] === v));
+  const sortKey = sp.sort && sp.sort in (lite[0]?.sort ?? { name: 1 }) ? sp.sort : "name";
+  const sortDir: "asc" | "desc" = sp.sort ? (sp.dir === "desc" ? "desc" : "asc") : "asc";
+  matched.sort((a, b) => {
+    const x = a.sort[sortKey] ?? "", y = b.sort[sortKey] ?? "";
+    const k = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+    return sortDir === "asc" ? k : -k;
+  });
+  const pageSize = [10, 20, 50, 100].includes(Number(sp.size)) ? Number(sp.size) : 50;
+  const pageCount = Math.max(1, Math.ceil(matched.length / pageSize));
+  const pageNo = Math.min(pageCount, Math.max(1, Math.floor(Number(sp.page)) || 1));
+  const pageRows = matched.slice((pageNo - 1) * pageSize, pageNo * pageSize);
+
+  const rows: DataRow[] = pageRows.map(({ i, consignors, variant, searchText, facet, sort }) => {
+    const category = i.parent_group_name ? `${i.parent_group_name} / ${i.group_name}` : i.group_name;
     const rowItem: StockRowItem = {
       id: i.id, code: i.code, name: i.name, nameMy: i.name_my, model: i.model,
       itemGroupId: i.item_group_id, category, uomCode: i.uom_code,
@@ -257,23 +301,7 @@ export default async function Stock({
       })),
     };
     return {
-      key: i.id,
-      searchText: [i.code, i.name, i.model, i.name_my, i.group_name, i.parent_group_name, i.barcode, i.brand_name,
-                   ...(variant ?? []).flatMap((v) => [v.a, v.o]), ...consignors].filter(Boolean).join(" "),
-      facet: {
-        status: i.status,
-        category: i.parent_group_name ?? i.group_name,
-        ownership: consignors.length > 0 ? "consigned" : "owned",
-        brand: i.brand_name ?? "",
-      },
-      sort: {
-        name: `${i.model} ${(variant ?? []).map((v) => v.o).join(" ")}`,
-        code: i.code,
-        onHand: i.onHand, consignedQty: i.consignedQty, reservedQty: i.reservedQty, available: i.available,
-        avg_cost: i.onHand > 0 ? i.valueOnHand / i.onHand : 0,
-        value_on_hand: i.valueOnHand,
-        status: i.status === "OUT" ? 0 : i.status === "LOW" ? 1 : 2,
-      },
+      key: i.id, searchText, facet, sort,
       node: <StockRow item={rowItem} columnCount={STOCK_COLUMNS} showConsigned={anyConsigned} />,
     };
   });
@@ -364,6 +392,8 @@ export default async function Stock({
             emptyLabel={showZeros ? t("stk.noStockedItems") : t("stk.nothingInStock")}
             searchPlaceholder="Search product, SKU, barcode…"
             defaultSort={{ key: "name", dir: "asc" }}
+            server={{ total: matched.length, page: pageNo, pageSize, q: sp.q ?? "",
+                      sort: sp.sort ? { key: sortKey, dir: sortDir } : null, filters: chosen }}
             toolbarStart={scopeControls}
             toolbarEnd={viewSwitch}
             filters={[
