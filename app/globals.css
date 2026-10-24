@@ -7091,7 +7091,7 @@ select.pf2-filter { height: 32px !important; width: auto; font-size: 0.78rem !im
   background: var(--ground); border-bottom: 1px solid var(--line-soft);
 }
 .pf2-table td { padding: 5px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
-.pf2-table td.name { white-space: normal; color: var(--muted); min-width: 12rem; }
+.pf2-table td.name { white-space: normal; color: var(--muted); min-width: 10rem; }
 .pf2-table .k { width: 28px; padding-right: 0; }
 .pf2-table .n { width: 30px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pf2-table td.code { font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -7274,7 +7274,7 @@ a.inv-export { display: inline-flex; align-items: center; gap: 6px; height: 36px
 .pf2-similar.kept { border-color: var(--line); background: var(--line-soft); color: var(--muted); cursor: default; }
 button.pf2-similar.kept { cursor: pointer; }
 .pf2-table th.trk, .pf2-table td.trk { width: 1%; white-space: nowrap; }
-.pf2-trk { height: 28px; padding: 0 6px; font-size: var(--t-sm); }
+.pf2-trk { height: 28px; padding: 0 6px; font-size: var(--t-sm); width: 9.5rem; }
 .vg-name input { min-width: 14rem; }
 
 /* The similar-variant question: both records side by side, then the choice. */

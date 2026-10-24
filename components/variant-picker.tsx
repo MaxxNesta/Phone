@@ -24,6 +24,7 @@ type Combo = { key: string; optionIds: string[]; parts: { attributeId: string; l
 export const VARIANT_TRACKING = [
   ["IMEI", "IMEI"], ["SERIAL", "Serial number"], ["OPTIONAL", "Optional serial"], ["NONE", "Quantity only"],
 ] as const;
+const TRACK_SHORT: Record<string, string> = { IMEI: "IMEI", SERIAL: "Serial", OPTIONAL: "Optional", NONE: "Qty" };
 
 /**
  * One product's configurations: which values of which attributes it comes
@@ -349,7 +350,7 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
                             if (e.target.value) next[c.key] = e.target.value; else delete next[c.key];
                             return next;
                           })}>
-                          <option value="">Default · {VARIANT_TRACKING.find(([val]) => val === v.inherited(c.key))?.[1]}</option>
+                          <option value="">Default ({TRACK_SHORT[v.inherited(c.key)] ?? v.inherited(c.key)})</option>
                           {VARIANT_TRACKING.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                         </select>
                       )}
