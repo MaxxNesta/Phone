@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Users } from "lucide-react";
 import { type VariantPart } from "@/components/variant-tags";
-import { stockUnits, stockMoves, type StockUnit, type StockMove } from "@/lib/stock-detail";
+import { stockUnits, stockMoves, stockCost, type StockUnit, type StockMove, type StockCost } from "@/lib/stock-detail";
 
 /**
  * One sellable item's stock position — a variant, or an item that has none —
@@ -157,15 +157,7 @@ function Details({ item, parts, avg }: { item: StockRowItem; parts: VariantPart[
       </section>
       <section>
         <h3>Cost information (MMK)</h3>
-        <dl className="stk-kv">
-          <div><dt>Average cost</dt><dd className="r">{avg === null ? DASH : money(avg)}</dd></div>
-          <div><dt>Last purchase price</dt><dd className="r">{item.lastCost ? money(item.lastCost) : DASH}</dd></div>
-          <div><dt>From bill</dt><dd className="r">{item.lastCostDocNo
-            ? (item.lastCostDocId ? <Link href={`/documents/${item.lastCostDocId}`}>{item.lastCostDocNo}</Link> : item.lastCostDocNo)
-            : DASH}</dd></div>
-          <div><dt>Bill date</dt><dd className="r">{item.lastCostDate ?? DASH}</dd></div>
-          <div className="total"><dt>Stock value</dt><dd className="r">{money(item.valueOnHand)}</dd></div>
-        </dl>
+        <CostInfo item={item} avg={avg} />
         {item.consignors.length > 0 && <p className="hint">Consigned units are not the shop&apos;s stock and carry no value here.</p>}
       </section>
       {item.tracksBatch && (
@@ -191,6 +183,41 @@ function Details({ item, parts, avg }: { item: StockRowItem; parts: VariantPart[
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * Average cost and stock value from the page, then the latest receipt's unit
+ * built up: supplier price in its currency, the rate, kyat, each landed cost
+ * per unit, and the total a unit of that receipt cost.
+ */
+function CostInfo({ item, avg }: { item: StockRowItem; avg: number | null }) {
+  const s = useOnce<StockCost | null>(() => stockCost(item.id));
+  const c = s.data;
+  const foreign = !!c && c.currency !== "MMK";
+  return (
+    <dl className="stk-kv">
+      <div><dt>Average cost</dt><dd className="r">{avg === null ? DASH : money(avg)}</dd></div>
+      {s.error && <div className="hint" style={{ color: "var(--bad)" }}>{s.error}</div>}
+      {!s.data && !s.error && s.data !== null && <div className="hint">Loading…</div>}
+      {c && (
+        <>
+          <div><dt>Latest receipt</dt><dd className="r">
+            <Link href={`/documents/${c.receiptId}`}>{c.receiptNo ?? DASH}</Link>
+            <span className="subline"> · {c.receiptDate}</span></dd></div>
+          {foreign && <>
+            <div><dt>Last purchase price</dt><dd className="r">{c.currency} {c.fcUnitPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })}</dd></div>
+            <div><dt>Exchange rate</dt><dd className="r">{c.rate.toLocaleString("en-US", { maximumFractionDigits: 4 })}</dd></div>
+          </>}
+          <div><dt>{foreign ? "Purchase cost (MMK)" : "Last purchase price"}</dt><dd className="r">{money(c.unitCost)}</dd></div>
+          {c.landed.map((l) => (
+            <div key={l.type}><dt>{l.type}</dt><dd className="r">{money(l.perUnit)}</dd></div>
+          ))}
+          <div className="total"><dt>Total unit cost</dt><dd className="r">{money(c.totalUnitCost)}</dd></div>
+        </>
+      )}
+      <div className={c ? undefined : "total"}><dt>Stock value</dt><dd className="r">{money(item.valueOnHand)}</dd></div>
+    </dl>
   );
 }
 

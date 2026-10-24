@@ -26,12 +26,26 @@ const items = [
   ["AND", "Galaxy S26 Ultra 512GB", 4, 3_900_000, true], ["AND", "Nothing Phone 4 256GB", 3, 1_500_000, true],
   ["ACC", "Anker 65W USB-C Charger", 40, 85_000, false], ["AUD", "AirPods Pro 3", 5, 650_000, true],
 ];
+// The first phone comes in yuan and carries a posted freight landed cost, so
+// the cost card has a currency, a rate and a landed line to show.
+const L = await import("../lib/landed-cost.ts");
+const [user] = await sql`select id from app_user where company_id = ${co.id} order by created_at limit 1`;
+const [freight] = await sql`select id from landed_cost_type where company_id = ${co.id} order by (code = 'FREIGHT') desc, code limit 1`;
 let n = 0;
 for (const [g, name, qty, cost, serial] of items) {
+  const fx = n === 0 ? { currency: "CNY", exchangeRate: 600 } : {};
   const [it] = await sql`insert into item (company_id, item_group_id, serial, name, base_uom_id, is_stocked, tracks_serial, identity)
     values (${co.id}, ${await grp(g)}, ${"DEMO" + n++}, ${name}, ${uom.id}, true, ${serial}, ${serial ? (g === "AUD" ? "SERIAL" : "IMEI") : "NONE"}) returning id`;
   const serials = serial ? Array.from({ length: qty }, (_, i) => `DEMO${n}${String(i).padStart(10, "0")}`) : undefined;
-  await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
-    lines: [{ itemId: it.id, qty, unitCost: cost, ...(serials ? { serials } : {}) }] });
+  const gr = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today, ...fx,
+    lines: [{ itemId: it.id, qty, unitCost: fx.currency ? cost / fx.exchangeRate : cost, ...(serials ? { serials } : {}) }] });
+  if (fx.currency && freight) {
+    const actor = { companyId: co.id, userId: user?.id ?? null };
+    const lc = await L.createLandedCost({ ...actor, docDate: today, receiptIds: [gr.id] });
+    await L.saveLandedCost({ ...actor, id: lc.id, docDate: today, receiptIds: [gr.id],
+      charges: [{ costTypeId: freight.id, amount: 120_000, method: "VALUE" }] });
+    await L.calculateLandedCost({ ...actor, id: lc.id });
+    await L.postLandedCost({ ...actor, id: lc.id });
+  }
 }
 console.log("seeded", items.length); await sql.end(); process.exit(0);

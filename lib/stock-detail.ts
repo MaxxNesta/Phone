@@ -64,3 +64,56 @@ export async function stockMoves(itemId: string): Promise<StockMove[]> {
     location: r.location, qty: Number(r.qty),
   }));
 }
+
+export type StockCost = {
+  receiptId: string; receiptNo: string | null; receiptDate: string;
+  currency: string; rate: number;
+  /** In the receipt's currency; the same as unitCost when that is kyat. */
+  fcUnitPrice: number;
+  unitCost: number;
+  /** Each charge spread onto one unit of this receipt, by cost type. */
+  landed: { type: string; perUnit: number }[];
+  totalUnitCost: number;
+};
+
+/**
+ * What one unit of the latest receipt cost: the supplier's price in its own
+ * currency, the rate it came in at, and the landed costs posted against that
+ * receipt, per unit. Receipt prices are stored in kyat, so the foreign price
+ * is the stored one over the rate.
+ */
+export async function stockCost(itemId: string): Promise<StockCost | null> {
+  const { co, seeCost } = await scope(itemId);
+  if (!seeCost) return null;
+  const [r] = await sql`
+    select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as doc_date, d.currency, d.exchange_rate::float as rate,
+           (sum(dl.net_amount) / nullif(sum(dl.base_qty), 0))::float as unit_cost
+      from document_line dl
+      join document d on d.id = dl.document_id
+     where d.company_id = ${co} and dl.item_id = ${itemId}
+       and d.doc_type = 'GOODS_RECEIPT' and d.status = 'POSTED' and dl.base_qty > 0
+     group by d.id
+     order by d.doc_date desc, d.created_at desc
+     limit 1`;
+  if (!r) return null;
+  const landed = await sql`
+    select t.name as type, (sum(a.amount) / nullif(u.n, 0))::float as per_unit
+      from landed_cost_allocation a
+      join landed_cost_charge ch on ch.id = a.charge_id and ch.is_active
+      join landed_cost_type t on t.id = ch.cost_type_id
+      join document ld on ld.id = a.landed_cost_id and ld.status = 'POSTED'
+      cross join (select count(distinct serial_id) as n from landed_cost_allocation x
+                    join document xd on xd.id = x.landed_cost_id and xd.status = 'POSTED'
+                   where x.receipt_id = ${r.id} and x.item_id = ${itemId}) u
+     where a.receipt_id = ${r.id} and a.item_id = ${itemId}
+     group by t.name, u.n
+     order by t.name`;
+  const unitCost = Number(r.unit_cost ?? 0);
+  const rate = Number(r.rate) || 1;
+  const rows = (landed as any[]).map((l) => ({ type: l.type as string, perUnit: Number(l.per_unit ?? 0) }));
+  return {
+    receiptId: r.id, receiptNo: r.doc_no, receiptDate: r.doc_date, currency: r.currency, rate,
+    fcUnitPrice: unitCost / rate, unitCost, landed: rows,
+    totalUnitCost: unitCost + rows.reduce((s, l) => s + l.perUnit, 0),
+  };
+}
