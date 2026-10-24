@@ -7472,3 +7472,6 @@ button.imei-mcard:hover { border-color: var(--line); }
 .imei-tl-ico { width: 28px; height: 28px; border-radius: 50%; background: var(--line-soft); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; }
 .imei-tl-what { margin: 0; font-size: var(--t-sm); font-weight: 500; }
 .imei-tl time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* The drawer scrolls as a whole; nothing in it gives up its height to fit. */
+.imei-dbody > * { flex-shrink: 0; }
+.imei-mcard { align-items: flex-start; justify-content: flex-start; }
