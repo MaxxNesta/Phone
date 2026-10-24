@@ -48,6 +48,11 @@ export function ImeiTable({ rows, showCost, showLocation, emptyLabel }: {
     window.history.replaceState(null, "", `${window.location.pathname}${s ? `?${s}` : ""}`);
   }, []);
   const show = (id: string, tab: Tab) => (e: React.MouseEvent) => { e.stopPropagation(); sync({ id, tab }); };
+  // The page steps aside for the drawer on a wide screen (globals.css).
+  useEffect(() => {
+    document.documentElement.classList.toggle("imei-drawer-open", !!open);
+    return () => document.documentElement.classList.remove("imei-drawer-open");
+  }, [open]);
   const at = open ? rows.findIndex((r) => r.serial_id === open.id) : -1;
 
   return (

@@ -7475,3 +7475,11 @@ button.imei-mcard:hover { border-color: var(--line); }
 /* The drawer scrolls as a whole; nothing in it gives up its height to fit. */
 .imei-dbody > * { flex-shrink: 0; }
 .imei-mcard { align-items: flex-start; justify-content: flex-start; }
+.imei-tabs { overflow-y: hidden; scrollbar-width: none; }
+.imei-tabs button, .imei-tabs button[aria-selected="true"], .imei-tabs button:hover { background: none; box-shadow: none; }
+.imei-mcard > .imei-split { align-self: stretch; color: var(--ink); }
+.imei-split > span:last-child { text-align: right; }
+/* Wide screens: the page steps aside for the drawer instead of sitting under it. */
+@media (min-width: 1280px) {
+  html.imei-drawer-open main.main { padding-right: 516px; transition: padding-right 180ms ease; }
+}
