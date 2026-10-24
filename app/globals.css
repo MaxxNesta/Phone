@@ -7340,7 +7340,4 @@ td .gr-trackmode + .gr-imei { margin-left: 8px; }
   .pf2-grid.stacked .pf2-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
   .pf2-grid.stacked #pf-info, .pf2-grid.stacked #pf-variants { grid-column: 1 / -1; }
 }
-/* Held under the sticky action bar while the form scrolls, like the bar itself. */
-.pf2-preview.top { position: sticky; top: 76px; z-index: 7; box-shadow: 0 6px 20px rgb(0 0 0 / 0.06); }
-.pf2-preview.top .pf2-tablewrap { max-height: min(300px, 34vh); }
 .pf2-template { flex: 1 1 16rem; min-width: 12rem; height: 32px; padding: 0 10px; font-size: var(--t-sm); }
