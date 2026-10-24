@@ -2,20 +2,15 @@
  * When two variants are the same physical thing.
  *
  * A shop with history has 42MM and 42 as two Size values, so "42MM / Black"
- * and "42 / Black" are two combinations of one watch. A value is compared as
- * a fact: case, spaces and punctuation dropped, and a unit after a number
- * dropped. Kept in step with fn_variant_value_norm (migration 0150), which
- * reports group by.
+ * and "42 / Black" are two combinations of one watch. Each value stores what
+ * it physically is (variant_option.physical_value, migration 0151) beside the
+ * name it is shown by; combinations are compared on that.
  */
-export function physicalValue(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9.]/g, "")
-    .replace(/^(\d+(?:\.\d+)?)(mm|cm|in|inch|inches|gb|tb)$/, "$1");
-}
 
-/** One combination's identity: each attribute with its value as a fact. */
-export function physicalKey(parts: { attributeId: string; name: string }[]): string {
+/** One combination's identity: each attribute with its physical value. */
+export function physicalKey(parts: { attributeId: string; physical: string }[]): string {
   return [...parts].sort((a, b) => a.attributeId.localeCompare(b.attributeId))
-    .map((p) => `${p.attributeId}=${physicalValue(p.name)}`).join(";");
+    .map((p) => `${p.attributeId}=${p.physical}`).join(";");
 }
 
 /**

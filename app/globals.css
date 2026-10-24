@@ -7319,3 +7319,5 @@ button.pf2-similar.kept { cursor: pointer; }
 .gr-trackmode > button + button { border-left: 1px solid var(--line); }
 .gr-trackmode > button[aria-checked="true"] { background: var(--ink); color: var(--surface); }
 td .gr-trackmode + .gr-imei { margin-left: 8px; }
+.pf2-trk.custom { border-color: var(--ink); font-weight: 600; }
+.optrow-phys { width: 9rem; }

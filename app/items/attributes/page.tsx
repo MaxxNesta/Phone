@@ -37,7 +37,7 @@ export default async function VariantAttributes() {
      order by a.sort_order, a.name`) as any[];
 
   const options = (await sql`
-    select o.id, o.attribute_id, o.code, o.name, o.name_my, o.sort_order,
+    select o.id, o.attribute_id, o.code, o.name, o.name_my, o.sort_order, o.physical_value, o.physical_is_manual,
            (select count(*)::int from item_variant_option ivo
              where ivo.option_id = o.id) as used
       from variant_option o

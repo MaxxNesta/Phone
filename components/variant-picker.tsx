@@ -14,14 +14,15 @@ export type PickerAttribute = {
   identities?: string[] | null;
   /** Brand codes it is not offered for — RAM is not for APPLE. Null is every brand. */
   not_for_brands?: string[] | null;
-  options: { id: string; code: string; name: string }[];
+  /** physical_value: what the value physically is (42mm), whatever it is called (42). */
+  options: { id: string; code: string; name: string; physical_value?: string }[];
 };
 
-type Combo = { key: string; optionIds: string[]; parts: { attributeId: string; label: string; name: string }[]; label: string };
+type Combo = { key: string; optionIds: string[]; parts: { attributeId: string; label: string; name: string; physical: string }[]; label: string };
 
 /** How a variant's units are named, when it differs from its product's. */
 export const VARIANT_TRACKING = [
-  ["IMEI", "IMEI"], ["SERIAL", "Serial"], ["OPTIONAL", "Optional"], ["NONE", "Quantity"],
+  ["IMEI", "IMEI"], ["SERIAL", "Serial number"], ["OPTIONAL", "Optional serial"], ["NONE", "Quantity only"],
 ] as const;
 
 /**
@@ -67,16 +68,17 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
   /** Every combination, in the attributes' declared order: "M / Red", never "Red / M". */
   const combos: Combo[] = useMemo(() => {
     if (plan.length === 0) return [];
-    let rows: { attributeId: string; id: string; label: string; name: string }[][] = [[]];
+    let rows: { attributeId: string; id: string; label: string; name: string; physical: string }[][] = [[]];
     for (const p of plan) {
       const opts = p.attribute.options.filter((o) => p.optionIds.includes(o.id));
       rows = rows.flatMap((c) => opts.map((o) => [...c,
-        { attributeId: p.attribute.id, id: o.id, label: optionLabel(p.attribute.name, o.name), name: o.name }]));
+        { attributeId: p.attribute.id, id: o.id, label: optionLabel(p.attribute.name, o.name), name: o.name,
+          physical: o.physical_value ?? o.name.toLowerCase() }]));
     }
     return rows.map((parts) => ({
       key: parts.map((p) => p.id).join("|"),
       optionIds: parts.map((p) => p.id),
-      parts: parts.map((p) => ({ attributeId: p.attributeId, label: p.label, name: p.name })),
+      parts: parts.map((p) => ({ attributeId: p.attributeId, label: p.label, name: p.name, physical: p.physical })),
       label: parts.map((p) => p.label).join(" / "),
     }));
   }, [plan]);
@@ -99,9 +101,11 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
     return new Map([...at].map(([i, j]) => [kept[i].key, kept[j].key]));
   }, [kept]);
   const undecided = [...similar.keys()].filter((k) => !separate.has(k));
-  // As the server decides it: a cellular variant of a serial-number product has an IMEI.
-  const trackOf = (key: string) => tracks[key] ?? (tracking === "SERIAL"
+  // The product's tracking unless this one overrides it — as the server
+  // decides it: a cellular variant of a serial-number product has an IMEI.
+  const inherited = (key: string) => (tracking === "SERIAL"
     && combos.find((c) => c.key === key)?.parts.some((p) => /cellular/i.test(p.name)) ? "IMEI" : tracking);
+  const trackOf = (key: string) => tracks[key] ?? inherited(key);
 
   const ready = !on || (kept.length > 0 && undecided.length === 0
     && (mode === "model" ? !!prefix : missing === 0 && twice.size === 0));
@@ -119,7 +123,7 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
   return {
     chosen, toggleOption, plan, combos, kept, dropped, setDropped, codes, setCodes,
     typed, twice, missing, ready, payload,
-    names, setNames, tracks, setTracks, trackOf, separate, setSeparate, similar, undecided,
+    names, setNames, tracks, setTracks, trackOf, inherited, separate, setSeparate, similar, undecided,
   };
 }
 export type VariantPlan = ReturnType<typeof useVariantPlan>;
@@ -337,8 +341,15 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
                     </td>
                     <td className="trk">
                       {keep && (
-                        <select className="pf2-trk" value={v.trackOf(c.key)} aria-label={`Tracking of ${c.label}`}
-                          onChange={(e) => v.setTracks((t) => ({ ...t, [c.key]: e.target.value }))}>
+                        <select className={`pf2-trk${v.tracks[c.key] ? " custom" : ""}`} value={v.tracks[c.key] ?? ""}
+                          aria-label={`Tracking of ${c.label}`}
+                          title={v.tracks[c.key] ? "Overrides the product's tracking" : "The product's tracking"}
+                          onChange={(e) => v.setTracks((t) => {
+                            const next = { ...t };
+                            if (e.target.value) next[c.key] = e.target.value; else delete next[c.key];
+                            return next;
+                          })}>
+                          <option value="">Default · {VARIANT_TRACKING.find(([val]) => val === v.inherited(c.key))?.[1]}</option>
                           {VARIANT_TRACKING.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                         </select>
                       )}
@@ -384,9 +395,11 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
       {asking && byKey.get(asking) && byKey.get(v.similar.get(asking)!) && (() => {
         const dup = byKey.get(asking)!;
         const orig = byKey.get(v.similar.get(asking)!)!;
-        const differs = v.plan.filter((p) =>
-          dup.parts.find((x) => x.attributeId === p.attribute.id)?.name !== orig.parts.find((x) => x.attributeId === p.attribute.id)?.name)
-          .map((p) => p.attribute.name);
+        const differs = v.plan.flatMap((p) => {
+          const a = orig.parts.find((x) => x.attributeId === p.attribute.id);
+          const b = dup.parts.find((x) => x.attributeId === p.attribute.id);
+          return a && b && a.name !== b.name ? [`${p.attribute.name} ${a.label} and ${b.label} are both ${a.physical}`] : [];
+        });
         return (
           <SimilarVariant key={asking}
             existing={{ code: codeOf(orig), name: nameOf(orig), parts: orig.parts }}
@@ -451,7 +464,7 @@ function SimilarVariant({ existing, incoming, attributes, differs, canKeep, onCl
           <Info size={15} aria-hidden="true" />
           <span>
             {differs.length > 0
-              ? <>Only the way {differs.join(" and ")} {differs.length === 1 ? "is" : "are"} written differs, so both describe the same unit. </>
+              ? <>{differs.join("; ")}, so both describe the same unit. </>
               : <>Both describe the same unit. </>}
             Keep it as a separate variant only to carry a code the shop already uses.
             {!canKeep && <> Only a manager or administrator can keep it separate.</>}

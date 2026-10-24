@@ -1,7 +1,7 @@
 import { setItemPhoneSettings } from "@/lib/phone-actions";
 
 const LABEL: Record<string, string> = {
-  IMEI: "IMEI", SERIAL: "Serial number", OPTIONAL: "Optional serial number", NONE: "Quantity only",
+  IMEI: "IMEI", SERIAL: "Serial number", OPTIONAL: "Optional serial", NONE: "Quantity only",
 };
 
 /** How each unit is named, and the warranties, for one item on its detail page. */
@@ -42,11 +42,12 @@ export function PhoneSettings({ item }: {
       </div>
       <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
         IMEI for iPhone and cellular iPad or Watch; serial number for Mac, Wi-Fi iPad and AirPods;
-        quantity only for accessories. Optional lets each receipt choose: a serial for every unit, or a count.
+        quantity only for accessories. Optional serial records serials when available, e.g. Apple Watch: each receipt
+        gives a serial for every unit or just a count.
         A cellular variant of a serial-number product is tracked by IMEI.
         {variants > 0 && ` ${item.variants_tracked} of ${variants} variants are tracked unit by unit.`}
-        {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting, unless the choice is Optional.`}
-        {variants === 0 && item.has_moved && " Once stock has moved, tracking can only change to Optional: units already on the shelf keep how they were recorded."}
+        {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting, unless the choice is Optional serial.`}
+        {variants === 0 && item.has_moved && " Once stock has moved, tracking can only change to Optional serial: units already on the shelf keep how they were recorded."}
       </p>
     </form>
   );

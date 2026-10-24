@@ -51,7 +51,7 @@ try {
   await resetTransactions(sql);
 
   const P = await import("../lib/posting.ts");
-  const { physicalValue, physicalKey, repeats } = await import("../lib/variant-identity.ts");
+  const { physicalKey, repeats } = await import("../lib/variant-identity.ts");
 
   let [loc, loc2] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 2`;
   if (!loc2) {
@@ -88,9 +88,8 @@ try {
 
   console.log("\n  the setting");
   check("OPTIONAL is not 'every unit must be named'", watch.identity === "OPTIONAL" && watch.tracks_serial === false);
-  const [{ v: nameFromMm }] = await sql`select fn_variant_value_norm('46MM') = fn_variant_value_norm('46') as v`;
-  check("no tracking is read out of a size: a 46MM item is created untracked",
-    nameFromMm && (await sql`select tracks_serial from item where id = ${watch.id}`)[0].tracks_serial === false);
+  check("tracking is the field that was chosen, nothing read from a name",
+    (await sql`select tracks_serial from item where id = ${watch.id}`)[0].tracks_serial === false);
 
   console.log("\n  receiving");
   await receive([{ itemId: watch.id, qty: 3, unitCost: 100 }]);
@@ -155,17 +154,18 @@ try {
   check("no unbalanced journal entries", ub.n === 0);
 
   console.log("\n  one configuration, two codes");
-  for (const [a, b] of [["42MM", "42"], ["46 mm", "46MM"], ["256GB", "256 GB"], ["Black", "black"], ["11-inch", "11 inch"]]) {
-    const [{ x, y }] = await sql`select fn_variant_value_norm(${a}) as x, fn_variant_value_norm(${b}) as y`;
-    check(`${a} and ${b} are one value, in SQL and in the form`, x === y && physicalValue(a) === x && physicalValue(b) === y);
+  for (const [a, b] of [["46 mm", "46MM"], ["256GB", "256 GB"], ["Black", "black"], ["11-inch", "11 inch"]]) {
+    const [{ x, y }] = await sql`select fn_variant_value_canon(${a}) as x, fn_variant_value_canon(${b}) as y`;
+    check(`${a} and ${b} are spelled one way`, x === y, `${x} / ${y}`);
   }
   for (const [a, b] of [["42MM", "46MM"], ["Gold", "Space Gray"], ["128GB", "1TB"]]) {
-    check(`${a} and ${b} stay different`, physicalValue(a) !== physicalValue(b));
+    const [{ x, y }] = await sql`select fn_variant_value_canon(${a}) as x, fn_variant_value_canon(${b}) as y`;
+    check(`${a} and ${b} stay different`, x !== y);
   }
   check("the form flags the later of a repeated pair only",
-    JSON.stringify([...repeats([physicalKey([{ attributeId: "s", name: "42MM" }, { attributeId: "c", name: "Black" }]),
-                                physicalKey([{ attributeId: "c", name: "Silver" }, { attributeId: "s", name: "42MM" }]),
-                                physicalKey([{ attributeId: "c", name: "black" }, { attributeId: "s", name: "42" }])])]) === "[[2,0]]");
+    JSON.stringify([...repeats([physicalKey([{ attributeId: "s", physical: "42mm" }, { attributeId: "c", physical: "black" }]),
+                                physicalKey([{ attributeId: "c", physical: "silver" }, { attributeId: "s", physical: "42mm" }]),
+                                physicalKey([{ attributeId: "c", physical: "black" }, { attributeId: "s", physical: "42mm" }])])]) === "[[2,0]]");
 
   const attr = async (code, name, opts) => {
     const [a] = await sql`insert into variant_attribute (company_id, code, name, sort_order)
@@ -179,6 +179,18 @@ try {
     return ids;
   };
   const size = await attr("TSZ", "Test size", ["42MM", "42", "46MM"]);
+  const phys = async (id) => (await sql`select name, physical_value, physical_is_manual from variant_option where id = ${id}`)[0];
+  check("each value stores what it physically is: 42MM is 42mm", (await phys(size["42MM"])).physical_value === "42mm");
+  check("…and 42, next to 42MM, is 42mm too, though it is still shown as 42",
+    (await phys(size["42"])).physical_value === "42mm" && (await phys(size["42"])).name === "42");
+  const later = await attr("TLT", "Test later", ["46"]);
+  check("a bare 46 alone is 46", (await phys(later["46"])).physical_value === "46");
+  await sql`insert into variant_option (company_id, attribute_id, code, name, sort_order)
+            select company_id, attribute_id, 'O9', '46MM', 9 from variant_option where id = ${later["46"]}`;
+  check("…until 46MM is added beside it, then it is 46mm", (await phys(later["46"])).physical_value === "46mm");
+  await sql`update variant_option set physical_value = '45mm', physical_is_manual = true where id = ${later["46"]}`;
+  await sql`update variant_option set name = '46 ' where id = ${later["46"]}`;
+  check("a value set by hand is kept when the name changes", (await phys(later["46"])).physical_value === "45mm");
   const colour = await attr("TCL", "Test colour", ["Black"]);
   const [model] = await sql`insert into item (company_id, item_group_id, serial, name, base_uom_id, is_stocked)
     values (${co.id}, ${grp.id}, ${"OPW" + stamp}, 'Test Watch', ${uom.id}, true) returning id`;
@@ -193,9 +205,9 @@ try {
   const a = await variant("TW001", "42MM");
   const b = await variant("TW007", "42");
   const c = await variant("TW004", "46MM");
-  const phys = await sql`select item_id, canonical_item_id, members::int as members from v_item_physical
+  const grouped = await sql`select item_id, canonical_item_id, members::int as members from v_item_physical
                           where item_id in (${a.id}, ${b.id}, ${c.id})`;
-  const of = (id) => phys.find((r) => r.item_id === id);
+  const of = (id) => grouped.find((r) => r.item_id === id);
   check("42MM / Black and 42 / Black are one configuration", of(a.id).members === 2 && of(b.id).members === 2
     && of(a.id).canonical_item_id === a.id && of(b.id).canonical_item_id === a.id);
   check("46MM / Black is its own", of(c.id).members === 1);

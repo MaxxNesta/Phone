@@ -8,6 +8,8 @@ import { useTranslations } from "next-intl";
 
 export type Option = {
   id: string; code: string; name: string; sort_order: number; used: number;
+  /** What it physically is (42mm) — compared when looking for similar variants. */
+  physical_value?: string; physical_is_manual?: boolean;
 };
 export type Attribute = {
   id: string; code: string; name: string; name_my: string | null;
@@ -122,6 +124,10 @@ export function AttributeCard({
                            title={o.used > 0
                              ? t("codeFixed", { n: o.used })
                              : t("codeUsed")} />
+                    <input name="physical_value" defaultValue={o.physical_is_manual ? o.physical_value : ""}
+                           placeholder={`Physical: ${o.physical_value ?? "auto"}`} className="m optrow-phys"
+                           aria-label={`Physical value of ${o.name}`}
+                           title="What this value physically is, e.g. 42mm for 42. Leave blank to work it out automatically." />
                     <button type="submit" className="btn tiny">{c("save")}</button>
                     <button type="button" className="btn ghost tiny"
                             onClick={() => setRenaming(null)}>{c("cancel")}</button>
@@ -131,6 +137,9 @@ export function AttributeCard({
                 <span className="optrow-name">
                   {o.name}
                   {o.name !== o.code && <span className="m optrow-code">{o.code}</span>}
+                  {o.physical_value && o.physical_value !== o.name.toLowerCase() && (
+                    <span className="m optrow-code" title="What this value physically is">= {o.physical_value}</span>
+                  )}
                   {o.used > 0 && (
                     <span className="subline">
                       {t("variants", { n: o.used })}

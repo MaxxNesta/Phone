@@ -905,7 +905,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
           ({ item_id: item.id, attribute_id: attributeId, sort_order: order })))}`;
 
         const optionRows = await tx`
-          select o.id, o.code, o.name, o.attribute_id, a.name as attribute_name
+          select o.id, o.code, o.name, o.physical_value, o.attribute_id, a.name as attribute_name
             from variant_option o join variant_attribute a on a.id = o.attribute_id
            where o.id = any(${[...new Set(variantPlan.combos.flat())]})`;
         const byId = new Map(optionRows.map((o: any) => [o.id, o]));
@@ -930,7 +930,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            those are recorded as acknowledged by them. */
         const keyOf = (combo: string[]) => physicalKey(combo.map((id) => {
           const o: any = byId.get(id);
-          return { attributeId: String(o?.attribute_id ?? ""), name: String(o?.name ?? id) };
+          return { attributeId: String(o?.attribute_id ?? ""), physical: String(o?.physical_value ?? id) };
         }));
         const dupOf = repeats(variantPlan.combos.map(keyOf));
         for (const [i, j] of dupOf) {
@@ -4792,10 +4792,13 @@ export async function updateVariantOption(_prev: unknown, fd: FormData): Promise
       }
     }
 
+    // What it physically is: typed sets it by hand, blank goes back to automatic.
+    const physical = str(fd, "physical_value");
     await sql`
       update variant_option
          set name = ${name}, name_my = ${str(fd, "name_my") || null},
-             code = ${code || current.code}
+             code = ${code || current.code},
+             physical_value = ${physical || null}, physical_is_manual = ${physical !== ""}
        where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("alreadyOnList", { code }) };

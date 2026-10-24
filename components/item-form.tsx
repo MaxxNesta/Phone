@@ -24,7 +24,7 @@ type Node = {
 const TRACKING = [
   { v: "IMEI", label: "IMEI", note: "iPhone, cellular iPad and Watch. IMEI 2 and serial kept beside it." },
   { v: "SERIAL", label: "Serial number", note: "Mac, Wi-Fi iPad, AirPods. One serial per unit." },
-  { v: "OPTIONAL", label: "Optional", note: "Each receipt chooses: a serial for every unit, or a count." },
+  { v: "OPTIONAL", label: "Optional serial", note: "Record serials when available, e.g. Apple Watch." },
   { v: "NONE", label: "Quantity only", note: "Cases, cables, chargers. Counted, not named." },
 ] as const;
 type Uom = { id: string; code: string; name: string };
@@ -487,7 +487,7 @@ export function ItemForm({
                       <span className="pf2-radio" aria-hidden="true" />
                       <Icon size={17} aria-hidden="true" />
                       <span className="txt"><strong>{t.label}</strong><span>{t.v === "IMEI" ? "Each unit has an IMEI" : t.v === "SERIAL" ? "Each unit has a serial"
-                        : t.v === "OPTIONAL" ? "Serials when the receipt has them" : "Counted, not named"}</span></span>
+                        : t.v === "OPTIONAL" ? "Record serials when available, e.g. Apple Watch" : "Counted, not named"}</span></span>
                     </button>
                   );
                 })}

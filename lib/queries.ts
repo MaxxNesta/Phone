@@ -482,7 +482,7 @@ export async function getVariantAttributes(companyId: string) {
      order by sort_order, name`;
   if (attributes.length === 0) return [];
   const options = await sql`
-    select id, attribute_id, code, name from variant_option
+    select id, attribute_id, code, name, physical_value from variant_option
      where company_id = ${companyId} and is_active
      order by sort_order, name`;
   return attributes.map((a: any) => ({
