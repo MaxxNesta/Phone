@@ -7344,7 +7344,8 @@ td .gr-trackmode + .gr-imei { margin-left: 8px; }
 
 /* ---------------------------------------------------------- IMEI inventory */
 
-.imei-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s2); margin-bottom: var(--s3); }
+.imei-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--s2); margin-bottom: var(--s3); }
+.imei-kpi-label { white-space: nowrap; }
 @media (max-width: 900px) { .imei-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .imei-kpi {
   display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center;
