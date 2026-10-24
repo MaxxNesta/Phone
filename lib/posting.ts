@@ -3837,7 +3837,12 @@ async function issueStockLine(tx: TransactionSql, a: {
     const [{ on_hand }] = await tx`
       select fn_qty_on_hand(${a.companyId}, ${a.itemId}, ${a.locationId}) as on_hand`;
     // What can leave without a name is what has none.
-    const onHand = Number(on_hand) - (optional ? await namedOnHand(tx, a.companyId, a.itemId, a.locationId) : 0);
+    const namedHere = optional ? await namedOnHand(tx, a.companyId, a.itemId, a.locationId) : 0;
+    const onHand = Number(on_hand) - namedHere;
+    if (namedHere > 0 && onHand < a.qty) {
+      throw new Error(`Only ${onHand} ${item.code} here without a serial number; ${namedHere} more are recorded `
+        + `with serial numbers and leave by their serials — scan or pick them.`);
+    }
     if (onHand < a.qty && !a.allowNegative) {
       throw new Error(
         `Not enough ${item.code} (${item.name}) at this location — ${onHand} on hand, ${a.qty} requested`);
