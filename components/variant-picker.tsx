@@ -41,7 +41,7 @@ const TRACK_SHORT: Record<string, string> = { IMEI: "IMEI", SERIAL: "Serial", OP
  * so a form replayed cannot make two sets.
  */
 export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
-  mode: "model" | "manual", prefix: string, tracking = "NONE") {
+  mode: "model" | "manual", prefix: string, tracking = "NONE", productName = "") {
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [codes, setCodes] = useState<Record<string, string>>({});
@@ -49,6 +49,10 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
   const [names, setNames] = useState<Record<string, string>>({});
   // Tracking that differs from the product's, per combination.
   const [tracks, setTracks] = useState<Record<string, string>>({});
+  /* How names are generated: blank is "<product> <values>"; otherwise a
+     template such as "{product} - {Size} - {Color}", every attribute by its
+     name. A name typed on a row still wins over either. */
+  const [template, setTemplate] = useState("");
   // Combinations someone decided to keep beside an identical one.
   const [separate, setSeparate] = useState<Set<string>>(new Set());
   useEffect(() => { if (!on) { setChosen({}); setDropped(new Set()); setNames({}); setTracks({}); setSeparate(new Set()); } }, [on]);
@@ -108,6 +112,18 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
     && combos.find((c) => c.key === key)?.parts.some((p) => /cellular/i.test(p.name)) ? "IMEI" : tracking);
   const trackOf = (key: string) => tracks[key] ?? inherited(key);
 
+  const generated = (c: Combo) => {
+    const product = productName.trim() || "This product";
+    if (!template.trim()) return `${product} ${c.label}`;
+    return template.replace(/\{([^}]+)\}/g, (whole, key: string) => {
+      const k = key.trim().toLowerCase();
+      if (k === "product" || k === "model") return product;
+      if (k === "values") return c.label;
+      const at = plan.find((p) => p.attribute.name.toLowerCase() === k || p.attribute.code.toLowerCase() === k);
+      return at ? c.parts.find((x) => x.attributeId === at.attribute.id)?.label ?? "" : whole;
+    }).replace(/\s+/g, " ").trim();
+  };
+
   const ready = !on || (kept.length > 0 && undecided.length === 0
     && (mode === "model" ? !!prefix : missing === 0 && twice.size === 0));
 
@@ -116,7 +132,7 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
     combos: kept.map((c) => c.optionIds),
     ...(mode === "manual" ? { codes: kept.map((c) => typed(c.key)) } : { modelCode: prefix }),
     // Null where the generated name and the product's tracking stand.
-    names: kept.map((c) => names[c.key]?.trim() || null),
+    names: kept.map((c) => names[c.key]?.trim() || (template.trim() ? generated(c) : null)),
     tracking: kept.map((c) => tracks[c.key] ?? null),
     separate: kept.map((c) => separate.has(c.key)),
   });
@@ -124,7 +140,7 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
   return {
     chosen, toggleOption, plan, combos, kept, dropped, setDropped, codes, setCodes,
     typed, twice, missing, ready, payload,
-    names, setNames, tracks, setTracks, trackOf, inherited, separate, setSeparate, similar, undecided,
+    names, setNames, template, setTemplate, generated, tracks, setTracks, trackOf, inherited, separate, setSeparate, similar, undecided,
   };
 }
 export type VariantPlan = ReturnType<typeof useVariantPlan>;
@@ -180,7 +196,7 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
 }) {
   // Folds to its header and status line, so the form below is in reach.
   const [open, setOpen] = useState(true);
-  const defaultName = (c: Combo) => `${name || "This product"} ${c.label}`;
+  const defaultName = v.generated;
   const nameOf = (c: Combo) => v.names[c.key] ?? defaultName(c);
   // A similar pair the person closed without deciding stays flagged on its
   // row; the dialog comes back for the next one, or when the flag is clicked.
@@ -262,6 +278,10 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
           {(q || Object.values(filter).some(Boolean)) && (
             <button type="button" className="ghost tiny" onClick={() => { setQ(""); setFilter({}); }}>Reset</button>
           )}
+          <input type="text" className="pf2-template" value={v.template} aria-label="Name template"
+            placeholder={`Name: {product} ${v.plan.map((p) => `{${p.attribute.name}}`).join(" / ")}`}
+            title="How names are built, e.g. {product} - {Size} - {Color}. Blank uses the product name and the values."
+            onChange={(e) => v.setTemplate(e.target.value)} />
           {mode === "manual" && (
             <span className="pf2-fill">
               <input type="text" value={start} placeholder="IPC010" aria-label="First code"

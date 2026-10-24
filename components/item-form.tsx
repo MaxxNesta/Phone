@@ -33,7 +33,7 @@ const NAME_EXAMPLE: Record<string, string> = {
   iphone: "iPhone 18",
   ipad: "iPad Air 11-inch (M3)",
   mac: "MacBook Air 13-inch (M4)",
-  "apple watch": "Apple Watch Series 11",
+  "apple watch": "iWatch Series 11",
   airpods: "AirPods Pro 3",
 };
 type Brand = { id: string; code: string; name: string };
@@ -191,7 +191,7 @@ export function ItemForm({
   const attributes = (variantAttributes ?? []).filter((a) =>
     (!a.identities || a.identities.includes(tracking)) &&
     !(a.not_for_brands ?? []).some((code) => brandCodes.includes(code.toUpperCase())));
-  const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "", tracking);
+  const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "", tracking, itemName);
 
   // Is the typed code already somebody's? Asked a moment after typing stops,
   // so the answer is on screen before Save, not in an error after it.
