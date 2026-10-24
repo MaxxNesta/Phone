@@ -7040,8 +7040,7 @@ button.pf2-link:focus-visible { outline: 2px solid var(--focus); outline-offset:
 /* --- choice cards (codes, tracking) --- */
 .pf2-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pf2-seg.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.pf2-seg.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 1100px) { .pf2-seg.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pf2-seg.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 640px) { .pf2-seg, .pf2-seg.three, .pf2-seg.four { grid-template-columns: 1fr; } }
 button.pf2-option {
   all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: flex-start; gap: 9px;

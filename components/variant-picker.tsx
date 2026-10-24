@@ -178,7 +178,16 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
   // A similar pair the person closed without deciding stays flagged on its
   // row; the dialog comes back for the next one, or when the flag is clicked.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const asking = v.undecided.find((k) => !dismissed.has(k)) ?? null;
+  // Asked once the choosing has stopped for a moment, not while values are
+  // still being ticked — 42MM then 42 is often on the way to more.
+  const pickKey = v.kept.map((c) => c.key).join(",");
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    setSettled(false);
+    const t = window.setTimeout(() => setSettled(true), 1200);
+    return () => window.clearTimeout(t);
+  }, [pickKey]);
+  const asking = settled ? v.undecided.find((k) => !dismissed.has(k)) ?? null : null;
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Record<string, string>>({});
   const [pageSize, setPageSize] = useState(50);
