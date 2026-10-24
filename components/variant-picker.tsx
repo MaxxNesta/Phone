@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   HardDrive, Palette, Smartphone, Wifi, Cpu, Ruler, Globe2, MemoryStick, Tag,
-  Search, CheckCircle2, AlertCircle, Wand2, ChevronLeft, ChevronRight, RotateCcw, AlertTriangle, X, Info,
+  Search, CheckCircle2, AlertCircle, Wand2, ChevronLeft, ChevronRight, RotateCcw, AlertTriangle, X, Info, ChevronDown,
 } from "lucide-react";
 import { modelItemCode, optionLabel } from "@/lib/item-code";
 import { physicalKey, repeats } from "@/lib/variant-identity";
@@ -178,6 +178,8 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
   /** May keep two variants of one configuration (items.duplicates). */
   canKeepDuplicates?: boolean;
 }) {
+  // Folds to its header and status line, so the form below is in reach.
+  const [open, setOpen] = useState(true);
   const defaultName = (c: Combo) => `${name || "This product"} ${c.label}`;
   const nameOf = (c: Combo) => v.names[c.key] ?? defaultName(c);
   // A similar pair the person closed without deciding stays flagged on its
@@ -226,7 +228,7 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
   };
 
   return (
-    <section className="card pf2-card pf2-preview" id="pf-review">
+    <section className={`card pf2-card pf2-preview top${open ? "" : " folded"}`} id="pf-review">
       <div className="pf2-head">
         <span className="pf2-step">5</span>
         <div className="pf2-title"><h2>Variant preview</h2></div>
@@ -234,9 +236,12 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
           {v.ready && v.kept.length > 0 ? <CheckCircle2 size={14} aria-hidden="true" /> : null}
           {v.kept.length} {v.kept.length === 1 ? "variant" : "variants"}
         </span>
+        <button type="button" className="pf2-fold" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Collapse" : "Expand"} <ChevronDown size={14} aria-hidden="true" />
+        </button>
       </div>
 
-      {v.combos.length === 0 ? (
+      {!open ? null : v.combos.length === 0 ? (
         <div className="pf2-empty">Pick values under Variants to see what will be created.</div>
       ) : (<>
         <div className="pf2-tools">

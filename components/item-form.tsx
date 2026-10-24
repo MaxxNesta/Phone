@@ -272,7 +272,14 @@ export function ItemForm({
       </div>
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
-      <div className={`pf2-grid${hasVariants ? " split" : ""}`}>
+      {/* 5 — what will be created, across the top at full width, folding
+          away while the cards below are filled in. */}
+      {hasVariants && (
+        <VariantPreview v={plan} mode={codeMode} prefix={prefixOk ? prefix : ""} nextNo={nextNo} name={itemName}
+          canKeepDuplicates={canKeepDuplicates} />
+      )}
+
+      <div className={`pf2-grid${hasVariants ? " stacked" : ""}`}>
         <div className="pf2-col">
           {/* 1 — what the product is, and whether it comes in configurations. */}
           <section className="card pf2-card" id="pf-info">
@@ -552,14 +559,6 @@ export function ItemForm({
             </section>
           )}
         </div>
-
-        {/* 5 — what will be created, beside the form while it is filled in. */}
-        {hasVariants && (
-          <div className="pf2-side">
-            <VariantPreview v={plan} mode={codeMode} prefix={prefixOk ? prefix : ""} nextNo={nextNo} name={itemName}
-              canKeepDuplicates={canKeepDuplicates} />
-          </div>
-        )}
       </div>
     </form>
   );

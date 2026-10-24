@@ -7321,3 +7321,22 @@ button.pf2-similar.kept { cursor: pointer; }
 td .gr-trackmode + .gr-imei { margin-left: 8px; }
 .pf2-trk.custom { border-color: var(--ink); font-weight: 600; }
 .optrow-phys { width: 9rem; }
+
+/* The variant preview across the top of the product form, full width. */
+.pf2-preview.top { margin-bottom: 12px; }
+.pf2-preview.top .pf2-tablewrap { max-height: min(440px, 55vh); overflow: auto; }
+.pf2-preview.top.folded .pf2-status { border-top: 1px solid var(--line-soft); }
+.pf2-fold {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 8px;
+  padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--muted); font-size: var(--t-sm); cursor: pointer; min-height: 0; height: auto;
+}
+.pf2-fold:hover { color: var(--ink); }
+.pf2-fold svg { transition: transform 150ms; }
+.pf2-fold[aria-expanded="true"] svg { transform: rotate(180deg); }
+/* With the preview on top the cards take the width: two by two on a wide screen. */
+.pf2-grid.stacked .pf2-col { max-width: none; }
+@media (min-width: 1100px) {
+  .pf2-grid.stacked .pf2-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+  .pf2-grid.stacked #pf-info, .pf2-grid.stacked #pf-variants { grid-column: 1 / -1; }
+}
