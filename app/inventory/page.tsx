@@ -70,12 +70,17 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     locs: warehouse ? seen : branch ? whOpts.map((l) => l.id as string) : seen };
 
   const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
+  // The cards and the table read the same catalogue; only a filter on the
+  // table makes it a second question. Unfiltered, it is answered once.
+  const overviewP = inventorySummary(co, { ...scope, combine: true });
+  const tableFiltered = Boolean(sp.q || sp.category || sp.status || sp.model || sp.brand
+    || Object.keys(sp).some((k) => k.startsWith("a_") && sp[k]));
   const [overview, table, facets, moves, groups, trend] = await Promise.all([
-    inventorySummary(co, { ...scope, combine: true }),
-    facetsP.then((f) => inventorySummary(co, {
+    overviewP,
+    tableFiltered ? facetsP.then((f) => inventorySummary(co, {
       ...scope, combine: true, q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
       status: sp.status || undefined,
-    })),
+    })) : overviewP,
     facetsP,
     recentMovements(co, 6, scope.locationId ? [scope.locationId] : scope.locs),
     sql`select id, name from item_group where company_id = ${co} and parent_id is null order by name`,

@@ -124,32 +124,48 @@ export default async function Stock({
   const selectedLocationId = location && reorderableLocations.some((l) => l.id === location) ? location : "all";
   const allLocations = selectedLocationId === "all";
 
-  // Company-wide: sum across every row for that item. One warehouse: the
-  // single row for that item and location, or 0 if it's never touched it.
-  const onHandOf = (itemId: string, companyWide: number) =>
-    allLocations
-      ? companyWide
-      : Number(stockByLocation.find((r) => r.item_id === itemId && r.location_id === selectedLocationId)?.qty_on_hand ?? 0);
-  const valueOf = (itemId: string, companyWide: number) =>
-    allLocations
-      ? companyWide
-      : Number(stockByLocation.find((r) => r.item_id === itemId && r.location_id === selectedLocationId)?.value_on_hand ?? 0);
-  const reservedOf = (itemId: string) =>
-    allLocations
-      ? reserved.filter((r) => r.item_id === itemId).reduce((s, r) => s + Number(r.reserved_qty), 0)
-      : Number(reserved.find((r) => r.item_id === itemId && r.location_id === selectedLocationId)?.reserved_qty ?? 0);
-  const incomingOf = (itemId: string) =>
-    allLocations
-      ? incoming.filter((r) => r.item_id === itemId).reduce((s, r) => s + Number(r.incoming_qty), 0)
-      : Number(incoming.find((r) => r.item_id === itemId && r.location_id === selectedLocationId)?.incoming_qty ?? 0);
+  /*
+   * Each list indexed once by item, then by warehouse, so a row is a lookup
+   * rather than a scan of every row of every list — a catalogue of 2,000
+   * variants against 6,000 stock rows was twelve million comparisons a load.
+   */
+  const index = <R extends { item_id: string; location_id: string }>(rows: R[], val: (r: R) => number) => {
+    const m = new Map<string, Map<string, number>>();
+    for (const r of rows) {
+      const per = m.get(r.item_id) ?? new Map<string, number>();
+      per.set(r.location_id, (per.get(r.location_id) ?? 0) + val(r));
+      m.set(r.item_id, per);
+    }
+    return m;
+  };
+  const qtyAt = index(stockByLocation, (r) => Number(r.qty_on_hand));
+  const valueAt = index(stockByLocation, (r) => Number(r.value_on_hand));
+  const reservedAt = index(reserved, (r) => Number(r.reserved_qty));
+  const incomingAt = index(incoming, (r) => Number(r.incoming_qty));
+  // Company-wide: the sum over every warehouse. One warehouse: that one, or 0.
+  const pick = (m: Map<string, Map<string, number>>, itemId: string) => {
+    const per = m.get(itemId);
+    if (!per) return 0;
+    if (!allLocations) return per.get(selectedLocationId) ?? 0;
+    let s = 0; for (const v of per.values()) s += v; return s;
+  };
+  const onHandOf = (itemId: string, companyWide: number) => allLocations ? companyWide : pick(qtyAt, itemId);
+  const valueOf = (itemId: string, companyWide: number) => allLocations ? companyWide : pick(valueAt, itemId);
+  const reservedOf = (itemId: string) => pick(reservedAt, itemId);
+  const incomingOf = (itemId: string) => pick(incomingAt, itemId);
   // Every consigned row visible under the current location choice. The KPI
   // counts these rather than the whole company's, or picking a warehouse
   // would leave the tile reading the same number for every warehouse.
   const consignedHere = allLocations
     ? consigned
     : consigned.filter((r) => r.location_id === selectedLocationId);
-  const consignedOf = (itemId: string) =>
-    consignedHere.filter((r) => r.item_id === itemId).reduce((s, r) => s + Number(r.on_hand), 0);
+  const consignedAt = index(consignedHere, (r) => Number(r.on_hand));
+  const consignedOf = (itemId: string) => pick(consignedAt, itemId);
+  const consignorsByItem = new Map<string, Set<string>>();
+  for (const r of consignedHere) consignorsByItem.set(r.item_id, (consignorsByItem.get(r.item_id) ?? new Set()).add(r.consignor_name));
+  const batchesByItem = new Map<string, typeof batches>();
+  for (const b of batches) batchesByItem.set(b.item_id, [...(batchesByItem.get(b.item_id) ?? []), b]);
+  const locationById = new Map(locations.map((l) => [l.id, l]));
 
   // A product with variants is a name for a group and cannot hold stock —
   // fn_document_line_not_parent refuses it on any document line — so the
@@ -189,8 +205,7 @@ export default async function Stock({
   const totalValue = visible.reduce((s, i) => s + i.valueOnHand, 0);
   const totalOnHand = visible.reduce((s, i) => s + i.onHand, 0);
 
-  const consignorsOf = (itemId: string) =>
-    Array.from(new Set(consignedHere.filter((r) => r.item_id === itemId).map((r) => r.consignor_name)));
+  const consignorsOf = (itemId: string) => Array.from(consignorsByItem.get(itemId) ?? []);
 
   /**
    * Where an item actually sits — owned or consigned — and only the chosen
@@ -198,24 +213,18 @@ export default async function Stock({
    */
   const warehousesOf = (itemId: string) => {
     const here = (locId: string) => allLocations || locId === selectedLocationId;
+    const owned = qtyAt.get(itemId), held = consignedAt.get(itemId), res = reservedAt.get(itemId);
     const ids = new Set<string>();
-    for (const r of stockByLocation) {
-      if (r.item_id === itemId && here(r.location_id) && Number(r.qty_on_hand) !== 0) ids.add(r.location_id);
-    }
-    for (const cr of consignedHere) {
-      if (cr.item_id === itemId && here(cr.location_id) && Number(cr.on_hand) !== 0) ids.add(cr.location_id);
-    }
+    for (const [loc, q] of owned ?? []) if (here(loc) && q !== 0) ids.add(loc);
+    for (const [loc, q] of held ?? []) if (here(loc) && q !== 0) ids.add(loc);
     return [...ids]
       .map((locationId) => {
-        const loc = locations.find((l) => l.id === locationId);
+        const loc = locationById.get(locationId);
         return {
           locationId, code: loc?.code ?? "—", name: loc?.name ?? "",
-          onHand: stockByLocation.filter((r) => r.item_id === itemId && r.location_id === locationId)
-            .reduce((sum, r) => sum + Number(r.qty_on_hand), 0),
-          consigned: consignedHere.filter((cr) => cr.item_id === itemId && cr.location_id === locationId)
-            .reduce((sum, cr) => sum + Number(cr.on_hand), 0),
-          reserved: reserved.filter((x) => x.item_id === itemId && x.location_id === locationId)
-            .reduce((sum, x) => sum + Number(x.reserved_qty), 0),
+          onHand: owned?.get(locationId) ?? 0,
+          consigned: held?.get(locationId) ?? 0,
+          reserved: res?.get(locationId) ?? 0,
         };
       })
       .sort((a, b) => a.code.localeCompare(b.code));
@@ -242,7 +251,7 @@ export default async function Stock({
       consignors, warehouses: warehousesOf(i.id), variant, photoSrc: photoSrcOf(i),
       tracksBatch: !!i.tracks_batch, tracksExpiry: !!i.tracks_batch && !!i.tracks_expiry,
       tracksSerial: !!i.tracks_serial || i.identity === "OPTIONAL", status: i.status,
-      batches: batches.filter((b) => b.item_id === i.id).map((b) => ({
+      batches: (batchesByItem.get(i.id) ?? []).map((b) => ({
         locationCode: b.location_code, batchNo: b.batch_no, expiryDate: b.expiry_date,
         daysLeft: b.days_left === null ? null : Number(b.days_left), qty: Number(b.qty),
       })),
