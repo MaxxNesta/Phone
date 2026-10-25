@@ -101,6 +101,8 @@ export default async function VariantsOfProduct({
               levels={levels}
               uom={uom?.code ?? ""}
               productName={parent.name}
+              activation={(await sql`select 1 from item_variant_attribute iva join variant_attribute a on a.id = iva.attribute_id
+                                      where iva.item_id = ${parent.id} and a.code = 'ACT'`).length > 0}
             />
           </div>
         </div>

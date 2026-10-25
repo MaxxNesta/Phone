@@ -65,6 +65,8 @@ try {
   const region = await attr("^(region|reg)$");
   const colour = await attr("^(colou?r|col)$");
   if (!storage || !region || !colour) throw new Error("Storage, Region and Color attributes are needed.");
+  // Activated or standard (0153): every model declares it, every variant here is standard.
+  const [activation] = await sql`select id from variant_attribute where company_id = ${co.id} and code = 'ACT'`;
   console.log(`  category ${grp.name} · unit ${uom.code} · ${storage.name} + ${region.name} + ${colour.name}\n`);
 
   const options = new Map();
@@ -134,6 +136,15 @@ try {
         { item_id: parent.id, attribute_id: storage.id, sort_order: 0 },
         { item_id: parent.id, attribute_id: region.id, sort_order: 1 },
         { item_id: parent.id, attribute_id: colour.id, sort_order: 2 }])}`;
+    }
+    // An existing model gains the Activated setting too; its variants stay standard (Off).
+    if (parent && activation) {
+      const [has] = await sql`select 1 as y from item_variant_attribute where item_id = ${parent.id} and attribute_id = ${activation.id}`;
+      if (!has) {
+        console.log(`    · Activated setting added, every variant Off (standard)`);
+        if (apply) await sql`insert into item_variant_attribute (item_id, attribute_id, sort_order)
+          values (${parent.id}, ${activation.id}, coalesce((select max(sort_order) + 1 from item_variant_attribute where item_id = ${parent.id}), 0))`;
+      }
     }
     const seen = new Map();
     for (const r of list) {

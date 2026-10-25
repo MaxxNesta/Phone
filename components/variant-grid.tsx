@@ -45,8 +45,10 @@ const storageOf = (r: GridRow) =>
   r.parts?.find((x) => /storage|capacity/i.test(x.attribute))?.option ?? null;
 
 export function VariantGrid({
-  action, parentId, rows: initial, levels, uom, productName,
+  action, parentId, rows: initial, levels, uom, productName, activation = false,
 }: {
+  /** The product is sold sealed and activated: each row says which it is. */
+  activation?: boolean;
   /** The product the generated names start with. */
   productName: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -200,6 +202,7 @@ export function VariantGrid({
                 </th>
               ))}
               <th className="r">{g("onHand")}</th>
+              {activation && <th>Activated</th>}
               <th>{c("active")}</th>
             </tr>
           </thead>
@@ -265,6 +268,10 @@ export function VariantGrid({
                     </td>
                   ))}
                   <td className="r">{Number(v.on_hand)}</td>
+                  {activation && (
+                    <td>{v.parts?.some((x) => x.attribute === "Activation")
+                      ? <span className="imei-pill ok">On</span> : <span className="imei-pill">Off · Standard</span>}</td>
+                  )}
                   <td>
                     <label className="check">
                       <input type="checkbox" checked={r.isActive}
