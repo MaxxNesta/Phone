@@ -7544,3 +7544,25 @@ button.imei-mcard:hover { border-color: var(--line); }
 .imei-step:hover:not(:disabled) { background: var(--line-soft); }
 .imei-mini tbody tr, .imei-mini tfoot tr, .imei-mini thead tr { height: auto; }
 .imei-mini { font-size: 12.5px; }
+
+/* ------------------------------------------- activated beside standard ---- */
+.pf2-toggle.sm .track { width: 30px; height: 18px; }
+.pf2-toggle.sm .track::after { width: 14px; height: 14px; }
+.pf2-toggle.sm input:checked + .track { background: var(--link); }
+.pf2-toggle.sm input:checked + .track::after { transform: translateX(12px); }
+.pf2-toggle.sm input:disabled + .track { opacity: 0.4; cursor: not-allowed; }
+.pf2-table th.act, .pf2-table td.act { width: 1%; text-align: center; white-space: nowrap; }
+.actv-icon { background: color-mix(in srgb, var(--link) 12%, transparent); color: var(--link); }
+.actv-state { margin-top: var(--s3); display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: var(--s2) var(--s3); border-radius: 10px; background: var(--line-soft); }
+.actv-state span { font-size: var(--t-sm); color: var(--muted); }
+.actv-h { margin: var(--s3) 0 var(--s2); font-size: 0.9rem; font-weight: 600; }
+.actv-options { display: grid; gap: 8px; }
+.actv-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; white-space: normal;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink); font: inherit; cursor: pointer; min-height: 0; height: auto;
+}
+.actv-opt:hover { border-color: var(--link); background: color-mix(in srgb, var(--link) 6%, var(--surface)); }
+.actv-opt strong { font-weight: 600; }
+.actv-opt span { font-size: var(--t-sm); color: var(--muted); }

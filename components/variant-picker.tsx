@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   HardDrive, Palette, Smartphone, Wifi, Cpu, Ruler, Globe2, MemoryStick, Tag,
   Search, CheckCircle2, AlertCircle, Wand2, ChevronLeft, ChevronRight, RotateCcw, AlertTriangle, X, Info, ChevronDown,
+  Zap,
 } from "lucide-react";
 import { modelItemCode, optionLabel } from "@/lib/item-code";
 import { physicalKey, repeats } from "@/lib/variant-identity";
@@ -18,7 +19,15 @@ export type PickerAttribute = {
   options: { id: string; code: string; name: string; physical_value?: string }[];
 };
 
-type Combo = { key: string; optionIds: string[]; parts: { attributeId: string; label: string; name: string; physical: string }[]; label: string };
+type Combo = {
+  key: string; optionIds: string[]; parts: { attributeId: string; label: string; name: string; physical: string }[]; label: string;
+  /** The combination this row came from — its own key, or the standard row an activated one sits beside. */
+  base: string;
+  /** An activated phone: the same values with Activation on. */
+  activated?: boolean;
+  /** Unticked: shown, struck through, not created. */
+  off?: boolean;
+};
 
 /** How a variant's units are named, when it differs from its product's. */
 export const VARIANT_TRACKING = [
@@ -41,7 +50,9 @@ const TRACK_SHORT: Record<string, string> = { IMEI: "IMEI", SERIAL: "Serial", OP
  * so a form replayed cannot make two sets.
  */
 export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
-  mode: "model" | "manual", prefix: string, tracking = "NONE", productName = "") {
+  mode: "model" | "manual", prefix: string, tracking = "NONE", productName = "",
+  /** The Activation attribute and its one value, when this kind of product has one. */
+  activationAttr: { attributeId: string; optionId: string } | null = null) {
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [codes, setCodes] = useState<Record<string, string>>({});
@@ -55,7 +66,12 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
   const [template, setTemplate] = useState("");
   // Combinations someone decided to keep beside an identical one.
   const [separate, setSeparate] = useState<Set<string>>(new Set());
-  useEffect(() => { if (!on) { setChosen({}); setDropped(new Set()); setNames({}); setTracks({}); setSeparate(new Set()); } }, [on]);
+  /* Which combinations also come activated: BOTH keeps the standard row and
+     adds an activated one beside it; ONLY makes the row itself activated. */
+  const [act, setAct] = useState<Record<string, "BOTH" | "ONLY">>({});
+  const setActivation = (key: string, mode: "BOTH" | "ONLY" | null) =>
+    setAct((a) => { const next = { ...a }; if (mode) next[key] = mode; else delete next[key]; return next; });
+  useEffect(() => { if (!on) { setChosen({}); setDropped(new Set()); setNames({}); setTracks({}); setSeparate(new Set()); setAct({}); } }, [on]);
 
   const toggleOption = (attrId: string, optId: string) =>
     setChosen((c) => {
@@ -82,13 +98,25 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
     }
     return rows.map((parts) => ({
       key: parts.map((p) => p.id).join("|"),
+      base: parts.map((p) => p.id).join("|"),
       optionIds: parts.map((p) => p.id),
       parts: parts.map((p) => ({ attributeId: p.attributeId, label: p.label, name: p.name, physical: p.physical })),
       label: parts.map((p) => p.label).join(" / "),
     }));
   }, [plan]);
 
-  const kept = combos.filter((c) => !dropped.has(c.key));
+  /** What the table shows: each combination, with its activated twin where there is one. */
+  const rows: Combo[] = useMemo(() => combos.flatMap((c) => {
+    if (dropped.has(c.key)) return [{ ...c, off: true }];
+    const mode = activationAttr ? act[c.key] : undefined;
+    if (!mode) return [c];
+    const twin: Combo = {
+      ...c, key: c.key + "#A", activated: true,
+      parts: [...c.parts, { attributeId: activationAttr!.attributeId, label: "Activated", name: "Activated", physical: "activated" }],
+    };
+    return mode === "ONLY" ? [twin] : [c, twin];
+  }), [combos, dropped, act, activationAttr]);
+  const kept = rows.filter((c) => !c.off);
   const typed = (key: string) => (codes[key] ?? "").trim().toUpperCase();
   const twice = useMemo(() => {
     const n = new Map<string, number>();
@@ -109,19 +137,20 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
   // The product's tracking unless this one overrides it — as the server
   // decides it: a cellular variant of a serial-number product has an IMEI.
   const inherited = (key: string) => (tracking === "SERIAL"
-    && combos.find((c) => c.key === key)?.parts.some((p) => /cellular/i.test(p.name)) ? "IMEI" : tracking);
+    && rows.find((c) => c.key === key)?.parts.some((p) => /cellular/i.test(p.name)) ? "IMEI" : tracking);
   const trackOf = (key: string) => tracks[key] ?? inherited(key);
 
   const generated = (c: Combo) => {
     const product = productName.trim() || "This product";
-    if (!template.trim()) return `${product} ${c.label}`;
+    const sfx = c.activated ? " (Activated)" : "";
+    if (!template.trim()) return `${product} ${c.label}${sfx}`;
     return template.replace(/\{([^}]+)\}/g, (whole, key: string) => {
       const k = key.trim().toLowerCase();
       if (k === "product" || k === "model") return product;
       if (k === "values") return c.label;
       const at = plan.find((p) => p.attribute.name.toLowerCase() === k || p.attribute.code.toLowerCase() === k);
       return at ? c.parts.find((x) => x.attributeId === at.attribute.id)?.label ?? "" : whole;
-    }).replace(/\s+/g, " ").trim();
+    }).replace(/\s+/g, " ").trim() + sfx;
   };
 
   const ready = !on || (kept.length > 0 && undecided.length === 0
@@ -132,13 +161,15 @@ export function useVariantPlan(attributes: PickerAttribute[], on: boolean,
     combos: kept.map((c) => c.optionIds),
     ...(mode === "manual" ? { codes: kept.map((c) => typed(c.key)) } : { modelCode: prefix }),
     // Null where the generated name and the product's tracking stand.
-    names: kept.map((c) => names[c.key]?.trim() || (template.trim() ? generated(c) : null)),
+    names: kept.map((c) => names[c.key]?.trim() || (template.trim() || c.activated ? generated(c) : null)),
+    activated: kept.map((c) => !!c.activated),
     tracking: kept.map((c) => tracks[c.key] ?? null),
     separate: kept.map((c) => separate.has(c.key)),
   });
 
   return {
-    chosen, toggleOption, plan, combos, kept, dropped, setDropped, codes, setCodes,
+    chosen, toggleOption, plan, combos, rows, kept, dropped, setDropped, codes, setCodes,
+    act, setActivation, activationEnabled: !!activationAttr,
     typed, twice, missing, ready, payload,
     names, setNames, template, setTemplate, generated, tracks, setTracks, trackOf, inherited, separate, setSeparate, similar, undecided,
   };
@@ -198,6 +229,8 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
   const [open, setOpen] = useState(true);
   const defaultName = v.generated;
   const nameOf = (c: Combo) => v.names[c.key] ?? defaultName(c);
+  // The row whose Activated switch was just turned on, waiting to be told how.
+  const [configuring, setConfiguring] = useState<string | null>(null);
   // A similar pair the person closed without deciding stays flagged on its
   // row; the dialog comes back for the next one, or when the flag is clicked.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -222,10 +255,10 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
     prefix && nextNo !== null ? modelItemCode(prefix, nextNo + i) : prefix ? `${prefix}…` : "—";
   const keptIndex = new Map(v.kept.map((c, i) => [c.key, i]));
   const codeOf = (c: Combo) => (mode === "model" ? (keptIndex.has(c.key) ? codeAt(keptIndex.get(c.key)!) : "—") : v.typed(c.key) || "—");
-  const byKey = new Map(v.combos.map((c) => [c.key, c]));
+  const byKey = new Map(v.rows.map((c) => [c.key, c]));
 
-  const shown = v.combos.filter((c) =>
-    (!q || `${codeOf(c)} ${name} ${c.label}`.toLowerCase().includes(q.toLowerCase())) &&
+  const shown = v.rows.filter((c) =>
+    (!q || `${codeOf(c)} ${name} ${c.label}${c.activated ? " activated" : ""}`.toLowerCase().includes(q.toLowerCase())) &&
     Object.entries(filter).every(([attr, val]) => !val || c.parts.find((p) => p.attributeId === attr)?.label === val));
   const pages = Math.max(1, Math.ceil(shown.length / pageSize));
   const cur = Math.min(page, pages);
@@ -298,30 +331,35 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
             <thead>
               <tr>
                 <th className="k">
-                  <input type="checkbox" aria-label="Keep all" checked={v.kept.length === v.combos.length}
+                  <input type="checkbox" aria-label="Keep all" checked={v.combos.every((c) => !v.dropped.has(c.key))}
                     onChange={(e) => v.setDropped(e.target.checked ? new Set() : new Set(v.combos.map((c) => c.key)))} />
                 </th>
                 <th className="n">#</th>
                 <th className="code">Item code</th>
                 {v.plan.map((p) => <th key={p.attribute.id}>{p.attribute.name}</th>)}
+                {v.activationEnabled && <th className="act">Activated</th>}
                 <th>Preview name</th>
                 <th className="trk">Tracking</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((c) => {
-                const keep = !v.dropped.has(c.key);
+                const keep = !c.off;
                 const t = v.typed(c.key);
                 const bad = keep && mode === "manual" && t !== "" && v.twice.has(t);
                 return (
                   <tr key={c.key} className={keep ? undefined : "off"}>
                     <td className="k">
                       <input type="checkbox" checked={keep} aria-label={`Create ${c.label}`}
-                        onChange={() => v.setDropped((d) => {
-                          const next = new Set(d);
-                          if (next.has(c.key)) next.delete(c.key); else next.add(c.key);
-                          return next;
-                        })} />
+                        onChange={() => {
+                          // An activated twin goes by itself; anything else is the combination.
+                          if (c.activated && v.act[c.base] === "BOTH") { v.setActivation(c.base, null); return; }
+                          v.setDropped((d) => {
+                            const next = new Set(d);
+                            if (next.has(c.base)) next.delete(c.base); else next.add(c.base);
+                            return next;
+                          });
+                        }} />
                     </td>
                     <td className="n">{keep ? keptIndex.get(c.key)! + 1 : "—"}</td>
                     <td className="code">
@@ -334,6 +372,21 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
                     {v.plan.map((p) => (
                       <td key={p.attribute.id}>{c.parts.find((x) => x.attributeId === p.attribute.id)?.label}</td>
                     ))}
+                    {v.activationEnabled && (
+                      <td className="act">
+                        {keep && (
+                          <label className="pf2-toggle sm" title={
+                            !c.activated && v.act[c.base] === "BOTH" ? "Its activated variant is the next row"
+                            : c.activated ? "Switch off to make it a standard phone" : "Also sell this one activated"}>
+                            <input type="checkbox" role="switch" checked={!!c.activated}
+                              disabled={!c.activated && v.act[c.base] === "BOTH"}
+                              aria-label={`Activated: ${c.label}`}
+                              onChange={(e) => { if (e.target.checked) setConfiguring(c.key); else v.setActivation(c.base, null); }} />
+                            <span className="track" aria-hidden="true" />
+                          </label>
+                        )}
+                      </td>
+                    )}
                     <td className="name">
                       {keep ? (
                         <span className="pf2-name">
@@ -384,14 +437,14 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={5 + v.plan.length} className="pf2-empty">No variant matches.</td></tr>
+                <tr><td colSpan={5 + v.plan.length + (v.activationEnabled ? 1 : 0)} className="pf2-empty">No variant matches.</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
         <div className="pf2-pager">
-          <span>{shown.length === v.combos.length ? `${v.combos.length} variants` : `${shown.length} of ${v.combos.length}`}</span>
+          <span>{shown.length === v.rows.length ? `${v.rows.length} variants` : `${shown.length} of ${v.rows.length}`}</span>
           <span className="sp" />
           <label>Rows per page
             <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
@@ -418,6 +471,13 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
           : `${v.kept.length} ${v.kept.length === 1 ? "variant" : "variants"} of ${name.trim() || "this product"} ${v.kept.length === 1 ? "is" : "are"} ready to create.`}
       </div>
 
+      {configuring && byKey.get(configuring) && (
+        <ActivationDialog
+          summary={[name.trim() || "This product", ...byKey.get(configuring)!.parts.map((p) => p.label)].join(" · ")}
+          onChoose={(mode) => { v.setActivation(byKey.get(configuring)!.base, mode); setConfiguring(null); }}
+          onClose={() => setConfiguring(null)} />
+      )}
+
       {asking && byKey.get(asking) && byKey.get(v.similar.get(asking)!) && (() => {
         const dup = byKey.get(asking)!;
         const orig = byKey.get(v.similar.get(asking)!)!;
@@ -440,6 +500,56 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
         );
       })()}
     </section>
+  );
+}
+
+/**
+ * What turning Activated on for a row means: sell this one both sealed and
+ * activated, or only activated. Standard stays the default, so nothing here
+ * changes unless somebody says so.
+ */
+function ActivationDialog({ summary, onChoose, onClose }: {
+  summary: string; onChoose: (mode: "BOTH" | "ONLY") => void; onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+    return () => { if (d?.open) d.close(); };
+  }, []);
+  return (
+    <dialog ref={ref} className="confirm simv actv" aria-labelledby="actv-title"
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+      <div className="confirm-panel">
+        <div className="simv-head">
+          <span className="simv-icon actv-icon" aria-hidden="true"><Zap size={18} strokeWidth={2.25} /></span>
+          <div>
+            <h2 id="actv-title" className="confirm-title">Variant Configuration</h2>
+            <p className="confirm-detail">{summary}</p>
+          </div>
+          <button type="button" className="simv-x" aria-label="Close" onClick={onClose}><X size={16} aria-hidden="true" /></button>
+        </div>
+        <div className="actv-state">
+          <strong>Activated</strong>
+          <span>Default: Off (Standard)</span>
+        </div>
+        <h3 className="actv-h">Create activation variants</h3>
+        <div className="actv-options">
+          <button type="button" className="actv-opt" autoFocus onClick={() => onChoose("BOTH")}>
+            <strong>Create both</strong>
+            <span>Standard and activated, one after the other</span>
+          </button>
+          <button type="button" className="actv-opt" onClick={() => onChoose("ONLY")}>
+            <strong>Create Activated only</strong>
+            <span>This row becomes the activated phone</span>
+          </button>
+        </div>
+        <div className="confirm-actions">
+          <button type="button" className="ghost" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </dialog>
   );
 }
 

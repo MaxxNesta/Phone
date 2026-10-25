@@ -189,6 +189,8 @@ export async function scaffoldCompany(input: SetupInput) {
     // The rest of what the shop sells — Android, laptops, audio, accessories,
     // SIM cards, services — and its brands (migration 0149).
     await tx`select fn_seed_retail_catalogue(${co.id})`;
+    // Activated beside standard, for phones (migration 0153).
+    await tx`select fn_seed_activation(${co.id})`;
 
     await tx`
       insert into price_level (company_id, code, name, sort_order) values

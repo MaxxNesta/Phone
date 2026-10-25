@@ -191,7 +191,11 @@ export function ItemForm({
   const attributes = (variantAttributes ?? []).filter((a) =>
     (!a.identities || a.identities.includes(tracking)) &&
     !(a.not_for_brands ?? []).some((code) => brandCodes.includes(code.toUpperCase())));
-  const plan = useVariantPlan(attributes, hasVariants, codeMode, prefixOk ? prefix : "", tracking, itemName);
+  // Activation is a switch on each preview row, not a set of chips to pick from.
+  const activation = attributes.find((a) => a.code === "ACT");
+  const pickable = attributes.filter((a) => a.code !== "ACT");
+  const plan = useVariantPlan(pickable, hasVariants, codeMode, prefixOk ? prefix : "", tracking, itemName,
+    activation?.options[0] ? { attributeId: activation.id, optionId: activation.options[0].id } : null);
 
   // Is the typed code already somebody's? Asked a moment after typing stops,
   // so the answer is on screen before Save, not in an error after it.
@@ -553,7 +557,7 @@ export function ItemForm({
                 </div>
               </div>
               <div className="pf2-body">
-                <VariantOptions attributes={attributes} v={plan} />
+                <VariantOptions attributes={pickable} v={plan} />
               </div>
             </section>
           )}

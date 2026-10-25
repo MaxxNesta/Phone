@@ -724,9 +724,11 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       tracking: (string | null)[];
       /** Per combination: kept on purpose beside an identical one. */
       separate: boolean[];
+      /** Per combination: an activated phone — the same values with Activation on. */
+      activated: boolean[];
     } = (() => {
       const empty = { attributes: [] as string[], combos: [] as string[][], codes: null, modelCode: null,
-                      names: [], tracking: [], separate: [] };
+                      names: [], tracking: [], separate: [], activated: [] };
       const raw = str(fd, "variant_plan");
       if (!raw) return empty;
       try {
@@ -753,8 +755,9 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
         const names = list("names", (x) => (typeof x === "string" && x.trim() ? x.trim().slice(0, 200) : null));
         const tracking = list("tracking", (x) => (["IMEI", "SERIAL", "OPTIONAL", "NONE"].includes(String(x)) ? String(x) : null));
         const separate = list("separate", (x) => x === true);
+        const activated = list("activated", (x) => x === true);
         return attributes.length > 0 && combos.length > 0
-          ? { attributes, combos, codes, modelCode, names, tracking, separate } : empty;
+          ? { attributes, combos, codes, modelCode, names, tracking, separate, activated } : empty;
       } catch { return empty; }
     })();
 
@@ -899,6 +902,25 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
        * expand.
        */
       if (variantPlan.combos.length > 0) {
+        /* An activated phone carries the Activation value as one more option, so
+           it is a different configuration from the sealed one beside it. Added
+           here, before anything reads the combinations, so the duplicate check
+           and the names see it too. */
+        if (variantPlan.activated.some(Boolean)) {
+          const [act] = await tx`
+            select a.id as attr, o.id as opt, a.identities
+              from variant_attribute a
+              join variant_option o on o.attribute_id = a.id and o.code = 'ACTIVATED'
+             where a.company_id = ${co} and a.code = 'ACT'`;
+          if (!act) throw new Error("Activation is not set up here.");
+          if (act.identities && !(act.identities as string[]).includes(identity)) {
+            throw new Error("Activation is only offered for phones tracked by IMEI.");
+          }
+          if (!variantPlan.attributes.includes(act.attr as string)) variantPlan.attributes.push(act.attr as string);
+          variantPlan.combos = variantPlan.combos.map((c, i) =>
+            variantPlan.activated[i] && !c.includes(act.opt as string) ? [...c, act.opt as string] : c);
+        }
+
         // Set-based: a model with 1,000 combinations was ~7,000 round trips
         // when each variant, option, pack and price was its own insert.
         await tx`insert into item_variant_attribute ${tx(variantPlan.attributes.map((attributeId, order) =>
