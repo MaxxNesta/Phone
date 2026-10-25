@@ -7490,5 +7490,6 @@ button.imei-mcard:hover { border-color: var(--line); }
 .imei-split > span:last-child { text-align: right; }
 /* Wide screens: the page steps aside for the drawer instead of sitting under it. */
 @media (min-width: 1280px) {
-  html.imei-drawer-open main.main { padding-right: 532px; transition: padding-right 180ms ease; }
+  /* Everything under the top bar steps aside; the bar itself stays where it is. */
+  html.imei-drawer-open main.main > :not(.topbar) { margin-right: 532px; transition: margin-right 180ms ease; }
 }
