@@ -7389,7 +7389,7 @@ td .gr-trackmode + .gr-imei { margin-left: 8px; }
 /* The same card as the customer panel: rounded, under the top bar, 100vh − 96px
    tall (.cpanel), not edge to edge. */
 .imei-drawer {
-  position: fixed; top: 72px; right: 16px; z-index: 40; width: min(500px, calc(100vw - 32px));
+  position: fixed; top: 60px; right: 16px; z-index: 40; width: min(500px, calc(100vw - 32px));
   height: calc(100vh - 96px); min-height: 420px;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.08);
