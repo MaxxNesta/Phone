@@ -83,8 +83,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head">
-        <h1>IMEI Inventory</h1>
-        <HelpHint label="About IMEI Inventory">All serialized items with cost and status.</HelpHint>
+        <h1>IMEI Inventory <HelpHint label="About IMEI Inventory">All serialized items with cost and status.</HelpHint></h1>
         <BranchScope />
         {can(user, "inventory.manage") && (
           <div className="head-actions"><Link className="btn" href="/purchases/receive/new">{t("ph.receive")}</Link></div>
