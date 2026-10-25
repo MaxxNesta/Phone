@@ -7569,3 +7569,6 @@ button.imei-mcard:hover { border-color: var(--line); }
 .actv-opt:hover { border-color: var(--link); background: color-mix(in srgb, var(--link) 6%, var(--surface)); }
 .actv-opt strong { font-weight: 600; }
 .actv-opt span { font-size: var(--t-sm); color: var(--muted); }
+/* A table with a view switch in its bar has more to fit on one line: the search gives way first. */
+.dt-bar:has(.seg) .dt-search { flex-basis: 240px; min-width: 150px; }
+.dt-bar:has(.seg) .dt-filter { max-width: 11rem; }
