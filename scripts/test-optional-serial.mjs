@@ -220,8 +220,7 @@ try {
     `${sum.qty} / ${sum.value}`);
   check("the records stay two, with their own codes", (await sql`select count(*)::int n from item where id in (${a.id}, ${b.id})`)[0].n === 2);
 
-  console.log("
-  activated beside standard");
+  console.log("  activated beside standard");
   const [act] = await sql`
     select a.id as attr, o.id as opt, o.physical_value, a.identities from variant_attribute a
       join variant_option o on o.attribute_id = a.id and o.code = 'ACTIVATED'
