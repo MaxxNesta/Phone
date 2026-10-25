@@ -220,6 +220,28 @@ try {
     `${sum.qty} / ${sum.value}`);
   check("the records stay two, with their own codes", (await sql`select count(*)::int n from item where id in (${a.id}, ${b.id})`)[0].n === 2);
 
+  console.log("
+  activated beside standard");
+  const [act] = await sql`
+    select a.id as attr, o.id as opt, o.physical_value, a.identities from variant_attribute a
+      join variant_option o on o.attribute_id = a.id and o.code = 'ACTIVATED'
+     where a.company_id = ${co.id} and a.code = 'ACT'`;
+  check("Activation is a variant attribute with one value, Activated, for IMEI phones",
+    !!act && act.physical_value === "activated" && act.identities?.includes("IMEI"));
+  // 46MM / Black exists as TW004 (c); the same values with Activation on are another configuration.
+  const activated = await variant("TW011", "46MM");
+  check("before it is activated it is a twin of the sealed one",
+    (await sql`select members::int m from v_item_physical where item_id = ${activated.id}`)[0].m === 2);
+  await sql`insert into item_variant_option (item_id, option_id) values (${activated.id}, ${act.opt})`;
+  const after = await sql`select item_id, members::int as m, canonical_item_id from v_item_physical where item_id in (${c.id}, ${activated.id})`;
+  check("with Activation on, the two are different configurations, not twins",
+    after.length === 2 && after.every((r) => r.m === 1) && after[0].canonical_item_id !== after[1].canonical_item_id);
+  check("the form's duplicate key sees it too",
+    physicalKey([{ attributeId: "s", physical: "46mm" }, { attributeId: "c", physical: "black" }])
+    !== physicalKey([{ attributeId: "s", physical: "46mm" }, { attributeId: "c", physical: "black" }, { attributeId: act.attr, physical: "activated" }]));
+  const [sealed] = await sql`select count(*)::int n from item_variant_option where item_id = ${c.id} and option_id = ${act.opt}`;
+  check("the sealed phone has no Activation value — standard is the absence of one", sealed.n === 0);
+
   console.log(bad === 0 ? "\n  all checks passed\n" : `\n  ${bad} FAILED\n`);
   process.exitCode = bad === 0 ? 0 : 1;
 } catch (e) {
