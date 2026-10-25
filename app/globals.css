@@ -7493,3 +7493,39 @@ button.imei-mcard:hover { border-color: var(--line); }
   /* Everything under the top bar steps aside; the bar itself stays where it is. */
   html.imei-drawer-open main.main > :not(.topbar) { margin-right: 532px; transition: margin-right 180ms ease; }
 }
+
+/* ------- compact: the drawer and its cards fit without scrolling where they can ------- */
+.imei-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 640px) { .imei-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.imei-kpi { grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; padding: 8px 10px; }
+.imei-kpi-ico { width: 28px; height: 28px; border-radius: 8px; }
+.imei-kpi-body { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 0; }
+.imei-kpi-label { font-size: 11px; line-height: 1.3; }
+.imei-kpi-value { font-size: 1.1rem; line-height: 1.2; }
+.imei-kpi-share { font-size: 10px; gap: 6px; }
+
+.imei-dhead { padding: 8px 12px; }
+.imei-dhead h2 { font-size: 0.98rem; }
+.imei-dbody { padding: 10px 14px 14px; gap: 10px; }
+.imei-unit { grid-template-columns: 52px 1fr auto; gap: 10px; }
+.imei-photo { width: 52px; height: 52px; border-radius: 10px; }
+.imei-unit-text h3 { font-size: 0.95rem; margin: 0; }
+.imei-unit-text p { font-size: 12px; line-height: 1.35; }
+.imei-ids { gap: 6px 14px; }
+.imei-ids dt { font-size: 11px; }
+.imei-ids dd { margin: 0; font-size: 0.9rem; }
+.imei-money { gap: 6px; }
+.imei-mcard { padding: 7px 10px; gap: 0; border-radius: 10px; }
+.imei-mcard strong { font-size: 1rem; }
+.imei-mcard small { font-size: 10px; }
+.imei-tabs { gap: 14px; }
+.imei-tabs button { padding: 6px 0; }
+.imei-h { margin: 0; font-size: 0.9rem; }
+.imei-kv > div { padding: 5px 0; }
+.imei-actions { gap: 6px; }
+.imei-act { padding: 4px 10px; }
+.imei-mini th, .imei-mini td { padding: 5px 9px; }
+.imei-sources { gap: 6px; }
+.imei-sources li { padding: 7px 10px; }
+.imei-tl li { padding: 7px 0; }
+.imei-tl li + li::before { top: -7px; height: 14px; }

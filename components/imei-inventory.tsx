@@ -245,12 +245,10 @@ function Overview({ d, label, onTab }: { d: ImeiDrawerData; label: (s: string) =
     <>
       <h4 className="imei-h">Product &amp; Status</h4>
       <dl className="imei-kv">
-        <div><dt>Product / Variant</dt><dd>{u.itemName}</dd></div>
         <div><dt>SKU / Item Code</dt><dd className="m">{u.itemCode}</dd></div>
         <div><dt>Brand / Model</dt><dd>{[u.brand, u.model].filter(Boolean).join(" / ")}</dd></div>
         {u.parts.length > 0 && <div><dt>Variant Attributes</dt><dd className="imei-chips">{u.parts.map((p) => <span key={p.a} title={p.a}>{p.o}</span>)}</dd></div>}
         <div><dt>Status</dt><dd><StatusPill s={u.status} label={label(u.status)} />{u.wasReturned && <span className="imei-pill warn">Returned before</span>}</dd></div>
-        <div><dt>Location</dt><dd>{u.location ?? "—"}</dd></div>
         {u.supplier && <div><dt>Supplier</dt><dd>{u.supplier}</dd></div>}
         {u.customer && <div><dt>Customer</dt><dd>{u.customer} · <Doc id={u.outDocId} no={u.outDocNo} /></dd></div>}
         <div><dt>Warranty</dt><dd>{warranty
