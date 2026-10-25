@@ -7091,7 +7091,7 @@ select.pf2-filter { height: 32px !important; width: auto; font-size: 0.78rem !im
   background: var(--ground); border-bottom: 1px solid var(--line-soft);
 }
 .pf2-table td { padding: 5px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
-.pf2-table td.name { white-space: normal; color: var(--muted); min-width: 10rem; }
+.pf2-table td.name { white-space: normal; color: var(--muted); min-width: 17rem; }
 .pf2-table .k { width: 28px; padding-right: 0; }
 .pf2-table .n { width: 30px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pf2-table td.code { font-weight: 600; font-variant-numeric: tabular-nums; }
