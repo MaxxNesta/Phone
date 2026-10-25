@@ -276,7 +276,7 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
   return (
     <>
       <h4 className="imei-h">Purchase Information</h4>
-      <dl className="imei-kv">
+      <dl className="imei-kv two">
         <div><dt>Original purchase price</dt><dd>{c.fcPrice == null ? "—" : `${c.fcPrice.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${c.currency}`}</dd></div>
         {foreign && <div><dt>Exchange rate (at purchase)</dt><dd>{c.rate.toLocaleString("en-US", { maximumFractionDigits: 4 })} MMK / {c.currency}</dd></div>}
         <div><dt>Converted purchase cost</dt><dd>{money(c.purchase)} MMK</dd></div>
