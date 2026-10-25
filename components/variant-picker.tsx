@@ -428,8 +428,11 @@ export function VariantPreview({ v, mode, prefix, nextNo, name, canKeepDuplicate
                             if (e.target.value) next[c.key] = e.target.value; else delete next[c.key];
                             return next;
                           })}>
-                          <option value="">Default ({TRACK_SHORT[v.inherited(c.key)] ?? v.inherited(c.key)})</option>
-                          {VARIANT_TRACKING.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                          {/* The product's own, unmarked; a different choice shows in bold. */}
+                          <option value="">{TRACK_SHORT[v.inherited(c.key)] ?? v.inherited(c.key)}</option>
+                          {VARIANT_TRACKING.filter(([val]) => val !== v.inherited(c.key)).map(([val]) => (
+                            <option key={val} value={val}>{TRACK_SHORT[val]}</option>
+                          ))}
                         </select>
                       )}
                     </td>
