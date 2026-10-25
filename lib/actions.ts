@@ -1478,6 +1478,23 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
   redirectWithToast("/items/prices", await m("priceSet"));
 }
 
+/** Back to "no price": every price this item had at this level goes, so the cell reads Set again. */
+export async function clearItemPrice(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
+  try {
+    const co = await companyId();
+    const itemId = str(fd, "item_id"), levelId = str(fd, "price_level_id");
+    if (!itemId) return { error: await m("chooseItem") };
+    if (!levelId) return { error: await m("choosePriceLevel") };
+    await sql`delete from item_price where company_id = ${co} and item_id = ${itemId} and price_level_id = ${levelId}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/prices");
+  revalidatePath("/sales/new");
+  redirectWithToast("/items/prices", "Price removed");
+}
+
 export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {
   const me = await requirePermission("items.manage");
   // The shop sells Apple. Another brand is the owner's decision, made twice.

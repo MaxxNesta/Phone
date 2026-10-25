@@ -565,7 +565,7 @@ export async function inventorySummary(companyId: string, f: {
              jsonb_object_agg(location_id, qty) as by_loc
         from qty group by item_id
     )
-    select i.id, i.code, i.name, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
+    select i.id, i.code, i.name, coalesce(p.id, i.id) as model_id, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
            vp.canonical_item_id, coalesce(vp.members, 1)::int as members,
            g.name as category, coalesce(gp.name, g.name) as top_category, b.name as brand, i.tracks_serial, i.identity,
            coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
@@ -613,6 +613,33 @@ export async function inventorySummary(companyId: string, f: {
     locations,
     rows: f.status ? withStatus.filter((r) => r.status === f.status) : withStatus,
   };
+}
+
+/**
+ * Variant rows added up to their product model: iPhone 18 Pro Max once, not
+ * once per storage and colour. A model is low when any variant of it is, out
+ * only when all are, so the figure shown is the one that needs acting on.
+ */
+export function foldToModels(rows: any[]) {
+  const at = new Map<string, any>();
+  for (const r of rows) {
+    const m = at.get(r.model_id);
+    if (!m) {
+      at.set(r.model_id, { ...r, id: r.model_id, name: r.model, variant: null, codes: [r.code], variants: 1,
+        qty: Number(r.qty), value: Number(r.value), reserved: Number(r.reserved), available: Number(r.available),
+        min_qty: r.min_qty != null ? Number(r.min_qty) : null });
+      continue;
+    }
+    m.codes.push(r.code); m.variants++;
+    m.qty += Number(r.qty); m.value += Number(r.value); m.reserved += Number(r.reserved); m.available += Number(r.available);
+    if (r.min_qty != null) m.min_qty = (m.min_qty ?? 0) + Number(r.min_qty);
+    m.tracks_serial = m.tracks_serial || r.tracks_serial;
+    m.photo = m.photo ?? r.photo;
+    // LOW outranks HEALTHY outranks OUT.
+    const rank = { OUT: 0, HEALTHY: 1, LOW: 2 } as Record<string, number>;
+    if (rank[r.status] > rank[m.status]) m.status = r.status;
+  }
+  return [...at.values()].map((m) => ({ ...m, avg_cost: m.qty > 0 ? m.value / m.qty : null }));
 }
 
 /**

@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Box, Layers, Wallet, AlertTriangle, Search, Download, ChevronRight, CalendarClock } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
-import { inventorySummary, recentMovements, catalogFacets, stripCost } from "@/lib/phone";
+import { inventorySummary, recentMovements, catalogFacets, stripCost, foldToModels } from "@/lib/phone";
+import { HelpHint } from "@/components/help-hint";
 import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
 import { AutoApply } from "@/components/auto-apply";
 import { ShareDonut, MeasureBars, RevenueTrendChart } from "@/components/charts";
@@ -79,7 +80,6 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     overviewP,
     tableFiltered ? facetsP.then((f) => inventorySummary(co, {
       ...scope, combine: true, q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
-      status: sp.status || undefined,
     })) : overviewP,
     facetsP,
     recentMovements(co, 6, scope.locationId ? [scope.locationId] : scope.locs),
@@ -101,8 +101,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   ]);
 
   // Cost is rendered only for cost.view, and not sent to anyone else either.
-  const all = stripCost(overview.rows as Record<string, any>[], seeCost) as any[];
-  const rows = stripCost(table.rows as Record<string, any>[], seeCost) as any[];
+  // The summary is by product model; each variant has its own page (Stock).
+  const all = stripCost(foldToModels(overview.rows as any[]), seeCost) as any[];
+  const rows = (stripCost(foldToModels(table.rows as any[]), seeCost) as any[])
+    .filter((r) => !sp.status || r.status === sp.status);
   const onHand = all.filter((r) => Number(r.qty) > 0);
   const named = onHand.filter((r) => r.tracks_serial).reduce((s, r) => s + Number(r.qty), 0);
   const counted = onHand.filter((r) => !r.tracks_serial).reduce((s, r) => s + Number(r.qty), 0);
@@ -130,7 +132,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const allItems = sp.all === "1" || sp.status === "OUT";
   const shown = allItems ? [...rows] : rows.filter((r) => Number(r.qty) > 0 || Number(r.reserved) > 0);
   const SORTS: Record<string, { num: boolean; v: (r: any) => number | string }> = {
-    product: { num: false, v: (r) => `${r.model} ${r.variant ?? ""}`.toLowerCase() },
+    product: { num: false, v: (r) => String(r.model).toLowerCase() },
+    onhand: { num: true, v: (r) => Number(r.qty) },
     category: { num: false, v: (r) => String(r.category ?? "").toLowerCase() },
     reserved: { num: true, v: (r) => Number(r.reserved) },
     available: { num: true, v: (r) => Number(r.available) },
@@ -164,6 +167,19 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       {s === "HEALTHY" ? "In stock" : s === "LOW" ? "Low stock" : "Out of stock"}
     </span>
   );
+  /** The Stock page's card: a quiet icon, the figure, and a "?" for the detail. */
+  const kpi = (icon: React.ReactNode, label: string, value: React.ReactNode, hint: string, bad = false, href?: string) => {
+    const body = (
+      <>
+        <span className="kpi-icon" style={{ color: "var(--ink)", background: "var(--line-soft)" }}>{icon}</span>
+        <span className="kpi-body">
+          <span className="kpi-label">{label} <HelpHint label={label}>{hint}</HelpHint></span>
+          <span className="kpi-value" style={{ color: bad ? "var(--bad)" : undefined }}>{value}</span>
+        </span>
+      </>
+    );
+    return href ? <Link href={href} className="kpi">{body}</Link> : <div className="kpi">{body}</div>;
+  };
   const TABLE_KEYS = ["q", "category", "brand", "model", "status", "all", "sort", "dir"];
 
   return (
@@ -194,29 +210,16 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </form>
       </div>
 
-      <div className="inv-cards">
-        <div className="inv-card">
-          <span className="inv-ico tone-blue"><Box size={22} aria-hidden="true" /></span>
-          <div><span className="lbl">Total products</span><strong>{all.length.toLocaleString("en-US")}</strong>
-            <span className="sub">{onHand.length.toLocaleString("en-US")} in stock</span></div>
-        </div>
-        <div className="inv-card">
-          <span className="inv-ico tone-orange"><Layers size={22} aria-hidden="true" /></span>
-          <div><span className="lbl">Total on hand</span><strong>{(named + counted).toLocaleString("en-US")} <small>units</small></strong>
-            <span className="sub">IMEI / serial: {named.toLocaleString("en-US")} · Quantity: {counted.toLocaleString("en-US")}</span></div>
-        </div>
-        {seeCost && (
-          <div className="inv-card">
-            <span className="inv-ico tone-green"><Wallet size={22} aria-hidden="true" /></span>
-            <div><span className="lbl">Inventory value</span><strong>{money(totalValue)} <small>MMK</small></strong>
-              <span className="sub">At cost, landed costs included</span></div>
-          </div>
-        )}
-        <Link href={`/inventory${qsWithout(sp, ["status", "page"], { status: "LOW" })}`} className="inv-card">
-          <span className="inv-ico tone-red"><AlertTriangle size={22} aria-hidden="true" /></span>
-          <div><span className="lbl">Low stock items</span><strong className={low.length ? "bad" : undefined}>{low.length}</strong>
-            <span className="sub">At or below reorder level</span></div>
-        </Link>
+      <div className="kpis kpis-tiled kpis-compact">
+        {kpi(<Box size={16} aria-hidden="true" />, "Total products", all.length.toLocaleString("en-US"),
+          `${onHand.length.toLocaleString("en-US")} product models in stock.`)}
+        {kpi(<Layers size={16} aria-hidden="true" />, "Total on hand", `${(named + counted).toLocaleString("en-US")} units`,
+          `IMEI / serial: ${named.toLocaleString("en-US")} · Quantity: ${counted.toLocaleString("en-US")}`)}
+        {seeCost && kpi(<Wallet size={16} aria-hidden="true" />, "Inventory value", `${money(totalValue)} MMK`,
+          "At cost, landed costs included.")}
+        {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low stock items", low.length,
+          "Models with a variant at or below its reorder level.", low.length > 0,
+          `/inventory${qsWithout(sp, ["status", "page"], { status: "LOW" })}`)}
       </div>
 
       {/* The sales report's chart row: two equal cards, the same frame, only
@@ -283,7 +286,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <thead>
               <tr>
                 <Th k="product" label="Product" /><Th k="category" label="Category" />
-                <Th k="reserved" label="Reserved" num /><Th k="available" label="Available" num />
+                <Th k="onhand" label="On hand" num /><Th k="reserved" label="Reserved" num /><Th k="available" label="Available" num />
                 {seeCost && <><Th k="cost" label="Avg FIFO cost (MMK)" num /><Th k="value" label="Stock value (MMK)" num /></>}
                 <Th k="status" label="Status" /><th aria-label="Open" />
               </tr>
@@ -295,12 +298,13 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                     <span className="prod">
                       {r.photo && <span className="thumb"><img src={r.photo} alt="" /></span>}
                       <span className="prod-text">
-                        <div className="prod-name clamp2" title={r.model}>{r.model}{r.variant ? ` ${r.variant}` : ""}</div>
-                        {r.codes?.length > 1 && <div className="subline" title="One configuration kept under these codes">{r.codes.join(" · ")}</div>}
+                        <div className="prod-name clamp2" title={r.model}>{r.model}</div>
+                        <div className="subline">{r.variants === 1 ? "1 variant" : `${r.variants} variants`}</div>
                       </span>
                     </span>
                   </td>
                   <td>{r.category}</td>
+                  <td className="num">{r.qty}</td>
                   <td className="num">{r.reserved}</td>
                   <td className="num">{r.available}</td>
                   {seeCost && <>
@@ -312,7 +316,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                 </tr>
               ))}
               {shown.length === 0 && (
-                <tr><td colSpan={seeCost ? 8 : 6} className="page-sub">
+                <tr><td colSpan={seeCost ? 9 : 7} className="page-sub">
                   {allItems ? t("sum.noMatch") : <>{t("sum.nothingInStock")} <Link href={`/inventory${qsWithout(sp, ["all", "page"], { all: "1" })}`}>{t("sum.showAllItems")}</Link></>}
                 </td></tr>
               )}
@@ -331,7 +335,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <tbody>
               {low.slice(0, 5).map((r) => (
                 <tr key={r.id}>
-                  <td className="clip" title={`${r.model} ${r.variant ?? ""}`}>{r.model}{r.variant ? ` ${r.variant}` : ""}</td>
+                  <td className="clip" title={r.model}>{r.model}</td>
                   <td className="clip">{r.top_category ?? r.category}</td>
                   <td className="num bad">{r.available}</td>
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>

@@ -7572,3 +7572,16 @@ button.imei-mcard:hover { border-color: var(--line); }
 /* A table with a view switch in its bar has more to fit on one line: the search gives way first. */
 .dt-bar:has(.seg) .dt-search { flex-basis: 240px; min-width: 150px; }
 .dt-bar:has(.seg) .dt-filter { max-width: 11rem; }
+
+/* Stock Position's detail tabs: plain text on a single rule, nothing rounded on hover or click. */
+.stk-tabs .stk-tab, .stk-tabs .stk-tab:hover, .stk-tabs .stk-tab:focus, .stk-tabs .stk-tab:active {
+  background: none; box-shadow: none; border-radius: 0; border-width: 0 0 2px; border-style: solid; border-color: transparent;
+  color: var(--muted); padding: 0.6rem 0; margin-bottom: -1px; outline: none;
+}
+.stk-tabs .stk-tab:hover { color: var(--ink); }
+.stk-tabs .stk-tab.on, .stk-tabs .stk-tab.on:hover { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.stk-tabs .stk-tab:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+a.kpi { color: inherit; text-decoration: none; }
+a.kpi:hover { border-color: var(--ink-soft); }
+/* The bar's selects keep the width of their own text; the search is what gives way when the line is tight. */
+.dt-bar:has(.seg) select.dt-filter { flex: none; min-width: max-content; }

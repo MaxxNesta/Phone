@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import type { ActionResult } from "@/lib/actions";
+import { clearItemPrice, type ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
 
 type Level = {
@@ -44,6 +44,11 @@ export function PriceRow({
     action as never, null,
   );
 
+  const [clearState, clearAction, clearing] = useActionState<ActionResult | null, FormData>(
+    clearItemPrice as never, null,
+  );
+  const editingLevel = row.levels.find((l) => l.levelId === editing);
+
   return (
     <>
       <tr>
@@ -71,7 +76,7 @@ export function PriceRow({
       {editing && (
         <tr>
           <td colSpan={2 + row.levels.length}>
-            {state && "error" in state && <div className="alert">{state.error}</div>}
+            {[state, clearState].map((s) => s && "error" in s && <div key={s.error} className="alert">{s.error}</div>)}
             <form action={formAction} className="form">
               <input type="hidden" name="item_id" value={row.itemId} />
               <input type="hidden" name="price_level_id" value={editing} />
@@ -113,6 +118,14 @@ export function PriceRow({
                 </button>
               </div>
             </form>
+            {editingLevel?.price != null && (
+              /* Back to the default: no price at all, which is not the same as a price of 0. */
+              <form action={clearAction} className="actions">
+                <input type="hidden" name="item_id" value={row.itemId} />
+                <input type="hidden" name="price_level_id" value={editing} />
+                <button type="submit" className="ghost" disabled={clearing}>Remove price (no price)</button>
+              </form>
+            )}
           </td>
         </tr>
       )}

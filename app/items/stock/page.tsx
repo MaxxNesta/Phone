@@ -408,8 +408,8 @@ export default async function Stock({
             ]}
             columns={[
               { key: "expand", label: "" },
-              { key: "name", label: "Product", sortable: true },
               { key: "code", label: "SKU", sortable: true },
+              { key: "name", label: "Product", sortable: true },
               { key: "onHand", label: t("onHand"), sortable: true, align: "r" },
               ...(anyConsigned
                 ? [{ key: "consignedQty", label: t("stk.consigned"), sortable: true, align: "r" as const }]

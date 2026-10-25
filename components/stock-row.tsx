@@ -79,6 +79,7 @@ export function StockRow({ item, columnCount, showConsigned }:
             <ChevronRight size={15} aria-hidden="true" />
           </button>
         </td>
+        <td className="code" title={item.code}>{item.code}</td>
         <td className="wrap">
           <button type="button" className="stk-prod" onClick={() => setOpen(!open)}>
             {item.photoSrc && (
@@ -94,7 +95,6 @@ export function StockRow({ item, columnCount, showConsigned }:
             </span>
           </button>
         </td>
-        <td className="code" title={item.code}>{item.code}</td>
         <td className="r stk-onhand">{qty(item.onHand)}</td>
         {showConsigned && (
           <td className="r">{item.consignedQty > 0
@@ -117,11 +117,16 @@ export function StockRow({ item, columnCount, showConsigned }:
                  ...(item.tracksSerial ? [["units", `${item.uomCode === "PCS" ? "IMEI" : "IMEI / serial"} list (${qty(item.onHand)})`]] : []),
                  ["moves", "Recent transactions"]] as [typeof tab, string][]).map(([k, label]) => (
                 <button key={k} type="button" role="tab" aria-selected={tab === k}
-                  className={tab === k ? "on" : undefined} onClick={() => setTab(k)}>{label}</button>
+                  className={tab === k ? "stk-tab on" : "stk-tab"} onClick={() => setTab(k)}>{label}</button>
               ))}
             </nav>
             {tab === "details" && <Details item={item} parts={parts} avg={avg} />}
-            {tab === "warehouses" && <Warehouses item={item} wide />}
+            {tab === "warehouses" && <>
+              <Warehouses item={item} wide />
+              {item.incomingQty > 0 && (
+                <p className="hint">{qty(item.incomingQty)} on order · {qty(item.projected)} projected once it arrives.</p>
+              )}
+            </>}
             {tab === "units" && <Units itemId={item.id} />}
             {tab === "moves" && <Moves itemId={item.id} />}
           </td>
@@ -147,13 +152,6 @@ function Details({ item, parts, avg }: { item: StockRowItem; parts: VariantPart[
           {item.brandName && <div><dt>Brand</dt><dd>{item.brandName}</dd></div>}
           {item.consignors.length > 0 && <div><dt>Consignor</dt><dd>{item.consignors.join(", ")}</dd></div>}
         </dl>
-      </section>
-      <section>
-        <h3>Stock by warehouse</h3>
-        <Warehouses item={item} />
-        {(item.incomingQty > 0) && (
-          <p className="hint">{qty(item.incomingQty)} on order · {qty(item.projected)} projected once it arrives.</p>
-        )}
       </section>
       <section>
         <h3>Cost information (MMK)</h3>
