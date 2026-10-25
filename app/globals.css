@@ -7209,7 +7209,10 @@ a.inv-export { display: inline-flex; align-items: center; gap: 6px; height: 36px
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .seg > a { padding: 0.38rem 0.75rem; font-size: var(--t-sm); color: var(--ink); text-decoration: none; }
 .seg > a + a { border-left: 1px solid var(--line); }
-.seg > a[data-active="true"] { background: var(--brand); color: #fff; }
+/* The chosen one is the ink on the surface — readable in either appearance, and no colour of its own. */
+.seg > a[data-active="true"] { background: var(--ink); color: var(--surface); }
+.seg > a:not([data-active="true"]):hover { background: var(--line-soft); }
+.seg { flex: none; white-space: nowrap; }
 
 .stk-tabs {
   position: sticky; left: 0;

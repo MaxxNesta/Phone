@@ -7,6 +7,7 @@ import { phoneStock, phoneStockFacets, stripCost, serialKpis } from "@/lib/phone
 import { Boxes, PackageCheck, Lock, ShoppingBag, Search } from "lucide-react";
 import { PAGE_SIZE } from "@/lib/paging";
 import { Pager } from "@/components/pager";
+import { HelpHint } from "@/components/help-hint";
 import { AutoApply } from "@/components/auto-apply";
 import { ImeiTable, type ImeiRow } from "@/components/imei-inventory";
 import { getTranslations } from "next-intl/server";
@@ -83,8 +84,8 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
     <>
       <div className="page-head">
         <h1>IMEI Inventory</h1>
+        <HelpHint label="About IMEI Inventory">All serialized items with cost and status.</HelpHint>
         <BranchScope />
-        <p className="page-sub">All serialized items with cost and status</p>
         {can(user, "inventory.manage") && (
           <div className="head-actions"><Link className="btn" href="/purchases/receive/new">{t("ph.receive")}</Link></div>
         )}

@@ -323,7 +323,7 @@ export default async function Stock({
                     ...reorderableLocations.map((l) => ({ value: l.id, label: l.name || l.code }))]} />
       )}
       <ParamSelect param="zeros" label="Stock" keep={keep} value={showZeros ? "1" : ""}
-        options={[{ value: "", label: "Stock: In stock" }, { value: "1", label: "Stock: All items" }]} />
+        options={[{ value: "", label: "In stock" }, { value: "1", label: "All items" }]} />
     </>
   );
   const viewSwitch = hasVariants && (
@@ -345,7 +345,8 @@ export default async function Stock({
 
   const kpi = (icon: React.ReactNode, tone: string, label: string, value: React.ReactNode, hint: string, bad = false) => (
     <div className="kpi">
-      <span className="kpi-icon" style={{ color: tone, background: `color-mix(in srgb, ${tone} 12%, transparent)` }}>
+      {/* One quiet colour for every mark: the figure is what stands out, not its icon. */}
+      <span className="kpi-icon" data-tone={tone} style={{ color: "var(--ink)", background: "var(--line-soft)" }}>
         {icon}
       </span>
       <span className="kpi-body">
@@ -358,7 +359,6 @@ export default async function Stock({
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">{t("stk.eyebrow")}</span>
         <h1>{t("stk.title")}</h1>
         <BranchScope />
       </div>
