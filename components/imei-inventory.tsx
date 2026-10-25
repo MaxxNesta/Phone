@@ -154,8 +154,8 @@ function ImeiDrawer({ id, tab, onTab, onClose, prev, next }: {
     <aside ref={panel} className="imei-drawer" role="dialog" aria-modal="false" aria-labelledby="imei-drawer-title" tabIndex={-1}>
       <header className="imei-dhead">
         <span className="imei-nav">
-          <button type="button" onClick={prev} disabled={!prev} aria-label="Previous unit"><ChevronLeft size={16} /></button>
-          <button type="button" onClick={next} disabled={!next} aria-label="Next unit"><ChevronRight size={16} /></button>
+          <button type="button" className="imei-step" onClick={prev} disabled={!prev} aria-label="Previous unit"><ChevronLeft size={16} /></button>
+          <button type="button" className="imei-step" onClick={next} disabled={!next} aria-label="Next unit"><ChevronRight size={16} /></button>
         </span>
         <h2 id="imei-drawer-title">IMEI Details</h2>
         <button type="button" className="imei-x" onClick={onClose} aria-label="Close"><X size={18} /></button>
@@ -211,7 +211,7 @@ function ImeiDrawer({ id, tab, onTab, onClose, prev, next }: {
 
             <nav className="imei-tabs" role="tablist" aria-label="Unit details">
               {tabs.map(([k, l]) => (
-                <button key={k} type="button" role="tab" aria-selected={current === k} onClick={() => onTab(k)}>{l}</button>
+                <button key={k} type="button" role="tab" className="imei-tab" aria-selected={current === k} onClick={() => onTab(k)}>{l}</button>
               ))}
             </nav>
 

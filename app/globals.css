@@ -7541,3 +7541,6 @@ button.imei-mcard:hover { border-color: var(--line); }
 .imei-sources li { grid-template-columns: auto minmax(0, 1fr) auto; padding: 6px 10px; }
 .imei-sources li > span { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .imei-sources small { display: inline; font-size: 11px; }
+.imei-step:hover:not(:disabled) { background: var(--line-soft); }
+.imei-mini tbody tr, .imei-mini tfoot tr, .imei-mini thead tr { height: auto; }
+.imei-mini { font-size: 12.5px; }
