@@ -7688,3 +7688,23 @@ button.ie-btn.primary:hover:not(:disabled) { filter: brightness(0.94); }
   .ie-hero { flex-wrap: wrap; }
   .ie-state { grid-column: 1 / -1; justify-self: start; }
 }
+
+/* All products: Export's column chooser, in the Columns menu's frame. */
+.dt-cols-title { display: block; padding: 4px 8px 6px; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+button.dt-cols-go { width: 100%; margin-top: 6px; padding: 0.5rem 0.8rem; border: 0; border-radius: 9px; background: var(--link); color: #fff; font: inherit; font-size: var(--t-sm); font-weight: 600; cursor: pointer; }
+button.dt-cols-go:hover:not(:disabled) { background: var(--link); filter: brightness(0.94); }
+button.dt-cols-go:disabled { opacity: 0.45; cursor: not-allowed; }
+.card-head .dt-cols { position: relative; }
+
+/* The variants grid, in the item editor's frame. */
+.vg-card { padding: var(--s2) var(--s3); }
+.vg-card .tablewrap { border: 0; }
+.vg-card table th { color: var(--muted); font-weight: 500; font-size: 0.75rem; }
+.vg-card caption { color: var(--ink); }
+a.vg-open { display: inline-block; margin-left: 6px; font-size: 0.75rem; color: var(--link); text-decoration: none; }
+a.vg-open:hover { text-decoration: underline; }
+.ie-title h1 .helphint { vertical-align: middle; }
+.vg-card .ie-bar { margin: var(--s2) calc(-1 * var(--s3)) calc(-1 * var(--s2)); padding: 0.7rem var(--s3); border-radius: 0 0 14px 14px; }
+.vg-card .ie-bar > .page-sub:first-of-type { margin-left: auto; }
+.vg-card .ie-bar .ie-btn.primary { order: 2; }
+.vg-card td.narrow input[type="number"] { min-width: 6.5rem; }

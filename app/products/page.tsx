@@ -2,12 +2,13 @@ import Link from "next/link";
 import { Package, Smartphone, Headphones, AlertTriangle, Plus } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
-import { inventorySummary, catalogFacets } from "@/lib/phone";
-import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
+import { productList, EXPORT_COLUMNS } from "@/lib/products";
+import { CatalogFilterFields } from "@/components/catalog-filters";
+import { ProductColumns, ProductExport } from "@/components/product-tools";
+import { HelpHint } from "@/components/help-hint";
 import { AutoApply } from "@/components/auto-apply";
 import { BulkDelete, PickPage } from "@/components/bulk-delete";
 import { money, shortDate } from "@/lib/format";
-import { Stat } from "@/components/stat";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { getTranslations } from "next-intl/server";
@@ -25,30 +26,36 @@ export default async function Products({ searchParams }: { searchParams: Promise
   const sp = await searchParams;
   const co = user.companyId;
 
-  const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
-  const [{ rows }, facets, groups, lastBuy] = await Promise.all([
-    facetsP.then((f) => inventorySummary(co, { q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f) })),
-    facetsP,
+  const [{ all: rows, list, facets, levels }, groups] = await Promise.all([
+    productList(co, sp),
     sql`select g.id, g.name,
                (select count(*)::int from item i join item_group gg on gg.id = i.item_group_id
                  where i.company_id = ${co} and i.is_active
                    and not exists (select 1 from item c where c.parent_item_id = i.id)
                    and (gg.id = g.id or gg.parent_id = g.id)) as n
           from item_group g where g.company_id = ${co} and g.parent_id is null order by g.name`,
-    sql`select dl.item_id, max(d.posting_date) as d from document_line dl
-          join document d on d.id = dl.document_id
-         where d.company_id = ${co} and d.doc_type = 'GOODS_RECEIPT' and d.status = 'POSTED'
-         group by dl.item_id`,
   ]);
-  const bought = new Map(lastBuy.map((r: any) => [r.item_id, r.d]));
   const multiBrand = facets.brands.length > 1;
-  const tracking = sp.tracking;
-  const list = rows.filter((r: any) => !tracking || (r.identity ?? (r.tracks_serial ? "IMEI" : "NONE")) === tracking);
   const serialized = rows.filter((r: any) => r.tracks_serial).length;
   const low = rows.filter((r: any) => r.status !== "HEALTHY").length;
 
   const pg = paginate(list, sp.page);
-  const filtered = Object.entries(sp).some(([k, v]) => v && (["q", "category", "model", "tracking"].includes(k) || k.startsWith("a_")));
+  // Columns as the Columns menu and Export name them; price levels after Selling price.
+  const levelCols = levels.map((l) => ({ key: `level:${l.id}`, label: l.name }));
+  const base = EXPORT_COLUMNS.filter((c) => multiBrand || c.key !== "brand").map((c) => ({ key: c.key as string, label: c.label as string }));
+  const at = base.findIndex((c) => c.key === "price") + 1;
+  const exportCols = [...base.slice(0, at), ...levelCols, ...base.slice(at)];
+  const toggleCols = exportCols.filter((c) => !["variant", "on_hand"].includes(c.key));
+  const kpi = (icon: React.ReactNode, label: string, value: React.ReactNode, hint: string, bad = false) => (
+    <div className="kpi">
+      <span className="kpi-icon" style={{ color: "var(--ink)", background: "var(--line-soft)" }}>{icon}</span>
+      <span className="kpi-body">
+        <span className="kpi-label">{label} <HelpHint label={label}>{hint}</HelpHint></span>
+        <span className="kpi-value" style={{ color: bad ? "var(--bad)" : undefined }}>{value}</span>
+      </span>
+    </div>
+  );
+  const filtered = Object.entries(sp).some(([k, v]) => v && (["q", "category", "model", "tracking", "status"].includes(k) || k.startsWith("a_")));
   return (
     <>
       <div className="page-head hero">
@@ -57,11 +64,11 @@ export default async function Products({ searchParams }: { searchParams: Promise
         <div className="head-actions"><Link className="btn" href="/items/new"><Plus size={14} /> {t("new")}</Link></div>
       </div>
 
-      <div className="stats">
-        <Stat icon={<Package size={20} />} label={t("statTotal")} value={rows.length} />
-        <Stat icon={<Smartphone size={20} />} tone="slate" label={t("statSerialized")} value={serialized} note={t("statSerializedNote")} />
-        <Stat icon={<Headphones size={20} />} tone="violet" label={t("statAccessories")} value={rows.length - serialized} note={t("statAccessoriesNote")} />
-        <Stat icon={<AlertTriangle size={20} />} tone="amber" label={t("statLow")} value={low} note={t("statLowNote")} noteTone="warn" />
+      <div className="kpis kpis-tiled kpis-compact">
+        {kpi(<Package size={16} aria-hidden="true" />, t("statTotal"), rows.length, "Every sellable product and variant.")}
+        {kpi(<Smartphone size={16} aria-hidden="true" />, t("statSerialized"), serialized, t("statSerializedNote"))}
+        {kpi(<Headphones size={16} aria-hidden="true" />, t("statAccessories"), rows.length - serialized, t("statAccessoriesNote"))}
+        {kpi(<AlertTriangle size={16} aria-hidden="true" />, t("statLow"), low, t("statLowNote"), low > 0)}
       </div>
 
       <div>
@@ -81,6 +88,15 @@ export default async function Products({ searchParams }: { searchParams: Promise
                   <option value="NONE">{c("quantity")}</option>
                 </select>
               </div>
+              <div className="field">
+                <label htmlFor="ps">{c("status")}</label>
+                <select id="ps" name="status" defaultValue={sp.status ?? ""}>
+                  <option value="">{c("all")}</option>
+                  <option value="HEALTHY">In stock</option>
+                  <option value="LOW">Low stock</option>
+                  <option value="OUT">Out of stock</option>
+                </select>
+              </div>
               <AutoApply />
               <button className="btn ghost" data-apply>{c("filter")}</button>
             </div>
@@ -90,16 +106,23 @@ export default async function Products({ searchParams }: { searchParams: Promise
           <div className="card" style={{ overflowX: "auto" }}>
             <div className="card-head">
               <h2>{t("title")}</h2>
+              <span className="dt-spacer" />
+              <ProductExport total={list.length} columns={exportCols} />
+              <ProductColumns columns={toggleCols} defaultHidden={levels.map((l) => `level:${l.id}`)} />
               <BulkDelete filtered={filtered}
                 shown={list.map((r: any) => ({ id: r.id, name: [r.model, r.variant].filter(Boolean).join(" · ") }))} />
             </div>
-            <table>
+            <table className="prodtable">
               <thead>
                 <tr>
                   <th className="tight"><PickPage /></th>
-                  <th>{c("product")}</th>{multiBrand && <th>{c("brand")}</th>}<th>{c("category")}</th><th>{c("tracking")}</th>
-                  <th className="num">{t("sellingPrice")}</th><th className="num">{t("available")}</th><th>{c("status")}</th>
-                  <th>{t("lastPurchase")}</th><th />
+                  <th data-col="code">SKU</th>
+                  <th data-col="product">{c("product")}</th>{multiBrand && <th data-col="brand">{c("brand")}</th>}
+                  <th data-col="category">{c("category")}</th><th data-col="tracking">{c("tracking")}</th>
+                  <th className="num" data-col="price">{t("sellingPrice")}</th>
+                  {levels.map((l) => <th key={l.id} className="num" data-col={`level:${l.id}`}>{l.name}</th>)}
+                  <th className="num" data-col="available">{t("available")}</th><th data-col="status">{c("status")}</th>
+                  <th data-col="last_purchase">{t("lastPurchase")}</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -108,7 +131,8 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     <td className="tight">
                       <input type="checkbox" className="bulk-pick" value={r.id} aria-label={c("selectItem", { name: r.model })} />
                     </td>
-                    <td>
+                    <td className="code" data-col="code">{r.code}</td>
+                    <td data-col="product">
                       <span className="prod">
                         {/* A photo when there is one; no empty box when there is not. */}
                         {r.photo && <span className="thumb"><img src={r.photo} alt="" /></span>}
@@ -118,21 +142,23 @@ export default async function Products({ searchParams }: { searchParams: Promise
                         </span>
                       </span>
                     </td>
-                    {multiBrand && <td>{r.brand ?? "—"}</td>}
-                    <td>{r.category}</td>
-                    <td><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? c("serial") : r.tracks_serial ? "IMEI" : c("quantity")}</span></td>
-                    <td className="num">{r.price != null ? money(r.price) : "—"}</td>
-                    <td className={`num ${r.status === "HEALTHY" ? "ok-qty" : "low"}`}>{c("units", { n: r.available })}</td>
-                    <td>
+                    {multiBrand && <td data-col="brand">{r.brand ?? "—"}</td>}
+                    <td data-col="category">{r.category}</td>
+                    <td data-col="tracking"><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? c("serial") : r.tracks_serial ? "IMEI" : c("quantity")}</span></td>
+                    <td className="num" data-col="price">{r.price != null ? money(r.price) : "—"}</td>
+                    {levels.map((l) => <td key={l.id} className="num" data-col={`level:${l.id}`}>
+                      {r.levels[l.id] != null ? money(r.levels[l.id]) : "—"}</td>)}
+                    <td data-col="available" className={`num ${r.status === "HEALTHY" ? "ok-qty" : "low"}`}>{c("units", { n: r.available })}</td>
+                    <td data-col="status">
                       <span className={`pill ${r.status === "HEALTHY" ? "ok" : "warn"}`}>
                         {r.status === "HEALTHY" ? c("active") : r.status === "LOW" ? c("lowStock") : c("outOfStock")}
                       </span>
                     </td>
-                    <td>{bought.get(r.id) ? shortDate(bought.get(r.id)) : "—"}</td>
+                    <td data-col="last_purchase">{r.last_bought ? shortDate(r.last_bought) : "—"}</td>
                     <td><Link href={`/items/${r.id}`} aria-label={c("editItem", { name: r.name })}>{c("edit")}</Link></td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={multiBrand ? 10 : 9} className="page-sub">{t("noMatch")}</td></tr>}
+                {list.length === 0 && <tr><td colSpan={(multiBrand ? 11 : 10) + levels.length} className="page-sub">{t("noMatch")}</td></tr>}
               </tbody>
             </table>
             <Pager p={pg} params={sp} />

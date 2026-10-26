@@ -6,6 +6,7 @@ import { saveVariantGrid } from "@/lib/actions";
 import { VariantGrid, type GridRow } from "@/components/variant-grid";
 import { variantPhotos } from "@/lib/variants";
 import { HelpHint } from "@/components/help-hint";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 import { getTranslations } from "next-intl/server";
 
 /**
@@ -76,27 +77,16 @@ export default async function VariantsOfProduct({
   }));
 
   return (
-    <>
-      <div className="page-head">
-        <span className="eyebrow">
-          <Link href="/items" style={{ color: "inherit" }}>{it("title")}</Link> · {parent.code}
-        </span>
-        <h1>{g("titleVariants", { name: parent.name })}</h1>
-        <HelpHint>{g("help")}</HelpHint>
-      </div>
+    <div className="ie">
+      <Breadcrumbs trail={[{ label: "Products", href: "/items" }, { label: parent.name, href: `/items/${parent.id}` },
+                           { label: "Variants" }]} />
+      <header className="ie-title">
+        <h1>{g("titleVariants", { name: parent.name })} <HelpHint>{g("help")}</HelpHint></h1>
+        <p>{parent.code} · {g("count", { n: rows.length })} · {g("scanHint")}</p>
+      </header>
 
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>{shown.length === rows.length ? g("count", { n: rows.length }) : shown[0].name}</h2>
-            {shown.length !== rows.length && (
-              <Link href={`/items/${parent.id}/variants`} className="linkish">{g("showAll", { n: rows.length })}</Link>
-            )}
-            <span className="page-sub">
-              {g("scanHint")}
-            </span>
-          </div>
-          <div className="card-body">
+      <section className="ie-card vg-card">
+          <div>
             <VariantGrid
               action={saveVariantGrid}
               parentId={parent.id}
@@ -108,8 +98,7 @@ export default async function VariantsOfProduct({
                                       where iva.item_id = ${parent.id} and a.code = 'ACT'`).length > 0}
             />
           </div>
-        </div>
       </section>
-    </>
+    </div>
   );
 }

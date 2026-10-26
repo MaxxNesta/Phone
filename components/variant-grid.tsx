@@ -233,6 +233,7 @@ export function VariantGrid({
                         only needs the two words. */}
                     <VariantTags className="vartags-inline"
                       variant={v.parts?.map((x) => ({ a: x.attribute, o: x.option })) ?? null} />
+                    <a href={`/items/${v.id}/edit`} className="vg-open">Edit this variant</a>
                   </td>
                   {/* The shop's own code (IPC010) can be typed here; the generated
                       one stays until somebody does. */}
@@ -250,7 +251,7 @@ export function VariantGrid({
                       onChange={(e) => set(r.id, { barcode: e.target.value })}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); nextBarcode(e.currentTarget); } }}
                       placeholder={g("scanOrType")}
-                      style={dup ? { borderColor: "var(--bad)" } : undefined}
+                      style={{ minWidth: "10rem", ...(dup ? { borderColor: "var(--bad)" } : {}) }}
                     />
                     {dup && (
                       <div className="subline" style={{ color: "var(--bad)" }}>
@@ -286,8 +287,9 @@ export function VariantGrid({
         </table>
       </div>
 
-      <div className="actions">
-        <button type="submit" disabled={pending || !dirty || clashing.size > 0 || codeClash.size > 0 || codeEmpty}>
+      <div className="ie-bar">
+        <a className="ie-btn" href="/items">Back to products</a>
+        <button type="submit" className="ie-btn primary" disabled={pending || !dirty || clashing.size > 0 || codeClash.size > 0 || codeEmpty}>
           {pending ? c("saving") : g("save", { n: rows.length })}
         </button>
         {(codeClash.size > 0 || codeEmpty) && (
