@@ -4661,6 +4661,58 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
   return { ok: true };
 }
 
+/**
+ * Inventory Aging settings: the company's age cut-offs and names, its pace
+ * cut-offs, and any category that keeps cut-offs of its own. A category set
+ * back to the default loses its row.
+ */
+export async function saveAgingSettings(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("inventory.manage");
+  try {
+    const co = await companyId();
+    const v = JSON.parse(str(fd, "settings") || "{}") as {
+      thresholds: number[]; labels: string[]; fastDays: number; slowDays: number;
+      overrides: { groupId: string; thresholds: number[] }[];
+    };
+    const rising = (t: number[]) => t.length === 3 && t.every((n) => Number.isInteger(n) && n > 0 && n <= 3650)
+      && t[0] < t[1] && t[1] < t[2];
+    if (!rising(v.thresholds)) return { error: "Each age limit must be a whole number of days, larger than the one before." };
+    const labels = (v.labels ?? []).map((l) => String(l ?? "").trim().slice(0, 30));
+    if (labels.length !== 4 || labels.some((l) => !l)) return { error: "Every age group needs a name." };
+    if (!(Number.isInteger(v.fastDays) && Number.isInteger(v.slowDays) && v.fastDays > 0 && v.fastDays < v.slowDays)) {
+      return { error: "Fast must be fewer days of stock than Slow." };
+    }
+    const bad = (v.overrides ?? []).find((o) => !rising(o.thresholds));
+    if (bad) return { error: "A category's age limits must each be larger than the one before." };
+    const groups = (v.overrides ?? []).map((o) => o.groupId);
+    const mine = groups.length
+      ? await sql`select id from item_group where company_id = ${co} and parent_id is null and id = any(${groups}::uuid[])` : [];
+    if (mine.length !== groups.length) return { error: "That category is not in this company." };
+
+    await sql.begin(async (tx) => {
+      await tx`
+        insert into inventory_aging_setting (company_id, thresholds, labels, pace_fast_days, pace_slow_days)
+        values (${co}, ${v.thresholds}, ${labels}, ${v.fastDays}, ${v.slowDays})
+        on conflict (company_id) where item_group_id is null
+        do update set thresholds = excluded.thresholds, labels = excluded.labels,
+                      pace_fast_days = excluded.pace_fast_days, pace_slow_days = excluded.pace_slow_days, updated_at = now()`;
+      await tx`delete from inventory_aging_setting where company_id = ${co} and item_group_id is not null
+                 and item_group_id <> all(${groups}::uuid[])`;
+      for (const o of v.overrides ?? []) {
+        await tx`
+          insert into inventory_aging_setting (company_id, item_group_id, thresholds)
+          values (${co}, ${o.groupId}, ${o.thresholds})
+          on conflict (company_id, item_group_id) where item_group_id is not null
+          do update set thresholds = excluded.thresholds, updated_at = now()`;
+      }
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/reports/phone-stock");
+  return { ok: true };
+}
+
 export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("purchase.post");
   try {
