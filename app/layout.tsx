@@ -13,7 +13,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { SidebarCollapse } from "@/components/sidebar-collapse";
 import { Toast } from "@/components/toast";
 import {
-  LayoutDashboard, ShoppingCart, Package, BookOpen, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
+  LayoutDashboard, ShoppingCart, Package, BookOpen, Landmark, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
   Smartphone, FileText, Search,
 } from "lucide-react";
 import { headers } from "next/headers";
@@ -248,6 +248,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </NavSubGroup>
                 <NavLink href="/finance/aging">{n("arApAging")}</NavLink>
                 {wholesale && <NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
+              </NavGroup>
+            )}
+
+            {/* The asset subledger: it feeds the ledger above, through its journals. */}
+            {may("accounting.view") && (
+              <NavGroup label={n("fixedAssets")} icon={<Landmark size={15} />} match={["/fixed-assets"]}>
+                <NavLink href="/fixed-assets/register">{n("assetRegister")}</NavLink>
               </NavGroup>
             )}
 

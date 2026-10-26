@@ -191,6 +191,8 @@ export async function scaffoldCompany(input: SetupInput) {
     await tx`select fn_seed_retail_catalogue(${co.id})`;
     // Activated beside standard, for phones (migration 0153).
     await tx`select fn_seed_activation(${co.id})`;
+    // Fixed-asset categories, each paired with its three accounts (migration 0156).
+    await tx`select fn_fa_seed_categories(${co.id})`;
 
     await tx`
       insert into price_level (company_id, code, name, sort_order) values

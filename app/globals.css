@@ -7778,3 +7778,38 @@ button.dt-cols-go:disabled { opacity: 0.45; cursor: not-allowed; }
 @media (max-width: 900px) { .ag-filters { flex-wrap: wrap; } }
 .ie-track .card-body, .ie-track .filter-row { padding: 0; }
 .ie-track .hint { padding: var(--s2) 0 0 !important; margin: 0; }
+
+/* ------------------------------------------------------------ fixed assets -- */
+/* The financial palette: sapphire for action, muted emerald for posted,
+   muted amber for what is coming, restrained red for an exception, lavender
+   for supporting information. Everything else stays grey on white. */
+:root {
+  --fa-blue: #1F5FBF; --fa-green: #2F7D5B; --fa-amber: #A86A12; --fa-red: #B42318; --fa-lav: #6B5FB5;
+}
+:root[data-theme="dark"] { --fa-blue: #6EA8FF; --fa-green: #5FBF8F; --fa-amber: #E0A84A; --fa-red: #F07B72; --fa-lav: #A79BEA; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --fa-blue: #6EA8FF; --fa-green: #5FBF8F; --fa-amber: #E0A84A; --fa-red: #F07B72; --fa-lav: #A79BEA; }
+}
+.fa-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
+.fa-head h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
+.fa-head p { margin: 2px 0 0; color: var(--muted); font-size: var(--t-sm); }
+.fa-name { font-weight: 600; }
+.fa-status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; white-space: nowrap;
+  background: var(--line-soft); color: var(--ink-soft); }
+.fa-status.active { color: var(--fa-blue); background: color-mix(in srgb, var(--fa-blue) 11%, transparent); }
+.fa-status.fully_depreciated { color: var(--fa-green); background: color-mix(in srgb, var(--fa-green) 12%, transparent); }
+.fa-status.disposed { color: var(--muted); background: transparent; border: 1px solid var(--line); }
+.fa-status.inactive { color: var(--fa-amber); background: color-mix(in srgb, var(--fa-amber) 12%, transparent); }
+.fa-empty { display: grid; justify-items: center; gap: 6px; padding: 3rem var(--s3); text-align: center; color: var(--muted); font-size: var(--t-sm); }
+.fa-empty strong { color: var(--ink); font-size: 1rem; }
+.fa-empty .ie-btn { margin-top: var(--s2); }
+.fa-pinned { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 var(--s3); padding: 0.65rem 0.85rem; border-radius: 10px;
+  background: color-mix(in srgb, var(--fa-lav) 9%, transparent); color: var(--ink-soft); font-size: var(--t-sm); }
+.fa-pinned svg { flex: none; margin-top: 2px; color: var(--fa-lav); }
+.fa-form { max-width: 980px; padding-bottom: var(--s3); }
+.fa-status-card { max-width: 980px; margin-top: var(--s3); }
+.fa-status-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
+button.ie-btn.fa-warn { color: var(--fa-red); }
+a.ie-btn.primary { background: var(--link); border-color: var(--link); color: #fff; }
+a.ie-btn.primary:hover { background: var(--link); color: #fff; filter: brightness(0.94); }
+tr[data-saved] > td { background: color-mix(in srgb, var(--fa-blue) 6%, transparent); }
