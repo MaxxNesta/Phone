@@ -6,12 +6,21 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowUpRight, Search, RotateCcw, Smartphone, FileText } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { optionLabel } from "@/lib/item-code";
+import { PackSizes } from "./pack-sizes";
+import { ItemPhotoField } from "./item-photo-field";
 
 export type EditorItem = {
   id: string; code: string; name: string; nameCustom: boolean; barcode: string;
   isActive: boolean; isStocked: boolean; identity: string; tracksSerial: boolean;
   uom: string; brand: string | null; category: string;
   parentId: string | null; parentName: string | null;
+  /** A product that varies: its own settings, its variants listed beside. */
+  isModel: boolean;
+  /** A product's own settings (a model or a plain item; a variant inherits them). */
+  nameMy: string; brandId: string; uomId: string; ownPhoto: string | null;
+  packs: { uomId: string; factor: number }[];
+  brands: { id: string; code: string; name: string }[];
+  uoms: { id: string; code: string; name: string }[];
   parts: { a: string; o: string }[];
   photo: string | null;
   /** The other variants of the same product, this one included. Empty for a plain item. */
@@ -37,25 +46,34 @@ const TRACKING: Record<string, string> = { IMEI: "IMEI tracked", SERIAL: "Serial
  * Quiet on purpose: type and spacing carry the hierarchy, one blue for the
  * action, and nothing coloured that is not a warning.
  */
-export function ItemEditor({ item, action }: {
+export function ItemEditor({ item, action, tracking }: {
   item: EditorItem; action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
+  /** The product's tracking and warranty fields, saved with the rest. */
+  tracking?: React.ReactNode;
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   const isVariant = !!item.parentId;
+  const isModel = item.isModel;
+  /** Holds the product's own settings: a model, or an item with no variants. */
+  const product = !isVariant;
+  // Pack sizes and the photo keep their own state; any change to them counts.
+  const [touched, setTouched] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
   const defaultName = isVariant && item.parentName
     ? `${item.parentName} ${item.parts.map((p) => optionLabel(p.a, p.o)).join(" / ")}`.trim() : item.name;
 
   const start = () => ({
     name: item.name, nameCustom: item.nameCustom, code: item.code, barcode: item.barcode, active: item.isActive,
+    nameMy: item.nameMy, brandId: item.brandId, uomId: item.uomId,
     prices: Object.fromEntries(item.levels.map((l) => [l.id, l.price])),
   });
   const [f, setF] = useState(start);
   const [saved, setSaved] = useState(false);
-  useEffect(() => { setF(start()); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [item]);
+  useEffect(() => { setF(start()); setTouched(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [item]);
   useEffect(() => { if (state && "ok" in state) { setSaved(true); router.refresh(); } }, [state, router]);
 
-  const dirty = JSON.stringify(f) !== JSON.stringify(start());
+  const dirty = touched || JSON.stringify(f) !== JSON.stringify(start());
   const valid = f.name.trim() !== "" && f.code.trim() !== "";
   const set = (patch: Partial<typeof f>) => { setSaved(false); setF((x) => ({ ...x, ...patch })); };
 
@@ -77,10 +95,17 @@ export function ItemEditor({ item, action }: {
       <input type="hidden" name="code" value={f.code} />
       <input type="hidden" name="barcode" value={f.barcode} />
       <input type="hidden" name="is_active" value={f.active ? "1" : "0"} />
-      <input type="hidden" name="prices" value={JSON.stringify(f.prices)} />
+      <input type="hidden" name="prices" value={isModel ? "{}" : JSON.stringify(f.prices)} />
+      {product && <>
+        <input type="hidden" name="name_my" value={f.nameMy} />
+        <input type="hidden" name="brand_id" value={f.brandId} />
+        <input type="hidden" name="base_uom_id" value={f.uomId} />
+        {item.isStocked && <input type="hidden" name="is_stocked" value="on" />}
+        <input type="hidden" name="return_to" value={`/items/${item.id}/edit`} />
+      </>}
 
       <header className="ie-title">
-        <h1>{isVariant ? "Edit variant" : "Edit item"}</h1>
+        <h1>{isVariant ? "Edit variant" : isModel ? "Edit product" : "Edit item"}</h1>
         <p>
           {isVariant && item.parentName ? <><Link href={`/items/${item.parentId}`}>{item.parentName}</Link> · </> : null}
           {item.code}
@@ -89,7 +114,7 @@ export function ItemEditor({ item, action }: {
 
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
 
-      <div className={`ie-cols${isVariant ? "" : " single"}`}>
+      <div className="ie-cols">
         <div className="ie-main">
           <section className="ie-card ie-hero">
             {/* A photo when there is one; no stand-in box when there is not. */}
@@ -103,16 +128,17 @@ export function ItemEditor({ item, action }: {
                 {item.parts.length > 0
                   ? item.parts.map((p) => <span key={p.a} className="ie-chip" title={p.a}>{p.o}</span>)
                   : <span className="ie-chip">{item.category}</span>}
+                {isModel && <span className="ie-chip">{item.siblings.length} variants</span>}
               </div>
             </div>
             <span className={`ie-state${f.active ? "" : " off"}`}>{f.active ? "Active" : "Inactive"}</span>
           </section>
 
           <section className="ie-card">
-            <h3>{isVariant ? "Variant identity" : "Item identity"}</h3>
+            <h3>{isVariant ? "Variant identity" : isModel ? "Product details" : "Item identity"}</h3>
             <div className="ie-grid3">
               <label className="ie-field wide2">
-                <span>{isVariant ? "Full preview name" : "Name"}</span>
+                <span>{isVariant ? "Full preview name" : isModel ? "Product name" : "Name"}</span>
                 <span className="ie-name">
                   <input value={f.name} maxLength={200}
                     onChange={(e) => set({ name: e.target.value, nameCustom: isVariant && e.target.value.trim() !== defaultName })} />
@@ -122,16 +148,27 @@ export function ItemEditor({ item, action }: {
                   )}
                 </span>
               </label>
-              <label className="ie-field">
-                <span>{isVariant ? "Variant SKU" : "SKU"}</span>
-                <input value={f.code} className="mono" style={{ textTransform: "uppercase" }}
-                  onChange={(e) => set({ code: e.target.value })} />
-              </label>
-              <label className="ie-field">
-                <span>Barcode</span>
-                <input value={f.barcode} inputMode="numeric" className="mono" placeholder="Scan or type"
-                  onChange={(e) => set({ barcode: e.target.value })} />
-              </label>
+              {isModel ? (
+                <div className="ie-field"><span>Model code</span><output className="ie-ro mono">{item.code}</output></div>
+              ) : (
+                <label className="ie-field">
+                  <span>{isVariant ? "Variant SKU" : "SKU"}</span>
+                  <input value={f.code} className="mono" style={{ textTransform: "uppercase" }}
+                    onChange={(e) => set({ code: e.target.value })} />
+                </label>
+              )}
+              {isModel ? (
+                <label className="ie-field">
+                  <span>Name (Burmese)</span>
+                  <input value={f.nameMy} onChange={(e) => set({ nameMy: e.target.value })} />
+                </label>
+              ) : (
+                <label className="ie-field">
+                  <span>Barcode</span>
+                  <input value={f.barcode} inputMode="numeric" className="mono" placeholder="Scan or type"
+                    onChange={(e) => set({ barcode: e.target.value })} />
+                </label>
+              )}
             </div>
 
             <div className="ie-grid4">
@@ -139,11 +176,22 @@ export function ItemEditor({ item, action }: {
                 ? item.parts.map((p) => (
                     <div key={p.a} className="ie-field"><span>{p.a.charAt(0).toUpperCase() + p.a.slice(1)}</span><output className="ie-ro">{p.o}</output></div>))
                 : <>
+                    {!isModel && (
+                      <label className="ie-field"><span>Name (Burmese)</span>
+                        <input value={f.nameMy} onChange={(e) => set({ nameMy: e.target.value })} /></label>
+                    )}
                     <div className="ie-field"><span>Category</span><output className="ie-ro">{item.category}</output></div>
-                    <div className="ie-field"><span>Unit</span><output className="ie-ro">{item.uom}</output></div>
-                    {item.brand && <div className="ie-field"><span>Brand</span><output className="ie-ro">{item.brand}</output></div>}
+                    <label className="ie-field"><span>Brand</span>
+                      <select value={f.brandId} onChange={(e) => set({ brandId: e.target.value })}>
+                        <option value="">None</option>
+                        {item.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select></label>
+                    <label className="ie-field"><span>Unit</span>
+                      <select value={f.uomId} onChange={(e) => set({ uomId: e.target.value })}>
+                        {item.uoms.map((u) => <option key={u.id} value={u.id}>{u.code} · {u.name}</option>)}
+                      </select></label>
                   </>}
-              {item.isStocked && (
+              {item.isStocked && (isVariant || !tracking) && (
                 <div className="ie-field"><span>Tracking</span><output className="ie-ro">{TRACKING[item.identity] ?? item.identity}</output></div>
               )}
               <label className="ie-field">
@@ -153,15 +201,21 @@ export function ItemEditor({ item, action }: {
                 </select>
               </label>
             </div>
-            {!isVariant && (
-              <p className="ie-note">
-                Category, unit, packs and brand are set when the item is made.{" "}
-                <Link href={`/items?edit=${item.id}`}>More settings <ArrowUpRight size={12} aria-hidden="true" /></Link>
-              </p>
-            )}
+            {isModel && <p className="ie-note">Brand, unit, packs, photo and status apply to all {item.siblings.length} variants. Tracking and warranty are below.</p>}
           </section>
 
-          <section className="ie-card">
+          {product && (
+            <section className="ie-card" key={resetKey} onChange={() => { setSaved(false); setTouched(true); }}>
+              <h3>Pack sizes &amp; photo</h3>
+              <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} />
+              <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
+            </section>
+          )}
+          {tracking && (
+            <div key={`t${resetKey}`} onChange={() => { setSaved(false); setTouched(true); }}>{tracking}</div>
+          )}
+
+          {!isModel && <section className="ie-card">
             <h3>Pricing</h3>
             <div className="ie-prices">
               {item.levels.map((l) => (
@@ -188,9 +242,9 @@ export function ItemEditor({ item, action }: {
                 <div><dt>Markup</dt><dd>{gp === null || !cost ? "—" : `${n1((gp / cost) * 100)}%`}</dd></div>
               </dl>
             )}
-          </section>
+          </section>}
 
-          {item.isStocked && (
+          {item.isStocked && !isModel && (
             <section className="ie-card">
               <div className="ie-head">
                 <h3>{item.tracksSerial ? "Stock & IMEI summary" : "Stock summary"}</h3>
@@ -221,9 +275,9 @@ export function ItemEditor({ item, action }: {
         </div>
 
         <aside className="ie-side">
-          {isVariant && (
+          {(isVariant || isModel) && (
             <section className="ie-card">
-              <h3>Variant list <span>({item.siblings.length})</span></h3>
+              <h3>{isModel ? "Variants" : "Variant list"} <span>({item.siblings.length})</span></h3>
               <label className="ie-search">
                 <Search size={14} aria-hidden="true" />
                 <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search variants…" aria-label="Search variants" />
@@ -246,7 +300,7 @@ export function ItemEditor({ item, action }: {
             </section>
           )}
 
-          <section className="ie-card">
+          {!isModel && <section className="ie-card">
             <h3>Purchase history</h3>
             {item.purchases.length === 0 ? (
               <p className="ie-empty block"><FileText size={18} aria-hidden="true" />
@@ -260,7 +314,7 @@ export function ItemEditor({ item, action }: {
                     {item.seeCost && <td className="r">{p.unitCost === null ? "—" : n0(p.unitCost)}</td>}</tr>))}</tbody>
               </table>
             )}
-          </section>
+          </section>}
         </aside>
       </div>
 
@@ -271,9 +325,9 @@ export function ItemEditor({ item, action }: {
         <span className="ie-bar-note" aria-live="polite">
           {saved && !dirty ? "Saved" : dirty ? "Unsaved changes" : ""}
         </span>
-        <button type="button" className="ie-btn" disabled={!dirty} onClick={() => { setF(start()); setSaved(false); }}>Cancel</button>
+        <button type="button" className="ie-btn" disabled={!dirty} onClick={() => { setF(start()); setSaved(false); setTouched(false); setResetKey((k) => k + 1); }}>Cancel</button>
         <button type="submit" className="ie-btn primary" disabled={pending || !dirty || !valid}>
-          {pending ? "Saving…" : isVariant ? "Save variant" : "Save item"}
+          {pending ? "Saving…" : isVariant ? "Save variant" : isModel ? "Save product" : "Save item"}
         </button>
       </footer>
     </form>

@@ -7776,3 +7776,5 @@ button.dt-cols-go:disabled { opacity: 0.45; cursor: not-allowed; }
 .ag-prod strong { color: var(--ink); }
 .ag-prod small { color: var(--muted); }
 @media (max-width: 900px) { .ag-filters { flex-wrap: wrap; } }
+.ie-track .card-body, .ie-track .filter-row { padding: 0; }
+.ie-track .hint { padding: var(--s2) 0 0 !important; margin: 0; }

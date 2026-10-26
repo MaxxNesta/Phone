@@ -1,6 +1,5 @@
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
-import { PhoneSettings } from "@/components/phone-settings";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getStockMovements } from "@/lib/queries";
@@ -337,7 +336,6 @@ export default async function ItemPage({
           </div>
         </section>
       )}
-      <PhoneSettings item={item} />
     </>
   );
 }

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { sql } from "@/lib/db";
 import { getCompany, getItems, getBrands, getBrandsInUse } from "@/lib/queries";
-import { updateItem, deactivateItem, activateItem, deleteItem, setVariantPhoto } from "@/lib/actions";
+import { deactivateItem, activateItem, deleteItem, setVariantPhoto } from "@/lib/actions";
 import { ItemRow } from "@/components/item-row";
 import { asVariant } from "@/components/variant-tags";
 import { DataTable, type DataRow } from "@/components/data-table";
@@ -159,19 +159,14 @@ export default async function Items({
     },
     node: (
       <ItemRow
-        startEditing={edit === i.id}
-        retail={Boolean(company?.retail_mode)}
         item={{
           ...i,
           packs: packs
             .filter((p) => p.item_id === i.id)
             .map((p) => ({ uomId: p.uom_id, code: p.uom_code, factor: Number(p.factor) })),
         }}
-        brands={brands}
         showBrand={multiBrand}
         showPhoto={anyPhoto}
-        uoms={uoms}
-        updateAction={updateItem}
         deactivateAction={deactivateItem}
         activateAction={activateItem}
         deleteAction={deleteItem}

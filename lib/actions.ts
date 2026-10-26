@@ -6,6 +6,7 @@ import { composeItemCode, firstFreeNumber, MODEL_CODE, modelItemCode, optionLabe
 import { physicalKey, repeats } from "./variant-identity";
 import { redirect } from "next/navigation";
 import { money, sql } from "./db";
+import { setItemPhoneSettings } from "./phone-actions";
 import { parseCsv, planImport, type MasterData } from "./import-items";
 import { xlsxToRows, type UploadFormat } from "./read-spreadsheet";
 import { planVoucherImport, voucherColumns, type VoucherMasterData, type VoucherKind }
@@ -1172,7 +1173,9 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
   revalidatePath("/items");
   revalidatePath("/items/categories");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", toastMsg);
+  // The item editor sends itself back to itself; the catalogue goes to the list.
+  const back = str(fd, "return_to");
+  redirectWithToast(/^\/items\/[0-9a-f-]{36}\/edit$/.test(back) ? back : "/items", toastMsg);
 }
 
 /** Deactivates an item without touching any document or stock history against it. */
@@ -4483,6 +4486,14 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
   }
   revalidatePath("/items");
   revalidatePath("/items/stock");
+  // A product or a plain item also carries its Burmese name, brand, unit,
+  // packs and photo: those are updateItem's, which saves them and comes back.
+  if (fd.has("base_uom_id")) {
+    if (fd.has("identity")) await setItemPhoneSettings(fd);
+    fd.set("is_active", fd.get("is_active") === "1" ? "on" : "");
+    if (fd.get("is_active") !== "on") fd.delete("is_active");
+    return updateItem(_prev, fd);
+  }
   return { ok: true };
 }
 

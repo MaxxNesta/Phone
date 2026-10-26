@@ -5,7 +5,9 @@ const LABEL: Record<string, string> = {
 };
 
 /** How each unit is named, and the warranties, for one item on its detail page. */
-export function PhoneSettings({ item }: {
+export function PhoneSettings({ item, embedded = false }: {
+  /** Inside the item editor's form: its fields only, saved with the rest. */
+  embedded?: boolean;
   item: { id: string; tracks_serial: boolean; identity?: string; warranty_months: number | null;
           supplier_warranty_months: number | null; has_moved: boolean;
           variant_count?: number; variants_tracked?: number; variants_moved?: number };
@@ -13,8 +15,8 @@ export function PhoneSettings({ item }: {
   const variants = item.variant_count ?? 0;
   const identity = item.identity ?? (item.tracks_serial ? "IMEI" : "NONE");
   return (
-    <form action={setItemPhoneSettings} className="card" style={{ marginTop: "var(--s3)" }}>
-      <div className="card-head"><h2>Tracking &amp; warranty</h2></div>
+    <Wrap embedded={embedded}>
+      <div className={embedded ? undefined : "card-head"}>{embedded ? <h3>Tracking &amp; warranty</h3> : <h2>Tracking &amp; warranty</h2>}</div>
       <div className="card-body filter-row">
         <input type="hidden" name="id" value={item.id} />
         <div className="field">
@@ -38,7 +40,7 @@ export function PhoneSettings({ item }: {
           <input id="ps-sw" name="supplier_warranty_months" type="number" min="0" max="120"
             defaultValue={item.supplier_warranty_months ?? ""} />
         </div>
-        <button className="btn">Save</button>
+        {!embedded && <button className="btn">Save</button>}
       </div>
       <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
         IMEI for iPhone and cellular iPad or Watch; serial number for Mac, Wi-Fi iPad and AirPods;
@@ -49,6 +51,10 @@ export function PhoneSettings({ item }: {
         {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting, unless the choice is Optional serial.`}
         {variants === 0 && item.has_moved && " Once stock has moved, tracking can only change to Optional serial: units already on the shelf keep how they were recorded."}
       </p>
-    </form>
+    </Wrap>
   );
 }
+
+const Wrap = ({ embedded, children }: { embedded: boolean; children: React.ReactNode }) => embedded
+  ? <section className="ie-card ie-track">{children}</section>
+  : <form action={setItemPhoneSettings} className="card" style={{ marginTop: "var(--s3)" }}>{children}</form>;

@@ -5,7 +5,6 @@ import { Fragment, useActionState, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
-import { PackSizes } from "./pack-sizes";
 import { RowMenu } from "./row-menu";
 import { ItemPhotoField } from "./item-photo-field";
 import { ItemThumb } from "./item-thumb";
@@ -30,8 +29,6 @@ type Item = {
   last_purchase_doc_no?: string | null;
   last_purchase_date?: string | null;
 };
-type Brand = { id: string; code: string; name: string };
-type Uom = { id: string; code: string; name: string };
 
 export type RowVariant = {
   id: string; code: string; name: string;
@@ -45,16 +42,11 @@ export type RowVariant = {
 
 export function ItemRow({
   item,
-  brands,
-  uoms,
-  updateAction,
   deleteAction,
   deactivateAction,
   activateAction,
   setPhotoAction,
   variants = [],
-  startEditing,
-  retail,
   showBrand = true,
   showPhoto = true,
 }: {
@@ -62,17 +54,10 @@ export function ItemRow({
   showPhoto?: boolean;
   /** Hidden while the shop carries a single brand. */
   showBrand?: boolean;
-  /** Phone retail: every item is stocked, so the switch is not offered. */
-  retail?: boolean;
   item: Item;
-  /** Opens straight into the editor, for a link that meant this item. */
-  startEditing?: boolean;
   /** The things on the shelf, where this row is a product that varies.
    *  Empty for an ordinary item, which is nearly every row. */
   variants?: RowVariant[];
-  brands: Brand[];
-  uoms: Uom[];
-  updateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   deleteAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   deactivateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   activateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -82,10 +67,8 @@ export function ItemRow({
 }) {
   const c = useTranslations("common");
   const t = useTranslations("items");
-  const ft = useTranslations("itemForm");
   const dtl = useTranslations("itemDetail");
   const ph = useTranslations("photo");
-  const [editing, setEditing] = useState(startEditing ?? false);
   const [open, setOpen] = useState(false);
   /** Which variant's photo is being changed, if any. One at a time: the
    *  panel is a file picker and two open at once is two answers to one
@@ -93,10 +76,6 @@ export function ItemRow({
   const [photoFor, setPhotoFor] = useState<string | null>(null);
   const [photoRes, photoFormAction, photoPending] =
     useActionState<ActionResult | null, FormData>(setPhotoAction as never, null);
-  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
-    updateAction as never,
-    null
-  );
   const [, deactFormAction] = useActionState<ActionResult | null, FormData>(
     deactivateAction as never,
     null
@@ -110,81 +89,6 @@ export function ItemRow({
     null
   );
 
-
-  if (editing) {
-    return (
-      <tr>
-        <td colSpan={showBrand ? 10 : 9}>
-          <form action={formAction} className="form" style={{ padding: "0.5rem 0" }}>
-            {state && "error" in state && <div className="alert">{state.error}</div>}
-            <input type="hidden" name="id" value={item.id} />
-            <span className="page-sub">
-              {t("fixedCode", { code: item.code })}
-            </span>
-            <div className="row" style={{ marginTop: "0.4rem" }}>
-              <div className="field">
-                <label>{c("name")}</label>
-                <input name="name" type="text" defaultValue={item.name} required />
-              </div>
-              <div className="field">
-                <label>{ft("nameBurmese")}</label>
-                <input name="name_my" type="text" defaultValue={item.name_my ?? ""} />
-              </div>
-              <div className="field">
-                <label>{c("brand")}</label>
-                <select name="brand_id" defaultValue={item.brand_id ?? ""}>
-                  <option value="">{ft("noneOption")}</option>
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>{c("unit")}</label>
-                <select name="base_uom_id" defaultValue={item.base_uom_id} required>
-                  {uoms.map((u) => (
-                    <option key={u.id} value={u.id}>{u.code} · {u.name}</option>
-                  ))}
-                </select>
-                <span className="hint">{t("unitHint")}</span>
-              </div>
-            </div>
-
-            <PackSizes
-              uoms={uoms}
-              baseUomId={item.base_uom_id}
-              initial={item.packs ?? []}
-            />
-            <div className="row" style={{ marginTop: "0.4rem" }}>
-              <ItemPhotoField
-                currentSrc={
-                  item.photo_version
-                    ? `/items/${item.id}/photo?v=${item.photo_version}`
-                    : null
-                }
-              />
-            </div>
-            <div style={{ display: "flex", gap: "1rem", marginTop: "0.4rem" }}>
-              {retail ? <input type="hidden" name="is_stocked" value="on" /> : (
-                <label className="check">
-                  <input name="is_stocked" type="checkbox" defaultChecked={item.is_stocked} />
-                  {t("stockedOrService")}
-                </label>
-              )}
-              <label className="check">
-                <input name="is_active" type="checkbox" defaultChecked={item.is_active} />
-                {c("active")}
-              </label>
-            </div>
-            <div className="actions" style={{ marginTop: "0.5rem" }}>
-              <button type="submit" disabled={pending}>{pending ? c("saving") : c("save")}</button>
-              <button type="button" className="ghost tiny" onClick={() => setEditing(false)}>{c("cancel")}</button>
-            </div>
-          </form>
-        </td>
-      </tr>
-    );
-  }
 
   return (
     <>
@@ -254,7 +158,7 @@ export function ItemRow({
       </td>
       <td className="r">
         <RowMenu label={c("actionsFor", { name: item.name })}>
-          <button type="button" onClick={() => setEditing(true)}>{c("edit")}</button>
+          <Link href={`/items/${item.id}/edit`} role="menuitem">{c("edit")}</Link>
           {item.is_active ? (
             <form action={deactFormAction}>
               <input type="hidden" name="id" value={item.id} />

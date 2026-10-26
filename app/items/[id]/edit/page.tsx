@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getVariantStock, getReservedQty } from "@/lib/queries";
 import { requirePermission, can } from "@/lib/auth";
@@ -7,6 +7,7 @@ import { variantPhotos } from "@/lib/variants";
 import { saveItemEdit } from "@/lib/actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ItemEditor, type EditorItem } from "@/components/item-editor";
+import { PhoneSettings } from "@/components/phone-settings";
 
 export async function generateMetadata() { return { title: "Edit item" }; }
 
@@ -24,7 +25,13 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const seeCost = can(user, "cost.view");
 
   const [item] = (await sql`
-    select i.id, i.code, i.name, i.name_is_custom, i.barcode, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
+    select i.id, i.code, i.name, i.name_my, i.name_is_custom, i.barcode, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
+           i.brand_id, i.base_uom_id, i.warranty_months, i.supplier_warranty_months,
+           exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
+           (select count(*)::int from item c where c.parent_item_id = i.id) as variant_count,
+           (select count(*)::int from item c where c.parent_item_id = i.id and c.tracks_serial) as variants_tracked,
+           (select count(*)::int from item c where c.parent_item_id = i.id
+              and exists (select 1 from stock_movement m where m.item_id = c.id)) as variants_moved,
            i.parent_item_id, u.code as uom_code, b.name as brand, g.name as category, pg.name as top_category,
            p.name as parent_name, p.code as parent_code,
            to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS') as photo_version,
@@ -38,12 +45,14 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
       left join item p on p.id = i.parent_item_id
      where i.id = ${id} and i.company_id = ${company.id}`) as any[];
   if (!item) notFound();
-  // A product that varies is edited through its variants.
-  if ((await sql`select 1 from item where parent_item_id = ${id} limit 1`).length) {
-    const [first] = await sql`select id from item where parent_item_id = ${id} order by code limit 1`;
-    redirect(`/items/${first.id}/edit`);
-  }
+  // A product that varies: its own settings here, each variant on its own page.
+  const isModel = item.variant_count > 0;
 
+  const [brands, uoms, packs] = await Promise.all([
+    sql`select id, code, name from brand where company_id = ${company.id} order by name` as unknown as Promise<{ id: string; code: string; name: string }[]>,
+    sql`select id, code, name from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string }[]>,
+    sql`select uom_id, factor::float as factor from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number }[]>,
+  ]);
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
          order by (code = 'RETAIL' and (select retail_mode from company where id = ${company.id})) desc, sort_order, code` as unknown as Promise<{ id: string; name: string }[]>,
@@ -74,14 +83,15 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   // Siblings, with the picture each one shows.
   let siblings: EditorItem["siblings"] = [];
   let photo: string | null = item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null;
-  if (item.parent_item_id) {
+  if (item.parent_item_id || isModel) {
+    const family = item.parent_item_id ?? id;
     const vs = (await getVariantStock(company.id)) as unknown as Parameters<typeof variantPhotos>[0];
     const photos = variantPhotos(vs);
-    siblings = (vs as any[]).filter((v) => v.parent_item_id === item.parent_item_id)
+    siblings = (vs as any[]).filter((v) => v.parent_item_id === family)
       .sort((a, b) => String(a.code).localeCompare(String(b.code)))
       .map((v) => ({ id: v.id, code: v.code, name: v.name, qty: Number(v.qty_on_hand),
                      parts: ((v.parts ?? []) as any[]).map((p) => p.option as string), photo: photos.srcFor(v) }));
-    photo = siblings.find((s) => s.id === id)?.photo ?? photo;
+    if (!isModel) photo = siblings.find((s) => s.id === id)?.photo ?? photo;
   }
 
   const onHand = Number(stock[0]?.qty ?? 0);
@@ -94,6 +104,9 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     uom: item.uom_code, brand: item.brand,
     category: item.top_category ? `${item.top_category} / ${item.category}` : item.category,
     parentId: item.parent_item_id, parentName: item.parent_name,
+    isModel, nameMy: item.name_my ?? "", brandId: item.brand_id ?? "", uomId: item.base_uom_id,
+    ownPhoto: item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null,
+    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor) })), brands, uoms,
     parts: (item.parts ?? []) as { a: string; o: string }[],
     photo, siblings,
     levels: levels.map((l) => ({ id: l.id, name: l.name, price: priceBy.get(l.id) ?? "" })),
@@ -111,11 +124,14 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     ? [{ label: "Products", href: "/items" }, { label: item.parent_name, href: `/items/${item.parent_item_id}` },
        { label: item.code }]
     : [{ label: "Products", href: "/items" }, { label: item.name, href: `/items/${id}` }, { label: "Edit" }];
+  const canTrack = item.is_stocked && !item.parent_item_id;
 
   return (
     <div className="ie">
       <Breadcrumbs trail={trail} />
-      <ItemEditor item={data} action={saveItemEdit} />
+      {/* Tracking and warranty belong to the product (and so to all its variants). */}
+      <ItemEditor item={data} action={saveItemEdit}
+        tracking={canTrack ? <PhoneSettings item={item} embedded /> : null} />
     </div>
   );
 }
