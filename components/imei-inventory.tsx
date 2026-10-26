@@ -314,7 +314,7 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
 function PricesTab({ d }: { d: ImeiDrawerData }) {
   const cost = d.unitCost;
   const price = d.price;
-  const editHref = d.unit.parentId ? `/items/${d.unit.parentId}/variants?only=${d.unit.itemId}` : `/items/${d.unit.itemId}`;
+  const editHref = `/items/${d.unit.itemId}/edit`;
   return (
     <>
       <div className="imei-h row">

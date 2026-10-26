@@ -4603,6 +4603,64 @@ export async function saveVariantGrid(_prev: unknown, fd: FormData): Promise<Act
   return { ok: true };
 }
 
+/**
+ * One item's own editor: a variant or a plain product, the same fields.
+ * Name, code, barcode, status and the price at each level; what an item is
+ * (category, unit, tracking, its values) is changed where it is made.
+ */
+export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
+  try {
+    const co = await companyId();
+    const id = str(fd, "id");
+    const [item] = await sql`select id, code, parent_item_id from item where id = ${id} and company_id = ${co}`;
+    if (!item) return { error: await m("chooseItem") };
+
+    const name = str(fd, "name").slice(0, 200);
+    if (!name) return { error: "Every item needs a name." };
+    const code = str(fd, "code").toUpperCase();
+    if (!code) return { error: await m("variantCodesMissing") };
+    const barcode = str(fd, "barcode") || null;
+    if (barcode) {
+      const [clash] = await sql`select code from item where company_id = ${co} and barcode = ${barcode} and id <> ${id} limit 1`;
+      if (clash) return { error: `Barcode ${barcode} is already on ${clash.code}. Scanning it would find two different things.` };
+    }
+    if (code !== item.code) {
+      const problem = await manualCodeProblem(co, [code], 1, [], [id]);
+      if (problem) return { error: problem };
+    }
+    const prices = JSON.parse(str(fd, "prices") || "{}") as Record<string, string>;
+    const levels = await sql<{ id: string }[]>`select id from price_level where company_id = ${co}`;
+
+    await sql.begin(async (tx) => {
+      await tx`
+        update item set name = ${name}, name_is_custom = ${fd.get("name_custom") === "1"}, barcode = ${barcode},
+               is_active = ${fd.get("is_active") === "1"}
+         where id = ${id} and company_id = ${co}`;
+      if (code !== item.code) await tx`update item set serial = ${code}, code_is_manual = true where id = ${id} and company_id = ${co}`;
+      for (const level of levels) {
+        if (!(level.id in prices)) continue;
+        const raw = String(prices[level.id] ?? "").trim();
+        if (raw === "") {
+          await tx`delete from item_price where item_id = ${id} and price_level_id = ${level.id}`;
+        } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+          await tx`
+            insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price)
+            select ${co}, i.id, ${level.id}, i.base_uom_id, 'MMK', ${Number(raw)} from item i where i.id = ${id}
+            on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
+              do update set price = excluded.price`;
+        }
+      }
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: await m("barcodeShared") };
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items");
+  revalidatePath("/items/stock");
+  return { ok: true };
+}
+
 export async function saveSupplierItem(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("purchase.post");
   try {

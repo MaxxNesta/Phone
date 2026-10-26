@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getVariantGrid, getVariantStock } from "@/lib/queries";
 import { saveVariantGrid } from "@/lib/actions";
@@ -22,6 +23,8 @@ export default async function VariantsOfProduct({
 }) {
   const { id } = await params;
   const { only } = await searchParams;
+  // One variant's own row is its editor now.
+  if (only) redirect(`/items/${only}/edit`);
   const company = await getCompany();
   const g = await getTranslations("variantGrid");
   const c = await getTranslations("common");

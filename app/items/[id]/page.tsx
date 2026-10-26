@@ -138,7 +138,7 @@ export default async function ItemPage({
         {/* A variant is edited on its product's grid, opened on just this
             row; anything else in the catalogue, opened on just itself. */}
         <Link className="btn ghost"
-          href={item.parent_item_id ? `/items/${item.parent_item_id}/variants?only=${item.id}` : `/items?edit=${item.id}`}>
+          href={`/items/${item.id}/edit`}>
           {item.parent_item_id ? t("editVariant") : t("editItem")}
         </Link>
         {item.is_stocked && (
