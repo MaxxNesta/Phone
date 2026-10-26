@@ -84,9 +84,6 @@ export function ItemEditor({ item, action }: {
         <p>
           {isVariant && item.parentName ? <><Link href={`/items/${item.parentId}`}>{item.parentName}</Link> · </> : null}
           {item.code}
-          {isVariant && (
-            <> · <Link href={`/items/${item.parentId}/variants`}>Show all {item.siblings.length} variants</Link></>
-          )}
         </p>
       </header>
 
@@ -268,7 +265,7 @@ export function ItemEditor({ item, action }: {
       </div>
 
       <footer className="ie-bar">
-        <Link className="ie-btn" href={isVariant ? `/items/${item.parentId}/variants` : "/items"}>
+        <Link className="ie-btn" href="/items">
           <ArrowLeft size={15} aria-hidden="true" /> Back to products
         </Link>
         <span className="ie-bar-note" aria-live="polite">

@@ -18,7 +18,7 @@ export function ProductColumns({ columns, defaultHidden }: { columns: Col[]; def
     try { const s = localStorage.getItem(KEY); if (s) setHidden(JSON.parse(s)); } catch { /* defaults stand */ }
   }, []);
   const save = (h: string[]) => { setHidden(h); try { localStorage.setItem(KEY, JSON.stringify(h)); } catch { /* this visit only */ } };
-  const css = hidden.map((k) => `.prodtable [data-col="${CSS.escape(k)}"]{display:none}`).join("");
+  const css = hidden.map((k) => `.prodtable [data-col="${k}"]{display:none}`).join("");
   return (
     <div className="dt-cols">
       <style>{css}</style>

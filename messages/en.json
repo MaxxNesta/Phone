@@ -352,7 +352,7 @@
     "unitHint": "What stock is counted in",
     "stockedOrService": "Stocked (unchecked = service)",
     "variantsOf": "{n} variants of {code}",
-    "editAllVariants": "Edit all {n} variants — barcodes and prices →",
+    "editAllVariants": "Edit the {n} variants →",
     "off": "Off",
     "noBarcode": "no barcode",
     "onHand": "{n} on hand",

@@ -39,7 +39,10 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
      where i.id = ${id} and i.company_id = ${company.id}`) as any[];
   if (!item) notFound();
   // A product that varies is edited through its variants.
-  if ((await sql`select 1 from item where parent_item_id = ${id} limit 1`).length) redirect(`/items/${id}/variants`);
+  if ((await sql`select 1 from item where parent_item_id = ${id} limit 1`).length) {
+    const [first] = await sql`select id from item where parent_item_id = ${id} order by code limit 1`;
+    redirect(`/items/${first.id}/edit`);
+  }
 
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
@@ -106,7 +109,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
 
   const trail = item.parent_item_id
     ? [{ label: "Products", href: "/items" }, { label: item.parent_name, href: `/items/${item.parent_item_id}` },
-       { label: "Variants", href: `/items/${item.parent_item_id}/variants` }, { label: item.code }]
+       { label: item.code }]
     : [{ label: "Products", href: "/items" }, { label: item.name, href: `/items/${id}` }, { label: "Edit" }];
 
   return (
