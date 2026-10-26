@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Search, RotateCcw, Smartphone, FileText, Package } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Search, RotateCcw, Smartphone, FileText } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { optionLabel } from "@/lib/item-code";
 
@@ -95,12 +95,11 @@ export function ItemEditor({ item, action }: {
       <div className={`ie-cols${isVariant ? "" : " single"}`}>
         <div className="ie-main">
           <section className="ie-card ie-hero">
-            <span className="ie-photo">
-              {item.photo
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={item.photo} alt="" />
-                : <Package size={26} strokeWidth={1.5} aria-hidden="true" />}
-            </span>
+            {/* A photo when there is one; no stand-in box when there is not. */}
+            {item.photo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <span className="ie-photo"><img src={item.photo} alt="" /></span>
+            )}
             <div>
               <h2>{f.name || "Untitled"}</h2>
               <div className="ie-chips">
@@ -236,9 +235,10 @@ export function ItemEditor({ item, action }: {
                 {siblings.map((s) => (
                   <li key={s.id}>
                     <Link href={`/items/${s.id}/edit`} aria-current={s.id === item.id ? "page" : undefined}>
-                      <span className="ie-vthumb">{s.photo
+                      {s.photo && (
                         // eslint-disable-next-line @next/next/no-img-element
-                        ? <img src={s.photo} alt="" /> : <Package size={16} strokeWidth={1.5} aria-hidden="true" />}</span>
+                        <span className="ie-vthumb"><img src={s.photo} alt="" /></span>
+                      )}
                       <span className="ie-vtext"><strong>{s.name}</strong><small>{s.parts.join(" · ")} · {s.code}</small></span>
                       <span className="ie-vqty"><small>Stock</small>{n0(s.qty)}</span>
                     </Link>
