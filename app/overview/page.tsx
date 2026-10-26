@@ -664,7 +664,7 @@ export default async function Dashboard({
                   </div>
                 ))}
               </div>
-              <Link href="/items" className="dash-banner-link dash-rank-more">
+              <Link href="/products" className="dash-banner-link dash-rank-more">
                 View item performance <ArrowRight size={14} style={{ verticalAlign: "-2px" }} />
               </Link>
             </>

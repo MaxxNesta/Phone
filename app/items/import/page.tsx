@@ -24,7 +24,7 @@ export default async function ImportItems() {
         <HelpHint>
           {t("help")}
         </HelpHint>
-        <Link href="/items" className="btn ghost">{t("backToItems")}</Link>
+        <Link href="/products" className="btn ghost">{t("backToItems")}</Link>
       </div>
 
       <ItemImport action={runItemImport} />

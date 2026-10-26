@@ -52,7 +52,7 @@ export default async function NewItem() {
         nodes={nodes}
         uoms={uoms as never}
         brands={brands as never}
-        returnTo="/items"
+        returnTo="/products"
         retail={Boolean((await getCompany())?.retail_mode)}
         canAddBrand={can((await currentUser())!, "brands.manage")}
         canKeepDuplicates={can((await currentUser())!, "items.duplicates")}

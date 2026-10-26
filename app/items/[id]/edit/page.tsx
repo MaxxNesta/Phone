@@ -121,9 +121,9 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   };
 
   const trail = item.parent_item_id
-    ? [{ label: "Products", href: "/items" }, { label: item.parent_name, href: `/items/${item.parent_item_id}` },
+    ? [{ label: "Products", href: "/products" }, { label: item.parent_name, href: `/items/${item.parent_item_id}` },
        { label: item.code }]
-    : [{ label: "Products", href: "/items" }, { label: item.name, href: `/items/${id}` }, { label: "Edit" }];
+    : [{ label: "Products", href: "/products" }, { label: item.name, href: `/items/${id}` }, { label: "Edit" }];
   const canTrack = item.is_stocked && !item.parent_item_id;
 
   return (

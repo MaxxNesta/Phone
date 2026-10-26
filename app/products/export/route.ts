@@ -1,4 +1,4 @@
-import { requirePermission } from "@/lib/auth";
+import { requirePermission, can } from "@/lib/auth";
 import { productList, EXPORT_COLUMNS } from "@/lib/products";
 
 const TRACK: Record<string, string> = { IMEI: "IMEI", SERIAL: "Serial", OPTIONAL: "Optional serial", NONE: "Quantity" };
@@ -9,8 +9,9 @@ export async function GET(req: Request) {
   const user = await requirePermission("items.manage");
   const sp = Object.fromEntries(new URL(req.url).searchParams) as Record<string, string>;
   const { list, levels } = await productList(user.companyId, sp);
+  const seeCost = can(user, "cost.view");
 
-  const all = [...EXPORT_COLUMNS, ...levels.map((l) => ({ key: `level:${l.id}`, label: l.name }))];
+  const all = [...EXPORT_COLUMNS.filter((c) => seeCost || c.key !== "last_price"), ...levels.map((l) => ({ key: `level:${l.id}`, label: l.name }))];
   const asked = new Set((sp.cols ?? "").split(",").filter(Boolean));
   // In the order Export listed them: SKU first, the price levels after Selling price.
   const cols = asked.size
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
       case "available": return r.available;
       case "on_hand": return r.qty;
       case "status": return STATUS[r.status] ?? r.status;
+      case "last_price": return seeCost ? (r.last_price ?? "") : "";
       case "last_purchase": return r.last_bought ? new Date(r.last_bought).toISOString().slice(0, 10) : "";
     }
     return "";

@@ -167,7 +167,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 except={["/items/categories", "/items/subcategories", "/items/brands", "/items/attributes",
                          "/items/units", "/items/purchasing", "/items/stock"]}>
                 <NavLink href="/products" exact>{n("allProducts")}</NavLink>
-                <NavLink href="/items" exact>{n("editCatalogue")}</NavLink>
                 <NavLink href="/items/prices">{n("priceLevels")}</NavLink>
               </NavGroup>
             )}
@@ -279,13 +278,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     is built from, grouped the way the iPhone's Settings is. */}
                 {may("items.manage") && (
                   <NavSubGroup label={n("catalogue")} match={["/items/categories", "/items/subcategories", "/items/brands",
-                    "/items/attributes", "/items/units", "/items/purchasing"]}>
+                    "/items/attributes", "/items/units", "/items/purchasing", "/items/import"]}>
                     <NavLink href="/items/categories" sub>{n("categories")}</NavLink>
                     <NavLink href="/items/subcategories" sub>{n("subCategories")}</NavLink>
                     <NavLink href="/items/brands" sub>{n("brands")}</NavLink>
                     <NavLink href="/items/attributes" sub>{n("variants")}</NavLink>
                     <NavLink href="/items/units" sub>{n("units")}</NavLink>
                     <NavLink href="/items/purchasing" sub>{n("purchasingTerms")}</NavLink>
+                    <NavLink href="/items/import" sub>{n("importItems")}</NavLink>
                   </NavSubGroup>
                 )}
                 <NavSubGroup label={n("posSettings")} match={["/settings/receipt-templates"]}>

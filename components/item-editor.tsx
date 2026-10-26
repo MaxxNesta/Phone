@@ -211,6 +211,12 @@ export function ItemEditor({ item, action, tracking }: {
               <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
             </section>
           )}
+          {isVariant && (
+            <section className="ie-card" key={`p${resetKey}`} onChange={() => { setSaved(false); setTouched(true); }}>
+              <h3>Photo</h3>
+              <ItemPhotoField currentSrc={item.ownPhoto} />
+            </section>
+          )}
           {tracking && (
             <div key={`t${resetKey}`} onChange={() => { setSaved(false); setTouched(true); }}>{tracking}</div>
           )}
@@ -319,7 +325,7 @@ export function ItemEditor({ item, action, tracking }: {
       </div>
 
       <footer className="ie-bar">
-        <Link className="ie-btn" href="/items">
+        <Link className="ie-btn" href="/products">
           <ArrowLeft size={15} aria-hidden="true" /> Back to products
         </Link>
         <span className="ie-bar-note" aria-live="polite">

@@ -1059,7 +1059,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
   revalidatePath("/items");
   revalidatePath("/items/categories");
   revalidatePath("/items/stock");
-  redirectWithToast(variantsOf ? `/items/${variantsOf}/variants` : returnTo || "/items", toastMsg);
+  redirectWithToast(variantsOf ? `/items/${variantsOf}/variants` : returnTo || "/products", toastMsg);
 }
 
 /**
@@ -1175,7 +1175,7 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
   revalidatePath("/items/stock");
   // The item editor sends itself back to itself; the catalogue goes to the list.
   const back = str(fd, "return_to");
-  redirectWithToast(/^\/items\/[0-9a-f-]{36}\/edit$/.test(back) ? back : "/items", toastMsg);
+  redirectWithToast(/^\/items\/[0-9a-f-]{36}\/edit$/.test(back) ? back : "/products", toastMsg);
 }
 
 /** Deactivates an item without touching any document or stock history against it. */
@@ -1193,7 +1193,7 @@ export async function deactivateItem(_prev: unknown, fd: FormData): Promise<Acti
 
   revalidatePath("/items");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", await m("itemDeactivated"));
+  redirectWithToast("/products", await m("itemDeactivated"));
 }
 
 /** Puts back what deactivateItem retired. Reactivating is always safe, so
@@ -1212,7 +1212,7 @@ export async function activateItem(_prev: unknown, fd: FormData): Promise<Action
 
   revalidatePath("/items");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", await m("itemReactivated"));
+  redirectWithToast("/products", await m("itemReactivated"));
 }
 
 /** Hard delete only succeeds for an item nothing has ever touched. Deactivating is the way to retire one. */
@@ -1233,7 +1233,7 @@ export async function deleteItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
   revalidatePath("/items");
   revalidatePath("/items/stock");
-  redirectWithToast("/items", await m("itemDeleted"));
+  redirectWithToast("/products", await m("itemDeleted"));
 }
 
 // ------------------------------------------------------------- brands --
@@ -4460,11 +4460,25 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
     const prices = JSON.parse(str(fd, "prices") || "{}") as Record<string, string>;
     const levels = await sql<{ id: string }[]>`select id from price_level where company_id = ${co}`;
 
+    // A variant's own picture (a product's goes through updateItem).
+    const photo = item.parent_item_id ? await photoFrom(fd) : null;
+    let replaced: string | null = null;
     await sql.begin(async (tx) => {
       await tx`
         update item set name = ${name}, name_is_custom = ${fd.get("name_custom") === "1"}, barcode = ${barcode},
                is_active = ${fd.get("is_active") === "1"}
          where id = ${id} and company_id = ${co}`;
+      if (photo) {
+        const [old] = await tx`select photo_key from item where id = ${id} and company_id = ${co}`;
+        if (old?.photo_key) replaced = old.photo_key as string;
+        if ("set" in photo) {
+          await tx`update item set photo_key = ${photo.set.key}, photo_mime = 'image/webp', photo_updated_at = now()
+                    where id = ${id} and company_id = ${co}`;
+        } else {
+          await tx`update item set photo_key = null, photo = null, photo_mime = null, photo_updated_at = null
+                    where id = ${id} and company_id = ${co}`;
+        }
+      }
       if (code !== item.code) await tx`update item set serial = ${code}, code_is_manual = true where id = ${id} and company_id = ${co}`;
       for (const level of levels) {
         if (!(level.id in prices)) continue;
@@ -4480,6 +4494,7 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         }
       }
     });
+    if (replaced) await deleteObject("public", replaced);
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("barcodeShared") };
     return { error: e instanceof Error ? e.message : String(e) };

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Package, Smartphone, Headphones, AlertTriangle, Plus } from "lucide-react";
 import { sql } from "@/lib/db";
-import { requirePermission } from "@/lib/auth";
+import { requirePermission, can } from "@/lib/auth";
 import { productList, EXPORT_COLUMNS } from "@/lib/products";
 import { CatalogFilterFields } from "@/components/catalog-filters";
 import { ProductColumns, ProductExport } from "@/components/product-tools";
@@ -36,13 +36,14 @@ export default async function Products({ searchParams }: { searchParams: Promise
           from item_group g where g.company_id = ${co} and g.parent_id is null order by g.name`,
   ]);
   const multiBrand = facets.brands.length > 1;
+  const seeCost = can(user, "cost.view");
   const serialized = rows.filter((r: any) => r.tracks_serial).length;
   const low = rows.filter((r: any) => r.status !== "HEALTHY").length;
 
   const pg = paginate(list, sp.page);
   // Columns as the Columns menu and Export name them; price levels after Selling price.
   const levelCols = levels.map((l) => ({ key: `level:${l.id}`, label: l.name }));
-  const base = EXPORT_COLUMNS.filter((c) => multiBrand || c.key !== "brand").map((c) => ({ key: c.key as string, label: c.label as string }));
+  const base = EXPORT_COLUMNS.filter((c) => (multiBrand || c.key !== "brand") && (seeCost || c.key !== "last_price")).map((c) => ({ key: c.key as string, label: c.label as string }));
   const at = base.findIndex((c) => c.key === "price") + 1;
   const exportCols = [...base.slice(0, at), ...levelCols, ...base.slice(at)];
   const toggleCols = exportCols.filter((c) => !["variant", "on_hand"].includes(c.key));
@@ -108,7 +109,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
               <h2>{t("title")}</h2>
               <span className="dt-spacer" />
               <ProductExport total={list.length} columns={exportCols} />
-              <ProductColumns columns={toggleCols} defaultHidden={levels.map((l) => `level:${l.id}`)} />
+              <ProductColumns columns={toggleCols} defaultHidden={[...levels.map((l) => `level:${l.id}`), "last_price"]} />
               <BulkDelete filtered={filtered}
                 shown={list.map((r: any) => ({ id: r.id, name: [r.model, r.variant].filter(Boolean).join(" · ") }))} />
             </div>
@@ -122,7 +123,8 @@ export default async function Products({ searchParams }: { searchParams: Promise
                   <th className="num" data-col="price">{t("sellingPrice")}</th>
                   {levels.map((l) => <th key={l.id} className="num" data-col={`level:${l.id}`}>{l.name}</th>)}
                   <th className="num" data-col="available">{t("available")}</th><th data-col="status">{c("status")}</th>
-                  <th data-col="last_purchase">{t("lastPurchase")}</th><th />
+                  <th data-col="last_purchase">{t("lastPurchase")}</th>
+                  {seeCost && <th className="num" data-col="last_price">Latest purchase price</th>}<th />
                 </tr>
               </thead>
               <tbody>
@@ -155,10 +157,11 @@ export default async function Products({ searchParams }: { searchParams: Promise
                       </span>
                     </td>
                     <td data-col="last_purchase">{r.last_bought ? shortDate(r.last_bought) : "—"}</td>
+                    {seeCost && <td className="num" data-col="last_price">{r.last_price != null ? money(r.last_price) : "—"}</td>}
                     <td><Link href={`/items/${r.id}`} aria-label={c("editItem", { name: r.name })}>{c("edit")}</Link></td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={(multiBrand ? 11 : 10) + levels.length} className="page-sub">{t("noMatch")}</td></tr>}
+                {list.length === 0 && <tr><td colSpan={(multiBrand ? 11 : 10) + levels.length + (seeCost ? 1 : 0)} className="page-sub">{t("noMatch")}</td></tr>}
               </tbody>
             </table>
             <Pager p={pg} params={sp} />

@@ -48,7 +48,7 @@ export function GettingStarted({ status }: { status: Status }) {
       detail: status.items > 0
         ? `${status.items} item${status.items === 1 ? "" : "s"}`
         : "What you buy and sell",
-      href: "/items",
+      href: "/products",
       cta: "Add item",
       required: true,
     },

@@ -114,7 +114,7 @@ export default async function ItemPage({
     <>
       <div className="page-head">
         <span className="eyebrow">
-          <Link href="/items" className="plain">{it("masterData")}</Link> · {t("items")}
+          <Link href="/products" className="plain">{it("masterData")}</Link> · {t("items")}
         </span>
         <h1>
           {item.code} · {item.name}
