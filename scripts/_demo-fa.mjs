@@ -10,6 +10,11 @@ const [co] = await sql`select id, name from company order by created_at limit 1`
 if (!/\bDEV\b/.test(co.name)) throw new Error("DEV only");
 const ids = (await sql`select id from fixed_asset where company_id = ${co.id} and code like 'ZZFA-%'`).map((r) => r.id);
 if (process.argv.includes("--remove")) {
+  // Postings and links first, then DEV's transactions (which takes any demo journals with it).
+  await sql`delete from fa_depreciation where asset_id = any(${ids})`.catch(() => {});
+  await sql`delete from fa_run where company_id = ${co.id}`;
+  const { resetTransactions } = await import("./test-reset.mjs");
+  await resetTransactions(sql);
   await sql`delete from fa_event where asset_id = any(${ids})`;
   await sql`delete from fa_estimate_change where asset_id = any(${ids})`;
   await sql`delete from fa_journal_link where asset_id = any(${ids})`;

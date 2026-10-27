@@ -214,3 +214,107 @@ export async function changeEstimate(_prev: unknown, fd: FormData): Promise<Acti
   revalidatePath("/fixed-assets", "layout");
   return { ok: true };
 }
+
+type Allocation = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQUISITION"; month?: string; amount: string };
+
+/**
+ * Ties one posted journal line to assets: an acquisition (a debit on the
+ * asset account), a month of depreciation history (a credit on the
+ * accumulated-depreciation account), or a correction (either side of it).
+ * One line can be split across several assets; the database refuses links
+ * that add up to more than the line. Nothing is posted or reposted.
+ */
+export async function linkJournalLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("accounting.post");
+  const co = user.companyId;
+  const lineId = str(fd, "line_id");
+  try {
+    const allocations = JSON.parse(str(fd, "allocations") || "[]") as Allocation[];
+    if (allocations.length === 0) return { error: "Add at least one asset to link." };
+    await sql.begin(async (tx) => {
+      const [line] = await tx`
+        select jl.id, jl.account_id, jl.base_amount::text as amount, to_char(je.entry_date, 'YYYY-MM-DD') as date,
+               coalesce(l.parent_id, l.id) as branch_id, d.status,
+               exists (select 1 from fa_run r where r.document_id = d.id) as ours
+          from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
+          left join document d on d.id = je.source_id left join location l on l.id = jl.location_id
+         where jl.id = ${lineId} and jl.company_id = ${co} for update of jl`;
+      if (!line) throw new Error("That journal line is not in this company.");
+      if (line.status && line.status !== "POSTED") throw new Error("Only a posted journal can be linked.");
+      if (line.ours) throw new Error("This module's own voucher is linked when it posts.");
+      const credit = line.amount.startsWith("-");
+      const lineAbs = units(line.amount.replace("-", ""));
+      let total = 0n;
+      for (const [i, al] of allocations.entries()) {
+        const at = `Row ${i + 1}: `;
+        if (!MONEY.test(al.amount)) throw new Error(`${at}enter the amount.`);
+        const amt = units(al.amount);
+        if (amt <= 0n) throw new Error(`${at}the amount must be more than nothing.`);
+        total += amt;
+        const [a] = await tx`
+          select f.id, f.code, f.branch_id, c.asset_account_id, c.accum_account_id
+            from fixed_asset f join fa_category c on c.id = f.category_id
+           where f.id = ${al.assetId} and f.company_id = ${co}`;
+        if (!a) throw new Error(`${at}choose an asset.`);
+        await assertMyBranch(a.branch_id);
+        // A line from another branch is refused unless the asset was ever there.
+        if (line.branch_id && line.branch_id !== a.branch_id) {
+          const [was] = await tx`select 1 from fa_event where asset_id = ${a.id} and event_type = 'TRANSFERRED'
+                                   and (from_branch_id = ${line.branch_id} or to_branch_id = ${line.branch_id}) limit 1`;
+          if (!was) throw new Error(`${at}${a.code} belongs to another branch than this journal line.`);
+        }
+        if (al.kind === "ACQUISITION") {
+          if (line.account_id !== a.asset_account_id) throw new Error(`${at}this line is not on ${a.code}'s asset account.`);
+          if (credit) throw new Error(`${at}an acquisition is a debit to the asset account.`);
+          await tx`insert into fa_journal_link (company_id, asset_id, journal_line_id, kind, amount, created_by)
+                   values (${co}, ${a.id}, ${lineId}, 'ACQUISITION', ${al.amount}, ${user.id})`;
+        } else {
+          if (line.account_id !== a.accum_account_id) throw new Error(`${at}this line is not on ${a.code}'s accumulated-depreciation account.`);
+          if (!al.month || !/^\d{4}-\d{2}$/.test(al.month)) throw new Error(`${at}choose the month it was depreciation for.`);
+          if (al.kind === "DEPRECIATION" && !credit) throw new Error(`${at}depreciation history is a credit to accumulated depreciation; link a debit as a correction.`);
+          const [held] = al.kind === "DEPRECIATION" ? await tx`
+            select x.source, coalesce(d.doc_no, je.entry_no) as no from fa_depreciation x
+              left join journal_line jl on jl.id = x.journal_line_id left join journal_entry je on je.id = jl.journal_entry_id
+              left join document d on d.id = je.source_id
+             where x.asset_id = ${a.id} and x.period_month = ${al.month + "-01"} and x.source in ('RUN', 'HISTORICAL')` : [];
+          if (held) throw new Error(`${at}${a.code} ${al.month} is already carried by ${held.no ?? "a draft run"}. Link the difference as a correction instead.`);
+          await tx`insert into fa_depreciation (company_id, asset_id, period_month, source, amount, journal_line_id, is_link, created_by, note)
+                   values (${co}, ${a.id}, ${al.month + "-01"}, ${al.kind === "DEPRECIATION" ? "HISTORICAL" : "CORRECTION"},
+                           ${al.kind === "CORRECTION" && !credit ? "-" + al.amount : al.amount}, ${lineId}, true, ${user.id}, 'Linked from history')`;
+        }
+        await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
+                 values (${co}, ${a.id}, 'HISTORY_LINKED', ${line.date}, ${user.id},
+                         ${tx.json({ line: lineId, kind: al.kind, month: al.month ?? null, amount: al.amount })})`;
+      }
+      if (total > lineAbs) throw new Error("The links add up to more than the journal line.");
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/fa_depreciation_once_per_month/.test(msg)) return { error: "One of those asset months is already carried by another journal. Link the difference as a correction." };
+    return { error: msg };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  return { ok: true };
+}
+
+/** Undoes one reconciliation link. A voucher this module posted cannot be unlinked (lib/0157). */
+export async function unlinkAllocation(fd: FormData) {
+  const user = await requirePermission("accounting.post");
+  const co = user.companyId;
+  const id = str(fd, "id"), type = str(fd, "type");
+  await sql.begin(async (tx) => {
+    const [row] = type === "DEP"
+      ? await tx`select x.asset_id, x.is_link, f.branch_id from fa_depreciation x join fixed_asset f on f.id = x.asset_id
+                  where x.id = ${id} and x.company_id = ${co}`
+      : await tx`select k.asset_id, true as is_link, f.branch_id from fa_journal_link k join fixed_asset f on f.id = k.asset_id
+                  where k.id = ${id} and k.company_id = ${co}`;
+    if (!row) throw new Error("That link is not in this company.");
+    await assertMyBranch(row.branch_id);
+    if (!row.is_link) throw new Error("Posted depreciation is not unlinked; record a correction instead.");
+    if (type === "DEP") await tx`delete from fa_depreciation where id = ${id}`;
+    else await tx`delete from fa_journal_link where id = ${id}`;
+    await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
+             values (${co}, ${row.asset_id}, 'HISTORY_UNLINKED', current_date, ${user.id}, ${tx.json({ link: id })})`;
+  });
+  revalidatePath("/fixed-assets", "layout");
+}

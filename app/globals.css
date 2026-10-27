@@ -7981,3 +7981,32 @@ a.fac-cell:hover { background: color-mix(in srgb, var(--fa-blue) 4%, transparent
 .fac-jv .fac-table th:nth-child(2), .fac-jv .fac-table th:nth-child(3) { width: 84px; }
 .fac-jv .fac-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .fac-table .subline { display: block; color: var(--muted); font-size: 0.7rem; }
+
+/* Fixed assets: journal reconciliation */
+.far-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 460px); gap: var(--s3); align-items: start; }
+.far-layout > .card { margin: 0; }
+.far-panel { position: sticky; top: var(--s3); padding: var(--s3); margin: 0; max-height: calc(100vh - 2 * var(--s3)); overflow: auto; }
+.far-table tr[aria-current] > td { background: color-mix(in srgb, var(--fa-blue) 6%, transparent); }
+.far-memo { max-width: 22rem; color: var(--muted); font-size: var(--t-sm); }
+.far-acct { font-family: var(--mono); color: var(--link); text-decoration: none; }
+.far-amt { width: 8rem; }
+.far-links { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 var(--s2); }
+.far-h { margin: var(--s3) 0 6px; font-size: 0.85rem; font-weight: 650; }
+.far-allocs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--t-sm); }
+.far-allocs li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.far-allocs small { display: block; color: var(--muted); font-size: 0.72rem; }
+.far-allocs a { color: var(--link); text-decoration: none; }
+.far-allocs b { font-variant-numeric: tabular-nums; }
+button.far-unlink { background: none; border: 0; padding: 0; color: var(--fa-red); font: inherit; font-size: 0.75rem; cursor: pointer; }
+.far-form { display: grid; gap: 8px; }
+.far-row { display: grid; grid-template-columns: minmax(0, 1.6fr) auto auto minmax(0, 1fr) 26px; gap: 6px; align-items: center; }
+.far-row select, .far-row input { min-width: 0; width: 100%; }
+.far-row input[type="month"] { width: 9.5rem; }
+.far-x { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--muted); cursor: pointer; }
+.far-x:hover:not(:disabled) { background: var(--line-soft); color: var(--ink); }
+.far-exp { grid-column: 1 / -1; color: var(--muted); font-size: 0.72rem; }
+.far-exp.differs { color: var(--fa-amber); }
+.far-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.far-left { margin-left: auto; font-size: var(--t-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
+.far-left.over { color: var(--fa-red); }
+@media (max-width: 1200px) { .far-layout { grid-template-columns: 1fr; } .far-panel { position: static; max-height: none; } }
