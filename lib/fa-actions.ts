@@ -378,3 +378,84 @@ export async function discardDepreciation(fd: FormData) {
   await cancelRun(user.companyId, str(fd, "run_id"));
   revalidatePath("/fixed-assets", "layout");
 }
+
+// -------------------------------------------------------------- settings --
+
+/** Posting mode, start convention and the disposal gain/loss accounts. */
+export async function saveFaSettings(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("settings.manage");
+  const co = user.companyId;
+  try {
+    const mode = str(fd, "posting_mode"), conv = str(fd, "start_convention");
+    if (!["MANUAL", "REVIEW"].includes(mode)) return { error: "Choose Manual or Review & post. Automatic posting needs a scheduled job and is not available yet." };
+    if (!["NEXT_MONTH", "SAME_MONTH", "DAILY"].includes(conv)) return { error: "Choose when depreciation starts." };
+    const gain = str(fd, "gain_account_id") || null, loss = str(fd, "loss_account_id") || null;
+    for (const [id, type, what] of [[gain, "REVENUE", "gain"], [loss, "EXPENSE", "loss"]] as const) {
+      if (!id) continue;
+      const [a] = await sql`select account_type, is_postable, is_active from account where id = ${id} and company_id = ${co}`;
+      if (!a || !a.is_postable || !a.is_active) return { error: `The ${what} account must be an active, postable account.` };
+      if (a.account_type !== type) return { error: `The ${what} account should be a ${type === "REVENUE" ? "revenue (other income)" : "expense"} account.` };
+    }
+    await sql`
+      insert into fa_setting (company_id, posting_mode, start_convention, gain_account_id, loss_account_id)
+      values (${co}, ${mode}, ${conv}, ${gain}, ${loss})
+      on conflict (company_id) do update set posting_mode = excluded.posting_mode, start_convention = excluded.start_convention,
+        gain_account_id = excluded.gain_account_id, loss_account_id = excluded.loss_account_id, updated_at = now()`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  return { ok: true };
+}
+
+/**
+ * A category's three accounts and default life. Accounts change only while
+ * nothing has posted under the category: what posted stays on the accounts
+ * it posted to, and a new mapping would split one asset across two.
+ */
+export async function saveFaCategory(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("settings.manage");
+  const co = user.companyId;
+  const id = str(fd, "id") || null;
+  try {
+    const v = { code: str(fd, "code").toUpperCase(), name: str(fd, "name"), asset_class: str(fd, "asset_class") || "TANGIBLE",
+      asset: str(fd, "asset_account_id"), accum: str(fd, "accum_account_id"), expense: str(fd, "expense_account_id"),
+      life: str(fd, "default_life_months") ? Number(str(fd, "default_life_months")) : null, active: fd.get("is_active") === "on" };
+    if (!v.code || !v.name) return { error: "Give the category a code and a name." };
+    if (!["TANGIBLE", "INTANGIBLE"].includes(v.asset_class)) return { error: "Choose tangible or intangible." };
+    if (v.life !== null && (!Number.isInteger(v.life) || v.life < 1 || v.life > 1200)) return { error: "Default life is 1 to 1200 months." };
+    if (new Set([v.asset, v.accum, v.expense]).size !== 3) return { error: "The asset, accumulated-depreciation and expense accounts must be three different accounts." };
+    const accts = await sql`select id, account_type, is_postable, is_active, is_cash_account, is_bank_account, is_control
+                              from account where company_id = ${co} and id = any(${[v.asset, v.accum, v.expense]})`;
+    const by = new Map((accts as any[]).map((a) => [a.id, a]));
+    for (const [aid, want, what] of [[v.asset, "ASSET", "asset"], [v.accum, "ASSET", "accumulated-depreciation"], [v.expense, "EXPENSE", "expense"]] as const) {
+      const a = by.get(aid);
+      if (!a || !a.is_postable || !a.is_active) return { error: `Choose an active, postable ${what} account.` };
+      if (a.account_type !== want) return { error: `The ${what} account should be an ${want.toLowerCase()} account.` };
+      if (a.is_cash_account || a.is_bank_account || a.is_control) return { error: `The ${what} account cannot be a cash, bank or control account.` };
+    }
+    await sql.begin(async (tx) => {
+      if (!id) {
+        await tx`insert into fa_category (company_id, code, name, asset_class, asset_account_id, accum_account_id, expense_account_id, default_life_months, is_active)
+                 values (${co}, ${v.code}, ${v.name}, ${v.asset_class}, ${v.asset}, ${v.accum}, ${v.expense}, ${v.life}, ${v.active})`;
+        return;
+      }
+      const [old] = await tx`
+        select c.asset_account_id, c.accum_account_id, c.expense_account_id,
+               exists (select 1 from fa_depreciation x join fixed_asset f on f.id = x.asset_id where f.category_id = c.id and x.journal_line_id is not null)
+            or exists (select 1 from fa_journal_link k join fixed_asset f on f.id = k.asset_id where f.category_id = c.id) as used
+          from fa_category c where c.id = ${id} and c.company_id = ${co} for update`;
+      if (!old) throw new Error("That category is not in this company.");
+      const moved = old.asset_account_id !== v.asset || old.accum_account_id !== v.accum || old.expense_account_id !== v.expense;
+      if (moved && old.used) throw new Error("Journals already carry this category's assets, so its accounts stay as they are. Make a new category for new assets.");
+      await tx`update fa_category set code = ${v.code}, name = ${v.name}, asset_class = ${v.asset_class}, asset_account_id = ${v.asset},
+                 accum_account_id = ${v.accum}, expense_account_id = ${v.expense}, default_life_months = ${v.life}, is_active = ${v.active}
+               where id = ${id}`;
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: /fa_category_company_id_code_key/.test(msg) ? "That code is another category's." : msg };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  return { ok: true };
+}

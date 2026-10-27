@@ -11,7 +11,7 @@ import { seenLocations, seenBranches } from "@/lib/branch-scope";
 import { calendar, type MonthStatus, type CalEvent } from "@/lib/fa-calendar";
 import { faBranches, faCategories, FA_STATUS, FA_STATUS_LABEL } from "@/lib/fixed-assets";
 import { thisMonth } from "@/lib/fa-schedule";
-import { toUnits } from "@/lib/fa-engine";
+import { toUnits, addMonths } from "@/lib/fa-engine";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { AutoApply } from "@/components/auto-apply";
 
@@ -97,6 +97,7 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
     p.run = { id: r.id, status: r.status, docId: r.doc_id, docNo: r.doc_no };
     postings.set(r.branch_id, p);
   }
+  const prevM = addMonths(month, -1), nextM = addMonths(month, 1);
   const pct = (m: (typeof c.months)[number]) => {
     const e = toUnits(m.expected);
     return e > 0n ? Number((toUnits(m.posted) * 100n) / e) : 0;
@@ -222,22 +223,28 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
             </>
           ) : (
             <>
-              <div className="fac-panel-head">
-                <div>
+              <div className="fac-mhead">
+                <div className="fac-mhead-top">
                   <h2>{MONTH[mm - 1]} {yy} <span className={`fa-pill ${sel.status.toLowerCase()}`}>{STATUS[sel.status].label}</span></h2>
-                  <p>{sel.assets} asset{sel.assets === 1 ? "" : "s"} · {kyat(sel.expected)} MMK</p>
+                  <span className="fac-mnav">
+                    <Link href={href({ year: prevM.slice(0, 4), month: prevM, day: undefined })} scroll={false} aria-label="Previous month"><ChevronLeft size={16} /></Link>
+                    <Link href={href({ year: nextM.slice(0, 4), month: nextM, day: undefined })} scroll={false} aria-label="Next month"><ChevronRight size={16} /></Link>
+                  </span>
+                </div>
+                <p>{sel.assets ? `Monthly depreciation for ${sel.assets} asset${sel.assets === 1 ? "" : "s"}` : "No asset depreciates this month"}</p>
+                <div className="fac-mhead-amt">
+                  <strong>{kyat(sel.expected)}<small> MMK</small></strong>
+                  {tab !== "journal" && sel.status !== "PLANNED" && sel.status !== "NONE" && toUnits(sel.remaining) > 0n && (
+                    <Link className="fac-review" href={href({ tab: "journal" })} scroll={false}><FileText size={15} aria-hidden="true" /> Review journal</Link>
+                  )}
                 </div>
               </div>
               <dl className="fac-sum">
                 <div><dt>Eligible assets</dt><dd>{sel.assets}</dd></div>
-                <div><dt>Calculated</dt><dd>{kyat(sel.expected)}</dd></div>
-                <div><dt>Posted</dt><dd className="ok">{kyat(sel.posted)}</dd></div>
-                <div><dt>Remaining</dt><dd>{kyat(sel.remaining)}</dd></div>
+                <div><dt>Calculated</dt><dd>{kyat(sel.expected)}<small> MMK</small></dd></div>
+                <div><dt>Posted</dt><dd className="ok">{kyat(sel.posted)}<small> MMK</small></dd></div>
+                <div><dt>Remaining</dt><dd>{kyat(sel.remaining)}<small> MMK</small></dd></div>
               </dl>
-              {sel.status !== "PLANNED" && sel.status !== "NONE" && (
-                <FaPostControls month={month} branches={[...postings.values()]} mode={setting?.posting_mode ?? "REVIEW"}
-                  canPost={can(user, "accounting.post")} prepare={prepareDepreciation} post={postDepreciation} discard={discardDepreciation} />
-              )}
 
               <nav className="fac-tabs" aria-label="Month detail">
                 {TABS.map(([k, l]) => (
@@ -247,19 +254,21 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
 
               {tab === "assets" && (
                 c.detail.length === 0 ? <p className="fa-muted">No asset depreciates in this month.</p> : (
-                  <table className="ie-table fac-table">
-                    <thead><tr><th>Asset</th><th className="r">Depreciation</th><th className="r">NBV after</th><th>Status</th></tr></thead>
-                    <tbody>{c.detail.map((a) => (
-                      <tr key={a.id}>
-                        <td><Link href={`/fixed-assets/${a.id}`} className="fac-asset"><strong>{a.name}</strong><small>{a.code} · {a.branch}</small></Link>
-                          {a.warning && <small className="fac-warn-line">{a.warning}</small>}</td>
-                        <td className="r">{kyat(a.amount)}</td>
-                        <td className="r">{kyat(a.closing)}</td>
-                        <td><span className={`fa-pill ${a.state === "POSTED" ? "posted" : a.warning ? "exception" : sel.status === "PLANNED" ? "planned" : "ready"}`}>
-                          {a.state === "POSTED" ? "Posted" : a.warning ? "Exception" : sel.status === "PLANNED" ? "Planned" : "Ready"}</span></td>
-                      </tr>))}
-                    </tbody>
-                    <tfoot><tr><td>Total</td><td className="r">{kyat(sel.expected)}</td><td /><td /></tr></tfoot>
+                  <table className="fac-grid-table">
+                    <thead><tr><th>Asset</th><th className="r">Monthly depreciation</th><th className="r">Book value after</th><th>Status</th></tr></thead>
+                    <tbody>{c.detail.map((a) => {
+                      const st = a.state === "POSTED" ? ["posted", "Posted"] : a.warning ? ["exception", "Exception"]
+                        : sel.status === "PLANNED" ? ["planned", "Planned"] : ["ready", "Ready to post"];
+                      return (
+                        <tr key={a.id}>
+                          <td><Link href={`/fixed-assets/${a.id}`} className="fac-asset"><strong>{a.name}</strong><small>{a.code} · {a.branch}</small></Link>
+                            {a.warning && <small className="fac-warn-line">{a.warning}</small>}</td>
+                          <td className="r num">{kyat(a.amount)}</td>
+                          <td className="r num">{kyat(a.closing)}</td>
+                          <td><span className={`fa-pill ${st[0]}`}>{st[1]}</span></td>
+                        </tr>);
+                    })}</tbody>
+                    <tfoot><tr><td>Total</td><td className="r num">{kyat(sel.expected)}</td><td className="r">—</td><td className="r">{sel.assets} asset{sel.assets === 1 ? "" : "s"}</td></tr></tfoot>
                   </table>
                 )
               )}
@@ -276,6 +285,10 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
                 )
               )}
 
+              {tab === "journal" && sel.status !== "PLANNED" && sel.status !== "NONE" && (
+                <FaPostControls month={month} branches={[...postings.values()]} mode={setting?.posting_mode ?? "REVIEW"}
+                  canPost={can(user, "accounting.post")} prepare={prepareDepreciation} post={postDepreciation} discard={discardDepreciation} />
+              )}
               {tab === "journal" && (
                 c.journal.length === 0 ? <p className="fa-muted">Nothing left to post for this month.</p> : c.journal.map((j) => (
                   <div key={j.branchId} className="fac-jv">
