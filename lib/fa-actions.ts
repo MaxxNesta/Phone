@@ -103,6 +103,8 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
       const same = (k: (typeof PINNED)[number]) => k === "acquisition_cost" || k === "residual_value"
         ? units(String(before[k])) === units(String(v[k])) : String(before[k] ?? "") === String(v[k] ?? "");
       const changed = PINNED.filter((k) => !same(k));
+      const plain = (["code", "name", "site", "serial_no", "notes"] as const)
+        .filter((k) => String(old[k] ?? "") !== String(v[k] ?? ""));
       if (old.posted && changed.length) {
         throw new Error(`This asset already has depreciation on the ledger, so its ${changed.map((k) => PINNED_LABEL[k]).join(", ")} `
           + "cannot be edited. A new life or residual is a change of estimate, a new branch is a transfer, and a wrong cost is a correction.");
@@ -118,7 +120,9 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
          where id = ${id}`;
       await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
                values (${co}, ${id}, 'UPDATED', current_date, ${user.id},
-                       ${tx.json({ changed: changed.map((k) => ({ field: k, from: String(before[k] ?? ""), to: String(v[k] ?? "") })) })})`;
+                       ${tx.json({ changed: [
+                         ...changed.map((k) => ({ field: k, from: String(before[k] ?? ""), to: String(v[k] ?? "") })),
+                         ...plain.map((k) => ({ field: k, from: String(old[k] ?? ""), to: String(v[k] ?? "") }))] })})`;
       if (status !== old.status) await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by)
                values (${co}, ${id}, 'ACTIVATED', ${v.in_service_date}, ${user.id})`;
     });
@@ -161,4 +165,52 @@ export async function setAssetStatus(fd: FormData) {
   });
   revalidatePath("/fixed-assets", "layout");
   redirect(`/fixed-assets/register?toast=${encodeURIComponent(message)}`);
+}
+
+/**
+ * A new useful life or residual value, from a month on. Prospective only:
+ * the month must come after every month the ledger already carries for the
+ * asset, and what was posted stays as it was. The rest of the life absorbs
+ * the change (lib/fa-engine).
+ */
+export async function changeEstimate(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("accounting.post");
+  const co = user.companyId;
+  const id = str(fd, "id");
+  try {
+    const month = str(fd, "effective_month");
+    const life = Number(str(fd, "useful_life_months"));
+    const residual = str(fd, "residual_value").replace(/,/g, "") || "0";
+    const reason = str(fd, "reason");
+    if (!/^\d{4}-\d{2}$/.test(month)) return { error: "Choose the month the change applies from." };
+    if (!Number.isInteger(life) || life < 1 || life > 1200) return { error: "Useful life is a whole number of months, 1 to 1200." };
+    if (!MONEY.test(residual)) return { error: "Enter the residual value as an amount, or 0." };
+    if (!reason) return { error: "Say why the estimate changed; it stays on the asset's record." };
+    await sql.begin(async (tx) => {
+      const [a] = await tx`
+        select f.branch_id, f.status, f.acquisition_cost::text as cost,
+               to_char((select max(period_month) from fa_depreciation d where d.asset_id = f.id), 'YYYY-MM') as last_posted
+          from fixed_asset f where f.id = ${id} and f.company_id = ${co} for update`;
+      if (!a) throw new Error("That asset is not in this company.");
+      await assertMyBranch(a.branch_id);
+      if (a.status === "DISPOSED" || a.status === "DRAFT") throw new Error("Only an asset in service has estimates to change.");
+      if (units(residual) > units(a.cost)) throw new Error("The residual value cannot be more than the cost.");
+      if (a.last_posted && month <= a.last_posted) {
+        throw new Error(`Depreciation is on the ledger up to ${a.last_posted}; a change of estimate applies from a later month.`);
+      }
+      await tx`
+        insert into fa_estimate_change (company_id, asset_id, effective_month, useful_life_months, residual_value, reason, created_by)
+        values (${co}, ${id}, ${month + "-01"}, ${life}, ${residual}, ${reason}, ${user.id})
+        on conflict (asset_id, effective_month) do update
+          set useful_life_months = excluded.useful_life_months, residual_value = excluded.residual_value,
+              reason = excluded.reason, created_by = excluded.created_by, created_at = now()`;
+      await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
+               values (${co}, ${id}, 'ESTIMATE_CHANGED', ${month + "-01"}, ${user.id},
+                       ${tx.json({ life, residual, reason })})`;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  return { ok: true };
 }
