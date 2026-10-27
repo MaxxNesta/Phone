@@ -254,6 +254,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* The asset subledger: it feeds the ledger above, through its journals. */}
             {may("accounting.view") && (
               <NavGroup label={n("fixedAssets")} icon={<Landmark size={15} />} match={["/fixed-assets"]}>
+                <NavLink href="/fixed-assets" exact>{n("faOverview")}</NavLink>
                 <NavLink href="/fixed-assets/register">{n("assetRegister")}</NavLink>
               </NavGroup>
             )}

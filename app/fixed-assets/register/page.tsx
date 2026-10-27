@@ -41,7 +41,7 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
     },
     node: (
       <tr key={r.id} data-saved={sp.saved === r.id || undefined}>
-        <td className="code"><Link href={`/fixed-assets/${r.id}/edit`}>{r.code}</Link></td>
+        <td className="code"><Link href={`/fixed-assets/${r.id}`}>{r.code}</Link></td>
         <td className="wrap"><strong className="fa-name">{r.name}</strong>
           {r.serial_no && <span className="subline">S/N {r.serial_no}</span>}</td>
         <td>{r.category}{r.asset_class === "INTANGIBLE" && <span className="subline">Amortised</span>}</td>
@@ -63,7 +63,7 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
 
   return (
     <div className="fa">
-      <Breadcrumbs trail={[{ label: "Fixed Assets" }, { label: "Asset Register" }]} />
+      <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Asset Register" }]} />
       <div className="fa-head">
         <div>
           <h1>Asset Register</h1>
