@@ -15,8 +15,8 @@ export function FaReadyPopup({ month, label, branches, amount }: { month: string
   const [shown, setShown] = useState(false);
   const path = usePathname();
   useEffect(() => { try { setShown(!sessionStorage.getItem(key)); } catch { setShown(true); } }, [key]);
-  // Not over the calendar month that is already open for posting.
-  if (!shown || path.startsWith("/fixed-assets/calendar")) return null;
+  // Only where people browse: never over a page with its own buttons to press.
+  if (!shown || !(path === "/fixed-assets" || path === "/fixed-assets/register")) return null;
   const year = month.slice(0, 4);
   return (
     <div className="fa-popup" role="status">

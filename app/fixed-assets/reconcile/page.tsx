@@ -6,7 +6,7 @@ import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { reconLines, lineAllocations, reconIssues } from "@/lib/fa-reconcile";
 import { loadSchedules } from "@/lib/fa-schedule";
-import { fromUnits } from "@/lib/fa-engine";
+import { fromUnits, toUnits } from "@/lib/fa-engine";
 import { linkJournalLine, unlinkAllocation } from "@/lib/fa-actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { AutoApply } from "@/components/auto-apply";
@@ -40,13 +40,14 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
       </div>
     );
   }
-  const f = { accountId: sp.account || undefined, from: sp.from || undefined, to: sp.to || undefined,
+  const f = { branch: sp.branch || undefined, accountId: sp.account || undefined, from: sp.from || undefined, to: sp.to || undefined,
               month: sp.month || undefined, amount: sp.amount || undefined, q: sp.q || undefined, open: sp.open !== "0" };
-  const [lines, accounts, issues] = await Promise.all([
+  const [lines, accounts, issues, branchList] = await Promise.all([
     reconLines(co, f),
     sql`select distinct a.id, a.code, a.name from account a
           join fa_category c on a.id in (c.asset_account_id, c.accum_account_id) where c.company_id = ${co} order by a.code`,
     reconIssues(co),
+    sql`select id, name from location where company_id = ${co} and parent_id is null and is_active order by code`,
   ]);
   const href = (patch: SP) => {
     const q = new URLSearchParams();
@@ -67,11 +68,23 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
     const seen = await seenLocations();
     const scheds = (await loadSchedules(co, { branches: seen })).filter((a) => (candidates as any[]).some((c) => c.id === a.id));
     const credit = line.amount.startsWith("-");
+    // A match the amounts give away: depreciation for the line's month that
+    // adds up to what is left of the line, at its branch (or any, if none).
+    const month = line.date.slice(0, 7);
+    const planned = scheds
+      .filter((a) => !line.branch || a.postBranch === line.branch)
+      .map((a) => ({ a, r: a.rows.find((r) => r.month === month && r.state === "PLANNED" && r.amount > 0n) }))
+      .filter((x) => x.r);
+    const left = toUnits(line.remaining);
+    const one = planned.find((x) => x.r!.amount === left);
+    const all = planned.reduce((s, x) => s + x.r!.amount, 0n) === left;
+    const suggested = line.role !== "ACCUM" || !credit || left <= 0n ? []
+      : (one ? [one] : all ? planned : []).map((x) => ({ assetId: x.a.id, month, amount: fromUnits(x.r!.amount).replace(/\.?0+$/, "") }));
     panel = (
       <aside className="card far-panel">
         <div className="fac-panel-head">
           <div>
-            <h2>{line.docNo ?? line.entryNo}</h2>
+            <h2>{line.docNo ?? line.entryNo} <span className="fa-pill none fa-src-pill">{line.generated ? "Generated" : "Manual"}</span></h2>
             <p>{line.date} · {line.accountCode} {line.accountName}{line.branch ? ` · ${line.branch}` : ""}</p>
           </div>
           <Link href={href({ line: undefined })} className="fac-x" aria-label="Close"><X size={16} /></Link>
@@ -110,7 +123,7 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
           <>
             <h3 className="far-h">Link to assets</h3>
             <FaLinkForm action={linkJournalLine} lineId={line.id} role={line.role} credit={credit}
-              remaining={line.remaining} defaultMonth={line.date.slice(0, 7)}
+              remaining={line.remaining} defaultMonth={line.date.slice(0, 7)} suggested={suggested}
               assets={scheds.map((a) => ({ id: a.id, code: a.code, name: a.name,
                 expected: Object.fromEntries(a.rows.map((r) => [r.month, fromUnits(r.amount)])) }))} />
           </>
@@ -142,6 +155,11 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
         <input type="date" name="from" defaultValue={sp.from ?? ""} aria-label="From" className="dt-filter" />
         <input type="date" name="to" defaultValue={sp.to ?? ""} aria-label="To" className="dt-filter" />
         <input name="amount" defaultValue={sp.amount ?? ""} placeholder="Amount" inputMode="decimal" aria-label="Amount" className="dt-filter far-amt" />
+        <select name="branch" defaultValue={sp.branch ?? ""} aria-label="Branch" className={`dt-filter${sp.branch ? " dt-filter-on" : ""}`}>
+          <option value="">All branches</option>
+          <option value="company">Company level (no branch)</option>
+          {(branchList as any[]).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
         <select name="open" defaultValue={sp.open ?? ""} aria-label="Show" className="dt-filter">
           <option value="">Not fully linked</option><option value="0">All lines</option>
         </select>
@@ -156,7 +174,7 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
             <span>Nothing on a fixed-asset account matches. Assets are linked when their accounts carry posted journals.</span></div> : (
             <div className="tablewrap">
               <table className="far-table">
-                <thead><tr><th>Date</th><th>Journal</th><th>Account</th><th>Memo / reference</th><th className="r">Debit</th><th className="r">Credit</th><th className="r">Linked</th><th /></tr></thead>
+                <thead><tr><th>Date</th><th>Journal</th><th>Account</th><th>Looks like</th><th>Memo / reference</th><th className="r">Debit</th><th className="r">Credit</th><th className="r">Linked</th><th /></tr></thead>
                 <tbody>{lines.map((l) => {
                   const credit = l.amount.startsWith("-");
                   const full = Number(l.remaining) <= 0;
@@ -165,10 +183,11 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
                       <td className="nowrap">{l.date}</td>
                       <td>{l.docId ? <Link href={`/documents/${l.docId}`} style={{ color: "var(--link)" }}>{l.docNo ?? l.entryNo}</Link> : l.entryNo}</td>
                       <td><Link href={`/finance/general-ledger?view=account&account=${l.accountId}`} className="far-acct">{l.accountCode}</Link> {l.accountName}</td>
+                      <td className="far-looks">{l.looks}{l.branch ? "" : <small>Company level</small>}</td>
                       <td className="wrap far-memo">{[l.memo, l.reference].filter(Boolean).join(" · ") || "—"}</td>
                       <td className="r">{credit ? "" : money(l.amount)}</td>
                       <td className="r">{credit ? money(l.amount.slice(1)) : ""}</td>
-                      <td className="r"><span className={`fa-pill ${full ? "posted" : Number(l.allocated) > 0 ? "partial" : "planned"}`}>{full ? "Linked" : Number(l.allocated) > 0 ? `${money(l.allocated)}` : "Not linked"}</span></td>
+                      <td className="r"><span className={`fa-pill ${full ? "posted" : "unreconciled"}`}>{full ? "Linked" : Number(l.allocated) > 0 ? `${money(l.remaining)} unlinked` : "Unlinked"}</span></td>
                       <td><Link href={href({ line: l.id })} className="ie-link">{canLink && !full ? "Link" : "View"}</Link></td>
                     </tr>);
                 })}</tbody>

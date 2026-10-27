@@ -17,7 +17,9 @@ const show = (u: bigint) => (Number(u) / 10000).toLocaleString("en-US", { maximu
  * asset month is shown beside it, so a historical entry that differs from
  * what the engine expects is visible before it is linked, not after.
  */
-export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMonth, assets }: {
+export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMonth, assets, suggested }: {
+  /** A match worked out from the amounts, offered pre-filled; nothing is linked until Link is pressed. */
+  suggested?: { assetId: string; month: string; amount: string }[];
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   lineId: string; role: "ASSET" | "ACCUM"; credit: boolean; remaining: string; defaultMonth: string;
   assets: Asset[];
@@ -25,7 +27,9 @@ export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMon
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   const kind: Row["kind"] = role === "ASSET" ? "ACQUISITION" : credit ? "DEPRECIATION" : "CORRECTION";
   const blank = (): Row => ({ assetId: "", kind, month: defaultMonth, amount: "" });
-  const [rows, setRows] = useState<Row[]>([blank()]);
+  const [rows, setRows] = useState<Row[]>(suggested?.length
+    ? suggested.map((x) => ({ assetId: x.assetId, kind, month: x.month, amount: x.amount }))
+    : [blank()]);
   const set = (i: number, p: Partial<Row>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
   const total = rows.reduce((s, r) => s + units(r.amount), 0n);
   const left = units(remaining) - total;
@@ -38,6 +42,7 @@ export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMon
       <input type="hidden" name="allocations" value={JSON.stringify(rows.filter((r) => r.assetId && r.amount))} />
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
       {state && "ok" in state && <p className="fa-ok" role="status">Linked. Nothing was posted; the register now counts this journal.</p>}
+      {suggested?.length ? <p className="far-sug">Suggested from the schedule: {suggested.length === 1 ? "one asset" : `${suggested.length} assets`} whose depreciation for {suggested[0].month} adds up to this line. Check it, then Link.</p> : null}
       {rows.map((r, i) => {
         const exp = r.kind === "DEPRECIATION" || r.kind === "CORRECTION" ? byId.get(r.assetId)?.expected[r.month] : undefined;
         const differs = exp !== undefined && r.amount && units(exp) !== units(r.amount);

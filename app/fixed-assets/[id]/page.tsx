@@ -33,7 +33,7 @@ export default async function AssetPage({ params }: { params: Promise<{ id: stri
   const [[a], [s]] = await Promise.all([assetList(co, seen, id), loadSchedules(co, { branches: seen, assetId: id })]);
   if (!a) notFound();
   const [journals, events, estimates] = await Promise.all([
-    sql`select to_char(d.period_month, 'YYYY-MM') as m, d.source, d.amount::text, doc.id as doc_id, doc.doc_no
+    sql`select to_char(d.period_month, 'YYYY-MM') as m, d.source, d.is_link, d.amount::text, doc.id as doc_id, doc.doc_no
           from fa_depreciation d join journal_line jl on jl.id = d.journal_line_id
           join journal_entry je on je.id = jl.journal_entry_id left join document doc on doc.id = je.source_id
          where d.asset_id = ${id} order by d.period_month, d.created_at`,
@@ -108,8 +108,10 @@ export default async function AssetPage({ params }: { params: Promise<{ id: stri
                       <td className="r">{kyat(r.closing)}</td>
                       <td><span className={`fa-pill ${state}`}>{{ posted: "Posted", due: "Not posted", ready: "Ready to post", planned: "Planned" }[state]}</span></td>
                       <td>{js.length ? js.map((j) => (
-                        <Link key={j.doc_id + j.source} href={`/documents/${j.doc_id}`} className="fa-jlink">
-                          {j.doc_no}{j.source !== "RUN" ? ` · ${j.source === "HISTORICAL" ? "history" : "correction"}` : ""}</Link>)) : "—"}</td>
+                        <span key={j.doc_id + j.source} className="fa-jsrc">
+                          <Link href={`/documents/${j.doc_id}`} className="fa-jlink">{j.doc_no}</Link>
+                          <small>{j.is_link ? "Manual" : "Generated"}{j.source === "OPENING" ? " · opening" : j.source === "CORRECTION" ? " · correction" : ""}</small>
+                        </span>)) : "—"}</td>
                     </tr>);
                 })}</tbody>
               </table>

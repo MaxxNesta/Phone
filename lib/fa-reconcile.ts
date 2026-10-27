@@ -16,10 +16,16 @@ export type ReconLine = {
   branch: string | null;
   /** Signed, debit positive. */
   amount: string;
+  /** Posted by this module (a transfer or disposal), not entered by hand. */
+  generated: boolean;
+  /** What the line looks like, from its account and side. */
+  looks: "Purchase" | "Disposal" | "Depreciation" | "Adjustment";
   allocated: string; remaining: string;
 };
 
 export type ReconFilters = {
+  /** A branch, or "company" for lines with no branch. */
+  branch?: string;
   accountId?: string; from?: string; to?: string; month?: string; amount?: string; q?: string;
   /** Only lines with something left to allocate. */
   open?: boolean;
@@ -44,6 +50,13 @@ export async function reconLines(co: string, f: ReconFilters, lineId?: string): 
            a.id as "accountId", a.code as "accountCode", a.name as "accountName", fa.role,
            b.name as branch,
            jl.base_amount::text as amount,
+           coalesce(d.reference like 'FA-%', false) as generated,
+           case when fa.role = 'ASSET' and jl.base_amount > 0 then 'Purchase'
+                when fa.role = 'ASSET' then 'Disposal'
+                when jl.base_amount < 0 then 'Depreciation'
+                when exists (select 1 from journal_line o where o.journal_entry_id = jl.journal_entry_id and o.base_amount < 0
+                               and o.account_id in (select asset_account_id from fa_category where company_id = ${co})) then 'Disposal'
+                else 'Adjustment' end as looks,
            coalesce((select sum(u.amount) from used u where u.id = jl.id), 0)::text as allocated,
            (abs(jl.base_amount) - coalesce((select sum(u.amount) from used u where u.id = jl.id), 0))::text as remaining
       from journal_line jl
@@ -58,6 +71,7 @@ export async function reconLines(co: string, f: ReconFilters, lineId?: string): 
        and not exists (select 1 from fa_run r where r.document_id = d.id)
        ${lineId ? sql`and jl.id = ${lineId}` : sql``}
        ${f.accountId ? sql`and jl.account_id = ${f.accountId}` : sql``}
+       ${f.branch === "company" ? sql`and jl.location_id is null` : f.branch ? sql`and coalesce(l.parent_id, l.id) = ${f.branch}` : sql``}
        ${f.from ? sql`and je.entry_date >= ${f.from}` : sql``}
        ${f.to ? sql`and je.entry_date <= ${f.to}` : sql``}
        ${monthFrom ? sql`and date_trunc('month', je.entry_date) = ${monthFrom}::date` : sql``}
@@ -98,4 +112,36 @@ export async function reconIssues(co: string) {
        and not exists (select 1 from fa_depreciation x where x.journal_line_id = jl.id)
        and not exists (select 1 from fa_journal_link k where k.journal_line_id = jl.id)`;
   return { unlinked: unlinked as { n: number; amount: string } };
+}
+
+/**
+ * Manual depreciation the register does not know about yet: credits to an
+ * accumulated-depreciation account, entered by hand, with some of their
+ * amount not tied to any asset month. Grouped by the month they were entered
+ * and the branch on the line; a line with no branch is company level and
+ * counts against every branch, because it may cover any of them.
+ *
+ * Posting a month over one of these would record the same depreciation
+ * twice, so the posting run refuses it until it is linked.
+ */
+export async function unlinkedDepreciation(q: typeof sql, co: string, f: { months?: string[]; branchId?: string } = {}) {
+  return (await q`
+    with lines as (
+      select jl.id, to_char(je.entry_date, 'YYYY-MM') as month, coalesce(l.parent_id, l.id) as branch_id,
+             abs(jl.base_amount) - coalesce((select sum(abs(x.amount)) from fa_depreciation x where x.journal_line_id = jl.id), 0)
+               - coalesce((select sum(k.amount) from fa_journal_link k where k.journal_line_id = jl.id), 0) as open_amount,
+             coalesce(d.doc_no, je.entry_no) as doc_no
+        from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
+        left join document d on d.id = je.source_id left join location l on l.id = jl.location_id
+       where jl.company_id = ${co} and jl.base_amount < 0
+         and jl.account_id in (select accum_account_id from fa_category where company_id = ${co})
+         and (d.id is null or d.status = 'POSTED')
+         and not exists (select 1 from fa_run r where r.document_id = d.id)
+         ${f.months?.length ? q`and to_char(je.entry_date, 'YYYY-MM') = any(${f.months})` : q``}
+    )
+    select month, branch_id, count(*)::int as lines, sum(open_amount)::text as amount, min(doc_no) as doc_no
+      from lines
+     where open_amount > 0.0001
+       ${f.branchId ? q`and (branch_id = ${f.branchId} or branch_id is null)` : q``}
+     group by 1, 2 order by 1`) as unknown as { month: string; branch_id: string | null; lines: number; amount: string; doc_no: string }[];
 }

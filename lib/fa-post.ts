@@ -91,6 +91,14 @@ async function checks(tx: TransactionSql, co: string, branchId: string, month: M
   if (money.length) throw new Error(`Account ${(money as any[]).map((b) => b.code).join(", ")} is a cash or bank account; depreciation never moves money.`);
   const [b] = await tx`select id from location where id = ${branchId} and company_id = ${co} and parent_id is null`;
   if (!b) throw new Error("That branch is not in this company.");
+  // A depreciation entry made by hand this month and not yet linked: posting
+  // the month as well would record the same depreciation twice.
+  const { unlinkedDepreciation } = await import("./fa-reconcile");
+  const [manual] = await unlinkedDepreciation(tx as never, co, { months: [month], branchId });
+  if (manual) {
+    throw new Error(`${manual.doc_no}${manual.lines > 1 ? ` and ${manual.lines - 1} more` : ""} records depreciation by hand in ${month}`
+      + `${manual.branch_id ? "" : " at company level"} and is not linked to assets yet. Link it in Journal Reconciliation first, so the month is not posted twice.`);
+  }
 }
 
 export async function draftRun(co: string, branchId: string, month: Month, userId: string, mode: "REVIEW" | "MANUAL", now: Month) {
@@ -218,7 +226,11 @@ export async function readyToPost(co: string, branches: string[] | null, now: Mo
     select m from unnest(${months}::text[]) m
      where exists (select 1 from fiscal_period p where p.company_id = ${co} and p.status = 'OPEN'
                      and ((m || '-01')::date + interval '1 month - 1 day')::date between p.start_date and p.end_date)`) as any[]).map((r) => r.m) : []);
-  return [...by.values()].filter((e) => open.has(e.month))
+  // A month with manual depreciation still to link is reconciled first, not posted.
+  const { unlinkedDepreciation } = await import("./fa-reconcile");
+  const manual = await unlinkedDepreciation(sql, co, { months });
+  const blocked = (e: { month: Month; branchId: string }) => manual.some((u) => u.month === e.month && (!u.branch_id || u.branch_id === e.branchId));
+  return [...by.values()].filter((e) => open.has(e.month) && !blocked(e))
     .sort((x, y) => x.month.localeCompare(y.month) || x.branch.localeCompare(y.branch));
 }
 

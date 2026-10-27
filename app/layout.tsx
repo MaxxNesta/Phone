@@ -259,6 +259,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/fixed-assets/calendar">{n("depCalendar")}</NavLink>
                 <NavLink href="/fixed-assets/moves">{n("faMoves")}</NavLink>
                 <NavLink href="/fixed-assets/reconcile">{n("faReconcile")}</NavLink>
+                <NavLink href="/fixed-assets/reports">{n("faReports")}</NavLink>
                 <NavLink href="/fixed-assets/settings">{n("faSettings")}</NavLink>
               </NavGroup>
             )}

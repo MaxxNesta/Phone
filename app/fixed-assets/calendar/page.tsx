@@ -30,6 +30,7 @@ const STATUS: Record<MonthStatus, { label: string; icon: React.ReactNode }> = {
   READY: { label: "Ready to post", icon: <Clock size={16} aria-hidden="true" /> },
   PARTIAL: { label: "Partially posted", icon: <CircleDashed size={16} aria-hidden="true" /> },
   PLANNED: { label: "Planned", icon: <CalendarDays size={16} aria-hidden="true" /> },
+  UNRECONCILED: { label: "Unreconciled", icon: <CircleAlert size={16} aria-hidden="true" /> },
   EXCEPTION: { label: "Exception", icon: <AlertTriangle size={16} aria-hidden="true" /> },
   NONE: { label: "No eligible assets", icon: <MinusCircle size={16} aria-hidden="true" /> },
 };
@@ -247,6 +248,15 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
                 <div><dt>Remaining</dt><dd>{kyat(sel.remaining)}<small> MMK</small></dd></div>
               </dl>
 
+              {c.unlinked.length > 0 && (
+                <p className="fac-unrec">
+                  <CircleAlert size={14} aria-hidden="true" />
+                  <span>{c.unlinked.reduce((s, u) => s + u.lines, 0)} manual depreciation entr{c.unlinked.reduce((s, u) => s + u.lines, 0) === 1 ? "y" : "ies"} this month
+                    ({kyat(c.unlinked.reduce((s, u) => String(Number(s) + Number(u.amount)), "0"))} MMK) not linked to assets yet. Link before posting, so nothing is recorded twice.</span>
+                  <Link href={`/fixed-assets/reconcile?month=${month}`}>Reconcile</Link>
+                </p>
+              )}
+
               <nav className="fac-tabs" aria-label="Month detail">
                 {TABS.map(([k, l]) => (
                   <Link key={k} href={href({ tab: k === "assets" ? undefined : k })} scroll={false} aria-current={tab === k ? "page" : undefined}>{l}</Link>
@@ -332,12 +342,12 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
                   <ul className="fac-history">
                     {c.runs.map((r) => (
                       <li key={r.id}><span className={`fa-pill ${r.status === "POSTED" ? "posted" : r.status === "FAILED" ? "exception" : "planned"}`}>{r.status.toLowerCase()}</span>
-                        <span><strong>{r.branch}</strong> · {kyat(r.total)} MMK · {r.mode.toLowerCase()}
+                        <span><strong>{r.branch}</strong> · {kyat(r.total)} MMK <span className="fa-src">Generated</span>
                           <small>{r.posted_at ? `Posted ${r.posted_at}` : `Created ${r.created_at}`}{r.approved_by ? ` · approved by ${r.approved_by}` : r.created_by ? ` · by ${r.created_by}` : ""}{r.error ? ` · ${r.error}` : ""}</small></span>
                         {r.doc_id && <Link href={`/documents/${r.doc_id}`} className="fa-jlink">{r.doc_no}</Link>}</li>))}
                     {c.links.map((l, i) => (
-                      <li key={`l${i}`}><span className="fa-pill ready">{l.source === "HISTORICAL" ? "history" : "correction"}</span>
-                        <span><strong>{l.code}</strong> · {l.name} · {kyat(l.amount)} MMK<small>{l.date}</small></span>
+                      <li key={`l${i}`}><span className="fa-pill posted">{l.source === "CORRECTION" ? "correction" : "posted"}</span>
+                        <span><strong>{l.code}</strong> · {l.name} · {kyat(l.amount)} MMK <span className="fa-src">Manual</span><small>{l.date}</small></span>
                         {l.doc_id && <Link href={`/documents/${l.doc_id}`} className="fa-jlink">{l.doc_no}</Link>}</li>))}
                   </ul>
                 )

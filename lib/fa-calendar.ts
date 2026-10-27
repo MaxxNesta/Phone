@@ -12,7 +12,7 @@ import { fromUnits, sum, type Month } from "./fa-engine";
  * happened (an acquisition, a posting, a transfer), not a daily charge.
  */
 
-export type MonthStatus = "PLANNED" | "READY" | "PARTIAL" | "POSTED" | "EXCEPTION" | "NONE";
+export type MonthStatus = "PLANNED" | "READY" | "PARTIAL" | "POSTED" | "UNRECONCILED" | "EXCEPTION" | "NONE";
 export type CalMonth = {
   month: Month; expected: string; posted: string; remaining: string;
   assets: number; warnings: number; status: MonthStatus;
@@ -57,6 +57,11 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
                          and (gs + interval '1 month - 1 day')::date between p.start_date and p.end_date)`,
   ]);
   const openMonth = new Set((periods as any[]).map((p) => p.m as string));
+  // Manual depreciation not yet tied to assets, for the branches in view (or company level).
+  const { unlinkedDepreciation } = await import("./fa-reconcile");
+  const unlinked = (await unlinkedDepreciation(sql, co, { months: Array.from({ length: 12 }, (_, k) => `${year}-${String(k + 1).padStart(2, "0")}`) }))
+    .filter((u) => !u.branch_id || !branches || branches.includes(u.branch_id));
+  const unlinkedIn = (m: Month) => unlinked.filter((u) => u.month === m);
   const needle = f.q?.trim().toLowerCase();
   const assets = all.filter((a) => (!branches || branches.includes(a.postBranchId))
     && (!f.status || a.status === f.status)
@@ -81,13 +86,15 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
       + [...new Set(rows.map(({ a }) => a.postBranch))].filter((b) => failedMonth.has(`${m}|${b}`)).length
       // Something to post and no open period to post it into.
       + (open && m <= now && !openMonth.has(m) ? 1 : 0);
-    const status: MonthStatus = rows.length === 0 ? "NONE"
+    const manual = unlinkedIn(m).length;
+    const status: MonthStatus = rows.length === 0 && manual === 0 ? "NONE"
+      : manual > 0 ? "UNRECONCILED"
       : warnings > 0 && posted < expected ? "EXCEPTION"
       : posted >= expected ? "POSTED"
       : posted > 0n ? "PARTIAL"
       : m <= now ? "READY" : "PLANNED";
     return { month: m, expected: fromUnits(expected), posted: fromUnits(posted), remaining: fromUnits(expected - posted),
-             assets: rows.length, warnings, status };
+             assets: rows.length, warnings: warnings + manual, status };
   });
 
   // ---- the selected month in detail
@@ -196,7 +203,7 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
     label: "Run failed", detail: `${r.branch}: ${r.error ?? "the run failed"}`, amount: null, href: null });
 
   return {
-    now, months, detail, events: events.sort((x, y) => x.date.localeCompare(y.date)),
+    now, months, detail, unlinked: unlinkedIn(month), events: events.sort((x, y) => x.date.localeCompare(y.date)),
     schedule: [...byCat.values()].map((c) => ({ ...c, amount: fromUnits(c.amount), posted: fromUnits(c.posted) })),
     journal, runs: runs as any[], links: links as any[],
   };
