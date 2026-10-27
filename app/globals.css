@@ -7868,3 +7868,116 @@ tr[data-saved] > td { background: color-mix(in srgb, var(--fa-blue) 6%, transpar
 @media (max-width: 1100px) { .fa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .fa-kpis.fa-kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 @media (max-width: 1100px) { .fa-kpis.fa-kpis-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ------------------------------------------------- depreciation calendar -- */
+.fac-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: 0 0 var(--s3); }
+.fac-bar .sp { flex: 1; }
+.fac-bar .dt-search { min-width: 200px; }
+.fac-year { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.fac-year a { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--ink-soft); }
+.fac-year a:hover { background: var(--line-soft); color: var(--ink); }
+.fac-year strong { min-width: 3.4rem; text-align: center; font-variant-numeric: tabular-nums; font-size: 0.95rem; }
+.fac-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 420px); gap: var(--s3); align-items: start; }
+.fac-main { display: grid; gap: var(--s3); min-width: 0; }
+
+.fac-months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.fac-month { --c: var(--muted); display: grid; gap: 6px; padding: 12px 14px 11px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 14px; color: var(--ink); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.fac-month:hover { border-color: color-mix(in srgb, var(--c) 40%, var(--line)); box-shadow: 0 4px 14px rgb(15 23 42 / 0.06); }
+.fac-month[aria-current] { border-color: var(--fa-blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fa-blue) 16%, transparent); }
+.fac-month.posted { --c: var(--fa-green); }
+.fac-month.ready { --c: var(--fa-blue); }
+.fac-month.partial { --c: var(--fa-amber); }
+.fac-month.exception { --c: var(--fa-red); }
+.fac-month.none { --c: var(--line); }
+.fac-month.none .fac-month-amt { color: var(--muted); }
+.fac-month-top { display: flex; align-items: center; justify-content: space-between; }
+.fac-month-top strong { font-size: 0.88rem; font-weight: 650; }
+.fac-month-ico { display: inline-flex; color: var(--c); }
+.fac-month-amt { font-size: 1.08rem; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fac-month-amt small { font-size: 0.68rem; font-weight: 500; color: var(--muted); }
+.fac-month-meta { display: flex; align-items: center; gap: 6px; min-height: 20px; }
+.fac-warn { display: inline-flex; align-items: center; gap: 2px; font-size: 0.7rem; font-weight: 600; color: var(--fa-red); }
+.fac-progress { display: block; height: 5px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.fac-progress > span { display: block; height: 100%; border-radius: inherit; background: var(--c); }
+.fac-month.ready .fac-progress > span, .fac-month.planned .fac-progress > span { background: var(--fa-blue); }
+.fac-month-foot { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); }
+.fa-pill.planned { color: var(--muted); }
+.fa-pill.partial { color: var(--fa-amber); background: color-mix(in srgb, var(--fa-amber) 14%, transparent); }
+.fa-pill.none { color: var(--muted); background: transparent; }
+
+.fac-days { padding: var(--s3); margin: 0; }
+.fac-key { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted); }
+.fac-key i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; }
+.fac-key i.posted { background: var(--fa-green); } .fac-key i.due { background: var(--fa-blue); }
+.fac-key i.asset { background: var(--fa-lav); } .fac-key i.exception { background: var(--fa-red); }
+.fac-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.fac-dow { padding: 7px 8px; font-size: 0.72rem; font-weight: 600; color: var(--muted); background: var(--line-soft); text-align: center; }
+.fac-cell { display: flex; flex-direction: column; gap: 3px; min-height: 76px; padding: 6px 7px; border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line); color: var(--ink); text-decoration: none; min-width: 0; }
+.fac-cell:nth-child(7n + 1) { border-left: 0; }
+.fac-cell.out { background: color-mix(in srgb, var(--line-soft) 45%, transparent); }
+a.fac-cell:hover { background: color-mix(in srgb, var(--fa-blue) 4%, transparent); }
+.fac-cell[aria-current] { box-shadow: inset 0 0 0 2px var(--fa-blue); background: color-mix(in srgb, var(--fa-blue) 5%, transparent); }
+.fac-num { font-size: 0.78rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.fac-cell.today .fac-num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--fa-blue); color: #fff; }
+.fac-chip { --k: var(--fa-lav); display: flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 6px; font-size: 0.68rem; font-weight: 600;
+  color: var(--k); background: color-mix(in srgb, var(--k) 11%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fac-chip span { overflow: hidden; text-overflow: ellipsis; }
+.fac-chip svg { flex: none; }
+.fac-chip.posted { --k: var(--fa-green); } .fac-chip.due { --k: var(--fa-blue); }
+.fac-chip.exception { --k: var(--fa-red); } .fac-chip.disposal, .fac-chip.transfer { --k: var(--fa-amber); }
+.fac-more { font-size: 0.66rem; color: var(--muted); padding-left: 2px; }
+
+.fac-panel { position: sticky; top: var(--s3); padding: var(--s3); margin: 0; max-height: calc(100vh - 2 * var(--s3)); overflow: auto; }
+.fac-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s2); }
+.fac-panel-head h2 { margin: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fac-panel-head p { margin: 2px 0 0; color: var(--muted); font-size: var(--t-sm); }
+.fac-x { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); text-decoration: none; font-size: 1.2rem; }
+.fac-x:hover { background: var(--line-soft); color: var(--ink); }
+.fac-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 var(--s2); border: 1px solid var(--line); border-radius: 12px; }
+.fac-sum > div { padding: 8px 10px; min-width: 0; }
+.fac-sum > div + div { border-left: 1px solid var(--line); }
+.fac-sum dt { font-size: 0.7rem; color: var(--muted); }
+.fac-sum dd { margin: 2px 0 0; font-weight: 650; font-variant-numeric: tabular-nums; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fac-sum dd.ok { color: var(--fa-green); }
+.fac-tabs { display: flex; gap: 14px; margin: 0 0 var(--s2); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.fac-tabs a { padding: 8px 0; margin-bottom: -1px; white-space: nowrap; font-size: var(--t-sm); color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; }
+.fac-tabs a:hover { color: var(--ink); }
+.fac-tabs a[aria-current] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.fac-table td { vertical-align: top; }
+.fac-table tfoot td { font-weight: 650; border-top: 1px solid var(--line); padding-top: 8px; }
+.fac-asset { display: grid; color: inherit; text-decoration: none; }
+.fac-asset small { color: var(--muted); font-size: 0.72rem; }
+.fac-asset:hover strong { text-decoration: underline; }
+.fac-warn-line { display: block; color: var(--fa-red); font-size: 0.7rem; }
+.fac-jv + .fac-jv { margin-top: var(--s3); }
+.fac-jv h3, .fac-impact h3 { margin: 0 0 6px; font-size: 0.85rem; font-weight: 650; }
+.fac-impact { display: grid; gap: 8px; font-size: var(--t-sm); }
+.fac-impact-row { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.fac-impact-row svg { flex: none; margin-top: 2px; color: var(--muted); }
+.fac-impact-row.debit svg { color: var(--fa-red); } .fac-impact-row.credit svg { color: var(--fa-green); }
+.fac-impact-row small { display: block; color: var(--muted); margin-top: 2px; }
+.fac-impact-jv { display: grid; gap: 3px; padding: 8px 10px; border-radius: 10px; background: var(--line-soft); }
+.fac-impact-jv span { display: flex; justify-content: space-between; gap: 8px; font-size: 0.78rem; }
+.fac-impact-jv b { font-variant-numeric: tabular-nums; }
+.fac-events, .fac-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fac-events li { --k: var(--fa-lav); display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; gap: 10px; align-items: center;
+  padding: 9px 10px; border: 1px solid var(--line); border-radius: 11px; font-size: var(--t-sm); }
+.fac-events li.posted { --k: var(--fa-green); } .fac-events li.due { --k: var(--fa-blue); }
+.fac-events li.exception { --k: var(--fa-red); } .fac-events li.disposal, .fac-events li.transfer { --k: var(--fa-amber); }
+.fac-ev-ico { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: var(--k); background: color-mix(in srgb, var(--k) 12%, transparent); }
+.fac-ev-body { display: grid; min-width: 0; }
+.fac-ev-body span { color: var(--muted); font-size: 0.75rem; }
+.fac-ev-amt { font-weight: 650; font-variant-numeric: tabular-nums; }
+.fac-ev-go { color: var(--muted); text-decoration: none; font-size: 1.1rem; }
+.fac-history li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; font-size: var(--t-sm);
+  padding: 8px 0; border-bottom: 1px solid var(--line); }
+.fac-history small { display: block; color: var(--muted); font-size: 0.72rem; }
+@media (max-width: 1200px) { .fac-layout { grid-template-columns: 1fr; } .fac-panel { position: static; max-height: none; } }
+@media (max-width: 760px) { .fac-months { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fac-cell { min-height: 56px; } .fac-chip span { display: none; } }
+.fac-asset strong { color: var(--ink); font-weight: 600; }
+.fac-jv .fac-table { table-layout: fixed; width: 100%; }
+.fac-jv .fac-table th:nth-child(2), .fac-jv .fac-table th:nth-child(3) { width: 84px; }
+.fac-jv .fac-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.fac-table .subline { display: block; color: var(--muted); font-size: 0.7rem; }

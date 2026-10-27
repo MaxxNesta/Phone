@@ -256,6 +256,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <NavGroup label={n("fixedAssets")} icon={<Landmark size={15} />} match={["/fixed-assets"]}>
                 <NavLink href="/fixed-assets" exact>{n("faOverview")}</NavLink>
                 <NavLink href="/fixed-assets/register">{n("assetRegister")}</NavLink>
+                <NavLink href="/fixed-assets/calendar">{n("depCalendar")}</NavLink>
               </NavGroup>
             )}
 
