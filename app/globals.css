@@ -8092,3 +8092,12 @@ a.fac-review:hover { background: #0F1F3A; color: #fff; }
 .fac-sum dd { font-size: 0.86rem; overflow: visible; text-overflow: clip; white-space: normal; }
 .fac-sum dd small { display: inline; }
 .fac-grid-table thead th { white-space: normal; overflow-wrap: normal; }
+.fa-head-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.fam { display: grid; gap: var(--s3); max-width: 1000px; padding-bottom: var(--s3); }
+.fam-form { display: grid; gap: var(--s2); }
+.fam-go { display: flex; justify-content: flex-end; }
+.fam-sum { margin-top: var(--s3); }
+.fac-sum dd.bad { color: var(--fa-red); }
+.fam-block { margin-top: var(--s2); padding: 0.65rem 0.85rem; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--fa-amber) 35%, var(--line));
+  background: color-mix(in srgb, var(--fa-amber) 7%, var(--surface)); font-size: var(--t-sm); }
+.fam-block p { margin: 0; }

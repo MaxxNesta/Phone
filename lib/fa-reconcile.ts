@@ -95,6 +95,7 @@ export async function reconIssues(co: string) {
        and jl.account_id in (select accum_account_id from fa_category where company_id = ${co})
        and jl.base_amount < 0
        and not exists (select 1 from fa_run r where r.document_id = d.id)
-       and not exists (select 1 from fa_depreciation x where x.journal_line_id = jl.id)`;
+       and not exists (select 1 from fa_depreciation x where x.journal_line_id = jl.id)
+       and not exists (select 1 from fa_journal_link k where k.journal_line_id = jl.id)`;
   return { unlinked: unlinked as { n: number; amount: string } };
 }

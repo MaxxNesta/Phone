@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, Wallet, TrendingDown, Landmark, CalendarClock, Hourglass } from "lucide-react";
+import { Pencil, Repeat, Trash2, Wallet, TrendingDown, Landmark, CalendarClock, Hourglass } from "lucide-react";
 import { requirePermission, can } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
@@ -65,7 +65,11 @@ export default async function AssetPage({ params }: { params: Promise<{ id: stri
           <p>{a.code} · {a.category} · {a.branch}{a.site ? ` · ${a.site}` : ""}{a.serial_no ? ` · S/N ${a.serial_no}` : ""}</p>
         </div>
         {canPost && a.status !== "DISPOSED" && (
-          <Link className="ie-btn" href={`/fixed-assets/${a.id}/edit`}><Pencil size={14} aria-hidden="true" /> Edit</Link>
+          <span className="fa-head-actions">
+            {a.status !== "DRAFT" && <Link className="ie-btn" href={`/fixed-assets/${a.id}/transfer`}><Repeat size={14} aria-hidden="true" /> Transfer</Link>}
+            {a.status !== "DRAFT" && <Link className="ie-btn" href={`/fixed-assets/${a.id}/dispose`}><Trash2 size={14} aria-hidden="true" /> Dispose</Link>}
+            <Link className="ie-btn" href={`/fixed-assets/${a.id}/edit`}><Pencil size={14} aria-hidden="true" /> Edit</Link>
+          </span>
         )}
       </div>
 

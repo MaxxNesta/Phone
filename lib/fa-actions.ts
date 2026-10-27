@@ -459,3 +459,46 @@ export async function saveFaCategory(_prev: unknown, fd: FormData): Promise<Acti
   revalidatePath("/fixed-assets", "layout");
   return { ok: true };
 }
+
+// ------------------------------------------------- transfers and disposals --
+
+export async function transferAssetAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("accounting.post");
+  const assetId = str(fd, "id");
+  let docNo: string | null = null;
+  try {
+    const [a] = await sql`select branch_id from fixed_asset where id = ${assetId} and company_id = ${user.companyId}`;
+    if (!a) return { error: "That asset is not in this company." };
+    await assertMyBranch(a.branch_id);
+    const date = str(fd, "date");
+    if (!DATE.test(date)) return { error: "Enter the date it moves." };
+    const { transferAsset } = await import("./fa-move");
+    ({ docNo } = await transferAsset(user.companyId, user.id, { assetId, toBranchId: str(fd, "to_branch_id"), date, note: str(fd, "note") || null }));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  redirect(`/fixed-assets/${assetId}?toast=${encodeURIComponent(docNo ? `Transferred · ${docNo}` : "Transferred")}`);
+}
+
+export async function disposeAssetAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("accounting.post");
+  const assetId = str(fd, "id");
+  let docNo = "";
+  try {
+    const [a] = await sql`select branch_id from fixed_asset where id = ${assetId} and company_id = ${user.companyId}`;
+    if (!a) return { error: "That asset is not in this company." };
+    await assertMyBranch(a.branch_id);
+    const date = str(fd, "date"), reason = str(fd, "reason");
+    const proceeds = str(fd, "proceeds").replace(/,/g, "") || "0";
+    if (!DATE.test(date)) return { error: "Enter the disposal date." };
+    if (!reason) return { error: "Say why it is disposed of." };
+    if (!MONEY.test(proceeds)) return { error: "Enter the proceeds as an amount, or 0." };
+    const { disposeAsset } = await import("./fa-move");
+    ({ docNo } = await disposeAsset(user.companyId, user.id, { assetId, date, reason, proceeds, proceedsAccountId: str(fd, "proceeds_account_id") || null }));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  redirect(`/fixed-assets/${assetId}?toast=${encodeURIComponent(`Disposed · ${docNo}`)}`);
+}
