@@ -18,7 +18,11 @@ export type CalMonth = {
   assets: number; warnings: number; status: MonthStatus;
 };
 export type CalAsset = {
-  id: string; code: string; name: string; category: string; branch: string; branchId: string;
+  id: string; code: string; name: string; category: string;
+  /** The branch whose voucher carries it (normally where it is used). */
+  branch: string; branchId: string;
+  /** Where it is used, when that is not where it posts. */
+  usedAt: string | null;
   amount: string; posted: string | null; opening: string; closing: string;
   state: "POSTED" | "PLANNED"; warning: string | null;
 };
@@ -42,6 +46,7 @@ const lastDay = (m: Month) => {
 const counts = (a: LoadedAsset) => a.status === "ACTIVE" || a.status === "FULLY_DEPRECIATED" || a.status === "DISPOSED";
 
 export async function calendar(co: string, year: number, month: Month, f: CalFilters) {
+  // Figures belong to the branch that posts them: one voucher per branch.
   const branches = f.branchId ? (f.branches ? f.branches.filter((b) => b === f.branchId) : [f.branchId]) : f.branches;
   const [all, exceptions, periods] = await Promise.all([
     loadSchedules(co, { branches, categoryId: f.categoryId }),
@@ -53,7 +58,8 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
   ]);
   const openMonth = new Set((periods as any[]).map((p) => p.m as string));
   const needle = f.q?.trim().toLowerCase();
-  const assets = all.filter((a) => (!f.status || a.status === f.status)
+  const assets = all.filter((a) => (!branches || branches.includes(a.postBranchId))
+    && (!f.status || a.status === f.status)
     && (!needle || `${a.code} ${a.name}`.toLowerCase().includes(needle)));
   const badCategory = new Map(exceptions.mapping.map((m) => [m.id, `Account ${m.bad.join(", ")} cannot be posted to`]));
   const failedMonth = new Map(exceptions.failed.map((r) => [`${r.month}|${r.branch}`, r.error ?? "The run failed"]));
@@ -72,7 +78,7 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
     const posted = sum(rows.filter(({ r }) => r.state === "POSTED").map(({ r }) => r.amount));
     const open = rows.some(({ r }) => r.state === "PLANNED");
     const warnings = rows.filter(({ a, r }) => r.state === "PLANNED" && badCategory.has(a.categoryId)).length
-      + [...new Set(rows.map(({ a }) => a.branch))].filter((b) => failedMonth.has(`${m}|${b}`)).length
+      + [...new Set(rows.map(({ a }) => a.postBranch))].filter((b) => failedMonth.has(`${m}|${b}`)).length
       // Something to post and no open period to post it into.
       + (open && m <= now && !openMonth.has(m) ? 1 : 0);
     const status: MonthStatus = rows.length === 0 ? "NONE"
@@ -87,7 +93,8 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
   // ---- the selected month in detail
   const rows = monthRows(month);
   const detail: CalAsset[] = rows.map(({ a, r }) => ({
-    id: a.id, code: a.code, name: a.name, category: a.category, branch: a.branch, branchId: a.branchId,
+    id: a.id, code: a.code, name: a.name, category: a.category, branch: a.postBranch, branchId: a.postBranchId,
+    usedAt: a.postBranchId !== a.branchId ? a.branch : null,
     amount: fromUnits(r.amount), posted: r.posted === null ? null : fromUnits(r.posted),
     opening: fromUnits(r.opening), closing: fromUnits(r.closing), state: r.state,
     warning: r.state === "PLANNED" ? (badCategory.get(a.categoryId)
@@ -111,13 +118,13 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
   const preview = new Map<string, { branch: string; lines: Map<string, { side: "D" | "C"; amount: bigint; assets: number }> }>();
   for (const { a, r } of rows) {
     if (r.state === "POSTED") continue;
-    const p = preview.get(a.branchId) ?? { branch: a.branch, lines: new Map() };
+    const p = preview.get(a.postBranchId) ?? { branch: a.postBranch, lines: new Map() };
     for (const [id, side] of [[a.expenseAccountId, "D"], [a.accumAccountId, "C"]] as const) {
       const l = p.lines.get(id) ?? { side, amount: 0n, assets: 0 };
       l.amount += r.amount; l.assets++;
       p.lines.set(id, l);
     }
-    preview.set(a.branchId, p);
+    preview.set(a.postBranchId, p);
   }
   const journal: JournalPreview[] = [...preview.entries()].map(([branchId, p]) => {
     const lines = [...p.lines.entries()].map(([id, l]) => ({

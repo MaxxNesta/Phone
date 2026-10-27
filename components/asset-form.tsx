@@ -10,6 +10,8 @@ export type AssetFormValue = {
   site: string; serial_no: string; notes: string;
   acquisition_date: string; in_service_date: string;
   acquisition_cost: string; residual_value: string; useful_life_months: string; start_convention: string;
+  /** "" = posts at the assigned branch. */
+  posting_branch_id: string;
   status: string;
 };
 
@@ -22,7 +24,9 @@ const CONVENTION: Record<string, string> = {
  * on the ledger the figures it was worked out from are shown locked, with the
  * way each one is changed instead.
  */
-export function AssetForm({ action, value, categories, branches, pinned, companyConvention }: {
+export function AssetForm({ action, value, categories, branches, pinned, companyConvention, companyName }: {
+  /** The legal entity that owns it. */
+  companyName: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   value: AssetFormValue;
   categories: { id: string; name: string; asset_class: string; default_life_months: number | null; accounts: string }[];
@@ -45,7 +49,7 @@ export function AssetForm({ action, value, categories, branches, pinned, company
       {value.id && <input type="hidden" name="id" value={value.id} />}
       {/* A disabled field is not sent; the pinned values go as they are. */}
       {pinned && (["category_id", "branch_id", "acquisition_date", "in_service_date", "acquisition_cost",
-                   "residual_value", "useful_life_months", "start_convention"] as const)
+                   "residual_value", "useful_life_months", "start_convention", "posting_branch_id"] as const)
         .map((k) => <input key={k} type="hidden" name={k} value={v[k]} />)}
 
       <header className="ie-title">
@@ -79,13 +83,22 @@ export function AssetForm({ action, value, categories, branches, pinned, company
                 <option value="">Choose…</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}{c.asset_class === "INTANGIBLE" ? " (amortised)" : ""}</option>)}
               </select></label>
-            <label className="ie-field"><span>Branch</span>
+            <label className="ie-field"><span>Used at (assigned branch)</span>
               <select name="branch_id" value={v.branch_id} onChange={set("branch_id")} required {...lock}>
                 <option value="">Choose…</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select></label>
             <label className="ie-field"><span>Location in branch</span>
               <input name="site" value={v.site} onChange={set("site")} placeholder="e.g. Back office" /></label>
+          </div>
+          <div className="ie-grid3" style={{ marginTop: "var(--s2)" }}>
+            <div className="ie-field"><span>Owned by</span><output className="ie-ro">{companyName}</output></div>
+            <label className="ie-field"><span>Depreciation posts to</span>
+              <select name="posting_branch_id" value={v.posting_branch_id} onChange={set("posting_branch_id")} {...lock}>
+                <option value="">The branch it is used at{v.branch_id ? ` (${branches.find((b) => b.id === v.branch_id)?.name ?? ""})` : ""}</option>
+                {branches.filter((b) => b.id !== v.branch_id).map((b) => <option key={b.id} value={b.id}>{b.name} (by policy)</option>)}
+              </select></label>
+            <p className="ie-note fa-own-note">Who paid for it does not decide where it depreciates: a Head Office purchase used in Mandalay depreciates in Mandalay.</p>
           </div>
           {cat && <p className="ie-note">Posts to {cat.accounts}.</p>}
         </section>

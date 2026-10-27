@@ -74,8 +74,20 @@ export async function faOverview(co: string, branches: string[] | null) {
     byCat.set(a.categoryId, c);
   }
 
+  // Company Depreciation Manager: this month by the branch that posts it.
+  const byBranch = new Map<string, { branchId: string; branch: string; amount: bigint; posted: bigint; assets: number }>();
+  for (const a of held) {
+    if (a.status !== "ACTIVE" && a.status !== "FULLY_DEPRECIATED") continue;
+    const r = a.rows.find((x) => x.month === now);
+    if (!r || r.amount === 0n) continue;
+    const b = byBranch.get(a.postBranchId) ?? { branchId: a.postBranchId, branch: a.postBranch, amount: 0n, posted: 0n, assets: 0 };
+    b.amount += r.amount; b.assets++; if (r.state === "POSTED") b.posted += r.amount;
+    byBranch.set(a.postBranchId, b);
+  }
+
   return {
     now,
+    branches: [...byBranch.values()].sort((x, y) => (y.amount > x.amount ? 1 : -1)),
     counts: counts[0] as { total: number; active: number; disposed: number; draft: number },
     cost, accumulated, nbv: cost - accumulated,
     thisMonth: monthOf(now),

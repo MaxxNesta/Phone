@@ -43,7 +43,7 @@ async function planned(tx: TransactionSql, co: string, branchId: string, month: 
            f.start_convention, to_char(f.in_service_date, 'YYYY-MM-DD') as in_service, to_char(f.disposed_on, 'YYYY-MM-DD') as disposed_on,
            c.expense_account_id, c.accum_account_id
       from fixed_asset f join fa_category c on c.id = f.category_id
-     where f.company_id = ${co} and f.branch_id = ${branchId} and f.status = 'ACTIVE'
+     where f.company_id = ${co} and coalesce(f.posting_branch_id, f.branch_id) = ${branchId} and f.status = 'ACTIVE'
      order by f.code
        for update of f`;
   if (assets.length === 0) return [];
@@ -206,8 +206,9 @@ export async function readyToPost(co: string, branches: string[] | null, now: Mo
   const by = new Map<string, { branchId: string; branch: string; month: Month; amount: bigint; assets: number }>();
   for (const a of assets) for (const r of a.rows) {
     if (r.state !== "PLANNED" || r.amount <= 0n || r.month > now) continue;
-    const k = `${a.branchId}|${r.month}`;
-    const e = by.get(k) ?? { branchId: a.branchId, branch: a.branch, month: r.month, amount: 0n, assets: 0 };
+    if (branches && !branches.includes(a.postBranchId)) continue;
+    const k = `${a.postBranchId}|${r.month}`;
+    const e = by.get(k) ?? { branchId: a.postBranchId, branch: a.postBranch, month: r.month, amount: 0n, assets: 0 };
     e.amount += r.amount; e.assets++;
     by.set(k, e);
   }

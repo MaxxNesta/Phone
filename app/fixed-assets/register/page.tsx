@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { canPostFa } from "@/lib/fa-access";
 import { Plus } from "lucide-react";
-import { requirePermission, can } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { assetList, faCategories, faBranches, FA_STATUS, FA_STATUS_LABEL } from "@/lib/fixed-assets";
 import { DataTable, type DataRow } from "@/components/data-table";
@@ -20,7 +21,7 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const user = await requirePermission("accounting.view");
   const co = user.companyId;
-  const canEdit = can(user, "accounting.post");
+  const canEdit = canPostFa(user);
   const [rows, categories, branches] = await Promise.all([assetList(co, await seenLocations()), faCategories(co), faBranches(co)]);
   const multiBranch = branches.length > 1;
 

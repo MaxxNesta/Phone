@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { canPostFa } from "@/lib/fa-access";
 import { Landmark, Layers, TrendingDown, Wallet, CalendarClock, Hourglass, AlertTriangle, Plus, ArrowRight } from "lucide-react";
-import { requirePermission, can } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { faOverview } from "@/lib/fa-overview";
 import { KpiCard } from "@/components/kpi-card";
@@ -30,7 +31,7 @@ export default async function FixedAssetsOverview() {
           <h1>Fixed Assets</h1>
           <p>The shop&apos;s assets, their depreciation and what the ledger carries for them.</p>
         </div>
-        {can(user, "accounting.post") && (
+        {canPostFa(user) && (
           <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>
         )}
       </div>
@@ -55,6 +56,29 @@ export default async function FixedAssetsOverview() {
           tone={o.exceptionCount > 0 ? "bad" : undefined}
           hint="A category whose accounts cannot be posted to, or a run that failed." />
       </div>
+
+      {o.branches.length > 0 && (
+        <section className="card fa-mgr">
+          <div className="fa-panel-head">
+            <div>
+              <h2>Company Depreciation Manager</h2>
+              <span className="fa-muted">{o.branches.length > 1 ? "All assets · all branches" : "Your branch"} · monthly depreciation, {monthName(o.now, "long")}</span>
+            </div>
+            <Link className="ie-link" href="/fixed-assets/calendar">Calendar <ArrowRight size={13} aria-hidden="true" /></Link>
+          </div>
+          <div className="fa-mgr-grid">
+            {o.branches.map((b) => (
+              <Link key={b.branchId} className="fa-mgr-card" href={`/fixed-assets/calendar?branch=${b.branchId}`}>
+                <span className="fa-mgr-name">{b.branch}</span>
+                <strong>{kyat(b.amount)}</strong>
+                <small>MMK / month · {b.assets} asset{b.assets === 1 ? "" : "s"}</small>
+                <span className={`fa-pill ${b.posted >= b.amount ? "posted" : b.posted > 0n ? "partial" : "ready"}`}>
+                  {b.posted >= b.amount ? "Posted" : b.posted > 0n ? "Partly posted" : "Ready to post"}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {o.exceptionCount > 0 && (
         <section className="fa-alert">

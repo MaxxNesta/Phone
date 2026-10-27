@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requirePermission } from "@/lib/auth";
+import { requireFaPoster } from "@/lib/fa-access";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { assetList } from "@/lib/fixed-assets";
@@ -20,7 +20,7 @@ type SP = Record<string, string | undefined>;
 export default async function DisposeAsset({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SP> }) {
   const { id } = await params;
   const sp = await searchParams;
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const [a] = await assetList(co, await seenLocations(), id);
   if (!a) notFound();

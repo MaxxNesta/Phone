@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { canPostFa } from "@/lib/fa-access";
 import {
   ChevronLeft, ChevronRight, CheckCircle2, Clock, CalendarDays, AlertTriangle, CircleDashed, MinusCircle, Search,
   ArrowDownRight, ArrowUpRight, Package, Wrench, FileText, Repeat, Trash2, CircleAlert,
 } from "lucide-react";
-import { requirePermission, can } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { prepareDepreciation, postDepreciation, discardDepreciation } from "@/lib/fa-actions";
 import { FaPostControls, type BranchPosting } from "@/components/fa-post-controls";
@@ -261,7 +262,7 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
                         : sel.status === "PLANNED" ? ["planned", "Planned"] : ["ready", "Ready to post"];
                       return (
                         <tr key={a.id}>
-                          <td><Link href={`/fixed-assets/${a.id}`} className="fac-asset"><strong>{a.name}</strong><small>{a.code} · {a.branch}</small></Link>
+                          <td><Link href={`/fixed-assets/${a.id}`} className="fac-asset"><strong>{a.name}</strong><small>{a.code} · {a.branch}{a.usedAt ? ` · used at ${a.usedAt}` : ""}</small></Link>
                             {a.warning && <small className="fac-warn-line">{a.warning}</small>}</td>
                           <td className="r num">{kyat(a.amount)}</td>
                           <td className="r num">{kyat(a.closing)}</td>
@@ -287,7 +288,7 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
 
               {tab === "journal" && sel.status !== "PLANNED" && sel.status !== "NONE" && (
                 <FaPostControls month={month} branches={[...postings.values()]} mode={setting?.posting_mode ?? "REVIEW"}
-                  canPost={can(user, "accounting.post")} prepare={prepareDepreciation} post={postDepreciation} discard={discardDepreciation} />
+                  canPost={canPostFa(user)} prepare={prepareDepreciation} post={postDepreciation} discard={discardDepreciation} />
               )}
               {tab === "journal" && (
                 c.journal.length === 0 ? <p className="fa-muted">Nothing left to post for this month.</p> : c.journal.map((j) => (

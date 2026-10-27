@@ -1,4 +1,5 @@
-import { currentUser, can } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
+import { canPostFa } from "@/lib/fa-access";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { readyToPost, currentMonth } from "@/lib/fa-post";
@@ -9,7 +10,7 @@ import { FaReadyPopup } from "@/components/fa-ready-popup";
 export default async function FixedAssetsLayout({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
   let popup: React.ReactNode = null;
-  if (user && can(user, "accounting.post")) {
+  if (user && canPostFa(user)) {
     const [s] = await sql`select posting_mode from fa_setting where company_id = ${user.companyId}`;
     if ((s?.posting_mode ?? "REVIEW") === "REVIEW") {
       const ready = await readyToPost(user.companyId, await seenLocations(), currentMonth());

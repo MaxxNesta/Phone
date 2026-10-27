@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requirePermission } from "@/lib/auth";
+import { requireFaPoster } from "@/lib/fa-access";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { assetList, faBranches } from "@/lib/fixed-assets";
@@ -13,7 +13,7 @@ const money = (s: string) => Number(s).toLocaleString("en-US", { maximumFraction
 /** One asset to another branch: cost and accumulated depreciation move with it, history stays. */
 export default async function TransferAsset({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const [[a], branches] = await Promise.all([assetList(co, await seenLocations(), id), faBranches(co)]);
   if (!a) notFound();

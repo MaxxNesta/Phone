@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "./db";
 import { requirePermission } from "./auth";
-import { assertMyBranch } from "./branch-scope";
+import { requireFaPoster, assertFaBranch, isCompanyLevel } from "./fa-access";
 import type { ActionResult } from "./actions";
 
 const MONEY = /^\d{1,14}(\.\d{1,4})?$/;
@@ -15,11 +15,11 @@ const units = (v: string) => { const [i, f = ""] = v.split("."); return BigInt(i
 
 /** What an asset's posted history pins: these change only by correction or change of estimate. */
 const PINNED = ["category_id", "acquisition_date", "in_service_date", "acquisition_cost", "residual_value",
-                "useful_life_months", "start_convention", "branch_id"] as const;
+                "useful_life_months", "start_convention", "branch_id", "posting_branch_id"] as const;
 const PINNED_LABEL: Record<(typeof PINNED)[number], string> = {
   category_id: "category", acquisition_date: "acquisition date", in_service_date: "in-service date",
   acquisition_cost: "cost", residual_value: "residual value", useful_life_months: "useful life",
-  start_convention: "start convention", branch_id: "branch",
+  start_convention: "start convention", branch_id: "branch", posting_branch_id: "depreciation posting branch",
 };
 
 /**
@@ -30,7 +30,7 @@ const PINNED_LABEL: Record<(typeof PINNED)[number], string> = {
  * with its own record, and nothing posted is rewritten.
  */
 export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const id = str(fd, "id") || null;
   const intent = str(fd, "intent");
@@ -45,7 +45,10 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
       residual_value: str(fd, "residual_value").replace(/,/g, "") || "0",
       useful_life_months: Number(str(fd, "useful_life_months")),
       start_convention: str(fd, "start_convention") || null,
+      posting_branch_id: str(fd, "posting_branch_id") || null,
     };
+    // The assigned branch is the default; naming it again is no exception.
+    if (v.posting_branch_id === v.branch_id) v.posting_branch_id = null;
     if (!/^[A-Z0-9][A-Z0-9._/-]{0,39}$/.test(v.code)) return { error: "Give the asset a code: letters, numbers, - . / only." };
     if (!v.name) return { error: "Give the asset a name." };
     if (!DATE.test(v.acquisition_date)) return { error: "Enter the acquisition date." };
@@ -63,8 +66,12 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
     const [cat] = await sql`select id, is_active from fa_category where id = ${v.category_id} and company_id = ${co}`;
     if (!cat) return { error: "Choose a category." };
     const [br] = await sql`select id from location where id = ${v.branch_id} and company_id = ${co} and parent_id is null`;
-    if (!br) return { error: "Choose the branch it belongs to." };
-    await assertMyBranch(v.branch_id);
+    if (!br) return { error: "Choose the branch it is used at." };
+    if (v.posting_branch_id) {
+      const [pb] = await sql`select id from location where id = ${v.posting_branch_id} and company_id = ${co} and parent_id is null`;
+      if (!pb) return { error: "Choose the branch its depreciation posts to." };
+    }
+    await assertFaBranch(user, v.branch_id, v.posting_branch_id);
     const [dup] = await sql`select id from fixed_asset where company_id = ${co} and code = ${v.code}
                              and id <> ${id ?? "00000000-0000-0000-0000-000000000000"}`;
     if (dup) return { error: `Code ${v.code} is already another asset's.` };
@@ -72,10 +79,10 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
     await sql.begin(async (tx) => {
       if (!id) {
         const [a] = await tx`
-          insert into fixed_asset (company_id, code, name, category_id, branch_id, site, serial_no, notes,
+          insert into fixed_asset (company_id, code, name, category_id, branch_id, posting_branch_id, site, serial_no, notes,
                                    acquisition_date, in_service_date, acquisition_cost, residual_value,
                                    useful_life_months, start_convention, status, created_by)
-          values (${co}, ${v.code}, ${v.name}, ${v.category_id}, ${v.branch_id}, ${v.site}, ${v.serial_no}, ${v.notes},
+          values (${co}, ${v.code}, ${v.name}, ${v.category_id}, ${v.branch_id}, ${v.posting_branch_id}, ${v.site}, ${v.serial_no}, ${v.notes},
                   ${v.acquisition_date}, ${v.in_service_date}, ${v.acquisition_cost}, ${v.residual_value},
                   ${v.useful_life_months}, ${v.start_convention}, ${intent === "activate" ? "ACTIVE" : "DRAFT"}, ${user.id})
           returning id`;
@@ -93,12 +100,12 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
                exists (select 1 from fa_depreciation d where d.asset_id = f.id and d.journal_line_id is not null) as posted
           from fixed_asset f where f.id = ${id} and f.company_id = ${co} for update`;
       if (!old) throw new Error("That asset is not in this company.");
-      await assertMyBranch(old.branch_id);
+      await assertFaBranch(user, old.branch_id);
       if (old.status === "DISPOSED") throw new Error("A disposed asset keeps its record as it was.");
       const before: Record<string, unknown> = {
         category_id: old.category_id, acquisition_date: old.acq, in_service_date: old.svc,
         acquisition_cost: old.cost, residual_value: old.resid, useful_life_months: old.useful_life_months,
-        start_convention: old.start_convention, branch_id: old.branch_id,
+        start_convention: old.start_convention, branch_id: old.branch_id, posting_branch_id: old.posting_branch_id,
       };
       const same = (k: (typeof PINNED)[number]) => k === "acquisition_cost" || k === "residual_value"
         ? units(String(before[k])) === units(String(v[k])) : String(before[k] ?? "") === String(v[k] ?? "");
@@ -112,6 +119,7 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
       const status = intent === "activate" && old.status === "DRAFT" ? "ACTIVE" : old.status;
       await tx`
         update fixed_asset set code = ${v.code}, name = ${v.name}, category_id = ${v.category_id}, branch_id = ${v.branch_id},
+               posting_branch_id = ${v.posting_branch_id},
                site = ${v.site}, serial_no = ${v.serial_no}, notes = ${v.notes},
                acquisition_date = ${v.acquisition_date}, in_service_date = ${v.in_service_date},
                acquisition_cost = ${v.acquisition_cost}, residual_value = ${v.residual_value},
@@ -135,7 +143,7 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
 
 /** Active ↔ inactive, and the removal of a draft nothing has touched. */
 export async function setAssetStatus(fd: FormData) {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const id = str(fd, "id"), to = str(fd, "to");
   let message = "";
@@ -146,7 +154,7 @@ export async function setAssetStatus(fd: FormData) {
              exists (select 1 from fa_journal_link k where k.asset_id = f.id) as touched
         from fixed_asset f where f.id = ${id} and f.company_id = ${co} for update`;
     if (!a) throw new Error("That asset is not in this company.");
-    await assertMyBranch(a.branch_id);
+    await assertFaBranch(user, a.branch_id);
     if (to === "DELETE") {
       if (a.status !== "DRAFT" || a.touched) throw new Error("Only a draft with nothing linked to it can be deleted.");
       await tx`delete from fa_event where asset_id = ${id}`;
@@ -174,7 +182,7 @@ export async function setAssetStatus(fd: FormData) {
  * the change (lib/fa-engine).
  */
 export async function changeEstimate(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const id = str(fd, "id");
   try {
@@ -192,7 +200,7 @@ export async function changeEstimate(_prev: unknown, fd: FormData): Promise<Acti
                to_char((select max(period_month) from fa_depreciation d where d.asset_id = f.id), 'YYYY-MM') as last_posted
           from fixed_asset f where f.id = ${id} and f.company_id = ${co} for update`;
       if (!a) throw new Error("That asset is not in this company.");
-      await assertMyBranch(a.branch_id);
+      await assertFaBranch(user, a.branch_id);
       if (a.status === "DISPOSED" || a.status === "DRAFT") throw new Error("Only an asset in service has estimates to change.");
       if (units(residual) > units(a.cost)) throw new Error("The residual value cannot be more than the cost.");
       if (a.last_posted && month <= a.last_posted) {
@@ -225,10 +233,11 @@ type Allocation = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQU
  * that add up to more than the line. Nothing is posted or reposted.
  */
 export async function linkJournalLine(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const lineId = str(fd, "line_id");
   try {
+    if (!(await isCompanyLevel())) return { error: "Linking the ledger's historical journals is company-level work; ask someone who sees every branch." };
     const allocations = JSON.parse(str(fd, "allocations") || "[]") as Allocation[];
     if (allocations.length === 0) return { error: "Add at least one asset to link." };
     await sql.begin(async (tx) => {
@@ -256,7 +265,7 @@ export async function linkJournalLine(_prev: unknown, fd: FormData): Promise<Act
             from fixed_asset f join fa_category c on c.id = f.category_id
            where f.id = ${al.assetId} and f.company_id = ${co}`;
         if (!a) throw new Error(`${at}choose an asset.`);
-        await assertMyBranch(a.branch_id);
+        await assertFaBranch(user, a.branch_id);
         // A line from another branch is refused unless the asset was ever there.
         if (line.branch_id && line.branch_id !== a.branch_id) {
           const [was] = await tx`select 1 from fa_event where asset_id = ${a.id} and event_type = 'TRANSFERRED'
@@ -305,8 +314,9 @@ export async function linkJournalLine(_prev: unknown, fd: FormData): Promise<Act
 
 /** Undoes one reconciliation link. A voucher this module posted cannot be unlinked (lib/0157). */
 export async function unlinkAllocation(fd: FormData) {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
+  if (!(await isCompanyLevel())) throw new Error("Unlinking historical journals is company-level work.");
   const id = str(fd, "id"), type = str(fd, "type");
   await sql.begin(async (tx) => {
     const [row] = type === "DEP"
@@ -315,7 +325,7 @@ export async function unlinkAllocation(fd: FormData) {
       : await tx`select k.asset_id, true as is_link, f.branch_id from fa_journal_link k join fixed_asset f on f.id = k.asset_id
                   where k.id = ${id} and k.company_id = ${co}`;
     if (!row) throw new Error("That link is not in this company.");
-    await assertMyBranch(row.branch_id);
+    await assertFaBranch(user, row.branch_id);
     if (!row.is_link) throw new Error("Posted depreciation is not unlinked; record a correction instead.");
     if (type === "DEP") await tx`delete from fa_depreciation where id = ${id}`;
     else await tx`delete from fa_journal_link where id = ${id}`;
@@ -334,11 +344,11 @@ async function postingMode(co: string) {
 
 /** Prepares a branch's month as a draft run: the review step. */
 export async function prepareDepreciation(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const branchId = str(fd, "branch_id"), month = str(fd, "month");
   try {
-    await assertMyBranch(branchId);
+    await assertFaBranch(user, branchId);
     if ((await postingMode(co)) === "MANUAL") return { error: "Posting is set to Manual: link the journals you post yourself in Journal Reconciliation, or change the mode in Settings." };
     const { draftRun, currentMonth } = await import("./fa-post");
     await draftRun(co, branchId, month, user.id, "REVIEW", currentMonth());
@@ -351,14 +361,14 @@ export async function prepareDepreciation(_prev: unknown, fd: FormData): Promise
 
 /** Approves and posts a draft run through the journal voucher engine. */
 export async function postDepreciation(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const runId = str(fd, "run_id");
   let message = "";
   try {
     const [r] = await sql`select branch_id from fa_run where id = ${runId} and company_id = ${co}`;
     if (!r) return { error: "That run is not in this company." };
-    await assertMyBranch(r.branch_id);
+    await assertFaBranch(user, r.branch_id);
     if ((await postingMode(co)) === "MANUAL") return { error: "Posting is set to Manual; change the mode in Settings to post from here." };
     const { postRun, currentMonth } = await import("./fa-post");
     const res = await postRun(co, runId, user.id, currentMonth());
@@ -373,7 +383,10 @@ export async function postDepreciation(_prev: unknown, fd: FormData): Promise<Ac
 
 /** Discards a draft run; nothing was posted, so nothing needs reversing. */
 export async function discardDepreciation(fd: FormData) {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
+  const [r] = await sql`select branch_id from fa_run where id = ${str(fd, "run_id")} and company_id = ${user.companyId}`;
+  if (!r) throw new Error("That run is not in this company.");
+  await assertFaBranch(user, r.branch_id);
   const { cancelRun } = await import("./fa-post");
   await cancelRun(user.companyId, str(fd, "run_id"));
   revalidatePath("/fixed-assets", "layout");
@@ -463,13 +476,14 @@ export async function saveFaCategory(_prev: unknown, fd: FormData): Promise<Acti
 // ------------------------------------------------- transfers and disposals --
 
 export async function transferAssetAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const assetId = str(fd, "id");
   let docNo: string | null = null;
   try {
-    const [a] = await sql`select branch_id from fixed_asset where id = ${assetId} and company_id = ${user.companyId}`;
+    const [a] = await sql`select branch_id, posting_branch_id from fixed_asset where id = ${assetId} and company_id = ${user.companyId}`;
     if (!a) return { error: "That asset is not in this company." };
-    await assertMyBranch(a.branch_id);
+    // Both ends of the move are the person's to authorise.
+    await assertFaBranch(user, a.branch_id, a.posting_branch_id, str(fd, "to_branch_id"));
     const date = str(fd, "date");
     if (!DATE.test(date)) return { error: "Enter the date it moves." };
     const { transferAsset } = await import("./fa-move");
@@ -482,13 +496,13 @@ export async function transferAssetAction(_prev: unknown, fd: FormData): Promise
 }
 
 export async function disposeAssetAction(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const assetId = str(fd, "id");
   let docNo = "";
   try {
-    const [a] = await sql`select branch_id from fixed_asset where id = ${assetId} and company_id = ${user.companyId}`;
+    const [a] = await sql`select branch_id, posting_branch_id from fixed_asset where id = ${assetId} and company_id = ${user.companyId}`;
     if (!a) return { error: "That asset is not in this company." };
-    await assertMyBranch(a.branch_id);
+    await assertFaBranch(user, a.branch_id, a.posting_branch_id);
     const date = str(fd, "date"), reason = str(fd, "reason");
     const proceeds = str(fd, "proceeds").replace(/,/g, "") || "0";
     if (!DATE.test(date)) return { error: "Enter the disposal date." };

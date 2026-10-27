@@ -52,6 +52,8 @@ export async function transferAsset(co: string, userId: string, input: { assetId
     const { a, accumulated, lastPosted } = await loadOne(tx, co, input.assetId, null);
     if (!["ACTIVE", "INACTIVE", "FULLY_DEPRECIATED"].includes(a.status)) throw new Error("Only an asset in service can be transferred.");
     if (a.branch_id === input.toBranchId) throw new Error("It is already at that branch.");
+    // Cost and depreciation sit where it posts; after the move it posts where it is used.
+    const fromPost = (a.posting_branch_id ?? a.branch_id) as string;
     const [to] = await tx`select id, name from location where id = ${input.toBranchId} and company_id = ${co} and parent_id is null and is_active`;
     if (!to) throw new Error("Choose the branch it moves to.");
     if (input.date < (a.in_service ?? a.acquired)) throw new Error("It cannot move before it was in service.");
@@ -69,21 +71,21 @@ export async function transferAsset(co: string, userId: string, input: { assetId
     const cost = toUnits(a.cost);
     const lines = [
       ...(cost > 0n ? [{ accountId: a.asset_account_id, amount: asNumber(cost), locationId: input.toBranchId },
-                       { accountId: a.asset_account_id, amount: -asNumber(cost), locationId: a.branch_id }] : []),
-      ...(accumulated > 0n ? [{ accountId: a.accum_account_id, amount: asNumber(accumulated), locationId: a.branch_id },
+                       { accountId: a.asset_account_id, amount: -asNumber(cost), locationId: fromPost }] : []),
+      ...(accumulated > 0n ? [{ accountId: a.accum_account_id, amount: asNumber(accumulated), locationId: fromPost },
                               { accountId: a.accum_account_id, amount: -asNumber(accumulated), locationId: input.toBranchId }] : []),
     ];
     let voucher: { id: string; docNo: string } | null = null;
-    if (lines.length) {
+    if (lines.length && fromPost !== input.toBranchId) {
       voucher = await postJournalVoucher({
-        companyId: co, docDate: input.date, locationId: a.branch_id, lines,
+        companyId: co, docDate: input.date, locationId: fromPost, lines,
         memo: `Transfer of ${a.code} ${a.name} to ${to.name}`, reference: `FA-TRF ${a.code}`,
       }, tx);
       const jl = await tx`select jl.id, jl.base_amount::text as amount from journal_line jl join document d on d.journal_entry_id = jl.journal_entry_id where d.id = ${voucher.id}`;
       await tx`insert into fa_journal_link ${tx((jl as any[]).map((l) => ({
         company_id: co, asset_id: a.id, journal_line_id: l.id, kind: "OTHER", amount: l.amount.replace("-", ""), created_by: userId, note: "Transfer" })))}`;
     }
-    await tx`update fixed_asset set branch_id = ${input.toBranchId}, updated_at = now() where id = ${a.id}`;
+    await tx`update fixed_asset set branch_id = ${input.toBranchId}, posting_branch_id = null, updated_at = now() where id = ${a.id}`;
     await tx`insert into fa_event (company_id, asset_id, event_type, event_date, from_branch_id, to_branch_id, created_by, detail)
              values (${co}, ${a.id}, 'TRANSFERRED', ${input.date}, ${a.branch_id}, ${input.toBranchId}, ${userId},
                      ${tx.json({ note: input.note, voucher: voucher?.docNo ?? null, cost: fromUnits(cost), accumulated: fromUnits(accumulated) })})`;
@@ -147,7 +149,7 @@ export async function disposeAsset(co: string, userId: string, input: { assetId:
       const [acc] = await tx`select is_postable, is_active, is_control from account where id = ${input.proceedsAccountId} and company_id = ${co}`;
       if (!acc || !acc.is_postable || !acc.is_active || acc.is_control) throw new Error("The proceeds account must be an active, postable account that is not a control account.");
     }
-    const [a] = await tx`select code, name, branch_id from fixed_asset where id = ${input.assetId}`;
+    const [a] = await tx`select code, name, coalesce(posting_branch_id, branch_id) as branch_id from fixed_asset where id = ${input.assetId}`;
     const lines = p.lines.map((l) => ({ accountId: l.accountId, amount: l.debit !== "0" ? Number(l.debit) : -Number(l.credit) }));
     const voucher = await postJournalVoucher({
       companyId: co, docDate: input.date, locationId: a.branch_id, lines,

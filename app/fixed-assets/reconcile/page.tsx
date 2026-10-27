@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { canPostFa, isCompanyLevel } from "@/lib/fa-access";
 import { Search, ArrowUpRight, X } from "lucide-react";
-import { requirePermission, can } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { reconLines, lineAllocations, reconIssues } from "@/lib/fa-reconcile";
@@ -27,7 +28,18 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const user = await requirePermission("accounting.view");
   const co = user.companyId;
-  const canLink = can(user, "accounting.post");
+  const canLink = canPostFa(user);
+  // Historical journals are company-level and may carry no branch at all, so
+  // tying them to assets is for someone who sees every branch.
+  if (!(await isCompanyLevel())) {
+    return (
+      <div className="fa">
+        <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Journal Reconciliation" }]} />
+        <div className="fa-empty"><strong>Company-level work</strong>
+          <span>Linking the ledger&apos;s historical journals to assets is done by someone who sees every branch, because those journals belong to the company, not to one branch.</span></div>
+      </div>
+    );
+  }
   const f = { accountId: sp.account || undefined, from: sp.from || undefined, to: sp.to || undefined,
               month: sp.month || undefined, amount: sp.amount || undefined, q: sp.q || undefined, open: sp.open !== "0" };
   const [lines, accounts, issues] = await Promise.all([

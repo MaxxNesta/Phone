@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requirePermission } from "@/lib/auth";
+import { requireFaPoster } from "@/lib/fa-access";
 import { sql } from "@/lib/db";
 import { assetList, faCategories, faBranches, FA_STATUS_LABEL } from "@/lib/fixed-assets";
 import { seenBranches, seenLocations } from "@/lib/branch-scope";
@@ -14,7 +14,7 @@ const trimDecimal = (s: string) => (s.includes(".") ? s.replace(/0+$/, "").repla
 
 export default async function EditAsset({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requirePermission("accounting.post");
+  const user = await requireFaPoster();
   const co = user.companyId;
   const [[a], categories, branches, [setting]] = await Promise.all([
     assetList(co, await seenLocations(), id), faCategories(co), faBranches(co).then(seenBranches),
@@ -31,7 +31,7 @@ export default async function EditAsset({ params }: { params: Promise<{ id: stri
   return (
     <div className="ie">
       <Breadcrumbs trail={[{ label: "Fixed Assets" }, { label: "Asset Register", href: "/fixed-assets/register" }, { label: a.code }]} />
-      <AssetForm action={saveAsset} pinned={a.posted_months > 0} companyConvention={setting?.start_convention ?? "NEXT_MONTH"}
+      <AssetForm action={saveAsset} companyName={(await sql`select name from company where id = ${co}`)[0].name} pinned={a.posted_months > 0} companyConvention={setting?.start_convention ?? "NEXT_MONTH"}
         categories={categories.filter((c) => c.is_active || c.id === a.category_id)
           .map((c) => ({ ...c, accounts: `${c.asset_account} · ${c.accum_account} · ${c.expense_account}` }))}
         branches={branches}
@@ -39,7 +39,7 @@ export default async function EditAsset({ params }: { params: Promise<{ id: stri
                  site: a.site ?? "", serial_no: a.serial_no ?? "", notes: a.notes ?? "",
                  acquisition_date: a.acquisition_date, in_service_date: a.in_service_date ?? "",
                  acquisition_cost: trimDecimal(a.acquisition_cost), residual_value: trimDecimal(a.residual_value),
-                 useful_life_months: String(a.useful_life_months), start_convention: a.start_convention ?? "", status: a.status }} />
+                 useful_life_months: String(a.useful_life_months), start_convention: a.start_convention ?? "", posting_branch_id: a.posting_branch_id ?? "", status: a.status }} />
       <section className="ie-card fa-status-card">
         <h3>Status: {FA_STATUS_LABEL[a.status]}</h3>
         <div className="fa-status-actions">

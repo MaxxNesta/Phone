@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { canPostFa } from "@/lib/fa-access";
 import { notFound } from "next/navigation";
 import { Pencil, Repeat, Trash2, Wallet, TrendingDown, Landmark, CalendarClock, Hourglass } from "lucide-react";
-import { requirePermission, can } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { assetList, FA_STATUS_LABEL } from "@/lib/fixed-assets";
@@ -54,7 +55,7 @@ export default async function AssetPage({ params }: { params: Promise<{ id: stri
   const byMonth = new Map<string, any[]>();
   for (const j of journals as any[]) byMonth.set(j.m, [...(byMonth.get(j.m) ?? []), j]);
   const latest = (estimates as any[]).at(-1);
-  const canPost = can(user, "accounting.post");
+  const canPost = canPostFa(user);
 
   return (
     <div className="fa">
