@@ -3,7 +3,10 @@ import {
   ChevronLeft, ChevronRight, CheckCircle2, Clock, CalendarDays, AlertTriangle, CircleDashed, MinusCircle, Search,
   ArrowDownRight, ArrowUpRight, Package, Wrench, FileText, Repeat, Trash2, CircleAlert,
 } from "lucide-react";
-import { requirePermission } from "@/lib/auth";
+import { requirePermission, can } from "@/lib/auth";
+import { sql } from "@/lib/db";
+import { prepareDepreciation, postDepreciation, discardDepreciation } from "@/lib/fa-actions";
+import { FaPostControls, type BranchPosting } from "@/components/fa-post-controls";
 import { seenLocations, seenBranches } from "@/lib/branch-scope";
 import { calendar, type MonthStatus, type CalEvent } from "@/lib/fa-calendar";
 import { faBranches, faCategories, FA_STATUS, FA_STATUS_LABEL } from "@/lib/fixed-assets";
@@ -79,6 +82,21 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
   const dayEvents = day ? byDay.get(day) ?? [] : [];
   // What the month's vouchers would post, in whole kyat.
   const toPost = Number(c.journal.reduce((s, j) => s + toUnits(j.total), 0n) / 10_000n).toLocaleString("en-US");
+  // Review & post, one row per branch with something open or already posted this month.
+  const [setting] = await sql`select posting_mode from fa_setting where company_id = ${co}`;
+  const postings = new Map<string, BranchPosting>();
+  for (const a of c.detail) {
+    if (a.state !== "PLANNED") continue;
+    const p = postings.get(a.branchId) ?? { branchId: a.branchId, branch: a.branch, amount: "0", assets: 0, run: null };
+    p.amount = String(Number(p.amount) + Number(a.amount)); p.assets++;
+    postings.set(a.branchId, p);
+  }
+  for (const r of c.runs.filter((x) => x.status === "DRAFT" || x.status === "POSTED")) {
+    const counted = r.status === "POSTED" ? c.detail.filter((a) => a.branchId === r.branch_id && a.state === "POSTED").length : 0;
+    const p = postings.get(r.branch_id) ?? { branchId: r.branch_id, branch: r.branch, amount: r.total, assets: counted, run: null };
+    p.run = { id: r.id, status: r.status, docId: r.doc_id, docNo: r.doc_no };
+    postings.set(r.branch_id, p);
+  }
   const pct = (m: (typeof c.months)[number]) => {
     const e = toUnits(m.expected);
     return e > 0n ? Number((toUnits(m.posted) * 100n) / e) : 0;
@@ -216,6 +234,10 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
                 <div><dt>Posted</dt><dd className="ok">{kyat(sel.posted)}</dd></div>
                 <div><dt>Remaining</dt><dd>{kyat(sel.remaining)}</dd></div>
               </dl>
+              {sel.status !== "PLANNED" && sel.status !== "NONE" && (
+                <FaPostControls month={month} branches={[...postings.values()]} mode={setting?.posting_mode ?? "REVIEW"}
+                  canPost={can(user, "accounting.post")} prepare={prepareDepreciation} post={postDepreciation} discard={discardDepreciation} />
+              )}
 
               <nav className="fac-tabs" aria-label="Month detail">
                 {TABS.map(([k, l]) => (

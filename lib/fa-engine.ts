@@ -118,6 +118,12 @@ export function schedule(a: EngineAsset, opts: {
   estimates?: EngineEstimate[];
   /** What the ledger carries per month: runs, linked history and corrections together. */
   posted?: Map<Month, bigint>;
+  /**
+   * An opening balance carried the depreciation up to and including this
+   * month as one figure (in `posted` at this month): every month before it
+   * counts as carried, at nothing, and is never owed again.
+   */
+  openingThrough?: Month | null;
   unit?: bigint;
 } = {}): ScheduleRow[] {
   const start = firstMonth(a);
@@ -149,7 +155,8 @@ export function schedule(a: EngineAsset, opts: {
   for (let m = from; m <= end; m = addMonths(m, 1)) {
     const { life, residual } = at(m);
     const opening = nbv;
-    const ledger = posted.get(m);
+    const covered = opts.openingThrough && m < opts.openingThrough ? 0n : undefined;
+    const ledger = posted.get(m) ?? covered;
     let amount: bigint;
     if (ledger !== undefined) {
       amount = ledger;

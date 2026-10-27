@@ -5,7 +5,7 @@ import { Plus, X } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 
 type Asset = { id: string; code: string; name: string; expected: Record<string, string> };
-type Row = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQUISITION"; month: string; amount: string };
+type Row = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQUISITION" | "OPENING"; month: string; amount: string };
 
 const kyat = (s: string) => Number(s).toLocaleString("en-US", { maximumFractionDigits: 0 });
 // Exact enough for a running total: ten-thousandths as integers.
@@ -39,7 +39,7 @@ export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMon
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
       {state && "ok" in state && <p className="fa-ok" role="status">Linked. Nothing was posted; the register now counts this journal.</p>}
       {rows.map((r, i) => {
-        const exp = r.kind !== "ACQUISITION" ? byId.get(r.assetId)?.expected[r.month] : undefined;
+        const exp = r.kind === "DEPRECIATION" || r.kind === "CORRECTION" ? byId.get(r.assetId)?.expected[r.month] : undefined;
         const differs = exp !== undefined && r.amount && units(exp) !== units(r.amount);
         return (
           <div key={i} className="far-row">
@@ -51,6 +51,7 @@ export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMon
               <>
                 <select value={r.kind} onChange={(e) => set(i, { kind: e.target.value as Row["kind"] })} aria-label="Carries">
                   {credit && <option value="DEPRECIATION">Depreciation</option>}
+                  {credit && <option value="OPENING">Opening: accumulated to</option>}
                   <option value="CORRECTION">Correction</option>
                 </select>
                 <input type="month" value={r.month} onChange={(e) => set(i, { month: e.target.value })} aria-label="For month" required />

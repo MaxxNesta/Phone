@@ -36,10 +36,12 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
     sql`select asset_id, to_char(effective_month, 'YYYY-MM') as m, useful_life_months, residual_value::text as residual
           from fa_estimate_change where asset_id = any(${ids})`,
     // Runs (posted), linked history and corrections, added up per month.
-    sql`select asset_id, to_char(period_month, 'YYYY-MM') as m, sum(amount)::text as amount
+    sql`select asset_id, to_char(period_month, 'YYYY-MM') as m, sum(amount)::text as amount,
+               bool_or(source = 'OPENING') as opening
           from fa_depreciation where asset_id = any(${ids}) and journal_line_id is not null
          group by 1, 2`,
   ]);
+  const openingBy = new Map((posted as any[]).filter((p) => p.opening).map((p) => [p.asset_id as string, p.m as Month]));
   const estBy = new Map<string, { from: Month; lifeMonths: number; residual: bigint }[]>();
   for (const e of estimates as any[]) estBy.set(e.asset_id, [...(estBy.get(e.asset_id) ?? []),
     { from: e.m, lifeMonths: e.useful_life_months, residual: toUnits(e.residual) }]);
@@ -59,7 +61,7 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
       categoryId: a.category_id, category: a.category, assetClass: a.asset_class,
       accumAccountId: a.accum_account_id, expenseAccountId: a.expense_account_id,
       inService: a.in_service, disposedOn: a.disposed_on, engine,
-      rows: schedule(engine, { estimates: estBy.get(a.id), posted: postedBy.get(a.id) }),
+      rows: schedule(engine, { estimates: estBy.get(a.id), posted: postedBy.get(a.id), openingThrough: openingBy.get(a.id) }),
     };
   });
 }

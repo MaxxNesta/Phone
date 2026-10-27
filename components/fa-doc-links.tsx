@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 
 const money = (s: string) => Number(s).toLocaleString("en-US", { maximumFractionDigits: 0 });
 const KIND: Record<string, string> = {
-  RUN: "Depreciation", HISTORICAL: "Depreciation (history)", CORRECTION: "Correction", ACQUISITION: "Acquisition", DISPOSAL: "Disposal", OTHER: "Linked",
+  RUN: "Depreciation", OPENING: "Opening accumulated (to)", HISTORICAL: "Depreciation (history)", CORRECTION: "Correction", ACQUISITION: "Acquisition", DISPOSAL: "Disposal", OTHER: "Linked",
 };
 
 /**

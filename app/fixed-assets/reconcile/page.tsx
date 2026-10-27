@@ -15,7 +15,7 @@ export const metadata = { title: "Journal Reconciliation" };
 
 type SP = Record<string, string | undefined>;
 const money = (s: string) => Number(s).toLocaleString("en-US", { maximumFractionDigits: 0 });
-const KIND: Record<string, string> = { HISTORICAL: "Depreciation", CORRECTION: "Correction", RUN: "Depreciation run", ACQUISITION: "Acquisition", OTHER: "Linked" };
+const KIND: Record<string, string> = { OPENING: "Opening, accumulated to", HISTORICAL: "Depreciation", CORRECTION: "Correction", RUN: "Depreciation run", ACQUISITION: "Acquisition", OTHER: "Linked" };
 
 /**
  * The ledger's existing fixed-asset journals, tied to the register without

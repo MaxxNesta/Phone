@@ -147,6 +147,18 @@ t("backdated acquisition: the schedule starts in the past", () => {
   lands(rows, base);
 });
 
+t("opening balance: months before it are carried, depreciation runs from the month after", () => {
+  // In service 2023-05, books open April 2025 with 23 months (Jun 2023 – Apr 2025) carried as one figure.
+  const a = { ...base, inService: "2023-05-10" };
+  const posted = new Map([["2025-04", K(190_000 * 23)]]);
+  const rows = E.schedule(a, { posted, openingThrough: "2025-04" });
+  const before = rows.filter((r) => r.month < "2025-04");
+  assert.ok(before.every((r) => r.state === "POSTED" && r.amount === 0n), "carried, not owed");
+  assert.equal(rows.find((r) => r.month === "2025-04").amount, K(4_370_000));
+  assert.equal(rows.find((r) => r.month === "2025-05").amount, K(190_000));
+  lands(rows, a);
+});
+
 t("decimal strings round-trip exactly", () => {
   assert.equal(E.toUnits("1250000"), 12_500_000_000n);
   assert.equal(E.toUnits("0.0001"), 1n);

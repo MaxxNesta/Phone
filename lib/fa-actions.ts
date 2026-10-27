@@ -215,7 +215,7 @@ export async function changeEstimate(_prev: unknown, fd: FormData): Promise<Acti
   return { ok: true };
 }
 
-type Allocation = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQUISITION"; month?: string; amount: string };
+type Allocation = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQUISITION" | "OPENING"; month?: string; amount: string };
 
 /**
  * Ties one posted journal line to assets: an acquisition (a debit on the
@@ -271,15 +271,21 @@ export async function linkJournalLine(_prev: unknown, fd: FormData): Promise<Act
         } else {
           if (line.account_id !== a.accum_account_id) throw new Error(`${at}this line is not on ${a.code}'s accumulated-depreciation account.`);
           if (!al.month || !/^\d{4}-\d{2}$/.test(al.month)) throw new Error(`${at}choose the month it was depreciation for.`);
-          if (al.kind === "DEPRECIATION" && !credit) throw new Error(`${at}depreciation history is a credit to accumulated depreciation; link a debit as a correction.`);
-          const [held] = al.kind === "DEPRECIATION" ? await tx`
+          if ((al.kind === "DEPRECIATION" || al.kind === "OPENING") && !credit) throw new Error(`${at}depreciation history is a credit to accumulated depreciation; link a debit as a correction.`);
+          if (al.kind === "OPENING") {
+            const [has] = await tx`select to_char(period_month, 'YYYY-MM') as m from fa_depreciation where asset_id = ${a.id} and source = 'OPENING'`;
+            if (has) throw new Error(`${at}${a.code} already has its opening depreciation (to ${has.m}).`);
+            const [later] = await tx`select to_char(min(period_month), 'YYYY-MM') as m from fa_depreciation where asset_id = ${a.id} and period_month <= ${al.month + "-01"} and source in ('RUN', 'HISTORICAL')`;
+            if (later?.m) throw new Error(`${at}${a.code} already has ${later.m} on the ledger; the opening figure covers the months before anything posted.`);
+          }
+          const [held] = al.kind === "DEPRECIATION" || al.kind === "OPENING" ? await tx`
             select x.source, coalesce(d.doc_no, je.entry_no) as no from fa_depreciation x
               left join journal_line jl on jl.id = x.journal_line_id left join journal_entry je on je.id = jl.journal_entry_id
               left join document d on d.id = je.source_id
-             where x.asset_id = ${a.id} and x.period_month = ${al.month + "-01"} and x.source in ('RUN', 'HISTORICAL')` : [];
+             where x.asset_id = ${a.id} and x.period_month = ${al.month + "-01"} and x.source in ('RUN', 'HISTORICAL', 'OPENING')` : [];
           if (held) throw new Error(`${at}${a.code} ${al.month} is already carried by ${held.no ?? "a draft run"}. Link the difference as a correction instead.`);
           await tx`insert into fa_depreciation (company_id, asset_id, period_month, source, amount, journal_line_id, is_link, created_by, note)
-                   values (${co}, ${a.id}, ${al.month + "-01"}, ${al.kind === "DEPRECIATION" ? "HISTORICAL" : "CORRECTION"},
+                   values (${co}, ${a.id}, ${al.month + "-01"}, ${al.kind === "DEPRECIATION" ? "HISTORICAL" : al.kind === "OPENING" ? "OPENING" : "CORRECTION"},
                            ${al.kind === "CORRECTION" && !credit ? "-" + al.amount : al.amount}, ${lineId}, true, ${user.id}, 'Linked from history')`;
         }
         await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
@@ -316,5 +322,59 @@ export async function unlinkAllocation(fd: FormData) {
     await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
              values (${co}, ${row.asset_id}, 'HISTORY_UNLINKED', current_date, ${user.id}, ${tx.json({ link: id })})`;
   });
+  revalidatePath("/fixed-assets", "layout");
+}
+
+// --------------------------------------------------------- review & post --
+
+async function postingMode(co: string) {
+  const [s] = await sql`select posting_mode from fa_setting where company_id = ${co}`;
+  return (s?.posting_mode ?? "REVIEW") as "MANUAL" | "REVIEW" | "AUTO";
+}
+
+/** Prepares a branch's month as a draft run: the review step. */
+export async function prepareDepreciation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("accounting.post");
+  const co = user.companyId;
+  const branchId = str(fd, "branch_id"), month = str(fd, "month");
+  try {
+    await assertMyBranch(branchId);
+    if ((await postingMode(co)) === "MANUAL") return { error: "Posting is set to Manual: link the journals you post yourself in Journal Reconciliation, or change the mode in Settings." };
+    const { draftRun, currentMonth } = await import("./fa-post");
+    await draftRun(co, branchId, month, user.id, "REVIEW", currentMonth());
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  return { ok: true };
+}
+
+/** Approves and posts a draft run through the journal voucher engine. */
+export async function postDepreciation(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  const user = await requirePermission("accounting.post");
+  const co = user.companyId;
+  const runId = str(fd, "run_id");
+  let message = "";
+  try {
+    const [r] = await sql`select branch_id from fa_run where id = ${runId} and company_id = ${co}`;
+    if (!r) return { error: "That run is not in this company." };
+    await assertMyBranch(r.branch_id);
+    if ((await postingMode(co)) === "MANUAL") return { error: "Posting is set to Manual; change the mode in Settings to post from here." };
+    const { postRun, currentMonth } = await import("./fa-post");
+    const res = await postRun(co, runId, user.id, currentMonth());
+    message = res.already ? `Already posted as ${res.docNo}` : `Posted ${res.docNo}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/fixed-assets", "layout");
+  revalidatePath("/finance", "layout");
+  return { ok: true, draftId: message };
+}
+
+/** Discards a draft run; nothing was posted, so nothing needs reversing. */
+export async function discardDepreciation(fd: FormData) {
+  const user = await requirePermission("accounting.post");
+  const { cancelRun } = await import("./fa-post");
+  await cancelRun(user.companyId, str(fd, "run_id"));
   revalidatePath("/fixed-assets", "layout");
 }

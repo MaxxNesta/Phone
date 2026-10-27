@@ -43,10 +43,15 @@ const counts = (a: LoadedAsset) => a.status === "ACTIVE" || a.status === "FULLY_
 
 export async function calendar(co: string, year: number, month: Month, f: CalFilters) {
   const branches = f.branchId ? (f.branches ? f.branches.filter((b) => b === f.branchId) : [f.branchId]) : f.branches;
-  const [all, exceptions] = await Promise.all([
+  const [all, exceptions, periods] = await Promise.all([
     loadSchedules(co, { branches, categoryId: f.categoryId }),
     faExceptions(co),
+    // Months whose last day falls in an open period: the only ones that can post.
+    sql`select to_char(gs, 'YYYY-MM') as m from generate_series(${`${year}-01-01`}::date, ${`${year}-12-01`}::date, interval '1 month') gs
+         where exists (select 1 from fiscal_period p where p.company_id = ${co} and p.status = 'OPEN'
+                         and (gs + interval '1 month - 1 day')::date between p.start_date and p.end_date)`,
   ]);
+  const openMonth = new Set((periods as any[]).map((p) => p.m as string));
   const needle = f.q?.trim().toLowerCase();
   const assets = all.filter((a) => (!f.status || a.status === f.status)
     && (!needle || `${a.code} ${a.name}`.toLowerCase().includes(needle)));
@@ -65,8 +70,11 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
     const rows = monthRows(m);
     const expected = sum(rows.map(({ r }) => r.amount));
     const posted = sum(rows.filter(({ r }) => r.state === "POSTED").map(({ r }) => r.amount));
+    const open = rows.some(({ r }) => r.state === "PLANNED");
     const warnings = rows.filter(({ a, r }) => r.state === "PLANNED" && badCategory.has(a.categoryId)).length
-      + [...new Set(rows.map(({ a }) => a.branch))].filter((b) => failedMonth.has(`${m}|${b}`)).length;
+      + [...new Set(rows.map(({ a }) => a.branch))].filter((b) => failedMonth.has(`${m}|${b}`)).length
+      // Something to post and no open period to post it into.
+      + (open && m <= now && !openMonth.has(m) ? 1 : 0);
     const status: MonthStatus = rows.length === 0 ? "NONE"
       : warnings > 0 && posted < expected ? "EXCEPTION"
       : posted >= expected ? "POSTED"
@@ -82,7 +90,8 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
     id: a.id, code: a.code, name: a.name, category: a.category, branch: a.branch, branchId: a.branchId,
     amount: fromUnits(r.amount), posted: r.posted === null ? null : fromUnits(r.posted),
     opening: fromUnits(r.opening), closing: fromUnits(r.closing), state: r.state,
-    warning: r.state === "PLANNED" ? (badCategory.get(a.categoryId) ?? null) : null,
+    warning: r.state === "PLANNED" ? (badCategory.get(a.categoryId)
+      ?? (month <= now && !openMonth.has(month) ? "No open fiscal period: link its history, or open the year" : null)) : null,
   }));
 
   // By category, for the schedule tab.
@@ -122,7 +131,7 @@ export async function calendar(co: string, year: number, month: Month, f: CalFil
   const ids = assets.map((a) => a.id);
   const from = `${month}-01`, to = lastDay(month);
   const [runs, links, evs, posts] = await Promise.all([
-    sql`select r.id, r.status, r.mode, r.total::text as total, r.error, b.name as branch, d.id as doc_id, d.doc_no,
+    sql`select r.id, r.status, r.mode, r.total::text as total, r.error, r.branch_id, b.name as branch, d.id as doc_id, d.doc_no,
                cu.name as created_by, au.name as approved_by,
                to_char(r.created_at at time zone 'Asia/Yangon', 'YYYY-MM-DD HH24:MI') as created_at,
                to_char(r.posted_at at time zone 'Asia/Yangon', 'YYYY-MM-DD HH24:MI') as posted_at

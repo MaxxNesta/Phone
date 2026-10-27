@@ -8010,3 +8010,22 @@ button.far-unlink { background: none; border: 0; padding: 0; color: var(--fa-red
 .far-left { margin-left: auto; font-size: var(--t-sm); color: var(--muted); font-variant-numeric: tabular-nums; }
 .far-left.over { color: var(--fa-red); }
 @media (max-width: 1200px) { .far-layout { grid-template-columns: 1fr; } .far-panel { position: static; max-height: none; } }
+.fap { display: grid; gap: 8px; margin: 0 0 var(--s2); }
+.fap-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px;
+  background: color-mix(in srgb, var(--fa-blue) 3%, var(--surface)); }
+.fap-what { display: grid; min-width: 0; }
+.fap-what small { color: var(--muted); font-size: 0.72rem; }
+.fap-go { display: inline-flex; gap: 6px; }
+.fa-ok svg { vertical-align: -2px; }
+.fa-popup { position: fixed; right: 24px; bottom: 24px; z-index: 60; display: flex; align-items: center; gap: 12px; max-width: min(460px, calc(100vw - 32px));
+  padding: 12px 12px 12px 14px; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: saturate(1.4) blur(16px); box-shadow: 0 12px 32px rgb(15 23 42 / 0.14); animation: fa-pop .22s ease-out; }
+.fa-popup-ico { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 10px; color: var(--fa-blue);
+  background: color-mix(in srgb, var(--fa-blue) 12%, transparent); }
+.fa-popup-body { display: grid; min-width: 0; font-size: var(--t-sm); }
+.fa-popup-body small { color: var(--muted); }
+.fa-popup .ie-btn { white-space: nowrap; }
+.fa-popup-x { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.fa-popup-x:hover:not(:disabled) { background: var(--line-soft); color: var(--ink); }
+@keyframes fa-pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .fa-popup { animation: none; } }
