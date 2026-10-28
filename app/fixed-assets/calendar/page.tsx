@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpHint } from "@/components/help-hint";
 import { canPostFa } from "@/lib/fa-access";
 import {
   ChevronLeft, ChevronRight, CheckCircle2, Clock, CalendarDays, AlertTriangle, CircleDashed, MinusCircle, Search,
@@ -110,8 +111,7 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Depreciation Calendar" }]} />
       <div className="fa-head">
         <div>
-          <h1>Depreciation Calendar</h1>
-          <p>Each month&apos;s depreciation, what is posted, and the asset events behind it.</p>
+          <h1>Depreciation Calendar <HelpHint label="About Depreciation Calendar">Each month&apos;s depreciation, what is posted, and the asset events behind it.</HelpHint></h1>
         </div>
       </div>
 

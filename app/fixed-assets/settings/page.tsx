@@ -1,4 +1,5 @@
 import { requirePermission, can } from "@/lib/auth";
+import { HelpHint } from "@/components/help-hint";
 import { sql } from "@/lib/db";
 import { saveFaSettings, saveFaCategory } from "@/lib/fa-actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
@@ -35,8 +36,7 @@ export default async function FaSettings() {
     <div className="ie">
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Settings" }]} />
       <header className="ie-title">
-        <h1>Fixed Asset Settings</h1>
-        <p>How depreciation posts, and which accounts each category moves in the ledger.</p>
+        <h1>Fixed Asset Settings <HelpHint label="About Fixed Asset Settings">How depreciation posts, and which accounts each category moves in the ledger.</HelpHint></h1>
       </header>
       <div className="fas">
         <section className="ie-card">

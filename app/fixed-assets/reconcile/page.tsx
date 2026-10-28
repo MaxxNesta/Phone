@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpHint } from "@/components/help-hint";
 import { canPostFa, isCompanyLevel } from "@/lib/fa-access";
 import { Search, ArrowUpRight, X } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
@@ -137,8 +138,7 @@ export default async function Reconcile({ searchParams }: { searchParams: Promis
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Journal Reconciliation" }]} />
       <div className="fa-head">
         <div>
-          <h1>Journal Reconciliation</h1>
-          <p>Tie the ledger&apos;s existing fixed-asset journals to assets. Nothing is posted or reposted.</p>
+          <h1>Journal Reconciliation <HelpHint label="About Journal Reconciliation">Tie the ledger&apos;s existing fixed-asset journals to assets. Nothing is posted or reposted.</HelpHint></h1>
         </div>
       </div>
       {issues.unlinked.n > 0 && (

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpHint } from "@/components/help-hint";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
@@ -47,8 +48,7 @@ export default async function Moves() {
   return (
     <div className="fa">
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Disposals & Transfers" }]} />
-      <div className="fa-head"><div><h1>Disposals &amp; Transfers</h1>
-        <p>Every asset moved between branches or taken off the books. Start one from the asset&apos;s page.</p></div></div>
+      <div className="fa-head"><div><h1>Disposals &amp; Transfers <HelpHint label="About Disposals & Transfers">Every asset moved between branches or taken off the books. Start one from the asset&apos;s page.</HelpHint></h1></div></div>
       <section className="card">
         {rows.length === 0 ? <div className="fa-empty"><strong>Nothing yet</strong><span>Transfers and disposals appear here once posted.</span></div> : (
           <DataTable rows={data} storageKey="fa-moves" csvFilename="disposals-transfers.csv" searchPlaceholder="Search asset, reason, voucher…"

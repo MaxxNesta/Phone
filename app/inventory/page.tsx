@@ -1,9 +1,10 @@
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
-import { Box, Layers, Wallet, AlertTriangle, Search, Download, ChevronRight, CalendarClock } from "lucide-react";
+import { Box, Layers, Wallet, AlertTriangle, Search, Download, ChevronRight, CalendarClock, Repeat, Hourglass, ArrowRight } from "lucide-react";
+import { agingReport, bucketRanges } from "@/lib/aging";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
-import { inventorySummary, recentMovements, catalogFacets, stripCost, foldToModels } from "@/lib/phone";
+import { inventorySummary, catalogFacets, stripCost, foldToModels } from "@/lib/phone";
 import { HelpHint } from "@/components/help-hint";
 import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
 import { AutoApply } from "@/components/auto-apply";
@@ -76,13 +77,15 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const overviewP = inventorySummary(co, { ...scope, combine: true });
   const tableFiltered = Boolean(sp.q || sp.category || sp.status || sp.model || sp.brand
     || Object.keys(sp).some((k) => k.startsWith("a_") && sp[k]));
-  const [overview, table, facets, moves, groups, trend] = await Promise.all([
+  const at = scope.locationId ? sql`and jl.location_id = ${scope.locationId}` : scope.locs ? sql`and jl.location_id = any(${scope.locs})` : sql``;
+  const [overview, table, facets, aging, groups, trend, flow] = await Promise.all([
     overviewP,
     tableFiltered ? facetsP.then((f) => inventorySummary(co, {
       ...scope, combine: true, q: sp.q || undefined, groupId: sp.category || undefined, ...catalogSelection(sp, f),
     })) : overviewP,
     facetsP,
-    recentMovements(co, 6, scope.locationId ? [scope.locationId] : scope.locs),
+    // The shop's own age groups (Inventory Aging settings), for the bar.
+    agingReport(co, seen, { branchId: branch || undefined }),
     sql`select id, name from item_group where company_id = ${co} and parent_id is null order by name`,
     // What the shelves were worth at each month's end: the inventory accounts' balance.
     seeCost ? sql`
@@ -98,7 +101,30 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                          ${scope.locationId ? sql`and jl.location_id = ${scope.locationId}`
                            : scope.locs ? sql`and jl.location_id = any(${scope.locs})` : sql``}), 0)::float as revenue
         from months order by m` : Promise.resolve([]),
+    // Turnover over the last 90 days: cost of goods sold against the average
+    // of what the shelves were worth at the start and now.
+    seeCost ? sql`
+      select coalesce((select sum(jl.base_amount) from journal_line jl join account a on a.id = jl.account_id
+                         join journal_entry je on je.id = jl.journal_entry_id
+                        where jl.company_id = ${co} and a.account_type = 'COGS' ${at}
+                          and je.entry_date > current_date - 90 and je.entry_date <= current_date), 0)::float as cogs,
+             coalesce((select sum(jl.base_amount) from journal_line jl join account a on a.id = jl.account_id
+                         join journal_entry je on je.id = jl.journal_entry_id
+                        where jl.company_id = ${co} and a.subledger = 'INVENTORY' ${at}
+                          and je.entry_date <= current_date - 90), 0)::float as opening,
+             coalesce((select sum(jl.base_amount) from journal_line jl join account a on a.id = jl.account_id
+                         join journal_entry je on je.id = jl.journal_entry_id
+                        where jl.company_id = ${co} and a.subledger = 'INVENTORY' ${at}
+                          and je.entry_date <= current_date), 0)::float as closing` : Promise.resolve([]),
   ]);
+  const f0 = (flow as any[])[0];
+  const avgInv = f0 ? (Number(f0.opening) + Number(f0.closing)) / 2 : 0;
+  const turnover = f0 && avgInv > 0 ? Number(f0.cogs) / avgInv : null;
+  const dio = turnover && turnover > 0 ? 90 / turnover : null;
+  // The aging bar, by value where cost may be seen, by units otherwise.
+  const age4 = [0, 1, 2, 3].map((b) => aging.rows.reduce((s, r) => s + Number((seeCost ? r.value4 : r.units4)[b]), 0));
+  const ageTotal = age4.reduce((s, v) => s + v, 0);
+  const ranges = bucketRanges(aging.rules.thresholds);
 
   // Cost is rendered only for cost.view, and not sent to anyone else either.
   // The summary is by product model; each variant has its own page (Stock).
@@ -110,6 +136,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const counted = onHand.filter((r) => !r.tracks_serial).reduce((s, r) => s + Number(r.qty), 0);
   const totalValue = all.reduce((s, r) => s + Number(r.value ?? 0), 0);
   const low = all.filter((r) => r.status === "LOW");
+  const out = all.filter((r) => r.status === "OUT");
+  const healthy = all.filter((r) => r.status === "HEALTHY");
 
   // By top category, biggest first: value for the donut, units for the bars,
   // in the same order so a category keeps its colour across both.
@@ -211,40 +239,78 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       </div>
 
       <div className="kpis kpis-tiled kpis-compact">
-        {kpi(<Box size={16} aria-hidden="true" />, "Total products", all.length.toLocaleString("en-US"),
-          `${onHand.length.toLocaleString("en-US")} product models in stock.`)}
-        {kpi(<Layers size={16} aria-hidden="true" />, "Total on hand", `${(named + counted).toLocaleString("en-US")} units`,
-          `IMEI / serial: ${named.toLocaleString("en-US")} · Quantity: ${counted.toLocaleString("en-US")}`)}
         {seeCost && kpi(<Wallet size={16} aria-hidden="true" />, "Inventory value", `${money(totalValue)} MMK`,
           "At cost, landed costs included.")}
-        {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low stock items", low.length,
-          "Models with a variant at or below its reorder level.", low.length > 0,
-          `/inventory${qsWithout(sp, ["status", "page"], { status: "LOW" })}`)}
+        {kpi(<Layers size={16} aria-hidden="true" />, "Total on hand", `${(named + counted).toLocaleString("en-US")} units`,
+          `IMEI / serial: ${named.toLocaleString("en-US")} · Quantity: ${counted.toLocaleString("en-US")}`)}
+        {seeCost ? <>
+          {kpi(<Repeat size={16} aria-hidden="true" />, "Inventory turnover", turnover === null ? "—" : `${turnover.toFixed(1)}×`,
+            "Cost of goods sold in the last 90 days over the average stock value (start and now).")}
+          {kpi(<Hourglass size={16} aria-hidden="true" />, "Days inventory outstanding", dio === null ? "—" : `${dio.toFixed(1)} days`,
+            "How many days the stock lasts at the last 90 days' rate of sale: 90 ÷ turnover.")}
+        </> : <>
+          {kpi(<Box size={16} aria-hidden="true" />, "Total products", all.length.toLocaleString("en-US"),
+            `${onHand.length.toLocaleString("en-US")} product models in stock.`)}
+          {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low stock items", low.length,
+            "Models with a variant at or below its reorder level.", low.length > 0, "/inventory/replenishment")}
+        </>}
       </div>
 
-      {/* The sales report's chart row: two equal cards, the same frame, only
-          the chart inside differs. The bars keep the donut's colours. */}
-      <section className={seeCost ? "grid2 chartrow" : undefined}>
+      {/* Three charts, one frame, one height. */}
+      <section className="inv-charts">
         {seeCost && (
-          <div className="card">
+          <div className="card inv-chart">
             <div className="card-head"><h2>Stock value by category</h2><span className="page-sub">MMK, at cost</span></div>
-            <div className="card-body">
-              <div className="chartbox">
-                <ShareDonut data={donut} currency="MMK" emptyLabel="Nothing in stock yet." />
-              </div>
-            </div>
+            <div className="card-body"><ShareDonut data={donut} currency="MMK" emptyLabel="Nothing in stock yet." /></div>
           </div>
         )}
-        <div className="card">
+        <div className="card inv-chart">
           <div className="card-head"><h2>Stock quantity by category</h2><span className="page-sub">units on hand</span></div>
           <div className="card-body">
-            <div className="chartbox">
-              {bars.length ? <MeasureBars data={bars} format="plain" height={280} /> : <div className="empty">Nothing in stock yet.</div>}
-            </div>
+            {bars.length ? <MeasureBars data={bars} format="plain" height={250} /> : <div className="empty">Nothing in stock yet.</div>}
+          </div>
+        </div>
+        {seeCost && (
+          <div className="card inv-chart">
+            <div className="card-head"><h2>Inventory value trend</h2><span className="page-sub">month end · {compact(totalValue)} MMK now</span></div>
+            <div className="card-body"><RevenueTrendChart data={trend as never} height={250} /></div>
+          </div>
+        )}
+      </section>
+
+      <section className="inv-row2">
+        <Link href="/reports/phone-stock" className="card inv-aging" aria-label="Inventory aging: open the aging page">
+          <div className="card-head"><h2>Inventory aging</h2><span className="page-sub">By {seeCost ? "stock value" : "units"} <ArrowRight size={13} aria-hidden="true" /></span></div>
+          <div className="card-body">
+            <span className="ag-bar inv-aging-bar" role="img"
+              aria-label={age4.map((v, i) => `${aging.rules.labels[i]} ${ageTotal ? Math.round((v / ageTotal) * 100) : 0}%`).join(", ")}>
+              {age4.map((v, i) => v > 0 && <span key={i} className={`ag-b${i}`} style={{ flexGrow: v }} />)}
+            </span>
+            <ul className="ag-legend">
+              {age4.map((v, i) => (
+                <li key={i}>
+                  <span className="ag-key"><i className={`ag-dot ag-b${i}`} /> {aging.rules.labels[i]}</span>
+                  <span className="ag-range">{ranges[i]}</span>
+                  <strong>{ageTotal ? Math.round((v / ageTotal) * 100) : 0}%</strong>
+                  <small>{seeCost ? `${money(v)} MMK` : `${v.toLocaleString("en-US")} units`}</small>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Link>
+        <div className="card inv-status-card">
+          <div className="card-head"><h2>Stock status</h2><span className="page-sub">{all.length} products</span></div>
+          <div className="card-body">
+            <ShareDonut count emptyLabel="No products yet." currency=""
+              centre={{ value: String(all.length), label: "Products" }}
+              colours={["var(--ok)", "#FF9F0A", "var(--bad)"]}
+              data={[{ id: "in", name: "In stock", revenue: healthy.length }, { id: "low", name: "Low stock", revenue: low.length },
+                     { id: "out", name: "Out of stock", revenue: out.length }]} />
           </div>
         </div>
       </section>
 
+      <div className="inv-row3">
       <section className="card inv-panel">
         <div className="inv-panel-head">
           <h2>Stock by product</h2>
@@ -286,8 +352,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <thead>
               <tr>
                 <Th k="product" label="Product" /><Th k="category" label="Category" />
-                <Th k="onhand" label="On hand" num /><Th k="reserved" label="Reserved" num /><Th k="available" label="Available" num />
-                {seeCost && <><Th k="cost" label="Avg FIFO cost (MMK)" num /><Th k="value" label="Stock value (MMK)" num /></>}
+                <Th k="onhand" label="On hand" num />
+                {seeCost && <Th k="value" label="Stock value (MMK)" num />}
                 <Th k="status" label="Status" /><th aria-label="Open" />
               </tr>
             </thead>
@@ -305,18 +371,13 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                   </td>
                   <td>{r.category}</td>
                   <td className="num">{r.qty}</td>
-                  <td className="num">{r.reserved}</td>
-                  <td className="num">{r.available}</td>
-                  {seeCost && <>
-                    <td className="num">{r.avg_cost != null ? money(r.avg_cost) : "—"}</td>
-                    <td className="num">{money(r.value)}</td>
-                  </>}
+                  {seeCost && <td className="num">{money(r.value)}</td>}
                   <td>{statusPill(r.status)}</td>
                   <td className="inv-go"><Link href={`/items/${r.id}`} aria-label={`Open ${r.model}`}><ChevronRight size={16} aria-hidden="true" /></Link></td>
                 </tr>
               ))}
               {shown.length === 0 && (
-                <tr><td colSpan={seeCost ? 9 : 7} className="page-sub">
+                <tr><td colSpan={seeCost ? 6 : 5} className="page-sub">
                   {allItems ? t("sum.noMatch") : <>{t("sum.nothingInStock")} <Link href={`/inventory${qsWithout(sp, ["all", "page"], { all: "1" })}`}>{t("sum.showAllItems")}</Link></>}
                 </td></tr>
               )}
@@ -326,53 +387,38 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <Pager p={pg} params={sp} />
       </section>
 
-      <div className="inv-bottom">
-        <section className="card inv-panel">
-          <div className="inv-panel-head"><h2>Low stock items</h2><Link href={`/inventory${qsWithout(sp, ["status", "page"], { status: "LOW" })}`}>{c("viewAll")}</Link></div>
+        <section className="card inv-panel inv-repl">
+          <div className="inv-panel-head">
+            <h2>Replenishment alerts</h2>
+            <Link href="/inventory/replenishment">{c("viewAll")}</Link>
+          </div>
+          <div className="inv-repl-tabs">
+            <Link href="/inventory/replenishment"><span>Low stock</span><b className={low.length ? "warn" : undefined}>{low.length}</b></Link>
+            <Link href="/inventory/replenishment"><span>Out of stock</span><b className={out.length ? "bad" : undefined}>{out.length}</b></Link>
+          </div>
           <table className="inv-mini">
-            <colgroup><col style={{ width: "42%" }} /><col style={{ width: "26%" }} /><col style={{ width: "15%" }} /><col style={{ width: "17%" }} /></colgroup>
-            <thead><tr><th>Product</th><th>Category</th><th className="num">Available</th><th className="num">Reorder</th></tr></thead>
+            <colgroup><col style={{ width: "46%" }} /><col style={{ width: "24%" }} /><col style={{ width: "15%" }} /><col style={{ width: "15%" }} /></colgroup>
+            <thead><tr><th>Product</th><th>Category</th><th className="num">On hand</th><th className="num">Reorder</th></tr></thead>
             <tbody>
-              {low.slice(0, 5).map((r) => (
+              {[...low, ...out].slice(0, 6).map((r) => (
                 <tr key={r.id}>
-                  <td className="clip" title={r.model}>{r.model}</td>
+                  <td className="clip" title={r.model}><Link href="/inventory/replenishment">{r.model}</Link></td>
                   <td className="clip">{r.top_category ?? r.category}</td>
-                  <td className="num bad">{r.available}</td>
+                  <td className="num bad">{r.qty}</td>
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
                 </tr>
               ))}
-              {low.length === 0 && <tr><td colSpan={4} className="page-sub">{t("sum.nothingLow")}</td></tr>}
+              {low.length + out.length === 0 && <tr><td colSpan={4} className="page-sub">{t("sum.nothingLow")}</td></tr>}
             </tbody>
           </table>
+          {low.length + out.length > 0 && (
+            <Link href="/inventory/replenishment" className="inv-repl-note">
+              <AlertTriangle size={15} aria-hidden="true" />
+              <span><strong>{low.length + out.length} product{low.length + out.length === 1 ? " is" : "s are"} at or below the reorder level.</strong> Review and order before they run out.</span>
+              <ChevronRight size={15} aria-hidden="true" />
+            </Link>
+          )}
         </section>
-        <section className="card inv-panel">
-          <div className="inv-panel-head"><h2>Recent stock movements</h2><Link href="/inventory/movements">{c("viewAll")}</Link></div>
-          <table className="inv-mini">
-            <colgroup><col style={{ width: "14%" }} /><col style={{ width: "16%" }} /><col style={{ width: "30%" }} /><col style={{ width: "28%" }} /><col style={{ width: "12%" }} /></colgroup>
-            <thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Product</th><th className="num">Qty</th></tr></thead>
-            <tbody>
-              {moves.map((m: any) => {
-                const [label, tone] = TYPE[m.doc_type] ?? [m.doc_type ?? "Movement", "draft"];
-                return (
-                  <tr key={m.id}>
-                    <td>{new Date(m.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
-                    <td><span className={`pill ${tone}`}>{label}</span></td>
-                    <td className="clip" title={m.doc_no ?? ""}>{m.document_id ? <Link href={`/documents/${m.document_id}`}>{m.doc_no ?? "—"}</Link> : "—"}</td>
-                    <td className="clip" title={m.item}>{m.item}</td>
-                    <td className={`num ${m.qty > 0 ? "ok-qty" : "bad"}`}>{m.qty > 0 ? `+${m.qty}` : m.qty}</td>
-                  </tr>
-                );
-              })}
-              {moves.length === 0 && <tr><td colSpan={5} className="page-sub">No movements yet.</td></tr>}
-            </tbody>
-          </table>
-        </section>
-        {seeCost && (
-          <section className="card inv-panel">
-            <div className="inv-panel-head"><h2>Inventory value trend</h2><span className="page-sub">Monthly · {compact(totalValue)} MMK now</span></div>
-            <RevenueTrendChart data={trend as never} />
-          </section>
-        )}
       </div>
     </div>
   );

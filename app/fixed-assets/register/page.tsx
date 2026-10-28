@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpHint } from "@/components/help-hint";
 import { canPostFa } from "@/lib/fa-access";
 import { Plus } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
@@ -67,8 +68,7 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Asset Register" }]} />
       <div className="fa-head">
         <div>
-          <h1>Asset Register</h1>
-          <p>Every asset, its cost, depreciation to date and net book value.</p>
+          <h1>Asset Register <HelpHint label="About Asset Register">Every asset, its cost, depreciation to date and net book value.</HelpHint></h1>
         </div>
         {canEdit && <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>}
       </div>

@@ -26,7 +26,7 @@ function ChartTooltip({ active, payload, label, valueLabel }: any) {
 }
 
 /** Monthly revenue trend, including months with no postings — a flat/empty stretch is real information. */
-export function RevenueTrendChart({ data }: { data: { month: string; revenue: number | string }[] }) {
+export function RevenueTrendChart({ data, height = 180 }: { data: { month: string; revenue: number | string }[]; height?: number }) {
   const rows = data.map((d) => ({ month: monthLabel(d.month), revenue: Number(d.revenue) }));
 
   /* Where zero sits between the highest and lowest point, as a fraction of
@@ -40,7 +40,7 @@ export function RevenueTrendChart({ data }: { data: { month: string; revenue: nu
   const anyNegative = bottom < 0;
 
   return (
-    <ResponsiveContainer width="100%" height={180}>
+    <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
@@ -243,8 +243,14 @@ function SliceTooltip({ active, payload, total }: any) {
 }
 
 export function ShareDonut({
-  data, currency, emptyLabel = "Nothing to show for the last six months.",
+  data, currency, emptyLabel = "Nothing to show for the last six months.", colours: fixed, centre, count = false,
 }: {
+  /** One colour per row, when the slices mean something (in stock green, low amber, out red). */
+  colours?: string[];
+  /** What the hole says instead of the currency and total. */
+  centre?: { value: string; label: string };
+  /** Counts, not money: the legend shows whole numbers. */
+  count?: boolean;
   data: {
     id: string; name: string; revenue: number | string; qty?: number | string;
     /** The gathered remainder. Grey, and outside the palette: it is not a
@@ -267,7 +273,8 @@ export function ShareDonut({
   let n = 0;
   const colourOf = (r: { rest: boolean }) =>
     r.rest ? REST : SLICE_COLOURS[n++ % SLICE_COLOURS.length];
-  const colours = rows.map(colourOf);
+  const colours = fixed ? rows.map((_, i) => fixed[i % fixed.length]) : rows.map(colourOf);
+  const fmt = (v: number) => (count ? v.toLocaleString("en-US") : money(v));
   const total = rows.reduce((t, r) => t + r.value, 0);
   if (rows.length === 0 || total <= 0) {
     return <div className="empty">{emptyLabel}</div>;
@@ -292,8 +299,8 @@ export function ShareDonut({
         </ResponsiveContainer>
         {/* The total sits in the hole, where the eye already is. */}
         <div className="donut-centre" aria-hidden="true">
-          <span className="donut-centre-label">{currency}</span>
-          <span className="donut-centre-value">{money(total)}</span>
+          <span className="donut-centre-label">{centre?.label ?? currency}</span>
+          <span className="donut-centre-value">{centre?.value ?? money(total)}</span>
         </div>
       </div>
 
@@ -303,7 +310,7 @@ export function ShareDonut({
             <span className="donut-dot" style={{ background: colours[i] }} />
             <span className="donut-name">{r.name}</span>
             <span className="donut-share">{Math.round((r.value / total) * 100)}%</span>
-            <span className="donut-value">{money(r.value)}</span>
+            <span className="donut-value">{fmt(r.value)}</span>
           </li>
         ))}
       </ul>

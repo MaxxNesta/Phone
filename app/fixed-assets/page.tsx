@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpHint } from "@/components/help-hint";
 import { canPostFa } from "@/lib/fa-access";
 import { Landmark, Layers, TrendingDown, Wallet, CalendarClock, Hourglass, AlertTriangle, Plus, ArrowRight } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
@@ -28,8 +29,7 @@ export default async function FixedAssetsOverview() {
       <Breadcrumbs trail={[{ label: "Fixed Assets" }, { label: "Overview" }]} />
       <div className="fa-head">
         <div>
-          <h1>Fixed Assets</h1>
-          <p>The shop&apos;s assets, their depreciation and what the ledger carries for them.</p>
+          <h1>Fixed Assets <HelpHint label="About Fixed Assets">The shop&apos;s assets, their depreciation and what the ledger carries for them.</HelpHint></h1>
         </div>
         {canPostFa(user) && (
           <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>

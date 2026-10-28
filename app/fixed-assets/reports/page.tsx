@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HelpHint } from "@/components/help-hint";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations, seenBranches } from "@/lib/branch-scope";
 import { faBranches, faCategories, FA_STATUS, FA_STATUS_LABEL, assetList } from "@/lib/fixed-assets";
@@ -146,7 +147,7 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
   return (
     <div className="fa">
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Reports" }]} />
-      <div className="fa-head"><div><h1>Fixed Asset Reports</h1><p>{note}</p></div></div>
+      <div className="fa-head"><div><h1>Fixed Asset Reports <HelpHint label="About Fixed Asset Reports">{note}</HelpHint></h1></div></div>
       <nav className="fac-tabs far-reports" aria-label="Report">
         {REPORTS.map(([k, l]) => <Link key={k} href={href({ report: k === "register" ? undefined : k })} aria-current={report === k ? "page" : undefined}>{l}</Link>)}
       </nav>
