@@ -185,7 +185,7 @@ export default async function LandedCostPage({ params }: { params: Promise<{ id:
           <div className="card-head"><h2>Additional charges</h2></div>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Cost type</th><th>Payee</th><th>Source</th><th>Spread</th><th className="r">Amount</th><th className="r">In {base}</th><th>Clearing</th></tr></thead>
+              <thead><tr><th>Cost type</th><th>Payee</th><th>Source</th><th>Spread</th><th className="r">Amount</th><th className="r">In {base}</th><th>Credited to</th></tr></thead>
               <tbody>
                 {lc.charges.map((c: any) => (
                   <tr key={c.id}>
@@ -196,7 +196,7 @@ export default async function LandedCostPage({ params }: { params: Promise<{ id:
                     <td className="r">{money(c.fc_amount)} {c.currency}
                       {c.currency !== base && <div className="m" style={{ color: "var(--muted)" }}>at {c.exchange_rate} on {c.rate_date}{c.rate_entered_by ? `, by ${c.rate_entered_by}` : ""}</div>}</td>
                     <td className="r">{money(c.base_amount)}</td>
-                    <td className="m">{c.clearing_account}</td>
+                    <td className="m">{c.owed_account ? <>{c.owed_account} <span className="subline">owed to the payee</span></> : c.clearing_account}</td>
                   </tr>
                 ))}
               </tbody>

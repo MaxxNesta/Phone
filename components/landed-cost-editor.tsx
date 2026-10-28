@@ -264,6 +264,14 @@ export function LandedCostEditor(props: {
                     </div>
                   </div>
                 )}
+                {/* No bill behind it: posting makes it a debt, to the payee if there is one. */}
+                {!src && (
+                  <p className="hint lc-owed">
+                    {c.partnerId
+                      ? <>No bill yet: posting owes this to <strong>{props.partners.find((p) => p.id === c.partnerId)?.label ?? "the payee"}</strong> in Payable (Other), paid later from Payables → Couriers.</>
+                      : <>No bill yet: choose a payee below to owe it to the courier or driver. Without one it stays in the clearing account.</>}
+                  </p>
+                )}
 
                 <details className="lc-more">
                   <summary>Payee, clearing account and reference</summary>

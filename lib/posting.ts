@@ -8297,6 +8297,8 @@ export type VoucherLine = {
   locationId?: string | null;
   costCenterId?: string | null;
   memo?: string | null;
+  /** Whose balance the line moves: a courier paid out of Payable (Other). */
+  partnerId?: string | null;
 };
 
 export type VoucherInput = {
@@ -8306,6 +8308,8 @@ export type VoucherInput = {
   memo?: string | null;
   reference?: string | null;
   locationId?: string | null;
+  /** The partner the voucher is with, shown on the document. */
+  partnerId?: string | null;
   /**
    * Set only when this posting replaces an existing voucher: it keeps that
    * voucher's number and takes the next version under it. The same field the
@@ -8410,11 +8414,11 @@ async function _postVoucher(
     const [doc] = await tx`
       insert into document
         (company_id, doc_type, doc_no, version, fiscal_year_id, doc_date, posting_date,
-         location_id, currency, exchange_rate, status, voucher_direction,
+         location_id, partner_id, currency, exchange_rate, status, voucher_direction,
          net_total, tax_total, gross_total, memo, reference, posted_at)
       values
         (${companyId}, ${docType}, ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date, ${docDate}::date,
-         ${input.locationId ?? null}, 'MMK', 1, 'POSTED', ${direction},
+         ${input.locationId ?? null}, ${input.partnerId ?? null}, 'MMK', 1, 'POSTED', ${direction},
          ${total}, 0, ${total}, ${input.memo ?? null}, ${input.reference ?? null}, now())
       returning id`;
 
@@ -8423,6 +8427,7 @@ async function _postVoucher(
       lines.map((l) => ({
         accountId: l.accountId,
         amount: l.amount,
+        partnerId: l.partnerId ?? null,
         locationId: l.locationId ?? input.locationId ?? null,
       }))
     );

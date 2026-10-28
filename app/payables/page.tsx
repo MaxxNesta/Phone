@@ -8,6 +8,7 @@ import { getCompany, getPartnerBalances } from "@/lib/queries";
 import { unbilledReceipts, unbilledBySupplier } from "@/lib/unbilled";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { CouriersView } from "./couriers-view";
 
 const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
   ["", "All"],
@@ -19,9 +20,10 @@ const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
 export default async function Payables({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; date?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ status?: string; date?: string; from?: string; to?: string; view?: string }>;
 }) {
   const sp = await searchParams;
+  const couriers = sp.view === "couriers";
   const { status } = sp;
   // Invoices posted in the chosen period only; the tabs keep the period.
   const period = periodFromParams(sp);
@@ -34,6 +36,28 @@ export default async function Payables({
   };
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
+
+  // Two kinds of creditor: suppliers billing goods, and couriers owed for
+  // bringing them in. Each its own tab, same page.
+  const head = (
+    <>
+      <div className="page-head">
+        <span className="eyebrow">Purchases</span>
+        <h1>Payables</h1>
+        <BranchScope />
+        <HelpHint>
+          {couriers
+            ? "What each courier, forwarder or driver is owed, from the landed-cost charges that named them as payee. Paid against those charges, so every charge shows whether it is paid."
+            : "What you owe each supplier, rolled up from their open bills — not a balance kept on the supplier, so it can never drift from the invoices behind it."}
+        </HelpHint>
+      </div>
+      <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
+        <Link href="/payables" role="tab" aria-selected={!couriers} className={!couriers ? "on" : undefined}>Suppliers</Link>
+        <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>Couriers</Link>
+      </div>
+    </>
+  );
+  if (couriers) return <>{head}<CouriersView companyId={company.id} /></>;
 
   const [billed, unbilledRows] = await Promise.all([
     getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations(), period) as Promise<any[]>,
@@ -100,16 +124,7 @@ export default async function Payables({
 
   return (
     <>
-      <div className="page-head">
-        <span className="eyebrow">Purchases</span>
-        <h1>Payables</h1>
-        <BranchScope />
-        <HelpHint>
-          What you owe each supplier, rolled up from their open bills — not a
-          balance kept on the supplier, so it can never drift from the invoices
-          behind it.
-        </HelpHint>
-      </div>
+      {head}
 
       <div className="kpis">
         <div className="kpi">

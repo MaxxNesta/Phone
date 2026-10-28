@@ -286,10 +286,11 @@ export const SYSTEM = {
   FX_GAIN: "66001", FX_LOSS: "66001", ROUNDING_DIFFERENCE: "66121",
   DELIVERY_INCOME: "41106",
 
-  // Reserved. Cost of sales is still recognised on the delivery, so nothing
-  // resolves this role yet; it exists so the account and the role land
-  // together rather than in two migrations months apart.
+  // Delivered goods wait here until the invoice recognises their cost; a
+  // landed-cost bill waits in clearing until it is spread onto the phones.
   SHIPPED_NOT_INVOICED: "14303", LANDED_COST_CLEARING: "14304",
+  // What a courier or driver named on a landed-cost charge is owed.
+  OTHER_PAYABLE: "21109",
 
   // Money that moved before the invoice did. Deliberately not the control
   // accounts: an advance has no open item, so parking it in receivables would

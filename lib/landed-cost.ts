@@ -582,7 +582,7 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
     await assertReceipts(tx, input.companyId, receipts);
 
     const charges = await tx`
-      select c.id, c.base_amount::float as base_amount, c.clearing_account_id, c.source_journal_line_id,
+      select c.id, c.base_amount::float as base_amount, c.clearing_account_id, c.source_journal_line_id, c.partner_id,
              (select coalesce(sum(a.amount), 0)::float from landed_cost_allocation a where a.charge_id = c.id) as allocated
         from landed_cost_charge c where c.landed_cost_id = ${doc.id} and c.is_active order by c.line_no`;
     if (charges.length === 0) throw new Error("Add at least one charge.");
@@ -624,8 +624,16 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
         values (${input.companyId}, ${p.serial_id}, 'LANDED_COST', ${doc.id}, ${w.location_id}, ${lotId},
                 ${NOTE[w.treatment]})`;
     }
+    // A charge with a payee and no bill behind it is a debt to that payee:
+    // it is owed in Payable (Other) until a courier payment settles it. One
+    // linked to a bill only spends what the bill put into clearing.
+    const [owedTo] = await tx`
+      select account_id from system_account where company_id = ${input.companyId} and role = 'OTHER_PAYABLE'`;
     for (const c of charges) {
-      journal.push({ accountId: c.clearing_account_id, amount: -roundTo(c.base_amount, base.dp), locationId: doc.location_id });
+      const owed = !c.source_journal_line_id && c.partner_id && owedTo ? owedTo.account_id as string : null;
+      journal.push({ accountId: owed ?? c.clearing_account_id, amount: -roundTo(c.base_amount, base.dp),
+                     partnerId: owed ? c.partner_id : null, locationId: doc.location_id });
+      await tx`update landed_cost_charge set owed_account_id = ${owed} where id = ${c.id}`;
     }
 
     const entryId = await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
@@ -657,6 +665,15 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
        where id = ${input.id} and company_id = ${input.companyId} and doc_type = 'LANDED_COST' for update`;
     if (!doc) throw new Error("Landed cost not found.");
     if (doc.status !== "POSTED") throw new Error(`${doc.doc_no} is not posted, so there is nothing to reverse.`);
+    // What a courier has been paid against it stands; taking the debt away
+    // under a payment would leave the payment owing nothing.
+    const [paid] = await tx`
+      select coalesce(sum(s.amount), 0)::float as v from courier_settlement s
+        join document p on p.id = s.payment_id and p.status = 'POSTED'
+        join landed_cost_charge c on c.id = s.charge_id where c.landed_cost_id = ${doc.id}`;
+    if (Number(paid.v) > 0) {
+      throw new Error(`${doc.doc_no} has courier payments against it (${paid.v.toLocaleString("en-US")}). Reverse those payments first.`);
+    }
     const base = await baseCurrency(tx, input.companyId);
     const date = input.date || new Date().toISOString().slice(0, 10);
 
@@ -701,10 +718,11 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
                 ${`Reversed (${doc.doc_no})`})`;
     }
     const charges = await tx`
-      select clearing_account_id, base_amount::float as base_amount from landed_cost_charge
+      select clearing_account_id, owed_account_id, partner_id, base_amount::float as base_amount from landed_cost_charge
        where landed_cost_id = ${doc.id} and is_active`;
     for (const c of charges) {
-      journal.push({ accountId: c.clearing_account_id, amount: roundTo(c.base_amount, base.dp), locationId: doc.location_id });
+      journal.push({ accountId: c.owed_account_id ?? c.clearing_account_id, amount: roundTo(c.base_amount, base.dp),
+                     partnerId: c.owed_account_id ? c.partner_id : null, locationId: doc.location_id });
     }
     const entryId = await writeJournal(tx, input.companyId, date, "LANDED_COST", rev.id,
       `${no} reverses ${doc.doc_no}`, journal, doc.location_id);

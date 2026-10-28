@@ -8229,3 +8229,10 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .vtabs-body { max-height: 220px; overflow: auto; }
 .vtabs-head strong.num { color: var(--ink); font-variant-numeric: tabular-nums; }
 .vtabs-body td.empty { padding: 14px 12px; }
+
+/* Payables: Suppliers | Couriers, the same two-tab control as the invoice's. */
+.vtabs > a { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 14px; border-radius: 8px;
+  color: var(--ink-soft); font-size: var(--t-sm); font-weight: 500; text-decoration: none; }
+.vtabs > a:hover:not(.on) { color: var(--ink); }
+.vtabs > a.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
+.pay-tabs { align-self: flex-start; margin-bottom: 4px; }

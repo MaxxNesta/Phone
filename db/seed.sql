@@ -362,6 +362,7 @@ from (values
     ('DELIVERY_INCOME',             '41106'),
     ('SHIPPED_NOT_INVOICED',        '14303'),
     ('LANDED_COST_CLEARING',        '14304'),
+    ('OTHER_PAYABLE',               '21109'),
     ('CUSTOMER_ADVANCE',            '21301'),
     ('SUPPLIER_ADVANCE',            '15102'),
     ('OUTPUT_TAX',                  '21501'),
