@@ -8,6 +8,7 @@ import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { useTranslations } from "next-intl";
+import { LineRemove } from "./line-remove";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -93,7 +94,7 @@ export function StockTransferForm({
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "" }]);
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "" }] : ls.filter((l) => l.key !== key)));
 
   const payload = JSON.stringify(
     lines
@@ -207,8 +208,7 @@ export function StockTransferForm({
                         aria-label={c("quantity")} />
                     </td>
                     <td className="tight">
-                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label={t("removeLine")} disabled={lines.length === 1}>×</button>
+                      <LineRemove onClick={() => removeLine(l.key)} label={t("removeLine")} />
                     </td>
                   </tr>
                   {item?.identity === "OPTIONAL" && (

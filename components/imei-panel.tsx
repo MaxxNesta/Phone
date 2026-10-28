@@ -155,6 +155,7 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = 
                     <td>
                       <input type="text" inputMode={mode === "SERIAL" ? "text" : "numeric"} value={r.serial}
                         data-row={i} data-col={0} autoComplete="off"
+                        placeholder={mode === "SERIAL" ? "Serial number" : "15-digit IMEI — required"}
                         aria-label={mode === "SERIAL" ? `Serial number, unit ${i + 1}` : `IMEI 1, unit ${i + 1}`}
                         onChange={(e) => set(i, { serial: e.target.value })}
                         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); focusCell(i + 1); } }} />
@@ -163,12 +164,12 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = 
                       <>
                         <td>
                           <input type="text" inputMode="numeric" value={r.imei2 ?? ""} aria-label={`IMEI 2, unit ${i + 1}`}
-                            autoComplete="off" onChange={(e) => set(i, { imei2: e.target.value })}
+                            placeholder="Optional" autoComplete="off" onChange={(e) => set(i, { imei2: e.target.value })}
                             style={imei2Bad ? { borderColor: "var(--bad)" } : undefined} />
                         </td>
                         <td>
                           <input type="text" value={r.deviceSerial ?? ""} aria-label={`Serial number, unit ${i + 1}`}
-                            autoComplete="off" onChange={(e) => set(i, { deviceSerial: e.target.value })} />
+                            placeholder="Optional" autoComplete="off" onChange={(e) => set(i, { deviceSerial: e.target.value })} />
                         </td>
                       </>
                     )}

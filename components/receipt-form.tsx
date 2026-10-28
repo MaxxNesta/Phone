@@ -13,9 +13,11 @@ import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
-import { Building2, Package, Plus, Trash2, ChevronDown } from "lucide-react";
+import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
+import { LineRemove } from "./line-remove";
+import { Flagged } from "./cell-flag";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -347,12 +349,6 @@ export function ReceiptForm({
     : [];
   const unbilledValue = unbilled.reduce((s, l) => s + amount(l), 0);
 
-  const qtyMismatches = matchedPi
-    ? lines.filter((l) => {
-        const billedLine = matchedPi.lines.find((pl) => pl.itemId === l.itemId);
-        return billedLine && Number(l.qty) !== billedLine.qty;
-      })
-    : [];
 
   const payload = JSON.stringify(
     lines
@@ -439,18 +435,12 @@ export function ReceiptForm({
       {draftResult && "ok" in draftResult && !savingDraft && (
         <div className="hint" role="status">Draft saved — nothing is in stock until it posts.</div>
       )}
-      {serialShort.length > 0 && (
-        <div className="hint low" role="status">
-          Every unit needs a valid IMEI or serial number before posting:{" "}
-          {serialShort.map((l) => `${byId(l.itemId)?.name ?? ""} ${entered(l)}/${l.qty}`).join(", ")}
-        </div>
-      )}
 
       <div className="card doc-info">
           <div className="card-body">
-            <div className="doc-fields cols-4">
+            <div className="doc-fields">
               <div className="field">
-                <label htmlFor="partner_id">Supplier</label>
+                <label htmlFor="partner_id"><Building2 size={13} aria-hidden="true" />Supplier</label>
                 {order ? (
                   <>
                     <input type="hidden" name="partner_id" value={partnerId} />
@@ -475,34 +465,41 @@ export function ReceiptForm({
                 )}
               </div>
               <div className="field">
-                <label htmlFor="location_id">Warehouse</label>
+                <label htmlFor="location_id"><Warehouse size={13} aria-hidden="true" />Warehouse</label>
                 <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId}
                         onChange={(e) => setLocationId(e.target.value)} required />
               </div>
               <div className="field">
-                <label htmlFor="doc_date">GR date</label>
+                <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />GR date</label>
                 <input id="doc_date" name="doc_date" type="date" value={docDate}
                   onChange={(e) => setDocDate(e.target.value)} required />
               </div>
               <div className="field">
-                <label htmlFor="received_time">Time</label>
+                <label htmlFor="received_time"><Clock size={13} aria-hidden="true" />Time</label>
                 <input id="received_time" name="received_time" type="time" value={receivedTime}
                   onChange={(e) => setReceivedTime(e.target.value)} />
-              </div>
-              <div className="field">
-                <label htmlFor="reference">Reference</label>
-                <input id="reference" name="reference" type="text"
-                  defaultValue={order ? `Against ${order.docNo}` : ""} placeholder="Delivery note no." />
               </div>
               {fx && !matchedPi && (
                 <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
                   date={docDate} pricesIn={fxSwitch.pricesIn}
                   onChange={fxSwitch.change} />
               )}
-              <div className="field span-rest">
-                <label htmlFor="memo">Remarks</label>
-                <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
+            </div>
+            <div className="doc-info-foot">
+            <details className="moredetails" open={!!order || undefined}>
+              <summary>Additional details <span className="page-sub">(reference, remarks)</span></summary>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Reference</label>
+                  <input id="reference" name="reference" type="text"
+                    defaultValue={order ? `Against ${order.docNo}` : ""} placeholder="Delivery note no." />
+                </div>
+                <div className="field span-2">
+                  <label htmlFor="memo"><StickyNote size={13} aria-hidden="true" />Remarks</label>
+                  <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
+                </div>
               </div>
+            </details>
             </div>
             {/* Who the goods are from, in one line once a supplier is chosen —
                 not a card standing empty until then. */}
@@ -683,10 +680,11 @@ export function ReceiptForm({
                         </td>
                       )}
                       <td className="narrow qtycell">
-                        <input type="number" min="0" step="any" value={l.qty}
-                          onChange={(e) => setLine(l.key, { qty: e.target.value })}
-                          aria-label="Receive quantity"
-                          style={qtyMismatch ? { borderColor: "var(--warn)" } : undefined} />
+                        <Flagged note={qtyMismatch && `${fmt(billedLine!.qty)} billed on ${matchedPi!.doc_no} — a short shipment can be right, but check`}>
+                          <input type="number" min="0" step="any" value={l.qty}
+                            onChange={(e) => setLine(l.key, { qty: e.target.value })}
+                            aria-label="Receive quantity" />
+                        </Flagged>
                       </td>
                       {/* Which unit this quantity is in. Only where the item
                           has packs — one option is a question already answered. */}
@@ -707,12 +705,14 @@ export function ReceiptForm({
                         {/* The bill is the cost of these goods, so it is not
                             typed over here. Quantity stays the receiver's to
                             state: what arrived is what arrived. */}
-                        <input type="number" min="0" step="any" value={l.unitCost}
-                          onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
-                          aria-label="Unit cost"
-                          readOnly={!!billedLine}
-                          title={billedLine ? `Billed at ${fmt(billedLine.unitPrice)} on ${matchedPi?.doc_no}` : undefined}
-                          style={billedLine ? { background: "var(--ground)", cursor: "not-allowed" } : undefined} />
+                        <Flagged note={freeLines.includes(l) && !billedLine && "Needs a unit cost — without one these units arrive worth nothing"}>
+                          <input type="number" min="0" step="any" value={l.unitCost}
+                            onChange={(e) => setLine(l.key, { unitCost: e.target.value })}
+                            aria-label="Unit cost" placeholder="Cost"
+                            readOnly={!!billedLine}
+                            title={billedLine ? `Billed at ${fmt(billedLine.unitPrice)} on ${matchedPi?.doc_no}` : undefined}
+                            style={billedLine ? { background: "var(--ground)", cursor: "not-allowed" } : undefined} />
+                        </Flagged>
                       </td>
                       <td>
                         {item?.identity === "OPTIONAL" && (
@@ -721,7 +721,8 @@ export function ReceiptForm({
                         )}
                         {named(l) ? (
                           <span className="gr-imei">
-                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? [], modeOf(l), onFile) ? "ok" : "warn"}`}>
+                            <span className={`pill ${q > 0 && n === q && !rowsProblem(l.serials ?? [], modeOf(l), onFile) ? "ok" : "warn"}`}
+                              title={n < q ? `${q - n} still to enter before this can post` : undefined}>
                               {n} / {q} entered
                             </span>
                             <button type="button" className="dt-tool" onClick={() => setImeiKey(l.key)}
@@ -740,10 +741,7 @@ export function ReceiptForm({
                         )}
                       </td>
                       <td className="tight">
-                        <button type="button" className="danger tiny" onClick={() => removeLine(l.key)}
-                          aria-label="Remove line">
-                          <Trash2 size={15} aria-hidden="true" />
-                        </button>
+                        <LineRemove onClick={() => removeLine(l.key)} />
                       </td>
                     </tr>
                     {picking && (
@@ -836,29 +834,6 @@ export function ReceiptForm({
         </div>
       )}
 
-      {qtyMismatches.length > 0 && (
-        <div className="alert" style={{ borderColor: "var(--warn)", color: "var(--warn)", background: "color-mix(in srgb, var(--warn) 8%, transparent)" }}>
-          Received quantity doesn&rsquo;t match what {matchedPi?.doc_no} billed for{" "}
-          {qtyMismatches.map((l) => byId(l.itemId)?.code ?? matchedPi?.lines.find((pl) => pl.itemId === l.itemId)?.itemCode).join(", ")}.
-          Not blocked — a short shipment can be legitimate — but check before posting.
-        </div>
-      )}
-
-      {freeLines.length > 0 && (
-        <div className="alert" style={{ marginBottom: "0.75rem" }}>
-          <strong>
-            {freeLines.length === 1 ? "One line has" : `${freeLines.length} lines have`} a
-            quantity but no unit cost.
-          </strong>{" "}
-          {freeLines.map((l) => byId(l.itemId)?.code).filter(Boolean).join(", ")} would
-          arrive worth nothing, and a later sale would draw them at nothing.
-          {matchedPi
-            ? " The matched invoice carries the prices — reselect it to fill them in."
-            : openInvoices.length > 0
-              ? " If the supplier already billed for these, matching that invoice fills in what they cost."
-              : " Enter what they cost, or post it deliberately if they really were free."}
-        </div>
-      )}
 
 
       <div className="gr-bottom">
@@ -926,6 +901,11 @@ export function ReceiptForm({
       </div>
 
       <div className="actions form-commit">
+        {serialShort.length > 0 && (
+          <span className="commit-hint" role="status">
+            Every unit needs its IMEI or serial to post
+          </span>
+        )}
         <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0}
           onClick={(e) => {
             if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }

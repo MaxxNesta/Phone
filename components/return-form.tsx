@@ -12,6 +12,7 @@ import { MoneyPreviewDialog } from "./money-preview";
 import { previewSalesReturn } from "@/lib/actions";
 import type { Channel } from "@/lib/payment-channels";
 import type { MoneyPreview } from "@/lib/refund";
+import { LineRemove } from "./line-remove";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -175,7 +176,7 @@ export function ReturnForm({
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitPrice: "" }]);
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "", unitPrice: "" }] : ls.filter((l) => l.key !== key)));
 
   const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
   const total = lines.reduce((s, l) => s + amount(l), 0);
@@ -383,8 +384,7 @@ export function ReturnForm({
                     </td>
                     <td className="r">{fmt(amount(l))}</td>
                     <td className="tight">
-                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label="Remove line" disabled={lines.length === 1}>×</button>
+                      <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
                   </tr>
                   {item?.identity === "OPTIONAL" && (

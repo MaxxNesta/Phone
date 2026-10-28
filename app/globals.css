@@ -8172,3 +8172,60 @@ tr.far-company > td { background: color-mix(in srgb, var(--fa-lav) 6%, transpare
 .inv-aging:hover .inv-go-link { background: color-mix(in srgb, var(--link) 16%, transparent); }
 a.subline.inv-variants { color: var(--link); text-decoration: none; }
 a.subline.inv-variants:hover { text-decoration: underline; }
+
+/* One bin, on every form with item lines: red so it reads as removal at a glance. */
+button.line-del { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px;
+  background: transparent; color: var(--bad); cursor: pointer; opacity: 0.85; }
+button.line-del:hover:not(:disabled) { opacity: 1; background: color-mix(in srgb, var(--bad) 10%, transparent); }
+button.line-del:focus-visible { outline: 2px solid var(--bad); outline-offset: 1px; }
+button.line-del:disabled { opacity: 0.3; cursor: default; }
+.line-acts { display: inline-flex; align-items: center; gap: 2px; }
+
+/* A field flagged in place: the exclamation sits inside the input's end, its
+   hover says why. Replaces banners above and below the lines. */
+.flagged { position: relative; display: block; }
+.flagged > input { padding-right: 24px; }
+.flagged > input::-webkit-inner-spin-button, .flagged > input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.flagged > input[type="number"] { -moz-appearance: textfield; }
+.cell-flag { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); display: inline-flex; color: var(--warn); cursor: help; }
+.doc-note { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 0.75rem; padding: 10px 14px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--surface); color: var(--ink-soft); font-size: var(--t-sm); line-height: 1.5; }
+.doc-note > svg { flex: none; margin-top: 2px; color: var(--muted); }
+.doc-note a { color: var(--link); }
+.commit-hint { margin-right: auto; font-size: var(--t-sm); color: var(--muted); align-self: center; }
+
+/* ============================================================ hairline ==
+   The document header, written on lines rather than in boxes: each field a
+   single hairline that turns blue while typed in, its label carrying a small
+   muted icon. Lines and totals keep their boxed inputs; this is the header. */
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea),
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) .fixedfield {
+  border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background-color: transparent;
+  padding-left: 1px; padding-right: 1px; box-shadow: none;
+}
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) select { padding-right: 22px; background-position: right 2px center; }
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) :is(input, select, textarea):hover:not(:disabled):not([readonly]) { border-bottom-color: var(--muted); }
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) :is(input, select, textarea):focus,
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) :is(input, select, textarea):focus-visible {
+  outline: none; border-bottom-color: var(--focus); box-shadow: 0 1px 0 0 var(--focus);
+}
+.card.doc-info:not(.receive-mode) :is(.doc-fields, .moredetails) :is(input, select):disabled { background-color: transparent; opacity: 0.55; }
+.card.doc-info :is(.doc-fields, .moredetails) .field > label { display: flex; align-items: center; gap: 5px; font-weight: 500; color: var(--ink-soft); }
+.card.doc-info :is(.doc-fields, .moredetails) .field > label > svg { flex: none; color: var(--muted); }
+.card.doc-info .doc-fields { row-gap: 18px; column-gap: 20px; }
+.doc-info .moredetails > .row { grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 20px; }
+.doc-info .moredetails > .row > .span-2 { grid-column: span 2; }
+@media (max-width: 1100px) { .doc-info .moredetails > .row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .doc-info .moredetails > .row { grid-template-columns: minmax(0, 1fr); } .doc-info .moredetails > .row > .span-2 { grid-column: auto; } }
+
+/* Invoices | Promotions: two tabs whose names are the heading. */
+.vtabs-head { gap: 12px; }
+.vtabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--line-soft); }
+.vtabs > button { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--ink-soft); font-size: var(--t-sm); font-weight: 500; cursor: pointer; }
+.vtabs > button:hover:not(.on) { color: var(--ink); }
+.vtabs > button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
+.vtabs-n { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.vtabs-body { max-height: 220px; overflow: auto; }
+.vtabs-head strong.num { color: var(--ink); font-variant-numeric: tabular-nums; }
+.vtabs-body td.empty { padding: 14px 12px; }

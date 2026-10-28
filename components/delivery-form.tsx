@@ -7,6 +7,7 @@ import { ItemPicker } from "./item-picker";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
 import { PartnerPicker } from "./partner-picker";
+import { LineRemove } from "./line-remove";
 
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Uom = { id: string; code: string; name: string };
@@ -124,7 +125,7 @@ export function DeliveryForm({
       itemId: "", qty: "", focQty: "", focReasonId: "", source: "OWNED",
     }]);
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "", focQty: "", focReasonId: "", source: "OWNED" }] : ls.filter((l) => l.key !== key)));
 
   const onHandHere = (itemId: string) =>
     Number(stockByLocation.find((r) => r.item_id === itemId && r.location_id === locationId)
@@ -404,9 +405,7 @@ export function DeliveryForm({
                       </td>
                     )}
                     <td className="tight">
-                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}>
-                        Remove
-                      </button>
+                      <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
                   </tr>
                 );

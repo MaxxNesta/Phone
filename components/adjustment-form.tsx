@@ -7,6 +7,7 @@ import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { useTranslations } from "next-intl";
+import { LineRemove } from "./line-remove";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -97,7 +98,7 @@ export function AdjustmentForm({
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitCost: "" }]);
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? ls : ls.filter((l) => l.key !== key)));
+    setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "", unitCost: "" }] : ls.filter((l) => l.key !== key)));
 
   const isLoss = (l: Line) => Number(l.qty) < 0;
   const effectiveCost = (l: Line) => {
@@ -233,8 +234,7 @@ export function AdjustmentForm({
                     </td>
                     <td className="r">{fmt(amount(l))}</td>
                     <td className="tight">
-                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label={t("removeLine")} disabled={lines.length === 1}>×</button>
+                      <LineRemove onClick={() => removeLine(l.key)} label={t("removeLine")} />
                     </td>
                   </tr>
                 );

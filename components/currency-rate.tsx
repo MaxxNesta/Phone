@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowLeftRight, Coins } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
 import { saveRate } from "@/lib/currency-actions";
@@ -43,7 +44,7 @@ export function CurrencyRate({ options, base, currency, rate, onChange, locked, 
       <input type="hidden" name="currency" value={foreign ? currency : ""} />
       <input type="hidden" name="exchange_rate" value={foreign ? rate : ""} />
       <div className="field">
-        <label htmlFor="fx-currency">Currency</label>
+        <label htmlFor="fx-currency"><Coins size={13} aria-hidden="true" />Currency</label>
         <select id="fx-currency" value={currency || base} disabled={Boolean(locked)}
           onChange={(e) => {
             const c = e.target.value;
@@ -58,7 +59,7 @@ export function CurrencyRate({ options, base, currency, rate, onChange, locked, 
       </div>
       {foreign && (
         <div className="field">
-          <label htmlFor="fx-rate">1 {currency} = {base}</label>
+          <label htmlFor="fx-rate"><ArrowLeftRight size={13} aria-hidden="true" />1 {currency} = {base}</label>
           <input id="fx-rate" type="number" step="any" min="0" required value={rate}
             readOnly={Boolean(locked)} onChange={(e) => onChange(currency, e.target.value)} />
           <span className="hint">

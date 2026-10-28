@@ -11,10 +11,12 @@ import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
 import { HelpHint } from "./help-hint";
-import { PackageCheck, Truck, Clock, Package, Plus } from "lucide-react";
+import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse } from "lucide-react";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ChannelPicker } from "./channel-picker";
 import type { Channel } from "@/lib/payment-channels";
+import { LineRemove } from "./line-remove";
+import { Flagged, DocNote } from "./cell-flag";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -482,13 +484,6 @@ export function InvoiceForm({
     return item?.is_stocked && Number(l.qty) > Number(item.on_hand);
   });
 
-  const qtyMismatches = matchedGr
-    ? lines.filter((l) => {
-        const receivedLine = matchedGr.lines.find((gl) => gl.itemId === l.itemId);
-        return receivedLine && Number(l.qty) !== receivedLine.qty;
-      })
-    : [];
-
   /**
    * Three prices, kept apart: what the order agreed, what the goods came in
    * at, and what the supplier is billing. Only shown when there is an order
@@ -561,7 +556,7 @@ export function InvoiceForm({
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">
-              <label htmlFor="partner_id">{isSales ? "Customer" : "Supplier"}</label>
+              <label htmlFor="partner_id">{isSales ? <User size={13} aria-hidden="true" /> : <Building2 size={13} aria-hidden="true" />}{isSales ? "Customer" : "Supplier"}</label>
               {fromReceipt ? (
                 <>
                   <span className="fixedfield">
@@ -581,7 +576,7 @@ export function InvoiceForm({
             </div>
 
             <div className="field">
-              <label htmlFor="location_id">Warehouse</label>
+              <label htmlFor="location_id"><Warehouse size={13} aria-hidden="true" />Warehouse</label>
               {fromReceipt ? (
                 <>
                   <span className="fixedfield">
@@ -597,7 +592,7 @@ export function InvoiceForm({
             </div>
 
             <div className="field">
-              <label htmlFor="doc_date">Invoice date</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Invoice date</label>
               <input
                 id="doc_date"
                 name="doc_date"
@@ -609,7 +604,7 @@ export function InvoiceForm({
             </div>
 
             <div className="field">
-              <label htmlFor="due_date">
+              <label htmlFor="due_date"><CalendarClock size={13} aria-hidden="true" />
                 Due date{" "}
                 <HelpHint label="About the due date">
                   Filled from the supplier&rsquo;s payment terms.
@@ -632,6 +627,29 @@ export function InvoiceForm({
                 date={docDate} pricesIn={fxSwitch.pricesIn}
                 onChange={fxSwitch.change} />
             )}
+          </div>
+          <div className="doc-info-foot">
+          <details className="moredetails" open={!!reference || undefined}>
+            <summary>Additional details <span className="page-sub">(reference, note)</span></summary>
+            <div className="row">
+              <div className="field">
+                <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Ref / order ID</label>
+                <input id="reference" name="reference" type="text"
+                       value={reference} onChange={(e) => setReference(e.target.value)}
+                       placeholder={isSales ? "Sales order or customer PO" : "Purchase order or supplier invoice no"} />
+                {initialGoodsReceiptId && reference && (
+                  <span className="hint">
+                    The order this {isSales ? "delivery" : "receipt"} came from. Type over it for the
+                    {isSales ? " customer's" : " supplier's"} own number.
+                  </span>
+                )}
+              </div>
+              <div className="field span-2">
+                <label htmlFor="memo"><StickyNote size={13} aria-hidden="true" />Note</label>
+                <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
+              </div>
+            </div>
+          </details>
           </div>
         </div>
       </div>
@@ -901,6 +919,7 @@ export function InvoiceForm({
                           item, quantity and price from the order. Neither is
                           typed over here — billing less is said deliberately,
                           with "Bill part", and capped at what is left. */}
+                      <Flagged note={qtyMismatch && `${fmt(receivedLine!.enteredQty ?? receivedLine!.qty)} received on ${matchedGr!.doc_no} — a partial delivery can be right, but check`}>
                       <input
                         type="number"
                         min="0"
@@ -917,8 +936,9 @@ export function InvoiceForm({
                             : undefined}
                         style={inherited(l) && !billPart
                           ? { background: "var(--line-soft)", cursor: "not-allowed" }
-                          : qtyMismatch ? { borderColor: "var(--warn)" } : undefined}
+                          : undefined}
                       />
+                      </Flagged>
                       {inherited(l) && billPart
                        && Number(l.qty) < Number(l.sourceQty) - 0.0001 && (
                         <span className="qtyleft">
@@ -931,6 +951,8 @@ export function InvoiceForm({
                           changed at the order. On a receipt line it stays
                           open: the supplier's bill is external truth, and a
                           difference there is what variance exists for. */}
+                      <Flagged note={priceGap ? `${fmt(ordered!)} on the order — the bill posts at this price`
+                        : l.itemId && Number(l.qty) > 0 && !(Number(l.unitPrice) > 0) && "Needs a unit price"}>
                       <input
                         type="number"
                         min="0"
@@ -944,18 +966,11 @@ export function InvoiceForm({
                           ? { background: "var(--line-soft)", cursor: "not-allowed" }
                           : undefined}
                       />
+                      </Flagged>
                     </td>
                     <td className="r">{fmt(amount(l))}</td>
                     <td className="tight">
-                      <button
-                        type="button"
-                        className="ghost tiny"
-                        onClick={() => removeLine(l.key)}
-                        aria-label="Remove line"
-                        disabled={lines.length === 1}
-                      >
-                        ×
-                      </button>
+                      <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
                   </tr>
                 );
@@ -1013,48 +1028,6 @@ export function InvoiceForm({
           </table>
         </div>
 
-        <div className="totalbar">
-          {taxable.length > 0 && (
-            <label className="totalbar-tax">
-              <span style={{ color: "var(--muted)" }}>Commercial tax</span>
-              <select
-                value={taxCodeId}
-                onChange={(e) => setTaxCodeId(e.target.value)}
-                aria-label="Commercial tax"
-              >
-                {zeroRated && <option value={zeroRated.id}>None</option>}
-                {taxable.map((t) => (
-                  <option key={t.id} value={t.id}>{t.code} · {t.rate}%</option>
-                ))}
-              </select>
-            </label>
-          )}
-          {taxRate > 0 && (
-            <label className="totalbar-tax" title="The supplier's prices already contain the tax">
-              <input
-                type="checkbox"
-                name="price_includes_tax"
-                checked={inclusive}
-                onChange={(e) => setInclusive(e.target.checked)}
-              />
-              <span style={{ color: "var(--muted)" }}>Prices include tax</span>
-            </label>
-          )}
-          {taxOnGoods > 0 && (
-            <span style={{ color: "var(--muted)" }}>
-              goods {fmt(goodsNet)} + tax {fmt(taxOnGoods)}
-            </span>
-          )}
-          <span style={{ color: "var(--muted)" }}>Total</span>
-          <span className="big">
-            {fmt(total)} {foreign ? currency : base}
-            {foreign && Number(rate) > 0 && (
-              <span className="subline" style={{ display: "block" }}>
-                ≈ {fmt(total * Number(rate))} {base} at {Number(rate).toLocaleString("en-US")}
-              </span>
-            )}
-          </span>
-        </div>
       </div>
 
       {shortages.length > 0 && (
@@ -1065,13 +1038,6 @@ export function InvoiceForm({
         </div>
       )}
 
-      {qtyMismatches.length > 0 && (
-        <div className="alert" style={{ borderColor: "var(--warn)", color: "var(--warn)", background: "color-mix(in srgb, var(--warn) 8%, transparent)" }}>
-          Billed quantity doesn&rsquo;t match what {matchedGr?.doc_no} recorded as received for{" "}
-          {qtyMismatches.map((l) => byId(l.itemId)?.code ?? matchedGr?.lines.find((gl) => gl.itemId === l.itemId)?.itemCode).join(", ")}.
-          Not blocked — a partial delivery or short shipment can be legitimate — but check before posting.
-        </div>
-      )}
 
       {/* The bill disagrees with the order. Not blocked: the supplier's
           invoice is what will be paid, and a price that moved between
@@ -1080,7 +1046,7 @@ export function InvoiceForm({
           past it — so both are named, and the way to make the order agree is
           offered rather than described. */}
       {priceGaps.length > 0 && (
-        <div className="alert" style={{ borderColor: "var(--warn)", color: "var(--warn)", background: "color-mix(in srgb, var(--warn) 8%, transparent)" }}>
+        <DocNote>
           The supplier is billing a different price from{" "}
           {orderBehind?.orderNo ?? "the order"} for{" "}
           {priceGaps.map((l) => byId(l.itemId)?.code
@@ -1093,7 +1059,7 @@ export function InvoiceForm({
                 correct {orderBehind.orderNo}
               </Link>
             : "correct the order"} instead, and it will carry into this bill.
-        </div>
+        </DocNote>
       )}
 
       {/* Paid now and the rest of the paperwork, side by side. Stacked they
@@ -1144,30 +1110,53 @@ export function InvoiceForm({
         </div>
       )}
 
+        {/* The figures, as the sales invoice shows them: labels in a column
+            of their own, the total last and largest. */}
         <div className="card" style={{ marginTop: "0.5rem" }}>
-          <div className="card-head">
-            <h2>Additional information</h2>
+          <div className="card-head"><h2>Invoice summary</h2>
+            <span className="page-sub">{foreign ? currency : base}</span>
           </div>
           <div className="card-body">
-            <div className="row">
-              <div className="field">
-                <label htmlFor="reference">Ref / order ID</label>
-                <input id="reference" name="reference" type="text"
-                       value={reference} onChange={(e) => setReference(e.target.value)}
-                       placeholder={isSales ? "Sales order or customer PO" : "Purchase order or supplier invoice no"} />
-                {initialGoodsReceiptId && reference && (
-                  <span className="hint">
-                    The order this {isSales ? "delivery" : "receipt"} came from. Type over it for the
-                    {isSales ? " customer's" : " supplier's"} own number.
+            <dl className="summary">
+              <dt>Subtotal ({lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"})</dt>
+              <dd>{fmt(goodsNet)}</dd>
+              {taxable.length > 0 && (
+                <>
+                  <dt>
+                    <label htmlFor="ct">Commercial tax</label>
+                    <select id="ct" value={taxCodeId} aria-label="Commercial tax"
+                            onChange={(e) => setTaxCodeId(e.target.value)}>
+                      {zeroRated && <option value={zeroRated.id}>None</option>}
+                      {taxable.map((t) => (
+                        <option key={t.id} value={t.id}>{t.code} · {t.rate}%</option>
+                      ))}
+                    </select>
+                  </dt>
+                  <dd>{fmt(taxOnGoods)}</dd>
+                </>
+              )}
+              {taxRate > 0 && (
+                <>
+                  <dt>
+                    <label className="check" title="The supplier's prices already contain the tax">
+                      <input type="checkbox" name="price_includes_tax" checked={inclusive}
+                             onChange={(e) => setInclusive(e.target.checked)} />
+                      Prices include tax
+                    </label>
+                  </dt>
+                  <dd />
+                </>
+              )}
+              <dt className="grand">Invoice total</dt>
+              <dd className="grand">
+                {fmt(total)}
+                {foreign && Number(rate) > 0 && (
+                  <span className="subline" style={{ display: "block", fontWeight: 400 }}>
+                    ≈ {fmt(total * Number(rate))} {base}
                   </span>
                 )}
-              </div>
-
-              <div className="field">
-                <label htmlFor="memo">Note</label>
-                <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
-              </div>
-            </div>
+              </dd>
+            </dl>
           </div>
         </div>
       </div>

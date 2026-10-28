@@ -8,10 +8,11 @@ import { UnitToggle, AddPackInline } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
-import { Package, Plus } from "lucide-react";
+import { Package, Plus, Building2, CalendarClock, CalendarDays, StickyNote, User, Warehouse } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import { PartnerPicker } from "./partner-picker";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
+import { LineRemove } from "./line-remove";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -282,7 +283,7 @@ export function OrderForm({
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">
-              <label htmlFor="partner_id">{isSales ? "Customer" : "Supplier"}</label>
+              <label htmlFor="partner_id">{isSales ? <User size={13} aria-hidden="true" /> : <Building2 size={13} aria-hidden="true" />}{isSales ? "Customer" : "Supplier"}</label>
               <PartnerPicker
                 partners={partners as never}
                 value={partnerId}
@@ -291,18 +292,18 @@ export function OrderForm({
             </div>
 
             <div className="field">
-              <label htmlFor="location_id">Warehouse</label>
+              <label htmlFor="location_id"><Warehouse size={13} aria-hidden="true" />Warehouse</label>
               <WarehouseSelect locations={locations} id="location_id" name="location_id" defaultValue={locations[0]?.id ?? ""} required />
             </div>
 
             <div className="field">
-              <label htmlFor="doc_date">Order date</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Order date</label>
               <input id="doc_date" name="doc_date" type="date" value={docDate}
                 onChange={(e) => setDocDate(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="due_date">Needed by</label>
+              <label htmlFor="due_date"><CalendarClock size={13} aria-hidden="true" />Needed by</label>
               <input id="due_date" name="due_date" type="date" value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)} />
               <span className="hint">Optional</span>
@@ -311,6 +312,17 @@ export function OrderForm({
               <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
                 date={docDate} pricesIn={fxSwitch.pricesIn} onChange={fxSwitch.change} />
             )}
+          </div>
+          <div className="doc-info-foot">
+          <details className="moredetails">
+            <summary>Additional details <span className="page-sub">(note)</span></summary>
+            <div className="row">
+              <div className="field span-2">
+                <label htmlFor="memo"><StickyNote size={13} aria-hidden="true" />Note</label>
+                <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
+              </div>
+            </div>
+          </details>
           </div>
         </div>
       </div>
@@ -423,8 +435,7 @@ export function OrderForm({
                     </td>
                     <td className="r">{fmt(amount(l))}</td>
                     <td className="tight">
-                      <button type="button" className="ghost tiny" onClick={() => removeLine(l.key)}
-                        aria-label="Remove line">×</button>
+                      <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
                   </tr>
                 );
@@ -439,10 +450,6 @@ export function OrderForm({
         </div>
       </div>
 
-      <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
-      </div>
 
       {/* The document's commands, at the foot and kept in view — the same
           place on every purchase document. */}

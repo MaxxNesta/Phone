@@ -14,12 +14,13 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, MoreVertical, ChevronRight, Package, Plus } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, MoreVertical, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { posSearchAction, posUnitsAction } from "@/lib/pos-actions";
 import { DocHeading } from "./doc-heading";
+import { LineRemove } from "./line-remove";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -976,7 +977,7 @@ export function SalesVoucher({
               folded away until somebody needs it. */}
           <div className="doc-fields">
             <div className="field">
-              <label htmlFor="partner_id">Customer</label>
+              <label htmlFor="partner_id"><User size={13} aria-hidden="true" />Customer</label>
               <PartnerPicker
                 partners={customers as never}
                 value={customerId}
@@ -984,17 +985,17 @@ export function SalesVoucher({
               />
             </div>
             <div className="field">
-              <label htmlFor="doc_date">Invoice date</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Invoice date</label>
               <input id="doc_date" name="doc_date" type="date" value={docDate}
                 onChange={(e) => setDocDate(e.target.value)} required />
             </div>
             <div className="field">
-              <label htmlFor="location_id">Warehouse</label>
+              <label htmlFor="location_id"><Warehouse size={13} aria-hidden="true" />Warehouse</label>
               <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId}
                 onChange={(e) => setLocationId(e.target.value)} required />
             </div>
             <div className="field">
-              <label htmlFor="payment_select">Payment</label>
+              <label htmlFor="payment_select"><Wallet size={13} aria-hidden="true" />Payment</label>
               <select id="payment_select" value={paymentType}
                 onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT")}>
                 <option value="CREDIT">Credit</option>
@@ -1002,7 +1003,7 @@ export function SalesVoucher({
               </select>
             </div>
             <div className="field">
-              <label htmlFor="due_date">Due date</label>
+              <label htmlFor="due_date"><CalendarClock size={13} aria-hidden="true" />Due date</label>
               <input id="due_date" name="due_date" type="date" value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 disabled={balance <= 0} required={balance > 0} />
@@ -1010,10 +1011,10 @@ export function SalesVoucher({
           </div>
           <div className="doc-info-foot">
           <details className="moredetails">
-            <summary>Additional details <span className="page-sub">(salesman, reference)</span></summary>
+            <summary>Additional details <span className="page-sub">(salesman, reference, remark)</span></summary>
             <div className="row">
             <div className="field">
-              <label htmlFor="salesman_id">Salesman</label>
+              <label htmlFor="salesman_id"><UserCheck size={13} aria-hidden="true" />Salesman</label>
               <select id="salesman_id" name="salesman_id" defaultValue="">
                 <option value="">None</option>
                 {salesmen.map((s) => (
@@ -1024,7 +1025,7 @@ export function SalesVoucher({
               </select>
             </div>
             <div className="field">
-              <label htmlFor="reference">Ref / order ID</label>
+              <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Ref / order ID</label>
               <input id="reference" name="reference" type="text"
                      value={reference} onChange={(e) => setReference(e.target.value)}
                      placeholder="Sales order, customer PO or phone order" />
@@ -1033,6 +1034,10 @@ export function SalesVoucher({
                   The order this delivery came from. Type over it for a customer&rsquo;s own PO.
                 </span>
               )}
+            </div>
+            <div className="field span-2">
+              <label htmlFor="memo"><StickyNote size={13} aria-hidden="true" />Remark</label>
+              <input id="memo" name="memo" type="text" placeholder="Optional — English or Myanmar" />
             </div>
             </div>
           </details>
@@ -1430,6 +1435,7 @@ export function SalesVoucher({
                       {/* Everything a line can carry beyond the four figures —
                           the pack it is sold in, whose stock it is, units given
                           free — kept out of the row until it is wanted. */}
+                      <div className="line-acts">
                       <details className="linemenu">
                         <summary aria-label="More for this line"><MoreVertical size={16} /></summary>
                         <div className="linemenu-pop">
@@ -1488,10 +1494,10 @@ export function SalesVoucher({
                             </label>
                           )}
                           {item?.code && <span className="linemenu-label">SKU {item.code}</span>}
-                          <button type="button" className="danger" onClick={() => removeLine(l.key)}
-                            >Remove line</button>
                         </div>
                       </details>
+                      <LineRemove onClick={() => removeLine(l.key)} />
+                      </div>
                     </td>
                   </tr>,
                   tracked ? (
@@ -1717,18 +1723,22 @@ export function SalesVoucher({
           third column of a two-column grid. */}
       <section>
         <div className="card">
-          <div className="card-head">
-            <h2>Voucher information</h2>
-            <span className="actions">
-              <button type="button" className={tab === "invoices" ? "tiny" : "ghost tiny"}
-                onClick={() => setTab("invoices")}>Invoices</button>
-              <button type="button" className={tab === "promotions" ? "tiny" : "ghost tiny"}
-                onClick={() => setTab("promotions")}>Promotions</button>
-            </span>
+          {/* Two tabs, the tab names the heading: what this customer
+              already owes, and what promotions are running. */}
+          <div className="card-head vtabs-head">
+            <div className="vtabs" role="tablist" aria-label="Voucher information">
+              <button type="button" role="tab" aria-selected={tab === "invoices"} className={tab === "invoices" ? "on" : undefined}
+                onClick={() => setTab("invoices")}>Invoices <span className="vtabs-n">{customerInvoices.length}</span></button>
+              <button type="button" role="tab" aria-selected={tab === "promotions"} className={tab === "promotions" ? "on" : undefined}
+                onClick={() => setTab("promotions")}>Promotions <span className="vtabs-n">{promotions.length}</span></button>
+            </div>
+            {tab === "invoices" && customerInvoices.length > 0 && (
+              <span className="page-sub">Already owes <strong className="num">{fmt(customerOwes)}</strong></span>
+            )}
           </div>
 
           {tab === "invoices" ? (
-            <div className="tablewrap">
+            <div className="tablewrap vtabs-body">
               <table>
                 <thead>
                   <tr><th>Invoice</th><th>Due</th><th className="r">Outstanding</th><th>Age</th></tr>
@@ -1752,15 +1762,10 @@ export function SalesVoucher({
                     </td></tr>
                   )}
                 </tbody>
-                {customerInvoices.length > 0 && (
-                  <tfoot>
-                    <tr><td colSpan={2}>Already owes</td><td className="r">{fmt(customerOwes)}</td><td /></tr>
-                  </tfoot>
-                )}
               </table>
             </div>
           ) : (
-            <div className="tablewrap">
+            <div className="tablewrap vtabs-body">
               <table>
                 <thead>
                   <tr><th>Code</th><th>Promotion</th><th>Applies to</th><th className="r">Benefit</th></tr>
@@ -1786,19 +1791,6 @@ export function SalesVoucher({
             </div>
           )}
 
-          {/* Under the tabs rather than in a card of its own.
-              A card holding one textarea spanned the full width for a line of
-              text and pushed the submit button 150px further down; this card
-              is shorter than the one beside it and had the room going spare.
-              Still always visible, which was the point of taking it out from
-              behind a button. */}
-          <div className="card-body" style={{ paddingTop: 0 }}>
-            <div className="field">
-              <label htmlFor="memo">Remark</label>
-              <textarea id="memo" name="memo" rows={2}
-                        placeholder="Optional — English or Myanmar" />
-            </div>
-          </div>
         </div>
       </section>
 
