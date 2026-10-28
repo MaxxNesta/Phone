@@ -129,6 +129,7 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
     negativeValue: r4(n(recon.negative.value)), negativeQty: r4(n(recon.negative.qty)),
     calculatedCogs, postedCogs, cogsGap,
     shippedCost, heldIn, heldOut, heldClosing, heldUnclaimed, heldGap, shippedGap,
+    heldCode: recon.heldCode, cogsCode: recon.cogsCode,
   };
 }
 

@@ -55,7 +55,7 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
           phone cost. A landed cost takes those charges, spreads them over the
           phones of one or more posted goods receipts, and adds each phone&rsquo;s
           share to its cost. Phones in stock go up in value. A phone delivered
-          but not yet invoiced carries its share in 1090 until the invoice
+          but not yet invoiced carries its share in Goods Shipped Not Invoiced until the invoice
           posts, since cost of sales is recognised with the invoice; a phone
           already invoiced puts its share into cost of sales.
         </HelpHint>

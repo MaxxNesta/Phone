@@ -7372,9 +7372,16 @@ export async function getInventoryCogsReconciliation(
         Array<{ value: string }>)
     : [{ value: "0" }];
 
+  // The codes as this company's chart numbers them, for the labels.
+  const [codes] = (await sql`
+    select (select code from account where id = ${heldId}) as held,
+           (select code from account where id = ${cogsId}) as cogs`) as unknown as
+    Array<{ held: string | null; cogs: string | null }>;
+
   return {
     inventoryId, cogsId, heldId, bal, movement, fifo, negative, consumption,
     postedCogs, returnedToCogs,
+    heldCode: codes?.held ?? "Shipped not invoiced", cogsCode: codes?.cogs ?? "cost of sales",
     held: held ? { ...held, unclaimed: unclaimed.value } : null,
   };
 }

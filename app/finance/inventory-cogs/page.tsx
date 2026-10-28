@@ -221,12 +221,12 @@ export default async function InventoryCogs({
             />
             <Check
               title="Cost released against cost posted"
-              left="Released from 1090 by invoices" leftValue={fmt(data.calculatedCogs)}
+              left={`Released from ${data.heldCode} by invoices`} leftValue={fmt(data.calculatedCogs)}
               right="Posted to cost of sales" rightValue={fmt(data.postedCogs)}
               gap={data.cogsGap}
               note={
                 "Cost of sales is recognised by the invoice that bills the "
-                + "goods, so every credit to 1090 is a debit to 5000 in the "
+                + `goods, so every credit to ${data.heldCode} is a debit to ${data.cogsCode} in the `
                 + "same entry. Returns credit cost of sales and are netted "
                 + "off the posted side."
               }
@@ -248,11 +248,11 @@ export default async function InventoryCogs({
               </div>
               <div className="card-body">
                 <div className="kpis">
-                  <Tile label="Shipped into 1090" value={fmt(data.heldIn)}
+                  <Tile label={`Shipped into ${data.heldCode}`} value={fmt(data.heldIn)}
                         sub="cost of goods that left in the period" />
                   <Tile label="Released to cost of sales" value={fmt(data.heldOut)}
                         sub="claimed by the invoices that billed them" />
-                  <Tile label="Still held at 1090" value={fmt(data.heldClosing)}
+                  <Tile label={`Still held at ${data.heldCode}`} value={fmt(data.heldClosing)}
                         sub="shipped, nobody billed yet" />
                 </div>
               </div>
@@ -263,7 +263,7 @@ export default async function InventoryCogs({
             <Check
               title="Goods shipped against the holding account"
               left="Layers consumed by deliveries" leftValue={fmt(data.shippedCost)}
-              right="Debited to 1090" rightValue={fmt(data.heldIn)}
+              right={`Debited to ${data.heldCode}`} rightValue={fmt(data.heldIn)}
               gap={data.shippedGap}
               note={
                 "Both are the delivery's own doing — the stock ledger says "
@@ -277,7 +277,7 @@ export default async function InventoryCogs({
             />
             <Check
               title="The holding account against what is unclaimed"
-              left="Balance of 1090" leftValue={fmt(data.heldClosing)}
+              left={`Balance of ${data.heldCode}`} leftValue={fmt(data.heldClosing)}
               right="Delivered cost no invoice has claimed" rightValue={fmt(data.heldUnclaimed)}
               gap={data.heldGap}
               note={

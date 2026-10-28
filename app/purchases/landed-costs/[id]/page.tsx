@@ -20,9 +20,9 @@ const STATUS_NOW: Record<string, string> = {
   ISSUED: "Issued", RESERVED: "Reserved", REPAIR: "In repair",
 };
 // Where each phone's share went when this posted. Delivered but not invoiced
-// waits in 1090: cost of sales is recognised when the invoice posts.
+// waits in Goods Shipped Not Invoiced: cost of sales is recognised when the invoice posts.
 const TREATMENT: Record<string, string> = {
-  INVENTORY: "to stock value", HOLDING: "to 1090, waiting for the invoice", COGS: "to cost of sales",
+  INVENTORY: "to stock value", HOLDING: "to goods shipped not invoiced, waiting for the invoice", COGS: "to cost of sales",
 };
 const when = (t: string | Date | null) => (t ? new Date(t).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
 

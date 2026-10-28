@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import { FaDocLinks } from "@/components/fa-doc-links";
+import { LcDocLinks } from "@/components/lc-doc-links";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
 import { receiptLandedSummary } from "@/lib/landed-cost-queries";
 import { seenLocations } from "@/lib/branch-scope";
@@ -1625,6 +1626,7 @@ export default async function DocumentPage({
       />
 
       {/* Back to the asset subledger, when this journal carries assets. */}
+      {seeJournal && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
       {seeJournal && <FaDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
 
       {seeJournal && <section>

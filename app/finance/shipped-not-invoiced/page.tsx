@@ -204,7 +204,7 @@ export default async function ShippedNotInvoiced({
         <div className="card">
           <div className="card-head">
             <h2>Why this matters</h2>
-            <span className="page-sub">1090</span>
+            <span className="page-sub">{account?.code ?? "Goods Shipped Not Invoiced"}</span>
           </div>
           <div className="card-body">
             <p className="page-sub" style={{ margin: 0, lineHeight: 1.6 }}>
@@ -215,15 +215,13 @@ export default async function ShippedNotInvoiced({
             </p>
             {held === 0 ? (
               <p className="page-sub" style={{ marginBottom: 0, lineHeight: 1.6 }}>
-                Cost of sales is recognised on the delivery today, so these
-                goods are already expensed and <strong>1090 holds nothing</strong>.
-                If cost moves to the invoice, this total becomes that
-                account&rsquo;s balance — and a clearing balance nobody ages
-                is a balance nobody clears.
+                Cost of sales is recognised when the invoice bills the goods.
+                Until then their cost waits in {account?.code ?? "the holding account"} {account?.name ?? ""}, which
+                holds <strong>nothing</strong> today: every delivered item has been invoiced.
               </p>
             ) : (
               <p className="page-sub" style={{ marginBottom: 0, lineHeight: 1.6 }}>
-                1090 holds <strong style={{ color: "var(--ink)" }}>{money(String(held))}</strong>,
+                {account?.code ?? "The holding account"} holds <strong style={{ color: "var(--ink)" }}>{money(String(held))}</strong>,
                 and this report accounts for{" "}
                 <strong style={{ color: "var(--ink)" }}>{money(String(report.total))}</strong>
                 {gap === 0 ? (
