@@ -6,6 +6,7 @@ import { seenLocations } from "@/lib/branch-scope";
 import { courierCharges, courierPayments } from "@/lib/courier-payables";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { HelpHint } from "@/components/help-hint";
+import { DocRefs } from "@/components/doc-refs";
 
 export const metadata = { title: "Courier" };
 
@@ -52,7 +53,7 @@ export default async function CourierPage({ params }: { params: Promise<{ id: st
                   <td>{day(c.doc_date)}</td>
                   <td className="code"><Link href={`/purchases/landed-costs/${c.lc_id}`} style={{ color: "var(--link)" }}>{c.lc_no}</Link></td>
                   <td>{c.cost_type}{c.reference && <div className="subline">{c.reference}</div>}</td>
-                  <td className="code">{c.receipts ?? "—"}</td>
+                  <td className="code"><DocRefs refs={c.receipts} /></td>
                   <td className="r">{c.phones}</td>
                   <td className="r">{money(c.owed)}</td>
                   <td className="r">{c.paid > 0 ? money(c.paid) : "—"}</td>
@@ -78,7 +79,9 @@ export default async function CourierPage({ params }: { params: Promise<{ id: st
                   <td>{day(p.doc_date)}</td>
                   <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.doc_no}</Link>{p.reference && <div className="subline">{p.reference}</div>}</td>
                   <td>{p.account ?? "—"}</td>
-                  <td>{p.lines.map((l) => `${l.lc_no} ${l.cost_type} ${money(l.amount)}`).join(" · ")}</td>
+                  <td>{p.lines.map((l, i) => (
+                    <span key={i}>{i > 0 && " · "}<Link href={`/purchases/landed-costs/${l.lc_id}`} style={{ color: "var(--link)" }}>{l.lc_no}</Link> {l.cost_type} {money(l.amount)}</span>
+                  ))}</td>
                   <td className="r">{money(p.total)}</td>
                   <td>{p.status === "POSTED" ? <span className="pill ok">Posted</span> : <span className="pill">Voided</span>}</td>
                 </tr>

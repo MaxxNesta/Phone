@@ -1,9 +1,11 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
+import Link from "next/link";
+import { DocRefs } from "./doc-refs";
 import { Building2, CalendarDays, Hash, StickyNote, User, Wallet } from "lucide-react";
 
-type Charge = { id: string; partnerId: string; lcNo: string; date: string; type: string; receipts: string | null; open: number; owed: number };
+type Charge = { id: string; partnerId: string; lcId: string; lcNo: string; date: string; type: string; receipts: { id: string; no: string }[]; open: number; owed: number };
 type Opt = { id: string; label: string };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -84,9 +86,9 @@ export function CourierPayForm({ action, couriers, charges, branches, accounts, 
                   <td className="tight"><input type="checkbox" checked={!!ticked[c.id]} aria-label={`Pay ${c.lcNo}`}
                     onChange={(e) => setTicked((t) => ({ ...t, [c.id]: e.target.checked }))} /></td>
                   <td>{c.date}</td>
-                  <td className="code">{c.lcNo}</td>
+                  <td className="code"><Link href={`/purchases/landed-costs/${c.lcId}`} target="_blank" style={{ color: "var(--link)" }}>{c.lcNo}</Link></td>
                   <td>{c.type}</td>
-                  <td className="code">{c.receipts ?? "—"}</td>
+                  <td className="code"><DocRefs refs={c.receipts} newTab /></td>
                   <td className="r">{fmt(c.owed)}</td>
                   <td className="r">{fmt(c.open)}</td>
                   <td className="narrow pricecell">

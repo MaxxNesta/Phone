@@ -90,7 +90,7 @@ export async function getLandedCost(companyId: string, id: string) {
 
   const charges = await sql`
     select c.id, c.line_no, c.cost_type_id, t.name as cost_type, c.partner_id, bp.name as payee,
-           c.source_journal_line_id, je.entry_no as source_entry_no, src.doc_no as source_doc_no,
+           c.source_journal_line_id, je.entry_no as source_entry_no, src.doc_no as source_doc_no, src.id as source_doc_id,
            c.description, c.currency, c.exchange_rate::float as exchange_rate, c.rate_date::text as rate_date,
            ru.name as rate_entered_by, c.fc_amount::float as fc_amount, c.base_amount::float as base_amount,
            c.method, c.clearing_account_id, a.code || ' ' || a.name as clearing_account, c.reference,

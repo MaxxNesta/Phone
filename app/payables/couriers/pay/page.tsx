@@ -33,7 +33,7 @@ export default async function PayCourier({ searchParams }: { searchParams: Promi
         <CourierPayForm
           action={payCourierAction}
           couriers={owing.map((c) => ({ id: c.partner_id, name: c.partner_name, code: c.partner_code, outstanding: c.outstanding }))}
-          charges={charges.map((c) => ({ id: c.id, partnerId: c.partnerId, lcNo: c.lc_no, date: c.doc_date, type: c.cost_type, receipts: c.receipts, open: c.open, owed: c.owed }))}
+          charges={charges.map((c) => ({ id: c.id, partnerId: c.partnerId, lcId: c.lc_id, lcNo: c.lc_no, date: c.doc_date, type: c.cost_type, receipts: c.receipts, open: c.open, owed: c.owed }))}
           branches={branches.map((b) => ({ id: b.id, label: `${b.code} · ${b.name}` }))}
           accounts={accounts.map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
           initialPartnerId={partner}

@@ -190,8 +190,8 @@ export default async function LandedCostPage({ params }: { params: Promise<{ id:
                 {lc.charges.map((c: any) => (
                   <tr key={c.id}>
                     <td>{c.cost_type}{c.description ? <div className="m" style={{ color: "var(--muted)" }}>{c.description}</div> : null}</td>
-                    <td>{c.payee ?? "—"}</td>
-                    <td className="m">{c.source_doc_no ?? c.source_entry_no ?? c.reference ?? "—"}</td>
+                    <td>{c.payee ? (c.owed_account ? <Link href={`/payables/couriers/${c.partner_id}`}>{c.payee}</Link> : c.payee) : "—"}</td>
+                    <td className="m">{c.source_doc_id ? <Link href={`/documents/${c.source_doc_id}`}>{c.source_doc_no}</Link> : c.source_entry_no ?? c.reference ?? "—"}</td>
                     <td>{METHOD[c.method]}</td>
                     <td className="r">{money(c.fc_amount)} {c.currency}
                       {c.currency !== base && <div className="m" style={{ color: "var(--muted)" }}>at {c.exchange_rate} on {c.rate_date}{c.rate_entered_by ? `, by ${c.rate_entered_by}` : ""}</div>}</td>

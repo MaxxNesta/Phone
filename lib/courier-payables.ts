@@ -50,17 +50,20 @@ export async function courierBalances(companyId: string, locs: string[] | null):
   return rows as unknown as CourierBalance[];
 }
 
+/** A document to link to: its id and number. */
+export type DocRef = { id: string; no: string };
+
 export type CourierCharge = {
   id: string; lc_id: string; lc_no: string; doc_date: string; cost_type: string; reference: string | null;
-  receipts: string | null; phones: number; owed: number; paid: number; open: number;
+  receipts: DocRef[]; phones: number; owed: number; paid: number; open: number;
 };
 
 /** Every charge owed to one courier, newest first, with what is still open. */
 export async function courierCharges(companyId: string, partnerId: string, locs: string[] | null): Promise<CourierCharge[]> {
   const rows = await sql`
     select c.id, lc.id as lc_id, lc.doc_no as lc_no, lc.doc_date::text as doc_date, t.name as cost_type, c.reference,
-           (select string_agg(r.doc_no, ', ' order by r.doc_no) from landed_cost_receipt x join document r on r.id = x.receipt_id
-             where x.landed_cost_id = lc.id) as receipts,
+           coalesce((select json_agg(json_build_object('id', r.id, 'no', r.doc_no) order by r.doc_no)
+               from landed_cost_receipt x join document r on r.id = x.receipt_id where x.landed_cost_id = lc.id), '[]'::json) as receipts,
            (select count(*)::int from landed_cost_allocation a where a.charge_id = c.id) as phones,
            c.base_amount::float as owed, ${paidOn()}::float as paid
       from landed_cost_charge c
@@ -74,7 +77,7 @@ export async function courierCharges(companyId: string, partnerId: string, locs:
 
 export type CourierPayment = {
   id: string; doc_no: string; doc_date: string; status: string; account: string; total: number;
-  reference: string | null; memo: string | null; lines: { lc_no: string; cost_type: string; amount: number }[];
+  reference: string | null; memo: string | null; lines: { lc_id: string; lc_no: string; cost_type: string; amount: number }[];
 };
 
 /** The payments made to one courier, voided ones included and marked. */
@@ -84,7 +87,7 @@ export async function courierPayments(companyId: string, partnerId: string): Pro
            sum(s.amount)::float as total,
            (select a.code || ' ' || a.name from journal_line jl join account a on a.id = jl.account_id
              where jl.journal_entry_id = p.journal_entry_id and jl.base_amount < 0 limit 1) as account,
-           json_agg(json_build_object('lc_no', lc.doc_no, 'cost_type', t.name, 'amount', s.amount::float)
+           json_agg(json_build_object('lc_id', lc.id, 'lc_no', lc.doc_no, 'cost_type', t.name, 'amount', s.amount::float)
                     order by lc.doc_no) as lines
       from courier_settlement s
       join document p on p.id = s.payment_id

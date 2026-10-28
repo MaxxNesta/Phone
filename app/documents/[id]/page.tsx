@@ -1626,7 +1626,7 @@ export default async function DocumentPage({
       />
 
       {/* Back to the asset subledger, when this journal carries assets. */}
-      {seeJournal && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
+      {seeJournal && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} documentId={doc.id} />}
       {seeJournal && <FaDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
 
       {seeJournal && <section>
