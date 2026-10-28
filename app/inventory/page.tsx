@@ -214,8 +214,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     <div className="inv">
       <div className="inv-head">
         <div>
-          <h1>{t("sum.title")}</h1>
-          <p className="page-sub">Stock quantity and value by category and product.</p>
+          <h1>{t("sum.title")} <HelpHint label="About Inventory Summary">Stock quantity and value by category and product model, for the branch and warehouse chosen. Each variant&apos;s own position is on the Stock page.</HelpHint></h1>
         </div>
         {/* Where: branch and warehouse, for everything on the page. */}
         <form method="get" className="inv-scope">
@@ -280,7 +279,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
       <section className="inv-row2">
         <Link href="/reports/phone-stock" className="card inv-aging" aria-label="Inventory aging: open the aging page">
-          <div className="card-head"><h2>Inventory aging</h2><span className="page-sub">By {seeCost ? "stock value" : "units"} <ArrowRight size={13} aria-hidden="true" /></span></div>
+          <div className="card-head"><h2>Inventory aging <span className="inv-head-note">by {seeCost ? "stock value" : "units"}</span></h2>
+            <span className="inv-go-link">View aging <ArrowRight size={14} aria-hidden="true" /></span></div>
           <div className="card-body">
             <span className="ag-bar inv-aging-bar" role="img"
               aria-label={age4.map((v, i) => `${aging.rules.labels[i]} ${ageTotal ? Math.round((v / ageTotal) * 100) : 0}%`).join(", ")}>
@@ -313,7 +313,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       <div className="inv-row3">
       <section className="card inv-panel">
         <div className="inv-panel-head">
-          <h2>Stock by product</h2>
+          <h2>Product summary</h2>
           <span className="page-sub">{shown.length.toLocaleString("en-US")} {shown.length === 1 ? "item" : "items"}</span>
         </div>
         {/* What: search and filters for the table alone. */}
@@ -365,7 +365,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                       {r.photo && <span className="thumb"><img src={r.photo} alt="" /></span>}
                       <span className="prod-text">
                         <div className="prod-name clamp2" title={r.model}>{r.model}</div>
-                        <div className="subline">{r.variants === 1 ? "1 variant" : `${r.variants} variants`}</div>
+                        {/* Only a product that varies says how many it has; each one's detail is on the Stock page. */}
+                        {r.variants > 1 && <Link className="subline inv-variants" href={`/items/stock?q=${encodeURIComponent(r.model)}`}>{r.variants} variants</Link>}
                       </span>
                     </span>
                   </td>
@@ -397,18 +398,17 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <Link href="/inventory/replenishment"><span>Out of stock</span><b className={out.length ? "bad" : undefined}>{out.length}</b></Link>
           </div>
           <table className="inv-mini">
-            <colgroup><col style={{ width: "46%" }} /><col style={{ width: "24%" }} /><col style={{ width: "15%" }} /><col style={{ width: "15%" }} /></colgroup>
-            <thead><tr><th>Product</th><th>Category</th><th className="num">On hand</th><th className="num">Reorder</th></tr></thead>
+            <colgroup><col style={{ width: "64%" }} /><col style={{ width: "18%" }} /><col style={{ width: "18%" }} /></colgroup>
+            <thead><tr><th>Product</th><th className="num">On hand</th><th className="num">Reorder</th></tr></thead>
             <tbody>
               {[...low, ...out].slice(0, 6).map((r) => (
                 <tr key={r.id}>
                   <td className="clip" title={r.model}><Link href="/inventory/replenishment">{r.model}</Link></td>
-                  <td className="clip">{r.top_category ?? r.category}</td>
                   <td className="num bad">{r.qty}</td>
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
                 </tr>
               ))}
-              {low.length + out.length === 0 && <tr><td colSpan={4} className="page-sub">{t("sum.nothingLow")}</td></tr>}
+              {low.length + out.length === 0 && <tr><td colSpan={3} className="page-sub">{t("sum.nothingLow")}</td></tr>}
             </tbody>
           </table>
           {low.length + out.length > 0 && (

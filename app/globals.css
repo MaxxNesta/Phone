@@ -8164,3 +8164,11 @@ tr.far-company > td { background: color-mix(in srgb, var(--fa-lav) 6%, transpare
 .inv-chart .donut-chart { flex-basis: 168px; width: 168px; }
 .inv-chart .donut-legend li { gap: 0.35rem; }
 .inv-chart .donut-share { display: none; }
+
+.inv-head .helphint { vertical-align: middle; margin-left: 2px; }
+.inv-head-note { margin-left: 6px; font-size: var(--t-sm); font-weight: 400; color: var(--muted); }
+.inv-go-link { display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border-radius: 999px; font-size: var(--t-sm); font-weight: 600;
+  color: var(--link); background: color-mix(in srgb, var(--link) 10%, transparent); white-space: nowrap; }
+.inv-aging:hover .inv-go-link { background: color-mix(in srgb, var(--link) 16%, transparent); }
+a.subline.inv-variants { color: var(--link); text-decoration: none; }
+a.subline.inv-variants:hover { text-decoration: underline; }

@@ -1395,7 +1395,7 @@
       "CONSIGNMENT_SETTLEMENT": "consignment settlement"
     },
     "sum": {
-      "title": "Inventory",
+      "title": "Inventory Summary",
       "sub": "Stock summary across all stores and warehouses",
       "addAdjustment": "+ Stock Adjustment",
       "totalValue": "Total Stock Value",
