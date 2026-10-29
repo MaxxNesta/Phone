@@ -291,6 +291,8 @@ export const SYSTEM = {
   SHIPPED_NOT_INVOICED: "14303", LANDED_COST_CLEARING: "14304",
   // What a courier or driver named on a landed-cost charge is owed.
   OTHER_PAYABLE: "21109",
+  // A courier's bill is booked here, then spread from here onto the phones.
+  CARRIAGE_INWARD: "51110",
 
   // Money that moved before the invoice did. Deliberately not the control
   // accounts: an advance has no open item, so parking it in receivables would

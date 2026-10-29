@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "./auth";
+import { can } from "./auth-core";
+import { sql } from "./db";
+import { inTransaction } from "./posting";
+import * as L from "./landed-cost";
 import { assertMyBranch } from "./branch-scope";
 import { payCourier } from "./courier-payables";
 
@@ -32,4 +36,47 @@ export async function payCourierAction(_prev: Result, fd: FormData): Promise<Res
   }
   revalidatePath("/payables");
   redirect(`/payables/couriers/${str(fd, "partner_id")}?toast=${encodeURIComponent(`Payment ${done.docNo} posted`)}`);
+}
+
+/**
+ * A courier's bill, spread onto the phones it carried, in one step: the
+ * landed cost is created, calculated and posted in a single transaction,
+ * so there is never a bill booked to Carriage Inward that nobody spread.
+ */
+export async function recordCourierBillAction(_prev: Result, fd: FormData): Promise<Result> {
+  const u = await requirePermission("purchase.post");
+  let lcId: string;
+  try {
+    if (!can(u, "cost.view")) throw new Error("Your account cannot see stock costs, so it cannot spread a charge onto phones.");
+    const receiptIds = fd.getAll("receipt_id").map(String).filter(Boolean);
+    const partnerId = str(fd, "partner_id");
+    const amount = Number(str(fd, "amount"));
+    if (!partnerId) return { error: "Choose the courier the bill is from." };
+    if (receiptIds.length === 0) return { error: "Choose the goods receipt whose phones the courier carried." };
+    if (!(amount > 0)) return { error: "Enter the amount of the bill." };
+    const rows = await sql`select location_id from document where company_id = ${u.companyId} and id = any(${receiptIds})`;
+    await assertMyBranch(...rows.map((r) => r.location_id as string | null));
+    const [courier] = await sql`select name from business_partner where id = ${partnerId} and company_id = ${u.companyId}`;
+    if (!courier) return { error: "That courier was not found." };
+    const actor = { companyId: u.companyId, userId: u.id };
+    const docDate = str(fd, "doc_date") || new Date().toISOString().slice(0, 10);
+    const reference = str(fd, "reference") || null;
+    const notes = str(fd, "memo") || null;
+    lcId = await inTransaction(undefined, async (tx) => {
+      const lc = await L.createLandedCost({ ...actor, docDate, receiptIds, shipmentRef: reference, carrierRef: courier.name, notes }, tx);
+      await L.saveLandedCost({
+        ...actor, id: lc.id, docDate, receiptIds, shipmentRef: reference, carrierRef: courier.name, notes,
+        charges: [{ costTypeId: str(fd, "cost_type_id"), partnerId, amount, method: (str(fd, "method") || "EQUAL") as L.Method,
+                    reference, description: notes }],
+      }, tx);
+      await L.acknowledgeExcluded({ ...actor, id: lc.id }, tx);
+      await L.calculateLandedCost({ ...actor, id: lc.id }, tx);
+      await L.postLandedCost({ ...actor, id: lc.id }, tx);
+      return lc.id;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/payables");
+  redirect(`/purchases/landed-costs/${lcId}`);
 }

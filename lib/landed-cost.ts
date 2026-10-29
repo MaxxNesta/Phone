@@ -627,13 +627,30 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
     // A charge with a payee and no bill behind it is a debt to that payee:
     // it is owed in Payable (Other) until a courier payment settles it. One
     // linked to a bill only spends what the bill put into clearing.
+    // Where the shop books a courier, the debt is written the way it always
+    // was, Dr Carriage Inward / Cr Payable (Other) under the courier, as an
+    // entry of its own; the spread then takes it back out of Carriage
+    // Inward. Without that account the spread credits the payable directly.
     const [owedTo] = await tx`
       select account_id from system_account where company_id = ${input.companyId} and role = 'OTHER_PAYABLE'`;
+    const [carriage] = await tx`
+      select account_id from system_account where company_id = ${input.companyId} and role = 'CARRIAGE_INWARD'`;
+    const bill: JournalLine[] = [];
     for (const c of charges) {
+      const amount = roundTo(c.base_amount, base.dp);
       const owed = !c.source_journal_line_id && c.partner_id && owedTo ? owedTo.account_id as string : null;
-      journal.push({ accountId: owed ?? c.clearing_account_id, amount: -roundTo(c.base_amount, base.dp),
-                     partnerId: owed ? c.partner_id : null, locationId: doc.location_id });
-      await tx`update landed_cost_charge set owed_account_id = ${owed} where id = ${c.id}`;
+      const via = owed && carriage ? carriage.account_id as string : null;
+      journal.push({ accountId: via ?? owed ?? c.clearing_account_id, amount: -amount,
+                     partnerId: owed && !via ? c.partner_id : null, locationId: doc.location_id });
+      if (via) {
+        bill.push({ accountId: via, amount, locationId: doc.location_id });
+        bill.push({ accountId: owed!, amount: -amount, partnerId: c.partner_id, locationId: doc.location_id });
+      }
+      await tx`update landed_cost_charge set owed_account_id = ${owed}, via_account_id = ${via} where id = ${c.id}`;
+    }
+    if (bill.length > 0) {
+      await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
+        `${doc.doc_no} courier bill`, bill, doc.location_id);
     }
 
     const entryId = await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
@@ -718,11 +735,21 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
                 ${`Reversed (${doc.doc_no})`})`;
     }
     const charges = await tx`
-      select clearing_account_id, owed_account_id, partner_id, base_amount::float as base_amount from landed_cost_charge
-       where landed_cost_id = ${doc.id} and is_active`;
+      select clearing_account_id, owed_account_id, via_account_id, partner_id, base_amount::float as base_amount
+        from landed_cost_charge where landed_cost_id = ${doc.id} and is_active`;
+    const bill: JournalLine[] = [];
     for (const c of charges) {
-      journal.push({ accountId: c.owed_account_id ?? c.clearing_account_id, amount: roundTo(c.base_amount, base.dp),
-                     partnerId: c.owed_account_id ? c.partner_id : null, locationId: doc.location_id });
+      const amount = roundTo(c.base_amount, base.dp);
+      journal.push({ accountId: c.via_account_id ?? c.owed_account_id ?? c.clearing_account_id, amount,
+                     partnerId: c.owed_account_id && !c.via_account_id ? c.partner_id : null, locationId: doc.location_id });
+      if (c.via_account_id) {
+        bill.push({ accountId: c.via_account_id, amount: -amount, locationId: doc.location_id });
+        bill.push({ accountId: c.owed_account_id, amount, partnerId: c.partner_id, locationId: doc.location_id });
+      }
+    }
+    if (bill.length > 0) {
+      await writeJournal(tx, input.companyId, date, "LANDED_COST", rev.id,
+        `${no} reverses ${doc.doc_no} courier bill`, bill, doc.location_id);
     }
     const entryId = await writeJournal(tx, input.companyId, date, "LANDED_COST", rev.id,
       `${no} reverses ${doc.doc_no}`, journal, doc.location_id);

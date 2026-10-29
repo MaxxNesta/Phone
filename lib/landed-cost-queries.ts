@@ -95,6 +95,7 @@ export async function getLandedCost(companyId: string, id: string) {
            ru.name as rate_entered_by, c.fc_amount::float as fc_amount, c.base_amount::float as base_amount,
            c.method, c.clearing_account_id, a.code || ' ' || a.name as clearing_account, c.reference,
            (select o.code || ' ' || o.name from account o where o.id = c.owed_account_id) as owed_account,
+           (select v.code || ' ' || v.name from account v where v.id = c.via_account_id) as via_account,
            coalesce((select json_agg(json_build_object('itemId', m.item_id, 'amount', m.amount::float))
                        from landed_cost_manual m where m.charge_id = c.id), '[]'::json) as manual
       from landed_cost_charge c

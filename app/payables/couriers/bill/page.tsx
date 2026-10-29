@@ -1,0 +1,43 @@
+import { requirePermission } from "@/lib/auth";
+import { sql } from "@/lib/db";
+import { seenLocations } from "@/lib/branch-scope";
+import { postedReceipts, landedCostTypes } from "@/lib/landed-cost-queries";
+import { recordCourierBillAction } from "@/lib/courier-actions";
+import { Breadcrumbs } from "@/components/breadcrumbs";
+import { HelpHint } from "@/components/help-hint";
+import { CourierBillForm } from "@/components/courier-bill-form";
+
+export const metadata = { title: "Record courier bill" };
+
+export default async function RecordCourierBill({ searchParams }: { searchParams: Promise<{ partner?: string; gr?: string }> }) {
+  const user = await requirePermission("purchase.post");
+  const { partner, gr } = await searchParams;
+  const [couriers, receipts, types, accounts] = await Promise.all([
+    sql`select id, code, name from business_partner where company_id = ${user.companyId} and is_supplier and is_active order by name`,
+    postedReceipts(user.companyId, await seenLocations()),
+    landedCostTypes(user.companyId, true),
+    sql`select r.role, a.code || ' ' || a.name as label from system_account r join account a on a.id = r.account_id
+         where r.company_id = ${user.companyId} and r.role in ('CARRIAGE_INWARD', 'OTHER_PAYABLE')`,
+  ]) as [any[], any[], any[], any[]];
+  const label = (role: string) => accounts.find((a) => a.role === role)?.label ?? null;
+
+  return (
+    <div className="ie">
+      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Couriers", href: "/payables?view=couriers" }, { label: "Record courier bill" }]} />
+      <header className="ie-title">
+        <h1>Record courier bill <HelpHint label="About courier bills">The courier&rsquo;s charge is booked the way the books always had it, to Carriage Inward and owed in Payable (Other) under the courier. In the same step it is spread onto the phones of the goods receipt, so it reaches cost of sales only as each phone sells.</HelpHint></h1>
+      </header>
+      <CourierBillForm
+        action={recordCourierBillAction}
+        couriers={couriers.map((c) => ({ id: c.id, label: `${c.name} · ${c.code}` }))}
+        receipts={receipts.filter((r) => r.phones > 0).map((r) => ({ id: r.id, no: r.doc_no, date: r.doc_date, supplier: r.supplier, warehouse: r.warehouse, phones: r.phones, landed: r.landed_costs }))}
+        types={types.map((t) => ({ id: t.id, label: t.name, code: t.code, method: t.default_method }))}
+        carriageAccount={label("CARRIAGE_INWARD")}
+        payableAccount={label("OTHER_PAYABLE")}
+        initialPartnerId={partner}
+        initialReceiptId={gr}
+        today={new Date().toISOString().slice(0, 10)}
+      />
+    </div>
+  );
+}

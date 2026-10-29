@@ -196,7 +196,7 @@ export default async function LandedCostPage({ params }: { params: Promise<{ id:
                     <td className="r">{money(c.fc_amount)} {c.currency}
                       {c.currency !== base && <div className="m" style={{ color: "var(--muted)" }}>at {c.exchange_rate} on {c.rate_date}{c.rate_entered_by ? `, by ${c.rate_entered_by}` : ""}</div>}</td>
                     <td className="r">{money(c.base_amount)}</td>
-                    <td className="m">{c.owed_account ? <>{c.owed_account} <span className="subline">owed to the payee</span></> : c.clearing_account}</td>
+                    <td className="m">{c.via_account ? <>{c.via_account} <span className="subline">billed there, owed to the payee in {c.owed_account}</span></> : c.owed_account ? <>{c.owed_account} <span className="subline">owed to the payee</span></> : c.clearing_account}</td>
                   </tr>
                 ))}
               </tbody>
