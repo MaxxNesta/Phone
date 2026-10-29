@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { money } from "@/lib/db";
+import { money, sql } from "@/lib/db";
+import { DocRefs } from "@/components/doc-refs";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { listLandedCosts, LC_STATUS } from "@/lib/landed-cost-queries";
@@ -12,6 +13,11 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
   const user = await requirePermission("cost.view");
   const { gr } = await searchParams;
   const all = (await listLandedCosts(user.companyId, await seenLocations())) as any[];
+  // With Carriage Inward the only cost type in use, a new one is a carriage
+  // inward bill; the full editor is for companies that split their imports.
+  const [{ others }] = await sql`
+    select count(*)::int as others from landed_cost_type
+     where company_id = ${user.companyId} and is_active and code <> 'CARRIAGE'`;
   const rows = gr ? all.filter((r) => (r.receipt_ids ?? []).includes(gr)) : all;
 
   const facets = (key: string) =>
@@ -33,7 +39,7 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
         <td><Link href={`/purchases/landed-costs/${r.id}`} className="m">{r.doc_no}</Link></td>
         <td>{r.doc_date}</td>
         <td className="wrap">
-          <span className="m">{r.receipts || "—"}</span>
+          <span className="m"><DocRefs refs={r.receipt_refs} /></span>
           {r.suppliers && <div className="m" style={{ color: "var(--muted)" }}>{r.suppliers}</div>}
         </td>
         <td className="wrap">{r.shipment_ref || "—"}</td>
@@ -60,7 +66,9 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
           already invoiced puts its share into cost of sales.
         </HelpHint>
         <span className="actions">
-          <Link href="/purchases/landed-costs/new" className="btn"><Plus size={16} aria-hidden="true" /> New landed cost</Link>
+          {others > 0
+            ? <Link href="/purchases/landed-costs/new" className="btn"><Plus size={16} aria-hidden="true" /> New landed cost</Link>
+            : <Link href="/payables/couriers/bill" className="btn"><Plus size={16} aria-hidden="true" /> Record carriage inward</Link>}
         </span>
       </div>
 

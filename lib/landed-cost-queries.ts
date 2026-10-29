@@ -18,7 +18,8 @@ export async function listLandedCosts(companyId: string, locs: string[] | null) 
            coalesce(string_agg(distinct l.name, ', '), '') as warehouses,
            coalesce((select string_agg(distinct pp.name, ', ') from landed_cost_charge c
                        join business_partner pp on pp.id = c.partner_id where c.landed_cost_id = d.id), '') as payees,
-           array_agg(distinct g.id) filter (where g.id is not null) as receipt_ids
+           array_agg(distinct g.id) filter (where g.id is not null) as receipt_ids,
+           coalesce(json_agg(distinct jsonb_build_object('id', g.id, 'no', g.doc_no)) filter (where g.id is not null), '[]') as receipt_refs
       from document d
       join landed_cost lc on lc.document_id = d.id
       left join landed_cost_receipt r on r.landed_cost_id = d.id
