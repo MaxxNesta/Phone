@@ -1,44 +1,50 @@
 import Link from "next/link";
-import { money, moneyOrTrace } from "@/lib/db";
+import { money, moneyOrTrace, sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
-import { courierBalances } from "@/lib/courier-payables";
+import { courierCharges } from "@/lib/courier-payables";
 import { DataTable, type DataRow } from "@/components/data-table";
+import { DocRefs } from "@/components/doc-refs";
 
-const day = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
+const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
 /**
- * The couriers tab: who brought goods in for us and has not been paid for it,
- * from the landed-cost charges that named them as payee.
+ * The carriage inward tab: each bill owed for bringing goods in, numbered,
+ * with what is paid and what is open. Bills are kept without a courier's
+ * name; one that does carry a name shows it.
  */
 export async function CouriersView({ companyId }: { companyId: string }) {
-  const all = await courierBalances(companyId, await seenLocations());
-  const owing = all.filter((r) => r.outstanding > 0.0001);
-  const totalOwed = owing.reduce((s, r) => s + r.outstanding, 0);
-  const openCharges = owing.reduce((s, r) => s + r.open_charges, 0);
-  const totalPaid = all.reduce((s, r) => s + r.paid, 0);
+  const bills = await courierCharges(companyId, null, await seenLocations());
+  const names = new Map((await sql`
+    select id, name, code from business_partner where id = any(${[...new Set(bills.map((b) => b.partner_id))]}::uuid[])`)
+    .map((p) => [p.id as string, p.code === "COURIER" ? null : (p.name as string)]));
+  const named = [...names.values()].some(Boolean);
+  const open = bills.filter((b) => b.open > 0.0001);
+  const totalOpen = open.reduce((s, b) => s + b.open, 0);
+  const totalPaid = bills.reduce((s, b) => s + b.paid, 0);
 
-  const rows: DataRow[] = all.map((r) => ({
-    key: r.partner_id,
-    searchText: [r.partner_code, r.partner_name, r.phone].filter(Boolean).join(" "),
-    sort: {
-      partner_name: r.partner_name, open_charges: r.open_charges, owed: r.owed, paid: r.paid,
-      outstanding: r.outstanding, last_charge: r.last_charge ?? "", last_paid: r.last_paid ?? "",
-    },
+  // Numbered oldest first, so a bill keeps its number as new ones arrive.
+  const order = [...bills].reverse();
+  const rows: DataRow[] = bills.map((b) => ({
+    key: b.id,
+    searchText: [b.lc_no, b.reference, names.get(b.partner_id), ...b.receipts.map((r) => r.no)].filter(Boolean).join(" "),
+    sort: { n: order.indexOf(b) + 1, date: b.doc_date, owed: b.owed, paid: b.paid, open: b.open },
     node: (
-      <tr className="link">
-        <td className="wrap">
-          <Link href={`/payables/couriers/${r.partner_id}`}><strong>{r.partner_name}</strong></Link>
-          <div className="m" style={{ color: "var(--muted)" }}>{[r.partner_code, r.phone].filter(Boolean).join(" · ")}</div>
+      <tr>
+        <td className="r subline">{order.indexOf(b) + 1}</td>
+        <td>{day(b.doc_date)}</td>
+        <td className="code">
+          <Link href={`/purchases/landed-costs/${b.lc_id}`} style={{ color: "var(--link)" }}>{b.lc_no}</Link>
+          {b.reference && <div className="subline">{b.reference}</div>}
         </td>
-        <td className="r">{r.open_charges}</td>
-        <td className="r">{money(r.owed)}</td>
-        <td className="r">{money(r.paid)}</td>
-        <td className="r"><strong>{r.outstanding > 0.0001 ? money(r.outstanding) : "—"}</strong></td>
-        <td>{day(r.last_charge)}</td>
-        <td>{day(r.last_paid)}</td>
-        <td className="tight" style={{ whiteSpace: "nowrap" }}>
-          <Link href={`/payables/couriers/${r.partner_id}`} className="btn ghost tiny">History</Link>{" "}
-          {r.outstanding > 0.0001 && <Link href={`/payables/couriers/pay?partner=${r.partner_id}`} className="btn tiny">Pay</Link>}
+        <td className="code"><DocRefs refs={b.receipts} /></td>
+        {named && <td>{names.get(b.partner_id) ?? "—"}</td>}
+        <td className="r">{b.phones}</td>
+        <td className="r">{money(b.owed)}</td>
+        <td className="r">{b.paid > 0 ? money(b.paid) : "—"}</td>
+        <td className="r"><strong>{b.open > 0.0001 ? money(b.open) : "—"}</strong></td>
+        <td>{b.open <= 0.0001 ? <span className="pill ok">Paid</span> : b.paid > 0 ? <span className="pill warn">Part paid</span> : <span className="pill">Unpaid</span>}</td>
+        <td className="tight">
+          {b.open > 0.0001 && <Link href={`/payables/couriers/pay?partner=${b.partner_id}&charge=${b.id}`} className="btn tiny">Pay</Link>}
         </td>
       </tr>
     ),
@@ -48,14 +54,13 @@ export async function CouriersView({ companyId }: { companyId: string }) {
     <>
       <div className="kpis">
         <div className="kpi">
-          <span className="kpi-label">Owed to couriers</span>
-          <span className="kpi-value">{moneyOrTrace(totalOwed)}</span>
+          <span className="kpi-label">Carriage inward owed</span>
+          <span className="kpi-value">{moneyOrTrace(totalOpen)}</span>
           <span className="kpi-note">in Payable (Other)</span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Unpaid charges</span>
-          <span className="kpi-value">{openCharges}</span>
-          <span className="kpi-note">across {owing.length} courier{owing.length === 1 ? "" : "s"}</span>
+          <span className="kpi-label">Unpaid bills</span>
+          <span className="kpi-value">{open.length}</span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Paid to date</span>
@@ -66,33 +71,36 @@ export async function CouriersView({ companyId }: { companyId: string }) {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Couriers</h2>
+            <h2>Carriage inward bills</h2>
             <span className="actions">
-              <span className="page-sub">{owing.length} with a balance</span>
+              <span className="page-sub">{open.length} unpaid</span>
               <Link href="/payables/couriers/bill" className="btn ghost">Record carriage inward</Link>
-              <Link href="/payables/couriers/pay" className="btn">Pay courier</Link>
+              {open.length > 0 && <Link href="/payables/couriers/pay" className="btn">Pay all open</Link>}
             </span>
           </div>
           <DataTable
             rows={rows}
-            emptyLabel="No courier is owed anything. A landed-cost charge with a payee and no bill puts its amount here."
-            searchPlaceholder="Search couriers…"
-            defaultSort={{ key: "outstanding", dir: "desc" }}
+            emptyLabel="Nothing owed for carriage inward. A bill recorded as Pay later shows here until it is paid."
+            searchPlaceholder="Search bills, receipts…"
+            defaultSort={{ key: "n", dir: "desc" }}
             columns={[
-              { key: "partner_name", label: "Courier", sortable: true },
-              { key: "open_charges", label: "Unpaid", sortable: true, align: "r" },
-              { key: "owed", label: "Charged", sortable: true, align: "r" },
-              { key: "paid", label: "Paid", sortable: true, align: "r" },
-              { key: "outstanding", label: "Outstanding", sortable: true, align: "r" },
-              { key: "last_charge", label: "Last charge", sortable: true },
-              { key: "last_paid", label: "Last paid", sortable: true },
+              { key: "n", label: "#", sortable: true, align: "r" },
+              { key: "date", label: "Date", sortable: true },
+              { key: "lc", label: "Landed cost" },
+              { key: "receipts", label: "Goods receipt" },
+              ...(named ? [{ key: "courier", label: "Courier" }] : []),
+              { key: "phones", label: "Phones", align: "r" as const },
+              { key: "owed", label: "Charged", sortable: true, align: "r" as const },
+              { key: "paid", label: "Paid", sortable: true, align: "r" as const },
+              { key: "open", label: "Open", sortable: true, align: "r" as const },
+              { key: "status", label: "Status" },
               { key: "actions", label: "" },
             ]}
             footer={
               <tr>
-                <td colSpan={4}>Total outstanding</td>
-                <td className="r">{moneyOrTrace(totalOwed)}</td>
-                <td colSpan={3} />
+                <td colSpan={named ? 8 : 7}>Total open</td>
+                <td className="r">{moneyOrTrace(totalOpen)}</td>
+                <td colSpan={2} />
               </tr>
             }
           />

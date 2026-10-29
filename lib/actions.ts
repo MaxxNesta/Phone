@@ -2730,7 +2730,6 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
     if (carriage) {
       if (!can(user, "cost.view")) return { error: "Your account cannot see stock costs, so it cannot add a courier charge to the phones." };
       if (str(fd, "carriage_paid") === "1" && !carriage.paidFromAccountId) return { error: "Choose the cash or bank account the courier was paid from." };
-      if (!carriage.partnerId && !carriage.paidFromAccountId) return { error: "Choose the courier the charge is owed to, or mark it paid now." };
       if (!(carriage.amount > 0)) return { error: "Enter the courier's charge, or turn it off." };
     }
 

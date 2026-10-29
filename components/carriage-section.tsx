@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HelpHint } from "./help-hint";
-import { CircleSlash, Clock, FileText, Hash, Layers, User, Wallet } from "lucide-react";
+import { CircleSlash, Clock, FileText, Hash, Layers, Wallet } from "lucide-react";
 
 type Partner = { id: string; code?: string | null; name: string };
 
@@ -23,7 +23,6 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
   // The question the receiver can answer: is there a courier charge, and is its bill here?
   const [mode, setMode] = useState<"none" | "now" | "later">("none");
   const on = mode === "now";
-  const [partnerId, setPartnerId] = useState("");
   const [amount, setAmount] = useState("");
   // EQUAL splits a total evenly, PER takes one figure for every phone, VALUE weighs by cost.
   const [method, setMethod] = useState<"EQUAL" | "PER" | "VALUE">("EQUAL");
@@ -34,7 +33,6 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
   const paidNow = payment !== "";
 
   const why = !on ? null
-    : !paidNow && !partnerId ? "Choose the courier, or mark the charge paid now"
     : !(value > 0) ? "Enter the courier's charge"
     : phones === 0 ? "A courier charge needs phones with IMEIs on this receipt"
     : null;
@@ -90,13 +88,6 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
               <select id="carriage_payment" value={payment} onChange={(e) => setPayment(e.target.value)}>
                 <option value="">Pay later · owed to courier</option>
                 {paidFrom.map((a) => <option key={a.id} value={a.id}>Paid now · {a.label}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="carriage_partner_id"><User size={13} aria-hidden="true" />Courier{paidNow && <span className="opt">optional</span>}</label>
-              <select id="carriage_partner_id" name="carriage_partner_id" value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
-                <option value="">{paidNow ? "Not needed" : "Choose the courier or driver"}</option>
-                {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.code ? ` · ${c.code}` : ""}</option>)}
               </select>
             </div>
             <div className="field">

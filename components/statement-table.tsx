@@ -58,8 +58,8 @@ export function StatementTable({
   printHref: UrlObject;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [showCodes, setShowCodes] = useState(true);
-  const [showPct, setShowPct] = useState(true);
+  const [showCodes, setShowCodes] = useState(false);
+  const [showPct, setShowPct] = useState(false);
 
   /** Every group, with how deep it sits — the level control needs both. */
   const groups = useMemo(() => {

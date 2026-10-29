@@ -1104,12 +1104,12 @@ export default async function DocumentPage({
             <div className="lc-gr">
               <dl>
                 <div><dt>Original inventory value</dt><dd>{money(landed.original)}</dd></div>
-                <div><dt>Landed cost added</dt><dd>{money(landed.added)}</dd></div>
+                <div><dt>{others > 0 ? "Landed cost added" : "Carriage inward added"}</dt><dd>{money(landed.added)}</dd></div>
                 <div><dt>Final inventory value</dt><dd><strong>{money(landed.final)}</strong></dd></div>
               </dl>
               <span className="lc-gr-actions">
                 {landed.count > 0 && (
-                  <Link href={`/purchases/landed-costs?gr=${doc.id}`} className="btn ghost tiny">Landed costs ({landed.count})</Link>
+                  <Link href={`/purchases/landed-costs?gr=${doc.id}`} className="btn ghost tiny">{others > 0 ? "Landed costs" : "Carriage inward"} ({landed.count})</Link>
                 )}
                 {can(user, "purchase.post") && (
                   <>

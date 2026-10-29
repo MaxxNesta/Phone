@@ -1,3 +1,4 @@
+import { sql } from "@/lib/db";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
   getCompany, getBalanceSheet, getBranches, getUnassignedBranchActivity,
@@ -45,8 +46,31 @@ export async function getBalanceSheetData({ asOf: asOfParam, branch }: Params) {
 
   const chart = (await getAccountTree(company.id)) as unknown as ChartRow[];
   const amounts = new Map(typed.map((r) => [r.id, Number(r.amount)]));
+
+  /* The clearing accounts are where a step waits for its other half: goods
+     in before the bill (GR/IR), a landed cost spread before its bill, goods
+     out before the invoice. They sit in the chart under current assets, but
+     a credit balance there is something owed, an accrual, and reads as a
+     negative asset. Presented by their balance instead: a credit balance
+     under liabilities, a debit balance where it is. Nothing is reposted. */
+  const clearingIds = new Set((await sql`
+    select account_id from system_account
+     where company_id = ${company.id} and role in ('GRIR_CLEARING', 'LANDED_COST_CLEARING', 'SHIPPED_NOT_INVOICED')`)
+    .map((r) => r.account_id as string));
+  const owing = typed.filter((r) => clearingIds.has(r.id) && r.account_type === "ASSET" && Number(r.amount) < -0.00005);
+  for (const r of owing) amounts.delete(r.id);
+
   const assetTree = buildStatement(chart, amounts, ["ASSET"]);
   const liabilityTree = buildStatement(chart, amounts, ["LIABILITY"]);
+  if (owing.length > 0) {
+    const children: StatementNode[] = owing.map((r) => ({
+      id: `clearing-${r.id}`, code: r.code, depth: 1, postable: true, name: r.name, amount: -Number(r.amount), children: [],
+    }));
+    const amount = children.reduce((t, c) => t + c.amount, 0);
+    liabilityTree.nodes.push({ id: "clearing-credit", code: "", depth: 0, postable: false,
+      name: "Clearing accounts (awaiting invoices)", amount, children });
+    liabilityTree.total += amount;
+  }
   const equityTree = buildStatement(chart, amounts, ["EQUITY"]);
 
   /**

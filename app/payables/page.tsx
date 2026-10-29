@@ -47,13 +47,13 @@ export default async function Payables({
         <BranchScope />
         <HelpHint>
           {couriers
-            ? "What each courier, forwarder or driver is owed, from the landed-cost charges that named them as payee. Paid against those charges, so every charge shows whether it is paid."
+            ? "Carriage inward bills recorded as Pay later: what was charged for bringing goods in, what has been paid, and what is still open. Each bill is paid on its own or all together."
             : "What you owe each supplier, rolled up from their open bills — not a balance kept on the supplier, so it can never drift from the invoices behind it."}
         </HelpHint>
       </div>
       <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
         <Link href="/payables" role="tab" aria-selected={!couriers} className={!couriers ? "on" : undefined}>Suppliers</Link>
-        <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>Couriers</Link>
+        <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>Carriage inward</Link>
       </div>
     </>
   );

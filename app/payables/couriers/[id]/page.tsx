@@ -29,7 +29,7 @@ export default async function CourierPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="ie">
-      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Couriers", href: "/payables?view=couriers" }, { label: partner.name }]} />
+      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Carriage inward", href: "/payables?view=couriers" }, { label: partner.name }]} />
       <header className="ie-title" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h1>{partner.name} <HelpHint label="About courier balances">Charges come from landed costs that named {partner.name} as payee with no bill behind them. Each is owed in Payable (Other) until a courier payment settles it.</HelpHint></h1>
         <span className="page-sub">{[partner.code, partner.phone].filter(Boolean).join(" · ")}</span>

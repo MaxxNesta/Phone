@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Hash, Layers, Package, StickyNote, Tag, User, Wallet } from "lucide-react";
+import { CalendarDays, Hash, Layers, Package, StickyNote, Tag, Wallet } from "lucide-react";
 
 type Opt = { id: string; label: string };
 type Receipt = { id: string; no: string; date: string; supplier: string | null; warehouse: string | null; phones: number; landed: number };
@@ -37,13 +37,6 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
       <div className="card doc-info">
         <div className="card-body">
           <div className="doc-fields">
-            <div className="field">
-              <label htmlFor="partner_id"><User size={13} aria-hidden="true" />Courier{paidNow && <span className="opt">optional</span>}</label>
-              <select id="partner_id" name="partner_id" defaultValue={initialPartnerId ?? ""} required={!paidNow}>
-                <option value="">{paidNow ? "Not needed" : "Choose the courier or driver"}</option>
-                {couriers.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
-            </div>
             <div className="field">
               <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Bill date</label>
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} max={today} required />

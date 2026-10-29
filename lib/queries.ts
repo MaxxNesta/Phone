@@ -4606,7 +4606,7 @@ function cashFlowPieces(companyId: string, from: string, to: string, branchId?: 
          and (a.is_cash_account or a.is_bank_account)
     ),
     contra as (
-      select jl.journal_entry_id, jl.base_amount, a.account_type
+      select jl.journal_entry_id, jl.base_amount, a.account_type, a.cash_flow_class
         from journal_line jl
         join account a on a.id = jl.account_id
        where jl.company_id = ${companyId}
@@ -4625,6 +4625,16 @@ function cashFlowPieces(companyId: string, from: string, to: string, branchId?: 
         when k.account_type = 'REVENUE' then 'Received from customers'
         when k.account_type = 'COGS' then 'Paid to suppliers'
         when k.account_type = 'EXPENSE' then 'Operating expenses paid'
+        -- An asset or liability moves cash the way its account says: a
+        -- fixed asset is investing, a loan or owner's money financing, and a
+        -- clearing or payable account (freight into Landed Cost Clearing, a
+        -- courier paid from Payable (Other)) is trade, so operating. The
+        -- type alone only decides for an account nobody has classified.
+        when k.cash_flow_class = 'INVESTING' then 'Purchase / sale of fixed assets'
+        when k.cash_flow_class = 'FINANCING' and k.account_type = 'EQUITY' then 'Owner contributions / drawings'
+        when k.cash_flow_class = 'FINANCING' then 'Loans and other liabilities'
+        when k.cash_flow_class = 'OPERATING' and k.account_type in ('ASSET', 'LIABILITY') then
+          case when c.base_amount < 0 then 'Paid to suppliers' else 'Received from customers' end
         when k.account_type = 'EQUITY' then 'Owner contributions / drawings'
         when k.account_type = 'LIABILITY' then 'Loans and other liabilities'
         when k.account_type = 'ASSET' then 'Purchase / sale of fixed assets'
@@ -4633,6 +4643,9 @@ function cashFlowPieces(companyId: string, from: string, to: string, branchId?: 
       case
         when je.source_type in ('CUSTOMER_RECEIPT', 'CUSTOMER_REFUND', 'SALES_INVOICE', 'SUPPLIER_PAYMENT')
           or k.account_type in ('REVENUE', 'COGS', 'EXPENSE') then 'operating'
+        when k.cash_flow_class = 'INVESTING' then 'investing'
+        when k.cash_flow_class = 'FINANCING' then 'financing'
+        when k.cash_flow_class = 'OPERATING' then 'operating'
         when k.account_type = 'ASSET' then 'investing'
         when k.account_type in ('EQUITY', 'LIABILITY') then 'financing'
         else 'operating'

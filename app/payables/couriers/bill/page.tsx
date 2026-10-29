@@ -24,7 +24,7 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
 
   return (
     <div className="ie">
-      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Couriers", href: "/payables?view=couriers" }, { label: "Record carriage inward" }]} />
+      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Carriage inward", href: "/payables?view=couriers" }, { label: "Record carriage inward" }]} />
       <header className="ie-title">
         <h1>Record carriage inward <HelpHint label="About carriage inward">Carriage inward is everything paid to a third party to bring these goods in: the car or driver fee, and any freight, customs and clearance the forwarder handles and bills as one amount. It is added to the phones&rsquo; cost and reaches cost of sales only as each phone sells. Booked to Carriage Inward, owed in Payable (Other) under the courier or paid now, and spread onto the phones of the goods receipt in the same step.</HelpHint></h1>
       </header>

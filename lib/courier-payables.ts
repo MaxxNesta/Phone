@@ -56,14 +56,15 @@ export async function courierBalances(companyId: string, locs: string[] | null):
 export type DocRef = { id: string; no: string };
 
 export type CourierCharge = {
-  id: string; lc_id: string; lc_no: string; doc_date: string; cost_type: string; reference: string | null;
+  id: string; partner_id: string; lc_id: string; lc_no: string; doc_date: string; cost_type: string; reference: string | null;
   receipts: DocRef[]; phones: number; owed: number; paid: number; open: number;
 };
 
 /** Every charge owed to one courier, newest first, with what is still open. */
-export async function courierCharges(companyId: string, partnerId: string, locs: string[] | null): Promise<CourierCharge[]> {
+/** `partnerId` null: every courier's charges, which is how the bill list reads them. */
+export async function courierCharges(companyId: string, partnerId: string | null, locs: string[] | null): Promise<CourierCharge[]> {
   const rows = await sql`
-    select c.id, lc.id as lc_id, lc.doc_no as lc_no, lc.doc_date::text as doc_date, t.name as cost_type, c.reference,
+    select c.id, c.partner_id, lc.id as lc_id, lc.doc_no as lc_no, lc.doc_date::text as doc_date, t.name as cost_type, c.reference,
            coalesce((select json_agg(json_build_object('id', r.id, 'no', r.doc_no) order by r.doc_no)
                from landed_cost_receipt x join document r on r.id = x.receipt_id where x.landed_cost_id = lc.id), '[]'::json) as receipts,
            (select count(*)::int from landed_cost_allocation a where a.charge_id = c.id) as phones,
@@ -71,7 +72,7 @@ export async function courierCharges(companyId: string, partnerId: string, locs:
       from landed_cost_charge c
       join document lc on lc.id = c.landed_cost_id
       join landed_cost_type t on t.id = c.cost_type_id
-     where lc.company_id = ${companyId} and c.partner_id = ${partnerId} and ${owed()}
+     where lc.company_id = ${companyId} ${partnerId ? sql`and c.partner_id = ${partnerId}` : sql``} and ${owed()}
        ${locs ? sql`and lc.location_id = any(${locs})` : sql``}
      order by lc.doc_date desc, lc.doc_no desc, c.line_no`;
   return (rows as unknown as Omit<CourierCharge, "open">[]).map((r) => ({ ...r, open: round4(r.owed - r.paid) }));
@@ -170,7 +171,7 @@ export async function payCourier(input: PayCourierInput) {
 }
 
 export type CourierBillInput = {
-  companyId: string; userId: string | null; partnerId: string; docDate: string; receiptIds: string[];
+  companyId: string; userId: string | null; partnerId: string | null; docDate: string; receiptIds: string[];
   amount: number; method?: "EQUAL" | "VALUE"; costTypeId?: string | null; reference?: string | null; notes?: string | null;
   /** Paid on the spot from this cash or bank account: nothing is owed, so no courier is needed. */
   paidFromAccountId?: string | null;
@@ -187,7 +188,18 @@ export type CourierBillInput = {
 export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   if (!(input.amount > 0)) throw new Error("Enter the courier's charge.");
   const paid = input.paidFromAccountId || null;
-  if (!paid && !input.partnerId) throw new Error("Choose the courier the charge is owed to.");
+  // Owed with no name given: kept under one Unnamed courier, made the first
+  // time it is needed, so the shop never has to set drivers up to pay later.
+  let partnerId = input.partnerId || null;
+  if (!paid && !partnerId) {
+    const [u] = await tx`
+      insert into business_partner (company_id, code, name, is_supplier, is_customer)
+      values (${input.companyId}, 'COURIER', 'Unnamed courier', true, false)
+      on conflict (company_id, code) do update set is_active = true
+      returning id`;
+    partnerId = u.id as string;
+  }
+  input = { ...input, partnerId };
   const [courier] = input.partnerId
     ? await tx`select name from business_partner where id = ${input.partnerId} and company_id = ${input.companyId}` : [{ name: null }];
   if (!courier) throw new Error("That courier was not found.");

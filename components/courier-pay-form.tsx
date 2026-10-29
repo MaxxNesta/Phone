@@ -10,17 +10,19 @@ type Opt = { id: string; label: string };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-export function CourierPayForm({ action, couriers, charges, branches, accounts, initialPartnerId, today }: {
+export function CourierPayForm({ action, couriers, charges, branches, accounts, initialPartnerId, today, initialChargeId }: {
   action: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>;
   couriers: { id: string; name: string; code: string; outstanding: number }[];
   charges: Charge[]; branches: Opt[]; accounts: Opt[]; initialPartnerId?: string; today: string;
+  /** Open with just this charge ticked: the Pay button on one bill. */
+  initialChargeId?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   const [partnerId, setPartnerId] = useState(couriers.some((c) => c.id === initialPartnerId) ? initialPartnerId! : couriers[0]?.id ?? "");
   const mine = useMemo(() => charges.filter((c) => c.partnerId === partnerId), [charges, partnerId]);
   // Every open charge ticked at its full open amount: the usual payment is "settle what we owe".
   const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(charges.map((c) => [c.id, String(c.open)])));
-  const [ticked, setTicked] = useState<Record<string, boolean>>(() => Object.fromEntries(charges.map((c) => [c.id, true])));
+  const [ticked, setTicked] = useState<Record<string, boolean>>(() => Object.fromEntries(charges.map((c) => [c.id, !initialChargeId || c.id === initialChargeId])));
 
   const allocations = mine.filter((c) => ticked[c.id]).map((c) => ({ chargeId: c.id, amount: Number(amounts[c.id]) || 0 }));
   const total = allocations.reduce((s, a) => s + a.amount, 0);
@@ -33,12 +35,15 @@ export function CourierPayForm({ action, couriers, charges, branches, accounts, 
       <div className="card doc-info">
         <div className="card-body">
           <div className="doc-fields">
-            <div className="field">
-              <label htmlFor="partner_id"><User size={13} aria-hidden="true" />Courier</label>
-              <select id="partner_id" name="partner_id" value={partnerId} onChange={(e) => setPartnerId(e.target.value)} required>
-                {couriers.map((c) => <option key={c.id} value={c.id}>{c.name} · owed {fmt(c.outstanding)}</option>)}
-              </select>
-            </div>
+            {/* Only a choice when there is one: bills kept without a name are one courier. */}
+            {couriers.length > 1 ? (
+              <div className="field">
+                <label htmlFor="partner_id"><User size={13} aria-hidden="true" />Courier</label>
+                <select id="partner_id" name="partner_id" value={partnerId} onChange={(e) => setPartnerId(e.target.value)} required>
+                  {couriers.map((c) => <option key={c.id} value={c.id}>{c.name} · owed {fmt(c.outstanding)}</option>)}
+                </select>
+              </div>
+            ) : <input type="hidden" name="partner_id" value={partnerId} />}
             <div className="field">
               <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Date</label>
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />

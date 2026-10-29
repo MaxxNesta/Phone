@@ -51,7 +51,6 @@ export async function recordCourierBillAction(_prev: Result, fd: FormData): Prom
     const partnerId = str(fd, "partner_id");
     const amount = Number(str(fd, "amount"));
     const paidFromAccountId = str(fd, "paid_from") || null;
-    if (!partnerId && !paidFromAccountId) return { error: "Choose the courier the bill is owed to, or mark it paid now." };
     if (receiptIds.length === 0) return { error: "Choose the goods receipt whose phones the courier carried." };
     if (!(amount > 0)) return { error: "Enter the amount of the bill." };
     const rows = await sql`select location_id from document where company_id = ${u.companyId} and id = any(${receiptIds})`;
