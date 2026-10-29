@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Hash, Layers, Truck, User, Wallet } from "lucide-react";
+import { CircleSlash, Clock, FileText, Hash, Layers, User, Wallet } from "lucide-react";
 
 type Partner = { id: string; code?: string | null; name: string };
 
@@ -19,7 +19,9 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
   /** Cash and bank accounts, for a charge paid on the spot. */
   paidFrom?: { id: string; label: string }[];
 }) {
-  const [on, setOn] = useState(false);
+  // The question the receiver can answer: is there a courier charge, and is its bill here?
+  const [mode, setMode] = useState<"none" | "now" | "later">("none");
+  const on = mode === "now";
   const [partnerId, setPartnerId] = useState("");
   const [amount, setAmount] = useState("");
   // EQUAL splits a total evenly, PER takes one figure for every phone, VALUE weighs by cost.
@@ -44,14 +46,27 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
       <input type="hidden" name="carriage_paid_from" value={payment} />
       <input type="hidden" name="carriage_amount" value={total > 0 ? String(total) : ""} />
       <input type="hidden" name="carriage_method" value={method === "VALUE" ? "VALUE" : "EQUAL"} />
-      <div className="carriage-head">
-        <span className="carriage-title"><Truck size={15} aria-hidden="true" /> Courier charge on this delivery</span>
-        <span className="carriage-sub">{on ? "Added to each phone's cost" : "Car, bus gate or forwarder fee for these goods"}</span>
-        <label className="pf2-toggle carriage-toggle">
-          <input type="checkbox" role="switch" checked={on} onChange={(e) => setOn(e.target.checked)} aria-label="Add a courier charge" />
-          <span className="track" aria-hidden="true" />
-        </label>
+      <div className="carriage-head receive-row">
+        <span className="receive-q" id="carriage-q">Courier charge for this delivery?</span>
+        <div className="segmented" role="radiogroup" aria-labelledby="carriage-q">
+          {([
+            ["none", <CircleSlash key="i" size={16} aria-hidden="true" />, "No charge"],
+            ["now", <FileText key="i" size={16} aria-hidden="true" />, "Bill is here now"],
+            ["later", <Clock key="i" size={16} aria-hidden="true" />, "Bill comes later"],
+          ] as const).map(([key, icon, title]) => (
+            <button key={key} type="button" role="radio" aria-checked={mode === key}
+              className={`seg${mode === key ? " on" : ""}`} onClick={() => setMode(key)}>
+              {icon} {title}
+            </button>
+          ))}
+        </div>
       </div>
+      {mode === "later" && (
+        <p className="receive-explain carriage-later">
+          Post the receipt as it is. When the courier&rsquo;s bill arrives, open this receipt and choose
+          <strong> Record courier bill</strong>; the charge is added to these phones then.
+        </p>
+      )}
 
       {on && (
         <div className="card-body carriage-body">

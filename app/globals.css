@@ -8258,10 +8258,6 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 /* The courier's charge on a receipt: one quiet line until switched on. */
 .card.carriage { padding: 0; }
 .carriage-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; }
-.carriage-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--t-md); }
-.carriage-title svg { color: var(--muted); }
-.carriage-sub { color: var(--muted); font-size: var(--t-sm); }
-.carriage-toggle { margin-left: auto; }
 .card.carriage.on .carriage-head { border-bottom: 1px solid var(--line); }
 .carriage-body { padding: 14px 16px 16px; display: grid; gap: 10px; }
 .carriage-body .doc-fields { row-gap: 14px; column-gap: 20px; }
@@ -8330,3 +8326,8 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 @media (max-width: 760px) { .page-head .stmt-bar { margin-left: 0; width: 100%; justify-content: flex-start; } }
 
 .carriage-body .opt { margin-left: 4px; font-size: var(--t-xs); font-weight: 400; color: var(--muted); }
+
+/* The courier question sits like "Have the goods arrived?": the answer
+   decides what follows, and "No charge" leaves just the one line. */
+.carriage .carriage-head.receive-row { padding: 12px 16px; }
+.carriage-later { margin: 0 16px 14px; }
