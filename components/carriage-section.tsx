@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { HelpHint } from "./help-hint";
 import { CircleSlash, Clock, FileText, Hash, Layers, User, Wallet } from "lucide-react";
 
 type Partner = { id: string; code?: string | null; name: string };
@@ -47,7 +48,7 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
       <input type="hidden" name="carriage_amount" value={total > 0 ? String(total) : ""} />
       <input type="hidden" name="carriage_method" value={method === "VALUE" ? "VALUE" : "EQUAL"} />
       <div className="carriage-head receive-row">
-        <span className="receive-q" id="carriage-q">Courier charge for this delivery?</span>
+        <span className="receive-q" id="carriage-q">Courier charge for this delivery? <HelpHint label="What counts as a courier charge">Carriage inward is everything paid to a third party to bring these goods in: the car or driver fee, and any freight, customs and clearance the forwarder handles and bills as one amount. It is added to the phones' cost and reaches cost of sales only as each phone sells.</HelpHint></span>
         <div className="segmented" role="radiogroup" aria-labelledby="carriage-q">
           {([
             ["none", <CircleSlash key="i" size={16} aria-hidden="true" />, "No charge"],
