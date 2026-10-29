@@ -5571,7 +5571,10 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   width: calc(100% - 64px); padding: 6px 10px; border: 0; border-radius: 8px;
   background: var(--ground); color: var(--warn); font-size: 0.8125rem; font-weight: 500; text-align: left;
 }
-.vimei-sum.ok { color: var(--ok); }
+.vimei-sum.ok { color: var(--ink-soft); max-width: 560px; cursor: pointer; }
+.vimei-sum.ok svg { color: var(--focus); flex: none; }
+.vimei-sum.ok:hover { background: color-mix(in srgb, var(--focus) 8%, var(--ground)); }
+.vimei-sum .vimei-list { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vimei-sum .linkish { color: var(--link); }
 .vimei-sum svg.open { transform: rotate(90deg); }
 .vline-sub .serialentry { margin-left: 64px; }
@@ -5948,27 +5951,37 @@ button.danger-solid:hover { opacity: 0.9; }
 .doc-bar > :first-child:not(button) { margin-right: auto; }
 @media (max-width: 820px) { .doc-bar { top: var(--navbar-h); } }
 
-/* IMEI entry: one panel — what it is and how far along on top, the scan box,
-   a one-line hint, then what has been scanned as chips. */
-.serialentry { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line-soft);
-  border-radius: 12px; background: var(--surface); max-width: 640px; }
-.serialentry-head { display: flex; align-items: center; gap: 8px; }
-.serialentry-head strong { font-size: var(--t-md); }
-.serialentry-head .serialentry-csv { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-.serialentry-input { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line);
-  border-radius: 8px; background: var(--surface); }
-.serialentry-input:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
-.serialentry-input > svg { color: var(--muted); flex: none; }
-.serialentry .serialentry-input textarea { border: 0; box-shadow: none; background: transparent; resize: none;
-  padding: 8px 0; min-height: 0; flex: 1; outline: none; font-family: var(--mono); }
-.serialentry-hint { margin: 0; font-size: var(--t-xs); color: var(--muted); }
-.serialentry-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.serialentry-list li { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px;
-  border-radius: 999px; background: var(--line-soft); font-size: var(--t-sm); }
-.serialentry-list li button { border: 0; background: none; padding: 2px; min-height: 0; color: var(--muted); cursor: pointer; border-radius: 999px; display: inline-grid; }
-.serialentry-list li button:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
-.serialentry-offer { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line-soft); }
-.serialentry-offer > div { display: flex; flex-wrap: wrap; gap: 6px; }
+/* IMEI entry, as a token field: label and count on one line, the chosen
+   IMEIs as tokens inside the box, the shelf behind a button. */
+.serialentry { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-soft);
+  border-radius: 12px; background: var(--surface); max-width: 560px; }
+.serialentry-head { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.serialentry-head strong { font-size: var(--t-sm); font-weight: 600; }
+.serialentry-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.serialentry-icon { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--muted); cursor: pointer; }
+.serialentry-icon:hover { color: var(--ink); background: var(--line-soft); }
+.serialentry-done { border: 0; background: none; color: var(--link); font-weight: 600; font-size: var(--t-sm); padding: 4px 8px; min-height: 0; border-radius: 8px; cursor: pointer; }
+.serialentry-done:hover { background: color-mix(in srgb, var(--link) 10%, transparent); }
+.serialentry-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; min-height: 40px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: text; }
+.serialentry-field:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+.serialentry-field > svg { color: var(--muted); flex: none; }
+.serialentry .serialentry-field textarea { border: 0; box-shadow: none; background: transparent; resize: none; padding: 4px 0;
+  min-height: 0; height: 26px; flex: 1 1 9rem; min-width: 9rem; outline: none; font-family: var(--mono); font-size: var(--t-sm);
+  overflow: hidden; scrollbar-width: none; }
+.serialentry-token { display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 9px; border-radius: 999px;
+  background: color-mix(in srgb, var(--focus) 12%, transparent); color: var(--ink); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.serialentry-token button { border: 0; background: none; padding: 3px; min-height: 0; color: var(--muted); cursor: pointer; border-radius: 999px; display: inline-grid; }
+.serialentry-token button:hover { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.serialentry-offer { display: grid; gap: 4px; }
+.serialentry-browse { justify-self: start; display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 2px 0;
+  min-height: 0; color: var(--link); font-size: var(--t-sm); cursor: pointer; }
+.serialentry-browse[aria-expanded="true"] svg { transform: rotate(180deg); }
+.serialentry-menu { list-style: none; margin: 0; padding: 4px; display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 2px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface); max-height: 180px; overflow: auto; }
+.serialentry-menu button { width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; min-height: 0; border-radius: 6px;
+  font-size: var(--t-sm); color: var(--ink); cursor: pointer; }
+.serialentry-menu button:hover, .serialentry-menu button:focus-visible { background: color-mix(in srgb, var(--focus) 12%, transparent); color: var(--ink); }
 .vimei-sum { gap: 8px; }
 
 /* ---- Sales pivot: a toolbar of real controls, then the table. Groups get a
@@ -6419,7 +6432,7 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
    Currency, three when Currency is hidden, one when an exchange rate joins. */
 .doc-fields .span-rest { grid-column: span 2; }
 .doc-fields:not(:has(#fx-currency)) .span-rest { grid-column: span 3; }
-.doc-fields:has(#fx-rate) .span-rest { grid-column: span 1; }
+.doc-fields:has(#fx-rate) .span-rest { grid-column: span 2; }
 @media (max-width: 1100px) {
   .doc-fields, .doc-fields.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .doc-fields .span-rest, .doc-fields:not(:has(#fx-currency)) .span-rest,
@@ -8261,3 +8274,13 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .carriage-note { margin: 0; font-size: var(--t-sm); color: var(--ink-soft); }
 .carriage-note strong { color: var(--ink); font-variant-numeric: tabular-nums; }
 .carriage-posts { color: var(--muted); }
+
+/* Currency and rate in one field: the rate inline beside a foreign currency. */
+.fx-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fx-row > select { width: 100%; min-width: 0; }
+.fx-rate { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fx-rate-lbl { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-sm); color: var(--muted); white-space: nowrap; }
+.fx-rate-lbl svg { color: var(--muted); }
+.fx-rate input { flex: 1 1 auto; min-width: 3.5rem; width: 0; min-height: 30px; height: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.fx-base { font-size: var(--t-sm); color: var(--muted); }
+.card.doc-info .fx-field .field > label, .card.doc-info .fx-rate-lbl { font-weight: 500; }

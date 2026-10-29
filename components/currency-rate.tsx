@@ -3,6 +3,7 @@
 import { ArrowLeftRight, Coins } from "lucide-react";
 import { useState } from "react";
 import Link from "next/link";
+import { HelpHint } from "./help-hint";
 import { saveRate } from "@/lib/currency-actions";
 
 export type FxOption = { code: string; symbol: string | null; rate: number | null };
@@ -43,43 +44,56 @@ export function CurrencyRate({ options, base, currency, rate, onChange, locked, 
     <>
       <input type="hidden" name="currency" value={foreign ? currency : ""} />
       <input type="hidden" name="exchange_rate" value={foreign ? rate : ""} />
-      <div className="field">
-        <label htmlFor="fx-currency"><Coins size={13} aria-hidden="true" />Currency</label>
-        <select id="fx-currency" value={currency || base} disabled={Boolean(locked)}
-          onChange={(e) => {
-            const c = e.target.value;
-            const known = options.find((o) => o.code === c)?.rate;
-            onChange(c, c === base ? "" : known ? String(known) : "");
-          }}>
-          <option value={base}>{base}</option>
-          {options.filter((o) => o.code !== base).map((o) => (
-            <option key={o.code} value={o.code}>{o.code}{o.symbol ? ` (${o.symbol})` : ""}</option>
-          ))}
-        </select>
-      </div>
-      {foreign && (
-        <div className="field">
-          <label htmlFor="fx-rate"><ArrowLeftRight size={13} aria-hidden="true" />1 {currency} = {base}</label>
-          <input id="fx-rate" type="number" step="any" min="0" required value={rate}
-            readOnly={Boolean(locked)} onChange={(e) => onChange(currency, e.target.value)} />
-          <span className="hint">
-            {locked ?? (pricesIn && pricesIn !== currency
-              ? `Prices are still in ${pricesIn}. Type the ${currency} rate and they convert.`
-              : Number(rate) > 0
-              ? `Prices below are in ${currency}; the books record them at ${Number(rate).toLocaleString("en-US")} ${base} each.`
-              : `No ${currency} rate on file — type today's.`)}
-            {!locked && (
-              <span style={{ display: "block", marginTop: 2 }}>
-                {Number(rate) > 0 && Number(rate) !== onFile && (
-                  <><button type="button" className="linkish" onClick={saveIt}>Save as the {currency} rate</button>{" · "}</>
-                )}
-                <Link href="/settings/currencies" target="_blank" className="linkish">Currencies &amp; rates</Link>
-                {saved && <span style={{ display: "block" }}>{saved}</span>}
-              </span>
-            )}
-          </span>
+      {/* Currency and its rate are one field: the rate sits beside the
+          currency it belongs to, so a yuan receipt keeps the same row as a
+          kyat one. What the rate means lives behind the ?, and a line shows
+          under it only when there is something to do. */}
+      <div className="field fx-field">
+        <label htmlFor="fx-currency">
+          <Coins size={13} aria-hidden="true" />Currency
+          {foreign && (
+            <HelpHint label={`About the ${currency} rate`}>
+              {locked ?? (Number(rate) > 0
+                ? `Prices below are in ${currency}; the books record them at ${Number(rate).toLocaleString("en-US")} ${base} each.`
+                : `Type the ${currency} rate for this date.`)}{" "}
+              <Link href="/settings/currencies" target="_blank" className="linkish">Currencies &amp; rates</Link>
+            </HelpHint>
+          )}
+        </label>
+        <div className={`fx-row${foreign ? " foreign" : ""}`}>
+          <select id="fx-currency" value={currency || base} disabled={Boolean(locked)}
+            aria-label="Currency"
+            onChange={(e) => {
+              const c = e.target.value;
+              const known = options.find((o) => o.code === c)?.rate;
+              onChange(c, c === base ? "" : known ? String(known) : "");
+            }}>
+            <option value={base}>{base}</option>
+            {options.filter((o) => o.code !== base).map((o) => (
+              <option key={o.code} value={o.code}>{o.code}{o.symbol ? ` (${o.symbol})` : ""}</option>
+            ))}
+          </select>
+          {foreign && (
+            <span className="fx-rate">
+              <label htmlFor="fx-rate" className="fx-rate-lbl"><ArrowLeftRight size={12} aria-hidden="true" />1 {currency} =</label>
+              <input id="fx-rate" type="number" step="any" min="0" required value={rate}
+                aria-label={`${base} per 1 ${currency}`}
+                readOnly={Boolean(locked)} onChange={(e) => onChange(currency, e.target.value)} />
+              <span className="fx-base">{base}</span>
+            </span>
+          )}
         </div>
-      )}
+        {foreign && !locked && (pricesIn && pricesIn !== currency ? (
+          <span className="hint">Type the {currency} rate to convert the prices.</span>
+        ) : !(Number(rate) > 0) ? (
+          <span className="hint">No {currency} rate on file — type today&rsquo;s.</span>
+        ) : Number(rate) !== onFile ? (
+          <span className="hint">
+            <button type="button" className="linkish" onClick={saveIt}>Save {Number(rate).toLocaleString("en-US")} as the {currency} rate</button>
+            {saved && <span style={{ display: "block" }}>{saved}</span>}
+          </span>
+        ) : saved ? <span className="hint">{saved}</span> : null)}
+      </div>
     </>
   );
 }

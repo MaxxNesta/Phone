@@ -1515,13 +1515,11 @@ export function SalesVoucher({
                           <>
                             {/* Once every phone is named the panel folds to one line;
                                 until then it is open, and is its own summary. */}
-                            {imeiDone && (
-                              <button type="button" className="vimei-sum ok"
-                                aria-expanded={imeiOpen.includes(l.key)} onClick={() => toggleImei(l.key)}>
+                            {imeiDone && !imeiOpen.includes(l.key) && (
+                              <button type="button" className="vimei-sum ok" aria-expanded={false} onClick={() => toggleImei(l.key)}>
                                 <Check size={14} aria-hidden="true" />
-                                {imeiOpen.includes(l.key)
-                                  ? <span className="linkish">Hide IMEIs</span>
-                                  : <>{serials.length}/{q} phones <span className="linkish">Edit</span></>}
+                                <span className="m vimei-list">{serials.map((s) => s.serial).join(", ")}</span>
+                                <span className="linkish">Edit</span>
                               </button>
                             )}
                             {(imeiOpen.includes(l.key) || !imeiDone) && (
@@ -1531,6 +1529,7 @@ export function SalesVoucher({
                                 value={serials}
                                 suggestions={shelf[`${l.itemId}@${locationId}`]}
                                 onChange={(v) => setLine(l.key, { serials: v, qty: String(v.length) })}
+                                onDone={imeiOpen.includes(l.key) ? () => toggleImei(l.key) : undefined}
                               />
                             )}
                           </>
