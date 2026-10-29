@@ -224,9 +224,12 @@ export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
       select id, is_cash_account from account
        where id = ${paid} and company_id = ${input.companyId} and (is_cash_account or is_bank_account)`;
     if (!money) throw new Error("Choose the cash or bank account the courier was paid from.");
+    // Carriage is paid through Carriage Inward, any other cost through Landed Cost Clearing.
+    const [kind] = await tx`select code from landed_cost_type where id = ${costTypeId}`;
     const [via] = await tx`
       select account_id from system_account where company_id = ${input.companyId}
-         and role in ('CARRIAGE_INWARD', 'LANDED_COST_CLEARING') order by (role = 'CARRIAGE_INWARD') desc limit 1`;
+         and role in ('CARRIAGE_INWARD', 'LANDED_COST_CLEARING')
+       order by (role = 'CARRIAGE_INWARD') = (${kind?.code ?? ""} = 'CARRIAGE') desc limit 1`;
     if (!via) throw new Error("Set the Carriage Inward account first (Settings → Accounts).");
     const [branch] = await tx`
       select coalesce(l.parent_id, l.id) as id from document d join location l on l.id = d.location_id

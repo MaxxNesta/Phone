@@ -583,6 +583,7 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
 
     const charges = await tx`
       select c.id, c.base_amount::float as base_amount, c.clearing_account_id, c.source_journal_line_id, c.partner_id,
+             (select t.code from landed_cost_type t where t.id = c.cost_type_id) as type_code,
              (select coalesce(sum(a.amount), 0)::float from landed_cost_allocation a where a.charge_id = c.id) as allocated
         from landed_cost_charge c where c.landed_cost_id = ${doc.id} and c.is_active order by c.line_no`;
     if (charges.length === 0) throw new Error("Add at least one charge.");
@@ -639,7 +640,9 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
     for (const c of charges) {
       const amount = roundTo(c.base_amount, base.dp);
       const owed = !c.source_journal_line_id && c.partner_id && owedTo ? owedTo.account_id as string : null;
-      const via = owed && carriage ? carriage.account_id as string : null;
+      // Only carriage is billed through Carriage Inward; duty or freight owed goes
+      // straight from the payable to the phones, so the ledger names it truly.
+      const via = owed && carriage && c.type_code === "CARRIAGE" ? carriage.account_id as string : null;
       journal.push({ accountId: via ?? owed ?? c.clearing_account_id, amount: -amount,
                      partnerId: owed && !via ? c.partner_id : null, locationId: doc.location_id });
       if (via) {

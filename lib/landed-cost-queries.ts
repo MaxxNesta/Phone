@@ -112,7 +112,7 @@ export async function getLandedCost(companyId: string, id: string) {
 
   // Per phone: what it cost to buy, this landed cost's share, and where it is now.
   const phones = await sql`
-    select a.serial_id, s.serial_no, a.item_id, i.name as item_name, g.doc_no as receipt_no,
+    select a.serial_id, s.serial_no, a.item_id, i.name as item_name, g.doc_no as receipt_no, g.id as receipt_id,
            max(a.original_cost)::float as original_cost, sum(a.amount)::float as allocated,
            v.status, v.location_name, v.unit_cost::float as current_cost,
            (select p.treatment from landed_cost_posting p where p.landed_cost_id = ${id}
@@ -123,12 +123,12 @@ export async function getLandedCost(companyId: string, id: string) {
       join document g on g.id = a.receipt_id
       join v_stock_serial v on v.serial_id = a.serial_id
      where a.landed_cost_id = ${id}
-     group by a.serial_id, s.serial_no, a.item_id, i.name, g.doc_no, v.status, v.location_name, v.unit_cost
+     group by a.serial_id, s.serial_no, a.item_id, i.name, g.doc_no, g.id, v.status, v.location_name, v.unit_cost
      order by i.name, g.doc_no, s.serial_no`;
 
   // Before calculating, the phones the receipts brought in, with no share yet.
   const eligible = await sql`
-    select s.id as serial_id, s.serial_no, s.item_id, i.name as item_name, g.doc_no as receipt_no
+    select s.id as serial_id, s.serial_no, s.item_id, i.name as item_name, g.doc_no as receipt_no, g.id as receipt_id
       from landed_cost_receipt r
       join stock_movement sm on sm.document_id = r.receipt_id
       join stock_serial s on s.stock_movement_id = sm.id

@@ -232,8 +232,8 @@ export default async function LandedCostPage({ params }: { params: Promise<{ id:
                   <tbody>
                     {v.rows.map((p: any) => (
                       <tr key={p.serial_id}>
-                        <td className="m">{p.serial_no}</td>
-                        <td className="m">{p.receipt_no}</td>
+                        <td className="m"><Link href={`/inventory/phones/${p.serial_id}`}>{p.serial_no}</Link></td>
+                        <td className="m">{p.receipt_id ? <Link href={`/documents/${p.receipt_id}`}>{p.receipt_no}</Link> : p.receipt_no}</td>
                         <td className="r">{p.original_cost != null ? money(p.original_cost) : "—"}</td>
                         <td className="r">{p.allocated != null ? money(p.allocated) : "—"}</td>
                         <td className="r">{p.allocated != null ? money(Number(p.original_cost) + Number(p.allocated)) : "—"}</td>

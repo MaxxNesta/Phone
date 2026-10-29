@@ -122,23 +122,31 @@ export function StatementTable({
       const t = String(v);
       return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
     };
-    const out: string[] = [[`Code`, `Description`, `Amount (${currency})`].join(",")];
+    // The statement's own layout: a heading on its line with no figure, its
+    // accounts beneath, then "Total <heading>"; the level says how deep.
+    const out: string[] = [[`Level`, `Code`, `Description`, `Amount (${currency})`].join(",")];
+    const row = (lvl: number | string, code: string, name: string, amount: number | null) =>
+      out.push([lvl, q(code), q("  ".repeat(Math.max(0, Number(lvl) || 0)) + name), amount == null ? "" : amount.toFixed(2)].join(","));
     const walk = (ns: StatementNode[]) => ns.forEach((n) => {
-      out.push([q(n.code), q("  ".repeat(n.depth) + n.name), n.amount.toFixed(2)].join(","));
-      if (!collapsed.has(n.id)) walk(n.children);
+      const open = n.children.length > 0 && !collapsed.has(n.id);
+      if (!open) { row(n.depth + 1, n.code, n.name, n.amount); return; }
+      row(n.depth + 1, n.code, n.name, null);
+      walk(n.children);
+      row(n.depth + 1, "", `Total ${n.name}`, n.amount);
     });
     for (const s of sections) {
-      out.push([q(""), q(s.label.toUpperCase()), s.total.toFixed(2)].join(","));
+      row("", "", s.label.toUpperCase(), null);
       walk(s.nodes);
-      out.push([q(""), q(s.totalLabel), s.total.toFixed(2)].join(","));
-      for (const st of subtotals.filter((x) => x.after === s.key)) {
-        out.push([q(""), q(st.label), st.value.toFixed(2)].join(","));
-      }
+      row("", "", s.totalLabel, s.total);
+      for (const st of subtotals.filter((x) => x.after === s.key)) row("", "", st.label, st.value);
     }
     const blob = new Blob(["﻿" + out.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${title.toLowerCase().replace(/\s+/g, "-")}-${scope.replace(/[^\d-]+/g, "_")}.csv`;
+    // Named for the page it came from (Balance sheet, not "Statement") and its dates.
+    const name = (document.querySelector("h1")?.childNodes[0]?.textContent ?? title).trim();
+    const dates = (scope.match(/\d{4}-\d{2}-\d{2}/g) ?? []).join("-to-");
+    a.download = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}${dates ? `-${dates}` : ""}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }

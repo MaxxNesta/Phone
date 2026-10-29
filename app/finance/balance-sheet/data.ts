@@ -63,12 +63,24 @@ export async function getBalanceSheetData({ asOf: asOfParam, branch }: Params) {
   const assetTree = buildStatement(chart, amounts, ["ASSET"]);
   const liabilityTree = buildStatement(chart, amounts, ["LIABILITY"]);
   if (owing.length > 0) {
+    // Filed under Current Liabilities where the chart has one, its totals and
+    // every heading above it carrying the amount; otherwise under liabilities.
+    const path: StatementNode[] = [];
+    const find = (ns: StatementNode[]): boolean => ns.some((n) => {
+      path.push(n);
+      if (/current liabilit/i.test(n.name) || find(n.children)) return true;
+      path.pop(); return false;
+    });
+    const home = find(liabilityTree.nodes) ? path[path.length - 1] : null;
+    const depth = home ? home.depth + 1 : 0;
     const children: StatementNode[] = owing.map((r) => ({
-      id: `clearing-${r.id}`, code: r.code, depth: 1, postable: true, name: r.name, amount: -Number(r.amount), children: [],
+      id: `clearing-${r.id}`, code: r.code, depth: depth + 1, postable: true, name: r.name, amount: -Number(r.amount), children: [],
     }));
     const amount = children.reduce((t, c) => t + c.amount, 0);
-    liabilityTree.nodes.push({ id: "clearing-credit", code: "", depth: 0, postable: false,
-      name: "Clearing accounts (awaiting invoices)", amount, children });
+    const node: StatementNode = { id: "clearing-credit", code: "", depth, postable: false,
+      name: "Clearing accounts (awaiting invoices)", amount, children };
+    (home ? home.children : liabilityTree.nodes).push(node);
+    for (const n of path) n.amount += amount;
     liabilityTree.total += amount;
   }
   const equityTree = buildStatement(chart, amounts, ["EQUITY"]);
