@@ -7613,8 +7613,8 @@ a.kpi:hover { border-color: var(--ink-soft); }
 
 .ie-title h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
 .ie-title p { margin: 2px 0 var(--s3); color: var(--muted); font-size: var(--t-sm); }
-.ie-title a { color: var(--link); text-decoration: none; }
-.ie-title a:hover { text-decoration: underline; }
+.ie-title a:not(.btn) { color: var(--link); text-decoration: none; }
+.ie-title a:not(.btn):hover { text-decoration: underline; }
 .ie-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); gap: var(--s3); align-items: start; padding-bottom: 1.5rem; }
 .ie-main, .ie-side { display: grid; gap: var(--s3); min-width: 0; }
 .ie-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: var(--s3) 1.1rem; }
