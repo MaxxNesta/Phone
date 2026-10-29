@@ -32,7 +32,7 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
   const defaultType = types.find((t) => t.code === "CARRIAGE") ?? types[0];
 
   return (
-    <form action={formAction} className="form">
+    <form action={formAction} className="form wide">
       {state?.error && <div className="alert">{state.error}</div>}
       <div className="card doc-info">
         <div className="card-body">

@@ -27,7 +27,7 @@ export function CourierPayForm({ action, couriers, charges, branches, accounts, 
   const over = mine.some((c) => ticked[c.id] && (Number(amounts[c.id]) || 0) > c.open + 0.0001);
 
   return (
-    <form action={formAction} className="form">
+    <form action={formAction} className="form wide">
       {state?.error && <div className="alert">{state.error}</div>}
       <input type="hidden" name="allocations" value={JSON.stringify(allocations)} />
       <div className="card doc-info">
