@@ -69,7 +69,7 @@ export async function CouriersView({ companyId }: { companyId: string }) {
             <h2>Couriers</h2>
             <span className="actions">
               <span className="page-sub">{owing.length} with a balance</span>
-              <Link href="/payables/couriers/bill" className="btn ghost">Record courier bill</Link>
+              <Link href="/payables/couriers/bill" className="btn ghost">Record carriage inward</Link>
               <Link href="/payables/couriers/pay" className="btn">Pay courier</Link>
             </span>
           </div>

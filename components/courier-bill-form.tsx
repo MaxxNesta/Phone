@@ -130,7 +130,7 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
             <table>
               <thead><tr><th>Entry</th><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
               <tbody>
-                <tr><td>Courier bill</td><td>{carriageAccount ?? "Carriage Inward"}</td><td className="r">{fmt(total)}</td><td /></tr>
+                <tr><td>Carriage inward</td><td>{carriageAccount ?? "Carriage Inward"}</td><td className="r">{fmt(total)}</td><td /></tr>
                 <tr><td /><td>{paidNow ? `${paidLabel} · paid now` : `${payableAccount ?? "Payable (Other)"} · under the courier`}</td><td /><td className="r">{fmt(total)}</td></tr>
                 <tr><td>Spread onto phones</td><td>Inventory · {phones || "the chosen"} phone{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
                 <tr><td /><td>{carriageAccount ?? "Carriage Inward"}</td><td /><td className="r">{fmt(total)}</td></tr>

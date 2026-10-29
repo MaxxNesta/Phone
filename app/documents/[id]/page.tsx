@@ -1112,7 +1112,7 @@ export default async function DocumentPage({
                         that is the one filled button; a full landed cost is the exception. */}
                     <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn ghost tiny">Add landed cost</Link>
                     <Link href={`/payables/couriers/bill?gr=${doc.id}`} className="btn tiny lc-gr-primary">
-                      <Truck size={14} aria-hidden="true" /> Record courier bill
+                      <Truck size={14} aria-hidden="true" /> Record carriage inward
                     </Link>
                   </>
                 )}

@@ -48,7 +48,7 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
       <input type="hidden" name="carriage_amount" value={total > 0 ? String(total) : ""} />
       <input type="hidden" name="carriage_method" value={method === "VALUE" ? "VALUE" : "EQUAL"} />
       <div className="carriage-head receive-row">
-        <span className="receive-q" id="carriage-q">Courier charge for this delivery? <HelpHint label="What counts as a courier charge">Carriage inward is everything paid to a third party to bring these goods in: the car or driver fee, and any freight, customs and clearance the forwarder handles and bills as one amount. It is added to the phones' cost and reaches cost of sales only as each phone sells.</HelpHint></span>
+        <span className="receive-q" id="carriage-q">Carriage inward for these goods? <HelpHint label="What carriage inward covers">Carriage inward is everything paid to a third party to bring these goods in: the car or driver fee, and any freight, customs and clearance the forwarder handles and bills as one amount. It is added to the phones' cost and reaches cost of sales only as each phone sells.</HelpHint></span>
         <div className="segmented" role="radiogroup" aria-labelledby="carriage-q">
           {([
             ["none", <CircleSlash key="i" size={16} aria-hidden="true" />, "No charge"],
@@ -65,7 +65,7 @@ export function CarriageSection({ couriers, phones, base, onBlocked, paidFrom = 
       {mode === "later" && (
         <p className="receive-explain carriage-later">
           Post the receipt as it is. When the courier&rsquo;s bill arrives, open this receipt and choose
-          <strong> Record courier bill</strong>; the charge is added to these phones then.
+          <strong> Record carriage inward</strong>; the charge is added to these phones then.
         </p>
       )}
 

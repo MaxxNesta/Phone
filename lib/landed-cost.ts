@@ -650,7 +650,7 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
     }
     if (bill.length > 0) {
       await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
-        `${doc.doc_no} courier bill`, bill, doc.location_id);
+        `${doc.doc_no} carriage inward`, bill, doc.location_id);
     }
 
     const entryId = await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
@@ -749,7 +749,7 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
     }
     if (bill.length > 0) {
       await writeJournal(tx, input.companyId, date, "LANDED_COST", rev.id,
-        `${no} reverses ${doc.doc_no} courier bill`, bill, doc.location_id);
+        `${no} reverses ${doc.doc_no} carriage inward`, bill, doc.location_id);
     }
     const entryId = await writeJournal(tx, input.companyId, date, "LANDED_COST", rev.id,
       `${no} reverses ${doc.doc_no}`, journal, doc.location_id);

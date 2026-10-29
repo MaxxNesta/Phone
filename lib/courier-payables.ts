@@ -181,7 +181,7 @@ export type CourierBillInput = {
  * go: a landed cost with that one charge, calculated and posted inside the
  * caller's transaction. Posting writes Dr Carriage Inward / Cr Payable
  * (Other) under the courier, and the spread Dr Inventory / Cr Carriage
- * Inward. Used by Record courier bill, and by a goods receipt that carries
+ * Inward. Used by Record carriage inward, and by a goods receipt that carries
  * its courier's charge, so the receipt and the charge post or fail together.
  */
 export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
