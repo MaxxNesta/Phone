@@ -79,8 +79,8 @@ export default async function CourierPage({ params }: { params: Promise<{ id: st
                   <td>{day(p.doc_date)}</td>
                   <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.doc_no}</Link>{p.reference && <div className="subline">{p.reference}</div>}</td>
                   <td>{p.account ?? "—"}</td>
-                  <td>{p.lines.map((l, i) => (
-                    <span key={i}>{i > 0 && " · "}<Link href={`/purchases/landed-costs/${l.lc_id}`} style={{ color: "var(--link)" }}>{l.lc_no}</Link> {l.cost_type} {money(l.amount)}</span>
+                  <td style={{ whiteSpace: "normal" }}>{p.lines.map((l, i) => (
+                    <div key={i}><Link href={`/purchases/landed-costs/${l.lc_id}`} style={{ color: "var(--link)" }}>{l.lc_no}</Link> {l.cost_type} · {money(l.amount)}</div>
                   ))}</td>
                   <td className="r">{money(p.total)}</td>
                   <td>{p.status === "POSTED" ? <span className="pill ok">Posted</span> : <span className="pill">Voided</span>}</td>
