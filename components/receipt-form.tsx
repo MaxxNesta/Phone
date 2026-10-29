@@ -4,6 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import Link from "next/link";
 import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { OffOrderConfirm } from "./off-order-confirm";
+import { CarriageSection } from "./carriage-section";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { serialsOnFile } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
@@ -385,6 +386,8 @@ export function ReceiptForm({
   const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
     && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
   const tracked = lines.filter((l) => named(l) && Number(l.qty) > 0);
+  // Why the courier charge, if switched on, is not ready to post.
+  const [carriageBlock, setCarriageBlock] = useState<string | null>(null);
   const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
   const supplier = suppliers.find((s) => s.id === partnerId) ?? null;
   const units = lines.reduce((s, l) => s + (l.itemId ? Number(l.qty) || 0 : 0), 0);
@@ -819,6 +822,9 @@ export function ReceiptForm({
         </div>
       </div>
 
+      <CarriageSection couriers={suppliers} base={base}
+        phones={tracked.reduce((s, l) => s + (Number(l.qty) || 0), 0)} onBlocked={setCarriageBlock} />
+
       {matchedPi && (
         <div className="hint" style={{ marginBottom: "0.75rem" }}>
           Unit cost comes from {matchedPi.doc_no} and is not editable here — the
@@ -901,12 +907,12 @@ export function ReceiptForm({
       </div>
 
       <div className="actions form-commit">
-        {serialShort.length > 0 && (
+        {(serialShort.length > 0 || carriageBlock) && (
           <span className="commit-hint" role="status">
-            Every unit needs its IMEI or serial to post
+            {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post" : carriageBlock}
           </span>
         )}
-        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0}
+        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0 || !!carriageBlock}
           onClick={(e) => {
             if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }
           }}>

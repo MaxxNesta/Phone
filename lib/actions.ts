@@ -15,6 +15,7 @@ import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLine
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can } from "./auth";
+import { courierBill } from "./courier-payables";
 import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
@@ -2704,7 +2705,7 @@ export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promi
 }
 
 export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("inventory.manage");
+  const user = await requirePermission("inventory.manage");
   let docId: string;
   let toastMsg = "Goods receipt posted";
 
@@ -2717,18 +2718,42 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
-    const result = await postOnce(co, attemptKey(fd), (tx) => postGoodsReceipt({
-      companyId: co,
-      ...fxFields(fd),
-      partnerId: str(fd, "partner_id"),
-      locationId: str(fd, "location_id"),
-      docDate: str(fd, "doc_date"),
-      receivedAt: dateTime(fd, "doc_date", "received_time"),
-      memo: str(fd, "memo") || null,
-      reference: str(fd, "reference") || null,
-      sourceDocumentId: str(fd, "source_document_id") || null,
-      lines,
-    }, tx));
+    // The courier's charge for bringing these goods, when the receiver knows
+    // it: booked to Carriage Inward under the courier and spread onto the
+    // phones in the same transaction as the receipt, so both post or neither.
+    const carriage = str(fd, "carriage_on") === "1" ? {
+      partnerId: str(fd, "carriage_partner_id"), amount: num(fd, "carriage_amount"),
+      method: str(fd, "carriage_method") === "VALUE" ? "VALUE" as const : "EQUAL" as const,
+      reference: str(fd, "carriage_reference") || null,
+    } : null;
+    if (carriage) {
+      if (!can(user, "cost.view")) return { error: "Your account cannot see stock costs, so it cannot add a courier charge to the phones." };
+      if (!carriage.partnerId) return { error: "Choose the courier the charge is owed to, or turn the courier charge off." };
+      if (!(carriage.amount > 0)) return { error: "Enter the courier's charge, or turn it off." };
+    }
+
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const gr = await postGoodsReceipt({
+        companyId: co,
+        ...fxFields(fd),
+        partnerId: str(fd, "partner_id"),
+        locationId: str(fd, "location_id"),
+        docDate: str(fd, "doc_date"),
+        receivedAt: dateTime(fd, "doc_date", "received_time"),
+        memo: str(fd, "memo") || null,
+        reference: str(fd, "reference") || null,
+        sourceDocumentId: str(fd, "source_document_id") || null,
+        lines,
+      }, tx);
+      if (carriage) {
+        await courierBill(tx, {
+          companyId: co, userId: user.id, partnerId: carriage.partnerId, docDate: str(fd, "doc_date"),
+          receiptIds: [gr.id], amount: carriage.amount, method: carriage.method,
+          reference: carriage.reference, notes: `Courier charge on ${gr.docNo}`,
+        });
+      }
+      return gr;
+    });
 
     docId = result.id;
     toastMsg = `Goods receipt ${result.docNo} posted`;

@@ -6,9 +6,8 @@ import { requirePermission } from "./auth";
 import { can } from "./auth-core";
 import { sql } from "./db";
 import { inTransaction } from "./posting";
-import * as L from "./landed-cost";
 import { assertMyBranch } from "./branch-scope";
-import { payCourier } from "./courier-payables";
+import { payCourier, courierBill } from "./courier-payables";
 
 type Result = { error?: string } | null;
 
@@ -56,24 +55,13 @@ export async function recordCourierBillAction(_prev: Result, fd: FormData): Prom
     if (!(amount > 0)) return { error: "Enter the amount of the bill." };
     const rows = await sql`select location_id from document where company_id = ${u.companyId} and id = any(${receiptIds})`;
     await assertMyBranch(...rows.map((r) => r.location_id as string | null));
-    const [courier] = await sql`select name from business_partner where id = ${partnerId} and company_id = ${u.companyId}`;
-    if (!courier) return { error: "That courier was not found." };
-    const actor = { companyId: u.companyId, userId: u.id };
-    const docDate = str(fd, "doc_date") || new Date().toISOString().slice(0, 10);
-    const reference = str(fd, "reference") || null;
-    const notes = str(fd, "memo") || null;
-    lcId = await inTransaction(undefined, async (tx) => {
-      const lc = await L.createLandedCost({ ...actor, docDate, receiptIds, shipmentRef: reference, carrierRef: courier.name, notes }, tx);
-      await L.saveLandedCost({
-        ...actor, id: lc.id, docDate, receiptIds, shipmentRef: reference, carrierRef: courier.name, notes,
-        charges: [{ costTypeId: str(fd, "cost_type_id"), partnerId, amount, method: (str(fd, "method") || "EQUAL") as L.Method,
-                    reference, description: notes }],
-      }, tx);
-      await L.acknowledgeExcluded({ ...actor, id: lc.id }, tx);
-      await L.calculateLandedCost({ ...actor, id: lc.id }, tx);
-      await L.postLandedCost({ ...actor, id: lc.id }, tx);
-      return lc.id;
-    });
+    lcId = (await inTransaction(undefined, (tx) => courierBill(tx, {
+      companyId: u.companyId, userId: u.id, partnerId, receiptIds, amount,
+      docDate: str(fd, "doc_date") || new Date().toISOString().slice(0, 10),
+      method: str(fd, "method") === "VALUE" ? "VALUE" : "EQUAL",
+      costTypeId: str(fd, "cost_type_id") || null,
+      reference: str(fd, "reference") || null, notes: str(fd, "memo") || null,
+    }))).id;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }

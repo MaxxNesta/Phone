@@ -7032,7 +7032,7 @@ button.pf2-link:focus-visible { outline: 2px solid var(--focus); outline-offset:
   content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
   background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.3); transition: transform .18s;
 }
-.pf2-toggle input:checked + .track { background: var(--ok); }
+.pf2-toggle input:checked + .track { background: var(--focus); }
 .pf2-toggle input:checked + .track::after { transform: translateX(16px); }
 .pf2-toggle input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .pf2-toggle .track, .pf2-toggle .track::after { transition: none; } }
@@ -8236,3 +8236,23 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .vtabs > a:hover:not(.on) { color: var(--ink); }
 .vtabs > a.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
 .pay-tabs { align-self: flex-start; margin-bottom: 4px; }
+
+/* The courier's charge on a receipt: one quiet line until switched on. */
+.card.carriage { padding: 0; }
+.carriage-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; }
+.carriage-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--t-md); }
+.carriage-title svg { color: var(--muted); }
+.carriage-sub { color: var(--muted); font-size: var(--t-sm); }
+.carriage-toggle { margin-left: auto; }
+.card.carriage.on .carriage-head { border-bottom: 1px solid var(--line); }
+.carriage-body { padding: 14px 16px 16px; display: grid; gap: 10px; }
+.carriage-body .doc-fields { row-gap: 14px; column-gap: 20px; }
+.carriage-body .field > label { display: flex; align-items: center; gap: 5px; font-weight: 500; color: var(--ink-soft); }
+.carriage-body .field > label > svg { color: var(--muted); }
+.carriage-body :is(input:not([type="checkbox"]), select) { border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  background-color: transparent; padding-left: 1px; padding-right: 1px; box-shadow: none; }
+.carriage-body select { padding-right: 22px; }
+.carriage-body :is(input, select):focus { outline: none; border-bottom-color: var(--focus); box-shadow: 0 1px 0 0 var(--focus); }
+.carriage-note { margin: 0; font-size: var(--t-sm); color: var(--ink-soft); }
+.carriage-note strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.carriage-posts { color: var(--muted); }

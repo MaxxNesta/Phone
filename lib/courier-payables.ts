@@ -10,7 +10,9 @@
  */
 
 import { sql } from "./db";
+import type { TransactionSql } from "postgres";
 import { inTransaction, postCashVoucher, postBankVoucher, round4 } from "./posting";
+import * as L from "./landed-cost";
 
 export type CourierBalance = {
   partner_id: string; partner_code: string; partner_name: string; phone: string | null;
@@ -165,4 +167,45 @@ export async function payCourier(input: PayCourierInput) {
     }
     return posted;
   });
+}
+
+export type CourierBillInput = {
+  companyId: string; userId: string | null; partnerId: string; docDate: string; receiptIds: string[];
+  amount: number; method?: "EQUAL" | "VALUE"; costTypeId?: string | null; reference?: string | null; notes?: string | null;
+};
+
+/**
+ * A courier's charge for goods already received, booked and spread in one
+ * go: a landed cost with that one charge, calculated and posted inside the
+ * caller's transaction. Posting writes Dr Carriage Inward / Cr Payable
+ * (Other) under the courier, and the spread Dr Inventory / Cr Carriage
+ * Inward. Used by Record courier bill, and by a goods receipt that carries
+ * its courier's charge, so the receipt and the charge post or fail together.
+ */
+export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
+  if (!(input.amount > 0)) throw new Error("Enter the courier's charge.");
+  if (!input.partnerId) throw new Error("Choose the courier the charge is owed to.");
+  const [courier] = await tx`select name from business_partner where id = ${input.partnerId} and company_id = ${input.companyId}`;
+  if (!courier) throw new Error("That courier was not found.");
+  let costTypeId = input.costTypeId || null;
+  if (!costTypeId) {
+    const [t] = await tx`
+      select id from landed_cost_type where company_id = ${input.companyId} and is_active
+       order by (code = 'CARRIAGE') desc, (code = 'LOCAL') desc, name limit 1`;
+    if (!t) throw new Error("Set up a landed cost type first (Settings → Purchasing → Landed cost types).");
+    costTypeId = t.id as string;
+  }
+  const actor = { companyId: input.companyId, userId: input.userId };
+  const head = { docDate: input.docDate, receiptIds: input.receiptIds, shipmentRef: input.reference ?? null,
+                 carrierRef: courier.name as string, notes: input.notes ?? null };
+  const lc = await L.createLandedCost({ ...actor, ...head }, tx);
+  await L.saveLandedCost({
+    ...actor, ...head, id: lc.id,
+    charges: [{ costTypeId, partnerId: input.partnerId, amount: input.amount, method: input.method ?? "EQUAL",
+                reference: input.reference ?? null, description: input.notes ?? null }],
+  }, tx);
+  await L.acknowledgeExcluded({ ...actor, id: lc.id }, tx);
+  await L.calculateLandedCost({ ...actor, id: lc.id }, tx);
+  await L.postLandedCost({ ...actor, id: lc.id }, tx);
+  return lc;
 }
