@@ -102,7 +102,10 @@ export function ReceiptForm({
   saveDraft,
   draft,
   order,
+  paidFrom,
 }: {
+  /** Cash and bank accounts a courier can be paid from on the spot. */
+  paidFrom?: { id: string; label: string }[];
   /** Receiving a purchase order: its lines arrive filled in, against it. */
   order?: OrderToReceive | null;
   /** Keeps a half-scanned receipt; nothing moves until it posts. */
@@ -822,7 +825,7 @@ export function ReceiptForm({
         </div>
       </div>
 
-      <CarriageSection couriers={suppliers} base={base}
+      <CarriageSection couriers={suppliers} base={base} paidFrom={paidFrom ?? []}
         phones={tracked.reduce((s, l) => s + (Number(l.qty) || 0), 0)} onBlocked={setCarriageBlock} />
 
       {matchedPi && (

@@ -172,6 +172,8 @@ export async function payCourier(input: PayCourierInput) {
 export type CourierBillInput = {
   companyId: string; userId: string | null; partnerId: string; docDate: string; receiptIds: string[];
   amount: number; method?: "EQUAL" | "VALUE"; costTypeId?: string | null; reference?: string | null; notes?: string | null;
+  /** Paid on the spot from this cash or bank account: nothing is owed, so no courier is needed. */
+  paidFromAccountId?: string | null;
 };
 
 /**
@@ -184,8 +186,10 @@ export type CourierBillInput = {
  */
 export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   if (!(input.amount > 0)) throw new Error("Enter the courier's charge.");
-  if (!input.partnerId) throw new Error("Choose the courier the charge is owed to.");
-  const [courier] = await tx`select name from business_partner where id = ${input.partnerId} and company_id = ${input.companyId}`;
+  const paid = input.paidFromAccountId || null;
+  if (!paid && !input.partnerId) throw new Error("Choose the courier the charge is owed to.");
+  const [courier] = input.partnerId
+    ? await tx`select name from business_partner where id = ${input.partnerId} and company_id = ${input.companyId}` : [{ name: null }];
   if (!courier) throw new Error("That courier was not found.");
   let costTypeId = input.costTypeId || null;
   if (!costTypeId) {
@@ -197,12 +201,43 @@ export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   }
   const actor = { companyId: input.companyId, userId: input.userId };
   const head = { docDate: input.docDate, receiptIds: input.receiptIds, shipmentRef: input.reference ?? null,
-                 carrierRef: courier.name as string, notes: input.notes ?? null };
+                 carrierRef: (courier.name as string | null) ?? null, notes: input.notes ?? null };
+
+  // Paid on the spot: the money leaves the till now, Dr Carriage Inward /
+  // Cr the till, and the landed cost spreads that line onto the phones, so
+  // nothing is owed and the courier's name is optional.
+  let sourceJournalLineId: string | null = null;
+  if (paid) {
+    const [money] = await tx`
+      select id, is_cash_account from account
+       where id = ${paid} and company_id = ${input.companyId} and (is_cash_account or is_bank_account)`;
+    if (!money) throw new Error("Choose the cash or bank account the courier was paid from.");
+    const [via] = await tx`
+      select account_id from system_account where company_id = ${input.companyId}
+         and role in ('CARRIAGE_INWARD', 'LANDED_COST_CLEARING') order by (role = 'CARRIAGE_INWARD') desc limit 1`;
+    if (!via) throw new Error("Set the Carriage Inward account first (Settings → Accounts).");
+    const [branch] = await tx`
+      select coalesce(l.parent_id, l.id) as id from document d join location l on l.id = d.location_id
+       where d.id = ${input.receiptIds[0]}`;
+    const voucher = {
+      companyId: input.companyId, docDate: input.docDate, locationId: branch?.id ?? null,
+      partnerId: input.partnerId || null, reference: input.reference ?? null,
+      memo: input.notes ?? "Courier charge, paid on delivery",
+      lines: [{ accountId: via.account_id as string, amount: input.amount, partnerId: input.partnerId || null },
+              { accountId: money.id as string, amount: -input.amount }],
+    };
+    const v = money.is_cash_account ? await postCashVoucher(voucher, tx) : await postBankVoucher(voucher, tx);
+    const [line] = await tx`
+      select jl.id from journal_line jl join document d on d.journal_entry_id = jl.journal_entry_id
+       where d.id = ${v.id} and jl.base_amount > 0`;
+    sourceJournalLineId = line.id as string;
+  }
+
   const lc = await L.createLandedCost({ ...actor, ...head }, tx);
   await L.saveLandedCost({
     ...actor, ...head, id: lc.id,
-    charges: [{ costTypeId, partnerId: input.partnerId, amount: input.amount, method: input.method ?? "EQUAL",
-                reference: input.reference ?? null, description: input.notes ?? null }],
+    charges: [{ costTypeId, partnerId: input.partnerId || null, amount: input.amount, method: input.method ?? "EQUAL",
+                sourceJournalLineId, reference: input.reference ?? null, description: input.notes ?? null }],
   }, tx);
   await L.acknowledgeExcluded({ ...actor, id: lc.id }, tx);
   await L.calculateLandedCost({ ...actor, id: lc.id }, tx);

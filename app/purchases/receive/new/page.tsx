@@ -8,6 +8,7 @@ import { RelatedDocumentsPanel } from "@/components/related-documents";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { ReceiptForm } from "@/components/receipt-form";
+import { moneyAccounts } from "@/lib/courier-payables";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 
@@ -51,6 +52,7 @@ export default async function NewGoodsReceipt({
     }
   }
   const categories = await allCategories(co.id);
+  const paidFrom = await moneyAccounts(co.id);
   const draftRow = draftId ? await getDocumentDraft(co.id, draftId) : null;
   const purchaseInvoices = await getOpenPurchaseInvoices(co.id);
 
@@ -135,6 +137,7 @@ export default async function NewGoodsReceipt({
         collisions={collisions}
         initialInvoiceId={match_invoice_id}
         fx={d.fx}
+        paidFrom={paidFrom.map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
         saveDraft={saveReceiptDraft}
         draft={draftRow?.doc_type === "GOODS_RECEIPT" ? {
           id: draftRow.id as string,

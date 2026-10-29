@@ -8328,3 +8328,5 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .stmt-bar-actions { display: inline-flex; align-items: center; gap: 8px; }
 .stmt-bar-actions .filters-clear { margin: 0; }
 @media (max-width: 760px) { .page-head .stmt-bar { margin-left: 0; width: 100%; justify-content: flex-start; } }
+
+.carriage-body .opt { margin-left: 4px; font-size: var(--t-xs); font-weight: 400; color: var(--muted); }

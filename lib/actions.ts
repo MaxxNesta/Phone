@@ -2725,10 +2725,12 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
       partnerId: str(fd, "carriage_partner_id"), amount: num(fd, "carriage_amount"),
       method: str(fd, "carriage_method") === "VALUE" ? "VALUE" as const : "EQUAL" as const,
       reference: str(fd, "carriage_reference") || null,
+      paidFromAccountId: str(fd, "carriage_paid") === "1" ? str(fd, "carriage_paid_from") || null : null,
     } : null;
     if (carriage) {
       if (!can(user, "cost.view")) return { error: "Your account cannot see stock costs, so it cannot add a courier charge to the phones." };
-      if (!carriage.partnerId) return { error: "Choose the courier the charge is owed to, or turn the courier charge off." };
+      if (str(fd, "carriage_paid") === "1" && !carriage.paidFromAccountId) return { error: "Choose the cash or bank account the courier was paid from." };
+      if (!carriage.partnerId && !carriage.paidFromAccountId) return { error: "Choose the courier the charge is owed to, or mark it paid now." };
       if (!(carriage.amount > 0)) return { error: "Enter the courier's charge, or turn it off." };
     }
 
@@ -2750,6 +2752,7 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
           companyId: co, userId: user.id, partnerId: carriage.partnerId, docDate: str(fd, "doc_date"),
           receiptIds: [gr.id], amount: carriage.amount, method: carriage.method,
           reference: carriage.reference, notes: `Courier charge on ${gr.docNo}`,
+          paidFromAccountId: carriage.paidFromAccountId,
         });
       }
       return gr;

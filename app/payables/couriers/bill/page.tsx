@@ -6,6 +6,7 @@ import { recordCourierBillAction } from "@/lib/courier-actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { HelpHint } from "@/components/help-hint";
 import { CourierBillForm } from "@/components/courier-bill-form";
+import { moneyAccounts } from "@/lib/courier-payables";
 
 export const metadata = { title: "Record courier bill" };
 
@@ -34,6 +35,7 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
         types={types.map((t) => ({ id: t.id, label: t.name, code: t.code, method: t.default_method }))}
         carriageAccount={label("CARRIAGE_INWARD")}
         payableAccount={label("OTHER_PAYABLE")}
+        paidFrom={(await moneyAccounts(user.companyId)).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
         initialPartnerId={partner}
         initialReceiptId={gr}
         today={new Date().toISOString().slice(0, 10)}
