@@ -1107,7 +1107,14 @@ export default async function DocumentPage({
                   <Link href={`/purchases/landed-costs?gr=${doc.id}`} className="btn ghost tiny">Landed costs ({landed.count})</Link>
                 )}
                 {can(user, "purchase.post") && (
-                  <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn tiny">Add landed cost</Link>
+                  <>
+                    {/* The usual case is a courier's charge arriving after the goods, so
+                        that is the one filled button; a full landed cost is the exception. */}
+                    <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn ghost tiny">Add landed cost</Link>
+                    <Link href={`/payables/couriers/bill?gr=${doc.id}`} className="btn tiny lc-gr-primary">
+                      <Truck size={14} aria-hidden="true" /> Record courier bill
+                    </Link>
+                  </>
                 )}
               </span>
             </div>

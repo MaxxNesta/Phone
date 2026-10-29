@@ -6156,7 +6156,12 @@ button.danger-solid:hover { opacity: 0.9; }
 .lc-gr dl { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); margin: 0; }
 .lc-gr dt { font-size: var(--t-xs); color: var(--muted); }
 .lc-gr dd { margin: 0; font-variant-numeric: tabular-nums; }
-.lc-gr-actions { display: flex; gap: var(--s2); }
+.lc-gr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+/* The one filled button on the receipt: the usual next step, a courier's bill. */
+.lc-gr-actions .btn.lc-gr-primary { display: inline-flex; align-items: center; gap: 6px; background: var(--focus); border-color: var(--focus);
+  color: #fff; font-weight: 600; }
+.lc-gr-actions .btn.lc-gr-primary:hover { background: color-mix(in srgb, var(--focus) 88%, #000); }
+.lc-gr-actions .btn.lc-gr-primary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* Settings rows that open to edit. */
 .lc-settings-list { display: flex; flex-direction: column; }
