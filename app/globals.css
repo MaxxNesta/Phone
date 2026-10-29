@@ -8284,3 +8284,47 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .fx-rate input { flex: 1 1 auto; min-width: 3.5rem; width: 0; min-height: 30px; height: 30px; text-align: right; font-variant-numeric: tabular-nums; }
 .fx-base { font-size: var(--t-sm); color: var(--muted); }
 .card.doc-info .fx-field .field > label, .card.doc-info .fx-rate-lbl { font-weight: 500; }
+
+/* An invoice line on a phone: a small card instead of a six-column row.
+   Item across the top with its menu and bin, then quantity and price side
+   by side, the discount, and the amount, each with its own label. */
+@media (max-width: 720px) {
+  .vlines, .vlines tbody { display: block; width: 100%; min-width: 0; }
+  .vlines thead { display: none; }
+  .vlines tbody tr { height: auto; }
+  .vlines tr.vline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px 12px;
+    padding: 12px 4px; border-top: 1px solid var(--line); }
+  .vlines tr.vline > td { display: block; padding: 0; border: 0; min-width: 0 !important; }
+  .vlines td.vc-item { grid-column: 1 / 3; grid-row: 1; }
+  .vlines td.vc-act { grid-column: 3; grid-row: 1; align-self: start; }
+  .vlines td.vc-qty { grid-column: 1; grid-row: 2; }
+  .vlines td.vc-price { grid-column: 2 / 4; grid-row: 2; }
+  .vlines td.vc-disc { grid-column: 1 / 4; grid-row: 3; }
+  .vlines td.vc-amt { grid-column: 1 / 4; grid-row: 4; display: flex; justify-content: space-between; align-items: baseline; }
+  .vlines td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px;
+    font-size: var(--t-xs); font-weight: 500; color: var(--muted); text-align: left; }
+  .vlines td.vc-amt::before { margin: 0; }
+  .vlines td.narrow input[aria-label="Quantity"], .vlines td.narrow input[aria-label="Unit price"],
+  .vlines .discrow input, .vlines td input { min-width: 0 !important; width: 100%; }
+  .vlines tr.vline-sub, .vlines tr.vline-sub > td { display: block; padding: 0 4px 10px; border: 0; }
+  .vline-sub .serialentry, .vimei-sum, .vimei, .vfree { margin-left: 0; padding-left: 0; width: 100%; max-width: none; }
+  .vimei-sum { padding-left: 10px; }
+  .vlines tr:not(.vline):not(.vline-sub) { display: block; }
+  .vlines tr:not(.vline):not(.vline-sub) > td { display: block; }
+}
+
+/* Financial statements: the period and branch sit on the title's line, at
+   the right under the search and profile, as compact pills. */
+.page-head .stmt-bar { order: 9; margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.stmt-ctl { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 4px 0 12px; border-radius: 999px;
+  background: var(--line-soft); cursor: pointer; }
+.stmt-ctl > span { font-size: var(--t-xs); font-weight: 500; color: var(--muted); white-space: nowrap; }
+.stmt-ctl :is(select, input) { height: 30px; min-height: 0; border: 0; background-color: transparent; box-shadow: none;
+  padding: 0 6px; font-size: var(--t-sm); color: var(--ink); border-radius: 999px; }
+.stmt-ctl select { max-width: 16rem; padding-right: 28px; background-position: right 8px center; }
+.stmt-ctl input[type="date"] { width: 8.6rem; }
+.stmt-ctl:focus-within { box-shadow: 0 0 0 2px var(--focus); }
+.stmt-ctl :is(select, input):focus { outline: none; box-shadow: none; }
+.stmt-bar-actions { display: inline-flex; align-items: center; gap: 8px; }
+.stmt-bar-actions .filters-clear { margin: 0; }
+@media (max-width: 760px) { .page-head .stmt-bar { margin-left: 0; width: 100%; justify-content: flex-start; } }

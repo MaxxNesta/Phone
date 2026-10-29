@@ -42,36 +42,33 @@ export default async function InventoryCogs({
           Where the two sides disagree the difference is shown as a
           difference. Nothing here is balanced by a plug.
         </HelpHint>
+        <form className="stmt-bar">
+          {branches.length > 1 && (
+            <label className="stmt-ctl" htmlFor="branch"><span>Branch</span>
+              <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+                <option value="">All branches (consolidated)</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+                ))}
+                {unassignedLines.lines > 0 && (
+                  <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
+                )}
+              </select>
+          </label>
+          )}
+          <label className="stmt-ctl" htmlFor="from"><span>From</span>
+            <input id="from" name="from" type="date" defaultValue={range.from} />
+          </label>
+          <label className="stmt-ctl" htmlFor="to"><span>To</span>
+            <input id="to" name="to" type="date" defaultValue={range.to} />
+          </label>
+          <div className="stmt-bar-actions">
+            <AutoApply />
+            <button type="submit" data-apply>Update</button>
+          </div>
+        </form>
       </div>
 
-      <form className="row" style={{ marginBottom: "1rem", alignItems: "flex-end" }}>
-        {branches.length > 1 && (
-          <div className="field">
-            <label htmlFor="branch">Branch</label>
-            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-              <option value="">All branches (consolidated)</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-              ))}
-              {unassignedLines.lines > 0 && (
-                <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
-              )}
-            </select>
-          </div>
-        )}
-        <div className="field">
-          <label htmlFor="from">From</label>
-          <input id="from" name="from" type="date" defaultValue={range.from} />
-        </div>
-        <div className="field">
-          <label htmlFor="to">To</label>
-          <input id="to" name="to" type="date" defaultValue={range.to} />
-        </div>
-        <div className="actions">
-          <AutoApply />
-          <button type="submit" data-apply>Update</button>
-        </div>
-      </form>
 
       {data.missing ? (
         <div className="empty">
@@ -299,9 +296,8 @@ export default async function InventoryCogs({
 function Tile({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
     <div className="kpi">
-      <div className="kpi-label">{label}</div>
+      <div className="kpi-label">{label} <HelpHint label={`About ${label.toLowerCase()}`}>{sub.charAt(0).toUpperCase() + sub.slice(1)}.</HelpHint></div>
       <div className="kpi-value">{value}</div>
-      <div className="kpi-note">{sub}</div>
     </div>
   );
 }

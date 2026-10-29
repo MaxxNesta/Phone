@@ -1321,7 +1321,7 @@ export function SalesVoucher({
 
                 return [
                   <tr key={l.key} className="vline">
-                    <td style={{ minWidth: 280 }}>
+                    <td className="vc-item" style={{ minWidth: 280 }}>
                       {l.orderLineId ? (
                         <span className="vprod" title="On the order — change it there">
                           {item?.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
@@ -1367,7 +1367,7 @@ export function SalesVoucher({
                         backTo="/sales/new"
                       />
                     </td>
-                    <td className="narrow">
+                    <td className="narrow vc-qty" data-label="Qty">
                       <input type="number" min="0" step="any" value={l.qty} aria-label="Quantity"
                         max={(l.sourceLineId || l.orderLineId) && billPart
                           ? l.sourceQty : undefined}
@@ -1384,7 +1384,7 @@ export function SalesVoucher({
                         </span>
                       )}
                     </td>
-                    <td className="narrow">
+                    <td className="narrow vc-price" data-label="Unit price">
                       <input type="number" min="0" step="any" value={l.unitPrice} aria-label="Unit price"
                         readOnly={l.agreedPrice !== null && l.agreedPrice !== undefined}
                         title={l.agreedPrice != null
@@ -1395,7 +1395,7 @@ export function SalesVoucher({
                           : undefined}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
                     </td>
-                    <td className="disccell">
+                    <td className="disccell vc-disc" data-label="Discount">
                       <div className="discrow">
                       <span className="unittoggle">
                         <button type="button"
@@ -1422,7 +1422,7 @@ export function SalesVoucher({
                       )}
                       </div>
                     </td>
-                    <td className="r vamount">
+                    <td className="r vamount vc-amt" data-label="Amount">
                       {fmt(amount(l))}
                       {discountOn(l) > 0 && (
                         <div className="subline">
@@ -1431,7 +1431,7 @@ export function SalesVoucher({
                         </div>
                       )}
                     </td>
-                    <td className="tight">
+                    <td className="tight vc-act">
                       {/* Everything a line can carry beyond the four figures —
                           the pack it is sold in, whose stock it is, units given
                           free — kept out of the row until it is wanted. */}

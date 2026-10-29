@@ -37,9 +37,40 @@ export default async function CashFlow({
         <h1>Cash flow statement</h1>
         <HelpHint label="What this statement shows">
           Direct method &mdash; actual cash in and out, by category, for the
-          period below. Movements between your own cash and bank accounts are
+          period chosen at the right. Movements between your own cash and bank accounts are
           excluded; they are not a real inflow or outflow.
         </HelpHint>
+        {/* The period and branch, on the title's own line at the right, so the
+            statement starts right under its name. */}
+        <form className="stmt-bar">
+          {indirect && <input type="hidden" name="method" value="indirect" />}
+          <label className="stmt-ctl" htmlFor="from"><span>From</span>
+            <input id="from" name="from" type="date" defaultValue={range.from} />
+          </label>
+          <label className="stmt-ctl" htmlFor="to"><span>To</span>
+            <input id="to" name="to" type="date" defaultValue={range.to} />
+          </label>
+          {/* Which branch's cash moved. The cash side of the entry decides it:
+              money leaving the Yangon till is Yangon's outflow whatever it was
+              spent on, and the other leg may carry a different branch or none. */}
+          {branches.length > 1 && (
+            <label className="stmt-ctl" htmlFor="branch"><span>Branch</span>
+              <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+                <option value="">All branches</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+                ))}
+                {unassignedLines.lines > 0 && (
+                  <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
+                )}
+              </select>
+          </label>
+          )}
+          <div className="stmt-bar-actions">
+            <AutoApply />
+            <button type="submit" data-apply>Update</button>
+          </div>
+        </form>
       </div>
 
       <div className="scopetabs" style={{ margin: "0 0 0.75rem" }} role="tablist" aria-label="Method">
@@ -52,38 +83,6 @@ export default async function CashFlow({
           : "Actual cash and bank movements, by what they were for."}
       </p>
 
-      <form className="row" style={{ marginBottom: "1rem", alignItems: "flex-end" }}>
-        {indirect && <input type="hidden" name="method" value="indirect" />}
-        <div className="field">
-          <label htmlFor="from">From</label>
-          <input id="from" name="from" type="date" defaultValue={range.from} />
-        </div>
-        <div className="field">
-          <label htmlFor="to">To</label>
-          <input id="to" name="to" type="date" defaultValue={range.to} />
-        </div>
-        {/* Which branch's cash moved. The cash side of the entry decides it:
-            money leaving the Yangon till is Yangon's outflow whatever it was
-            spent on, and the other leg may carry a different branch or none. */}
-        {branches.length > 1 && (
-          <div className="field">
-            <label htmlFor="branch">Branch</label>
-            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-              <option value="">All branches</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-              ))}
-              {unassignedLines.lines > 0 && (
-                <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
-              )}
-            </select>
-          </div>
-        )}
-        <div className="actions">
-          <AutoApply />
-          <button type="submit" data-apply>Update</button>
-        </div>
-      </form>
 
       {unassignedLines.lines > 0 && branchId === null && (
         <p className="hint" style={{ margin: "0 0 1rem" }}>

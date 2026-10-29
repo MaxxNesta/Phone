@@ -691,7 +691,7 @@
   padding: 0.85rem 1rem; border-radius: 10px;
   background: color-mix(in srgb, var(--erp-fg-muted) 7%, transparent);
 }
-.stmt-summary-label { display: block; color: var(--erp-fg-muted); font-size: var(--t-md); }
+.stmt-summary-label { display: flex; align-items: center; gap: 4px; color: var(--erp-fg-muted); font-size: var(--t-md); }
 .stmt-summary-value {
   display: block; margin: 0.15rem 0;
   font-size: var(--t-2xl); font-weight: 700; letter-spacing: var(--track-tight);

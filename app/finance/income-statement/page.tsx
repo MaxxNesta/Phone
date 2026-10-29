@@ -24,39 +24,38 @@ export default async function IncomeStatement({
         <h1>Income statement</h1>
         <HelpHint label="What this statement shows">
           Revenue less cost of goods sold less expenses, read straight from
-          the ledger for the period below. Pick a branch to see that branch on
+          the ledger for the period chosen at the right. Pick a branch to see that branch on
           its own, or leave it on all branches for the whole company.
         </HelpHint>
+        {/* The period and branch, on the title's own line at the right, so the
+            statement starts right under its name. */}
+        <form className="stmt-bar">
+          {branches.length > 1 && (
+            <label className="stmt-ctl" htmlFor="branch"><span>Branch</span>
+              <select id="branch" name="branch" defaultValue={branchId ?? ""}>
+                <option value="">All branches (consolidated)</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
+                ))}
+                {unassignedLines.lines > 0 && (
+                  <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
+                )}
+              </select>
+          </label>
+          )}
+          <label className="stmt-ctl" htmlFor="from"><span>From</span>
+            <input id="from" name="from" type="date" defaultValue={range.from} />
+          </label>
+          <label className="stmt-ctl" htmlFor="to"><span>To</span>
+            <input id="to" name="to" type="date" defaultValue={range.to} />
+          </label>
+          <div className="stmt-bar-actions">
+            <AutoApply />
+            <button type="submit" data-apply>Update</button>
+          </div>
+        </form>
       </div>
 
-      <form className="row" style={{ marginBottom: "1rem", alignItems: "flex-end" }}>
-        {branches.length > 1 && (
-          <div className="field">
-            <label htmlFor="branch">Branch</label>
-            <select id="branch" name="branch" defaultValue={branchId ?? ""}>
-              <option value="">All branches (consolidated)</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
-              ))}
-              {unassignedLines.lines > 0 && (
-                <option value={UNASSIGNED_BRANCH}>— No branch ({unassignedLines.lines} lines) —</option>
-              )}
-            </select>
-          </div>
-        )}
-        <div className="field">
-          <label htmlFor="from">From</label>
-          <input id="from" name="from" type="date" defaultValue={range.from} />
-        </div>
-        <div className="field">
-          <label htmlFor="to">To</label>
-          <input id="to" name="to" type="date" defaultValue={range.to} />
-        </div>
-        <div className="actions">
-          <AutoApply />
-          <button type="submit" data-apply>Update</button>
-        </div>
-      </form>
 
       {unassignedLines.lines > 0 && branchId === null && (
         <p className="hint" style={{ margin: "0 0 1rem" }}>

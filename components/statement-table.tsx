@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { HelpHint } from "./help-hint";
 import { ChevronRight, Download, Printer } from "lucide-react";
 import type { UrlObject } from "url";
 import { money } from "@/lib/format";
@@ -243,9 +244,11 @@ export function StatementTable({
             : "";
           return (
             <div key={s.label} className={`stmt-summary${verdict}`}>
-              <span className="stmt-summary-label">{s.label}</span>
+              <span className="stmt-summary-label">
+                {s.label}
+                {s.note && <HelpHint label={`About ${s.label.toLowerCase()}`}>{s.note.charAt(0).toUpperCase() + s.note.slice(1)}.</HelpHint>}
+              </span>
               <strong className="stmt-summary-value">{currency} {money(s.value)}</strong>
-              <span className="stmt-summary-note">{s.note}</span>
             </div>
           );
         })}
