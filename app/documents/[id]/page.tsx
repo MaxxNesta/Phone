@@ -255,6 +255,11 @@ export default async function DocumentPage({
   const isGr = doc.doc_type === "GOODS_RECEIPT" && doc.status === "POSTED";
   // What freight and duty added to this receipt's phones, for those who see cost.
   const landed = isGr && can(user, "cost.view") ? await receiptLandedSummary(user.companyId, doc.id) : null;
+  // The full landed-cost editor only earns its button when the company uses
+  // more than Carriage Inward; otherwise Record carriage inward covers it.
+  const [{ others }] = landed ? await sql`
+    select count(*)::int as others from landed_cost_type
+     where company_id = ${user.companyId} and is_active and code <> 'CARRIAGE'` : [{ others: 0 }];
   const isPi = doc.doc_type === "PURCHASE_INVOICE" && doc.status === "POSTED";
   // The sales mirror: a delivery moves the goods and a sales invoice bills
   // them, exactly as a receipt and a purchase invoice do. Same two questions,
@@ -1110,7 +1115,9 @@ export default async function DocumentPage({
                   <>
                     {/* The usual case is a courier's charge arriving after the goods, so
                         that is the one filled button; a full landed cost is the exception. */}
-                    <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn ghost tiny">Add landed cost</Link>
+                    {others > 0 && (
+                      <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn ghost tiny">Add landed cost</Link>
+                    )}
                     <Link href={`/payables/couriers/bill?gr=${doc.id}`} className="btn tiny lc-gr-primary">
                       <Truck size={14} aria-hidden="true" /> Record carriage inward
                     </Link>
