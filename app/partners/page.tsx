@@ -73,6 +73,7 @@ export default async function Partners({
         status: p.is_active ? "active" : "inactive",
         category: p.category_id ?? "none",
         credit: creditKind(p),
+        allowed: creditKind(p) === "NONE" ? "no" : "yes",
         region: p.region ?? "",
         township: p.township ?? "",
         price_level: p.price_level_id ?? "default",
@@ -87,6 +88,7 @@ export default async function Partners({
         // Closest to the limit first when sorted descending; unlimited last.
         credit: p.credit_limit === null ? Number.MAX_SAFE_INTEGER : Number(p.available ?? p.credit_limit),
         status: p.is_active ? 1 : 0,
+        allowed: creditKind(p) === "NONE" ? 0 : 1,
       },
       node: (
         <CustomerRow partner={p} deactivateAction={deactivatePartner}
@@ -128,7 +130,9 @@ export default async function Partners({
                   { key: "category", label: t("customerCategory"), allLabel: t("allGroups"),
                     options: [...categories.map((x) => ({ value: x.id, label: x.name })),
                               { value: "none", label: t("notCategorised") }] },
-                  { key: "credit", label: cp("creditStatus"), allLabel: cp("allCredit"),
+                  { key: "allowed", label: t("creditAllowed"), allLabel: t("allCreditAllowed"),
+                    options: [{ value: "yes", label: t("yes") }, { value: "no", label: t("no") }] },
+                  { key: "credit", label: cp("creditStatus"), allLabel: cp("allCredit"), more: true,
                     options: [{ value: "LIMIT", label: cp("withinLimit") }, { value: "OVER", label: cp("overLimit") },
                               { value: "NONE", label: cp("noCredit") }, { value: "UNLIMITED", label: cp("unlimited") }] },
                   { key: "region", label: t("region"), allLabel: cp("allRegions"), more: true,
@@ -146,6 +150,7 @@ export default async function Partners({
                   { key: "company", label: cp("company"), sortable: true },
                   { key: "location", label: cp("location"), sortable: true },
                   { key: "price_level", label: t("priceLevel"), sortable: true },
+                  { key: "allowed", label: t("creditAllowed"), sortable: true },
                   { key: "outstanding", label: t("outstanding"), sortable: true, align: "r" },
                   { key: "credit", label: cp("credit"), sortable: true, align: "r" },
                   { key: "status", label: c("status"), sortable: true },

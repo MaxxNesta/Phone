@@ -561,7 +561,13 @@
     "contactPerson": "Contact person",
     "email": "Email",
     "notes": "Notes",
-    "allGroups": "All groups"
+    "allGroups": "All groups",
+    "creditAllowed": "Credit allowed",
+    "yes": "Yes",
+    "no": "No",
+    "allCreditAllowed": "Credit: any",
+    "creditAllowedYesHint": "Sells on credit by the terms below. Leave the limit blank for no ceiling.",
+    "creditAllowedNoHint": "Cash only: every sale is paid when it is made."
   },
   "partnerDetail": {
     "title": "Partner",

@@ -1,4 +1,5 @@
 import { getCompany } from "@/lib/queries";
+import { CreditFields } from "@/components/credit-fields";
 import { createPartner } from "@/lib/actions";
 import { SimpleForm } from "@/components/simple-form";
 import { HelpHint } from "@/components/help-hint";
@@ -94,11 +95,6 @@ export default async function NewPartner() {
                 <span className="hint">{t("currencyHint")}</span>
               </div>
               <div className="field">
-                <label htmlFor="payment_terms_days">{t("paymentTerms")}</label>
-                <input id="payment_terms_days" name="payment_terms_days" type="number" min="0" defaultValue={30} />
-                <span className="hint">{t("paymentTermsHint")}</span>
-              </div>
-              <div className="field">
                 <label htmlFor="price_level_id">{t("priceLevel")}</label>
                 <select id="price_level_id" name="price_level_id" defaultValue="">
                   <option value="">{t("default")}</option>
@@ -142,11 +138,7 @@ export default async function NewPartner() {
                     : t("supplierCatHint")}
                 </span>
               </div>
-              <div className="field">
-                <label htmlFor="credit_limit">{t("creditLimit")}</label>
-                <input id="credit_limit" name="credit_limit" type="number" min="0" step="any" />
-                <span className="hint">{t("creditLimitHint")}</span>
-              </div>
+              <CreditFields defaultLimit={null} defaultTerms={30} limitHint={t("creditLimitHint")} />
               {/* Region groups for reporting; township stays the address
                   line it has always been. Two different jobs, which is why
                   one is a fixed list and the other is free text. */}

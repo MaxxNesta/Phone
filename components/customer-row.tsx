@@ -32,6 +32,7 @@ export function CustomerRow({ partner, deactivateAction, activateAction, deleteA
   const cs = creditState(partner);
   const dash = <span className="muted">—</span>;
   const terms = Number(partner.payment_terms_days) === 0 ? t("noCreditAllowed") : t("days", { n: partner.payment_terms_days });
+  const allowed = cs.kind !== "NONE";
 
   return (
     <tr
@@ -56,13 +57,14 @@ export function CustomerRow({ partner, deactivateAction, activateAction, deleteA
         <div className="subline clamp1">{partner.region ?? "—"}</div>
       </td>
       <td>{partner.price_level_name ?? <span className="muted">{t("default")}</span>}</td>
+      <td>{allowed ? t("yes") : <span className="muted">{t("no")}</span>}</td>
       <td className="r">
         <div>{Number(partner.outstanding) ? money(partner.outstanding) : "0"}</div>
-        <div className="subline">{terms}</div>
+        {allowed && <div className="subline">{terms}</div>}
       </td>
       <td className="r">
         {cs.kind === "UNLIMITED" ? <span className="muted">{cp("unlimited")}</span>
-          : cs.kind === "NONE" ? <span className="muted">{cp("noCredit")}</span>
+          : cs.kind === "NONE" ? dash
           : (
             <>
               <div>{money(cs.limit)}</div>

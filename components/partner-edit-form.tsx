@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import { REGION_GROUPS } from "@/lib/regions";
 import { useTranslations } from "next-intl";
+import { CreditFields } from "./credit-fields";
 
 export type Partner = {
   id: string; code: string; name: string; name_my: string | null; company_name: string | null;
@@ -109,10 +110,6 @@ export function PartnerEditForm({
           <input name="phone" type="text" defaultValue={partner.phone ?? ""} />
         </div>
         <div className="field">
-          <label>{t("paymentTerms")}</label>
-          <input name="payment_terms_days" type="number" min="0" defaultValue={partner.payment_terms_days} />
-        </div>
-        <div className="field">
           <label>{t("currency")}</label>
           <input name="currency" list="currency-codes" maxLength={3} placeholder="MMK"
             defaultValue={partner.currency ?? ""} style={{ textTransform: "uppercase" }} />
@@ -173,11 +170,8 @@ export function PartnerEditForm({
             <span className="hint">{t("supplierCatShort")}</span>
           </div>
         )}
-        <div className="field">
-          <label>{t("creditLimit")}</label>
-          <input name="credit_limit" type="number" min="0" defaultValue={partner.credit_limit ?? ""} />
-          <span className="hint">{t("creditLimitRowHint")}</span>
-        </div>
+        <CreditFields defaultLimit={partner.credit_limit} defaultTerms={Number(partner.payment_terms_days)}
+          limitHint={t("creditLimitRowHint")} />
       </div>
       <div className="field" style={{ marginTop: "0.4rem" }}>
         <label>{t("notes")}</label>
