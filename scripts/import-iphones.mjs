@@ -38,14 +38,114 @@ const LIST = [
   ["IPC008", "IPhone 16 Pro (128GB) CH/A - Desert Titanium"],
   ["IPC009", "IPhone 16 Pro (128GB) CH/A - Natural Titanium"],
   ["IPC010", "IPhone 17 (256GB) CH/A - Black"],
+  ["IPC011", "IPhone 17 (256GB) CH/A - White/Silver"],
+  ["IPC012", "IPhone 17 (256GB) CH/A - Blue"],
+  ["IPC013", "IPhone 17 (256GB) CH/A - Lavender"],
+  ["IPC014", "IPhone 17 (256GB) CH/A - Green"],
+  ["IPC016", "IPhone 17 Pro (256GB) CH/A - Silver"],
+  ["IPC017", "IPhone 17 Pro (256GB) CH/A - Orange"],
+  ["IPC018", "IPhone 17 Pro Max (256GB) CH/A - White/Silver"],
+  ["IPC019", "IPhone 17 Pro Max (256GB) CH/A - Orange"],
+  ["IPC020", "IPhone 17 Pro (512GB) CH/A - Silver"],
+  ["IPC021", "IPhone 17 Pro (512GB) CH/A - Orange"],
+  ["IPC022", "IPhone 17 Pro Max (512GB) CH/A - Silver"],
+  ["IPC023", "IPhone 16 (128GB) CH/A - Blue"],
+  ["IPC024", "IPhone 16 (128GB) CH/A - Black"],
+  ["IPC025", "IPhone 16 (128GB) CH/A - White"],
+  ["IPC026", "IPhone 17 Pro Max (512GB) CH/A - Orange"],
+  ["IPC027", "IPhone 17 Pro Max (1TB) CH/A - Silver"],
+  ["IPC028", "IPhone 17 Pro Max (1TB) CH/A - Orange"],
+  ["IPC029", "IPhone 16 Plus (128GB) CH/A - Blue"],
+  ["IPC030", "IPhone 16 Plus (128GB) CH/A - White"],
+  ["IPC031", "IPhone 16 Plus (128GB) CH/A - Green"],
+  ["IPC032", "IPhone 17 Pro Max (256GB) CH/A - blue"],
+  ["IPC033", "IPhone 17 Pro Max (512GB) CH/A - blue"],
+  ["IPC034", "IPhone 16 Pro Max (256GB) CH/A - black"],
+  ["IPC035", "IPhone 16 Pro Max (256GB) CH/A - desert"],
+  ["IPC036", "IPhone 16 Pro Max (256GB) CH/A - natural"],
+  ["IPC037", "IPhone 16 Pro Max (256GB) CH/A - white"],
+  ["IPC038", "IPhone 16 Pro (128GB) CH/A - White"],
+  ["IPC039", "IPhone 17 Air (256GB) CH/A - Blue"],
+  ["IPC040", "IPhone 17 Air (256GB) CH/A - Gold"],
+  ["IPC041", "IPhone 17 Air (256GB) CH/A - White"],
+  ["IPC042", "IPhone 17 Air (256GB) CH/A - Black"],
+  ["IPC043", "IPhone 14 (128GB) CH/A - Black"],
+  ["IPC044", "iPhone 16 plus (128GB) CH/A pink"],
+  ["IPC045", "IPhone 16 Plus (128GB) CH/A black"],
+  ["IPC046", "iPhone 16 Plus (256GB) CH/A green"],
+  ["IPC047", "iPhone 13 (128GB) CH/A black"],
+  ["IPC111", "IPhone 17 Pro Max (512GB)  CH/A Orange ( Activated)"],
+  ["IPC112", "IPhone 17 (256GB) CH/A Lanvander ( Activated)"],
+  ["IPC113", "IPhone 17 Pro Max (512GB) CH/A Silver ( Activated)"],
+  ["IPC114", "IPhone 17 Pro Max (256GB) CH/A Silver (Activated)"],
+  ["IPC115", "IPhone 17 Pro Max (256GB) CH/A Blue (Activated)"],
+  ["IPC116", "IPhone 17 pro max (256GB) CH/A Orange (activated)"],
+  ["IPC117", "iPhone 17 (256GB) CH/A Activate White"],
+  ["IPC118", "iPhone 17 (256GB) CH/A Activate Black"],
+  ["IPC119", "iPhone 17 Pro (256GB) CH/A Actiivate Silver"],
+  ["IPC120", "IPhone 16 (128GB) CH/A Blue (Activated)"],
+  ["IPC121", "IPhone 16 (128GB) CH/A Green (Activated)"],
+  ["IPC122", "IPhone 16 (128GB) CH/A White (Activated)"],
+  ["IPC123", "IPhone 16 (128GB) CH/A Pink (Activated)"],
+  ["IPC124", "IPhone 16 (128GB) CH/A Black (Activated)"],
+  ["IPC125", "iPhone 17 Pro (256GB) CH/A Orange ( Activated)"],
+  ["IPC126", "IPhone 18 Pro (256GB) CH/A - Black"],
+  ["IPC127", "IPhone 18 Pro (256GB) CH/A - White"],
+  ["IPC128", "IPhone 18 Pro(256GB) CH/A - Burgundey"],
+  ["IPC129", "IPhone 18 Pro (512GB) CH/A - Black"],
+  ["IPC130", "IPhone 18 Pro (512GB) CH/A - White"],
+  ["IPC131", "Iphone 18 Pro (512GB) CH/A - Burgundy"],
+  ["IPC132", "IPhone 18 Pro (1TB) CH/A - Burgundy"],
+  ["IPC133", "IPhone 18 Pro Max (256GB) CH/A - Black"],
+  ["IPC134", "IPhone 18 Pro Max (256GB) CH/A - White"],
+  ["IPC135", "IPhone 18 Pro Max (256GB) CH/A - Burgundy"],
+  ["IPC136", "IPhone 18 Pro Max (512GB) CH/A - Black"],
+  ["IPC137", "IPhone 18 Pro Max (512GB) CH/A - White"],
+  ["IPC138", "IPhone 18 Pro Max (512GB) CH/A - Glacier"],
+  ["IPC139", "IPhone 18 Pro Max (512GB) CH/A - Burgundy"],
+  ["IPC140", "IPhone 18 Pro Max (1TB) CH/A - Black"],
+  ["IPC141", "IPhone 18 Pro Max (1TB) CH/A - White"],
+  ["IPC142", "IPhone 18 Pro Max (1TB) CH/A - Glacier"],
+  ["IPC143", "IPhone 18 Pro Max (1TB) CH/A - Burgundy"],
+  ["IPC144", "IPhone 18 Pro Max (512GB) CH/A - Burgundy (Activated)"],
+  ["IPC145", "IPhone 18 Pro Max (256GB) CH/A - Burgundy (Activated)"],
+  ["IPC146", "IPhone 18 Pro Max (256GB) CH/A - Glacier"],
+  ["IPC147", "IPhone 18 Pro Max (1TB) ZA/A - Burgundy"],
+  ["IPC148", "IPhone 18 Pro Max (512) ZA/A - Burgundy"],
+  ["IPC149", "IPhone 18 Pro Max (256) ZA/A - Burgundy"],
+  ["IPC47", "IPhone 16 e (128) CH/A Black"],
+  ["IPC48", "IPhone 16 e (128) CH/A White"],
+  ["IPL001", "iPhone 17 Air (256GB) LL/A - blue"],
+  ["IPQ001", "IPhone 17 Pro (256GB) QN/A - Silver"],
+  ["IPX001", "IPhone 17 Pro Max (256GB) X/A - Silver"],
+  ["IPZ001", "IPhone 17 (256GB) ZA/A - Silver/White"],
+  ["IPZ002", "IPhone 17 (256GB) ZA/A - Green"],
+  ["IPZ003", "IPhone 17 (256GB) ZA/A - Black"],
+  ["IPZ004", "IPhone 17 Pro (256GB) ZA/A - Silver"],
+  ["IPZ005", "IPhone 17 Pro (256GB) ZA/A - Orange"],
+  ["IPZ006", "IPhone 17 Pro Max (256GB) ZA/A - Orange"],
+  ["IPZ007", "IPhone 17 Pro Max (256GB) ZA/A - Silver"],
+  ["IPZ008", "IPhone 17 Pro Max (512GB) ZA/A - Orange"],
+  ["IPZ009", "IPhone 17 Pro Max (512GB) ZA/A - Silver"],
+  ["IPZ010", "IPhone 17 Pro Max (256GB) ZA/A - Blue"],
+  ["IPZ011", "IPhone 17 Pro Max (256GB) ZP/A - Orange"],
 ];
 
-/** "IPhone 16 PRO(128GB) CH/A - Silver/White" → model, storage, region, colour. */
+// The shop's spellings that mean a colour already on the list.
+const COLOUR = { "lanvander": "Lavender", "burgundey": "Burgundy", "white/silver": "Silver/White" };
+
+/** "IPhone 16 PRO(128GB) CH/A - Silver/White" → model, storage, region, colour, activated. */
 const parse = (name) => {
-  const m = name.match(/^(.*?)\s*\(([^)]+)\)\s*(\S+)\s*-\s*(.+)$/);
+  // "(Activated)", "Activate", "Actiivate" anywhere in the name: the Activated value.
+  const act = /\(?\s*\bacti+vated?\b\s*\)?/i;
+  const activated = act.test(name);
+  // The dash before the colour is optional: "CH/A pink" reads like "CH/A - Pink".
+  const m = name.replace(act, " ").match(/^(.*?)\s*\(([^)]+)\)\s*(\S+)\s*(?:-\s*)?(.+?)\s*$/);
   if (!m) throw new Error(`Cannot read "${name}"`);
-  const model = m[1].trim().replace(/^iphone/i, "iPhone").replace(/\bpro\b/i, "Pro");
-  return { model, storage: m[2].trim(), region: m[3].trim(), colour: m[4].trim() };
+  const model = m[1].trim().replace(/^iphone/i, "iPhone").replace(/(\d)\s+e$/i, "$1e")
+    .replace(/\b(pro|max|plus|air)\b/gi, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+  const colour = m[4].trim();
+  return { model, storage: m[2].trim(), region: m[3].trim(), colour: COLOUR[colour.toLowerCase()] ?? colour, activated };
 };
 
 try {
@@ -65,8 +165,11 @@ try {
   const region = await attr("^(region|reg)$");
   const colour = await attr("^(colou?r|col)$");
   if (!storage || !region || !colour) throw new Error("Storage, Region and Color attributes are needed.");
-  // Activated or standard (0153): every model declares it, every variant here is standard.
+  // Activated or standard (0153): every model declares it; a variant is Activated when its name says so.
   const [activation] = await sql`select id from variant_attribute where company_id = ${co.id} and code = 'ACT'`;
+  const [activatedOption] = activation
+    ? await sql`select id from variant_option where attribute_id = ${activation.id} and code = 'ACTIVATED'` : [];
+  if (LIST.some(([, n]) => parse(n).activated) && !activatedOption) throw new Error("No Activated value to give activated phones.");
   console.log(`  category ${grp.name} · unit ${uom.code} · ${storage.name} + ${region.name} + ${colour.name}\n`);
 
   const options = new Map();
@@ -81,7 +184,7 @@ try {
                        where attribute_id = ${a.id} and is_active
                          and physical_value = fn_variant_physical(${a.id}, ${value})`;
     } else if (a === region) {
-      // CH/A finds "CH/A – China".
+      // CH/A finds "CH/A", and the older "CH/A – China".
       [o] = await sql`select id, name, physical_value from variant_option
                        where attribute_id = ${a.id} and is_active
                          and lower(regexp_replace(name, '\\s+[–—-]\\s+.*$', '')) = ${value.toLowerCase()}`;
@@ -97,7 +200,7 @@ try {
         let code = base;
         for (let n = 2; taken.has(code); n++) code = `${base}-${n}`;
         [o] = await sql`insert into variant_option (company_id, attribute_id, code, name, sort_order)
-          values (${co.id}, ${a.id}, ${code}, ${value},
+          values (${co.id}, ${a.id}, ${code}, ${a === storage ? value.replace(/(\d)\s*(GB|TB)$/i, "$1 $2") : value.replace(/\b\w/g, (c) => c.toUpperCase())},
                   coalesce((select max(sort_order) + 1 from variant_option where attribute_id = ${a.id}), 0))
           returning id, name, physical_value`;
       } else {
@@ -115,7 +218,7 @@ try {
   const rows = [];
   for (const [code, name] of LIST) {
     const p = parse(name);
-    rows.push({ code, name, model: p.model, storage: await option(storage, p.storage),
+    rows.push({ code, name, model: p.model, activated: p.activated, storage: await option(storage, p.storage),
                 region: await option(region, p.region), colour: await option(colour, p.colour) });
   }
 
@@ -148,12 +251,12 @@ try {
     }
     const seen = new Map();
     for (const r of list) {
-      const key = `${r.storage.physical_value}|${r.region.physical_value}|${r.colour.physical_value}`;
+      const key = `${r.storage.physical_value}|${r.region.physical_value}|${r.colour.physical_value}|${r.activated}`;
       const twinOf = seen.get(key);
       if (!twinOf) seen.set(key, r.code);
       const [exists] = await sql`select name from item where company_id = ${co.id} and code = ${r.code}`;
       if (exists) { skipped++; console.log(`    = ${r.code}  already there: ${exists.name}`); continue; }
-      console.log(`    + ${r.code}  ${r.name}${twinOf ? `   (same configuration as ${twinOf}, kept separate)` : ""}`);
+      console.log(`    + ${r.code}  ${r.name}${r.activated ? "   [Activated]" : ""}${twinOf ? `   (same configuration as ${twinOf}, kept separate)` : ""}`);
       if (!apply) continue;
       const [v] = await sql`insert into item (company_id, item_group_id, brand_id, parent_item_id, serial, code_is_manual,
                               name, name_is_custom, base_uom_id, is_stocked, identity, valuation_method,
@@ -162,7 +265,8 @@ try {
                 'IMEI', 'FIFO', ${twinOf ? owner?.id ?? null : null}, ${twinOf ? new Date() : null})
         returning id`;
       await sql`insert into item_variant_option ${sql([
-        { item_id: v.id, option_id: r.storage.id }, { item_id: v.id, option_id: r.region.id }, { item_id: v.id, option_id: r.colour.id }])}`;
+        { item_id: v.id, option_id: r.storage.id }, { item_id: v.id, option_id: r.region.id }, { item_id: v.id, option_id: r.colour.id },
+        ...(r.activated ? [{ item_id: v.id, option_id: activatedOption.id }] : [])])}`;
       made++;
     }
   }
