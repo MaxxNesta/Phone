@@ -193,7 +193,7 @@ export function ItemPicker({
             {(() => {
               const v = asVariant(selected.variant) ?? [];
               return (
-                <strong className="vname">{selected.model && v.length ? selected.model : selected.name}
+                <strong className="vname" title={selected.model && v.length ? [selected.model, ...v.map((x) => x.o)].join(" · ") : selected.name}>{selected.model && v.length ? selected.model : selected.name}
                   {selected.model && v.length > 0 && <span className="vopts-in"> {v.map((x) => x.o).join(" · ")}</span>}</strong>
               );
             })()}

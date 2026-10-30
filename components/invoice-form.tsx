@@ -866,7 +866,7 @@ export function InvoiceForm({
                 return (
                   <tr key={l.key}>
                     <td className="vc-no">{i + 1}</td>
-                    <td style={{ minWidth: 240 }}>
+                    <td className="vc-item">
                       {/* An order line's item is not this voucher's to swap:
                           changing what is being bought starts at the order. */}
                       {l.orderLineId ? (

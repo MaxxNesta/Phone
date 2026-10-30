@@ -363,7 +363,7 @@ export function OrderForm({
                 return (
                   <tr key={l.key}>
                     <td className="vc-no">{i + 1}</td>
-                    <td style={{ minWidth: 240 }}>
+                    <td className="vc-item">
                       <ItemPicker
                         mode={kind}
                         items={items}

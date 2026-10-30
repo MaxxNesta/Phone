@@ -662,19 +662,21 @@ export function ReceiptForm({
                   <Fragment key={l.key}>
                     <tr className={imeiLine?.key === l.key ? "gr-current" : undefined}>
                       <td className="vc-no">{idx + 1}</td>
-                      <td style={{ minWidth: 240 }}>
+                      <td className="vc-item">
                         {item && !picking ? (
                           <span className="vprod">
                             <span>
                               {(() => {
                                 const v = asVariant(item.variant) ?? [];
                                 return (
-                                  <span className="vname">{item.model && v.length ? item.model : item.name}
-                                    {item.model && v.length > 0 && <span className="vopts-in"> {v.map((x) => x.o).join(" · ")}</span>}
+                                  <span className="vname-row">
+                                    <span className="vname" title={item.model && v.length ? [item.model, ...v.map((x) => x.o)].join(" · ") : item.name}>{item.model && v.length ? item.model : item.name}
+                                      {item.model && v.length > 0 && <span className="vopts-in"> {v.map((x) => x.o).join(" · ")}</span>}</span>
                                     <Link href={`/items/${item.id}`} target="_blank" rel="noopener noreferrer" className="vopen"
                                       title={`Open ${item.code} in a new tab`} aria-label={`Open item ${item.code} in a new tab`}>
                                       <ExternalLink size={13} aria-hidden="true" />
-                                    </Link></span>
+                                    </Link>
+                                  </span>
                                 );
                               })()}
                               <span className="vcode">{item.code}</span>

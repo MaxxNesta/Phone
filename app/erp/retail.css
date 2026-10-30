@@ -42,11 +42,10 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 }
 .stat-icon {
   grid-row: 1 / 4; width: 42px; height: 42px; border-radius: 11px;
-  display: grid; place-items: center; background: var(--brand-weak); color: var(--brand);
+  display: grid; place-items: center;
+  /* One quiet grey for every card; the figure beside it carries the meaning. */
+  background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink-soft);
 }
-.stat-icon.violet { background: color-mix(in srgb, #7A5AF8 12%, transparent); color: #6A4BE0; }
-.stat-icon.amber { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
-.stat-icon.slate { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-soft); }
 .stat-label { color: var(--ink-soft); font-size: var(--t-sm); font-weight: 500; }
 .stat-value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; margin: 0.2rem 0; }
 .stat-note { font-size: var(--t-sm); color: var(--muted); }

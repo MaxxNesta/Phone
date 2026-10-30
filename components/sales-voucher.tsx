@@ -1304,7 +1304,7 @@ export function SalesVoucher({
                           <span className="vfree-chip">Free item</span>
                           {item.photo && <span className="vthumb sm"><img src={item.photo} alt="" /></span>}
                           <span>
-                            <span className="vname">{item.model ?? item.name}</span>
+                            <span className="vname" title={item.name}>{item.model ?? item.name}</span>
                             <span className="vcode">{item.code} (Free · {freeBadge})</span>
                           </span>
                         </span>
@@ -1338,12 +1338,12 @@ export function SalesVoucher({
                 return [
                   <tr key={l.key} className="vline">
                     <td className="vc-no">{i + 1}</td>
-                    <td className="vc-item" style={{ minWidth: 280 }}>
+                    <td className="vc-item">
                       {l.orderLineId ? (
                         <span className="vprod" title="On the order — change it there">
                           {item?.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
-                            <span className="vname">{item?.model ?? item?.name ?? "—"}
+                            <span className="vname" title={[item?.model ?? item?.name ?? "", ...parts.map((x) => x.o)].join(" · ")}>{item?.model ?? item?.name ?? "—"}
                               {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}</span>
                             {item?.code && <span className="vcode">{item.code}</span>}
                             {parts.length === 0 && <span className="vopts">On the order</span>}
@@ -1369,12 +1369,14 @@ export function SalesVoucher({
                           {item.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
                             {/* Model and its options read as one name: iPhone 16 128 GB · CH/A · Green. */}
-                            <span className="vname">{item.model ?? item.name}
-                              {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}
+                            <span className="vname-row">
+                              <span className="vname" title={[item.model ?? item.name, ...parts.map((x) => x.o)].join(" · ")}>{item.model ?? item.name}
+                                {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}</span>
                               <Link href={`/items/${item.id}`} target="_blank" rel="noopener noreferrer" className="vopen"
                                 title={`Open ${item.code} in a new tab`} aria-label={`Open item ${item.code} in a new tab`}>
                                 <ExternalLink size={13} aria-hidden="true" />
-                              </Link></span>
+                              </Link>
+                            </span>
                             <span className="vcode">{item.code}</span>
                             <span className={`vavail${short ? " short" : ""}`}>
                               {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}

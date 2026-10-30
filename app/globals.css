@@ -8510,3 +8510,29 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
   .linetable.vgrid td.qtycell input[type="number"], .linetable.vgrid td.pricecell input[type="number"],
   .vlines.vgrid td.vc-qty input, .vlines.vgrid td.vc-price input { font-size: 0.9375rem; }
 }
+
+/* Grid widths: every figure column as narrow as its figure, the item takes
+   the rest, and a name too long for it ends in an ellipsis (full on hover). */
+.vname-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.vname-row .vopen { margin-left: 0; flex: none; }
+@media (min-width: 721px) {
+  .linetable.vgrid th { white-space: nowrap; }
+  .linetable.vgrid td.vc-item { width: 100%; max-width: 0; min-width: 220px; }
+  .linetable.vgrid td.vc-item .vname, .linetable.vgrid td.vc-item .vcode,
+  .linetable.vgrid td.vc-item .pickedbtn .aib-name strong {
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-line-clamp: unset; min-width: 0; }
+  .linetable.vgrid td.vc-item .vname-row .vname { flex: 0 1 auto; }
+  .linetable.vgrid td.vc-item .vprod { min-width: 0; }
+  .linetable.vgrid td.vc-item .vprod > span:last-child { min-width: 0; flex: 1 1 auto; }
+  .linetable.vgrid td.vc-item .pickeditem, .linetable.vgrid td.vc-item .pickedbtn, .linetable.vgrid td.vc-item .aib-name { min-width: 0; }
+  .linetable.vgrid td.vc-item .pickeditem { display: flex; max-width: 100%; }
+
+  /* Only quantity and unit are pulled in; prices and amounts keep their room. */
+  .linetable.vgrid td.qtycell, .linetable.vgrid td.unitcell, .linetable.vgrid td.vc-qty,
+  .linetable.vgrid td.vc-act, .linetable.vgrid td.tight { width: 1%; white-space: nowrap; }
+  .linetable.vgrid td.qtycell input[type="number"], .vlines.vgrid td.vc-qty input[aria-label="Quantity"] { width: 72px; min-width: 72px; }
+  .linetable.vgrid td.pricecell, .linetable.vgrid td.vc-price { width: 200px; }
+  .linetable.vgrid td.r:not(.vc-qty) { width: 150px; white-space: nowrap; }
+  .linetable.vgrid td.unitcell select { width: auto; }
+  .grlines.vgrid td:has(.gr-imei) { width: 200px; white-space: nowrap; }
+}
