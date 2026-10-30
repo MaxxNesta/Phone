@@ -14,7 +14,7 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse, Pencil } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse, Pencil, X } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -77,6 +77,9 @@ type Line = {
   discountMode?: "PCT" | "AMT";
   /** The money discount, when that is the mode. */
   discountAmt?: string;
+  /** The line dialog's ticks, once touched; untouched, they follow the figures. */
+  hasDiscount?: boolean;
+  hasFree?: boolean;
   /** Which unit the quantity and the price are in. Empty means the item's
    *  own unit, which is every line for an item with no packs. */
   uomId?: string;
@@ -538,6 +541,8 @@ export function SalesVoucher({
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   // A line whose product is being changed, and the lines whose IMEI list is open.
   const [changing, setChanging] = useState<number | null>(null);
+  // The line open in the Edit line dialog, by key.
+  const [editKey, setEditKey] = useState<number | null>(null);
   const [imeiOpen, setImeiOpen] = useState<number[]>([]);
   const toggleImei = (key: number) =>
     setImeiOpen((k) => (k.includes(key) ? k.filter((x) => x !== key) : [...k, key]));
@@ -1254,14 +1259,13 @@ export function SalesVoucher({
                 <th>Item</th>
                 <th className="r">Qty</th>
                 <th className="r">Unit price{currency ? ` (${currency})` : ""}</th>
-                <th>Discount</th>
                 <th className="r">Amount{currency ? ` (${currency})` : ""}</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={7} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={6} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
@@ -1297,7 +1301,6 @@ export function SalesVoucher({
                       </td>
                       <td className="r">{fmt(free)}</td>
                       <td className="r subline">0</td>
-                      <td />
                       <td className="r subline">0</td>
                       <td />
                     </tr>
@@ -1402,39 +1405,11 @@ export function SalesVoucher({
                           : undefined}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
                     </td>
-                    <td className="disccell vc-disc" data-label="Discount">
-                      <div className="discrow">
-                      <span className="unittoggle">
-                        <button type="button"
-                                className={(l.discountMode ?? "PCT") === "PCT" ? "on" : undefined}
-                                aria-pressed={(l.discountMode ?? "PCT") === "PCT"}
-                                title="A percentage off"
-                                onClick={() => setLine(l.key, { discountMode: "PCT" })}>%</button>
-                        <button type="button"
-                                className={l.discountMode === "AMT" ? "on" : undefined}
-                                aria-pressed={l.discountMode === "AMT"}
-                                title={currency ? `An amount off, in ${currency}` : "An amount off"}
-                                onClick={() => setLine(l.key, { discountMode: "AMT" })}>
-                          {currency || "0.00"}
-                        </button>
-                      </span>
-                      {l.discountMode === "AMT" ? (
-                        <input type="number" min="0" step="any" value={l.discountAmt ?? ""}
-                               aria-label="Discount amount" placeholder="0"
-                               onChange={(e) => setLine(l.key, { discountAmt: e.target.value })} />
-                      ) : (
-                        <input type="number" min="0" max="100" step="any" value={l.discountPct}
-                               aria-label="Discount percent" placeholder="0"
-                               onChange={(e) => setLine(l.key, { discountPct: e.target.value })} />
-                      )}
-                      </div>
-                    </td>
                     <td className="r vamount vc-amt" data-label="Amount">
                       {fmt(amount(l))}
                       {discountOn(l) > 0 && (
-                        <div className="subline">
-                          &minus;{fmt(discountOn(l))}
-                          {l.discountMode === "AMT" && ` · ${pctOf(l)}%`}
+                        <div className="vdisc">
+                          Discount {l.discountMode === "AMT" ? `${pctOf(l)}%` : `${Number(l.discountPct) || 0}%`} &minus;{fmt(discountOn(l))}
                         </div>
                       )}
                     </td>
@@ -1443,65 +1418,8 @@ export function SalesVoucher({
                           the pack it is sold in, whose stock it is, units given
                           free — kept out of the row until it is wanted. */}
                       <div className="line-acts">
-                      <details className="linemenu">
-                        <summary aria-label="Edit line details" title="Edit line details"><Pencil size={15} /></summary>
-                        <div className="linemenu-pop">
-                          {item && (item.packs ?? []).length > 0 && (
-                            <label>Unit
-                              <UnitToggle
-                                base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
-                                packs={(item.packs ?? []).map((p) => ({
-                                  uomId: p.uomId, code: p.code, factor: Number(p.factor),
-                                }))}
-                                value={l.uomId ?? ""}
-                                onChange={(id: string | null) => setLine(l.key, { uomId: id ?? undefined })}
-                                disabled={!!l.sourceLineId}
-                                label={`Unit for ${item.code}`}
-                                qty={Number(l.qty) || 0}
-                              />
-                            </label>
-                          )}
-                          {!toDeliver && !matchedDeliveryId && anyConsigned && (
-                            <div>
-                              <span className="linemenu-label">Stock source</span>
-                        {(() => {
-                          if (!l.itemId || !item?.is_stocked)
-                            return <span style={{ color: "var(--muted)" }}>—</span>;
-                          const split = splitFor(l.itemId);
-                          if (split.consigned.length === 0) {
-                            return (
-                              <span className="sourcebtn" style={{ cursor: "default", border: 0 }}>
-                                <span className="pooldot owned" /> Company-owned
-                              </span>
-                            );
-                          }
-                          const pools = poolsFor(split);
-                          const chosen = pools.find((p) => p.key === l.source) ?? pools[0];
-                          return (
-                            <button type="button" className="sourcebtn"
-                                    onClick={() => setSourceFor(l.key)}>
-                              <span className={`pooldot ${l.source === "OWNED" ? "owned" : "consigned"}`} />
-                              <span>{chosen.label.replace("Consignment — ", "")}</span>
-                              <span className="avail">{chosen.qty}</span>
-                            </button>
-                          );
-                        })()}
-                            </div>
-                          )}
-                          <label>Free quantity
-                            <input type="number" min="0" step="any" value={l.focQty} aria-label="Free quantity"
-                              placeholder="0" onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
-                          </label>
-                          {givenFree(l) > 0 && (
-                            <label>Why free
-                              <select value={l.focReasonId} aria-label="Reason free"
-                                onChange={(e) => setLine(l.key, { focReasonId: e.target.value })}>
-                                {focReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                              </select>
-                            </label>
-                          )}
-                        </div>
-                      </details>
+                      <button type="button" className="vicon line-edit" aria-label={`Edit line ${i + 1}`} title="Edit line"
+                        onClick={() => setEditKey(l.key)}><Pencil size={15} /></button>
                       <LineRemove onClick={() => removeLine(l.key)} />
                       </div>
                     </td>
@@ -1509,7 +1427,7 @@ export function SalesVoucher({
                   tracked ? (
                     <tr key={`${l.key}-imei`} className="vline-sub">
                       <td className="vc-no" />
-                      <td colSpan={6}>
+                      <td colSpan={5}>
                         {showInline ? (
                           <span className="vimei">
                             IMEI: <span className="m">{serials[0].serial}</span>
@@ -1547,7 +1465,7 @@ export function SalesVoucher({
                   delivered.length > 0 ? (
                     <tr key={`${l.key}-billed`} className="vline-sub">
                       <td className="vc-no" />
-                      <td colSpan={6}>
+                      <td colSpan={5}>
                         <fieldset className="vbilled">
                           <legend>{billPart ? "Phones billed" : `${delivered.length} phone${delivered.length === 1 ? "" : "s"} billed`}</legend>
                           {delivered.map((sn) => (
@@ -1567,6 +1485,162 @@ export function SalesVoucher({
             </tbody>
           </table>
         </div>
+        {/* Edit line: what a line carries beyond quantity and price, each
+            behind its own tick so the table shows it only when it is there. */}
+        {(() => {
+          const l = lines.find((x) => x.key === editKey);
+          if (!l) return null;
+          const n = lines.indexOf(l) + 1;
+          const item = byId(l.itemId);
+          const parts = asVariant(item?.variant) ?? [];
+          const disc = l.hasDiscount ?? discountOn(l) > 0;
+          const freeOn = l.hasFree ?? givenFree(l) > 0;
+          const pct = (l.discountMode ?? "PCT") === "PCT";
+          const promo = promoFor(l.itemId);
+          const close = () => setEditKey(null);
+          return (
+            <div className="le-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+              <div className="le" role="dialog" aria-modal="true" aria-labelledby="le-title"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") close();
+                  // Inside the voucher's form: Enter here must not post it.
+                  if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") { e.preventDefault(); close(); }
+                }}>
+                <header className="le-head">
+                  <div>
+                    <span className="le-eyebrow">Line {n}</span>
+                    <h2 id="le-title">{item?.model ?? item?.name ?? "Item"}{parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}</h2>
+                    {item?.code && <span className="vcode">{item.code}</span>}
+                  </div>
+                  <button type="button" className="le-x" aria-label="Close" onClick={close}><X size={18} /></button>
+                </header>
+
+                <div className="le-body">
+                  <div className="le-grid">
+                    <label className="le-field">Quantity
+                      <input type="number" min="0" step="any" value={l.qty} readOnly={!!(l.sourceLineId || l.orderLineId) && !billPart}
+                        onChange={(e) => setLine(l.key, { qty: e.target.value })} />
+                    </label>
+                    <label className="le-field">Unit price{currency ? ` (${currency})` : ""}
+                      <input type="number" min="0" step="any" value={l.unitPrice} readOnly={l.agreedPrice != null}
+                        onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
+                    </label>
+                    {item && (item.packs ?? []).length > 0 && (
+                      <div className="le-field">Unit
+                        <UnitToggle
+                          base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
+                          packs={(item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor) }))}
+                          value={l.uomId ?? ""}
+                          onChange={(id: string | null) => setLine(l.key, { uomId: id ?? undefined })}
+                          disabled={!!l.sourceLineId}
+                          label={`Unit for ${item.code}`}
+                          qty={Number(l.qty) || 0}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <section className="le-sec">
+                    <label className="le-check">
+                      <input type="checkbox" checked={disc}
+                        onChange={(e) => setLine(l.key, e.target.checked
+                          ? { hasDiscount: true, discountMode: l.discountMode ?? "PCT" }
+                          : { hasDiscount: false, discountPct: "", discountAmt: "" })} />
+                      <span><strong>This item has a discount</strong><small>Taken off this line before the invoice total.</small></span>
+                    </label>
+                    {disc && (
+                      <div className="le-sub">
+                        <div className="segmented" role="radiogroup" aria-label="Discount by">
+                          <button type="button" role="radio" aria-checked={pct} className={`seg${pct ? " on" : ""}`}
+                            onClick={() => setLine(l.key, { discountMode: "PCT" })}>Percentage</button>
+                          <button type="button" role="radio" aria-checked={!pct} className={`seg${!pct ? " on" : ""}`}
+                            onClick={() => setLine(l.key, { discountMode: "AMT" })}>Amount{currency ? ` (${currency})` : ""}</button>
+                        </div>
+                        <label className="le-field le-affix">{pct ? "Percent off" : "Amount off"}
+                          <span className="le-input">
+                            {pct
+                              ? <input type="number" min="0" max="100" step="any" value={l.discountPct} placeholder="0" autoFocus
+                                  onChange={(e) => setLine(l.key, { discountPct: e.target.value })} />
+                              : <input type="number" min="0" step="any" value={l.discountAmt ?? ""} placeholder="0" autoFocus
+                                  onChange={(e) => setLine(l.key, { discountAmt: e.target.value })} />}
+                            <span className="le-unit">{pct ? "%" : currency || ""}</span>
+                          </span>
+                        </label>
+                        {discountOn(l) > 0 && (
+                          <p className="le-note">&minus;{fmt(discountOn(l))}{pct ? "" : ` · ${pctOf(l)}%`} · line comes to {fmt(amount(l))}</p>
+                        )}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="le-sec">
+                    <label className="le-check">
+                      <input type="checkbox" checked={freeOn}
+                        onChange={(e) => setLine(l.key, e.target.checked
+                          ? { hasFree: true, focReasonId: l.focReasonId || (promoReason?.id ?? focReasons[0]?.id ?? "") }
+                          : { hasFree: false, focQty: "" })} />
+                      <span><strong>Give units free</strong><small>On top of what is billed. Their cost goes to expense, not to cost of sales.</small></span>
+                    </label>
+                    {freeOn && (
+                      <div className="le-sub">
+                        <label className="le-field le-narrow">Free quantity
+                          <input type="number" min="0" step="any" value={l.focQty} placeholder="0" autoFocus
+                            onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
+                        </label>
+                        <fieldset className="le-reasons">
+                          <legend>Why free</legend>
+                          {focReasons.map((r) => (
+                            <label key={r.id} className={`le-reason${l.focReasonId === r.id ? " on" : ""}`}>
+                              <input type="radio" name={`le-reason-${l.key}`} checked={l.focReasonId === r.id}
+                                onChange={() => setLine(l.key, { focReasonId: r.id })} />
+                              {r.name}
+                            </label>
+                          ))}
+                        </fieldset>
+                      </div>
+                    )}
+                    {earnedFree(l) > 0 && promo && (
+                      <p className="le-note">Promotion {promo.code} adds {fmt(earnedFree(l))} free on its own.</p>
+                    )}
+                  </section>
+
+                  {!toDeliver && !matchedDeliveryId && anyConsigned && item?.is_stocked && (
+                    <section className="le-sec">
+                      <span className="le-label">Stock source</span>
+                      {(() => {
+                          if (!l.itemId || !item?.is_stocked)
+                            return <span style={{ color: "var(--muted)" }}>—</span>;
+                          const split = splitFor(l.itemId);
+                          if (split.consigned.length === 0) {
+                            return (
+                              <span className="sourcebtn" style={{ cursor: "default", border: 0 }}>
+                                <span className="pooldot owned" /> Company-owned
+                              </span>
+                            );
+                          }
+                          const pools = poolsFor(split);
+                          const chosen = pools.find((p) => p.key === l.source) ?? pools[0];
+                          return (
+                            <button type="button" className="sourcebtn"
+                                    onClick={() => setSourceFor(l.key)}>
+                              <span className={`pooldot ${l.source === "OWNED" ? "owned" : "consigned"}`} />
+                              <span>{chosen.label.replace("Consignment — ", "")}</span>
+                              <span className="avail">{chosen.qty}</span>
+                            </button>
+                          );
+                        })()}
+                    </section>
+                  )}
+                </div>
+
+                <footer className="le-foot">
+                  <button type="button" className="btn ghost danger" onClick={() => { removeLine(l.key); close(); }}>Remove line</button>
+                  <button type="button" className="btn" onClick={close}>Done</button>
+                </footer>
+              </div>
+            </div>
+          );
+        })()}
         {totalFree > 0 && (
           <div className="card-body">
             <span className="hint">
