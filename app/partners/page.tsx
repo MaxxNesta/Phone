@@ -125,7 +125,7 @@ export default async function Partners({
                 filters={[
                   { key: "status", label: c("status"), allLabel: cp("allStatuses"),
                     options: [{ value: "active", label: t("activeLower") }, { value: "inactive", label: t("inactiveLower") }] },
-                  { key: "category", label: c("category"), allLabel: cp("allCategories"),
+                  { key: "category", label: t("customerCategory"), allLabel: t("allGroups"),
                     options: [...categories.map((x) => ({ value: x.id, label: x.name })),
                               { value: "none", label: t("notCategorised") }] },
                   { key: "credit", label: cp("creditStatus"), allLabel: cp("allCredit"),
@@ -268,7 +268,7 @@ export default async function Partners({
               { key: "region", label: t("region"), sortable: true },
               { key: "township", label: t("township"), sortable: true },
               { key: "price_level", label: t("priceLevel"), sortable: true },
-              { key: "category", label: c("category"), sortable: true },
+              { key: "category", label: role === "supplier" ? t("supplierCategory") : t("customerCategory"), sortable: true },
               { key: "payment_terms_days", label: t("terms"), sortable: true, align: "r" },
               { key: "outstanding", label: t("outstanding"), sortable: true, align: "r" },
               { key: "credit_limit", label: t("creditLimit"), sortable: true, align: "r" },

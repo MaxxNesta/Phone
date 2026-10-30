@@ -150,7 +150,7 @@ export function PartnerEditForm({
             other is a price. */}
         {categories.length > 0 && (
           <div className="field">
-            <label>{c("category")}</label>
+            <label>{t("customerCategory")}</label>
             <select name="category_id" defaultValue={partner.category_id ?? ""}>
               <option value="">{t("notCategorised")}</option>
               {categories.map((c) => (

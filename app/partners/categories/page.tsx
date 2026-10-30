@@ -106,7 +106,7 @@ export default async function PartnerCategories() {
               { key: "kind", label: t("side"), sortable: true },
               { key: "sort_order", label: "#", sortable: true, align: "r" },
               { key: "code", label: c("code"), sortable: true },
-              { key: "name", label: c("category"), sortable: true },
+              { key: "name", label: t("group"), sortable: true },
               { key: "note", label: c("note") },
               { key: "customers", label: pt("customers"), sortable: true, align: "r" },
               { key: "suppliers", label: pt("suppliers"), sortable: true, align: "r" },
