@@ -8692,3 +8692,5 @@ nav.sidebar { scrollbar-gutter: stable; }
   :root:not([data-theme="light"]) .form.docsheet .form-commit button:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.4); opacity: 1; }
 }
 :root[data-theme="dark"] .form.docsheet .form-commit button:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.4); opacity: 1; }
+/* Hidden inputs come first in these forms, so the first section is the first div. */
+.form.docsheet > div:first-of-type, .form.docsheet > .card:first-of-type { border-top: 0; }
