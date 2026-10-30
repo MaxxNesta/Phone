@@ -8331,3 +8331,6 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
    decides what follows, and "No charge" leaves just the one line. */
 .carriage .carriage-head.receive-row { padding: 12px 16px; }
 .carriage-later { margin: 0 16px 14px; }
+
+/* "What is this cost?" on Record import cost: the same question bar as the receipt. */
+.card.doc-info .cost-type-row { padding: 12px 16px; border-bottom: 1px solid var(--line); }

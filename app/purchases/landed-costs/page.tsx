@@ -66,9 +66,8 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
           already invoiced puts its share into cost of sales.
         </HelpHint>
         <span className="actions">
-          {others > 0
-            ? <Link href="/purchases/landed-costs/new" className="btn"><Plus size={16} aria-hidden="true" /> New landed cost</Link>
-            : <Link href="/payables/couriers/bill" className="btn"><Plus size={16} aria-hidden="true" /> Record carriage inward</Link>}
+          {others > 0 && <Link href="/purchases/landed-costs/new" className="btn ghost">Add landed cost</Link>}
+          <Link href="/payables/couriers/bill" className="btn"><Plus size={16} aria-hidden="true" /> {others > 0 ? "Record import cost" : "Record carriage inward"}</Link>
         </span>
       </div>
 

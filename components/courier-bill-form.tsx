@@ -9,10 +9,12 @@ type Receipt = { id: string; no: string; date: string; supplier: string | null; 
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-export function CourierBillForm({ action, couriers, receipts, types, carriageAccount, payableAccount, initialPartnerId, initialReceiptId, today, paidFrom = [] }: {
+export function CourierBillForm({ action, couriers, receipts, types, carriageAccount, payableAccount, clearingAccount, initialPartnerId, initialReceiptId, today, paidFrom = [] }: {
   action: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>;
   couriers: Opt[]; receipts: Receipt[]; types: (Opt & { code: string; method: string })[];
   carriageAccount: string | null; payableAccount: string | null;
+  /** Where any cost but carriage waits when paid now: Landed Cost Clearing. */
+  clearingAccount?: string | null;
   initialPartnerId?: string; initialReceiptId?: string; today: string;
   /** Cash and bank accounts, for a bill paid when it is recorded. */
   paidFrom?: Opt[];
@@ -30,11 +32,31 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
   const total = method === "PER" ? value * phones : value;
   const each = phones > 0 && value > 0 ? (method === "PER" ? value : value / phones) : 0;
   const defaultType = types.find((t) => t.code === "CARRIAGE") ?? types[0];
+  const [typeId, setTypeId] = useState(defaultType?.id ?? "");
+  const type = types.find((t) => t.id === typeId) ?? defaultType;
+  const carriage = type?.code === "CARRIAGE";
+  // What the debit side is called: carriage reads as the shop's books do,
+  // anything else waits in clearing when paid now, or goes straight on when owed.
+  const via = carriage ? (carriageAccount ?? "Carriage Inward") : (clearingAccount ?? "Landed Cost Clearing");
+  const credit = paidNow ? `${paidLabel} · paid now` : `${payableAccount ?? "Payable (Other)"} · owed`;
 
   return (
     <form action={formAction} className="form wide">
       {state?.error && <div className="alert">{state.error}</div>}
+      <input type="hidden" name="cost_type_id" value={typeId} />
       <div className="card doc-info">
+        {/* With more than carriage in use, the first question is what the cost is. */}
+        {types.length > 1 && (
+          <div className="receive-row cost-type-row">
+            <span className="receive-q" id="cost-type-q">What is this cost?</span>
+            <div className="segmented" role="radiogroup" aria-labelledby="cost-type-q">
+              {types.map((t) => (
+                <button key={t.id} type="button" role="radio" aria-checked={typeId === t.id}
+                  className={`seg${typeId === t.id ? " on" : ""}`} onClick={() => setTypeId(t.id)}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">
@@ -50,7 +72,7 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
             <div className="field">
               <label htmlFor="payment"><Wallet size={13} aria-hidden="true" />Payment</label>
               <select id="payment" value={payment} onChange={(e) => setPayment(e.target.value)}>
-                <option value="">Pay later · owed to courier</option>
+                <option value="">{carriage ? "Pay later · owed to courier" : "Pay later · owed"}</option>
                 {paidFrom.map((a) => <option key={a.id} value={a.id}>Paid now · {a.label}</option>)}
               </select>
               <input type="hidden" name="paid_from" value={payment} />
@@ -67,14 +89,8 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
           </div>
           <div className="doc-info-foot">
             <details className="moredetails">
-              <summary>Additional details <span className="page-sub">(charge, reference, note)</span></summary>
+              <summary>Additional details <span className="page-sub">(reference, note)</span></summary>
               <div className="row">
-                <div className="field">
-                  <label htmlFor="cost_type_id"><Tag size={13} aria-hidden="true" />Charge</label>
-                  <select id="cost_type_id" name="cost_type_id" defaultValue={defaultType?.id ?? ""} required>
-                    {types.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-                  </select>
-                </div>
                 <div className="field">
                   <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Reference</label>
                   <input id="reference" name="reference" type="text" placeholder="Courier's slip or waybill no." />
@@ -90,7 +106,7 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
       </div>
 
       <section className="card">
-        <div className="card-head"><h2><Package size={15} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> Which goods did they carry?</h2>
+        <div className="card-head"><h2><Package size={15} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> {carriage ? "Which goods did they carry?" : `Which goods is this ${type?.label.toLowerCase() ?? "cost"} for?`}</h2>
           <span className="page-sub">{chosen.length ? `${phones} phone${phones === 1 ? "" : "s"} chosen` : "Choose one or more posted goods receipts"}</span></div>
         <div className="tablewrap" style={{ maxHeight: 340, overflow: "auto" }}>
           <table>
@@ -123,10 +139,19 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
             <table>
               <thead><tr><th>Entry</th><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
               <tbody>
-                <tr><td>Carriage inward</td><td>{carriageAccount ?? "Carriage Inward"}</td><td className="r">{fmt(total)}</td><td /></tr>
-                <tr><td /><td>{paidNow ? `${paidLabel} · paid now` : `${payableAccount ?? "Payable (Other)"} · under the courier`}</td><td /><td className="r">{fmt(total)}</td></tr>
-                <tr><td>Spread onto phones</td><td>Inventory · {phones || "the chosen"} phone{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
-                <tr><td /><td>{carriageAccount ?? "Carriage Inward"}</td><td /><td className="r">{fmt(total)}</td></tr>
+                {carriage || paidNow ? (
+                  <>
+                    <tr><td>{type?.label ?? "Charge"}</td><td>{via}</td><td className="r">{fmt(total)}</td><td /></tr>
+                    <tr><td /><td>{credit}</td><td /><td className="r">{fmt(total)}</td></tr>
+                    <tr><td>Spread onto phones</td><td>Inventory · {phones || "the chosen"} phone{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
+                    <tr><td /><td>{via}</td><td /><td className="r">{fmt(total)}</td></tr>
+                  </>
+                ) : (
+                  <>
+                    <tr><td>{type?.label ?? "Charge"}, onto phones</td><td>Inventory · {phones || "the chosen"} phone{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
+                    <tr><td /><td>{credit}</td><td /><td className="r">{fmt(total)}</td></tr>
+                  </>
+                )}
               </tbody>
             </table>
           </div>

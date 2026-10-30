@@ -1119,7 +1119,7 @@ export default async function DocumentPage({
                       <Link href={`/purchases/landed-costs/new?gr=${doc.id}`} className="btn ghost tiny">Add landed cost</Link>
                     )}
                     <Link href={`/payables/couriers/bill?gr=${doc.id}`} className="btn tiny lc-gr-primary">
-                      <Truck size={14} aria-hidden="true" /> Record carriage inward
+                      <Truck size={14} aria-hidden="true" /> {others > 0 ? "Record import cost" : "Record carriage inward"}
                     </Link>
                   </>
                 )}
