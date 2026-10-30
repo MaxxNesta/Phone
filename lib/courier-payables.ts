@@ -14,6 +14,15 @@ import type { TransactionSql } from "postgres";
 import { inTransaction, postCashVoucher, postBankVoucher, round4 } from "./posting";
 import * as L from "./landed-cost";
 
+/**
+ * What the section is called: "Carriage inward" while that is the only cost
+ * type in use, "Landed costs" once customs duty, insurance or another is on.
+ */
+export async function costSection(companyId: string): Promise<"Carriage inward" | "Landed costs"> {
+  const [{ n }] = await sql`select count(*)::int as n from landed_cost_type where company_id = ${companyId} and is_active`;
+  return n > 1 ? "Landed costs" : "Carriage inward";
+}
+
 export type CourierBalance = {
   partner_id: string; partner_code: string; partner_name: string; phone: string | null;
   charges: number; owed: number; paid: number; outstanding: number;

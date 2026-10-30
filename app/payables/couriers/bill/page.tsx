@@ -28,7 +28,7 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
 
   return (
     <div className="ie">
-      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Carriage inward", href: "/payables?view=couriers" }, { label: types.length > 1 ? "Record import cost" : "Record carriage inward" }]} />
+      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: types.length > 1 ? "Landed costs" : "Carriage inward", href: "/payables?view=couriers" }, { label: types.length > 1 ? "Record import cost" : "Record carriage inward" }]} />
       <header className="ie-title">
         {types.length > 1
           ? <h1>Record import cost <HelpHint label="About import costs">One cost for goods already received: carriage, customs duty, insurance or another type in use. It is added to the phones&rsquo; cost and reaches cost of sales only as each phone sells. Carriage is booked through Carriage Inward; any other cost owed goes straight to the phones, and one paid now waits in Landed Cost Clearing for the moment it takes to spread. For several costs on one shipment, use Add landed cost.</HelpHint></h1>

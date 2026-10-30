@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { sql, money } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
-import { courierCharges, courierPayments } from "@/lib/courier-payables";
+import { costSection, courierCharges, courierPayments } from "@/lib/courier-payables";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { HelpHint } from "@/components/help-hint";
 import { DocRefs } from "@/components/doc-refs";
@@ -19,9 +19,10 @@ export default async function CourierPage({ params }: { params: Promise<{ id: st
   const [partner] = await sql`
     select id, code, name, phone from business_partner where id = ${id} and company_id = ${user.companyId}`;
   if (!partner) notFound();
-  const [charges, payments] = await Promise.all([
+  const [charges, payments, section] = await Promise.all([
     courierCharges(user.companyId, id, await seenLocations()),
     courierPayments(user.companyId, id),
+    costSection(user.companyId),
   ]);
   const owed = charges.reduce((s, c) => s + c.owed, 0);
   const paid = charges.reduce((s, c) => s + c.paid, 0);
@@ -29,7 +30,7 @@ export default async function CourierPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="ie">
-      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Carriage inward", href: "/payables?view=couriers" }, { label: partner.name }]} />
+      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: section, href: "/payables?view=couriers" }, { label: partner.name }]} />
       <header className="ie-title" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h1>{partner.name} <HelpHint label="About courier balances">Charges come from landed costs that named {partner.name} as payee with no bill behind them. Each is owed in Payable (Other) until a courier payment settles it.</HelpHint></h1>
         <span className="page-sub">{[partner.code, partner.phone].filter(Boolean).join(" · ")}</span>

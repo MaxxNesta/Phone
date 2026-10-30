@@ -12,7 +12,8 @@ const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "2-dig
  * with what is paid and what is open. Bills are kept without a courier's
  * name; one that does carry a name shows it.
  */
-export async function CouriersView({ companyId }: { companyId: string }) {
+export async function CouriersView({ companyId, section }: { companyId: string; section: "Carriage inward" | "Landed costs" }) {
+  const many = section === "Landed costs";
   const bills = await courierCharges(companyId, null, await seenLocations());
   const names = new Map((await sql`
     select id, name, code from business_partner where id = any(${[...new Set(bills.map((b) => b.partner_id))]}::uuid[])`)
@@ -54,7 +55,7 @@ export async function CouriersView({ companyId }: { companyId: string }) {
     <>
       <div className="kpis">
         <div className="kpi">
-          <span className="kpi-label">Carriage inward owed</span>
+          <span className="kpi-label">{many ? "Import costs owed" : "Carriage inward owed"}</span>
           <span className="kpi-value">{moneyOrTrace(totalOpen)}</span>
           <span className="kpi-note">in Payable (Other)</span>
         </div>
@@ -71,16 +72,16 @@ export async function CouriersView({ companyId }: { companyId: string }) {
       <section>
         <div className="card">
           <div className="card-head">
-            <h2>Carriage inward bills</h2>
+            <h2>{many ? "Import cost bills" : "Carriage inward bills"}</h2>
             <span className="actions">
               <span className="page-sub">{open.length} unpaid</span>
-              <Link href="/payables/couriers/bill" className="btn ghost">Record carriage inward</Link>
+              <Link href="/payables/couriers/bill" className="btn ghost">{many ? "Record import cost" : "Record carriage inward"}</Link>
               {open.length > 0 && <Link href="/payables/couriers/pay" className="btn">Pay all open</Link>}
             </span>
           </div>
           <DataTable
             rows={rows}
-            emptyLabel="Nothing owed for carriage inward. A bill recorded as Pay later shows here until it is paid."
+            emptyLabel={`Nothing owed for ${many ? "import costs" : "carriage inward"}. A bill recorded as Pay later shows here until it is paid.`}
             searchPlaceholder="Search bills, receipts…"
             defaultSort={{ key: "n", dir: "desc" }}
             columns={[

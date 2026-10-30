@@ -1,18 +1,23 @@
 import { requirePermission } from "@/lib/auth";
 import { onlyMyLocations, seenLocations } from "@/lib/branch-scope";
 import { getBranches } from "@/lib/queries";
-import { courierBalances, courierCharges, moneyAccounts } from "@/lib/courier-payables";
+import { costSection, courierBalances, courierCharges, moneyAccounts } from "@/lib/courier-payables";
 import { payCourierAction } from "@/lib/courier-actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { HelpHint } from "@/components/help-hint";
 import { CourierPayForm } from "@/components/courier-pay-form";
 
-export const metadata = { title: "Pay carriage inward" };
+export async function generateMetadata() {
+  const user = await requirePermission("accounting.post");
+  return { title: (await costSection(user.companyId)) === "Landed costs" ? "Pay import costs" : "Pay carriage inward" };
+}
 
 export default async function PayCourier({ searchParams }: { searchParams: Promise<{ partner?: string; charge?: string }> }) {
   const user = await requirePermission("accounting.post");
   const { partner, charge } = await searchParams;
   const locs = await seenLocations();
+  const section = await costSection(user.companyId);
+  const what = section === "Landed costs" ? "import costs" : "carriage inward";
   const owing = (await courierBalances(user.companyId, locs)).filter((c) => c.outstanding > 0.0001);
   const charges = (await Promise.all(owing.map((c) => courierCharges(user.companyId, c.partner_id, locs))))
     .flatMap((list, i) => list.filter((x) => x.open > 0.0001).map((x) => ({ ...x, partnerId: owing[i].partner_id })));
@@ -23,9 +28,9 @@ export default async function PayCourier({ searchParams }: { searchParams: Promi
 
   return (
     <div className="ie">
-      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: "Carriage inward", href: "/payables?view=couriers" }, { label: "Pay carriage inward" }]} />
+      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: section, href: "/payables?view=couriers" }, { label: `Pay ${what}` }]} />
       <header className="ie-title">
-        <h1>Pay carriage inward <HelpHint label="About paying carriage inward">Tick the bills you are paying and how much of each. It posts as a cash or bank voucher: Payable (Other) down under the courier, the till down by the same amount.</HelpHint></h1>
+        <h1>Pay {what} <HelpHint label={`About paying ${what}`}>Tick the bills you are paying and how much of each. It posts as a cash or bank voucher: Payable (Other) down under the courier, the till down by the same amount.</HelpHint></h1>
       </header>
       {owing.length === 0 ? (
         <p className="page-sub">No courier is owed anything right now.</p>

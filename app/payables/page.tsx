@@ -9,6 +9,7 @@ import { unbilledReceipts, unbilledBySupplier } from "@/lib/unbilled";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { CouriersView } from "./couriers-view";
+import { costSection } from "@/lib/courier-payables";
 
 const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
   ["", "All"],
@@ -36,6 +37,7 @@ export default async function Payables({
   };
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
+  const section = await costSection(company.id);
 
   // Two kinds of creditor: suppliers billing goods, and couriers owed for
   // bringing them in. Each its own tab, same page.
@@ -47,17 +49,17 @@ export default async function Payables({
         <BranchScope />
         <HelpHint>
           {couriers
-            ? "Carriage inward bills recorded as Pay later: what was charged for bringing goods in, what has been paid, and what is still open. Each bill is paid on its own or all together."
+            ? `${section === "Landed costs" ? "Import cost" : "Carriage inward"} bills recorded as Pay later: what was charged for bringing goods in, what has been paid, and what is still open. Each bill is paid on its own or all together.`
             : "What you owe each supplier, rolled up from their open bills — not a balance kept on the supplier, so it can never drift from the invoices behind it."}
         </HelpHint>
       </div>
       <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
         <Link href="/payables" role="tab" aria-selected={!couriers} className={!couriers ? "on" : undefined}>Suppliers</Link>
-        <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>Carriage inward</Link>
+        <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>{section}</Link>
       </div>
     </>
   );
-  if (couriers) return <>{head}<CouriersView companyId={company.id} /></>;
+  if (couriers) return <>{head}<CouriersView companyId={company.id} section={section} /></>;
 
   const [billed, unbilledRows] = await Promise.all([
     getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations(), period) as Promise<any[]>,
