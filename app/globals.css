@@ -8615,3 +8615,49 @@ nav.sidebar { scrollbar-gutter: stable; }
   nav.sidebar { scrollbar-width: thin; scrollbar-color: transparent transparent; }
   nav.sidebar:hover { scrollbar-color: var(--rail-thumb) transparent; }
 }
+
+/* ======================================================= document sheet ===
+   A document form is one sheet, not a stack of cards: one surface, one
+   hairline between its sections, a section title over each, and the Post
+   bar as its foot. Corners kept small. The item grid inside is untouched. */
+.form.docsheet {
+  gap: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 4px 28px 0; box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+.form.docsheet .card { background: transparent; border: 0; border-radius: 0; box-shadow: none; overflow: visible; }
+.form.docsheet > .card, .form.docsheet > .grid2, .form.docsheet > details.card, .form.docsheet > section {
+  margin: 0; padding: 22px 0; border-top: 1px solid var(--line-soft);
+}
+.form.docsheet > :first-child, .form.docsheet > .alert + .card { border-top: 0; }
+.form.docsheet > .alert { margin: 16px 0 0; }
+.form.docsheet .card-head { padding: 0 0 14px; border: 0; background: transparent; min-height: 0; }
+.form.docsheet .card-head h2 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); }
+.form.docsheet .card-head h2 svg { display: none; }
+.form.docsheet .card-body { padding: 0; }
+.form.docsheet .card .tablewrap, .form.docsheet .card:has(.vgrid) > .tablewrap { padding: 0; }
+.form.docsheet .card:has(.vgrid) .aib { padding: 0 0 16px; }
+.form.docsheet .grid2 { gap: 40px; }
+.form.docsheet .grid2 > .card { padding: 0; }
+.form.docsheet .totalbar { padding: 14px 0 0; border-top: 0; background: transparent; }
+.form.docsheet .card.doc-info .doc-info-foot { padding-left: 0; padding-right: 0; border-top: 0; }
+.form.docsheet .receive-row { padding-left: 0; padding-right: 0; }
+
+/* Hierarchy: titles in ink and semibold, labels a step down in grey,
+   values in ink at regular weight, hints quietest. */
+.form.docsheet .field > label { font-size: 0.8125rem; font-weight: 500; color: var(--muted); }
+.form.docsheet .field > label svg { color: var(--muted); }
+.form.docsheet .field input, .form.docsheet .field select, .form.docsheet .field textarea { font-weight: 400; color: var(--ink); }
+.form.docsheet .hint, .form.docsheet .field .hint { color: var(--muted); }
+.form.docsheet input:not([type="checkbox"]):not([type="radio"]), .form.docsheet select, .form.docsheet textarea, .form.docsheet .btn, .form.docsheet button.btn { border-radius: 8px; }
+
+/* The Post bar is the sheet's foot, still kept in view. */
+.form.docsheet > .form-commit {
+  margin: 0 -28px; padding: 14px 28px; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: saturate(180%) blur(12px);
+  box-shadow: none;
+}
+@media (max-width: 720px) {
+  .form.docsheet { padding: 0 16px; border-radius: 0; border-left: 0; border-right: 0; }
+  .form.docsheet > .form-commit { margin: 0 -16px; padding: 12px 16px; border-radius: 0; }
+  .form.docsheet .grid2 { gap: 22px; }
+}

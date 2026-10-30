@@ -527,7 +527,7 @@ export function InvoiceForm({
   });
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
@@ -553,6 +553,7 @@ export function InvoiceForm({
       <input type="hidden" name="lines" value={payload} />
 
       <div className="card doc-meta doc-info">
+        <div className="card-head"><h2>{isSales ? "Invoice details" : "Bill details"}</h2></div>
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">
