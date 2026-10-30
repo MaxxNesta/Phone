@@ -8661,3 +8661,34 @@ nav.sidebar { scrollbar-gutter: stable; }
   .form.docsheet > .form-commit { margin: 0 -16px; padding: 12px 16px; border-radius: 0; }
   .form.docsheet .grid2 { gap: 22px; }
 }
+
+/* The sheet's labels outrank the header's own label rule, so the grey holds. */
+.form.docsheet .card .field > label,
+.form.docsheet .card.doc-info :is(.doc-fields, .moredetails) .field > label { color: var(--muted); }
+
+/* Dark: a near-black sheet a breath above the black page, hairlines in white
+   at low strength, fields drawn as outlines rather than grey fills. The
+   tokens are reset on the sheet so everything inside follows. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .form.docsheet {
+    --surface: #0E0E10; --ground: rgb(255 255 255 / 0.035);
+    --line: rgb(255 255 255 / 0.12); --line-soft: rgb(255 255 255 / 0.07);
+    --muted: #8E8E93; --ink-soft: #AEAEB2;
+    border-color: rgb(255 255 255 / 0.09); box-shadow: none;
+  }
+}
+:root[data-theme="dark"] .form.docsheet {
+  --surface: #0E0E10; --ground: rgb(255 255 255 / 0.035);
+  --line: rgb(255 255 255 / 0.12); --line-soft: rgb(255 255 255 / 0.07);
+  --muted: #8E8E93; --ink-soft: #AEAEB2;
+  border-color: rgb(255 255 255 / 0.09); box-shadow: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .form.docsheet :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not([readonly]):not(:disabled) {
+    background-color: transparent; }
+}
+:root[data-theme="dark"] .form.docsheet :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not([readonly]):not(:disabled) { background-color: transparent; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .form.docsheet .form-commit button:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.4); opacity: 1; }
+}
+:root[data-theme="dark"] .form.docsheet .form-commit button:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.4); opacity: 1; }
