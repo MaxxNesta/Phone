@@ -8371,3 +8371,6 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .card:has(.vgrid) .aib-search input { padding: 6px 0; min-height: 0; height: 34px; font-size: var(--t-md); }
 .card:has(.vgrid) .aib-row .btn { min-height: 36px; height: 36px; padding: 0 14px; font-size: var(--t-md); }
 @media (min-width: 721px) { .card:has(.vgrid) > .tablewrap { padding: 0 16px 16px; } }
+
+/* The variant's options on the model's line, a lighter weight than the model. */
+.vname .vopts-in { font-weight: 400; color: var(--ink-soft); }

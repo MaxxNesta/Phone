@@ -1329,9 +1329,10 @@ export function SalesVoucher({
                         <span className="vprod" title="On the order — change it there">
                           {item?.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
-                            <span className="vname">{item?.model ?? item?.name ?? "—"}</span>
+                            <span className="vname">{item?.model ?? item?.name ?? "—"}
+                              {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}</span>
                             {item?.code && <span className="vcode">{item.code}</span>}
-                            <span className="vopts">{parts.map((x) => x.o).join(" · ") || "On the order"}</span>
+                            {parts.length === 0 && <span className="vopts">On the order</span>}
                           </span>
                         </span>
                       ) : picking ? (
@@ -1353,9 +1354,10 @@ export function SalesVoucher({
                         <span className="vprod">
                           {item.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
-                            <span className="vname">{item.model ?? item.name}</span>
+                            {/* Model and its options read as one name: iPhone 16 128 GB · CH/A · Green. */}
+                            <span className="vname">{item.model ?? item.name}
+                              {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}</span>
                             <span className="vcode">{item.code}</span>
-                            {parts.length > 0 && <span className="vopts">{parts.map((x) => x.o).join(" · ")}</span>}
                             <span className={`vavail${short ? " short" : ""}`}>
                               {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}
                               {!l.sourceLineId && (
