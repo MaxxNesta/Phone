@@ -8537,66 +8537,81 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
   .grlines.vgrid td:has(.gr-imei) { width: 200px; white-space: nowrap; }
 }
 
-/* ===================================================== rail, polished ===
-   Icons drawn lighter and a step smaller than the words, so the label leads;
-   three clear weights (group, page, page in group); open groups hang off a
-   hairline guide; the current page a soft white pill. Graphite, white and
-   grey only. */
-nav.sidebar { font-feature-settings: "ss01", "cv11"; -webkit-font-smoothing: antialiased; }
-nav.sidebar svg { opacity: 1; stroke-width: 1.75; }
-nav.sidebar .navhead-label { gap: 11px; }
-nav.sidebar .navhead svg, nav.sidebar .navlink > svg { width: 18px; height: 18px; flex: none; color: var(--rail-muted); transition: color 120ms; }
-
-nav.sidebar .navhead {
-  min-height: 36px; padding: 0 10px; border-radius: 10px;
-  font-size: 0.875rem; font-weight: 500; letter-spacing: -0.006em; color: #E8E8ED;
+/* ============================================================= rail ====
+   After the reference: a plain list, regular weight, thin 1.5 icons, the
+   current page a quiet grey pill in semibold. White in light mode, black in
+   dark, both from the tokens below. Open groups hang off a hairline. */
+nav.sidebar {
+  --rail: #FFFFFF; --rail-strong: #1D1D1F; --rail-ink: #3A3A3C; --rail-muted: #6E6E73; --rail-faint: #AEAEB2;
+  --rail-hover: rgb(0 0 0 / 0.04); --rail-active: rgb(0 0 0 / 0.06); --rail-line: rgb(0 0 0 / 0.08);
+  --rail-thumb: rgb(0 0 0 / 0.16); --rail-thumb-hi: rgb(0 0 0 / 0.3);
+  background: var(--rail); color: var(--rail-ink); border-right: 1px solid var(--rail-line);
+  gap: 2px; -webkit-font-smoothing: antialiased;
 }
-nav.sidebar .navhead:hover { background: rgb(255 255 255 / 0.06); color: #fff; }
-nav.sidebar .navhead:hover svg, nav.sidebar .navhead[data-inside="true"] svg,
-nav.sidebar .navhead[aria-expanded="true"] svg { color: #fff; }
-nav.sidebar .navhead[data-inside="true"] { color: #fff; font-weight: 600; }
-nav.sidebar .navcaret {
-  font-size: 1rem; line-height: 1; color: rgb(255 255 255 / 0.35);
-  transition: transform 180ms cubic-bezier(0.2, 0, 0, 1), color 120ms;
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) nav.sidebar {
+    --rail: #0A0A0B; --rail-strong: #F5F5F7; --rail-ink: #E5E5EA; --rail-muted: #8E8E93; --rail-faint: #636366;
+    --rail-hover: rgb(255 255 255 / 0.05); --rail-active: rgb(255 255 255 / 0.09); --rail-line: rgb(255 255 255 / 0.08);
+    --rail-thumb: rgb(255 255 255 / 0.16); --rail-thumb-hi: rgb(255 255 255 / 0.32);
+  }
 }
-nav.sidebar .navhead:hover .navcaret { color: rgb(255 255 255 / 0.6); }
+:root[data-theme="dark"] nav.sidebar {
+  --rail: #0A0A0B; --rail-strong: #F5F5F7; --rail-ink: #E5E5EA; --rail-muted: #8E8E93; --rail-faint: #636366;
+  --rail-hover: rgb(255 255 255 / 0.05); --rail-active: rgb(255 255 255 / 0.09); --rail-line: rgb(255 255 255 / 0.08);
+  --rail-thumb: rgb(255 255 255 / 0.16); --rail-thumb-hi: rgb(255 255 255 / 0.32);
+}
 
-/* The open group's pages hang off a hairline under the group's icon. */
+nav.sidebar .brand { margin-bottom: 6px; }
+nav.sidebar .brand-name { color: var(--rail-strong); font-weight: 600; }
+nav.sidebar .brand-sub { color: var(--rail-muted); }
+nav.sidebar .brand::before { background: var(--rail-strong); color: var(--rail); }
+nav.sidebar .navcollapse-row { margin-bottom: 10px; }
+nav.sidebar .navcollapse { color: var(--rail-muted); }
+nav.sidebar .navcollapse:hover { background: var(--rail-hover); color: var(--rail-strong); }
+
+nav.sidebar svg { opacity: 1; stroke-width: 1.5; }
+nav.sidebar .navhead-label { gap: 10px; }
+nav.sidebar .navhead svg, nav.sidebar .navlink > svg { width: 18px; height: 18px; flex: none; color: var(--rail-muted); }
+
+/* Group heads and top pages: one weight, one size, like any other row. */
+nav.sidebar .navhead, nav.sidebar .navlink {
+  min-height: 34px; padding: 0 10px; gap: 10px; border-radius: 8px;
+  font-size: 0.9375rem; font-weight: 400; letter-spacing: -0.005em; color: var(--rail-ink);
+}
+nav.sidebar .navlink { display: flex; align-items: center; }
+nav.sidebar .navhead:hover, nav.sidebar .navlink:hover, nav.sidebar .navsubhead:hover { background: var(--rail-hover); color: var(--rail-strong); }
+nav.sidebar .navhead[data-inside="true"], nav.sidebar .navhead[aria-expanded="true"] { color: var(--rail-strong); }
+nav.sidebar .navhead[data-inside="true"] svg, nav.sidebar .navlink:hover > svg, nav.sidebar .navhead:hover svg { color: var(--rail-strong); }
+nav.sidebar .navcaret { font-size: 0.9375rem; line-height: 1; color: var(--rail-faint); transition: transform 180ms cubic-bezier(0.2, 0, 0, 1); }
+
 nav.sidebar .navitems { position: relative; padding: 2px 0 8px; gap: 1px; }
-nav.sidebar .navitems::before {
-  content: ""; position: absolute; left: 19px; top: 2px; bottom: 10px; width: 1px; background: rgb(255 255 255 / 0.1);
-}
+nav.sidebar .navitems::before { content: ""; position: absolute; left: 19px; top: 2px; bottom: 10px; width: 1px; background: var(--rail-line); }
 nav.sidebar .navitems > .navlink, nav.sidebar .navsubitems > .navlink, nav.sidebar .navlink[data-sub="true"] {
-  min-height: 30px; display: flex; align-items: center; padding: 0 10px 0 31px;
-  font-size: 0.8125rem; font-weight: 400; color: var(--rail-muted); border-radius: 8px;
+  min-height: 30px; padding: 0 10px 0 38px; font-size: 0.875rem; font-weight: 400; color: var(--rail-muted);
 }
-nav.sidebar .navsubitems > .navlink, nav.sidebar .navsubitems > .navlink[data-sub="true"] { padding-left: 43px; }
-nav.sidebar .navsubhead { min-height: 32px; padding: 0 10px 0 31px; font-size: 0.8125rem; font-weight: 500; color: #C7C7CC; border-radius: 8px; }
-nav.sidebar .navsection { padding: 10px 10px 4px 31px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: rgb(255 255 255 / 0.38); }
+nav.sidebar .navsubitems > .navlink, nav.sidebar .navsubitems > .navlink[data-sub="true"] { padding-left: 50px; }
+nav.sidebar .navsubhead { min-height: 30px; padding: 0 10px 0 38px; font-size: 0.875rem; font-weight: 500; color: var(--rail-ink); border-radius: 8px; }
+nav.sidebar .navsubhead[data-inside="true"] { color: var(--rail-strong); }
+nav.sidebar .navsection, nav.sidebar .navlabel { padding: 10px 10px 4px 38px; font-size: 0.8125rem; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--rail-muted); }
+nav.sidebar .navlabel { padding-left: 10px; }
 
-nav.sidebar .navlink { min-height: 36px; padding: 0 10px; font-size: 0.875rem; font-weight: 500; letter-spacing: -0.006em; color: #E8E8ED; gap: 11px; }
-nav.sidebar .navlink:hover { background: rgb(255 255 255 / 0.06); color: #fff; }
-nav.sidebar .navlink:hover > svg { color: #fff; }
-nav.sidebar .navlink[data-active="true"] {
-  background: rgb(255 255 255 / 0.12); color: #fff; font-weight: 600;
-  box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
-}
-nav.sidebar .navlink[data-active="true"] > svg { color: #fff; }
+nav.sidebar .navlink[data-active="true"] { background: var(--rail-active); color: var(--rail-strong); font-weight: 600; box-shadow: none; }
+nav.sidebar .navlink[data-active="true"] > svg { color: var(--rail-strong); }
 nav.sidebar .navlink:focus-visible, nav.sidebar .navhead:focus-visible, nav.sidebar .navsubhead:focus-visible {
-  outline: 2px solid rgb(255 255 255 / 0.6); outline-offset: -2px; }
+  outline: 2px solid var(--focus); outline-offset: -2px; }
+@media (min-width: 821px) {
+  body[data-nav-collapsed="true"] nav.sidebar .navhead[data-inside="true"] { background: var(--rail-active); color: var(--rail-strong); }
+}
 
-/* The rail's scrollbar: a 4px thumb that shows only while the pointer is on the rail. */
+/* The rail's scrollbar: a thin thumb, shown only while the pointer is on the rail. */
 nav.sidebar { scrollbar-gutter: stable; }
 @supports selector(::-webkit-scrollbar) {
   nav.sidebar::-webkit-scrollbar { width: 10px; }
   nav.sidebar::-webkit-scrollbar-thumb { background-color: transparent; border: 3px solid transparent; background-clip: padding-box; border-radius: 999px; }
-  nav.sidebar:hover::-webkit-scrollbar-thumb { background-color: rgb(255 255 255 / 0.18); }
-  nav.sidebar::-webkit-scrollbar-thumb:hover { background-color: rgb(255 255 255 / 0.34); }
+  nav.sidebar:hover::-webkit-scrollbar-thumb { background-color: var(--rail-thumb); }
+  nav.sidebar::-webkit-scrollbar-thumb:hover { background-color: var(--rail-thumb-hi); }
 }
 @supports not selector(::-webkit-scrollbar) {
   nav.sidebar { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-  nav.sidebar:hover { scrollbar-color: rgb(255 255 255 / 0.22) transparent; }
+  nav.sidebar:hover { scrollbar-color: var(--rail-thumb) transparent; }
 }
-nav.sidebar { gap: 2px; }
-nav.sidebar .brand { margin-bottom: 6px; }
-nav.sidebar .navcollapse-row { margin-bottom: 10px; }
