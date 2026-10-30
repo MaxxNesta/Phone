@@ -8439,3 +8439,45 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 .le .segmented .seg { color: var(--ink-soft); }
 .le .segmented .seg.on { color: var(--ink); }
 .vgrid .vfree .pill { background: var(--line-soft); color: var(--ink-soft); border-color: transparent; }
+
+/* IMEIs: the scan field on top, every IMEI an oval below, four to a row. */
+.serialentry-field .serialentry-icon { margin-left: auto; }
+.serialentry-tokens { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.serialentry-tokens .serialentry-token { justify-content: space-between; height: 32px; padding: 0 4px 0 14px; font-size: 0.875rem; }
+.serialentry-done { display: inline-flex; align-items: center; gap: 4px; }
+.vgrid .vline-sub .serialentry { margin-left: 0; max-width: none; }
+
+/* Discount column: the rate, the money under it; opens the line to change it. */
+.vgrid th.vc-disc, .vgrid td.vc-disc { width: 120px; text-align: center; }
+.vdisc { border: 0; background: none; padding: 2px 6px; min-height: 0; border-radius: 8px; cursor: pointer;
+  display: inline-grid; justify-items: center; color: var(--ink); font: inherit; font-variant-numeric: tabular-nums; }
+.vdisc small { font-size: 0.8125rem; color: var(--muted); }
+.vdisc:hover { background: var(--line-soft); }
+
+/* A free item: its own row, hung off the line that earned it. */
+.vlines tr.vline-free > td { background: var(--ground); padding-top: 10px; padding-bottom: 10px; font-variant-numeric: tabular-nums; }
+.vgrid tr.vline-free > td + td { border-left: 1px solid var(--line-soft); }
+.vgrid tr.vline-free > td.vc-no + td { border-left: 1px solid var(--line-soft); }
+.vfree { display: flex; align-items: center; gap: 12px; padding-left: 8px; }
+.vfree-elbow { width: 14px; height: 18px; border-left: 1.5px solid var(--line); border-bottom: 1.5px solid var(--line);
+  border-bottom-left-radius: 4px; margin-top: -14px; flex: none; }
+.vfree-chip { padding: 3px 10px; border-radius: 999px; background: var(--line-soft); color: var(--ink-soft); font-size: 0.8125rem; white-space: nowrap; }
+.vthumb.sm { width: 36px; height: 36px; border-radius: 8px; }
+.vfree .vname { font-weight: 500; }
+.vline-free .vamount { font-weight: 700; }
+
+.vopen { display: inline-grid; place-items: center; vertical-align: -1px; margin-left: 6px; width: 20px; height: 20px;
+  border-radius: 6px; color: var(--link); }
+.vopen:hover { background: var(--line-soft); }
+.le-warn { margin: 0; padding-left: 28px; font-size: 0.8125rem; color: var(--bad); }
+
+@media (max-width: 720px) {
+  .vlines tbody tr.vline-free { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; padding: 10px 4px; background: var(--ground); }
+  .vlines tr.vline-free > td { display: block; padding: 0; border: 0; background: none; }
+  .vlines tr.vline-free > td.vc-item { grid-column: 1 / -1; }
+  .vlines tr.vline-free > td.vc-no, .vlines tr.vline-free > td.vc-act, .vlines tr.vline-free > td.vc-price { display: none; }
+  .vlines td.vc-disc { grid-column: 1 / 4; grid-row: 3; text-align: left; }
+  .vlines td.vc-amt { grid-row: 4; }
+  .vlines tr.vline-free > td.vc-disc { display: none; }
+  .vlines tr.vline-free > td.vc-amt { grid-row: auto; }
+}

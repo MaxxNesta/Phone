@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ChevronDown, FileUp, ScanLine, X } from "lucide-react";
+import { ChevronDown, FileUp, ScanLine, X, ChevronUp } from "lucide-react";
 
 export type ScannedSerial = { serial: string; imei2?: string | null };
 
@@ -78,28 +78,14 @@ export function SerialEntry({ qty, value, onChange, withImei2 = false, label, su
           {qty > 0 ? `${n} of ${qty}` : `${n} scanned`}
         </span>
         <span className="serialentry-tools">
-          <label className="serialentry-icon" title="Import a CSV of IMEIs">
-            <FileUp size={15} aria-hidden="true" />
-            <span className="sr-only">Import CSV</span>
-            <input type="file" accept=".csv,.txt,text/csv,text/plain" hidden
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
-          </label>
           {onDone && n > 0 && !short && (
-            <button type="button" className="serialentry-done" onClick={onDone}>Done</button>
+            <button type="button" className="serialentry-done" onClick={onDone}><ChevronUp size={15} aria-hidden="true" /> Collapse</button>
           )}
         </span>
       </div>
 
       <div className="serialentry-field" onClick={() => input.current?.focus()}>
         <ScanLine size={16} aria-hidden="true" />
-        {value.map((s) => (
-          <span key={s.serial} className="serialentry-token">
-            <span className="m">{s.serial}{s.imei2 ? ` / ${s.imei2}` : ""}</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); remove(s.serial); }} aria-label={`Remove ${s.serial}`}>
-              <X size={12} aria-hidden="true" />
-            </button>
-          </span>
-        ))}
         <textarea
           ref={input}
           rows={1}
@@ -123,7 +109,26 @@ export function SerialEntry({ qty, value, onChange, withImei2 = false, label, su
           }}
           onBlur={() => { if (typed && !matches.length) add(draft); }}
         />
+        <label className="serialentry-icon" title="Import a CSV of IMEIs" onClick={(e) => e.stopPropagation()}>
+          <FileUp size={15} aria-hidden="true" />
+          <span className="sr-only">Import CSV</span>
+          <input type="file" accept=".csv,.txt,text/csv,text/plain" hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) importCsv(f); e.target.value = ""; }} />
+        </label>
       </div>
+
+      {n > 0 && (
+        <div className="serialentry-tokens">
+          {value.map((s) => (
+            <span key={s.serial} className="serialentry-token">
+              <span className="m">{s.serial}{s.imei2 ? ` / ${s.imei2}` : ""}</span>
+              <button type="button" onClick={() => remove(s.serial)} aria-label={`Remove ${s.serial}`}>
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {offered.length > 0 && (
         <div className="serialentry-offer">

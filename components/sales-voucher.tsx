@@ -14,7 +14,7 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse, Pencil, X } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse, Pencil, X, ExternalLink } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -654,6 +654,9 @@ export function SalesVoucher({
   /** Typed on the line: a giveaway the seller decided on, for whatever
    *  reason they pick. Independent of any promotion. */
   const givenFree = (l: Line) => Math.max(0, Number(l.focQty) || 0);
+  // The Discount column shows only once a line has one.
+  const anyDisc = lines.some((l) => discountOn(l) > 0);
+  const cols = anyDisc ? 7 : 6;
 
   // A free quantity with no reason has nowhere to put its cost, so the first
   // reason stands in until one is chosen rather than leaving the select blank.
@@ -1259,13 +1262,14 @@ export function SalesVoucher({
                 <th>Item</th>
                 <th className="r">Qty</th>
                 <th className="r">Unit price{currency ? ` (${currency})` : ""}</th>
+                {anyDisc && <th className="r vc-disc">Discount</th>}
                 <th className="r">Amount{currency ? ` (${currency})` : ""}</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={6} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={cols} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
@@ -1288,21 +1292,28 @@ export function SalesVoucher({
                 const freeBadge =
                   earnedFree(l) > 0 && promo
                     ? promo.code
-                    : (focReasons.find((r) => r.id === l.focReasonId)?.code ?? "FREE");
+                    : (focReasons.find((r) => r.id === l.focReasonId)?.name ?? "Free");
 
                 const freeRow =
                   free > 0 && item ? (
-                    <tr key={`${l.key}-free`} className="vline-sub">
+                    <tr key={`${l.key}-free`} className="vline-free">
                       <td className="vc-no" />
-                      <td>
+                      <td className="vc-item">
                         <span className="vfree">
-                          <span className="pill warn">{freeBadge}</span> {fmt(free)} free · {item.model ?? item.name}
+                          <span className="vfree-elbow" aria-hidden="true" />
+                          <span className="vfree-chip">Free item</span>
+                          {item.photo && <span className="vthumb sm"><img src={item.photo} alt="" /></span>}
+                          <span>
+                            <span className="vname">{item.model ?? item.name}</span>
+                            <span className="vcode">{item.code} (Free · {freeBadge})</span>
+                          </span>
                         </span>
                       </td>
-                      <td className="r">{fmt(free)}</td>
-                      <td className="r subline">0</td>
-                      <td className="r subline">0</td>
-                      <td />
+                      <td className="r vc-qty" data-label="Qty">{fmt(free)}</td>
+                      <td className="r vc-price" data-label="Unit price">0</td>
+                      {anyDisc && <td className="r vc-disc" data-label="Discount"><span className="subline">&ndash;</span></td>}
+                      <td className="r vamount vc-amt" data-label="Amount">0</td>
+                      <td className="vc-act" />
                     </tr>
                   ) : null;
 
@@ -1359,7 +1370,11 @@ export function SalesVoucher({
                           <span>
                             {/* Model and its options read as one name: iPhone 16 128 GB · CH/A · Green. */}
                             <span className="vname">{item.model ?? item.name}
-                              {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}</span>
+                              {parts.length > 0 && <span className="vopts-in"> {parts.map((x) => x.o).join(" · ")}</span>}
+                              <Link href={`/items/${item.id}`} target="_blank" rel="noopener noreferrer" className="vopen"
+                                title={`Open ${item.code} in a new tab`} aria-label={`Open item ${item.code} in a new tab`}>
+                                <ExternalLink size={13} aria-hidden="true" />
+                              </Link></span>
                             <span className="vcode">{item.code}</span>
                             <span className={`vavail${short ? " short" : ""}`}>
                               {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}
@@ -1405,14 +1420,17 @@ export function SalesVoucher({
                           : undefined}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
                     </td>
-                    <td className="r vamount vc-amt" data-label="Amount">
-                      {fmt(amount(l))}
-                      {discountOn(l) > 0 && (
-                        <div className="vdisc">
-                          Discount {l.discountMode === "AMT" ? `${pctOf(l)}%` : `${Number(l.discountPct) || 0}%`} &minus;{fmt(discountOn(l))}
-                        </div>
-                      )}
-                    </td>
+                    {anyDisc && (
+                      <td className="r vc-disc" data-label="Discount">
+                        {discountOn(l) > 0 ? (
+                          <button type="button" className="vdisc" onClick={() => setEditKey(l.key)} title="Change the discount">
+                            <span>{l.discountMode === "AMT" ? pctOf(l) : Number(l.discountPct) || 0}%</span>
+                            <small>&minus;{fmt(discountOn(l))}</small>
+                          </button>
+                        ) : <span className="subline">&ndash;</span>}
+                      </td>
+                    )}
+                    <td className="r vamount vc-amt" data-label="Amount">{fmt(amount(l))}</td>
                     <td className="tight vc-act">
                       {/* Everything a line can carry beyond the four figures —
                           the pack it is sold in, whose stock it is, units given
@@ -1427,7 +1445,7 @@ export function SalesVoucher({
                   tracked ? (
                     <tr key={`${l.key}-imei`} className="vline-sub">
                       <td className="vc-no" />
-                      <td colSpan={5}>
+                      <td colSpan={cols - 1}>
                         {showInline ? (
                           <span className="vimei">
                             IMEI: <span className="m">{serials[0].serial}</span>
@@ -1465,7 +1483,7 @@ export function SalesVoucher({
                   delivered.length > 0 ? (
                     <tr key={`${l.key}-billed`} className="vline-sub">
                       <td className="vc-no" />
-                      <td colSpan={5}>
+                      <td colSpan={cols - 1}>
                         <fieldset className="vbilled">
                           <legend>{billPart ? "Phones billed" : `${delivered.length} phone${delivered.length === 1 ? "" : "s"} billed`}</legend>
                           {delivered.map((sn) => (
@@ -1598,6 +1616,13 @@ export function SalesVoucher({
                           ))}
                         </fieldset>
                       </div>
+                    )}
+                    {item?.is_stocked && !toDeliver && !matchedDeliveryId
+                      && ((Number(l.qty) || 0) + freeQty(l)) * factorOf(l) > onHandHere(l.itemId) && (
+                      <p className="le-warn">
+                        Only {fmt(onHandHere(l.itemId))} in stock here: {fmt(Number(l.qty) || 0)} billed
+                        {freeQty(l) > 0 ? ` + ${fmt(freeQty(l))} free` : ""} needs {fmt(((Number(l.qty) || 0) + freeQty(l)) * factorOf(l))}.
+                      </p>
                     )}
                     {earnedFree(l) > 0 && promo && (
                       <p className="le-note">Promotion {promo.code} adds {fmt(earnedFree(l))} free on its own.</p>
