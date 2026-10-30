@@ -14,7 +14,7 @@ import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
-import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, MoreVertical, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse } from "lucide-react";
+import { PackageCheck, Truck, Clock, ShoppingBag, Check, Copy, ChevronRight, Package, Plus, CalendarClock, CalendarDays, Hash, StickyNote, User, UserCheck, Wallet, Warehouse, Pencil } from "lucide-react";
 import { asVariant } from "./variant-tags";
 import type { AwaitingLine } from "@/lib/queries";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -1247,9 +1247,10 @@ export function SalesVoucher({
           </>
         )}
         <div className="tablewrap">
-          <table className="linetable vlines">
+          <table className="linetable vlines vgrid">
             <thead>
               <tr>
+                <th className="vc-no">No.</th>
                 <th>Item</th>
                 <th className="r">Qty</th>
                 <th className="r">Unit price{currency ? ` (${currency})` : ""}</th>
@@ -1260,11 +1261,11 @@ export function SalesVoucher({
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={6} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={7} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
-              {lines.flatMap((l) => {
+              {lines.flatMap((l, i) => {
                 const item = byId(l.itemId);
                 const free = freeQty(l);
                 const short = !toDeliver && !matchedDeliveryId && item?.is_stocked
@@ -1288,6 +1289,7 @@ export function SalesVoucher({
                 const freeRow =
                   free > 0 && item ? (
                     <tr key={`${l.key}-free`} className="vline-sub">
+                      <td className="vc-no" />
                       <td>
                         <span className="vfree">
                           <span className="pill warn">{freeBadge}</span> {fmt(free)} free · {item.model ?? item.name}
@@ -1321,12 +1323,14 @@ export function SalesVoucher({
 
                 return [
                   <tr key={l.key} className="vline">
+                    <td className="vc-no">{i + 1}</td>
                     <td className="vc-item" style={{ minWidth: 280 }}>
                       {l.orderLineId ? (
                         <span className="vprod" title="On the order — change it there">
                           {item?.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
-                            <span className="vname codetip" data-code={item?.code ?? ""}>{item?.model ?? item?.name ?? "—"}</span>
+                            <span className="vname">{item?.model ?? item?.name ?? "—"}</span>
+                            {item?.code && <span className="vcode">{item.code}</span>}
                             <span className="vopts">{parts.map((x) => x.o).join(" · ") || "On the order"}</span>
                           </span>
                         </span>
@@ -1349,7 +1353,8 @@ export function SalesVoucher({
                         <span className="vprod">
                           {item.photo && <span className="vthumb"><img src={item.photo} alt="" /></span>}
                           <span>
-                            <span className="vname codetip" data-code={item.code}>{item.model ?? item.name}</span>
+                            <span className="vname">{item.model ?? item.name}</span>
+                            <span className="vcode">{item.code}</span>
                             {parts.length > 0 && <span className="vopts">{parts.map((x) => x.o).join(" · ")}</span>}
                             <span className={`vavail${short ? " short" : ""}`}>
                               {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}
@@ -1437,7 +1442,7 @@ export function SalesVoucher({
                           free — kept out of the row until it is wanted. */}
                       <div className="line-acts">
                       <details className="linemenu">
-                        <summary aria-label="More for this line"><MoreVertical size={16} /></summary>
+                        <summary aria-label="Edit line details" title="Edit line details"><Pencil size={15} /></summary>
                         <div className="linemenu-pop">
                           {item && (item.packs ?? []).length > 0 && (
                             <label>Unit
@@ -1493,7 +1498,6 @@ export function SalesVoucher({
                               </select>
                             </label>
                           )}
-                          {item?.code && <span className="linemenu-label">SKU {item.code}</span>}
                         </div>
                       </details>
                       <LineRemove onClick={() => removeLine(l.key)} />
@@ -1502,6 +1506,7 @@ export function SalesVoucher({
                   </tr>,
                   tracked ? (
                     <tr key={`${l.key}-imei`} className="vline-sub">
+                      <td className="vc-no" />
                       <td colSpan={6}>
                         {showInline ? (
                           <span className="vimei">
@@ -1539,6 +1544,7 @@ export function SalesVoucher({
                   ) : null,
                   delivered.length > 0 ? (
                     <tr key={`${l.key}-billed`} className="vline-sub">
+                      <td className="vc-no" />
                       <td colSpan={6}>
                         <fieldset className="vbilled">
                           <legend>{billPart ? "Phones billed" : `${delivered.length} phone${delivered.length === 1 ? "" : "s"} billed`}</legend>

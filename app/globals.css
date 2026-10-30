@@ -8334,3 +8334,40 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 
 /* "What is this cost?" on Record import cost: the same question bar as the receipt. */
 .card.doc-info .cost-type-row { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+
+/* The invoice lines as a grid: one bordered table, a numbered first column,
+   ruled columns, and figures typed straight into their cells. The item keeps
+   its name with the code under it. Desktop only; a phone keeps the cards. */
+.vcode { display: block; font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+@media (min-width: 721px) {
+  .vlines.vgrid { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); border-radius: 12px; }
+  .vgrid th { background: var(--ground); color: var(--ink-soft); font-weight: 500; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .vgrid thead th:first-child { border-top-left-radius: 12px; }
+  .vgrid thead th:last-child { border-top-right-radius: 12px; }
+  .vgrid th, .vgrid td { border-bottom: 0; }
+  .vgrid th + th, .vgrid tr.vline > td + td { border-left: 1px solid var(--line-soft); }
+  .vgrid tbody tr.vline:not(:first-child) > td { border-top: 1px solid var(--line); }
+  .vgrid tbody tr:last-child > td:first-child { border-bottom-left-radius: 12px; }
+  .vgrid tbody tr:last-child > td:last-child { border-bottom-right-radius: 12px; }
+  .vgrid .vc-no { width: 1%; padding: 0 12px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .vgrid tr.vline-sub > td.vc-no + td { border-left: 1px solid var(--line-soft); }
+  .vgrid tr.vline > td.vc-qty, .vgrid tr.vline > td.vc-price { padding: 4px; }
+  /* The cell is the field: no box inside the box, a blue ring when typing. */
+  .vlines.vgrid td.vc-qty input, .vlines.vgrid td.vc-price input {
+    width: 100%; border: 0; background: transparent; box-shadow: none; text-align: right;
+    font-variant-numeric: tabular-nums; border-radius: 8px; }
+  .vlines.vgrid td.vc-qty input:hover:not([readonly]), .vlines.vgrid td.vc-price input:hover:not([readonly]) { background: var(--ground); }
+  .vlines.vgrid td.vc-qty input:focus, .vlines.vgrid td.vc-price input:focus {
+    outline: none; background: var(--surface); box-shadow: inset 0 0 0 2px var(--focus); }
+  .vgrid .linemenu > summary { color: var(--muted); }
+  .vgrid .linemenu > summary:hover, .vgrid .linemenu[open] > summary { color: var(--focus); }
+}
+@media (max-width: 720px) { .vlines td.vc-no, .vlines th.vc-no { display: none !important; } }
+
+/* Above the grid: a compact search bar, then air before the table, and the
+   table inset in the card like the fields above it. */
+.card:has(.vgrid) .aib { padding: 12px 16px 20px; border-bottom: 0; }
+.card:has(.vgrid) .aib-search { min-height: 36px; border-width: 1px; border-radius: 10px; }
+.card:has(.vgrid) .aib-search input { padding: 6px 0; min-height: 0; height: 34px; font-size: var(--t-md); }
+.card:has(.vgrid) .aib-row .btn { min-height: 36px; height: 36px; padding: 0 14px; font-size: var(--t-md); }
+@media (min-width: 721px) { .card:has(.vgrid) > .tablewrap { padding: 0 16px 16px; } }
