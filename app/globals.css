@@ -6725,14 +6725,19 @@ table.dt-compact td.wrap { white-space: normal; max-width: 22ch; overflow-wrap: 
 .clamp2 { -webkit-line-clamp: 2; line-clamp: 2; }
 .muted { color: var(--muted); }
 table.ctable { table-layout: fixed; width: 100%; }
-table.ctable th:nth-child(1) { width: 24%; }
-table.ctable th:nth-child(2) { width: 14%; }
-table.ctable th:nth-child(3) { width: 13%; }
+/* Customer · company · location · price level · credit allowed · outstanding ·
+   credit · status · menu. The name is the narrowest it can be and still read;
+   it ellipsises, with the whole name on hover. */
+table.ctable th:nth-child(1) { width: 18%; }
+table.ctable th:nth-child(2) { width: 13%; }
+table.ctable th:nth-child(3) { width: 12%; }
 table.ctable th:nth-child(4) { width: 10%; }
-table.ctable th:nth-child(5) { width: 12%; }
-table.ctable th:nth-child(6) { width: 13%; }
-table.ctable th:nth-child(7) { width: 8%; }
-table.ctable th:nth-child(8) { width: 6%; }
+table.ctable th:nth-child(5) { width: 9%; }
+table.ctable th:nth-child(6) { width: 12%; }
+table.ctable th:nth-child(7) { width: 11%; }
+table.ctable th:nth-child(8) { width: 9%; }
+table.ctable th:nth-child(9) { width: 44px; }
+table.ctable th { overflow: hidden; text-overflow: ellipsis; }
 table.ctable td { vertical-align: top; padding-top: 8px; padding-bottom: 8px; white-space: normal; }
 table.ctable .subline { font-size: 0.72rem; }
 .crow { cursor: pointer; }
