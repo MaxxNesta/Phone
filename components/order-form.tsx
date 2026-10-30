@@ -343,9 +343,10 @@ export function OrderForm({
           sub="Search the full product catalogue" />
 
         <div className="tablewrap">
-          <table className="linetable">
+          <table className="linetable vgrid">
             <thead>
               <tr>
+                <th className="vc-no">No.</th>
                 <th>Item</th><th className="r">Qty</th><th>Unit</th>
                 <th className="r">Expected price</th>
                 <th className="r">Amount</th><th />
@@ -353,14 +354,15 @@ export function OrderForm({
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={6} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={7} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
-              {lines.map((l) => {
+              {lines.map((l, i) => {
                 const item = byId(l.itemId);
                 return (
                   <tr key={l.key}>
+                    <td className="vc-no">{i + 1}</td>
                     <td style={{ minWidth: 240 }}>
                       <ItemPicker
                         mode={kind}

@@ -8481,3 +8481,32 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
   .vlines tr.vline-free > td.vc-disc { display: none; }
   .vlines tr.vline-free > td.vc-amt { grid-row: auto; }
 }
+
+/* The same grid on every line table: purchase and sales orders, goods
+   receipts, purchase invoices. Ruled columns, a numbered first column, and
+   figures typed straight into their cells. */
+@media (min-width: 721px) {
+  .linetable.vgrid { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); border-radius: 12px; }
+  .linetable.vgrid:not(.vlines) tbody tr > td + td { border-left: 1px solid var(--line-soft); }
+  .linetable.vgrid:not(.vlines) tbody tr:not(:first-child) > td { border-top: 1px solid var(--line); }
+  .linetable.vgrid:not(.vlines) td { padding-top: 10px; padding-bottom: 10px; }
+  .linetable.vgrid:not(.vlines) td.qtycell, .linetable.vgrid:not(.vlines) td.pricecell { padding: 4px; }
+  .linetable.vgrid:not(.vlines) td.qtycell input[type="number"], .linetable.vgrid:not(.vlines) td.pricecell input[type="number"] {
+    width: 100%; border: 0; background: transparent; box-shadow: none; text-align: right; border-radius: 8px; font-variant-numeric: tabular-nums; }
+  .linetable.vgrid:not(.vlines) td.qtycell input:hover:not([readonly]), .linetable.vgrid:not(.vlines) td.pricecell input:hover:not([readonly]) { background: var(--ground); }
+  .linetable.vgrid:not(.vlines) td.qtycell input:focus, .linetable.vgrid:not(.vlines) td.pricecell input:focus {
+    outline: none; background: var(--surface); box-shadow: inset 0 0 0 2px var(--focus); }
+  .linetable.vgrid:not(.vlines) td.pricecell input[readonly] { background: transparent !important; color: var(--ink-soft); }
+  .linetable.vgrid .pickedbtn { border: 0; background: transparent; padding: 2px 0; }
+  .linetable.vgrid .pickedbtn:hover { background: transparent; }
+  .linetable.vgrid .pickedbtn:hover .vname { text-decoration: underline; text-decoration-color: var(--line); }
+}
+.pickedbtn .aib-name .vname { font-size: 0.9375rem; }
+.readout .vname, .readout .vcode { display: block; }
+@media (min-width: 721px) {
+  .linetable.vgrid .pickeditem { justify-content: flex-start; }
+  .linetable.vgrid .pickeditem .pickedbtn { flex: 0 1 auto; }
+  .linetable.vgrid .pickeditem .pickedopen { color: var(--link); align-self: flex-start; margin-top: 2px; }
+  .linetable.vgrid td.qtycell input[type="number"], .linetable.vgrid td.pricecell input[type="number"],
+  .vlines.vgrid td.vc-qty input, .vlines.vgrid td.vc-price input { font-size: 0.9375rem; }
+}

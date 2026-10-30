@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { createItemInline, type PickerItem } from "@/lib/actions";
-import { Thumb, itemLabel } from "./add-items-bar";
+import { Thumb } from "./add-items-bar";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 import { useTranslations } from "next-intl";
 
@@ -190,8 +190,14 @@ export function ItemPicker({
         >
           <Thumb i={selected} />
           <span className="aib-name">
-            <strong className="codetip" data-code={selected.code}>{itemLabel(selected)}</strong>
-            <small>{[[selected.brand, selected.model].filter(Boolean).join(" / "), selected.code].filter(Boolean).join(" · ")}</small>
+            {(() => {
+              const v = asVariant(selected.variant) ?? [];
+              return (
+                <strong className="vname">{selected.model && v.length ? selected.model : selected.name}
+                  {selected.model && v.length > 0 && <span className="vopts-in"> {v.map((x) => x.o).join(" · ")}</span>}</strong>
+              );
+            })()}
+            <small className="vcode">{selected.code}</small>
           </span>
         </button>
         <Link

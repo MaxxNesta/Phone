@@ -8,13 +8,14 @@ import { CarriageSection } from "./carriage-section";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { serialsOnFile } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { asVariant } from "@/components/variant-tags";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
 import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
-import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse } from "lucide-react";
+import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 import { LineRemove } from "./line-remove";
@@ -628,10 +629,10 @@ export function ReceiptForm({
           sub={order ? "Select the purchase order lines to add to this goods receipt" : "Search the full product catalogue"} />
 
         <div className="tablewrap">
-          <table className="linetable grlines">
+          <table className="linetable grlines vgrid">
             <thead>
               <tr>
-                <th className="r">#</th>
+                <th className="vc-no">No.</th>
                 <th>Item</th>
                 {order && <th className="r">Ordered</th>}
                 {matchedPi && <th className="r">Billed</th>}
@@ -660,14 +661,25 @@ export function ReceiptForm({
                 return (
                   <Fragment key={l.key}>
                     <tr className={imeiLine?.key === l.key ? "gr-current" : undefined}>
-                      <td className="r subline">{idx + 1}</td>
+                      <td className="vc-no">{idx + 1}</td>
                       <td style={{ minWidth: 240 }}>
                         {item && !picking ? (
-                          <span className="prod">
+                          <span className="vprod">
                             <span>
-                              <span className="prod-name codetip" data-code={item.code}>{item.name}</span>
+                              {(() => {
+                                const v = asVariant(item.variant) ?? [];
+                                return (
+                                  <span className="vname">{item.model && v.length ? item.model : item.name}
+                                    {item.model && v.length > 0 && <span className="vopts-in"> {v.map((x) => x.o).join(" · ")}</span>}
+                                    <Link href={`/items/${item.id}`} target="_blank" rel="noopener noreferrer" className="vopen"
+                                      title={`Open ${item.code} in a new tab`} aria-label={`Open item ${item.code} in a new tab`}>
+                                      <ExternalLink size={13} aria-hidden="true" />
+                                    </Link></span>
+                                );
+                              })()}
+                              <span className="vcode">{item.code}</span>
                               {!l.sourceLineId && (
-                                <span className="prod-sub" style={{ display: "block" }}>
+                                <span className="vavail">
                                   <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button>
                                 </span>
                               )}

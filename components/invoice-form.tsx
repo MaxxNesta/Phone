@@ -826,9 +826,10 @@ export function InvoiceForm({
           sub="Search the full product catalogue" />
 
         <div className="tablewrap">
-          <table className="linetable">
+          <table className="linetable vgrid">
             <thead>
               <tr>
+                <th className="vc-no">No.</th>
                 <th>Item</th>
                 <th className="r">{isSales ? "On hand" : "Next cost"}</th>
                 {matchedGr && <th className="r">Received</th>}
@@ -841,11 +842,11 @@ export function InvoiceForm({
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
-              {lines.map((l) => {
+              {lines.map((l, i) => {
                 const item = byId(l.itemId);
                 const short = isSales && item?.is_stocked && Number(l.qty) > Number(item.on_hand);
                 const receivedLine = matchedGr?.lines.find((gl) => gl.itemId === l.itemId);
@@ -864,12 +865,14 @@ export function InvoiceForm({
 
                 return (
                   <tr key={l.key}>
+                    <td className="vc-no">{i + 1}</td>
                     <td style={{ minWidth: 240 }}>
                       {/* An order line's item is not this voucher's to swap:
                           changing what is being bought starts at the order. */}
                       {l.orderLineId ? (
-                        <span className="readout codetip" data-code={item?.code ?? ""}>
-                          {item ? item.name : "—"}
+                        <span className="readout">
+                          <span className="vname">{item ? item.name : "—"}</span>
+                          {item && <span className="vcode">{item.code}</span>}
                         </span>
                       ) : (
                         <ItemPicker
@@ -984,7 +987,7 @@ export function InvoiceForm({
                 const item = byId(l.itemId)!;
                 return (
                   <tr key={`batch-${l.key}`} className="batchrow">
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <span className="batchrow-label">{item.code} — which lot?</span>
                       <input
                         type="text"
