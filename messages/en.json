@@ -164,6 +164,7 @@
     "serialNumber": "Serial number",
     "quantity": "Quantity",
     "serial": "Serial",
+    "optionalSerial": "Optional serial",
     "units": "{n, plural, one {# unit} other {# units}}",
     "lowStock": "Low stock",
     "outOfStock": "Out of stock",

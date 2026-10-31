@@ -86,6 +86,7 @@ export default async function Products({ searchParams }: { searchParams: Promise
                   <option value="">{c("all")}</option>
                   <option value="IMEI">IMEI</option>
                   <option value="SERIAL">{c("serialNumber")}</option>
+                  <option value="OPTIONAL">{c("optionalSerial")}</option>
                   <option value="NONE">{c("quantity")}</option>
                 </select>
               </div>
@@ -146,7 +147,10 @@ export default async function Products({ searchParams }: { searchParams: Promise
                     </td>
                     {multiBrand && <td data-col="brand">{r.brand ?? "—"}</td>}
                     <td data-col="category">{r.category}</td>
-                    <td data-col="tracking"><span className={`tag${r.tracks_serial ? "" : " qty"}`}>{r.identity === "SERIAL" ? c("serial") : r.tracks_serial ? "IMEI" : c("quantity")}</span></td>
+                    {(() => {
+                      const id = r.identity ?? (r.tracks_serial ? "IMEI" : "NONE");
+                      return <td data-col="tracking"><span className={`tag${id === "NONE" ? " qty" : ""}`}>{id === "IMEI" ? "IMEI" : id === "SERIAL" ? c("serial") : id === "OPTIONAL" ? c("optionalSerial") : c("quantity")}</span></td>;
+                    })()}
                     <td className="num" data-col="price">{r.price != null ? money(r.price) : "—"}</td>
                     {levels.map((l) => <td key={l.id} className="num" data-col={`level:${l.id}`}>
                       {r.levels[l.id] != null ? money(r.levels[l.id]) : "—"}</td>)}

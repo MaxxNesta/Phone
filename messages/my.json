@@ -164,6 +164,7 @@
     "serialNumber": "Serial နံပါတ်",
     "quantity": "အရေအတွက်",
     "serial": "Serial",
+    "optionalSerial": "Serial (မထည့်လည်းရ)",
     "units": "{n} ခု",
     "lowStock": "လက်ကျန် နည်း",
     "outOfStock": "လက်ကျန် ကုန်",
