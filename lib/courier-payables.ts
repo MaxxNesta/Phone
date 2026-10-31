@@ -184,7 +184,12 @@ export type CourierBillInput = {
   amount: number; method?: "EQUAL" | "VALUE"; costTypeId?: string | null; reference?: string | null; notes?: string | null;
   /** Paid on the spot from this cash or bank account: nothing is owed, so no courier is needed. */
   paidFromAccountId?: string | null;
+  /** Stop once every phone's share is worked out; the caller rolls back. */
+  preview?: boolean;
 };
+
+/** One phone's share of a previewed charge. */
+export type PreviewShare = { receiptNo: string; serial: string; item: string; before: number; amount: number };
 
 /**
  * A courier's charge for goods already received, booked and spread in one
@@ -228,7 +233,7 @@ export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   // Cr the till, and the landed cost spreads that line onto the phones, so
   // nothing is owed and the courier's name is optional.
   let sourceJournalLineId: string | null = null;
-  if (paid) {
+  if (paid && !input.preview) {
     const [money] = await tx`
       select id, is_cash_account from account
        where id = ${paid} and company_id = ${input.companyId} and (is_cash_account or is_bank_account)`;
@@ -265,6 +270,19 @@ export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   }, tx);
   await L.acknowledgeExcluded({ ...actor, id: lc.id }, tx);
   await L.calculateLandedCost({ ...actor, id: lc.id }, tx);
+  if (input.preview) {
+    const shares = await tx`
+      select r.doc_no as "receiptNo", s.serial_no as serial, i.name as item,
+             a.original_cost::float as before, sum(a.amount)::float as amount
+        from landed_cost_allocation a
+        join stock_serial s on s.id = a.serial_id
+        join document r on r.id = a.receipt_id
+        join item i on i.id = a.item_id
+       where a.landed_cost_id = ${lc.id}
+       group by r.doc_no, s.serial_no, i.name, a.original_cost
+       order by r.doc_no, i.name, s.serial_no`;
+    return { ...lc, shares: shares as unknown as PreviewShare[] };
+  }
   await L.postLandedCost({ ...actor, id: lc.id }, tx);
   return lc;
 }

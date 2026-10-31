@@ -2,7 +2,7 @@ import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { postedReceipts, landedCostTypes } from "@/lib/landed-cost-queries";
-import { recordCourierBillAction } from "@/lib/courier-actions";
+import { previewCourierBillAction, recordCourierBillAction } from "@/lib/courier-actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { HelpHint } from "@/components/help-hint";
 import { CourierBillForm } from "@/components/courier-bill-form";
@@ -36,6 +36,7 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
       </header>
       <CourierBillForm
         action={recordCourierBillAction}
+        preview={previewCourierBillAction}
         couriers={couriers.map((c) => ({ id: c.id, label: `${c.name} · ${c.code}` }))}
         receipts={receipts.filter((r) => r.phones > 0).map((r) => ({ id: r.id, no: r.doc_no, date: r.doc_date, supplier: r.supplier, warehouse: r.warehouse, phones: r.phones, landed: r.landed_costs }))}
         types={types.map((t) => ({ id: t.id, label: t.name, code: t.code, method: t.default_method }))}

@@ -122,12 +122,12 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --ground:    #000000;
-    --surface:   #0D1524;
+    --surface:   #121214;
     --ink:       #F5F5F7;
     --ink-soft:  #F5F5F7;
     --muted:     #F5F5F7;
-    --line:      #1E2E47;
-    --line-soft: #15223A;
+    --line:      #2C2C2F;
+    --line-soft: #1E1E21;
     --dr:        #8D93F5;
     --cr:        #E09C55;
     /* A dark surface needs a lighter green, not a tint of the same one:
@@ -8676,22 +8676,22 @@ nav.sidebar { scrollbar-gutter: stable; }
 .form.docsheet .card .field > label,
 .form.docsheet .card.doc-info :is(.doc-fields, .moredetails) .field > label { color: var(--muted); }
 
-/* Dark: a navy-black sheet a breath above the black page, hairlines in blue
+/* Dark: a near-black sheet a breath above the black page, hairlines in white
    at low strength, fields drawn as outlines rather than grey fills. The
    tokens are reset on the sheet so everything inside follows. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .form.docsheet {
-    --surface: #0A101C; --ground: rgb(41 151 255 / 0.05);
-    --line: rgb(41 151 255 / 0.22); --line-soft: rgb(41 151 255 / 0.12);
+    --surface: #0E0E10; --ground: rgb(255 255 255 / 0.035);
+    --line: rgb(255 255 255 / 0.12); --line-soft: rgb(255 255 255 / 0.07);
     --muted: #F5F5F7; --ink-soft: #F5F5F7;
-    border-color: rgb(41 151 255 / 0.16); box-shadow: none;
+    border-color: rgb(255 255 255 / 0.09); box-shadow: none;
   }
 }
 :root[data-theme="dark"] .form.docsheet {
-  --surface: #0A101C; --ground: rgb(41 151 255 / 0.05);
-  --line: rgb(41 151 255 / 0.22); --line-soft: rgb(41 151 255 / 0.12);
+  --surface: #0E0E10; --ground: rgb(255 255 255 / 0.035);
+  --line: rgb(255 255 255 / 0.12); --line-soft: rgb(255 255 255 / 0.07);
   --muted: #F5F5F7; --ink-soft: #F5F5F7;
-  border-color: rgb(41 151 255 / 0.16); box-shadow: none;
+  border-color: rgb(255 255 255 / 0.09); box-shadow: none;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .form.docsheet :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not([readonly]):not(:disabled) {
@@ -8707,7 +8707,8 @@ nav.sidebar { scrollbar-gutter: stable; }
 
 /* =========================================================== no greys ===
    Black, white and blue only (2026-10-31). Neutrals carry a faint blue
-   cast (--ground, --line, --line-soft, dark --surface). Secondary text takes
+   cast in light mode (--ground, --line, --line-soft); dark mode stays neutral
+   near-black, by request (2026-10-31). Secondary text takes
    --ink through --muted and --ink-soft; these are the surfaces that drew
    grey on their own. Chart grids and axes, table bands, hovers and header
    fills are a breath of the link blue, mixed against transparent so they
@@ -8734,3 +8735,117 @@ button:disabled, .btn:disabled, button.btn:disabled {
   background: color-mix(in srgb, var(--link) 12%, var(--surface));
   color: color-mix(in srgb, var(--link) 60%, var(--surface));
 }
+
+/* Ledger descriptions: one line, clipped with an ellipsis; the whole text on
+   hover (title). A long note can no longer stretch a row or the columns. */
+td.ledger-desc { max-width: 28rem; white-space: nowrap; }
+td.ledger-desc .clip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ------------------------------------------- carriage inward preview ---
+   A sheet over the form (HIG sheets.md: a scoped task, the parent dimmed).
+   Header and footer stay put; the phones scroll between them. Icons sit in
+   soft blue tiles, so the figures beside them carry the weight. */
+dialog.cbp {
+  width: min(64rem, calc(100vw - 32px)); max-height: min(52rem, calc(100vh - 32px));
+  padding: 0; border: 0; border-radius: 18px; color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.22), 0 0 0 0.5px color-mix(in srgb, var(--link) 22%, transparent);
+}
+dialog.cbp[open] { display: flex; animation: cbp-in 0.2s cubic-bezier(0.2, 0.9, 0.3, 1); }
+dialog.cbp::backdrop { background: rgb(0 0 0 / 0.38); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+@keyframes cbp-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { dialog.cbp[open] { animation: none; } }
+@media (prefers-reduced-transparency: reduce) { dialog.cbp::backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(0 0 0 / 0.55); } }
+
+.cbp-body { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+.cbp-head { display: flex; align-items: flex-start; gap: 12px; padding: 22px 24px 14px; }
+.cbp-head > div { flex: 1 1 auto; min-width: 0; }
+.cbp-head h2 { margin: 0 0 4px; font-size: 1.375rem; font-weight: 600; letter-spacing: var(--track-tight); }
+.cbp-head p { margin: 0; }
+.cbp-badge {
+  display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap;
+  padding: 6px 12px; border-radius: 10px; font-size: var(--t-sm); font-weight: 500;
+  color: var(--link); background: color-mix(in srgb, var(--link) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--link) 22%, transparent);
+}
+.cbp-x {
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; color: var(--ink); cursor: pointer;
+}
+.cbp-x:hover { background: color-mix(in srgb, var(--link) 9%, transparent); }
+
+.cbp-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 24px 16px; display: flex; flex-direction: column; gap: 14px; overscroll-behavior: contain; }
+.cbp-card { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; background: var(--surface); }
+.cbp-card h3 { margin: 0 0 12px; font-size: 1rem; font-weight: 600; }
+
+.cbp-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 12px 16px; margin: 0; }
+.cbp-details > div { min-width: 0; }
+.cbp-details dt { display: flex; align-items: center; gap: 6px; font-size: var(--t-sm); font-weight: 500; margin-bottom: 6px; }
+.cbp-details dt svg { color: var(--link); opacity: 0.8; }
+.cbp-details dd {
+  margin: 0; padding: 9px 12px; border-radius: 10px; font-size: var(--t-md);
+  background: color-mix(in srgb, var(--link) 5%, var(--surface)); border: 1px solid var(--line-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cbp-details .cbp-note { grid-column: 1 / -1; }
+
+.cbp-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0;
+  background: color-mix(in srgb, var(--link) 5%, var(--surface)); padding: 14px 6px; }
+.cbp-stat { display: flex; align-items: center; gap: 12px; padding: 4px 14px; min-width: 0; }
+.cbp-stat + .cbp-stat { border-left: 1px solid var(--line); }
+.cbp-stat > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.cbp-stat strong { font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cbp-tile { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 11px;
+  color: var(--link); background: var(--surface); border: 1px solid var(--line-soft); }
+
+.cbp-groups-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.cbp-groups-head > div { flex: 1 1 auto; }
+.cbp-groups-head h3 { margin: 0 0 2px; }
+.cbp-groups-head p { margin: 0; }
+.cbp-group { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.cbp-group + .cbp-group { margin-top: 10px; }
+.cbp-group-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; min-height: 44px;
+  border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.cbp-group[data-open] .cbp-group-row { background: color-mix(in srgb, var(--link) 6%, var(--surface)); border-bottom: 1px solid var(--line); }
+.cbp-group-row svg { color: var(--link); flex: none; }
+.cbp-pill { margin-left: auto; padding: 2px 10px; border-radius: 980px; font-size: var(--t-xs); font-weight: 500; white-space: nowrap;
+  color: var(--link); background: color-mix(in srgb, var(--link) 9%, transparent); border: 1px solid color-mix(in srgb, var(--link) 22%, transparent); }
+.cbp-sum { min-width: 8rem; text-align: right; font-variant-numeric: tabular-nums; }
+.cbp-group table { margin: 0; }
+.cbp-group td.cbp-item { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbp-group td.cbp-add { color: var(--link); }
+
+.cbp-foot { display: flex; align-items: center; gap: 16px; padding: 14px 24px 18px; border-top: 1px solid var(--line); }
+.cbp-foot > button { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 12px; }
+.cbp-foot > button:last-child { background: var(--link); color: #fff; border: 0; font-weight: 600; }
+.cbp-total { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; padding-right: 16px; border-right: 1px solid var(--line); }
+.cbp-total strong { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 640px) {
+  dialog.cbp { width: 100vw; max-width: 100vw; max-height: 94vh; margin: auto 0 0; border-radius: 20px 20px 0 0; }
+  .cbp-head, .cbp-foot { padding-left: 16px; padding-right: 16px; }
+  .cbp-scroll { padding: 4px 16px 12px; }
+  .cbp-badge { display: none; }
+  .cbp-stat + .cbp-stat { border-left: 0; }
+  .cbp-foot { flex-wrap: wrap; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+  .cbp-total { order: -1; width: 100%; align-items: flex-start; border-right: 0; padding: 0; }
+  .cbp-foot > button:last-child { flex: 1 1 auto; justify-content: center; }
+}
+
+/* Dark mode stays neutral (2026-10-31): the blue washes behind table headers,
+   bands, hovers and sunken rows read as navy on near-black, so there they are
+   white at low strength instead. Blue is kept for links, icons and accents. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --erp-surface-sunken: rgb(255 255 255 / 0.05); }
+  :root:not([data-theme="light"]) :is(thead th, .erp-th) { background: color-mix(in srgb, #fff 5%, var(--surface)); }
+  :root:not([data-theme="light"]) table:not(.linetable) tbody tr:nth-child(even) > td { background: rgb(255 255 255 / 0.03); }
+  :root:not([data-theme="light"]) :is(tbody tr:hover, tbody tr.link:hover > td, table:not(.linetable) tbody tr.link:hover > td) { background: rgb(255 255 255 / 0.06); }
+  :root:not([data-theme="light"]) :is(.cbp-details dd, .cbp-summary, .cbp-group[data-open] .cbp-group-row) { background: rgb(255 255 255 / 0.04); }
+}
+:root[data-theme="dark"] { --erp-surface-sunken: rgb(255 255 255 / 0.05); }
+:root[data-theme="dark"] :is(thead th, .erp-th) { background: color-mix(in srgb, #fff 5%, var(--surface)); }
+:root[data-theme="dark"] table:not(.linetable) tbody tr:nth-child(even) > td { background: rgb(255 255 255 / 0.03); }
+:root[data-theme="dark"] :is(tbody tr:hover, tbody tr.link:hover > td, table:not(.linetable) tbody tr.link:hover > td) { background: rgb(255 255 255 / 0.06); }
+:root[data-theme="dark"] :is(.cbp-details dd, .cbp-summary, .cbp-group[data-open] .cbp-group-row) { background: rgb(255 255 255 / 0.04); }

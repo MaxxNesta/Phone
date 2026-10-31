@@ -1,16 +1,19 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { CalendarDays, Hash, Layers, Package, StickyNote, Tag, Wallet } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eye, FileText, Hash, Layers, Package, Smartphone, StickyNote, Wallet, X } from "lucide-react";
+import type { PreviewShare } from "@/lib/courier-payables";
 
 type Opt = { id: string; label: string };
 type Receipt = { id: string; no: string; date: string; supplier: string | null; warehouse: string | null; phones: number; landed: number };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-export function CourierBillForm({ action, couriers, receipts, types, carriageAccount, payableAccount, clearingAccount, initialPartnerId, initialReceiptId, today, paidFrom = [] }: {
+export function CourierBillForm({ action, preview, couriers, receipts, types, carriageAccount, payableAccount, clearingAccount, initialPartnerId, initialReceiptId, today, paidFrom = [] }: {
   action: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>;
+  /** Works out every phone's share without posting anything. */
+  preview: (fd: FormData) => Promise<{ error?: string; shares?: PreviewShare[] }>;
   couriers: Opt[]; receipts: Receipt[]; types: (Opt & { code: string; method: string })[];
   carriageAccount: string | null; payableAccount: string | null;
   /** Where any cost but carriage waits when paid now: Landed Cost Clearing. */
@@ -20,6 +23,24 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
   paidFrom?: Opt[];
 }) {
   const [state, formAction, pending] = useActionState(action, null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [previewing, startPreview] = useTransition();
+  const [shown, setShown] = useState<{ shares: PreviewShare[]; date: string; reference: string; note: string } | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const openPreview = () => {
+    const form = formRef.current;
+    if (!form || !form.reportValidity()) return;
+    const fd = new FormData(form);
+    setPreviewError(null);
+    startPreview(async () => {
+      const r = await preview(fd);
+      if (r.error) { setPreviewError(r.error); return; }
+      setShown({ shares: r.shares ?? [], date: String(fd.get("doc_date") ?? ""),
+                 reference: String(fd.get("reference") ?? ""), note: String(fd.get("memo") ?? "") });
+      dialogRef.current?.showModal();
+    });
+  };
   const [chosen, setChosen] = useState<string[]>(initialReceiptId ? [initialReceiptId] : []);
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("EQUAL");
@@ -41,8 +62,8 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
   const credit = paidNow ? `${paidLabel} · paid now` : `${payableAccount ?? "Payable (Other)"} · owed`;
 
   return (
-    <form action={formAction} className="form wide">
-      {state?.error && <div className="alert">{state.error}</div>}
+    <form ref={formRef} action={formAction} className="form wide">
+      {(previewError || state?.error) && <div className="alert">{previewError ?? state?.error}</div>}
       <input type="hidden" name="cost_type_id" value={typeId} />
       <div className="card doc-info">
         {/* With more than carriage in use, the first question is what the cost is. */}
@@ -159,11 +180,149 @@ export function CourierBillForm({ action, couriers, receipts, types, carriageAcc
       )}
 
       <div className="actions form-commit">
-        <button type="submit" disabled={pending || chosen.length === 0 || !(total > 0)}>
-          {pending ? "Posting…" : "Record and spread"}
+        {/* Nothing posts from here: Preview shows every phone's share first,
+            and Record and spread lives in that sheet. */}
+        <button type="button" onClick={openPreview} disabled={previewing || pending || chosen.length === 0 || !(total > 0)}>
+          <Eye size={15} aria-hidden="true" /> {previewing ? "Working it out…" : "Preview"}
         </button>
         <span className="page-sub">Cost of sales takes each phone&rsquo;s share when that phone is sold.</span>
       </div>
+
+      <dialog ref={dialogRef} className="cbp" aria-labelledby="cbp-title" onClose={() => setShown(null)}>
+        {shown && (
+          <CarriagePreview
+            shares={shown.shares} title={carriage ? "Preview carriage inward" : `Preview ${type?.label.toLowerCase() ?? "cost"}`}
+            costLabel={carriage ? "Carriage" : (type?.label ?? "Cost")}
+            details={[
+              { icon: CalendarDays, label: "Bill date", value: shown.date ? new Date(shown.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—" },
+              { icon: Hash, label: "Amount", value: `${fmt(total)} MMK` },
+              { icon: Wallet, label: "Payment", value: paidNow ? `Paid now · ${paidLabel}` : "Pay later" },
+              { icon: Layers, label: "Spread", value: method === "PER" ? "Fixed per phone" : method === "VALUE" ? "By purchase value" : "Equal per phone" },
+              { icon: FileText, label: "Reference", value: shown.reference || "—" },
+            ]}
+            note={shown.note}
+            posting={pending}
+            onBack={() => dialogRef.current?.close()}
+            onRecord={() => { dialogRef.current?.close(); formRef.current?.requestSubmit(); }}
+          />
+        )}
+      </dialog>
     </form>
+  );
+}
+
+/**
+ * The sheet Preview opens: the bill as entered, read-only, and below it every
+ * phone it lands on, grouped by goods receipt. Built from the same
+ * calculation the posting runs, so what it shows is what Record and spread
+ * writes — not an estimate of it.
+ */
+function CarriagePreview({ shares, title, costLabel, details, note, posting, onBack, onRecord }: {
+  shares: PreviewShare[]; title: string; costLabel: string;
+  details: { icon: typeof Hash; label: string; value: string }[]; note: string;
+  posting: boolean; onBack: () => void; onRecord: () => void;
+}) {
+  const groups = [...shares.reduce((m, s) => m.set(s.receiptNo, [...(m.get(s.receiptNo) ?? []), s]), new Map<string, PreviewShare[]>())];
+  const [open, setOpen] = useState<Set<string>>(() => new Set(groups.slice(0, 1).map(([no]) => no)));
+  const allOpen = open.size === groups.length;
+  const total = shares.reduce((s, x) => s + x.amount, 0);
+  /** "+10,000" when every phone gets the same, otherwise the range. */
+  const each = (list: PreviewShare[]) => {
+    const lo = Math.min(...list.map((x) => x.amount)), hi = Math.max(...list.map((x) => x.amount));
+    return lo === hi ? `+${fmt(lo)}` : `+${fmt(lo)} – ${fmt(hi)}`;
+  };
+
+  return (
+    <div className="cbp-body">
+      <header className="cbp-head">
+        <div>
+          <h2 id="cbp-title">{title}</h2>
+          <p className="page-sub">Check where the cost lands before it is posted. Nothing has been recorded yet.</p>
+        </div>
+        <span className="cbp-badge"><Eye size={14} aria-hidden="true" /> Preview only · not posted</span>
+        <button type="button" className="cbp-x" onClick={onBack} aria-label="Close preview"><X size={18} aria-hidden="true" /></button>
+      </header>
+
+      <div className="cbp-scroll">
+        <section className="cbp-card">
+          <h3>Voucher details</h3>
+          <dl className="cbp-details">
+            {details.map(({ icon: Icon, label, value }) => (
+              <div key={label}><dt><Icon size={13} aria-hidden="true" />{label}</dt><dd title={value}>{value}</dd></div>
+            ))}
+            <div className="cbp-note"><dt><StickyNote size={13} aria-hidden="true" />Note</dt><dd title={note || undefined}>{note || "—"}</dd></div>
+          </dl>
+        </section>
+
+        <section className="cbp-card cbp-summary" aria-label="Allocation summary">
+          {[
+            { icon: FileText, value: String(groups.length), label: groups.length === 1 ? "Goods receipt" : "Goods receipts" },
+            { icon: Smartphone, value: String(shares.length), label: "Phones" },
+            { icon: Layers, value: shares.length ? `${each(shares)} MMK` : "—", label: `${costLabel} per phone` },
+            { icon: Hash, value: `${fmt(total)} MMK`, label: "Total spread" },
+          ].map(({ icon: Icon, value, label }) => (
+            <div key={label} className="cbp-stat">
+              <span className="cbp-tile"><Icon size={18} aria-hidden="true" /></span>
+              <span><strong>{value}</strong><span className="page-sub">{label}</span></span>
+            </div>
+          ))}
+        </section>
+
+        <section className="cbp-card">
+          <div className="cbp-groups-head">
+            <div><h3>By goods receipt</h3><p className="page-sub">Each phone&rsquo;s cost now, its share, and its cost after posting.</p></div>
+            {groups.length > 1 && (
+              <button type="button" className="ghost tiny" onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map(([no]) => no)))}>
+                <ChevronDown size={14} aria-hidden="true" style={{ transform: allOpen ? "rotate(180deg)" : undefined }} />
+                {allOpen ? "Collapse all" : "Expand all"}
+              </button>
+            )}
+          </div>
+          {groups.map(([no, list]) => {
+            const isOpen = open.has(no);
+            const sum = list.reduce((s, x) => s + x.amount, 0);
+            return (
+              <div key={no} className="cbp-group" data-open={isOpen || undefined}>
+                <button type="button" className="cbp-group-row" aria-expanded={isOpen}
+                  onClick={() => setOpen((o) => { const n = new Set(o); if (n.has(no)) n.delete(no); else n.add(no); return n; })}>
+                  {isOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+                  <strong>{no}</strong>
+                  <span className="page-sub">{list.length} phone{list.length === 1 ? "" : "s"}</span>
+                  <span className="cbp-pill">{each(list)} per phone</span>
+                  <strong className="cbp-sum">{fmt(sum)} MMK</strong>
+                </button>
+                {isOpen && (
+                  <div className="tablewrap">
+                    <table>
+                      <thead><tr><th className="tight">#</th><th>IMEI / serial</th><th>Phone</th><th className="r">Cost now</th><th className="r">{costLabel}</th><th className="r">Cost after</th></tr></thead>
+                      <tbody>
+                        {list.map((x, i) => (
+                          <tr key={x.serial}>
+                            <td className="tight">{i + 1}</td>
+                            <td className="code">{x.serial}</td>
+                            <td className="cbp-item" title={x.item}>{x.item}</td>
+                            <td className="r">{fmt(x.before)}</td>
+                            <td className="r cbp-add">+{fmt(x.amount)}</td>
+                            <td className="r"><strong>{fmt(x.before + x.amount)}</strong></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      </div>
+
+      <footer className="cbp-foot">
+        <button type="button" className="ghost" onClick={onBack}><ChevronLeft size={16} aria-hidden="true" /> Back to edit</button>
+        <span className="cbp-total"><span className="page-sub">Total {costLabel.toLowerCase()} spread</span><strong>{fmt(total)} MMK</strong></span>
+        <button type="button" onClick={onRecord} disabled={posting}>
+          <FileText size={16} aria-hidden="true" /> {posting ? "Posting…" : "Record and spread"}
+        </button>
+      </footer>
+    </div>
   );
 }
