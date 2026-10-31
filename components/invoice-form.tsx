@@ -3,7 +3,9 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
-import type { ActionResult, PickerItem } from "@/lib/actions";
+import { serialsOnFile, type ActionResult, type PickerItem } from "@/lib/actions";
+import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
+import { TrackMode } from "./track-mode";
 import type { AwaitingLine } from "@/lib/queries";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
@@ -58,6 +60,11 @@ type Line = {
    *  and the item keeps lots. Ignored on the Receive-later and Match paths,
    *  where the goods arrive on a receipt that asks for its own. */
   batchNo?: string; expiryDate?: string;
+  /** The handsets, when the bill receives phones itself — the same rows a
+   *  goods receipt asks for, because this bill posts one. */
+  serials?: UnitRow[];
+  /** An optional-serial item (Apple Watch) whose units are being named. */
+  withSerials?: boolean;
   /** The unit the quantity and price are in. Empty means the item's own
    *  unit, which is every line not filled from a packed receipt. */
   uomId?: string;
@@ -454,6 +461,31 @@ export function InvoiceForm({
   const goodsNet = inclusive ? goodsTotal - taxOnGoods : goodsTotal;
   const total = goodsNet + taxOnGoods;
 
+  /* Arriving with this bill posts a goods receipt, so it asks for what a
+     receipt asks for: an IMEI (or serial) per phone, checked against the
+     books as it is typed. The same panel the goods receipt uses. */
+  const named = (l: Line) => !isSales && receiveMode === "now"
+    && (!!byId(l.itemId)?.tracks_serial || (byId(l.itemId)?.identity === "OPTIONAL" && !!l.withSerials));
+  const modeOf = (l: Line): UnitMode => (byId(l.itemId)?.identity === "IMEI" ? "IMEI" : "SERIAL");
+  const entered = (l: Line) => (l.serials ?? []).filter((x) => x.serial.trim()).length;
+  const [onFile, setOnFile] = useState<OnFile>({});
+  const serialKey = [...new Set(lines.flatMap((l) => (named(l) ? l.serials ?? [] : [])
+    .flatMap((u) => [u.serial, u.imei2 ?? "", u.deviceSerial ?? ""]))
+    .map((x) => x.trim()).filter((x) => x.length >= 5))].sort().join(",");
+  useEffect(() => {
+    if (!serialKey) { setOnFile({}); return; }
+    const t = setTimeout(() => { serialsOnFile(serialKey.split(",")).then(setOnFile).catch(() => {}); }, 300);
+    return () => clearTimeout(t);
+  }, [serialKey]);
+  const unitLines = !isSales && receiveMode === "now"
+    ? lines.filter((l) => l.itemId && Number(l.qty) > 0
+        && (!!byId(l.itemId)?.tracks_serial || byId(l.itemId)?.identity === "OPTIONAL"))
+    : [];
+  const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
+    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
+  const [imeiKey, setImeiKey] = useState<number | null>(null);
+  const imeiLine = unitLines.find((l) => l.key === imeiKey && named(l)) ?? unitLines.find(named) ?? null;
+
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
@@ -474,6 +506,11 @@ export function InvoiceForm({
         // own, which asks there.
         batchNo: receiveMode === "now" ? (l.batchNo ?? "") : "",
         expiryDate: receiveMode === "now" ? (l.expiryDate ?? "") : "",
+        // Only a bill that receives the goods names them; the receipt behind
+        // Match already did, and Receive-later's receipt will.
+        serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial.trim()).filter(Boolean),
+        unitDetails: (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
+          .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
       }))
   );
 
@@ -527,7 +564,7 @@ export function InvoiceForm({
   });
 
   return (
-    <form action={formAction} className="form wide docsheet">
+    <form action={formAction} className="form wide docsheet waved">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
@@ -1034,6 +1071,55 @@ export function InvoiceForm({
 
       </div>
 
+      {unitLines.length > 0 && (
+        <section className="card inv-units">
+          <div className="card-head">
+            <h2>IMEI / serial numbers</h2>
+            <span className="page-sub">
+              {serialShort.length > 0
+                ? `${serialShort.length} line${serialShort.length === 1 ? "" : "s"} still to finish before this can post`
+                : "Every unit named — the receipt posts with the bill"}
+            </span>
+          </div>
+          <div className="card-body inv-units-body">
+            <div className="inv-units-lines" role="tablist" aria-label="Lines with units to name">
+              {unitLines.map((l) => {
+                const item = byId(l.itemId)!;
+                const q = Number(l.qty) || 0, n = entered(l);
+                const on = named(l);
+                const ok = on && n === q && !rowsProblem(l.serials ?? [], modeOf(l), onFile);
+                return (
+                  <div key={l.key} className="inv-units-line" data-current={imeiLine?.key === l.key || undefined}>
+                    <button type="button" role="tab" aria-selected={imeiLine?.key === l.key}
+                      disabled={!on} onClick={() => setImeiKey(l.key)}>
+                      <strong>{item.name}</strong>
+                      <span className="subline">{item.code}</span>
+                    </button>
+                    {item.identity === "OPTIONAL" && (
+                      <TrackMode code={item.code} on={!!l.withSerials} note={false}
+                        onChange={(v) => { setLine(l.key, { withSerials: v }); if (v) setImeiKey(l.key); }} />
+                    )}
+                    {on && <span className={`pill ${ok ? "ok" : "warn"}`}>{n} / {q}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            {imeiLine ? (
+              <ImeiPanel
+                mode={modeOf(imeiLine)}
+                title={byId(imeiLine.itemId)?.name ?? ""}
+                qty={Number(imeiLine.qty) || 0}
+                rows={imeiLine.serials ?? []}
+                onChange={(rows) => setLine(imeiLine.key, { serials: rows })}
+                onFile={onFile}
+              />
+            ) : (
+              <p className="subline">Turn on serials for a line above to name its units.</p>
+            )}
+          </div>
+        </section>
+      )}
+
       {shortages.length > 0 && (
         <div className="alert">
           Not enough stock for{" "}
@@ -1167,7 +1253,7 @@ export function InvoiceForm({
 
       <div className="actions form-commit">
         <button type="submit"
-          disabled={pending || total === 0 || shortages.length > 0 || cashOverpaid || (Number(cashOut) > 0 && !cashAccountId)}>
+          disabled={pending || total === 0 || shortages.length > 0 || serialShort.length > 0 || cashOverpaid || (Number(cashOut) > 0 && !cashAccountId)}>
           {pending ? "Posting…" : `Post ${isSales ? "sales" : "purchase"} invoice`}
         </button>
         {saveDraft && (
