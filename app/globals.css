@@ -6697,7 +6697,9 @@ dialog.mp::backdrop { background: rgb(0 0 0 / 0.36); -webkit-backdrop-filter: bl
    three lines instead of widening the table. */
 table.dt-compact { font-size: 0.8rem; }
 table.dt-compact th { font-size: 0.72rem; }
-table.dt-compact td.wrap { white-space: normal; max-width: 22ch; overflow-wrap: anywhere; }
+/* break-word, not anywhere: anywhere lets a crowded table squeeze the column
+   to one letter and split "Apple Myanmar" into "Myan mar". */
+table.dt-compact td.wrap { white-space: normal; min-width: 14ch; max-width: 22ch; overflow-wrap: break-word; }
 .clamp3 {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
   line-clamp: 3; overflow: hidden;
