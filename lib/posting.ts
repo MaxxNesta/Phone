@@ -326,6 +326,8 @@ export type JournalLine = {
    */
   currency?: string | null;
   fcAmount?: number;
+  /** What someone typed against this one line; lines that say different things stay apart. */
+  memo?: string | null;
 };
 
 /** A document in a foreign currency: which, and kyat per unit of it. */
@@ -2723,7 +2725,7 @@ function consolidate(lines: JournalLine[]): JournalLine[] {
   for (const l of lines) {
     // A yuan line and a kyat line on one account are two different things
     // owed, and never collapse into one.
-    const key = `${l.accountId}|${l.partnerId ?? ""}|${l.locationId ?? ""}|${l.currency ?? ""}`;
+    const key = `${l.accountId}|${l.partnerId ?? ""}|${l.locationId ?? ""}|${l.currency ?? ""}|${l.memo ?? ""}`;
     const existing = byKey.get(key);
     if (existing) {
       existing.amount = round4(existing.amount + l.amount);
@@ -2797,12 +2799,12 @@ export async function writeJournal(
     await tx`
       insert into journal_line
         (company_id, journal_entry_id, line_no, account_id, currency,
-         amount, exchange_rate, base_amount, partner_id, location_id)
+         amount, exchange_rate, base_amount, partner_id, location_id, memo)
       values
         (${companyId}, ${entry.id}, ${lineNo}, ${l.accountId}, ${fcLine ? l.currency! : base},
          ${fcLine ? l.fcAmount! : l.amount},
          ${fcLine ? round4(Math.abs(l.amount / l.fcAmount!)) || 1 : 1},
-         ${l.amount}, ${l.partnerId ?? null}, ${l.locationId ?? null})`;
+         ${l.amount}, ${l.partnerId ?? null}, ${l.locationId ?? null}, ${l.memo?.trim() || null})`;
   }
 
   return entry.id;
@@ -8429,6 +8431,7 @@ async function _postVoucher(
         amount: l.amount,
         partnerId: l.partnerId ?? null,
         locationId: l.locationId ?? input.locationId ?? null,
+        memo: l.memo ?? null,
       }))
     );
 

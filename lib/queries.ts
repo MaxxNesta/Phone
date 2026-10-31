@@ -6338,7 +6338,7 @@ export async function getAccountLedgerFiltered(
 ) {
   const ids = Array.isArray(accountId) ? accountId : [accountId];
   return sql`
-    select je.entry_no, je.entry_date, je.memo, je.source_type,
+    select je.entry_no, je.entry_date, je.memo, jl.memo as line_memo, je.source_type,
            a.code as account_code, a.name as account_name, a.id as account_id,
            d.doc_no, d.doc_type, p.name as partner_name, l.code as location_code,
            case when jl.base_amount > 0 then  jl.base_amount else 0 end as debit,

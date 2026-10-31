@@ -166,10 +166,12 @@ export function JournalEntryList({ entries, backQuery = "" }:
                             </Link>
                           : "—"}
                       </td>
-                      <td className="wrap">
-                        {e.docLabel}
-                        {e.partnerName && <span style={{ color: "var(--muted)" }}> · {e.partnerName}</span>}
-                        {e.memo && <span style={{ color: "var(--muted)" }}> · {e.memo}</span>}
+                      <td className="ledger-desc" title={[e.docLabel, e.partnerName, e.memo].filter(Boolean).join(" · ")}>
+                        <span className="clip">
+                          {e.docLabel}
+                          {e.partnerName && <span style={{ color: "var(--muted)" }}> · {e.partnerName}</span>}
+                          {e.memo && <span style={{ color: "var(--muted)" }}> · {e.memo}</span>}
+                        </span>
                       </td>
                       <td className="r">{money(e.debit)}</td>
                       <td className="r">{money(e.credit)}</td>
@@ -190,19 +192,20 @@ export function JournalEntryList({ entries, backQuery = "" }:
                         <td />
                         <td />
                         <td className="code" style={{ color: "var(--muted)" }}>{l.accountCode}</td>
-                        <td colSpan={2} className="wrap">
+                        <td colSpan={2} className="ledger-desc"
+                            title={[l.accountName, l.partnerName, l.locationCode, l.memo].filter(Boolean).join(" · ")}>
                           {/* Credits sit in from their debit, the way an entry
                               is written by hand — the shape carries the
                               meaning before any number is read. */}
-                          <span style={{ paddingLeft: l.credit ? "1.25rem" : 0 }}>
+                          <span className="clip" style={{ paddingLeft: l.credit ? "1.25rem" : 0 }}>
                             {l.accountName}
+                            {(l.memo || l.partnerName || l.locationCode) && (
+                              <span style={{ color: "var(--muted)" }}>
+                                {" · "}
+                                {[l.partnerName, l.locationCode, l.memo].filter(Boolean).join(" · ")}
+                              </span>
+                            )}
                           </span>
-                          {(l.memo || l.partnerName || l.locationCode) && (
-                            <span style={{ color: "var(--muted)" }}>
-                              {" · "}
-                              {[l.partnerName, l.locationCode, l.memo].filter(Boolean).join(" · ")}
-                            </span>
-                          )}
                         </td>
                         <td className="r"><span className="dr">{l.debit ? money(l.debit) : ""}</span></td>
                         <td className="r"><span className="cr">{l.credit ? money(l.credit) : ""}</span></td>

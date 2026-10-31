@@ -510,11 +510,17 @@ async function AccountView({
                       {many && (
                         <td className="code" title={r.account_name}>{r.account_code}</td>
                       )}
-                      <td className="wrap">
-                        {cleanMemo(r.memo, r.doc_no,
-                          LABEL[r.doc_type] ?? r.doc_type ?? "") ?? "—"}
-                        {r.partner_name && <div className="subline">{r.partner_name}</div>}
-                      </td>
+                      {(() => {
+                        // The line's own description first, the entry's narration after it.
+                        const text = r.line_memo?.trim()
+                          || cleanMemo(r.memo, r.doc_no, LABEL[r.doc_type] ?? r.doc_type ?? "");
+                        return (
+                          <td className="ledger-desc" title={text ?? undefined}>
+                            <span className="clip">{text ?? "—"}</span>
+                            {r.partner_name && <div className="subline clip">{r.partner_name}</div>}
+                          </td>
+                        );
+                      })()}
                       <td className="r dr">{Number(r.debit) ? money(r.debit) : ""}</td>
                       <td className="r cr">{Number(r.credit) ? money(r.credit) : ""}</td>
                       <td className="r">{money(r.running_balance)}</td>

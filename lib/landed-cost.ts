@@ -651,13 +651,17 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
       }
       await tx`update landed_cost_charge set owed_account_id = ${owed}, via_account_id = ${via} where id = ${c.id}`;
     }
+    // The note typed on the bill rides on both entries, so the ledger says
+    // which shipment this was, not only that it was carriage.
+    const [{ memo: note }] = await tx`select memo from document where id = ${doc.id}`;
+    const said = (what: string) => `${doc.doc_no} ${what}${note ? ` · ${note}` : ""}`;
     if (bill.length > 0) {
       await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
-        `${doc.doc_no} carriage inward`, bill, doc.location_id);
+        said("carriage inward"), bill, doc.location_id);
     }
 
     const entryId = await writeJournal(tx, input.companyId, doc.doc_date, "LANDED_COST", doc.id,
-      `${doc.doc_no} landed cost`, journal, doc.location_id);
+      said("landed cost"), journal, doc.location_id);
     await tx`
       update document set status = 'POSTED', posted_at = now(), posted_by_id = ${input.userId},
              journal_entry_id = ${entryId}
