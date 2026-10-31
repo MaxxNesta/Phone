@@ -19,12 +19,12 @@ export const BUCKETS = [
     band: "#E8879B", ink: "#A33049" },
   { key: "d90",    field: "d90",    bucket: "90+",   label: "90+ days",
     band: "#D9566B", ink: "#B4283C" },
-  /* Last, and deliberately outside the ramp. Grey because it is not a
+  /* Last, and deliberately outside the ramp. Pale blue because it is not a
      position on the scale from healthy to hopeless — it is an absence of one.
      Given green it read as settled; given red it would read as overdue, and
      it is neither. Somebody simply has to find out what was agreed. */
   { key: "no_due",  field: "no_due",  bucket: "NO_DUE_DATE", label: "No due date",
-    band: "#B9C2CC", ink: "#5B6672" },
+    band: "#8FB8F0", ink: "#0058B8" },
 ] as const;
 
 /**

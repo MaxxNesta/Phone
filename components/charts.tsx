@@ -253,7 +253,7 @@ export function ShareDonut({
   count?: boolean;
   data: {
     id: string; name: string; revenue: number | string; qty?: number | string;
-    /** The gathered remainder. Grey, and outside the palette: it is not a
+    /** The gathered remainder. Pale blue, and outside the palette: it is not a
      *  thing that sold, it is everything the chart stopped naming, and
      *  giving it a colour of its own invites reading it as one more item. */
     rest?: boolean;
@@ -266,10 +266,10 @@ export function ShareDonut({
   const rows = data.map((d) => ({
     id: d.id, name: d.name, value: Number(d.revenue), rest: !!d.rest,
   }));
-  /* The remainder takes grey wherever it sits, and the named slices keep
+  /* The remainder takes pale blue wherever it sits, and the named slices keep
      the palette in order regardless — so a colour means the same thing
      whether or not a remainder happens to be present. */
-  const REST = "var(--line)";
+  const REST = "color-mix(in srgb, var(--chart-1) 28%, var(--surface))";
   let n = 0;
   const colourOf = (r: { rest: boolean }) =>
     r.rest ? REST : SLICE_COLOURS[n++ % SLICE_COLOURS.length];

@@ -45,7 +45,7 @@ import { DatePickerFix } from "@/components/date-picker-fix";
 // name in Burmese must not silently lose its shapes to a fallback.
 const geist = Geist({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-ui",
   display: "swap",
 });
@@ -57,7 +57,7 @@ const geist = Geist({
 // explicitly is what makes Burmese look deliberate rather than accidental.
 const notoMyanmar = Noto_Sans_Myanmar({
   subsets: ["myanmar"],
-  weight: ["400", "500", "600"],
+  weight: ["300", "400", "500", "600"],
   variable: "--font-myanmar",
   display: "swap",
 });

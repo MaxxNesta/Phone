@@ -44,7 +44,7 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
   grid-row: 1 / 4; width: 42px; height: 42px; border-radius: 11px;
   display: grid; place-items: center;
   /* One quiet grey for every card; the figure beside it carries the meaning. */
-  background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink-soft);
+  background: color-mix(in srgb, var(--link) 6%, transparent); color: var(--ink-soft);
 }
 .stat-label { color: var(--ink-soft); font-size: var(--t-sm); font-weight: 500; }
 .stat-value { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; margin: 0.2rem 0; }

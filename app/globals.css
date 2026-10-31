@@ -3,17 +3,17 @@
 @import "./erp/components.css";
 @import "./erp/retail.css";
 :root {
-  /* Apple's neutrals: no blue cast, so a product photo of a Titanium or
-     Desert iPhone is the only colour in the room. --muted is 5.1:1 on
-     --surface and 4.7:1 on --ground (HIG accessibility.md: 4.5:1 up to
-     17pt). */
-  --ground:    #F5F5F7;
+  /* Black, white and blue (2026-10-31): secondary text is --ink, and the
+     neutrals behind it carry a faint blue cast rather than grey. Hierarchy
+     comes from size and weight, not from a lighter shade (HIG
+     accessibility.md: contrast only rises). */
+  --ground:    #F5F8FD;
   --surface:   #FFFFFF;
   --ink:       #1D1D1F;
-  --ink-soft:  #424245;
-  --muted:     #6E6E73;
-  --line:      #D2D2D7;
-  --line-soft: #EDEDF0;
+  --ink-soft:  #1D1D1F;
+  --muted:     #1D1D1F;
+  --line:      #CFDDF0;
+  --line-soft: #EAF1FB;
   --dr:        #5E6AD2;
   --cr:        #A8571F;
 
@@ -29,13 +29,13 @@
      colours. */
   --brand:      #1D1D1F;
   --brand-fg:   #FFFFFF;
-  --brand-weak: color-mix(in srgb, var(--brand) 7%, transparent);
+  --brand-weak: color-mix(in srgb, var(--link) 9%, transparent);
   --link:       #0066CC;
   --focus:      #0071E3;
   --ok:        #248A3D;
   --warn:      #C93400;
   --bad:       #D70015;
-  --ghost:     #6E7787;
+  --ghost:     #1D1D1F;
   /* A fifth semantic colour, alongside ok/warn/bad: "open and on track" is
      not good news or bad news, it is simply in progress, which is what the
      other three don't say. Added for the order status pills, not scoped to
@@ -122,25 +122,25 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --ground:    #000000;
-    --surface:   #1C1C1E;
+    --surface:   #0D1524;
     --ink:       #F5F5F7;
-    --ink-soft:  #D1D1D6;
-    --muted:     #98989D;
-    --line:      #38383A;
-    --line-soft: #2C2C2E;
+    --ink-soft:  #F5F5F7;
+    --muted:     #F5F5F7;
+    --line:      #1E2E47;
+    --line-soft: #15223A;
     --dr:        #8D93F5;
     --cr:        #E09C55;
     /* A dark surface needs a lighter green, not a tint of the same one:
        #1B5E43 on #161B22 is unreadable. Measured at 8.63:1. */
     --brand:      #F5F5F7;
     --brand-fg:   #000000;
-    --brand-weak: color-mix(in srgb, var(--brand) 12%, transparent);
+    --brand-weak: color-mix(in srgb, var(--link) 16%, transparent);
     --link:       #2997FF;
     --focus:      #0A84FF;
     --ok:        #30D158;
     --warn:      #FF9F0A;
     --bad:       #FF453A;
-    --ghost:     #7A8494;
+    --ghost:     #F5F5F7;
     --info:      #409CFF;
   }
 }
@@ -423,17 +423,17 @@ thead th {
    for tracking a figure across ten columns the band is the stronger cue.
    Mixed against --ink so it inverts correctly in dark mode. */
 table:not(.linetable) tbody tr:nth-child(even) > td {
-  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  background: color-mix(in srgb, var(--link) 3%, transparent);
 }
 
 /* Has to beat the band, so it is mixed a step stronger rather than reusing
    --line-soft, which would vanish on every second row. */
 tbody tr.link:hover > td,
 table:not(.linetable) tbody tr.link:hover > td {
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  background: color-mix(in srgb, var(--link) 7%, transparent);
   cursor: pointer;
 }
-.activity-row:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.activity-row:hover { background: color-mix(in srgb, var(--link) 5%, transparent); }
 
 /* Line-entry tables are forms, not reports: banding behind input rows reads
    as a validation state, so they keep the original hairlines. */
@@ -465,9 +465,9 @@ tfoot td { font-weight: 600; border-top: 1px solid var(--line); font-variant-num
   font-family: var(--mono); font-size: var(--t-2xs); font-weight: 600;
   letter-spacing: var(--track-caps); padding: 0.18rem 0.5rem;
   border-radius: var(--r-sm); text-transform: uppercase;
-  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  background: color-mix(in srgb, var(--link) 12%, transparent);
   color: color-mix(in srgb, var(--muted) 70%, var(--ink));
-  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  border: 1px solid color-mix(in srgb, var(--link) 30%, transparent);
   white-space: nowrap;
 }
 .pill.posted, .pill.ok {
@@ -476,9 +476,9 @@ tfoot td { font-weight: 600; border-top: 1px solid var(--line); font-variant-num
   border-color: color-mix(in srgb, var(--ok) 36%, transparent);
 }
 .pill.draft {
-  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  background: color-mix(in srgb, var(--link) 12%, transparent);
   color: color-mix(in srgb, var(--muted) 70%, var(--ink));
-  border-color: color-mix(in srgb, var(--muted) 30%, transparent);
+  border-color: color-mix(in srgb, var(--link) 30%, transparent);
 }
 .pill.overdue {
   background: color-mix(in srgb, var(--bad) 13%, transparent);
@@ -517,7 +517,7 @@ tfoot td { font-weight: 600; border-top: 1px solid var(--line); font-variant-num
   color: color-mix(in srgb, var(--bad) 95%, var(--ink));
 }
 .pill-status-draft {
-  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  background: color-mix(in srgb, var(--link) 18%, transparent);
   color: color-mix(in srgb, var(--muted) 90%, var(--ink));
 }
 .pill-status-fulfilled {
@@ -581,7 +581,7 @@ tfoot td { font-weight: 600; border-top: 1px solid var(--line); font-variant-num
 /* A variant sits under the product it belongs to: indented by its empty
    first cell, quieter than the row above, and never mistakable for one. */
 .variantrow > td {
-  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  background: color-mix(in srgb, var(--link) 2%, transparent);
   color: var(--ink-soft, var(--muted));
   font-size: var(--t-sm);
 }
@@ -647,7 +647,7 @@ tfoot td { font-weight: 600; border-top: 1px solid var(--line); font-variant-num
   padding: 0.2rem 0.4rem; border-radius: var(--r1); cursor: pointer;
   opacity: 0.45;
 }
-.varcombo:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.varcombo:hover { background: color-mix(in srgb, var(--link) 4%, transparent); }
 .varcombo.on { opacity: 1; }
 .varcombo input { width: 15px; height: 15px; margin: 0; accent-color: var(--brand); flex: none; }
 .varcombo .m { flex: none; }
@@ -668,7 +668,7 @@ tfoot td { font-weight: 600; border-top: 1px solid var(--line); font-variant-num
   padding: 0.08rem 0.4rem; border-radius: var(--r-sm);
   font-size: var(--t-xs); line-height: 1.6; white-space: nowrap;
   color: color-mix(in srgb, var(--muted) 55%, var(--ink));
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: color-mix(in srgb, var(--link) 4%, transparent);
   border: 1px solid var(--line);
 }
 /* The attribute names the value rather than competing with it. */
@@ -870,7 +870,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
      forced-dark extension or a browser that ignores it would put the icon
      back out of sight — and an invisible control reads as a bug, not as a
      theme. This one is drawn in our own muted grey and cannot disappear. */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7686' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: center; background-size: 1rem;
 }
 input[type="date"]:hover::-webkit-calendar-picker-indicator,
@@ -878,7 +878,7 @@ input[type="time"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator,
   :root:not([data-theme="light"]) input[type="time"]::-webkit-calendar-picker-indicator {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238B95A5' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
   }
 }
 /* A date field carries a control the browser draws itself, so it cannot be
@@ -892,7 +892,7 @@ input[type="date"], input[type="time"] { min-height: 2.1rem; }
 select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.65rem center;
   padding-right: 2.1rem;
@@ -2914,7 +2914,7 @@ dialog.drawer .drawer-panel {
   --dash-gap: 1.25rem;
   --dash-card: var(--surface);
   --dash-line: color-mix(in srgb, var(--line) 70%, transparent);
-  --dash-tint: color-mix(in srgb, var(--brand) 7%, transparent);
+  --dash-tint: color-mix(in srgb, var(--link) 9%, transparent);
   --dash-shadow: 0 1px 2px rgb(16 33 26 / 0.04);
 }
 
@@ -3060,7 +3060,7 @@ dialog.drawer .drawer-panel {
 tbody tr.stmt-group > td,
 table:not(.linetable) tbody tr.stmt-group > td {
   font-weight: 600;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--link) 6%, transparent);
 }
 
 /* Business flow --------------------------------------------------------- */
@@ -3173,7 +3173,7 @@ table:not(.linetable) tbody tr.stmt-group > td {
 .sidebar {
   --rail: #1D1D1F;
   --rail-ink: #F5F5F7;
-  --rail-muted: #A1A1A6;
+  --rail-muted: #F5F5F7;
   width: 232px;
   background: var(--rail);
   border-right: 0;
@@ -3372,7 +3372,7 @@ table:not(.linetable) tbody tr.stmt-group > td {
 .mode-icon {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: var(--r-md);
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted);
+  background: color-mix(in srgb, var(--link) 12%, transparent); color: var(--muted);
 }
 .mode.on .mode-icon {
   background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand);
@@ -3898,7 +3898,7 @@ table.stocktable tbody tr:nth-child(even) > td { background: transparent; }
 }
 .attn-n.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); }
 .attn-n.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
-.attn-n.info { color: var(--muted); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.attn-n.info { color: var(--muted); background: color-mix(in srgb, var(--link) 6%, transparent); }
 .attn-rowtext { display: flex; flex-direction: column; min-width: 0; font-size: var(--t-sm); }
 .attn-detail { font-size: var(--t-xs); color: var(--muted); }
 .attn-go { margin-left: auto; flex: 0 0 auto; color: var(--muted); }
@@ -3966,7 +3966,7 @@ table.stocktable tbody tr:nth-child(even) > td { background: transparent; }
 .card-period {
   display: inline-flex; align-items: center; gap: 0.1rem;
   padding: 0.12rem; border-radius: var(--r-sm);
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  background: color-mix(in srgb, var(--link) 4%, transparent);
   border: 1px solid var(--line);
   flex: 0 0 auto;
 }
@@ -4071,7 +4071,7 @@ table.stocktable tbody tr:nth-child(even) > td { background: transparent; }
 .vbreak-cell {
   display: inline-flex; align-items: baseline; gap: 0.35rem;
   padding: 0.08rem 0.45rem; border-radius: var(--r-sm);
-  border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 3%, transparent);
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--link) 3%, transparent);
   font-size: var(--t-xs); white-space: nowrap;
 }
 .vbreak-label { color: var(--muted); }
@@ -4119,7 +4119,7 @@ table.stocktable tbody tr:nth-child(even) > td { background: transparent; }
   padding: 0.55rem var(--s3); border-top: 1px solid var(--line-soft);
   color: inherit; text-decoration: none;
 }
-.matrixpick-row:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.matrixpick-row:hover { background: color-mix(in srgb, var(--link) 3%, transparent); }
 .matrixpick-row[data-active] {
   background: color-mix(in srgb, var(--brand) 9%, transparent);
   box-shadow: inset 2px 0 0 var(--brand);
@@ -4652,11 +4652,11 @@ nav.sidebar .navlink { border-radius: 8px; }
 
 /* Increase Contrast: darker secondary text and real borders. */
 @media (prefers-contrast: more) {
-  :root { --muted: #48484A; --ink-soft: #1D1D1F; --line: #86868B; --line-soft: #C7C7CC; }
+  :root { --muted: #1D1D1F; --ink-soft: #1D1D1F; --line: #86868B; --line-soft: #C7C7CC; }
   .card, .stat { border-color: var(--line); box-shadow: none; }
 }
 @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --muted: #C7C7CC; --ink-soft: #F5F5F7; --line: #8E8E93; --line-soft: #48484A; }
+  :root:not([data-theme="light"]) { --muted: #F5F5F7; --ink-soft: #F5F5F7; --line: #8E8E93; --line-soft: #48484A; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .usermenu-pop, .toast { backdrop-filter: none; }
@@ -4918,7 +4918,7 @@ select.dt-filter:focus, .dt-pager-size select:focus {
 /* A filter that is narrowing the list says so: a firmer fill and weight, not
    a colour — green already means posted here. */
 select.dt-filter.dt-filter-on {
-  background-color: color-mix(in srgb, var(--ink) 10%, transparent); font-weight: 600;
+  background-color: color-mix(in srgb, var(--link) 10%, transparent); font-weight: 600;
 }
 /* The date filter: a preset menu, and two day fields when the range is custom. */
 .dt-dates { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -4968,7 +4968,7 @@ button.dt-step:disabled { opacity: 0.35; }
 .erp-panel { padding: 12px 16px; gap: 10px; border-bottom-color: var(--line-soft); background: var(--surface); }
 input.erp-search {
   height: 36px; min-height: 36px; padding: 0 12px 0 34px; border: 0; border-radius: 10px;
-  background: var(--line-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%236E6E73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 11px center;
+  background: var(--line-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 11px center;
   font-size: 0.9375rem; box-shadow: none;
 }
 input.erp-search:focus { border: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); }
@@ -5417,7 +5417,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
   width: 28px; height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 50%;
   display: grid; place-items: center; background: transparent; color: var(--muted);
 }
-.pos3-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.pos3-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--link) 8%, transparent); color: var(--ink); }
 .pos3-icon.on { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
 .pos3-icon.bad:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); color: var(--bad); }
 .pos3-icon svg.up { transform: rotate(180deg); }
@@ -6224,7 +6224,7 @@ button.danger-solid:hover { opacity: 0.9; }
 
 /* The receipt on white paper, whatever the theme: it prints black on white. */
 .sale-done-paper {
-  --ink: #1D1D1F; --ink-soft: #424245; --muted: #6E6E73; --line: #D2D2D7; --line-soft: #EDEDF0; --surface: #FFFFFF;
+  --ink: #1D1D1F; --ink-soft: #1D1D1F; --muted: #1D1D1F; --line: #D2D2D7; --line-soft: #EDEDF0; --surface: #FFFFFF;
   margin: 0 20px; padding: 18px 18px 14px; flex: 1 1 auto; min-height: 120px; overflow-y: auto;
   background: #FFFFFF; color: #1D1D1F; border-radius: 12px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
@@ -6458,7 +6458,7 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
   display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px;
   border: 0; border-radius: 10px; background: transparent; color: var(--ink); font-size: var(--t-md); font-weight: 500;
 }
-.segmented .seg:hover:not(:disabled):not(.on) { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.segmented .seg:hover:not(:disabled):not(.on) { background: color-mix(in srgb, var(--link) 6%, transparent); }
 .segmented .seg.on { background: var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 0.5px rgb(0 0 0 / 0.04); font-weight: 600; }
 .segmented .seg:disabled { opacity: 0.45; cursor: not-allowed; }
 /* The chosen path carries the one accent on the card: Apple blue on the
@@ -6562,20 +6562,20 @@ td.wrapcell { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; ma
   ::-webkit-scrollbar { width: 12px; height: 12px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--ink) 22%, transparent);
+    background: color-mix(in srgb, var(--link) 22%, transparent);
     border-radius: 999px;
     /* The border is the gap around the thumb: it reads as 6px wide in a 12px gutter. */
     border: 3px solid transparent;
     background-clip: padding-box;
   }
-  ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--ink) 42%, transparent); }
+  ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--link) 42%, transparent); }
   ::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--ink) 55%, transparent); }
   ::-webkit-scrollbar-corner { background: transparent; }
   .sidebar::-webkit-scrollbar-thumb { background-color: rgb(255 255 255 / 0.22); }
   .sidebar::-webkit-scrollbar-thumb:hover { background-color: rgb(255 255 255 / 0.4); }
 }
 @supports not selector(::-webkit-scrollbar) {
-  html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--ink) 30%, transparent) transparent; }
+  html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--link) 30%, transparent) transparent; }
   .sidebar { scrollbar-color: rgb(255 255 255 / 0.25) transparent; }
 }
 
@@ -6717,7 +6717,7 @@ table.dt-compact td.wrap { white-space: normal; max-width: 22ch; overflow-wrap: 
   display: inline-grid; place-items: center; width: 20px; height: 20px; min-height: 0; padding: 0;
   border: 0; border-radius: 999px; background: transparent; color: var(--muted);
 }
-.dt-chip button:hover { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+.dt-chip button:hover { background: color-mix(in srgb, var(--link) 10%, transparent); color: var(--ink); }
 
 /* ------ the Customers list ------ */
 .clamp1, .clamp2 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
@@ -6798,7 +6798,7 @@ table.ctable .subline { font-size: 0.72rem; }
 .cpanel-link { all: unset; cursor: pointer; color: var(--link); font-size: 0.8rem; font-weight: 500; }
 .cpanel-link:hover { text-decoration: underline; }
 .cpanel-meter { margin-top: 10px; }
-.cpanel-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
+.cpanel-bar { height: 8px; border-radius: 999px; background: color-mix(in srgb, var(--link) 10%, transparent); overflow: hidden; }
 .cpanel-bar span { display: block; height: 100%; background: var(--link); border-radius: inherit; }
 .cpanel-bar span.over { background: var(--bad); }
 .cpanel-meter-legend { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.72rem; color: var(--muted); }
@@ -7048,7 +7048,7 @@ button.pf2-link:focus-visible { outline: 2px solid var(--focus); outline-offset:
 .pf2-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.82rem; font-weight: 500; white-space: nowrap; }
 .pf2-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .pf2-toggle .track {
-  position: relative; width: 38px; height: 22px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 18%, transparent);
+  position: relative; width: 38px; height: 22px; border-radius: 999px; background: color-mix(in srgb, var(--link) 18%, transparent);
   transition: background .18s;
 }
 .pf2-toggle .track::after {
@@ -8547,22 +8547,22 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
    current page a quiet grey pill in semibold. White in light mode, black in
    dark, both from the tokens below. Open groups hang off a hairline. */
 nav.sidebar {
-  --rail: #FFFFFF; --rail-strong: #1D1D1F; --rail-ink: #3A3A3C; --rail-muted: #6E6E73; --rail-faint: #AEAEB2;
-  --rail-hover: rgb(0 0 0 / 0.04); --rail-active: rgb(0 0 0 / 0.06); --rail-line: rgb(0 0 0 / 0.08);
+  --rail: #FFFFFF; --rail-strong: #1D1D1F; --rail-ink: #1D1D1F; --rail-muted: #1D1D1F; --rail-faint: #1D1D1F;
+  --rail-hover: rgb(0 102 204 / 0.06); --rail-active: rgb(0 102 204 / 0.10); --rail-line: rgb(0 0 0 / 0.08);
   --rail-thumb: rgb(0 0 0 / 0.16); --rail-thumb-hi: rgb(0 0 0 / 0.3);
   background: var(--rail); color: var(--rail-ink); border-right: 1px solid var(--rail-line);
   gap: 2px; -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) nav.sidebar {
-    --rail: #0A0A0B; --rail-strong: #F5F5F7; --rail-ink: #E5E5EA; --rail-muted: #8E8E93; --rail-faint: #636366;
-    --rail-hover: rgb(255 255 255 / 0.05); --rail-active: rgb(255 255 255 / 0.09); --rail-line: rgb(255 255 255 / 0.08);
+    --rail: #0A0A0B; --rail-strong: #F5F5F7; --rail-ink: #F5F5F7; --rail-muted: #F5F5F7; --rail-faint: #F5F5F7;
+    --rail-hover: rgb(41 151 255 / 0.10); --rail-active: rgb(41 151 255 / 0.18); --rail-line: rgb(255 255 255 / 0.08);
     --rail-thumb: rgb(255 255 255 / 0.16); --rail-thumb-hi: rgb(255 255 255 / 0.32);
   }
 }
 :root[data-theme="dark"] nav.sidebar {
-  --rail: #0A0A0B; --rail-strong: #F5F5F7; --rail-ink: #E5E5EA; --rail-muted: #8E8E93; --rail-faint: #636366;
-  --rail-hover: rgb(255 255 255 / 0.05); --rail-active: rgb(255 255 255 / 0.09); --rail-line: rgb(255 255 255 / 0.08);
+  --rail: #0A0A0B; --rail-strong: #F5F5F7; --rail-ink: #F5F5F7; --rail-muted: #F5F5F7; --rail-faint: #F5F5F7;
+  --rail-hover: rgb(41 151 255 / 0.10); --rail-active: rgb(41 151 255 / 0.18); --rail-line: rgb(255 255 255 / 0.08);
   --rail-thumb: rgb(255 255 255 / 0.16); --rail-thumb-hi: rgb(255 255 255 / 0.32);
 }
 
@@ -8671,22 +8671,22 @@ nav.sidebar { scrollbar-gutter: stable; }
 .form.docsheet .card .field > label,
 .form.docsheet .card.doc-info :is(.doc-fields, .moredetails) .field > label { color: var(--muted); }
 
-/* Dark: a near-black sheet a breath above the black page, hairlines in white
+/* Dark: a navy-black sheet a breath above the black page, hairlines in blue
    at low strength, fields drawn as outlines rather than grey fills. The
    tokens are reset on the sheet so everything inside follows. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .form.docsheet {
-    --surface: #0E0E10; --ground: rgb(255 255 255 / 0.035);
-    --line: rgb(255 255 255 / 0.12); --line-soft: rgb(255 255 255 / 0.07);
-    --muted: #8E8E93; --ink-soft: #AEAEB2;
-    border-color: rgb(255 255 255 / 0.09); box-shadow: none;
+    --surface: #0A101C; --ground: rgb(41 151 255 / 0.05);
+    --line: rgb(41 151 255 / 0.22); --line-soft: rgb(41 151 255 / 0.12);
+    --muted: #F5F5F7; --ink-soft: #F5F5F7;
+    border-color: rgb(41 151 255 / 0.16); box-shadow: none;
   }
 }
 :root[data-theme="dark"] .form.docsheet {
-  --surface: #0E0E10; --ground: rgb(255 255 255 / 0.035);
-  --line: rgb(255 255 255 / 0.12); --line-soft: rgb(255 255 255 / 0.07);
-  --muted: #8E8E93; --ink-soft: #AEAEB2;
-  border-color: rgb(255 255 255 / 0.09); box-shadow: none;
+  --surface: #0A101C; --ground: rgb(41 151 255 / 0.05);
+  --line: rgb(41 151 255 / 0.22); --line-soft: rgb(41 151 255 / 0.12);
+  --muted: #F5F5F7; --ink-soft: #F5F5F7;
+  border-color: rgb(41 151 255 / 0.16); box-shadow: none;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .form.docsheet :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not([readonly]):not(:disabled) {
@@ -8694,8 +8694,38 @@ nav.sidebar { scrollbar-gutter: stable; }
 }
 :root[data-theme="dark"] .form.docsheet :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not([readonly]):not(:disabled) { background-color: transparent; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .form.docsheet .form-commit button:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.4); opacity: 1; }
+  :root:not([data-theme="light"]) .form.docsheet .form-commit button:disabled { background: rgb(41 151 255 / 0.14); color: rgb(41 151 255 / 0.6); opacity: 1; }
 }
-:root[data-theme="dark"] .form.docsheet .form-commit button:disabled { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.4); opacity: 1; }
+:root[data-theme="dark"] .form.docsheet .form-commit button:disabled { background: rgb(41 151 255 / 0.14); color: rgb(41 151 255 / 0.6); opacity: 1; }
 /* Hidden inputs come first in these forms, so the first section is the first div. */
 .form.docsheet > div:first-of-type, .form.docsheet > .card:first-of-type { border-top: 0; }
+
+/* =========================================================== no greys ===
+   Black, white and blue only (2026-10-31). Neutrals carry a faint blue
+   cast (--ground, --line, --line-soft, dark --surface). Secondary text takes
+   --ink through --muted and --ink-soft; these are the surfaces that drew
+   grey on their own. Chart grids and axes, table bands, hovers and header
+   fills are a breath of the link blue, mixed against transparent so they
+   follow light and dark without a second rule. */
+.recharts-cartesian-grid line,
+.recharts-polar-grid :is(line, polygon, circle) { stroke: color-mix(in srgb, var(--link) 16%, transparent); }
+.recharts-cartesian-axis-line, .recharts-cartesian-axis-tick-line,
+.recharts-reference-line line { stroke: color-mix(in srgb, var(--link) 40%, transparent); }
+.recharts-text, .recharts-cartesian-axis-tick text, .recharts-legend-item-text { fill: var(--ink); color: var(--ink); }
+
+table:not(.linetable) tbody tr:nth-child(even) > td { background: color-mix(in srgb, var(--link) 4%, transparent); }
+tbody tr:hover, tbody tr.link:hover > td,
+table:not(.linetable) tbody tr.link:hover > td { background: color-mix(in srgb, var(--link) 9%, transparent); }
+thead th, .erp-th { background: color-mix(in srgb, var(--link) 6%, var(--surface)); }
+:root, :root:not([data-theme="light"]), [data-theme="dark"] { --erp-surface-sunken: color-mix(in srgb, var(--link) 6%, var(--surface)); }
+
+/* Data tables read lighter: figures at 300, headers and totals at 500. */
+:where(table:not(.linetable)) td { font-weight: 300; }
+thead th, .erp-th, tfoot td, .erp-total { font-weight: 500; }
+
+/* Disabled reads as pale blue, not as black at half strength. */
+button:disabled, .btn:disabled, button.btn:disabled {
+  opacity: 1; border-color: transparent;
+  background: color-mix(in srgb, var(--link) 12%, var(--surface));
+  color: color-mix(in srgb, var(--link) 60%, var(--surface));
+}
