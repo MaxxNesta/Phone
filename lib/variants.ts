@@ -12,7 +12,7 @@
  */
 
 export type VariantPart = {
-  attributeId: string; attribute: string;
+  attributeId: string; attribute: string; attributeCode?: string;
   optionId: string; option: string;
   optionSort: number; attributeSort: number;
 };

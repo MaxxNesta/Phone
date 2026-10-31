@@ -138,20 +138,25 @@ function ProductMatrix({
 
   // The attributes this product varies by, in its declared order.
   const attrs = useMemo(() => {
-    const m = new Map<string, { id: string; name: string; sort: number }>();
+    const m = new Map<string, { id: string; code?: string; name: string; sort: number }>();
     for (const v of vs) for (const p of v.parts!) {
       if (!m.has(p.attributeId)) {
-        m.set(p.attributeId, { id: p.attributeId, name: p.attribute, sort: p.attributeSort });
+        m.set(p.attributeId, { id: p.attributeId, code: p.attributeCode, name: p.attribute, sort: p.attributeSort });
       }
     }
     return [...m.values()].sort((a, b) => a.sort - b.sort);
   }, [vs]);
 
-  /** Rows are the attribute carrying the pictures — colour — so every row
-   *  can show the garment. Columns are whatever else it varies by. */
-  const rowAttr = attrs.find((a) => a.id === photos.photoAttributeId)
+  /** Colour down the side, storage across the top: the two things a phone
+   *  is asked for by. Anything else it varies by (region, activation) is
+   *  added together inside the cell rather than given rows of its own, which
+   *  would multiply the grid by every region. A product without a colour or
+   *  a storage falls back to the attribute with the pictures, then the rest. */
+  const rowAttr = attrs.find((a) => a.code === "COL")
+    ?? attrs.find((a) => a.id === photos.photoAttributeId)
     ?? attrs[attrs.length - 1];
-  const colAttr = attrs.find((a) => a.id !== rowAttr.id) ?? null;
+  const colAttr = attrs.find((a) => a.code === "STO" && a.id !== rowAttr.id)
+    ?? attrs.find((a) => a.id !== rowAttr.id) ?? null;
 
   const optionsOf = (attributeId: string) => {
     const m = new Map<string, { id: string; label: string; sort: number }>();
@@ -167,23 +172,26 @@ function ProductMatrix({
   const rowOpts = optionsOf(rowAttr.id);
   const colOpts = colAttr ? optionsOf(colAttr.id) : [];
 
-  /** The cell, or null where that combination was never created. */
-  const cell = (rowOptId: string, colOptId: string | null) =>
-    vs.find((v) =>
-      v.parts!.some((p) => p.optionId === rowOptId) &&
-      (colOptId === null || v.parts!.some((p) => p.optionId === colOptId))) ?? null;
+  const has = (v: VariantStockRow, optId: string) => v.parts!.some((p) => p.optionId === optId);
+  /** Every variant in a cell, or null where that combination was never created. */
+  const cell = (rowOptId: string, colOptId: string | null) => {
+    const list = vs.filter((v) => has(v, rowOptId) && (colOptId === null || has(v, colOptId)));
+    return list.length ? list : null;
+  };
 
   const sumOf = (list: VariantStockRow[]) =>
     list.reduce((s, v) => s + Number(v.qty_on_hand), 0);
 
-  const rowTotal = (optId: string) =>
-    sumOf(vs.filter((v) => v.parts!.some((p) => p.optionId === optId)));
+  const rowTotal = (optId: string) => sumOf(vs.filter((v) => has(v, optId)));
+  const colTotal = rowTotal;
   const grand = sumOf(vs);
 
   const byRow = rowOpts.map((o) => ({ name: o.label, qty: rowTotal(o.id) }));
-  const byCol = colOpts.map((o) => ({ name: o.label, qty: rowTotal(o.id) }));
+  const byCol = colOpts.map((o) => ({ name: o.label, qty: colTotal(o.id) }));
   const shot = photos.pictureFor(vs[0]);
-  const missing = rowOpts.length * Math.max(colOpts.length, 1) - vs.length;
+  const missing = colAttr
+    ? rowOpts.reduce((n, r) => n + colOpts.filter((c) => !cell(r.id, c.id)).length, 0)
+    : 0;
 
   return (
     <div className="matrixmain">
@@ -216,8 +224,7 @@ function ProductMatrix({
             </thead>
             <tbody>
               {rowOpts.map((r) => {
-                const rShot = photos.pictureFor(
-                  vs.find((v) => v.parts!.some((p) => p.optionId === r.id))!);
+                const rShot = photos.pictureFor(vs.find((v) => has(v, r.id))!);
                 return (
                   <tr key={r.id}>
                     <td className="wrap">
@@ -234,15 +241,15 @@ function ProductMatrix({
                           const v = cell(r.id, c.id);
                           return (
                             <td key={c.id} className="r"
-                                title={v ? v.code : t("mat.notCreated")}>
+                                title={v ? v.map((x) => x.code).join(", ") : t("mat.notCreated")}>
                               {/* An em dash is a combination that was never
                                   made; a grey nought is one that exists and
                                   has run out. They are different answers. */}
                               {v === null
                                 ? <span className="matrixcell-none">—</span>
-                                : <span style={{ color: Number(v.qty_on_hand) === 0
+                                : <span style={{ color: sumOf(v) === 0
                                                         ? "var(--muted)" : undefined }}>
-                                    {qty(Number(v.qty_on_hand))}
+                                    {qty(sumOf(v))}
                                   </span>}
                             </td>
                           );
@@ -257,7 +264,7 @@ function ProductMatrix({
               <tr>
                 <td><strong>{t("mat.total")}</strong></td>
                 {colOpts.map((c) => (
-                  <td key={c.id} className="r"><strong>{qty(rowTotal(c.id))}</strong></td>
+                  <td key={c.id} className="r"><strong>{qty(colTotal(c.id))}</strong></td>
                 ))}
                 <td className="r"><strong>{qty(grand)}</strong></td>
               </tr>

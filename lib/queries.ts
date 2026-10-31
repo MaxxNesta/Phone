@@ -522,7 +522,7 @@ export async function getVariantStock(companyId: string) {
            -- Which option of which attribute this variant is, carrying the
            -- ids so the page can group on them without matching by name.
            json_agg(json_build_object(
-                      'attributeId', attr.id, 'attribute', attr.name,
+                      'attributeId', attr.id, 'attribute', attr.name, 'attributeCode', attr.code,
                       'optionId', o.id, 'option', o.name,
                       -- Hand-kept, because S/M/L/XL is not alphabetical.
                       'optionSort', o.sort_order,

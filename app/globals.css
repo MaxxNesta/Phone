@@ -4106,14 +4106,17 @@ table.stocktable tbody tr:nth-child(even) > td { background: transparent; }
 /* ------------------------------------------------------------- matrix --- */
 
 .matrixlayout {
-  display: grid; gap: var(--s3); align-items: start;
+  display: grid; gap: var(--s3); align-items: stretch;
   grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
 }
 /* One column once the grid would be squeezed: a matrix needs its width
    more than the picker needs to sit beside it. */
 @media (max-width: 62rem) { .matrixlayout { grid-template-columns: minmax(0, 1fr); } }
 
-.matrixpick-list { display: flex; flex-direction: column; }
+/* As tall as the matrix and its charts beside it, scrolling inside: height 0
+   keeps the list from setting the row height, flex fills what the row gives. */
+.matrixpick { display: flex; flex-direction: column; }
+.matrixpick-list { display: flex; flex-direction: column; flex: 1 1 auto; height: 0; min-height: 16rem; overflow-y: auto; overscroll-behavior: contain; }
 .matrixpick-row {
   display: flex; align-items: center; gap: 0.6rem;
   padding: 0.55rem var(--s3); border-top: 1px solid var(--line-soft);
@@ -4121,8 +4124,8 @@ table.stocktable tbody tr:nth-child(even) > td { background: transparent; }
 }
 .matrixpick-row:hover { background: color-mix(in srgb, var(--link) 3%, transparent); }
 .matrixpick-row[data-active] {
-  background: color-mix(in srgb, var(--brand) 9%, transparent);
-  box-shadow: inset 2px 0 0 var(--brand);
+  background: color-mix(in srgb, var(--link) 9%, transparent);
+  box-shadow: inset 2px 0 0 var(--link);
 }
 .matrixpick-row .item-thumb { width: 34px; height: 34px; flex: none; }
 .matrixpick-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
