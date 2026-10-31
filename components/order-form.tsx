@@ -256,7 +256,7 @@ export function OrderForm({
   );
 
   return (
-    <form action={formAction} className="form wide docsheet">
+    <form action={formAction} className="form wide docsheet waved">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}

@@ -62,7 +62,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
   const credit = paidNow ? `${paidLabel} · paid now` : `${payableAccount ?? "Payable (Other)"} · owed`;
 
   return (
-    <form ref={formRef} action={formAction} className="form wide">
+    <form ref={formRef} action={formAction} className="form wide docsheet">
       {(previewError || state?.error) && <div className="alert">{previewError ?? state?.error}</div>}
       <input type="hidden" name="cost_type_id" value={typeId} />
       <div className="card doc-info">

@@ -43,7 +43,7 @@ export function NewTripForm({
   const load = chosen.reduce((t, c) => t + Number(c.gross_total), 0);
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
       {/* Ticked order is carried as the running order: the hidden inputs are

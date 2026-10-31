@@ -8849,3 +8849,68 @@ dialog.cbp::backdrop { background: rgb(0 0 0 / 0.38); backdrop-filter: blur(3px)
 :root[data-theme="dark"] table:not(.linetable) tbody tr:nth-child(even) > td { background: rgb(255 255 255 / 0.03); }
 :root[data-theme="dark"] :is(tbody tr:hover, tbody tr.link:hover > td, table:not(.linetable) tbody tr.link:hover > td) { background: rgb(255 255 255 / 0.06); }
 :root[data-theme="dark"] :is(.cbp-details dd, .cbp-summary, .cbp-group[data-open] .cbp-group-row) { background: rgb(255 255 255 / 0.04); }
+
+/* ------------------------------------------------------------ wave panel ---
+   The details block at the top of a document form, set apart by a soft tint
+   and a few slow waves in the corner rather than by a box rule. Orders, goods receipts and
+   invoices (.form.waved) take it on their details card; any other block can opt in with .wave-panel.
+   Pure CSS background: nothing to read aloud, nothing to focus, and it goes
+   away for increased contrast and on paper. Light is a breath of blue; dark
+   stays neutral (white at low strength), by request. */
+:root {
+  --wave-img-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 260' preserveAspectRatio='xMaxYMin slice'%3E%3Cpath d='M260 0C380 60 470 30 590 70S800 170 900 120V0Z' fill='%23FFFFFF' fill-opacity='.035'/%3E%3Cpath d='M380 0C480 40 560 20 660 55S820 120 900 80V0Z' fill='%23FFFFFF' fill-opacity='.03'/%3E%3Cpath d='M120 260C300 170 430 220 580 150S800 40 900 70' fill='none' stroke='%23FFFFFF' stroke-opacity='.06' stroke-width='1.5'/%3E%3Cpath d='M0 260C220 210 360 250 520 205S780 150 900 160V260Z' fill='%23FFFFFF' fill-opacity='.02'/%3E%3C/svg%3E");
+  --wave-bg: color-mix(in srgb, var(--link) 3.5%, var(--surface));
+  --wave-line: color-mix(in srgb, var(--link) 14%, var(--line));
+  --wave-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 260' preserveAspectRatio='xMaxYMin slice'%3E%3Cpath d='M260 0C380 60 470 30 590 70S800 170 900 120V0Z' fill='%230071E3' fill-opacity='.06'/%3E%3Cpath d='M380 0C480 40 560 20 660 55S820 120 900 80V0Z' fill='%230071E3' fill-opacity='.05'/%3E%3Cpath d='M120 260C300 170 430 220 580 150S800 40 900 70' fill='none' stroke='%23FFFFFF' stroke-opacity='.9' stroke-width='2'/%3E%3Cpath d='M180 260C340 190 470 235 610 175S820 80 900 105' fill='none' stroke='%230071E3' stroke-opacity='.07' stroke-width='1.5'/%3E%3Cpath d='M0 260C220 210 360 250 520 205S780 150 900 160V260Z' fill='%230071E3' fill-opacity='.025'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wave-bg: rgb(255 255 255 / 0.03);
+    --wave-line: rgb(255 255 255 / 0.09);
+    --wave-img: var(--wave-img-dark);
+  }
+}
+:root[data-theme="dark"] {
+  --wave-bg: rgb(255 255 255 / 0.03);
+  --wave-line: rgb(255 255 255 / 0.09);
+  --wave-img: var(--wave-img-dark);
+}
+
+.form.waved > .card.doc-info:not(.receive-mode), .wave-panel {
+  background-color: var(--wave-bg);
+  background-image: var(--wave-img);
+  background-repeat: no-repeat;
+  background-position: right top;
+  background-size: cover;
+  border: 1px solid var(--wave-line);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.03);
+}
+/* Inside the one-sheet layout the panel is a block of its own, so it keeps
+   its padding and drops the hairline that separates the sheet's sections. */
+.form.docsheet.waved > .card.doc-info:not(.receive-mode), .form.docsheet > .wave-panel { margin: 16px 0 6px; padding: 18px 22px; }
+.form.docsheet.waved > .card.doc-info:not(.receive-mode) + * { border-top: 0; }
+/* Labels read as labels on the tint: full ink, medium weight. */
+:is(.form.waved > .card.doc-info:not(.receive-mode), .wave-panel) .field > label { color: var(--ink); }
+/* Underline fields sit on the tint, not on white boxes. */
+:is(.form.waved > .card.doc-info:not(.receive-mode), .wave-panel) :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { background-color: transparent; }
+/* Windows dark mode paints a native select's list from these. */
+:is(.form.waved > .card.doc-info:not(.receive-mode), .wave-panel) select option { background-color: var(--surface); color: var(--ink); }
+
+@media (prefers-contrast: more) {
+  .form.waved > .card.doc-info, .wave-panel { background-image: none; border-color: var(--line); }
+}
+@media print {
+  .form.waved > .card.doc-info, .wave-panel { background: none; border: 0; box-shadow: none; }
+}
+
+/* A bill that receives phones names them here, as a goods receipt would:
+   the lines that need units on the left, the entry panel beside them. */
+.inv-units-body { display: grid; grid-template-columns: minmax(0, 18rem) minmax(0, 1fr); gap: 16px; align-items: start; }
+.inv-units-lines { display: flex; flex-direction: column; gap: 6px; }
+.inv-units-line { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.inv-units-line[data-current] { border-color: var(--link); background: color-mix(in srgb, var(--link) 6%, transparent); }
+.inv-units-line > button { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; padding: 0; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.inv-units-line > button:disabled { cursor: default; }
+.inv-units-line > button strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+@media (max-width: 900px) { .inv-units-body { grid-template-columns: minmax(0, 1fr); } }

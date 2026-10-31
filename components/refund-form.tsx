@@ -53,7 +53,7 @@ export function RefundForm({ action, returns, channels, today, initialReturnId }
   }
 
   return (
-    <form action={formAction} ref={formRef} className="form wide"
+    <form action={formAction} ref={formRef} className="form wide docsheet"
       onSubmit={(e) => { if (!confirmed.current) { e.preventDefault(); void openReview(); } confirmed.current = false; }}>
       <input type="hidden" name="idempotency_key" value={attemptKey} />
       {state && "error" in state && <div className="alert">{state.error}</div>}

@@ -85,7 +85,7 @@ export function OpeningForm({
   const toEquity = totalDr - totalCr;
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       {state && "error" in state && <div className="alert">{state.error}</div>}
       <input type="hidden" name="lines" value={JSON.stringify(lines)} />
 

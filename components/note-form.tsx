@@ -54,7 +54,7 @@ export function NoteForm({
   const isCredit = kind === "credit";
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       <input type="hidden" name="idempotency_key" value={attemptKey} />
       <input type="hidden" name="source_document_id" value={invoice.id} />
       <input type="hidden" name="partner_id" value={invoice.partner_id} />
