@@ -197,7 +197,7 @@ export function StockTransferForm({
             <thead>
               <tr>
                 <th>{t("item")}</th><th className="r">{t("tr.availableHere")}</th>
-                <th className="r">{t("tr.qtyToMove")}</th><th />
+                <th className="r vc-qty">{t("tr.qtyToMove")}</th><th />
               </tr>
             </thead>
             <tbody>

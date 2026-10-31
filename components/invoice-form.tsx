@@ -4,7 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import { serialsOnFile, type ActionResult, type PickerItem } from "@/lib/actions";
-import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
+import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { TrackMode } from "./track-mode";
 import type { AwaitingLine } from "@/lib/queries";
 import { ItemPicker } from "./item-picker";
@@ -483,8 +483,6 @@ export function InvoiceForm({
     : [];
   const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
     && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
-  const [imeiKey, setImeiKey] = useState<number | null>(null);
-  const imeiLine = unitLines.find((l) => l.key === imeiKey && named(l)) ?? unitLines.find(named) ?? null;
 
   const payload = JSON.stringify(
     lines
@@ -872,7 +870,7 @@ export function InvoiceForm({
                 <th className="r">{isSales ? "On hand" : "Next cost"}</th>
                 {matchedGr && <th className="r">Received</th>}
                 {anyOrdered && <th className="r">Order price</th>}
-                <th className="r">Qty</th>
+                <th className="r vc-qty">Qty</th>
                 <th className="r">{matchedGr ? "Billed price" : "Unit price"}</th>
                 <th className="r">Amount</th>
                 <th />
@@ -901,7 +899,7 @@ export function InvoiceForm({
                 const priceGap = ordered !== null
                   && Math.abs(Number(l.unitPrice) - ordered) > 0.0001;
 
-                return (
+                return [
                   <tr key={l.key}>
                     <td className="vc-no">{i + 1}</td>
                     <td className="vc-item">
@@ -1013,8 +1011,24 @@ export function InvoiceForm({
                     <td className="tight">
                       <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
-                  </tr>
-                );
+                  </tr>,
+                  // Phones arriving on the bill are named under their line, the
+                  // way the sales invoice names the ones it sells.
+                  unitLines.includes(l) && byId(l.itemId)?.identity === "OPTIONAL" ? (
+                    <tr key={`opt-${l.key}`} className="vline-sub">
+                      <td className="vc-no" />
+                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)}>
+                        <TrackMode code={byId(l.itemId)!.code} on={!!l.withSerials} note={false}
+                          onChange={(v) => setLine(l.key, { withSerials: v })} />
+                      </td>
+                    </tr>
+                  ) : null,
+                  named(l) ? (
+                    <UnitsRow key={`units-${l.key}`} colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)}
+                      title={byId(l.itemId)?.name ?? ""} qty={Number(l.qty) || 0} rows={l.serials ?? []}
+                      onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
+                  ) : null,
+                ];
               })}
               {/* Goods arriving on the bill itself still have to say which
                   lot they are — the engine refuses a tracked item without
@@ -1070,55 +1084,6 @@ export function InvoiceForm({
         </div>
 
       </div>
-
-      {unitLines.length > 0 && (
-        <section className="card inv-units">
-          <div className="card-head">
-            <h2>IMEI / serial numbers</h2>
-            <span className="page-sub">
-              {serialShort.length > 0
-                ? `${serialShort.length} line${serialShort.length === 1 ? "" : "s"} still to finish before this can post`
-                : "Every unit named — the receipt posts with the bill"}
-            </span>
-          </div>
-          <div className="card-body inv-units-body">
-            <div className="inv-units-lines" role="tablist" aria-label="Lines with units to name">
-              {unitLines.map((l) => {
-                const item = byId(l.itemId)!;
-                const q = Number(l.qty) || 0, n = entered(l);
-                const on = named(l);
-                const ok = on && n === q && !rowsProblem(l.serials ?? [], modeOf(l), onFile);
-                return (
-                  <div key={l.key} className="inv-units-line" data-current={imeiLine?.key === l.key || undefined}>
-                    <button type="button" role="tab" aria-selected={imeiLine?.key === l.key}
-                      disabled={!on} onClick={() => setImeiKey(l.key)}>
-                      <strong>{item.name}</strong>
-                      <span className="subline">{item.code}</span>
-                    </button>
-                    {item.identity === "OPTIONAL" && (
-                      <TrackMode code={item.code} on={!!l.withSerials} note={false}
-                        onChange={(v) => { setLine(l.key, { withSerials: v }); if (v) setImeiKey(l.key); }} />
-                    )}
-                    {on && <span className={`pill ${ok ? "ok" : "warn"}`}>{n} / {q}</span>}
-                  </div>
-                );
-              })}
-            </div>
-            {imeiLine ? (
-              <ImeiPanel
-                mode={modeOf(imeiLine)}
-                title={byId(imeiLine.itemId)?.name ?? ""}
-                qty={Number(imeiLine.qty) || 0}
-                rows={imeiLine.serials ?? []}
-                onChange={(rows) => setLine(imeiLine.key, { serials: rows })}
-                onFile={onFile}
-              />
-            ) : (
-              <p className="subline">Turn on serials for a line above to name its units.</p>
-            )}
-          </div>
-        </section>
-      )}
 
       {shortages.length > 0 && (
         <div className="alert">

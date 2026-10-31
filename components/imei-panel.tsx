@@ -195,3 +195,39 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = 
     </div>
   );
 }
+
+/**
+ * The units of one receiving line, in a row of their own beneath it — where
+ * the sales invoice puts the IMEIs it sells. Open while any are still to be
+ * named; folded to a one-line list with Edit once every unit is, so a long
+ * delivery reads as its lines rather than as a wall of entry panels.
+ */
+export function UnitsRow({ colSpan, title, qty, rows, onChange, mode = "IMEI", onFile = {} }: {
+  colSpan: number; title: string; qty: number; rows: UnitRow[];
+  onChange: (rows: UnitRow[]) => void; mode?: UnitMode; onFile?: OnFile;
+}) {
+  const named = rows.filter((r) => r.serial.trim());
+  const done = qty > 0 && named.length === qty && !rowsProblem(rows, mode, onFile);
+  const [open, setOpen] = useState(false);
+  if (qty <= 0) return null;
+  return (
+    <tr className="vline-sub units-row">
+      <td className="vc-no" />
+      <td colSpan={colSpan - 1}>
+        {done && !open ? (
+          <button type="button" className="vimei-sum ok" aria-expanded={false} onClick={() => setOpen(true)}>
+            <CheckCircle2 size={14} aria-hidden="true" />
+            <span>{mode === "SERIAL" ? "Serials" : "IMEIs"}:</span>
+            <span className="m vimei-list">{named.map((r) => r.serial.trim()).join(", ")}</span>
+            <span className="linkish">Edit</span>
+          </button>
+        ) : (
+          <div className="units-row-panel">
+            <ImeiPanel title={title} qty={qty} rows={rows} onChange={onChange} mode={mode} onFile={onFile} />
+            {done && <button type="button" className="ghost tiny" onClick={() => setOpen(false)}>Done</button>}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}

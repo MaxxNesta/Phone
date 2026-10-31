@@ -206,7 +206,7 @@ export function AdjustmentForm({
             <thead>
               <tr>
                 <th>{t("item")}</th><th className="r">{t("onHand")}</th>
-                <th className="r">{t("adj.qtyHead")}</th><th className="r">{t("unitCost")}</th>
+                <th className="r vc-qty">{t("adj.qtyHead")}</th><th className="r">{t("unitCost")}</th>
                 <th className="r">{t("adj.value")}</th><th />
               </tr>
             </thead>

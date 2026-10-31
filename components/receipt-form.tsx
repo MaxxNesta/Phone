@@ -11,7 +11,7 @@ import { ItemPicker } from "./item-picker";
 import { asVariant } from "@/components/variant-tags";
 import { PartnerPicker } from "./partner-picker";
 import { MaybeSamePurchase } from "./same-purchase";
-import { ImeiPanel, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
+import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
@@ -637,7 +637,7 @@ export function ReceiptForm({
                 <th>Item</th>
                 {order && <th className="r">Ordered</th>}
                 {matchedPi && <th className="r">Billed</th>}
-                <th className="r">Receive qty</th>
+                <th className="r vc-qty">Receive qty</th>
                 <th>Unit</th>
                 <th className="r">Unit cost{foreign && !matchedPi ? ` (${currency})` : ""}</th>
                 <th>IMEI / serial</th>
@@ -746,8 +746,6 @@ export function ReceiptForm({
                               title={n < q ? `${q - n} still to enter before this can post` : undefined}>
                               {n} / {q} entered
                             </span>
-                            <button type="button" className="dt-tool" onClick={() => setImeiKey(l.key)}
-                              disabled={q === 0}>{modeOf(l) === "SERIAL" ? "View serials" : "View IMEIs"}</button>
                           </span>
                         ) : item?.variant && item.identity !== "OPTIONAL" ? (
                           <Link href={`/items/${item.id}`} target="_blank" className="subline">Not tracked — turn on</Link>
@@ -765,6 +763,12 @@ export function ReceiptForm({
                         <LineRemove onClick={() => removeLine(l.key)} />
                       </td>
                     </tr>
+                    {/* The units under their line, where the sales invoice puts
+                        the IMEIs it sells: open until every one is named. */}
+                    {named(l) && (
+                      <UnitsRow colSpan={lineCols} title={item?.name ?? ""} qty={q} rows={l.serials ?? []}
+                        onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
+                    )}
                     {picking && (
                       <tr className="gr-pickrow">
                         <td colSpan={lineCols}>
@@ -861,22 +865,7 @@ export function ReceiptForm({
 
 
       <div className="gr-bottom">
-        <div className="card">
-          {imeiLine ? (
-            <ImeiPanel
-              mode={modeOf(imeiLine)}
-              title={byId(imeiLine.itemId)?.name ?? ""}
-              qty={Number(imeiLine.qty) || 0}
-              rows={imeiLine.serials ?? []}
-              onChange={(rows) => setLine(imeiLine.key, { serials: rows })}
-              onFile={onFile}
-            />
-          ) : (
-            <div className="card-body subline">
-              IMEI or serial entry opens here for any item tracked unit by unit — one row per unit received.
-            </div>
-          )}
-        </div>
+        <div />
 
         <div className="gr-side">
           <div className="card">
