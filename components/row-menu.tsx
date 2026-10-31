@@ -83,6 +83,9 @@ export function RowMenu({ label, children }: {
      it is measured rather than assumed. */
   const measure = useCallback((node: HTMLDivElement | null) => {
     list.current = node;
+    // A dialog's "close" does not bubble, but it does pass ancestors on the
+    // way down: catching it here shuts the menu once its confirmation is done.
+    node?.addEventListener("close", () => setOpen(false), true);
     if (!node || !btn.current) return;
     const h = node.getBoundingClientRect().height;
     const r = btn.current.getBoundingClientRect();
@@ -108,13 +111,19 @@ export function RowMenu({ label, children }: {
       {open && at && (
         <Portal>
           {/* Any click inside is an action being taken, so the menu closes
-              behind it rather than lingering over the result. */}
+              behind it rather than lingering over the result — except one
+              that opens a confirmation. That dialog lives inside the menu,
+              and closing the menu would take it (and any refusal it has to
+              show) away with it; it shuts the menu itself when it closes. */}
           <div
             ref={measure}
             className="rowmenu-list"
             role="menu"
             style={{ position: "fixed", top: at.top, right: at.right }}
-            onClick={() => setOpen(false)}
+            onClick={(e) => {
+              if ((e.target as HTMLElement).closest("[data-keep-menu], dialog")) return;
+              setOpen(false);
+            }}
           >
             {children}
           </div>

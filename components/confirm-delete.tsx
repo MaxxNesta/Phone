@@ -68,6 +68,7 @@ export function ConfirmDelete({
         type="button"
         className={className}
         disabled={pending}
+        data-keep-menu=""
         onClick={() => ref.current?.showModal()}
       >
         {pending ? pendingLabel : label}
