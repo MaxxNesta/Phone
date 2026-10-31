@@ -243,15 +243,9 @@ export function SettlementForm({
                     <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
                   ))}
                 </select>
-                <span className="hint">
-                  {purpose === "advance"
-                    ? "Required for an advance: there is no invoice branch to follow."
-                    : <>
-                        Which branch&rsquo;s cash moves. Left alone it follows the invoices being
-                        settled, which is right unless one branch pays another&rsquo;s bills. The
-                        payable itself always clears in the branch that raised it.
-                      </>}
-                </span>
+                {purpose === "advance" && (
+                  <span className="hint">Required for an advance: there is no invoice branch to follow.</span>
+                )}
               </div>
             )}
 

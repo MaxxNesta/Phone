@@ -84,11 +84,7 @@ export default async function NewSalesInvoice({
           title: "New sales invoice", status: draft ? "Draft" : "New",
           help: (
             <HelpHint>
-              ကုန်ပစ္စည်းများသည် FIFO ကုန်ကျစရိတ်ဖြင့် ထွက်ခွာပြီး၊ ဝင်ငွေကို
-              အသိအမှတ်ပြုကာ လက်ကျန်ငွေကို ဤ Invoice တွင် ဖွင့်ပေးပါသည်။
-              <div className="subline" style={{ marginTop: "0.15rem" }}>
-                Stock leaves at its FIFO cost, revenue is recognised, and the balance opens against this invoice.
-              </div>
+              Stock leaves at its FIFO cost, revenue is recognised, and the balance opens against this invoice.
             </HelpHint>
           ),
         }}
