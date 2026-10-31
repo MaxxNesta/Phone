@@ -1252,7 +1252,8 @@
       "notePlaceholder": "What this correction is for — English or Myanmar",
       "oneImeiPerHandset": "Name one IMEI per handset lost.",
       "post": "Post adjustment",
-      "postNote": "Posts straight to stock and the ledger — Dr/Cr Inventory against the Stock Adjustment account."
+      "postNote": "Posts straight to stock and the ledger — Dr/Cr Inventory against the Stock Adjustment account.",
+      "addItems": "Add products to the adjustment"
     },
     "service": "service",
     "undo": "Undo",
@@ -1278,7 +1279,8 @@
       "notePlaceholder": "What this move is for — English or Myanmar",
       "oneImeiPerHandset": "Pick one IMEI per handset moving.",
       "post": "Post transfer",
-      "postNote": "Leaves the source at its FIFO cost and reopens at the destination at that same cost."
+      "postNote": "Leaves the source at its FIFO cost and reopens at the destination at that same cost.",
+      "addItems": "Add products to the transfer"
     },
     "neg": {
       "title": "Negative stock — pending reconciliation",
@@ -1807,7 +1809,8 @@
       "b60": "61–90 d",
       "b90": "91–180 d",
       "b180": "180 d +"
-    }
+    },
+    "addItemsSub": "Search, scan a barcode, or browse the catalogue"
   },
   "picker": {
     "changeItem": "Change item",

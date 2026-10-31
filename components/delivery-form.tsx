@@ -4,6 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { useActionState, useEffect, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
 import { PartnerPicker } from "./partner-picker";
@@ -126,6 +127,20 @@ export function DeliveryForm({
     }]);
   const removeLine = (key: number) =>
     setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "", focQty: "", focReasonId: "", source: "OWNED" }] : ls.filter((l) => l.key !== key)));
+  /** Search, scan or browse adds here, as on invoices and receipts. */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, itemId: p.itemId, qty: String(p.qty) } : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, itemId: p.itemId, qty: String(p.qty), focQty: "", focReasonId: "", source: "OWNED" }];
+      }
+      return next;
+    });
+  }
 
   const onHandHere = (itemId: string) =>
     Number(stockByLocation.find((r) => r.item_id === itemId && r.location_id === locationId)
@@ -250,7 +265,7 @@ export function DeliveryForm({
     /* wide, like every other voucher. This one was the only line-entry
        form left at the 760px .form cap, which is what squeezed its
        columns until the free-reason select ran under Remove. */
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
@@ -314,6 +329,9 @@ export function DeliveryForm({
 
       <div className="card">
         <div className="card-head"><h2>Items</h2></div>
+        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+          available={onHandHere} stockToggle title="Add products to the delivery"
+          sub="Search, scan a barcode, or browse the catalogue" />
         <div className="tablewrap">
           {/* linetable, like every other voucher's line table: this one was
               a bare <table>, so the column sizing the others get never

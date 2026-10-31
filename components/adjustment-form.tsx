@@ -6,6 +6,7 @@ import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { useTranslations } from "next-intl";
 import { LineRemove } from "./line-remove";
 
@@ -94,6 +95,24 @@ export function AdjustmentForm({
     setLine(key, { itemId, unitCost: cost > 0 ? String(cost) : "" });
   }
 
+  /** Search, scan or browse adds here, as it does on invoices and receipts:
+   *  the empty line is filled first, an item already on the sheet gains qty. */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const cost = Number(byId(p.itemId)?.next_cost ?? 0);
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitCost: cost > 0 ? String(cost) : "" };
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];
+      }
+      return next;
+    });
+  }
+
   const addLine = () =>
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitCost: "" }]);
 
@@ -134,7 +153,7 @@ export function AdjustmentForm({
   });
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       <input type="hidden" name="idempotency_key" value={attemptKey} />
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
@@ -178,6 +197,9 @@ export function AdjustmentForm({
           <h2>{t("lines")}</h2>
           <button type="button" className="ghost tiny" onClick={addLine}>{t("allocateLine")}</button>
         </div>
+
+        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+          available={onHandHere} title={t("adj.addItems")} sub={t("addItemsSub")} />
 
         <div className="tablewrap">
           <table className="linetable">

@@ -6,6 +6,7 @@ import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { PartnerPicker } from "./partner-picker";
 import { RefundFields, type RefundState } from "./refund-fields";
 import { MoneyPreviewDialog } from "./money-preview";
@@ -175,6 +176,25 @@ export function ReturnForm({
   const addLine = () =>
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "", unitPrice: "" }]);
 
+  /** Search, scan or browse adds here, priced the way picking a line is. */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const item = byId(p.itemId);
+        const rate = receiptRate(p.itemId);
+        const price = rate !== null ? rate : Number(!item ? 0 : isSales ? item.sale_price : item.next_cost);
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "" };
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];
+      }
+      return next;
+    });
+  }
+
   const removeLine = (key: number) =>
     setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "", unitPrice: "" }] : ls.filter((l) => l.key !== key)));
 
@@ -212,7 +232,7 @@ export function ReturnForm({
   };
 
   return (
-    <form action={formAction} className="form wide" ref={formRef}
+    <form action={formAction} className="form wide docsheet" ref={formRef}
       onSubmit={(e) => {
         // A customer return is reviewed before it posts; the confirm button
         // submits again with the review behind it.
@@ -325,6 +345,10 @@ export function ReturnForm({
           <h2>Lines</h2>
           <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
         </div>
+
+        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+          stockToggle={!isSales} title={isSales ? "Add products to the customer return" : "Add products to the supplier return"}
+          sub="Search, scan a barcode, or browse the catalogue" />
 
         <div className="tablewrap">
           <table className="linetable">

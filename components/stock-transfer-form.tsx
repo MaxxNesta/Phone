@@ -7,6 +7,7 @@ import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
+import { AddItemsBar, type Pick } from "./add-items-bar";
 import { useTranslations } from "next-intl";
 import { LineRemove } from "./line-remove";
 
@@ -90,6 +91,21 @@ export function StockTransferForm({
     setLine(key, { itemId });
   }
 
+  /** Search, scan or browse adds here, as it does on invoices and receipts. */
+  function addPicks(picks: Pick[]) {
+    setLines((ls) => {
+      let next = [...ls];
+      for (const p of picks) {
+        const at = next.find((l) => l.itemId === p.itemId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const blank = next.find((l) => !l.itemId);
+        next = blank ? next.map((l) => l === blank ? { ...l, itemId: p.itemId, qty: String(p.qty) } : l)
+          : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, itemId: p.itemId, qty: String(p.qty) }];
+      }
+      return next;
+    });
+  }
+
   const addLine = () =>
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "" }]);
 
@@ -120,7 +136,7 @@ export function StockTransferForm({
   });
 
   return (
-    <form action={formAction} className="form wide">
+    <form action={formAction} className="form wide docsheet">
       <input type="hidden" name="idempotency_key" value={attemptKey} />
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
@@ -172,6 +188,9 @@ export function StockTransferForm({
           <h2>{t("lines")}</h2>
           <button type="button" className="ghost tiny" onClick={addLine}>{t("allocateLine")}</button>
         </div>
+
+        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+          available={availableHere} stockToggle title={t("tr.addItems")} sub={t("addItemsSub")} />
 
         <div className="tablewrap">
           <table className="linetable">
