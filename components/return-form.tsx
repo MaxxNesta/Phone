@@ -92,7 +92,7 @@ export function ReturnForm({
   const [lines, setLines] = useState<Line[]>(() =>
     prefill && prefill.lines.length > 0
       ? prefill.lines.map((l, i) => ({ key: i + 1, ...l }))
-      : [{ key: 1, itemId: "", qty: "", unitPrice: "" }]);
+      : []);
   const [partnerId, setPartnerId] = useState(prefill?.partnerId ?? "");
   const [locationId, setLocationId] = useState(prefill?.locationId || locations[0]?.id || "");
   const [docDate, setDocDate] = useState(today);
@@ -196,7 +196,7 @@ export function ReturnForm({
   }
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "", unitPrice: "" }] : ls.filter((l) => l.key !== key)));
+    setLines((ls) => ls.filter((l) => l.key !== key));
 
   const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
   const total = lines.reduce((s, l) => s + amount(l), 0);
@@ -343,7 +343,6 @@ export function ReturnForm({
       <div className="card">
         <div className="card-head">
           <h2>Lines</h2>
-          <button type="button" className="ghost tiny" onClick={addLine}>Add line</button>
         </div>
 
         <AddItemsBar items={items} categories={categories} onAdd={addPicks}
@@ -363,6 +362,9 @@ export function ReturnForm({
               </tr>
             </thead>
             <tbody>
+              {lines.length === 0 && (
+                <tr><td colSpan={6} className="page-sub line-empty">No items yet — search above, scan a barcode, or Browse / Add multiple.</td></tr>
+              )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
                 const short = !isSales && item?.is_stocked && Number(l.qty) > Number(item.on_hand);
@@ -371,15 +373,12 @@ export function ReturnForm({
                   <Fragment key={l.key}>
                   <tr>
                     <td style={{ minWidth: 240 }}>
-                      <ItemPicker
-                        mode={kind}
-                        items={items}
-                        categories={categories}
-                        uoms={uoms}
-                        value={l.itemId}
-                        onPick={(id) => pickItem(l.key, id)}
-                        onCreated={addItem}
-                      />
+                      {item ? (
+                        <>
+                          <div className="line-item-name">{item.name}</div>
+                          <span className="subline">{item.code}</span>
+                        </>
+                      ) : "—"}
                     </td>
                     <td className="r">
                       {!item ? (

@@ -60,7 +60,7 @@ export function StockTransferForm({
   const [items, setItems] = useState<Item[]>(initialItems);
   const addItem = (i: Item) => setItems((xs) => [...xs, i]);
 
-  const [lines, setLines] = useState<Line[]>([{ key: 1, itemId: "", qty: "" }]);
+  const [lines, setLines] = useState<Line[]>([]);
   const [fromLocationId, setFromLocationId] = useState(locations[0]?.id ?? "");
   const destinations = toLocations ?? locations;
   const [toLocationId, setToLocationId] = useState(
@@ -110,7 +110,7 @@ export function StockTransferForm({
     setLines((ls) => [...ls, { key: Math.max(0, ...ls.map((l) => l.key)) + 1, itemId: "", qty: "" }]);
 
   const removeLine = (key: number) =>
-    setLines((ls) => (ls.length === 1 ? [{ key: key + 1, itemId: "", qty: "" }] : ls.filter((l) => l.key !== key)));
+    setLines((ls) => ls.filter((l) => l.key !== key));
 
   const payload = JSON.stringify(
     lines
@@ -186,7 +186,6 @@ export function StockTransferForm({
       <div className="card">
         <div className="card-head">
           <h2>{t("lines")}</h2>
-          <button type="button" className="ghost tiny" onClick={addLine}>{t("allocateLine")}</button>
         </div>
 
         <AddItemsBar items={items} categories={categories} onAdd={addPicks}
@@ -201,6 +200,9 @@ export function StockTransferForm({
               </tr>
             </thead>
             <tbody>
+              {lines.length === 0 && (
+                <tr><td colSpan={4} className="page-sub line-empty">No items yet — search above, scan a barcode, or Browse / Add multiple.</td></tr>
+              )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
                 const short = item?.is_stocked && Number(l.qty) > availableHere(l.itemId);
@@ -208,15 +210,12 @@ export function StockTransferForm({
                   <Fragment key={l.key}>
                   <tr>
                     <td style={{ minWidth: 240 }}>
-                      <ItemPicker
-                        mode="purchase"
-                        items={items}
-                        categories={categories}
-                        uoms={uoms}
-                        value={l.itemId}
-                        onPick={(id) => pickItem(l.key, id)}
-                        onCreated={addItem}
-                      />
+                      {item ? (
+                        <>
+                          <div className="line-item-name">{item.name}</div>
+                          <span className="subline">{item.code}</span>
+                        </>
+                      ) : "—"}
                     </td>
                     <td className="r" style={{ color: short ? "var(--bad)" : undefined }}>
                       {item ? (item.is_stocked ? fmt(availableHere(item.id)) : t("service")) : "—"}

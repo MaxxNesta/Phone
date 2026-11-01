@@ -8919,3 +8919,7 @@ dialog.cbp::backdrop { background: rgb(0 0 0 / 0.38); backdrop-filter: blur(3px)
 /* A receiving line's units, under it: the entry panel spans the row. */
 .units-row-panel { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 4px 0 6px; }
 .units-row-panel > :first-child { align-self: stretch; }
+
+/* Stock-form lines: the item is named, not picked, once the bar above has added it. */
+td.line-empty { padding: 18px 12px; text-align: center; }
+.line-item-name { font-weight: 500; }
