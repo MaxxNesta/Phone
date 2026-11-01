@@ -2191,13 +2191,30 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
     // later). "Received now" and "match an existing receipt" are mutually
     // exclusive — the form only shows one at a time.
     const receivedNow = !goodsReceiptId && fd.get("received_now") !== null;
-    const userId = (await requireUser()).id;
+    const me = await requireUser();
+    const userId = me.id;
+    // Arriving with this bill composes a goods receipt, so it takes the
+    // receipt's courier charge too, onto that receipt, in the same posting.
+    const cf = receivedNow ? carriageFields(me, fd) : { carriage: null };
+    if ("error" in cf) return cf;
     const result = await postOnce(co, attemptKey(fd), async (tx) => {
       const posted = await (goodsReceiptId
         ? postPurchaseInvoice({ ...input, goodsReceiptId }, tx)
         : receivedNow
           ? postPurchaseWithReceipt(input, tx)
           : postPurchaseInvoice(input, tx));
+      if (cf.carriage) {
+        const [gr] = await tx`
+          select r.id, r.doc_no from document b join document r on r.id = b.source_document_id
+           where b.id = ${posted.id} and r.doc_type = 'GOODS_RECEIPT'`;
+        if (!gr) throw new Error("The goods receipt for this bill was not found, so the courier charge has nowhere to go.");
+        await courierBill(tx as never, {
+          companyId: co, userId, partnerId: cf.carriage.partnerId, docDate: str(fd, "doc_date"),
+          receiptIds: [gr.id], amount: cf.carriage.amount, method: cf.carriage.method,
+          reference: cf.carriage.reference, notes: `Courier charge on ${gr.doc_no}`,
+          paidFromAccountId: cf.carriage.paidFromAccountId,
+        });
+      }
       if (payChannelId) {
         const [pay] = await tx`
           select id from document where source_document_id = ${posted.id} and doc_type = 'SUPPLIER_PAYMENT'`;
@@ -2704,6 +2721,23 @@ export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promi
   redirectWithToast(`/documents/${docId}`, toastMsg);
 }
 
+/** The courier charge a receiving form carries, read and checked once. */
+function carriageFields(user: Parameters<typeof can>[0], fd: FormData):
+  { error: string } | { carriage: { partnerId: string; amount: number; method: "VALUE" | "EQUAL"; reference: string | null; paidFromAccountId: string | null } | null } {
+  const carriage = str(fd, "carriage_on") === "1" ? {
+    partnerId: str(fd, "carriage_partner_id"), amount: num(fd, "carriage_amount"),
+    method: str(fd, "carriage_method") === "VALUE" ? "VALUE" as const : "EQUAL" as const,
+    reference: str(fd, "carriage_reference") || null,
+    paidFromAccountId: str(fd, "carriage_paid") === "1" ? str(fd, "carriage_paid_from") || null : null,
+  } : null;
+  if (carriage) {
+    if (!can(user, "cost.view")) return { error: "Your account cannot see stock costs, so it cannot add a courier charge to the phones." };
+    if (str(fd, "carriage_paid") === "1" && !carriage.paidFromAccountId) return { error: "Choose the cash or bank account the courier was paid from." };
+    if (!(carriage.amount > 0)) return { error: "Enter the courier's charge, or turn it off." };
+  }
+  return { carriage };
+}
+
 export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
   const user = await requirePermission("inventory.manage");
   let docId: string;
@@ -2721,17 +2755,9 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
     // The courier's charge for bringing these goods, when the receiver knows
     // it: booked to Carriage Inward under the courier and spread onto the
     // phones in the same transaction as the receipt, so both post or neither.
-    const carriage = str(fd, "carriage_on") === "1" ? {
-      partnerId: str(fd, "carriage_partner_id"), amount: num(fd, "carriage_amount"),
-      method: str(fd, "carriage_method") === "VALUE" ? "VALUE" as const : "EQUAL" as const,
-      reference: str(fd, "carriage_reference") || null,
-      paidFromAccountId: str(fd, "carriage_paid") === "1" ? str(fd, "carriage_paid_from") || null : null,
-    } : null;
-    if (carriage) {
-      if (!can(user, "cost.view")) return { error: "Your account cannot see stock costs, so it cannot add a courier charge to the phones." };
-      if (str(fd, "carriage_paid") === "1" && !carriage.paidFromAccountId) return { error: "Choose the cash or bank account the courier was paid from." };
-      if (!(carriage.amount > 0)) return { error: "Enter the courier's charge, or turn it off." };
-    }
+    const c = carriageFields(user, fd);
+    if ("error" in c) return c;
+    const carriage = c.carriage;
 
     const result = await postOnce(co, attemptKey(fd), async (tx) => {
       const gr = await postGoodsReceipt({

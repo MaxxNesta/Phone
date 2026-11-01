@@ -4,6 +4,7 @@ import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { InvoiceForm } from "@/components/invoice-form";
 import { channelsAt } from "@/lib/payment-channels";
+import { moneyAccounts } from "@/lib/courier-payables";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
@@ -98,6 +99,7 @@ export default async function NewPurchaseInvoice({
         uoms={uoms as never}
         today={today}
         cashAccounts={cashAccounts as never}
+        paidFrom={(await moneyAccounts(co.id)).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
         channels={channels}
         goodsReceipts={goodsReceipts as never}
         initialGoodsReceiptId={goods_receipt_id}

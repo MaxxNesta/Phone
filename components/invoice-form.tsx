@@ -6,6 +6,7 @@ import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./curren
 import { serialsOnFile, type ActionResult, type PickerItem } from "@/lib/actions";
 import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { TrackMode } from "./track-mode";
+import { CarriageSection } from "./carriage-section";
 import type { AwaitingLine } from "@/lib/queries";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
@@ -98,6 +99,7 @@ export function InvoiceForm({
   categories,
   uoms,
   cashAccounts,
+  paidFrom = [],
   channels,
   goodsReceipts,
   initialGoodsReceiptId,
@@ -120,6 +122,8 @@ export function InvoiceForm({
   categories: Node[];
   uoms: { id: string; code: string; name: string }[];
   cashAccounts?: CashAccount[];
+  /** Cash and bank accounts, for a courier charge paid on the spot. */
+  paidFrom?: { id: string; label: string }[];
   /** Purchases paid now: payment methods by location (kyat only). */
   channels?: Record<string, Channel[]>;
   /** Orders to this partner with goods still owed. See getOpenOrdersAwaitingGoods. */
@@ -477,6 +481,8 @@ export function InvoiceForm({
     const t = setTimeout(() => { serialsOnFile(serialKey.split(",")).then(setOnFile).catch(() => {}); }, 300);
     return () => clearTimeout(t);
   }, [serialKey]);
+  // Why the courier charge, when switched on, is not ready to post.
+  const [carriageBlock, setCarriageBlock] = useState<string | null>(null);
   const unitLines = !isSales && receiveMode === "now"
     ? lines.filter((l) => l.itemId && Number(l.qty) > 0
         && (!!byId(l.itemId)?.tracks_serial || byId(l.itemId)?.identity === "OPTIONAL"))
@@ -1085,6 +1091,14 @@ export function InvoiceForm({
 
       </div>
 
+      {/* Arriving with this bill posts a goods receipt, so the courier who
+          brought the goods is asked about here, as the receipt would ask. */}
+      {!isSales && receiveMode === "now" && (
+        <CarriageSection couriers={partners as never} base={base} paidFrom={paidFrom}
+          phones={lines.filter(named).reduce((s, l) => s + (Number(l.qty) || 0), 0)}
+          onBlocked={setCarriageBlock} />
+      )}
+
       {shortages.length > 0 && (
         <div className="alert">
           Not enough stock for{" "}
@@ -1218,7 +1232,7 @@ export function InvoiceForm({
 
       <div className="actions form-commit">
         <button type="submit"
-          disabled={pending || total === 0 || shortages.length > 0 || serialShort.length > 0 || cashOverpaid || (Number(cashOut) > 0 && !cashAccountId)}>
+          disabled={pending || total === 0 || shortages.length > 0 || serialShort.length > 0 || (!isSales && receiveMode === "now" && !!carriageBlock) || cashOverpaid || (Number(cashOut) > 0 && !cashAccountId)}>
           {pending ? "Posting…" : `Post ${isSales ? "sales" : "purchase"} invoice`}
         </button>
         {saveDraft && (
