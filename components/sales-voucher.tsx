@@ -1732,8 +1732,18 @@ export function SalesVoucher({
                       onChange={(e) => setPayChannelId(e.target.value)} disabled={cashAmount <= 0}>
                       {payChannels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                    {payChannel && <span className="hint">Into {payChannel.accountName}</span>}
+                    {payChannel && payChannel.kind !== "BANK" && <span className="hint">Into {payChannel.accountName}</span>}
                   </div>
+                  {/* Bank: which of the shop's bank accounts it went into. */}
+                  {payChannel?.kind === "BANK" && (payChannel.accounts?.length ?? 0) > 0 && (
+                    <div className="field">
+                      <label htmlFor="payment_account_id">Into bank account</label>
+                      <select id="payment_account_id" name="payment_account_id" defaultValue={payChannel.accountId ?? ""}
+                        disabled={cashAmount <= 0}>
+                        {payChannel.accounts!.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
+                      </select>
+                    </div>
+                  )}
                   {payChannel && payChannel.kind !== "CASH" && cashAmount > 0 && (
                     <div className="field">
                       <label htmlFor="payment_reference">Transaction ID{payChannel.requiresReference && " *"}</label>

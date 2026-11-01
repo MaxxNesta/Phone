@@ -13,7 +13,7 @@ import { resolveTenders, stampReceipt } from "./payment-channels";
 
 type Tr = (key: string, values?: Record<string, string | number>) => string;
 
-export type RefundSpec = { channelId: string; amount: number; reference: string | null } | null;
+export type RefundSpec = { channelId: string; amount: number; reference: string | null; accountId?: string | null } | null;
 
 export type MoneyPreview = {
   entries: { docNo: string; docType: string; lines: { code: string; name: string; debit: number; credit: number }[] }[];
@@ -34,7 +34,7 @@ export async function refundReturn(
 ) {
   const [r] = await tx`select location_id from document where id = ${returnId}`;
   const res = await resolveTenders(companyId, r?.location_id ?? null,
-    [{ channelId: spec.channelId, amount: spec.amount, reference: spec.reference }], null, tx as never);
+    [{ channelId: spec.channelId, amount: spec.amount, reference: spec.reference, accountId: spec.accountId }], null, tx as never);
   if (!res.ok) throw new Error(tr(`tender.${res.problem.key}`, res.problem.values));
   const t = res.tenders[0];
   const refund = await postCustomerRefund({

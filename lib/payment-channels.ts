@@ -16,6 +16,10 @@ export type Channel = {
   requiresReference: boolean; merchantName: string | null; merchantNumber: string | null;
   /** The account it pays into at the location asked about; null = not set up there. */
   accountId: string | null; accountName: string | null; accountCode: string | null;
+  /** Bank only: every bank account the money can go through. The shop banks
+   *  with several, so the form asks which; the channel's own account is the
+   *  default. */
+  accounts?: { id: string; code: string; name: string }[];
 };
 
 /** Active channels as the till or a receipt form at one location sees them. */
@@ -27,14 +31,22 @@ export async function channelsAt(companyId: string, locationId: string | null, d
       left join account a on a.id = fn_payment_channel_account(c.id, ${locationId}::uuid) and a.is_active
      where c.company_id = ${companyId} and c.is_active
      order by c.sort_order, c.name`;
+  const banks = rows.some((r) => r.kind === "BANK")
+    ? (await db`select id, code, name from account
+                 where company_id = ${companyId} and is_bank_account and is_active order by code`)
+        .map((a) => ({ id: a.id as string, code: a.code as string, name: a.name as string }))
+    : [];
   return rows.map((r) => ({
     id: r.id, code: r.code, name: r.name, kind: r.kind,
     requiresReference: r.requires_reference, merchantName: r.merchant_name, merchantNumber: r.merchant_number,
     accountId: r.account_id ?? null, accountName: r.account_name ?? null, accountCode: r.account_code ?? null,
+    ...(r.kind === "BANK" ? { accounts: banks } : {}),
   }));
 }
 
-export type TenderIn = { channelId: string; amount: number; reference?: string | null };
+export type TenderIn = { channelId: string; amount: number; reference?: string | null;
+  /** Bank only: which of the bank accounts. Ignored for any other channel. */
+  accountId?: string | null };
 export type Tender = { channel: Channel; amount: number; reference: string | null };
 export type TenderProblem = { key: string; values?: Record<string, string | number> };
 
@@ -69,13 +81,25 @@ export function checkTenders(
   return null;
 }
 
+/**
+ * A bank channel paying through the account the form named, when it is one
+ * of the company's bank accounts; anything else keeps the channel's own. An
+ * account outside the list is treated as unset, so it is refused rather than
+ * quietly posted somewhere else.
+ */
+function withAccount(c: Channel | undefined, accountId: string | null | undefined): Channel | undefined {
+  if (!c || c.kind !== "BANK" || !accountId) return c;
+  const a = c.accounts?.find((x) => x.id === accountId);
+  return a ? { ...c, accountId: a.id, accountCode: a.code, accountName: a.name } : { ...c, accountId: null };
+}
+
 /** Looks the tenders' channels up for this location and checks them. */
 export async function resolveTenders(
   companyId: string, locationId: string | null, input: TenderIn[], total: number | null, db: Sql = sql,
 ): Promise<{ ok: true; tenders: Tender[] } | { ok: false; problem: TenderProblem }> {
   const channels = new Map((await channelsAt(companyId, locationId, db)).map((c) => [c.id, c]));
   const list = input.map((t) => ({
-    channel: channels.get(t.channelId),
+    channel: withAccount(channels.get(t.channelId), t.accountId),
     amount: Math.round(Number(t.amount) * 100) / 100,
     reference: String(t.reference ?? "").trim().slice(0, 80) || null,
   }));

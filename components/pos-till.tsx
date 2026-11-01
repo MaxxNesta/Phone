@@ -84,7 +84,9 @@ export function PosTill(props: {
   const [received, setReceived] = useState("");
   const [split, setSplit] = useState<SplitRow[]>([]);
   // The channels this location's branch takes; cash first, the default.
-  const channels = props.channels[locationId] ?? [];
+  // Bank transfers are booked on the invoice, receipt and payment forms, where
+  // the bank account can be chosen; the till keeps to what is taken at the counter.
+  const channels = (props.channels[locationId] ?? []).filter((c) => c.kind !== "BANK");
   const usable = channels.filter((c) => c.accountId);
   const cashChannel = usable.find((c) => c.kind === "CASH");
   const channel = usable.find((c) => c.id === channelId) ?? cashChannel ?? usable[0];

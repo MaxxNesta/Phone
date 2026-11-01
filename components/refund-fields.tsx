@@ -7,7 +7,9 @@ const ICON: Record<ChannelKind, typeof Banknote> = {
   CASH: Banknote, BANK: Landmark, WALLET: Smartphone, QR: QrCode, CARD: CreditCard, OTHER: CircleEllipsis,
 };
 
-export type RefundState = { channelId: string; amount: string; reference: string };
+export type RefundState = { channelId: string; amount: string; reference: string;
+  /** Bank only: which of the bank accounts the money leaves from. */
+  accountId?: string };
 
 /**
  * How money goes back to a customer: one chip per payment method, the
@@ -20,6 +22,9 @@ export function RefundFields({ channels, value, onChange, max }: {
   max?: number | null;
 }) {
   const chosen = channels.find((c) => c.id === value.channelId && c.accountId);
+  const banks = chosen?.kind === "BANK" ? chosen.accounts ?? [] : [];
+  const bank = banks.find((b) => b.id === value.accountId) ?? banks.find((b) => b.id === chosen?.accountId) ?? banks[0];
+  const from = bank ?? (chosen ? { code: chosen.accountCode, name: chosen.accountName } : null);
   return (
     <div className="pos-stack">
       <div className="field">
@@ -38,13 +43,22 @@ export function RefundFields({ channels, value, onChange, max }: {
             );
           })}
         </div>
-        {chosen && (
+        {chosen && banks.length === 0 && from && (
           <span className="refund-from">
-            Paid out of <b>{chosen.accountCode} · {chosen.accountName}</b>
+            Paid out of <b>{from.code} · {from.name}</b>
             {chosen.kind !== "CASH" && " — send it from the shop's account, then enter the ID below"}
           </span>
         )}
       </div>
+      {banks.length > 0 && (
+        <div className="field">
+          <label htmlFor="refund_account">From bank account</label>
+          <select id="refund_account" value={bank?.id ?? ""}
+            onChange={(e) => onChange({ ...value, accountId: e.target.value })}>
+            {banks.map((b) => <option key={b.id} value={b.id}>{b.code} · {b.name}</option>)}
+          </select>
+        </div>
+      )}
       <div className="row">
         <div className="field">
           <label htmlFor="refund_amount">Amount</label>
@@ -64,6 +78,7 @@ export function RefundFields({ channels, value, onChange, max }: {
         )}
       </div>
       <input type="hidden" name="refund_channel_id" value={chosen?.id ?? ""} />
+      <input type="hidden" name="refund_account_id" value={banks.length ? bank?.id ?? "" : ""} />
       <input type="hidden" name="refund_amount" value={value.amount} />
       <input type="hidden" name="refund_reference" value={value.reference} />
     </div>

@@ -2024,7 +2024,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     let payRef: string | null = null;
     if (payChannelId) {
       const r = await resolveTenders(co, str(fd, "location_id"),
-        [{ channelId: payChannelId, amount: cashIn, reference: str(fd, "payment_reference") }], null);
+        [{ channelId: payChannelId, amount: cashIn, reference: str(fd, "payment_reference"), accountId: str(fd, "payment_account_id") || null }], null);
       if (!r.ok) {
         const tr = await serverT("pos");
         return { error: tr(`tender.${r.problem.key}`, r.problem.values) };
@@ -2158,7 +2158,7 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
     let payRef: string | null = null;
     if (payChannelId) {
       const r = await resolveTenders(co, str(fd, "location_id"),
-        [{ channelId: payChannelId, amount: cashOut, reference: str(fd, "payment_reference") }], null);
+        [{ channelId: payChannelId, amount: cashOut, reference: str(fd, "payment_reference"), accountId: str(fd, "payment_account_id") || null }], null);
       if (!r.ok) {
         const tr = await serverT("pos");
         return { error: tr(`tender.${r.problem.key}`, r.problem.values) };
@@ -2252,7 +2252,7 @@ async function salesReturnFrom(fd: FormData, co: string) {
   // return leaves owed"; the engine caps it and refuses more.
   const refund: RefundSpec = str(fd, "refund") === "now" && str(fd, "refund_channel_id")
     ? { channelId: str(fd, "refund_channel_id"), amount: num(fd, "refund_amount"),
-        reference: str(fd, "refund_reference") || null }
+        reference: str(fd, "refund_reference") || null, accountId: str(fd, "refund_account_id") || null }
     : null;
   return { input, refund };
 }
@@ -2315,7 +2315,7 @@ function refundFrom(fd: FormData) {
   return {
     returnId: str(fd, "return_id"), docDate: str(fd, "doc_date"),
     spec: { channelId: str(fd, "refund_channel_id"), amount: num(fd, "refund_amount"),
-            reference: str(fd, "refund_reference") || null },
+            reference: str(fd, "refund_reference") || null, accountId: str(fd, "refund_account_id") || null },
   };
 }
 
@@ -2837,7 +2837,7 @@ async function settle(
       where = (inv?.location_id as string) ?? null;
     }
     const total = advance > 0 ? advance : allocations.reduce((s, a) => s + a.amount, 0);
-    const r = await resolveTenders(co, where, [{ channelId, amount: total, reference: str(fd, "payment_reference") }], null);
+    const r = await resolveTenders(co, where, [{ channelId, amount: total, reference: str(fd, "payment_reference"), accountId: str(fd, "payment_account_id") || null }], null);
     if (!r.ok) {
       const tr = await serverT("pos");
       return { error: tr(`tender.${r.problem.key}`, r.problem.values) };
