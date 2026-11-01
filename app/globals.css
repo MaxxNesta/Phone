@@ -8923,3 +8923,35 @@ dialog.cbp::backdrop { background: rgb(0 0 0 / 0.38); backdrop-filter: blur(3px)
 /* Stock-form lines: the item is named, not picked, once the bar above has added it. */
 td.line-empty { padding: 18px 12px; text-align: center; }
 .line-item-name { font-weight: 500; }
+
+/* --------------------------------------------- one sheet, not boxes in it ---
+   On a document sheet the details band and the line table run to the sheet's
+   own edges: no inner border, no inner corners, no gap. They are parts of the
+   one sheet, set apart by a tint and a hairline above and below, and their
+   content lines up with the sheet's padding (--sheet-px). */
+.form.docsheet { --sheet-px: 28px; }
+@media (max-width: 640px) { .form.docsheet { --sheet-px: 16px; } }
+
+.form.docsheet.waved > .card.doc-info:not(.receive-mode) {
+  margin: 12px calc(-1 * var(--sheet-px)) 0;
+  padding: 20px var(--sheet-px) 18px;
+  border-radius: 0; border-left: 0; border-right: 0; box-shadow: none;
+}
+
+@media (min-width: 721px) {
+  .form.docsheet .card:has(.vgrid) > .tablewrap { margin: 0 calc(-1 * var(--sheet-px)); padding: 0; }
+  .form.docsheet :is(.vlines.vgrid, .linetable.vgrid) { border-left: 0; border-right: 0; border-radius: 0; }
+  .form.docsheet .vgrid thead th:first-child,
+  .form.docsheet .vgrid thead th:last-child,
+  .form.docsheet .vgrid tbody tr:last-child > td:first-child,
+  .form.docsheet .vgrid tbody tr:last-child > td:last-child { border-radius: 0; }
+  .form.docsheet .vgrid > thead > tr > th:first-child,
+  .form.docsheet .vgrid > tbody > tr > td:first-child { padding-left: var(--sheet-px); }
+  .form.docsheet .vgrid > thead > tr > th:last-child,
+  .form.docsheet .vgrid > tbody > tr > td:last-child { padding-right: var(--sheet-px); }
+}
+.form.docsheet .card:has(.vgrid) .aib { padding-left: 0; padding-right: 0; }
+/* Flush with the sheet's top edge too, unless the sheet opens with its own
+   heading, in which case the band sits under it. */
+.form.docsheet.waved > .card.doc-info:not(.receive-mode) { margin-top: -4px; border-top: 0; border-radius: 9px 9px 0 0; }
+.form.docsheet.waved > .doc-heading ~ .card.doc-info:not(.receive-mode) { margin-top: 12px; border-top: 1px solid var(--wave-line); border-radius: 0; }
