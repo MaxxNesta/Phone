@@ -8990,3 +8990,25 @@ td.disccell { width: 9.5rem; }
 .partner-ledger .pl-total > td { border-top: 1px solid var(--ink); font-weight: 600; }
 .partner-ledger .pl-bal > td { font-style: italic; font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
 .partner-ledger .pl-bal + tr:not(.pl-bal) > td, .partner-ledger .pl-bal:last-child > td { border-bottom: 0; }
+
+/* General ledger details: each account a block behind a tinted, clickable
+   header; the totals on a lighter band; a little air between blocks. */
+.ledger-details { --ld-head: color-mix(in srgb, var(--link) 8%, var(--surface)); --ld-band: color-mix(in srgb, var(--link) 3.5%, var(--surface)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ledger-details { --ld-head: rgb(255 255 255 / 0.07); --ld-band: rgb(255 255 255 / 0.03); } }
+:root[data-theme="dark"] .ledger-details { --ld-head: rgb(255 255 255 / 0.07); --ld-band: rgb(255 255 255 / 0.03); }
+.ledger-details tbody tr > td { background: transparent !important; }
+.ledger-details .ld-block + .ld-block .ld-head > td { border-top: 10px solid var(--surface); }
+.ledger-details .ld-head > td { padding: 0; background: var(--ld-head) !important; }
+.ledger-details .ld-head button {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 14px;
+  border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.ledger-details .ld-head button:hover { background: color-mix(in srgb, var(--link) 6%, transparent); }
+.ledger-details .ld-head svg { color: var(--link); flex: none; }
+.ledger-details .ld-code { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 4.5rem; }
+.ledger-details .ld-meta { color: var(--ink); font-size: var(--t-sm); font-weight: 400; margin-left: 4px; }
+.ledger-details .ld-closing { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ledger-details .ld-block:not([data-open]) .ld-head > td { border-bottom: 0; }
+.ledger-details .ld-total > td, .ledger-details .ld-bal > td { background: var(--ld-band) !important; }
+.ledger-details .ld-total > td { border-top: 1px solid var(--line); font-weight: 600; }
+.ledger-details .ld-bal > td { font-style: italic; font-weight: 600; padding-top: 4px; padding-bottom: 4px; }

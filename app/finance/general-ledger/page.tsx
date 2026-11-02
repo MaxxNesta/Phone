@@ -11,6 +11,7 @@ import { money } from "@/lib/db";
 import { AutoApply } from "@/components/auto-apply";
 import { AccountMultiPicker } from "@/components/account-multi-picker";
 import { JournalEntryList, type Entry } from "@/components/journal-entry-list";
+import { LedgerDetails } from "@/components/ledger-details";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 import { paginate } from "@/lib/paging";
@@ -470,7 +471,14 @@ async function AccountView({
       </div>
 
       {p.layout === "details" ? (
-        <LedgerDetails blocks={await getLedgerDetails(companyId, ids, f)}
+        <LedgerDetails blocks={(await getLedgerDetails(companyId, ids, f)).map((b) => ({
+          key: `${b.accountId}-${b.partnerId ?? ""}`, accountCode: b.accountCode, accountName: b.accountName,
+          partnerName: b.partnerName, split: b.partnerId !== null || b.partnerName !== null,
+          opening: b.opening, debits: b.debits, credits: b.credits, closing: b.closing,
+          lines: b.lines.map((l) => ({ date: l.date, docId: l.docId, docNo: l.docNo, entryNo: l.entryNo, contra: l.contra,
+            debit: l.debit, credit: l.credit,
+            text: l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "") || LABEL[l.docType ?? ""] || "—" })),
+        }))}
           title={asked.includes("all") ? "All accounts" : many ? `${chosen.length} accounts` : `${selected.code} ${selected.name}`}
           allHref={asked.includes("all") ? null : carry({ view: "account", account: "all", layout: "details" })} />
       ) : (
@@ -557,75 +565,5 @@ async function AccountView({
       </section>
       )}
     </>
-  );
-}
-
-/**
- * General Ledger Details [Account], as the legacy books print it: a block per
- * account in code order — per customer or supplier on the accounts that hold
- * them — with each movement's account code, the account on the other side,
- * the description, debit and credit; then the total, the opening brought down
- * on its own side and the closing carried down on the other, so each block
- * balances the way the old report's did.
- */
-function LedgerDetails({ blocks, title, allHref }: {
-  blocks: Awaited<ReturnType<typeof getLedgerDetails>>; title: string; allHref: string | null;
-}) {
-  const fig = (v: number) => (v ? money(String(v)) : "");
-  return (
-    <section className="card partner-ledger">
-      <div className="card-head"><h2>General ledger details · {title}</h2>
-        <span className="actions">
-          <span className="page-sub">{blocks.length} block{blocks.length === 1 ? "" : "s"}</span>
-          {allHref && <Link href={allHref} className="btn ghost tiny">All accounts</Link>}
-        </span>
-      </div>
-      {blocks.length === 0 ? <div className="empty">Nothing on these accounts in this period.</div> : (
-      <div className="tablewrap">
-        <table>
-          <thead><tr><th>Date</th><th>Acct code</th><th>Account name</th><th>Document</th><th>Description</th>
-            <th className="r">Debit</th><th className="r">Credit</th></tr></thead>
-          <tbody>
-            {blocks.flatMap((b) => {
-              const key = `${b.accountId}-${b.partnerId ?? ""}`;
-              return [
-                <tr key={`${key}-h`} className="pl-head">
-                  <td colSpan={7}>Accounts : {b.accountName}{b.partnerId || b.partnerName ? <> – {b.partnerName ?? "No customer or supplier"}</> : null}</td>
-                </tr>,
-                ...b.lines.map((l, i) => {
-                  const text = l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "") || LABEL[l.docType ?? ""] || "—";
-                  return (
-                    <tr key={`${key}-${i}`}>
-                      <td className="code">{new Date(l.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</td>
-                      <td className="code">{b.accountCode}</td>
-                      <td className="ledger-desc" title={l.contra ?? undefined}><span className="clip">{l.contra ?? "—"}</span></td>
-                      <td className="code">{l.docId ? <Link href={`/documents/${l.docId}`} style={{ color: "var(--link)" }}>{l.docNo}</Link> : l.entryNo}</td>
-                      <td className="ledger-desc" title={text}><span className="clip">{text}</span></td>
-                      <td className="r dr">{fig(l.debit)}</td>
-                      <td className="r cr">{fig(l.credit)}</td>
-                    </tr>
-                  );
-                }),
-                <tr key={`${key}-t`} className="pl-total">
-                  <td colSpan={5} className="r">Total</td>
-                  <td className="r">{money(String(b.debits))}</td><td className="r">{money(String(b.credits))}</td>
-                </tr>,
-                // Brought down on its own side…
-                <tr key={`${key}-o`} className="pl-bal">
-                  <td colSpan={5} className="r">Opening ▸</td>
-                  <td className="r">{b.opening > 0 ? fig(b.opening) : ""}</td><td className="r">{b.opening < 0 ? fig(-b.opening) : ""}</td>
-                </tr>,
-                // …carried down on the other, so the block balances.
-                <tr key={`${key}-c`} className="pl-bal">
-                  <td colSpan={5} className="r">Closing ▸</td>
-                  <td className="r">{b.closing < 0 ? fig(-b.closing) : ""}</td><td className="r">{b.closing > 0 ? fig(b.closing) : ""}</td>
-                </tr>,
-              ];
-            })}
-          </tbody>
-        </table>
-      </div>
-      )}
-    </section>
   );
 }
