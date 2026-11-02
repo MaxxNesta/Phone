@@ -477,7 +477,9 @@ async function AccountView({
           opening: b.opening, debits: b.debits, credits: b.credits, closing: b.closing,
           lines: b.lines.map((l) => ({ date: l.date, docId: l.docId, docNo: l.docNo, entryNo: l.entryNo, contra: l.contra,
             debit: l.debit, credit: l.credit,
-            text: l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "") || LABEL[l.docType ?? ""] || "—" })),
+            // Its own note, else the entry's; else, as the legacy report reads, "Kant Kaw – Sales invoice".
+            text: l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "")
+              || [b.partnerName, LABEL[l.docType ?? ""] ?? l.docType].filter(Boolean).join(" – ") || "—" })),
         }))}
           title={asked.includes("all") ? "All accounts" : many ? `${chosen.length} accounts` : `${selected.code} ${selected.name}`}
           allHref={asked.includes("all") ? null : carry({ view: "account", account: "all", layout: "details" })} />

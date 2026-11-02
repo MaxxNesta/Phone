@@ -6428,10 +6428,14 @@ export async function getLedgerDetails(
              d.id as doc_id, d.doc_no, d.doc_type,
              case when jl.base_amount > 0 then  jl.base_amount else 0 end::float as debit,
              case when jl.base_amount < 0 then -jl.base_amount else 0 end::float as credit,
-             -- The other side of the entry: its one other account, or "several".
-             (select case when count(distinct o.account_id) = 1 then max(oa.code || ' ' || oa.name) else 'Several accounts' end
-                from journal_line o join account oa on oa.id = o.account_id
-               where o.journal_entry_id = jl.journal_entry_id and o.account_id <> jl.account_id) as contra
+             -- The other side: the accounts on the opposite side of this line,
+             -- largest first, each with its amount (a sale reads 41101 Sales).
+             (select json_agg(json_build_object('account', oa.code || ' ' || oa.name, 'amount', abs(o.amt)) order by abs(o.amt) desc)
+                from (select o.account_id, sum(o.base_amount)::float as amt from journal_line o
+                       where o.journal_entry_id = jl.journal_entry_id and o.account_id <> jl.account_id
+                         and sign(o.base_amount) = -sign(jl.base_amount)
+                       group by o.account_id) o
+                join account oa on oa.id = o.account_id) as contra
         from journal_line jl
         join journal_entry je on je.id = jl.journal_entry_id
         left join document d on d.id = je.source_id
@@ -6457,7 +6461,7 @@ export async function getLedgerDetails(
   const acct = new Map((accounts as any[]).map((a) => [a.id as string, a]));
 
   type Line = { date: string; entryNo: string; docId: string | null; docNo: string | null; docType: string | null;
-                contra: string | null; memo: string | null; lineMemo: string | null; debit: number; credit: number };
+                contra: { account: string; amount: number }[]; memo: string | null; lineMemo: string | null; debit: number; credit: number };
   type Block = { accountId: string; accountCode: string; accountName: string;
                  partnerId: string | null; partnerCode: string | null; partnerName: string | null;
                  opening: number; debits: number; credits: number; lines: Line[] };
@@ -6478,7 +6482,8 @@ export async function getLedgerDetails(
     const b = at(r.account_id, r.partner_id, r.partner_code, r.partner_name);
     b.debits += Number(r.debit); b.credits += Number(r.credit);
     b.lines.push({ date: r.entry_date, entryNo: r.entry_no, docId: r.doc_id, docNo: r.doc_no, docType: r.doc_type,
-                   contra: r.contra, memo: r.memo, lineMemo: r.line_memo, debit: Number(r.debit), credit: Number(r.credit) });
+                   contra: (r.contra ?? []) as { account: string; amount: number }[],
+                   memo: r.memo, lineMemo: r.line_memo, debit: Number(r.debit), credit: Number(r.credit) });
   }
   const r4 = (n: number) => Math.round(n * 10000) / 10000;
   return [...blocks.values()]

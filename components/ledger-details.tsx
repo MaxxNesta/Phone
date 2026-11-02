@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 
 export type DetailLine = {
   date: string; docId: string | null; docNo: string | null; entryNo: string;
-  contra: string | null; text: string; debit: number; credit: number;
+  contra: { account: string; amount: number }[]; text: string; debit: number; credit: number;
 };
 export type DetailBlock = {
   key: string; accountCode: string; accountName: string; partnerName: string | null; split: boolean;
@@ -68,7 +68,10 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
                     <tr key={i}>
                       <td className="code">{new Date(l.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</td>
                       <td className="code">{b.accountCode}</td>
-                      <td className="ledger-desc" title={l.contra ?? undefined}><span className="clip">{l.contra ?? "—"}</span></td>
+                      {/* The main account on the other side (a sale: Sales); hover lists every account with its amount. */}
+                      <td className="ledger-desc" title={l.contra.map((c) => `${c.account}  ${money(c.amount)}`).join("\n") || undefined}>
+                        <span className="clip">{l.contra[0]?.account ?? "—"}</span>
+                      </td>
                       <td className="code">{l.docId ? <Link href={`/documents/${l.docId}`} style={{ color: "var(--link)" }}>{l.docNo}</Link> : l.entryNo}</td>
                       <td className="ledger-desc" title={l.text}><span className="clip">{l.text}</span></td>
                       <td className="r dr">{fig(l.debit)}</td>
