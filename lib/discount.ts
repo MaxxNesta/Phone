@@ -225,3 +225,63 @@ export function priceLines(
     invoiceBand,
   };
 }
+
+/**
+ * A supplier's discount on a purchase bill: typed on a line (a rate or an
+ * amount), and/or on the whole bill (a rate or an amount). Pure, shared by the
+ * bill form and the posting engine for the same reason as priceLines.
+ *
+ * The line discount applies first, the bill discount to what it left, so the
+ * two never land on the same kyat twice. A bill rate comes off every line at
+ * that rate; a bill amount is spread over the lines in proportion to what each
+ * still costs after its own discount, with the rounding remainder on the
+ * largest line so the spread adds back to exactly what was typed. Capped at
+ * the goods: taking more off than the bill is worth is not a discount.
+ *
+ * Amounts are in the entered basis (tax-inclusive where the prices are); the
+ * engine splits tax off the net afterwards.
+ */
+export type PurchaseDiscountLine = { qty: number; unitPrice: number; discountPct?: number; discountAmount?: number | null };
+export type PurchaseBillDiscount = { pct?: number | null; amount?: number | null } | null;
+export type PurchasePricedLine = {
+  gross: number;
+  itemDiscountPct: number; itemDiscountAmount: number;
+  invoiceDiscountPct: number; invoiceDiscountAmount: number;
+  /** What the supplier is owed for the line, before tax is split off. */
+  net: number;
+};
+
+export function pricePurchaseLines(lines: PurchaseDiscountLine[], bill: PurchaseBillDiscount, scale = 4) {
+  const r = (n: number) => roundMoney(n, scale);
+  const stage = lines.map((l) => {
+    const gross = r(l.qty * l.unitPrice);
+    const typed = l.discountAmount == null || Number.isNaN(Number(l.discountAmount)) ? null : Math.max(0, r(Number(l.discountAmount)));
+    const itemAmount = typed == null ? Math.min(gross, r(gross * (Math.max(0, l.discountPct || 0) / 100))) : Math.min(typed, gross);
+    return { gross, itemAmount, itemPct: gross === 0 ? 0 : roundMoney((itemAmount / gross) * 100, 6), after: r(gross - itemAmount) };
+  });
+  const subtotal = r(stage.reduce((s, x) => s + x.after, 0));
+
+  const billAmount = bill?.amount != null && Number(bill.amount) > 0 ? Math.min(r(Number(bill.amount)), subtotal) : null;
+  const billPct = billAmount == null && bill?.pct != null && Number(bill.pct) > 0 ? Math.min(100, Number(bill.pct)) : 0;
+  const spread = stage.map((x) => (billAmount != null
+    ? (subtotal === 0 ? 0 : r(billAmount * (x.after / subtotal)))
+    : r(x.after * (billPct / 100))));
+  if (billAmount != null && stage.length > 0) {
+    const off = r(billAmount - spread.reduce((s, v) => s + v, 0));
+    if (off !== 0) {
+      const big = stage.reduce((bi, x, i) => (x.after > stage[bi].after ? i : bi), 0);
+      spread[big] = r(spread[big] + off);
+    }
+  }
+
+  const priced: PurchasePricedLine[] = stage.map((x, i) => ({
+    gross: x.gross,
+    itemDiscountPct: x.itemPct, itemDiscountAmount: x.itemAmount,
+    invoiceDiscountPct: x.after === 0 ? 0 : roundMoney((spread[i] / x.after) * 100, 6),
+    invoiceDiscountAmount: spread[i],
+    net: r(x.after - spread[i]),
+  }));
+  const gross = r(priced.reduce((s, l) => s + l.gross, 0));
+  const total = r(priced.reduce((s, l) => s + l.net, 0));
+  return { lines: priced, gross, subtotal, discount: r(gross - total), total };
+}

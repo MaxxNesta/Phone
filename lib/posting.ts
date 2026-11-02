@@ -2,7 +2,7 @@ import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { landedOn } from "./landed-cost";
 import { planVoidIn, type VoidBlocker } from "./void";
-import { priceLines, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
+import { priceLines, pricePurchaseLines, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
 
 // The posting engine.
 //
@@ -111,6 +111,13 @@ export type InvoiceInput = {
    * shop is usually tax-inclusive; a wholesale quote usually is not.
    */
   priceIncludesTax?: boolean;
+  /**
+   * Purchases: the supplier's discount on the whole bill, as a rate or an
+   * amount (in the bill's currency). Applied after each line's own discount
+   * and spread over the lines (lib/discount.ts › pricePurchaseLines).
+   */
+  billDiscountPct?: number | null;
+  billDiscountAmount?: number | null;
   lines: InvoiceLine[];
 };
 
@@ -4646,8 +4653,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       // Quantity-weighted where an item is billed on more than one line, so
       // one receipt line takes one cost and it is the cost of those goods.
       const prices = await tx`
-        select dl.item_id, sum(dl.net_amount) as net, sum(dl.base_qty) as qty
+        -- Before the supplier's discount: under the GROSS policy the goods are
+        -- stocked at the price bought, and the bill credited the discount.
+        select dl.item_id,
+               sum(dl.net_amount + case when co.purchase_discount_policy = 'GROSS'
+                     then coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0) else 0 end) as net,
+               sum(dl.base_qty) as qty
           from document_line dl
+          join company co on co.id = dl.company_id
          where dl.document_id = ${input.sourceDocumentId}
          group by dl.item_id
         having sum(dl.base_qty) > 0`;
@@ -5756,6 +5769,7 @@ async function _postPurchaseInvoice(
         discountAmount: l.discountAmount == null ? l.discountAmount : toBase(l.discountAmount, fx),
       })),
       cashOut: input.cashOut ? toBase(input.cashOut, fx) : input.cashOut,
+      billDiscountAmount: input.billDiscountAmount ? toBase(input.billDiscountAmount, fx) : input.billDiscountAmount,
     };
   }
 
@@ -5799,16 +5813,40 @@ async function _postPurchaseInvoice(
   // capitalising it would overstate stock and understate the tax asset.
   const { byId: taxRates, none: noTax } = await loadTaxRates(tx, companyId, docDate);
   const includesTax = input.priceIncludesTax ?? false;
-  const splits = input.lines.map((l) => {
+
+  /* The supplier's discount, line first and bill after (pricePurchaseLines,
+     the same arithmetic the bill form previews). Under the GROSS policy the
+     goods keep the price they were bought at — GR/IR, stock and expense all
+     move at the gross — the supplier is owed the discounted amount, and the
+     difference is credited to Purchase Discounts. Tax is on what is owed.
+     NET (the discount lowers the cost) is a policy the engine does not post
+     yet, so a discounted bill under it is refused rather than guessed at. */
+  const priced = pricePurchaseLines(
+    input.lines.map((l) => ({ qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmount: l.discountAmount })),
+    { pct: input.billDiscountPct ?? null, amount: input.billDiscountAmount ?? null }, scale);
+  if (priced.discount > 0) {
+    const [co] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
+    if (co?.p !== "GROSS") {
+      throw new Error("This company's supplier discount policy reduces stock cost, which cannot be posted yet. Post the bill at the discounted price instead.");
+    }
+  }
+
+  const splits = input.lines.map((l, i) => {
     const rate = l.taxCodeId ? taxRates.get(l.taxCodeId) : noTax;
     if (l.taxCodeId && !rate) throw new Error(taxNotEffective(docDate));
     const chosen = rate ?? noTax;
-    const amount = roundMoney(l.qty * l.unitPrice, scale);
+    const p = priced.lines[i];
     const split = chosen
-      ? splitTax(amount, chosen.rate, includesTax, scale)
-      : { net: amount, tax: 0 };
-    return { ...split, rate: chosen };
+      ? splitTax(p.net, chosen.rate, includesTax, scale)
+      : { net: p.net, tax: 0 };
+    // What the goods were bought at, before the discount and without tax.
+    const grossEx = chosen && includesTax ? splitTax(p.gross, chosen.rate, true, scale).net : p.gross;
+    const discount = roundMoney(grossEx - split.net, scale);
+    // Stored without tax, so net_amount plus the two discounts is grossEx.
+    const itemDiscount = p.gross === 0 ? 0 : (includesTax ? roundMoney(p.itemDiscountAmount * (grossEx / p.gross), scale) : p.itemDiscountAmount);
+    return { ...split, rate: chosen, grossEx, discount, itemDiscount, billDiscount: roundMoney(discount - itemDiscount, scale), priced: p };
   });
+  const discountTotal = roundMoney(splits.reduce((t, v) => t + v.discount, 0), scale);
 
   const lineNets = splits.map((v) => v.net);
   const netTotal = roundMoney(lineNets.reduce((t, v) => t + v, 0), scale);
@@ -5849,25 +5887,31 @@ async function _postPurchaseInvoice(
       insert into document_line
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
+         discount_pct, discount_amount, invoice_discount_pct, invoice_discount_amount,
          net_amount, tax_code_id, tax_amount, gross_amount, source_line_id)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${line.unitPrice},
+         ${splits[lineNo - 1].priced.itemDiscountPct}, ${splits[lineNo - 1].itemDiscount},
+         ${splits[lineNo - 1].priced.invoiceDiscountPct}, ${splits[lineNo - 1].billDiscount},
          ${net}, ${line.taxCodeId ?? splits[lineNo - 1].rate?.id ?? null},
          ${splits[lineNo - 1].tax}, ${roundMoney(net + splits[lineNo - 1].tax, scale)},
          ${line.sourceLineId ?? null})`;
 
     isStocked.set(line.itemId, !!item.is_stocked);
 
+    // At the price before any supplier discount (GROSS policy); the discount
+    // is credited to Purchase Discounts once, below.
+    const bought = splits[lineNo - 1].grossEx;
     if (item.is_stocked) {
       // Cleared against GR/IR below, once for the whole invoice — a single
       // matched or unmatched settlement reads far clearer than one per line.
-      stockedNet += net;
+      stockedNet += bought;
     } else {
       // A service or charge line goes straight to expense via its item group.
       const cogs = await tx`
         select fn_resolve_account_for_item(${companyId}, 'COGS', ${line.itemId}) as a`;
-      journal.push({ accountId: cogs[0].a, amount: net, locationId });
+      journal.push({ accountId: cogs[0].a, amount: bought, locationId });
     }
   }
   stockedNet = round4(stockedNet);
@@ -6019,6 +6063,12 @@ async function _postPurchaseInvoice(
 
     const grir = await tx`select fn_system_account(${companyId}, 'GRIR_CLEARING') as a`;
     journal.push({ accountId: grir[0].a, amount: grirAmount, partnerId });
+  }
+
+  if (discountTotal !== 0) {
+    const [pd] = await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`;
+    if (!pd?.a) throw new Error("Point the Purchase discount received account (Settings → Accounts) at 51201 Purchase Discounts before posting a discounted bill.");
+    journal.push({ accountId: pd.a, amount: -discountTotal, partnerId, locationId });
   }
 
   const ap = await tx`

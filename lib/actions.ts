@@ -2181,6 +2181,9 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
       // Supplier invoices from Myanmar wholesalers are usually quoted with
       // the tax already inside the price.
       priceIncludesTax: fd.get("price_includes_tax") !== null,
+      // The supplier's discount on the whole bill: a rate or an amount, never both.
+      billDiscountPct: str(fd, "bill_discount_kind") === "pct" ? num(fd, "bill_discount") || null : null,
+      billDiscountAmount: str(fd, "bill_discount_kind") === "amount" ? num(fd, "bill_discount") || null : null,
       lines,
     };
 
