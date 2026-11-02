@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { ExportCsvButton } from "./export-csv";
 
 export type DetailLine = {
   date: string; docId: string | null; docNo: string | null; entryNo: string;
@@ -29,6 +30,15 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
   const [shut, setShut] = useState<Set<string>>(new Set());
   const toggle = (k: string) => setShut((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const allShut = blocks.length > 0 && shut.size === blocks.length;
+  const name = (b: DetailBlock) => `${b.accountName}${b.split ? ` – ${b.partnerName ?? "No customer or supplier"}` : ""}`;
+  // The export is this layout: each block's lines, then its total, opening and closing.
+  const csv: (string | number)[][] = [["Account code", "Account", "Date", "Document", "Account name (other side)", "Description", "Debit", "Credit"],
+    ...blocks.flatMap((b) => [
+      ...b.lines.map((l) => [b.accountCode, name(b), l.date, l.docNo ?? l.entryNo, l.contra.map((c) => c.account).join(" / "), l.text, l.debit || "", l.credit || ""]),
+      [b.accountCode, name(b), "", "", "", "Total", b.debits, b.credits],
+      [b.accountCode, name(b), "", "", "", "Opening", b.opening > 0 ? b.opening : "", b.opening < 0 ? -b.opening : ""],
+      [b.accountCode, name(b), "", "", "", "Closing", b.closing < 0 ? -b.closing : "", b.closing > 0 ? b.closing : ""],
+    ])];
 
   return (
     <section className="card ledger-details">
@@ -42,6 +52,7 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
             </button>
           )}
           {allHref && <Link href={allHref} className="btn ghost tiny">All accounts</Link>}
+          <ExportCsvButton name="general-ledger-details" rows={csv} />
         </span>
       </div>
       {blocks.length === 0 ? <div className="empty">Nothing on these accounts in this period.</div> : (
@@ -58,7 +69,7 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
                       <button type="button" aria-expanded={open} onClick={() => toggle(b.key)}>
                         {open ? <ChevronDown size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
                         <span className="ld-code">{b.accountCode}</span>
-                        <strong>{b.accountName}{b.split ? ` – ${b.partnerName ?? "No customer or supplier"}` : ""}</strong>
+                        <strong>{name(b)}</strong>
                         <span className="ld-meta">{b.lines.length} movement{b.lines.length === 1 ? "" : "s"}</span>
                         <span className="ld-closing">Closing {bal(b.closing)}</span>
                       </button>

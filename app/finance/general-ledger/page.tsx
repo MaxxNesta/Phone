@@ -11,7 +11,8 @@ import { money } from "@/lib/db";
 import { AutoApply } from "@/components/auto-apply";
 import { AccountMultiPicker } from "@/components/account-multi-picker";
 import { JournalEntryList, type Entry } from "@/components/journal-entry-list";
-import { LedgerDetails } from "@/components/ledger-details";
+import { LedgerDetails, type DetailBlock } from "@/components/ledger-details";
+import { ExportCsvButton } from "@/components/export-csv";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 import { paginate } from "@/lib/paging";
@@ -73,7 +74,7 @@ export default async function GeneralLedger({
   searchParams: Promise<{
     view?: string; account?: string; from?: string; to?: string;
     location?: string; type?: string; doc?: string; q?: string; voided?: string;
-    /** By account: "" for the movement list, "details" for the legacy General Ledger Details report. */
+    /** All entries: "" for the movement list, "accounts" for a block per account (the legacy General Ledger Details). */
     layout?: string;
   }>;
 }) {
@@ -250,6 +251,13 @@ async function EntriesView({
               </div>
             )}
             <div className="field">
+              <label htmlFor="layout">Layout</label>
+              <select id="layout" name="layout" defaultValue={p.layout ?? ""}>
+                <option value="">Movements</option>
+                <option value="accounts">Account headers</option>
+              </select>
+            </div>
+            <div className="field">
               <label htmlFor="type">Document type</label>
               <select id="type" name="type" defaultValue={p.type ?? ""}>
                 {TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -284,9 +292,34 @@ async function EntriesView({
         </div>
       </form>
 
-      <JournalEntryList entries={entries} backQuery={backQuery} />
+      {p.layout === "accounts" ? (
+        <>
+          {(p.type || p.doc || p.q) && (
+            <p className="hint" style={{ margin: "0 0 0.75rem" }}>Document type, number and search narrow the Movements layout; account headers show every movement in the period.</p>
+          )}
+          <LedgerDetails blocks={toDetailBlocks(await getLedgerDetails(companyId, p.account ? [p.account] : accounts.map((a) => a.id),
+              { from: p.from, to: p.to, branchId: p.location }))}
+            title={p.account ? (accounts.find((a) => a.id === p.account)?.name ?? "One account") : "All accounts"} allHref={null} />
+        </>
+      ) : (
+        <JournalEntryList entries={entries} backQuery={backQuery} />
+      )}
     </>
   );
+}
+
+/** The ledger-details blocks, ready to draw and export: each line described. */
+function toDetailBlocks(blocks: Awaited<ReturnType<typeof getLedgerDetails>>): DetailBlock[] {
+  return blocks.map((b) => ({
+    key: `${b.accountId}-${b.partnerId ?? ""}`, accountCode: b.accountCode, accountName: b.accountName,
+    partnerName: b.partnerName, split: b.partnerId !== null || b.partnerName !== null,
+    opening: b.opening, debits: b.debits, credits: b.credits, closing: b.closing,
+    lines: b.lines.map((l) => ({ date: l.date, docId: l.docId, docNo: l.docNo, entryNo: l.entryNo, contra: l.contra,
+      debit: l.debit, credit: l.credit,
+      // Its own note, else the entry's; else, as the legacy report reads, "Kant Kaw – Sales invoice".
+      text: l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "")
+        || [b.partnerName, LABEL[l.docType ?? ""] ?? l.docType].filter(Boolean).join(" – ") || "—" })),
+  }));
 }
 
 // ------------------------------------------------------------ one account --
@@ -348,9 +381,15 @@ async function AccountView({
                           basePath="/finance/general-ledger"
                           label={many ? "Accounts" : "Account"}
                           keep={{ view: "account", from: p.from, to: p.to,
-                                  location: p.location, voided: p.voided, layout: p.layout }} />
+                                  location: p.location, voided: p.voided }} />
 
-      {many && (
+      {many && chosen.length > 6 && (
+        <div className="actions" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
+          <span className="chip">{asked.includes("all") ? "All accounts" : `${chosen.length} accounts`} chosen</span>
+          <Link className="subline" href={carry({ view: "account", account: selected.id })}>just one account</Link>
+        </div>
+      )}
+      {many && chosen.length <= 6 && (
         <div className="actions" style={{ marginBottom: "0.75rem", flexWrap: "wrap" }}>
           {chosen.map((a) => (
             <Link key={a.id} className="chip"
@@ -401,13 +440,6 @@ async function AccountView({
                   movements where one transaction happened, and the debit and
                   credit columns count the cancelled one twice. The running
                   balance is the same either way. */}
-              <label htmlFor="a-layout">Layout</label>
-              <select id="a-layout" name="layout" defaultValue={p.layout ?? ""}>
-                <option value="">Movements</option>
-                <option value="details">Ledger details (account by account)</option>
-              </select>
-            </div>
-            <div className="field">
               <label htmlFor="a-voided">Voided entries</label>
               <select id="a-voided" name="voided" defaultValue={p.voided ?? ""}>
                 <option value="">Hidden</option>
@@ -470,20 +502,6 @@ async function AccountView({
         </div>
       </div>
 
-      {p.layout === "details" ? (
-        <LedgerDetails blocks={(await getLedgerDetails(companyId, ids, f)).map((b) => ({
-          key: `${b.accountId}-${b.partnerId ?? ""}`, accountCode: b.accountCode, accountName: b.accountName,
-          partnerName: b.partnerName, split: b.partnerId !== null || b.partnerName !== null,
-          opening: b.opening, debits: b.debits, credits: b.credits, closing: b.closing,
-          lines: b.lines.map((l) => ({ date: l.date, docId: l.docId, docNo: l.docNo, entryNo: l.entryNo, contra: l.contra,
-            debit: l.debit, credit: l.credit,
-            // Its own note, else the entry's; else, as the legacy report reads, "Kant Kaw – Sales invoice".
-            text: l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "")
-              || [b.partnerName, LABEL[l.docType ?? ""] ?? l.docType].filter(Boolean).join(" – ") || "—" })),
-        }))}
-          title={asked.includes("all") ? "All accounts" : many ? `${chosen.length} accounts` : `${selected.code} ${selected.name}`}
-          allHref={asked.includes("all") ? null : carry({ view: "account", account: "all", layout: "details" })} />
-      ) : (
       <section>
         <div className="card">
           <div className="card-head">
@@ -498,6 +516,12 @@ async function AccountView({
               <span className="page-sub">
                 {rows.length} movement{rows.length === 1 ? "" : "s"}
               </span>
+              <ExportCsvButton name={many ? "general-ledger-accounts" : `general-ledger-${selected.code}`} rows={[
+                ["Date", "Entry", "Document", "Account code", "Account", "Narration", "Partner", "Debit", "Credit", "Balance"],
+                ...rows.map((r: any) => [String(r.entry_date).slice(0, 10), r.entry_no, r.doc_no ?? "", r.account_code, r.account_name,
+                  r.line_memo?.trim() || cleanMemo(r.memo, r.doc_no, LABEL[r.doc_type] ?? r.doc_type ?? "") || "", r.partner_name ?? "",
+                  Number(r.debit) || "", Number(r.credit) || "", Number(r.running_balance)]),
+              ]} />
               <Link href={carry({ view: undefined, account: selected.id })}
                     className="btn ghost tiny">See these as entries</Link>
             </span>
@@ -565,7 +589,6 @@ async function AccountView({
           )}
         </div>
       </section>
-      )}
     </>
   );
 }
