@@ -118,7 +118,12 @@
     "collapseNav": "Collapse navigation",
     "paymentMethods": "Payment methods",
     "paymentsReceived": "Payments received",
-    "supplierDiscounts": "Supplier discounts"
+    "supplierDiscounts": "Supplier discounts",
+    "shareholders": "Shareholders",
+    "shareTransfers": "Share transfers",
+    "shareBalance": "Share balance",
+    "shareLedger": "Share ledger",
+    "equity": "Equity"
   },
   "shell": {
     "appName": "Myanmar ERP",

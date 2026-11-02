@@ -9009,3 +9009,9 @@ td.disccell { width: 9.5rem; }
 .ledger-details .ld-total > td, .ledger-details .ld-bal > td { background: var(--ld-band) !important; }
 .ledger-details .ld-total > td { border-top: 1px solid var(--line); font-weight: 600; }
 .ledger-details .ld-bal > td { font-style: italic; font-weight: 600; padding-top: 4px; padding-bottom: 4px; }
+
+/* Shareholders: the four views as one segmented row; the ledger's filter on one line. */
+.sh-tabs { display: inline-flex; margin: 0 0 14px; }
+.sh-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding-top: 0; }
+.sh-filter .field { min-width: 11rem; }
+.sh-opening > td { font-style: italic; background: color-mix(in srgb, var(--ink) 3%, transparent) !important; }

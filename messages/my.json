@@ -118,7 +118,12 @@
     "collapseNav": "ဘေးဘား ချုံ့ရန်",
     "paymentMethods": "ငွေပေးချေမှုနည်းလမ်းများ",
     "paymentsReceived": "လက်ခံရရှိငွေများ",
-    "supplierDiscounts": "Supplier discounts"
+    "supplierDiscounts": "Supplier discounts",
+    "shareholders": "Shareholders",
+    "shareTransfers": "Share transfers",
+    "shareBalance": "Share balance",
+    "shareLedger": "Share ledger",
+    "equity": "Equity"
   },
   "shell": {
     "appName": "မြန်မာ ERP",

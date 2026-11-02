@@ -14,7 +14,7 @@ import { SidebarCollapse } from "@/components/sidebar-collapse";
 import { Toast } from "@/components/toast";
 import {
   LayoutDashboard, ShoppingCart, Package, BookOpen, Landmark, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
-  Smartphone, FileText, Search,
+  Smartphone, FileText, Search, PieChart,
 } from "lucide-react";
 import { headers } from "next/headers";
 import { currentUser, can, authRequired, type Permission } from "@/lib/auth";
@@ -248,6 +248,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </NavSubGroup>
                 <NavLink href="/finance/aging">{n("arApAging")}</NavLink>
                 {wholesale && <NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
+              </NavGroup>
+            )}
+
+            {/* Who owns the company: its own group, not a corner of the ledger. */}
+            {may("accounting.view") && (
+              <NavGroup label={n("equity")} icon={<PieChart size={15} />} match={["/equity"]}>
+                <NavLink href="/equity/shareholders">{n("shareholders")}</NavLink>
+                <NavLink href="/equity/transfers">{n("shareTransfers")}</NavLink>
+                <NavLink href="/equity/balance">{n("shareBalance")}</NavLink>
+                <NavLink href="/equity/ledger">{n("shareLedger")}</NavLink>
               </NavGroup>
             )}
 
