@@ -6398,6 +6398,96 @@ export async function getAccountSummary(
   };
 }
 
+/**
+ * General Ledger Details [Account], the legacy report: one block per account
+ * in code order, each with its movements in the period, the period's total,
+ * and its opening and closing. The accounts that hold customers and suppliers
+ * (AR and AP control, advances, other payables) split into one block per
+ * partner — "Accounts Receivable – ANS Mobile" — from the partner every line
+ * on them already carries; the chart keeps one control account. An account
+ * with an opening balance and no movement still gets its block.
+ */
+export async function getLedgerDetails(
+  companyId: string, accountId: string | string[],
+  f: { from?: string; to?: string; branchId?: string | null; showVoided?: boolean } = {},
+) {
+  const ids = Array.isArray(accountId) ? accountId : [accountId];
+  const splitRows = await sql`
+    select fn_resolve_control_account(${companyId}, 'AR_CONTROL', null) as a
+    union select fn_resolve_control_account(${companyId}, 'AP_CONTROL', null)
+    union select account_id from system_account
+     where company_id = ${companyId} and role in ('CUSTOMER_ADVANCE', 'SUPPLIER_ADVANCE', 'OTHER_PAYABLE')
+    union select ar_control_id from business_partner where company_id = ${companyId} and ar_control_id is not null
+    union select ap_control_id from business_partner where company_id = ${companyId} and ap_control_id is not null`;
+  const split = new Set((splitRows as any[]).map((r) => r.a as string).filter(Boolean));
+
+  const [lines, openings, accounts] = await Promise.all([
+    sql`
+      select jl.account_id, jl.partner_id, p.code as partner_code, p.name as partner_name,
+             to_char(je.entry_date, 'YYYY-MM-DD') as entry_date, je.entry_no, je.memo, jl.memo as line_memo,
+             d.id as doc_id, d.doc_no, d.doc_type,
+             case when jl.base_amount > 0 then  jl.base_amount else 0 end::float as debit,
+             case when jl.base_amount < 0 then -jl.base_amount else 0 end::float as credit,
+             -- The other side of the entry: its one other account, or "several".
+             (select case when count(distinct o.account_id) = 1 then max(oa.code || ' ' || oa.name) else 'Several accounts' end
+                from journal_line o join account oa on oa.id = o.account_id
+               where o.journal_entry_id = jl.journal_entry_id and o.account_id <> jl.account_id) as contra
+        from journal_line jl
+        join journal_entry je on je.id = jl.journal_entry_id
+        left join document d on d.id = je.source_id
+        left join business_partner p on p.id = jl.partner_id
+       where jl.company_id = ${companyId} and jl.account_id = any(${ids})
+         ${f.from ? sql`and je.entry_date >= ${f.from}::date` : sql``}
+         ${f.to ? sql`and je.entry_date <= ${f.to}::date` : sql``}
+         ${branchFilter(f.branchId)}
+         ${liveEntriesOnly(f.showVoided)}
+       order by je.entry_date, je.entry_no, jl.line_no`,
+    f.from ? sql`
+      select jl.account_id, jl.partner_id, p.code as partner_code, p.name as partner_name, sum(jl.base_amount)::float as opening
+        from journal_line jl
+        join journal_entry je on je.id = jl.journal_entry_id
+        left join business_partner p on p.id = jl.partner_id
+       where jl.company_id = ${companyId} and jl.account_id = any(${ids}) and je.entry_date < ${f.from}::date
+         ${branchFilter(f.branchId)}
+         ${liveEntriesOnly(f.showVoided)}
+       group by jl.account_id, jl.partner_id, p.code, p.name
+      having sum(jl.base_amount) <> 0` : Promise.resolve([]),
+    sql`select id, code, name from account where company_id = ${companyId} and id = any(${ids})`,
+  ]);
+  const acct = new Map((accounts as any[]).map((a) => [a.id as string, a]));
+
+  type Line = { date: string; entryNo: string; docId: string | null; docNo: string | null; docType: string | null;
+                contra: string | null; memo: string | null; lineMemo: string | null; debit: number; credit: number };
+  type Block = { accountId: string; accountCode: string; accountName: string;
+                 partnerId: string | null; partnerCode: string | null; partnerName: string | null;
+                 opening: number; debits: number; credits: number; lines: Line[] };
+  const blocks = new Map<string, Block>();
+  const at = (accountId: string, partnerId: string | null, partnerCode: string | null, partnerName: string | null) => {
+    const byPartner = split.has(accountId);
+    const k = `${accountId}|${byPartner ? partnerId ?? "" : ""}`;
+    if (!blocks.has(k)) {
+      const a = acct.get(accountId);
+      blocks.set(k, { accountId, accountCode: a?.code ?? "", accountName: a?.name ?? "",
+        partnerId: byPartner ? partnerId : null, partnerCode: byPartner ? partnerCode : null,
+        partnerName: byPartner ? partnerName : null, opening: 0, debits: 0, credits: 0, lines: [] });
+    }
+    return blocks.get(k)!;
+  };
+  for (const o of openings as any[]) at(o.account_id, o.partner_id, o.partner_code, o.partner_name).opening += Number(o.opening);
+  for (const r of lines as any[]) {
+    const b = at(r.account_id, r.partner_id, r.partner_code, r.partner_name);
+    b.debits += Number(r.debit); b.credits += Number(r.credit);
+    b.lines.push({ date: r.entry_date, entryNo: r.entry_no, docId: r.doc_id, docNo: r.doc_no, docType: r.doc_type,
+                   contra: r.contra, memo: r.memo, lineMemo: r.line_memo, debit: Number(r.debit), credit: Number(r.credit) });
+  }
+  const r4 = (n: number) => Math.round(n * 10000) / 10000;
+  return [...blocks.values()]
+    .map((b) => ({ ...b, opening: r4(b.opening), closing: r4(b.opening + b.debits - b.credits) }))
+    // Account code ascending, as the legacy report; within a split account, partners by name, none last.
+    .sort((x, y) => x.accountCode.localeCompare(y.accountCode, undefined, { numeric: true })
+      || (x.partnerName == null ? 1 : y.partnerName == null ? -1 : x.partnerName.localeCompare(y.partnerName)));
+}
+
 // -------------------------------------------------------------- cutover --
 
 /** The posted cutover, if this company has had one. */
