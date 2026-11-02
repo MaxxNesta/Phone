@@ -281,19 +281,29 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
         {foreign && <div><dt>Exchange rate (at purchase)</dt><dd>{c.rate.toLocaleString("en-US", { maximumFractionDigits: 4 })} MMK / {c.currency}</dd></div>}
         <div><dt>Converted purchase cost</dt><dd>{money(c.purchase)} MMK</dd></div>
         <div><dt>Purchase date</dt><dd>{c.receipt?.date ?? "—"}</dd></div>
+        {c.discount && <>
+          <div><dt>Supplier discount <span className="imei-muted">(information)</span></dt><dd>{c.discount.pct}% · {money(c.discount.perUnit)} MMK</dd></div>
+          <div><dt>Net supplier price <span className="imei-muted">(information)</span></dt><dd>{money(c.discount.net)} MMK</dd></div>
+        </>}
       </dl>
 
       <h4 className="imei-h">Cost Breakdown <span className="imei-muted">(per unit)</span></h4>
       <table className="imei-mini">
         <thead><tr><th>Component</th><th className="num">Amount (MMK)</th></tr></thead>
         <tbody>
-          <tr><td>Purchase cost</td><td className="num">{money(c.purchase)}</td></tr>
+          <tr><td>Purchase cost{c.discount ? <span className="imei-muted"> (FIFO, before supplier discount)</span> : null}</td><td className="num">{money(c.purchase)}</td></tr>
           {c.landed.map((l, i) => <tr key={i}><td>{l.type}</td><td className="num">{money(l.amount)}</td></tr>)}
           {c.landed.length === 0 && <tr><td>Landed costs</td><td className="num">0</td></tr>}
           {Math.abs(c.other) >= 1 && <tr><td>Other adjustments <span className="imei-muted">(bill corrections)</span></td><td className="num">{money(c.other)}</td></tr>}
         </tbody>
         <tfoot><tr><td>Total unit cost</td><td className="num">{money(c.total)}</td></tr></tfoot>
       </table>
+      {c.discount && (
+        <p className="imei-muted" style={{ margin: "6px 0 0" }}>
+          The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit was credited to Purchase Discounts.
+          It does not lower the recorded FIFO cost.
+        </p>
+      )}
 
       <h4 className="imei-h">Cost Sources</h4>
       <ul className="imei-sources">

@@ -309,9 +309,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/warehouses" sub>{n("branchesWarehouses")}</NavLink>
                   <NavLink href="/salespersons" sub>{n("salespersons")}</NavLink>
                 </NavSubGroup>
-                <NavSubGroup label={n("purchasing")} match={["/settings/landed-cost-types", "/settings/landed-cost-templates"]}>
+                <NavSubGroup label={n("purchasing")} match={["/settings/landed-cost-types", "/settings/landed-cost-templates", "/settings/supplier-discounts"]}>
                   <NavLink href="/settings/landed-cost-types" sub>{n("landedCostTypes")}</NavLink>
                   <NavLink href="/settings/landed-cost-templates" sub>{n("landedCostTemplates")}</NavLink>
+                  <NavLink href="/settings/supplier-discounts" sub>{n("supplierDiscounts")}</NavLink>
                 </NavSubGroup>
                 <NavSubGroup label={n("accounting")} match={["/settings/accounts", "/settings/tax-codes", "/settings/currencies", "/settings/payment-methods"]}>
                   <NavLink href="/settings/accounts" sub>{n("chartOfAccounts")}</NavLink>

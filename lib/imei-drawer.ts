@@ -56,6 +56,10 @@ export async function imeiDrawer(serialId: string) {
     landed: { type: string; amount: number; docId: string; docNo: string | null; date: string; method: string }[];
     other: number; total: number; receipt: { id: string; no: string | null; date: string | null; type: string; supplier: string | null } | null;
     invoices: { id: string; no: string | null; date: string; amount: number | null }[];
+    /** The supplier's discount on the bill, per unit — information only:
+     *  under the GROSS policy it was credited to Purchase Discounts and the
+     *  FIFO cost stays at the price bought. */
+    discount: { pct: number; perUnit: number; net: number } | null;
   } = null;
 
   if (seeCost) {
@@ -82,7 +86,9 @@ export async function imeiDrawer(serialId: string) {
     const invoices = line?.id ? await sql`
       select distinct pi.id, pi.doc_no, to_char(pi.doc_date, 'YYYY-MM-DD') as date,
              (select pl.unit_price::float from document_line pl
-               where pl.document_id = pi.id and pl.item_id = ${u.item_id} limit 1) as amount
+               where pl.document_id = pi.id and pl.item_id = ${u.item_id} limit 1) as amount,
+             (select (sum(coalesce(pl.discount_amount, 0) + coalesce(pl.invoice_discount_amount, 0)) / nullif(sum(pl.base_qty), 0))::float
+                from document_line pl where pl.document_id = pi.id and pl.item_id = ${u.item_id}) as discount_per_unit
         from document pi
        where pi.doc_type = 'PURCHASE_INVOICE' and pi.status = 'POSTED' and pi.company_id = ${user.companyId}
          and (pi.id = (select source_document_id from document where id = ${line.id})
@@ -101,6 +107,12 @@ export async function imeiDrawer(serialId: string) {
       total,
       receipt: line?.id ? { id: line.id, no: line.doc_no, date: line.doc_date, type: line.doc_type, supplier: line.supplier } : null,
       invoices: (invoices as any[]).map((i) => ({ id: i.id, no: i.doc_no, date: i.date, amount: i.amount })),
+      discount: (() => {
+        const d = (invoices as any[]).find((i) => Number(i.discount_per_unit) > 0);
+        if (!d || purchase == null || purchase === 0) return null;
+        const perUnit = Math.round(Number(d.discount_per_unit) * 100) / 100;
+        return { perUnit, pct: Math.round((perUnit / purchase) * 10000) / 100, net: Math.round((purchase - perUnit) * 100) / 100 };
+      })(),
     };
   }
 

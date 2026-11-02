@@ -117,7 +117,8 @@
     "expandNav": "ဘေးဘား ချဲ့ရန်",
     "collapseNav": "ဘေးဘား ချုံ့ရန်",
     "paymentMethods": "ငွေပေးချေမှုနည်းလမ်းများ",
-    "paymentsReceived": "လက်ခံရရှိငွေများ"
+    "paymentsReceived": "လက်ခံရရှိငွေများ",
+    "supplierDiscounts": "Supplier discounts"
   },
   "shell": {
     "appName": "မြန်မာ ERP",

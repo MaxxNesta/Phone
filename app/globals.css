@@ -8955,3 +8955,31 @@ td.line-empty { padding: 18px 12px; text-align: center; }
    heading, in which case the band sits under it. */
 .form.docsheet.waved > .card.doc-info:not(.receive-mode) { margin-top: -4px; border-top: 0; border-radius: 9px 9px 0 0; }
 .form.docsheet.waved > .doc-heading ~ .card.doc-info:not(.receive-mode) { margin-top: 12px; border-top: 1px solid var(--wave-line); border-radius: 0; }
+
+/* A supplier discount: the figure and whether it is a rate or money, one control. */
+.disc-entry { display: inline-flex; align-items: stretch; width: 100%; min-width: 0; }
+.disc-entry > input { flex: 1 1 auto; min-width: 0; width: 100%; text-align: right; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.disc-entry > select { flex: 0 0 auto; width: auto; min-width: 0; padding-left: 8px; padding-right: 22px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; }
+td.disccell { width: 9.5rem; }
+.summary dt .disc-entry { width: 11rem; margin-left: 10px; vertical-align: middle; }
+/* A company policy, one option per row; the chosen one is outlined in the accent. */
+.policy-opt { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
+.policy-opt[data-on] { border-color: var(--link); background: color-mix(in srgb, var(--link) 5%, transparent); }
+.policy-opt[aria-disabled] { opacity: 0.6; }
+.policy-opt > span { display: flex; flex-direction: column; gap: 2px; }
+
+/* The income statement, classic layout: the shop's legacy report. Group
+   names in the accent, a hairline over each subtotal, a heavier rule over
+   the section totals and Gross Profit. Brackets carry the sign. */
+.classic-pl table { font-variant-numeric: tabular-nums; }
+.classic-pl td, .classic-pl th { padding: 6px 12px; }
+.classic-pl tbody tr:nth-child(even) > td { background: transparent !important; }
+.classic-pl .cl-section > td { padding-top: 22px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.classic-pl .cl-group > td { padding-top: 14px; color: var(--link); font-weight: 600; }
+.classic-pl .cl-acct > td { font-weight: 400; }
+.classic-pl .cl-subtotal > td { border-top: 1px solid var(--ink); font-weight: 600; padding-bottom: 12px; }
+.classic-pl .cl-subtotal > td:first-child { border-top: 0; }
+.classic-pl .cl-total > td { border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
+.classic-pl .cl-total.strong > td { border-top-width: 2px; font-weight: 700; }
+.form.docsheet table.linetable td.disccell .disc-entry > input { flex: 1 1 0; min-width: 3.5rem; width: 0; }
+.form.docsheet table.linetable td.disccell .disc-entry > select { flex: 0 0 auto; width: 4.5rem; min-width: 0; }

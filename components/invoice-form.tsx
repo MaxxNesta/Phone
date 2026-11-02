@@ -4,6 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import { serialsOnFile, type ActionResult, type PickerItem } from "@/lib/actions";
+import { pricePurchaseLines } from "@/lib/discount";
 import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from "./imei-panel";
 import { TrackMode } from "./track-mode";
 import { CarriageSection } from "./carriage-section";
@@ -61,6 +62,8 @@ type Line = {
    *  and the item keeps lots. Ignored on the Receive-later and Match paths,
    *  where the goods arrive on a receipt that asks for its own. */
   batchNo?: string; expiryDate?: string;
+  /** The supplier's discount on this line: a rate or an amount, as typed. */
+  discount?: string; discountKind?: "pct" | "amount";
   /** The handsets, when the bill receives phones itself — the same rows a
    *  goods receipt asks for, because this bill posts one. */
   serials?: UnitRow[];
@@ -437,8 +440,22 @@ export function InvoiceForm({
   const removeLine = (key: number) =>
     setLines((ls) => ls.filter((l) => l.key !== key));
 
-  const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
+  const [billDiscount, setBillDiscount] = useState<string>(restored?.billDiscount ?? "");
+  const [billKind, setBillKind] = useState<"pct" | "amount">(restored?.billKind === "amount" ? "amount" : "pct");
+  const priced = useMemo(() => pricePurchaseLines(
+    lines.map((l) => ({
+      qty: Number(l.qty) || 0, unitPrice: Number(l.unitPrice) || 0,
+      discountPct: l.discountKind !== "amount" ? Number(l.discount) || 0 : 0,
+      discountAmount: l.discountKind === "amount" && l.discount !== "" && l.discount != null ? Number(l.discount) : null,
+    })),
+    isSales ? null : { pct: billKind === "pct" ? Number(billDiscount) || 0 : null, amount: billKind === "amount" ? Number(billDiscount) || 0 : null },
+    0), [lines, billDiscount, billKind, isSales]);
+  const pricedOf = (l: Line) => priced.lines[lines.indexOf(l)];
+  // A purchase line's amount is what the supplier is owed for it, after its discounts.
+  const amount = (l: Line) => (isSales ? (Number(l.qty) || 0) * (Number(l.unitPrice) || 0) : pricedOf(l)?.net ?? 0);
   const goodsTotal = lines.reduce((s, l) => s + amount(l), 0);
+  const lineDiscounts = isSales ? 0 : priced.lines.reduce((s, p) => s + p.itemDiscountAmount, 0);
+  const billDiscounts = isSales ? 0 : priced.lines.reduce((s, p) => s + p.invoiceDiscountAmount, 0);
 
   /* Input tax on a supplier bill. Same split the engine does — a wholesaler
      here usually quotes with the tax inside the price, so inclusive is worth
@@ -510,6 +527,8 @@ export function InvoiceForm({
         // own, which asks there.
         batchNo: receiveMode === "now" ? (l.batchNo ?? "") : "",
         expiryDate: receiveMode === "now" ? (l.expiryDate ?? "") : "",
+        discountPct: !isSales && l.discountKind !== "amount" ? Number(l.discount) || 0 : 0,
+        discountAmount: !isSales && l.discountKind === "amount" && l.discount ? Number(l.discount) : null,
         // Only a bill that receives the goods names them; the receipt behind
         // Match already did, and Receive-later's receipt will.
         serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial.trim()).filter(Boolean),
@@ -564,7 +583,7 @@ export function InvoiceForm({
   }, [draftResult]);
 
   const draftState = JSON.stringify({
-    lines, partnerId, docDate, dueDate, cashOut, reference, locationId,
+    lines, partnerId, docDate, dueDate, cashOut, reference, locationId, billDiscount, billKind,
   });
 
   return (
@@ -878,13 +897,14 @@ export function InvoiceForm({
                 {anyOrdered && <th className="r">Order price</th>}
                 <th className="r vc-qty">Qty</th>
                 <th className="r">{matchedGr ? "Billed price" : "Unit price"}</th>
+                {!isSales && <th className="r vc-disc">Discount</th>}
                 <th className="r">Amount</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
@@ -1013,7 +1033,26 @@ export function InvoiceForm({
                       />
                       </Flagged>
                     </td>
-                    <td className="r">{fmt(amount(l))}</td>
+                    {!isSales && (
+                      <td className="narrow disccell">
+                        <span className="disc-entry">
+                          <input type="number" min="0" step="any" value={l.discount ?? ""} placeholder="0"
+                            onChange={(e) => setLine(l.key, { discount: e.target.value })}
+                            aria-label={`Discount on line ${lines.indexOf(l) + 1}`} />
+                          <select value={l.discountKind ?? "pct"} aria-label="Discount as"
+                            onChange={(e) => setLine(l.key, { discountKind: e.target.value as "pct" | "amount" })}>
+                            <option value="pct">%</option>
+                            <option value="amount">{foreign ? currency : base}</option>
+                          </select>
+                        </span>
+                      </td>
+                    )}
+                    <td className="r">
+                      {fmt(amount(l))}
+                      {!isSales && (pricedOf(l)?.gross ?? 0) !== amount(l) && (
+                        <span className="subline" style={{ display: "block" }}>of {fmt(pricedOf(l)!.gross)}</span>
+                      )}
+                    </td>
                     <td className="tight">
                       <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
@@ -1023,14 +1062,14 @@ export function InvoiceForm({
                   unitLines.includes(l) && byId(l.itemId)?.identity === "OPTIONAL" ? (
                     <tr key={`opt-${l.key}`} className="vline-sub">
                       <td className="vc-no" />
-                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)}>
+                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}>
                         <TrackMode code={byId(l.itemId)!.code} on={!!l.withSerials} note={false}
                           onChange={(v) => setLine(l.key, { withSerials: v })} />
                       </td>
                     </tr>
                   ) : null,
                   named(l) ? (
-                    <UnitsRow key={`units-${l.key}`} colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)}
+                    <UnitsRow key={`units-${l.key}`} colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}
                       title={byId(l.itemId)?.name ?? ""} qty={Number(l.qty) || 0} rows={l.serials ?? []}
                       onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
                   ) : null,
@@ -1187,6 +1226,28 @@ export function InvoiceForm({
           </div>
           <div className="card-body">
             <dl className="summary">
+              {!isSales && (
+                <>
+                  {/* Gross, what comes off, what is owed: the stock keeps the
+                      gross and the discount is credited to Purchase Discounts. */}
+                  <dt>Gross</dt><dd>{fmt(priced.gross)}</dd>
+                  {lineDiscounts > 0 && <><dt>Line discounts</dt><dd>−{fmt(lineDiscounts)}</dd></>}
+                  <dt>
+                    <label htmlFor="bill_discount">Bill discount</label>
+                    <span className="disc-entry">
+                      <input id="bill_discount" type="number" min="0" step="any" value={billDiscount} placeholder="0"
+                        onChange={(e) => setBillDiscount(e.target.value)} />
+                      <select value={billKind} aria-label="Bill discount as" onChange={(e) => setBillKind(e.target.value as "pct" | "amount")}>
+                        <option value="pct">%</option>
+                        <option value="amount">{foreign ? currency : base}</option>
+                      </select>
+                    </span>
+                    <input type="hidden" name="bill_discount" value={billDiscount} />
+                    <input type="hidden" name="bill_discount_kind" value={billKind} />
+                  </dt>
+                  <dd>{billDiscounts > 0 ? `−${fmt(billDiscounts)}` : "0"}</dd>
+                </>
+              )}
               <dt>Subtotal ({lines.filter((l) => l.itemId).length} item{lines.filter((l) => l.itemId).length === 1 ? "" : "s"})</dt>
               <dd>{fmt(goodsNet)}</dd>
               {taxable.length > 0 && (

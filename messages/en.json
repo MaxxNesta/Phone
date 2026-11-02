@@ -117,7 +117,8 @@
     "expandNav": "Expand navigation",
     "collapseNav": "Collapse navigation",
     "paymentMethods": "Payment methods",
-    "paymentsReceived": "Payments received"
+    "paymentsReceived": "Payments received",
+    "supplierDiscounts": "Supplier discounts"
   },
   "shell": {
     "appName": "Myanmar ERP",
