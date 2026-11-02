@@ -3,15 +3,19 @@ import { money } from "@/lib/db";
 import { AutoApply } from "@/components/auto-apply";
 import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { StatementTable } from "@/components/statement-table";
+import { ClassicStatement } from "@/components/classic-statement";
 import { HelpHint } from "@/components/help-hint";
 import { getIncomeStatementData, type Params } from "./data";
 
 export default async function IncomeStatement({
   searchParams,
 }: {
-  searchParams: Promise<Params>;
+  searchParams: Promise<Params & { layout?: string }>;
 }) {
-  const data = await getIncomeStatementData(await searchParams);
+  const sp = await searchParams;
+  // Classic is the legacy books' layout: group headings, ruled subtotals, brackets.
+  const classic = sp.layout === "classic";
+  const data = await getIncomeStatementData(sp);
   if (!data) return <div className="empty">No company found.</div>;
   const {
     company, branches, unassignedLines, branchId, range,
@@ -43,6 +47,12 @@ export default async function IncomeStatement({
               </select>
           </label>
           )}
+          <label className="stmt-ctl" htmlFor="layout"><span>Layout</span>
+            <select id="layout" name="layout" defaultValue={classic ? "classic" : ""}>
+              <option value="">Standard</option>
+              <option value="classic">Classic</option>
+            </select>
+          </label>
           <label className="stmt-ctl" htmlFor="from"><span>From</span>
             <input id="from" name="from" type="date" defaultValue={range.from} />
           </label>
@@ -66,6 +76,10 @@ export default async function IncomeStatement({
         </p>
       )}
 
+      {classic ? (
+        <ClassicStatement sections={sections} subtotals={subtotals} scope={scope}
+          revenue={sections.find((x) => x.key === "REVENUE")?.total ?? 0} />
+      ) : (
       <StatementTable
         title="Statement"
         currency={company.base_currency}
@@ -77,6 +91,7 @@ export default async function IncomeStatement({
         sections={sections}
         subtotals={subtotals}
       />
+      )}
 
       {/* Cost of sales is recognised per delivery from the layers consumed,
           so this statement never computes opening + purchases - closing.
