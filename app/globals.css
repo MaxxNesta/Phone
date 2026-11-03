@@ -9015,3 +9015,80 @@ td.disccell { width: 9.5rem; }
 .sh-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding-top: 0; }
 .sh-filter .field { min-width: 11rem; }
 .sh-opening > td { font-style: italic; background: color-mix(in srgb, var(--ink) 3%, transparent) !important; }
+
+/* Purchase invoice import: steps, collapsible invoices, the result mark. */
+.pimp-steps { display: flex; align-items: center; gap: 10px; list-style: none; margin: 0 0 18px; padding: 0; font-size: 0.875rem; color: var(--ink); }
+.pimp-steps li { display: inline-flex; align-items: center; gap: 8px; opacity: 0.55; }
+.pimp-steps li[data-state="now"], .pimp-steps li[data-state="done"] { opacity: 1; }
+.pimp-steps li[data-state="now"] { font-weight: 600; }
+.pimp-steps li + li::before { content: ""; width: 48px; height: 1px; background: var(--line); margin-right: 2px; }
+.pimp-dot { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.pimp-steps li[data-state="now"] .pimp-dot { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.pimp-note { display: flex; gap: 6px; align-items: flex-start; margin: 12px 0 0; font-size: 0.8125rem; color: var(--muted); }
+.pimp-note svg { flex: none; margin-top: 2px; }
+.pimp-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.pimp-bar h2 { font-size: 1.0625rem; margin: 0; }
+.pimp-legend { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.pimp-map { margin-bottom: 12px; }
+.pimp-maprow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; }
+.pimp-maprow + .pimp-maprow { border-top: 1px solid var(--line-soft); }
+.pimp-maprow select { flex: 1 1 240px; max-width: 360px; }
+.pimp-src { min-width: 180px; font-weight: 500; }
+.pimp-ok { font-size: 0.8125rem; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.pimp-ok.on { color: var(--link); }
+.pimp-list { display: flex; flex-direction: column; gap: 8px; }
+.pimp-inv { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.pimp-inv.out { opacity: 0.6; }
+.pimp-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; background: color-mix(in srgb, var(--ink) 3%, transparent); border: 0; border-radius: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer; list-style: none; min-height: 0; box-shadow: none; }
+.pimp-head::-webkit-details-marker { display: none; }
+.pimp-head:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.pimp-chev { flex: none; transition: transform 0.2s ease; transform: rotate(-90deg); }
+.pimp-head[aria-expanded="true"] .pimp-chev { transform: none; }
+.pimp-title { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pimp-total { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pimp-si { flex: none; color: var(--muted); }
+.pimp-si.ok { color: var(--link); }
+.pimp-si.warn { color: var(--warn); }
+.pimp-si.bad { color: var(--bad); }
+.pimp-body { padding: 14px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 14px; }
+.pimp-info, .pimp-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 20px; margin: 0; }
+.pimp-info dt, .pimp-sum dt { font-size: 0.75rem; color: var(--muted); opacity: 0.75; }
+.pimp-info dd, .pimp-sum dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+.pimp-info .wide { grid-column: 1 / -1; }
+.pimp-sum { padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.pimp-sum .strong dd { font-weight: 700; }
+.pimp-need { color: var(--warn); }
+.pimp-issues { list-style: none; margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 3%, transparent); display: flex; flex-direction: column; gap: 4px; font-size: 0.8125rem; }
+.pimp-issues li { display: flex; gap: 6px; align-items: baseline; }
+.pimp-issues li svg { flex: none; transform: translateY(2px); }
+.pimp-issues li[data-level="error"] svg { color: var(--bad); }
+.pimp-issues li[data-level="review"] svg { color: var(--warn); }
+.pimp-lines .pimp-serials td { padding-top: 0; border-top: 0; }
+.pimp-lines summary { cursor: pointer; color: var(--link); font-size: 0.8125rem; }
+.pimp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pimp-chips span { padding: 2px 8px; border-radius: 980px; border: 1px solid var(--line); font-size: 0.75rem; }
+.pimp-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 0; background: var(--ground); }
+.pimp-foot .page-sub { margin-left: auto; text-align: right; }
+.pimp-search { margin: 0 0 12px; }
+.pimp-search input { width: 100%; max-width: 420px; }
+.pimp-done { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 36px 20px; gap: 6px; }
+.pimp-done h2 { font-size: 1.5rem; margin: 10px 0 0; }
+.pimp-done .actions { justify-content: center; margin-top: 12px; }
+.pimp-map-out { width: 100%; max-width: 420px; margin-top: 8px; text-align: left; }
+.pimp-err { color: var(--bad); max-width: 560px; }
+.pimp-mark { width: 84px; height: 84px; fill: none; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.pimp-mark.ok { stroke: var(--link); }
+.pimp-mark.bad { stroke: var(--bad); }
+@media (prefers-reduced-motion: no-preference) {
+  .pimp-mark { animation: pimp-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) both; }
+  .pimp-mark circle { stroke-dasharray: 151; stroke-dashoffset: 151; animation: pimp-draw 0.5s ease-out 0.1s forwards; }
+  .pimp-mark path { stroke-dasharray: 48; stroke-dashoffset: 48; animation: pimp-draw 0.35s ease-out 0.5s forwards; }
+  .pimp-done h2, .pimp-done > p, .pimp-done > .tablewrap, .pimp-done > .actions { animation: fa-pop 0.35s ease-out 0.55s both; }
+}
+@keyframes pimp-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes pimp-draw { to { stroke-dashoffset: 0; } }
+@media (max-width: 640px) {
+  .pimp-steps li + li::before { width: 16px; }
+  .pimp-head { flex-wrap: wrap; }
+  .pimp-total { margin-left: 0; }
+}

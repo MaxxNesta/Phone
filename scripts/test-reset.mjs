@@ -36,6 +36,9 @@ const ROOTS = [
   // replenishment started handing people draft purchase orders as a matter
   // of course. Same class as the two above, and cleared for the same reason.
   "document_draft",
+  // Invoices imported from the old system: history that points at items,
+  // partners and warehouses, so it goes with the transactions.
+  "historical_purchase_invoice",
 ];
 
 /** Every table that depends on a transaction root, transitively. */

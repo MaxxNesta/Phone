@@ -44,16 +44,16 @@ function cellText(value: unknown): string {
   return String(value).trim();
 }
 
-export async function xlsxToRows(base64: string): Promise<string[][]> {
+/** allSheets: every sheet's rows one after another — a report may run over several. */
+export async function xlsxToRows(base64: string, allSheets = false): Promise<string[][]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(Buffer.from(base64, "base64") as unknown as ArrayBuffer);
 
-  const sheet = wb.worksheets[0];
-  if (!sheet) throw new Error("That workbook has no sheets in it.");
+  if (!wb.worksheets[0]) throw new Error("That workbook has no sheets in it.");
 
   const rows: string[][] = [];
   let width = 0;
-  sheet.eachRow({ includeEmpty: false }, (row) => {
+  for (const sheet of allSheets ? wb.worksheets : wb.worksheets.slice(0, 1)) sheet.eachRow({ includeEmpty: false }, (row) => {
     const cells: string[] = [];
     // includeEmpty keeps blank cells in place; without it a row with a gap
     // would shift every later value one column to the left, silently into

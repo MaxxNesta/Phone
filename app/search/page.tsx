@@ -20,7 +20,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   // Phones and documents of other branches stay out of a search by someone who sees only their own.
   const locs = await seenLocations();
-  const [units, docs, partners] = await Promise.all([
+  const [units, docs, partners, imported] = await Promise.all([
     sql`select serial_id, imei, item_name, status, customer_name from v_stock_serial
          where company_id = ${co} and (imei = ${q} or imei2 = ${q} or device_serial = ${q}
                or imei ilike ${like}) ${locs ? sql`and location_id = any(${locs})` : sql``} limit 20`,
@@ -29,6 +29,12 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
          order by posting_date desc limit 20`,
     sql`select id, name, code, is_customer from business_partner
          where company_id = ${co} and (name ilike ${like} or code ilike ${like}) limit 20`,
+    // Purchases from the old system: by old ID, new number or an IMEI on them.
+    sql`select h.invoice_no, h.old_ref, h.doc_date, h.net_total::float as total, p.name as supplier
+          from historical_purchase_invoice h join business_partner p on p.id = h.partner_id
+         where h.company_id = ${co} and (h.old_ref ilike ${like} or h.invoice_no ilike ${like}
+               or exists (select 1 from historical_purchase_invoice_line l where l.invoice_id = h.id and ${q} = any(l.serials)))
+         order by h.doc_date desc limit 20`,
   ]);
 
   const exactUnit = units.find((u: any) => u.imei === q);
@@ -39,7 +45,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head hero"><h1>Search</h1><p className="page-sub">“{q}”</p></div>
-      {units.length + docs.length + partners.length === 0 && <p className="page-sub">Nothing matches.</p>}
+      {units.length + docs.length + partners.length + imported.length === 0 && <p className="page-sub">Nothing matches.</p>}
       {units.length > 0 && (
         <div className="card" style={{ marginBottom: "var(--s3)" }}>
           <div className="card-head"><h2>Handsets</h2></div>
@@ -62,6 +68,20 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 <td className="m"><Link href={`/documents/${d.id}`}>{d.doc_no}</Link></td>
                 <td>{d.doc_type.replace(/_/g, " ").toLowerCase()}</td>
                 <td>{shortDate(d.posting_date)}</td><td className="num">{money(d.total)}</td>
+              </tr>
+            ))}
+          </tbody></table>
+        </div>
+      )}
+      {imported.length > 0 && (
+        <div className="card" style={{ marginBottom: "var(--s3)" }}>
+          <div className="card-head"><h2>Imported purchase invoices</h2></div>
+          <table><tbody>
+            {imported.map((h: any) => (
+              <tr key={h.invoice_no}>
+                <td className="m"><Link href={`/purchases/invoices/imported?q=${encodeURIComponent(h.invoice_no)}`}>{h.invoice_no}</Link></td>
+                <td className="m">{h.old_ref}</td><td>{h.supplier}</td>
+                <td>{shortDate(h.doc_date)}</td><td className="num">{money(h.total)}</td>
               </tr>
             ))}
           </tbody></table>

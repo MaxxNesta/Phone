@@ -146,6 +146,8 @@ export default async function PurchaseInvoices({
 
       <div className="actions">
         <Link href="/purchases/new" className="btn">+ New Purchase Invoice</Link>
+        <Link href="/purchases/invoices/import" className="btn ghost">Import invoices</Link>
+        <Link href="/purchases/invoices/imported" className="btn ghost">Imported</Link>
       </div>
 
       <div className="kpis">
