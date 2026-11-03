@@ -110,6 +110,7 @@ const master = {
     { id: "I-MAC", code: "IPM001", name: "MacBook Air", is_active: true, tracks_serial: true, identity: "SERIAL" },
     { id: "I-OLD", code: "IPX999", name: "Old", is_active: false, tracks_serial: false, identity: "NONE" }],
   payAccounts: [{ id: "A-cash", code: "11101", name: "Cash" }],
+  supplierFocId: "F-sup",
   known: [], historySerials: [], stockSerials: [],
 };
 const none = { suppliers: {}, locations: {} };

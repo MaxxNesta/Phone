@@ -277,7 +277,7 @@ export function PurchaseImport() {
                                 <td className="code">{l.code}</td>
                                 <td>{l.itemName ?? <span className="pimp-need">{l.description} — not in catalogue</span>}</td>
                                 <td className="r">{money(l.qty)}</td>
-                                <td className="r">{money(l.unitPrice)}</td>
+                                <td className="r">{l.free ? <span className="pill info">FOC</span> : money(l.unitPrice)}</td>
                                 <td className="r">{money(l.amount)}</td>
                               </tr>
                               {l.serials.length > 0 && (

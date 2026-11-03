@@ -9145,3 +9145,8 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 @keyframes pimp-slide { from { left: -35%; } to { left: 100%; } }
 .pimp-foot { flex-wrap: wrap; }
 .pimp-foot > .pimp-progress { flex: 1 0 100%; margin: 0 0 4px; }
+/* A purchase line's FOC choice: free from the supplier, received at zero cost. */
+.foc-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 0.75rem; white-space: nowrap; cursor: pointer; }
+.foc-toggle input { width: auto; margin: 0; }
+.foc-free { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.foc-free input[type="number"] { width: 100%; min-width: 5rem; }

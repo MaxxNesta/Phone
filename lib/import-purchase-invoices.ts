@@ -232,6 +232,8 @@ export type PurchaseImportMaster = {
   items: { id: string; code: string; name: string; is_active: boolean; tracks_serial: boolean; identity: "IMEI" | "SERIAL" | "OPTIONAL" | "NONE" }[];
   /** Cash and bank accounts a paid bill may be paid from. */
   payAccounts: { id: string; code: string; name: string }[];
+  /** The reason a supplier's free line posts under (FOC Received), when one is set up. */
+  supplierFocId: string | null;
   /** Old ids this file names that are already posted here, or held as a history record. */
   known: { ref: string; doc_no: string; kind: "POSTED" | "HISTORY" }[];
   /** IMEIs this file names that sit on a history record. */
@@ -248,7 +250,11 @@ export type Match = { source: string; id: string | null; how: "exact" | "guess" 
 
 export type Issue = { level: "error" | "review"; field: string; message: string };
 
-export type PlannedLine = SourceLine & { itemId: string | null; itemName: string | null; tracksSerial: boolean; identity: string | null };
+export type PlannedLine = SourceLine & {
+  itemId: string | null; itemName: string | null; tracksSerial: boolean; identity: string | null;
+  /** Free from the supplier: priced at nothing on the report, received at zero cost. */
+  free: boolean;
+};
 
 export type PlannedInvoice = {
   row: number; oldRef: string; supplierInvoiceNo: string | null;
@@ -339,7 +345,10 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
         else firstSeen.set(imei, label);
         if (/^\d{15}$/.test(imei) && !luhnOk(imei)) review(at, `IMEI ${imei} fails its check digit — a typo in the old system?`);
       }
-      return { ...l, itemId: it?.id ?? null, itemName: it?.name ?? null, tracksSerial: !!it?.tracks_serial, identity: it?.identity ?? null };
+      // A line the supplier charged nothing for is their FOC: it posts as one, at zero cost.
+      const free = l.qty > 0 && l.unitPrice === 0 && l.amount === 0;
+      if (free && !master.supplierFocId) err(at, "Free from the supplier, but no supplier FOC reason is set up to post it under.");
+      return { ...l, itemId: it?.id ?? null, itemName: it?.name ?? null, tracksSerial: !!it?.tracks_serial, identity: it?.identity ?? null, free };
     });
 
     const lineTotal = s.lines.reduce((a, l) => a + l.amount, 0);

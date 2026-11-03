@@ -64,6 +64,8 @@ type Line = {
   batchNo?: string; expiryDate?: string;
   /** The supplier's discount on this line: a rate or an amount, as typed. */
   discount?: string; discountKind?: "pct" | "amount";
+  /** Purchase: units the supplier sends free (FOC) on top of those billed, as the sales voucher gives them. */
+  hasFree?: boolean; focQty?: string;
   /** The handsets, when the bill receives phones itself — the same rows a
    *  goods receipt asks for, because this bill posts one. */
   serials?: UnitRow[];
@@ -109,7 +111,10 @@ export function InvoiceForm({
   awaiting = [],
   taxCodes = [],
   fx,
+  supplierFocId = null,
 }: {
+  /** Purchase: the supplier FOC reason a free line posts under; none hides the choice. */
+  supplierFocId?: string | null;
   /** Currencies and latest rates — a purchase from abroad is billed in its own. */
   fx?: { base: string; options: FxOption[] };
   kind: "sales" | "purchase";
@@ -489,6 +494,9 @@ export function InvoiceForm({
     && (!!byId(l.itemId)?.tracks_serial || (byId(l.itemId)?.identity === "OPTIONAL" && !!l.withSerials));
   const modeOf = (l: Line): UnitMode => (byId(l.itemId)?.identity === "IMEI" ? "IMEI" : "SERIAL");
   const entered = (l: Line) => (l.serials ?? []).filter((x) => x.serial.trim()).length;
+  /** Units the supplier sends free on this line; they arrive with the billed ones. */
+  const freeOf = (l: Line) => (!isSales && l.hasFree ? Math.max(0, Number(l.focQty) || 0) : 0);
+  const arriving = (l: Line) => (Number(l.qty) || 0) + freeOf(l);
   const [onFile, setOnFile] = useState<OnFile>({});
   const serialKey = [...new Set(lines.flatMap((l) => (named(l) ? l.serials ?? [] : [])
     .flatMap((u) => [u.serial, u.imei2 ?? "", u.deviceSerial ?? ""]))
@@ -501,23 +509,43 @@ export function InvoiceForm({
   // Why the courier charge, when switched on, is not ready to post.
   const [carriageBlock, setCarriageBlock] = useState<string | null>(null);
   const unitLines = !isSales && receiveMode === "now"
-    ? lines.filter((l) => l.itemId && Number(l.qty) > 0
+    ? lines.filter((l) => l.itemId && arriving(l) > 0
         && (!!byId(l.itemId)?.tracks_serial || byId(l.itemId)?.identity === "OPTIONAL"))
     : [];
-  const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
-    && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
+  const serialShort = lines.filter((l) => named(l) && arriving(l) > 0
+    && (entered(l) !== arriving(l) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
 
   const payload = JSON.stringify(
     lines
-      .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({
+      .filter((l) => l.itemId && arriving(l) > 0)
+      .flatMap((l) => {
+        const units = (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim());
+        const paid = Number(l.qty) || 0;
+        const out = (part: typeof units) => ({
+          serials: part.map((x) => x.serial.trim()),
+          unitDetails: part.filter((x) => x.imei2?.trim() || x.deviceSerial?.trim())
+            .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
+        });
+        const billed = paid > 0 ? [{ ...lineOut(l, paid), ...out(units.slice(0, paid)) }] : [];
+        // The supplier's free units: their own line, at nothing, under the supplier FOC reason.
+        const free = freeOf(l) > 0 && supplierFocId ? [{
+          ...lineOut(l, freeOf(l)), unitPrice: 0, focReasonId: supplierFocId, sourceLineId: null,
+          discountPct: 0, discountAmount: null, ...out(units.slice(paid)),
+        }] : [];
+        return [...billed, ...free];
+      })
+  );
+
+  function lineOut(l: Line, qty: number) {
+    return ({
         itemId: l.itemId,
-        qty: Number(l.qty),
+        qty,
         // Which unit that quantity is in. Without it a bill for five cartons
         // would reach the engine as five pieces — and on the buying side it
         // would put five on the shelf instead of a hundred and twenty.
         uomId: l.uomId || null,
         unitPrice: Number(l.unitPrice) || 0,
+        focReasonId: null as string | null,
         taxCodeId: taxCodeId || null,
         // Whichever this line came from. A receipt line and an order line
         // never both apply — matching a receipt replaces the lines.
@@ -528,14 +556,12 @@ export function InvoiceForm({
         batchNo: receiveMode === "now" ? (l.batchNo ?? "") : "",
         expiryDate: receiveMode === "now" ? (l.expiryDate ?? "") : "",
         discountPct: !isSales && l.discountKind !== "amount" ? Number(l.discount) || 0 : 0,
-        discountAmount: !isSales && l.discountKind === "amount" && l.discount ? Number(l.discount) : null,
-        // Only a bill that receives the goods names them; the receipt behind
-        // Match already did, and Receive-later's receipt will.
-        serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial.trim()).filter(Boolean),
-        unitDetails: (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
-          .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
-      }))
-  );
+        discountAmount: (!isSales && l.discountKind === "amount" && l.discount ? Number(l.discount) : null) as number | null,
+        // Only a bill that receives the goods names them (set by the caller,
+        // split between the billed units and any free ones).
+        serials: [] as string[], unitDetails: [] as { serial: string; imei2: string | null; deviceSerial: string | null }[],
+    });
+  }
 
   // Warn before submitting rather than after the server rejects it.
   const shortages = lines.filter((l) => {
@@ -1045,6 +1071,20 @@ export function InvoiceForm({
                             <option value="amount">{foreign ? currency : base}</option>
                           </select>
                         </span>
+                        {supplierFocId && !l.sourceLineId && (
+                          <div className="foc-free">
+                            <label className="foc-toggle" title="Units the supplier sends free on top of those billed: received at zero cost, under FOC Received">
+                              <input type="checkbox" checked={!!l.hasFree}
+                                onChange={(e) => setLine(l.key, e.target.checked ? { hasFree: true } : { hasFree: false, focQty: "" })}
+                                aria-label={`Units free on line ${lines.indexOf(l) + 1}`} /> Units free
+                            </label>
+                            {l.hasFree && (
+                              <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="Free qty" autoFocus
+                                onChange={(e) => setLine(l.key, { focQty: e.target.value })}
+                                aria-label={`Free quantity on line ${lines.indexOf(l) + 1}`} />
+                            )}
+                          </div>
+                        )}
                       </td>
                     )}
                     <td className="r">
@@ -1070,7 +1110,7 @@ export function InvoiceForm({
                   ) : null,
                   named(l) ? (
                     <UnitsRow key={`units-${l.key}`} colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}
-                      title={byId(l.itemId)?.name ?? ""} qty={Number(l.qty) || 0} rows={l.serials ?? []}
+                      title={byId(l.itemId)?.name ?? ""} qty={arriving(l)} rows={l.serials ?? []}
                       onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
                   ) : null,
                 ];

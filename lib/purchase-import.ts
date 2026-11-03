@@ -22,7 +22,7 @@ import { netOf, resolved, type Mapping, type PlannedInvoice, type PurchaseImport
  */
 export async function getPurchaseImportMaster(companyId: string, file: { refs: string[]; serials: string[] }): Promise<PurchaseImportMaster> {
   const refs = file.refs.filter(Boolean).map((r) => r.trim().toLowerCase());
-  const [suppliers, locations, items, payAccounts, known, history, stock] = await Promise.all([
+  const [suppliers, locations, items, payAccounts, known, history, stock, foc] = await Promise.all([
     sql`select id, code, name, payment_terms_days from business_partner where company_id = ${companyId} and is_supplier order by code`,
     sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active order by name`,
     sql`select id, code, name, is_active, tracks_serial, identity from item where company_id = ${companyId}`,
@@ -38,6 +38,7 @@ export async function getPurchaseImportMaster(companyId: string, file: { refs: s
          where h.company_id = ${companyId} and l.serials && ${file.serials}::text[] and s = any(${file.serials})`,
     sql`select s.serial_no as serial, i.code as item_code from stock_serial s join item i on i.id = s.item_id
           where s.company_id = ${companyId} and (s.serial_no = any(${file.serials}) or s.imei2 = any(${file.serials}))`,
+    sql`select id from foc_reason where company_id = ${companyId} and applies_to = 'PURCHASE' order by code limit 1`,
   ]);
   return {
     suppliers: suppliers as unknown as PurchaseImportMaster["suppliers"],
@@ -47,6 +48,7 @@ export async function getPurchaseImportMaster(companyId: string, file: { refs: s
     known: known as unknown as PurchaseImportMaster["known"],
     historySerials: history.map((r) => r.s as string),
     stockSerials: stock as unknown as PurchaseImportMaster["stockSerials"],
+    supplierFocId: (foc[0]?.id as string | undefined) ?? null,
   };
 }
 
@@ -81,6 +83,7 @@ function toInput(companyId: string, p: PlannedInvoice, mapping: Mapping, master:
     receivedAt: null,
     lines: p.lines.map((l) => ({
       itemId: l.itemId!, qty: l.qty, unitPrice: l.unitPrice,
+      focReasonId: l.free ? master.supplierFocId : null,
       serials: l.identity === "NONE" ? undefined : l.serials,
     })),
   };

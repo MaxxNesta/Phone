@@ -148,6 +148,43 @@ try {
   check("a retry hands back the posted one", again.find((x) => x.oldRef === "t-ok").status === "already");
   check("and posts nothing new", (await sql`select count(*)::int as n from document`)[0].n === before + 2);
 
+  console.log("\n  Free from the supplier (FOC)\n");
+  const [supFoc] = await sql`select id from foc_reason where company_id = ${co.id} and applies_to = 'PURCHASE'`;
+  const [saleFoc] = await sql`select id from foc_reason where company_id = ${co.id} and applies_to = 'SALE' order by code limit 1`;
+  check("a supplier FOC reason exists, classed under 51202", !!supFoc
+    && (await sql`select a.code from foc_reason f join account a on a.id = f.account_id where f.id = ${supFoc.id}`)[0]?.code === "51202");
+  const focImei = next();
+  a = await plan(bill("t-foc", "07/01/2026", [[IMEI, 2, 900_000, [next(), next()]], [IMEI, 1, 0, [focImei]]]));
+  check("a line at nothing is read as FOC", a.plan[0].lines[1].free && !a.plan[0].lines[0].free && invoiceStatus(a.plan[0], a.mapping) === "ready",
+    JSON.stringify(a.plan[0].issues));
+  r = await postImportedPurchases(co.id, a.plan, a.mapping, a.master);
+  check("posted", r[0].status === "posted", JSON.stringify(r[0]));
+  const [focLine] = await sql`select dl.unit_price::float as p, dl.net_amount::float as n, dl.foc_reason_id from document_line dl
+    join document d on d.id = dl.document_id where d.doc_no = ${r[0].invoiceNo ?? ""} and dl.line_no = 2`;
+  check("the bill line is free, under the supplier reason", focLine?.p === 0 && focLine.n === 0 && focLine.foc_reason_id === supFoc.id, JSON.stringify(focLine));
+  const [focLot] = await sql`select sl.unit_cost::float as c from stock_serial s join stock_lot sl on sl.id = s.stock_lot_id where s.serial_no = ${focImei}`;
+  check("the free unit is in stock at zero cost", focLot?.c === 0, JSON.stringify(focLot));
+  check("the supplier is owed only for what was charged", await owing(r[0].invoiceNo) === 1_800_000);
+  const [inv] = await sql`select coalesce(sum(jl.base_amount), 0)::float as v from journal_line jl join account ac on ac.id = jl.account_id
+    where ac.code = '14101' and jl.journal_entry_id in (select journal_entry_id from document where source_ref = 't-foc')`;
+  check("stock value rises by the charged goods only", inv.v === 1_800_000, String(inv.v));
+
+  // A bill of nothing but free goods: stock arrives, nothing is owed, nothing is valued.
+  a = await plan(bill("t-allfree", "07/01/2026", [[IMEI, 1, 0, [next()]]]));
+  r = await postImportedPurchases(co.id, a.plan, a.mapping, a.master);
+  check("an all-free bill posts", r[0].status === "posted" && r[0].receiptNo, JSON.stringify(r[0]));
+  check("and owes nothing", r[0].status === "posted" && await owing(r[0].invoiceNo) === 0);
+
+  // The two kinds of reason never cross.
+  const giveaway = await postPurchaseWithReceipt({ companyId: co.id, partnerId: sup.id, locationId: wh.id, docDate: "2026-01-07", dueDate: "2026-01-07",
+    lines: [{ itemId: ii.id, qty: 1, unitPrice: 0, focReasonId: saleFoc.id, serials: [next()] }] }).then(() => null, (e) => e.message);
+  check("a giveaway reason is refused on a bill", /supplier FOC reason/.test(giveaway ?? ""), giveaway);
+  const { postSaleWithDelivery } = await import("../lib/posting.ts");
+  const [cust] = await sql`select id from business_partner where company_id = ${co.id} and code = 'C0001'`;
+  const onSale = await postSaleWithDelivery({ companyId: co.id, partnerId: cust.id, locationId: wh.id, docDate: "2026-01-08", dueDate: null,
+    paymentType: "CREDIT", lines: [{ itemId: ii.id, qty: 1, unitPrice: 0, focReasonId: supFoc.id, serials: [focImei] }] }).then(() => null, (e) => e.message);
+  check("the supplier reason is refused on a sale", /giveaway reason/.test(onSale ?? ""), onSale);
+
   console.log("\n  A December bill posts on the company start\n");
   a = await plan(bill("t-dec", "28/12/2025", [[IMEI, 1, 100_000, [next()]]]));
   r = await postImportedPurchases(co.id, a.plan, a.mapping, a.master);

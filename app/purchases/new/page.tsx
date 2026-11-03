@@ -34,6 +34,9 @@ export default async function NewPurchaseInvoice({
   const channels = Object.fromEntries(await Promise.all(
     (locations as unknown as { id: string }[]).map(async (l) => [l.id, await channelsAt(co.id, l.id)])));
   const goodsReceipts = await getOpenGoodsReceipts(co.id);
+  // The reason a free line from the supplier posts under (FOC Received). None: no FOC choice on the form.
+  const [foc] = await sql`select id from foc_reason where company_id = ${co.id} and applies_to = 'PURCHASE' order by code limit 1`;
+  const supplierFocId = (foc?.id as string | undefined) ?? null;
   // Raised from one receipt's own page: the crumb names it, so the way back
   // leads to that document rather than to a list the reader never came from.
   const from = goods_receipt_id
@@ -105,6 +108,7 @@ export default async function NewPurchaseInvoice({
         initialGoodsReceiptId={goods_receipt_id}
         awaiting={awaiting}
         taxCodes={taxCodes as never}
+        supplierFocId={supplierFocId}
       />
     </>
   );
