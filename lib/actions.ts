@@ -4040,7 +4040,7 @@ export async function getFormData() {
     sql`select id, code, name from account
          where company_id = ${co} and is_cash_account and is_active order by code`,
 
-    sql`select id, code, name from foc_reason where company_id = ${co} order by code`,
+    sql`select id, code, name from foc_reason where company_id = ${co} and applies_to = 'SALE' order by code`,
 
     // Every price at every level. The voucher picks the one matching the
     // customer, so a wholesale buyer is not quoted the retail price.

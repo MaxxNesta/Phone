@@ -3205,7 +3205,8 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
       // A giveaway is settled the moment it leaves. No invoice is coming, so
       // its cost goes to the reason's own account and never passes through
       // the holding account below.
-      const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId}`;
+      const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId} and applies_to = 'SALE'`;
+      if (!foc) throw new Error(SALE_FOC_ONLY);
       expenseAccountId = foc.account_id as string;
     } else {
       const cogs = await tx`
@@ -3878,7 +3879,8 @@ async function issueStockLine(tx: TransactionSql, a: {
 
   let expenseAccountId: string;
   if (a.focReasonId) {
-    const [foc] = await tx`select account_id from foc_reason where id = ${a.focReasonId}`;
+    const [foc] = await tx`select account_id from foc_reason where id = ${a.focReasonId} and applies_to = 'SALE'`;
+    if (!foc) throw new Error(SALE_FOC_ONLY);
     expenseAccountId = foc.account_id as string;
   } else {
     const [cogs] = await tx`
@@ -4716,11 +4718,12 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       insert into document_line
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
-         net_amount, tax_amount, gross_amount, source_line_id)
+         net_amount, tax_amount, gross_amount, source_line_id, foc_reason_id)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${enteredQty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${unitCost},
-         ${net}, 0, ${net}, ${line.sourceLineId ?? null})
+         ${net}, 0, ${net}, ${line.sourceLineId ?? null},
+         ${unitCost === 0 ? line.focReasonId ?? null : null})
       returning id`;
 
     assertBatchGiven(item as never, tracking.get(line.itemId), line);
@@ -5177,10 +5180,11 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
   const grir = await tx`select fn_system_account(${companyId}, 'GRIR_CLEARING') as a`;
   journal.push({ accountId: grir[0].a, amount: -grirAmount, partnerId });
 
-  const entryId = await writeJournal(
+  // Goods that arrived free are worth nothing: no entry to write (0170 permits it).
+  const entryId = worthSomething(journal) ? await writeJournal(
     tx, companyId, docDate, "GOODS_RECEIPT", doc.id, `${docNo} goods receipt`, journal, locationId
-  );
-  await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
+  ) : null;
+  if (entryId) await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
 
   /**
    * The order behind the bill this receipt answers.
@@ -5723,12 +5727,33 @@ export async function postGoodsReceipt(input: FulfillmentInput, tx?: Transaction
  * the full amount, which then sits there — same as an unmatched receipt —
  * until a receipt eventually clears it.
  */
+/**
+ * A supplier's free goods (FOC): the line names a PURCHASE reason, and it is
+ * received and billed at zero — no price, no discount, so the stock arrives
+ * at zero cost and the supplier is owed nothing for it. A giveaway reason
+ * (one for sales) is refused: goods received free are not goods given away.
+ */
+/** Whether a posting moves any money at all — a receipt or bill of free goods moves none. */
+const worthSomething = (journal: JournalLine[]) => journal.some((l) => Math.abs(l.amount) > 0.00005);
+
+/** A giveaway names why goods left; a supplier FOC reason is for goods that arrived free. */
+const SALE_FOC_ONLY = "A free line on a sale needs a giveaway reason; the supplier FOC reason is for goods received free.";
+
+async function supplierFoc<L extends InvoiceLine>(tx: TransactionSql, companyId: string, lines: L[]): Promise<L[]> {
+  const ids = [...new Set(lines.map((l) => l.focReasonId).filter((x): x is string => Boolean(x)))];
+  if (ids.length === 0) return lines;
+  const ok = await tx`select id from foc_reason where company_id = ${companyId} and id = any(${ids}) and applies_to = 'PURCHASE'`;
+  if (ok.length !== ids.length) throw new Error("A free line on a bill needs a supplier FOC reason, not a giveaway reason.");
+  return lines.map((l) => (l.focReasonId ? { ...l, unitPrice: 0, discountPct: 0, discountAmount: null } : l));
+}
+
 async function _postPurchaseInvoice(
   tx: TransactionSql,
   input: InvoiceInput & { goodsReceiptId?: string | null; cashOut?: number; cashAccountId?: string | null }
 ) {
   if (input.lines.length === 0) throw new Error("An invoice needs at least one line");
   assertLines(input.lines);
+  input = { ...input, lines: await supplierFoc(tx, input.companyId, input.lines) };
 
   /* The currency. A bill for goods already received is in the receipt's
      currency at the receipt's rate: the stock was valued, and the payable
@@ -5888,7 +5913,7 @@ async function _postPurchaseInvoice(
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
          discount_pct, discount_amount, invoice_discount_pct, invoice_discount_amount,
-         net_amount, tax_code_id, tax_amount, gross_amount, source_line_id)
+         net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, foc_reason_id)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${line.unitPrice},
@@ -5896,7 +5921,7 @@ async function _postPurchaseInvoice(
          ${splits[lineNo - 1].priced.invoiceDiscountPct}, ${splits[lineNo - 1].billDiscount},
          ${net}, ${line.taxCodeId ?? splits[lineNo - 1].rate?.id ?? null},
          ${splits[lineNo - 1].tax}, ${roundMoney(net + splits[lineNo - 1].tax, scale)},
-         ${line.sourceLineId ?? null})`;
+         ${line.sourceLineId ?? null}, ${line.focReasonId ?? null})`;
 
     isStocked.set(line.itemId, !!item.is_stocked);
 
@@ -6091,11 +6116,12 @@ async function _postPurchaseInvoice(
   journal.push({ accountId: ap[0].a, amount: -grossTotal, partnerId,
                  ...(fx ? { currency: fx.currency, fcAmount: -toFc(grossTotal, fx) } : {}) });
 
-  const entryId = await writeJournal(
+  // A bill of nothing but free goods owes nothing: no entry to write (0170 permits it).
+  const entryId = worthSomething(journal) ? await writeJournal(
     tx, companyId, docDate, "PURCHASE_INVOICE", doc.id, `${docNo} purchase invoice`, journal, locationId
-  );
+  ) : null;
 
-  await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
+  if (entryId) await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
 
   // Cash paid at the counter becomes a real payment document allocated to
   // this invoice, rather than a number on the invoice header — the purchase
@@ -6176,6 +6202,8 @@ export async function postPurchaseWithReceipt(
   assertLines(input.lines);
 
   return inTransaction(outer, async (tx) => {
+    // Free goods are received and billed at zero, so their stock costs nothing.
+    input = { ...input, lines: await supplierFoc(tx, input.companyId, input.lines) };
     const itemIds = input.lines.map((l) => l.itemId);
     const flags = await tx`select id, is_stocked from item where id = any(${itemIds})`;
     const stocked = new Set(flags.filter((r: any) => r.is_stocked).map((r: any) => r.id));
@@ -6260,6 +6288,7 @@ export async function postPurchaseWithReceipt(
           // Only where the order is what this receipt answers. Without an
           // order these carry nothing, exactly as before.
           sourceLineId: orderId ? l.sourceLineId : undefined,
+          focReasonId: l.focReasonId,
         })),
       });
       goodsReceiptId = gr.id;
@@ -7278,7 +7307,8 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         if (billedCost === 0) {
           // Every unit came back before it was billed; nothing to take from cost of sales.
         } else if (line.focReasonId) {
-          const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId}`;
+          const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId} and applies_to = 'SALE'`;
+          if (!foc) throw new Error(SALE_FOC_ONLY);
           journal.push({ accountId: foc.account_id, amount: -billedCost, locationId });
         } else {
           const cogs = await tx`

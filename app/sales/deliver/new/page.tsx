@@ -49,7 +49,7 @@ export default async function NewDelivery({
     allCategories(co.id),
     getOpenSalesOrders(co.id),
     getStockByLocation(co.id),
-    sql`select id, code, name from foc_reason where company_id = ${co.id} order by code`,
+    sql`select id, code, name from foc_reason where company_id = ${co.id} and applies_to = 'SALE' order by code`,
     // Consigned stock on hand, so the line can offer whose goods it is
     // issuing. Owned and consigned sit in the same warehouse and nothing
     // about the shelf tells them apart.

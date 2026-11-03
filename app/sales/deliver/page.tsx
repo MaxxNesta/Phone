@@ -62,7 +62,7 @@ export default async function Deliver({
     // Why units might leave free — a delivery can carry a giveaway alongside
     // what was ordered, and the reason decides where its cost lands.
     sql`select id, code, name from foc_reason
-         where company_id = ${company.id} order by code`,
+         where company_id = ${company.id} and applies_to = 'SALE' order by code`,
   ]);
 
   const orders = new Map<string, {

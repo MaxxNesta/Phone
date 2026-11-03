@@ -25,7 +25,7 @@ export default async function PosPage() {
     sql`select id, name from salesman where company_id = ${co} and is_active order by name`,
     sql`select t.id, t.code, t.name, fn_tax_rate_on(t.id, current_date)::float as rate
           from tax_code t where t.company_id = ${co} order by t.code`,
-    sql`select id, name from foc_reason where company_id = ${co} order by name`,
+    sql`select id, name from foc_reason where company_id = ${co} and applies_to = 'SALE' order by name`,
     // The bands the sale will be priced with, so the till shows the same total.
     sql`select id, code, name, basis, item_id, item_group_id, min_value, max_value, discount_pct
           from volume_discount
