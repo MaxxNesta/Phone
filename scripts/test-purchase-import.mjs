@@ -106,8 +106,9 @@ console.log("\n  Checks\n");
 const master = {
   suppliers: [{ id: "S-china", code: "01-001", name: "China" }, { id: "S-thai", code: "01-002", name: "Thai" }],
   locations: [{ id: "L-main", code: "MAIN-WH", name: "Main Warehouse" }],
-  items: ["IPZ002", "IPZ003", "IPZ004", "IPZ007"].map((c) => ({ id: `I-${c}`, code: c, name: c, tracks_serial: true })),
-  importedRefs: [], importedSerials: [],
+  items: [...["IPZ002", "IPZ003", "IPZ004", "IPZ007"].map((c) => ({ id: `I-${c}`, code: c, name: c, tracks_serial: true, identity: "IMEI" })),
+    { id: "I-MAC", code: "IPM001", name: "MacBook Air", tracks_serial: true, identity: "SERIAL" }],
+  importedRefs: [], importedSerials: [], stockSerials: [],
 };
 const none = { suppliers: {}, locations: {} };
 const [p] = planPurchaseImport(src, master, none);
@@ -129,6 +130,18 @@ check("already imported is recognised", invoiceStatus(again, none) === "imported
 const dupe = planPurchaseImport(src, { ...master, importedSerials: ["359337732992832"] }, none)[0];
 check("IMEI on an earlier import blocks", invoiceStatus(dupe, none) === "blocked");
 check("Luhn", luhnOk("354630185148539") && !luhnOk("354630185148538"));
+
+const mac = (serials, code = "IPM001") => planPurchaseImport(parsePurchaseReport([
+  ["Docid", "m1", "Date", "06/01/2026"], ["Supplier", "China"], ["Location", "Main Warehouse"],
+  ["Code", "Description", "Qty", "Pur.price", "Amount"], [code, "Mac", "2", "100", "200"], ["", serials],
+  ["Invoice Total", "2", "200"]]), master, none)[0];
+const m = mac("C02XK0ABJGH5, C02XK0ABJGH6");
+check("Mac serials read as serials", m.lines[0].serials.length === 2 && invoiceStatus(m, none) === "ready", JSON.stringify(m.issues));
+check("letters in an IMEI item's serial block", mac("C02XK0ABJGH5, C02XK0ABJGH6", "IPZ003").issues.some((i) => /is not an IMEI/.test(i.message)));
+check("a 14-digit IMEI blocks", mac("35463018514853, 354630185378847", "IPZ003").issues.some((i) => /is not an IMEI/.test(i.message)));
+const moved = planPurchaseImport(src, { ...master, stockSerials: [{ serial: "359337732992832", item_code: "IPZ009" }] }, none)[0];
+check("an IMEI held as another item needs review",
+  moved.issues.some((i) => i.level === "review" && /already in the system as IPZ009/.test(i.message)));
 
 console.log(failures ? `\n  ${failures} FAILED\n` : "\n  all passed\n");
 process.exit(failures ? 1 : 0);

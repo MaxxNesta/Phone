@@ -3,14 +3,17 @@ import type { PlannedInvoice, PurchaseImportMaster, Mapping } from "./import-pur
 import { resolved } from "./import-purchase-invoices";
 
 /** What an old report is checked against: suppliers, stock locations, the catalogue, and what came in before. */
-export async function getPurchaseImportMaster(companyId: string): Promise<PurchaseImportMaster> {
-  const [suppliers, locations, items, refs, serials] = await Promise.all([
+export async function getPurchaseImportMaster(companyId: string, fileSerials: string[] = []): Promise<PurchaseImportMaster> {
+  const [suppliers, locations, items, refs, serials, stock] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${companyId} and is_supplier order by code`,
     sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active order by name`,
-    sql`select id, code, name, tracks_serial from item where company_id = ${companyId} and is_active`,
+    sql`select id, code, name, tracks_serial, identity from item where company_id = ${companyId} and is_active`,
     sql`select old_ref from historical_purchase_invoice where company_id = ${companyId}`,
     sql`select distinct unnest(l.serials) as s from historical_purchase_invoice_line l
           join historical_purchase_invoice h on h.id = l.invoice_id where h.company_id = ${companyId}`,
+    // Only the units this file names: the whole serial register is not needed to check a few hundred.
+    sql`select s.serial_no as serial, i.code as item_code from stock_serial s join item i on i.id = s.item_id
+          where s.company_id = ${companyId} and (s.serial_no = any(${fileSerials}) or s.imei2 = any(${fileSerials}))`,
   ]);
   return {
     suppliers: suppliers as unknown as PurchaseImportMaster["suppliers"],
@@ -18,12 +21,14 @@ export async function getPurchaseImportMaster(companyId: string): Promise<Purcha
     items: items as unknown as PurchaseImportMaster["items"],
     importedRefs: refs.map((r) => r.old_ref as string),
     importedSerials: serials.map((r) => r.s as string),
+    stockSerials: stock as unknown as PurchaseImportMaster["stockSerials"],
   };
 }
 
 /**
- * Writes the chosen invoices, all or none. Each gets the next HPI number for
- * its year; nothing touches stock, the journal or payables.
+ * Writes the chosen invoices, all or none. Each takes the next number from the
+ * purchase invoice series for its date — the series real invoices draw from,
+ * so the two can never share a number. Nothing touches stock, the journal or payables.
  */
 export async function importHistoricalPurchases(input: {
   companyId: string; userId: string | null; filename: string; invoices: PlannedInvoice[]; mapping: Mapping;
@@ -37,20 +42,10 @@ export async function importHistoricalPurchases(input: {
       select coalesce(max(substring(batch_ref from '[0-9]+$')::int), 0) + 1 as next
         from historical_purchase_invoice where company_id = ${companyId}`;
     const batchRef = `HIMP-${String(next).padStart(6, "0")}`;
-    const seq = new Map<string, number>();
     const imported: { oldRef: string; invoiceNo: string; id: string }[] = [];
 
     for (const p of [...invoices].sort((a, b) => a.date!.localeCompare(b.date!) || a.oldRef.localeCompare(b.oldRef))) {
-      const year = p.date!.slice(0, 4);
-      if (!seq.has(year)) {
-        const [{ n }] = await tx`
-          select coalesce(max(substring(invoice_no from '[0-9]+$')::int), 0) as n
-            from historical_purchase_invoice where company_id = ${companyId} and invoice_no like ${`HPI-${year}-%`}`;
-        seq.set(year, Number(n));
-      }
-      const n = seq.get(year)! + 1;
-      seq.set(year, n);
-      const invoiceNo = `HPI-${year}-${String(n).padStart(5, "0")}`;
+      const [{ no: invoiceNo }] = await tx`select fn_next_document_no(${companyId}, 'PURCHASE_INVOICE', ${p.date}::date) as no`;
       const t = p.totals;
       const [h] = await tx`
         insert into historical_purchase_invoice (company_id, invoice_no, old_ref, doc_date, partner_id, location_id,

@@ -176,7 +176,7 @@ export function PurchaseImport() {
                     <div className="pimp-body">
                       <dl className="pimp-info">
                         <div><dt>Old document ID</dt><dd className="code">{p.oldRef}</dd></div>
-                        <div><dt>New invoice no.</dt><dd className="subline">Given on import</dd></div>
+                        <div><dt>New invoice no.</dt><dd className="subline">Next purchase invoice number, given on import</dd></div>
                         <div><dt>Invoice date</dt><dd>{day(p.date, p.rawDate)}</dd></div>
                         <div><dt>Supplier</dt><dd>{sup ? sup.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Warehouse</dt><dd>{loc ? loc.name : <span className="pimp-need">Choose above</span>}</dd></div>
@@ -209,7 +209,7 @@ export function PurchaseImport() {
                               {l.serials.length > 0 && (
                                 <tr className="pimp-serials"><td /><td colSpan={5}>
                                   <details>
-                                    <summary>{l.serials.length} IMEI{l.serials.length === 1 ? "" : "s"}{l.tracksSerial && l.serials.length !== l.qty ? ` — ${l.qty} needed` : ""}</summary>
+                                    <summary>{l.serials.length} {l.identity === "IMEI" ? "IMEI" : "serial"}{l.serials.length === 1 ? "" : "s"}{l.tracksSerial && l.serials.length !== l.qty ? ` — ${l.qty} needed` : ""}</summary>
                                     <div className="pimp-chips">{l.serials.map((s) => <span key={s} className="code">{s}</span>)}</div>
                                   </details>
                                 </td></tr>

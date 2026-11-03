@@ -93,10 +93,13 @@ export function invoiceBlocks(rows: string[][]): { start: number; end: number; r
   return out;
 }
 
-/** The IMEIs row: every token a long run of digits. */
+/** An item line has qty, price and amount after its code and description. */
+const isItemLine = (filled: string[]) => filled.slice(2).filter(isNum).length >= 3;
+
+/** The row under a line: its IMEIs, or a Mac's serials (C02XK0ABJGH5) — every token a code. */
 function serialTokens(cells: string[]): string[] | null {
   const tokens = cells.join(",").split(/[,\s;]+/).filter(Boolean);
-  return tokens.length > 0 && tokens.every((t) => /^\d{8,}$/.test(t)) ? tokens : null;
+  return tokens.length > 0 && tokens.every((t) => /^[A-Za-z0-9][A-Za-z0-9-]{3,}$/.test(t)) ? tokens : null;
 }
 
 export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
@@ -162,7 +165,7 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
     }
 
     if (mode !== "lines") return;
-    const serials = serialTokens(filled);
+    const serials = isItemLine(filled) ? null : serialTokens(filled);
     if (serials) {
       const last = inv.lines[inv.lines.length - 1];
       if (last) last.serials.push(...serials);
@@ -217,10 +220,12 @@ export function luhnOk(s: string): boolean {
 export type PurchaseImportMaster = {
   suppliers: { id: string; code: string; name: string }[];
   locations: { id: string; code: string; name: string }[];
-  items: { id: string; code: string; name: string; tracks_serial: boolean }[];
+  items: { id: string; code: string; name: string; tracks_serial: boolean; identity: "IMEI" | "SERIAL" | "OPTIONAL" | "NONE" }[];
   /** Old refs already imported, and IMEIs already on an imported invoice. */
   importedRefs: string[];
   importedSerials: string[];
+  /** Units already in the system with a serial this file names, and the item each is. */
+  stockSerials: { serial: string; item_code: string }[];
 };
 
 export type Mapping = { suppliers: Record<string, string>; locations: Record<string, string> };
@@ -230,7 +235,7 @@ export type Match = { source: string; id: string | null; how: "exact" | "guess" 
 
 export type Issue = { level: "error" | "review"; field: string; message: string };
 
-export type PlannedLine = SourceLine & { itemId: string | null; itemName: string | null; tracksSerial: boolean };
+export type PlannedLine = SourceLine & { itemId: string | null; itemName: string | null; tracksSerial: boolean; identity: string | null };
 
 export type PlannedInvoice = {
   row: number; oldRef: string; supplierInvoiceNo: string | null;
@@ -261,6 +266,7 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
   const items = new Map(master.items.map((i) => [norm(i.code), i]));
   const importedRefs = new Set(master.importedRefs.map(norm));
   const importedSerials = new Set(master.importedSerials);
+  const stock = new Map(master.stockSerials.map((x) => [x.serial, x.item_code]));
   // Where each IMEI first appears in this file, so a repeat names both invoices.
   const firstSeen = new Map<string, string>();
 
@@ -283,10 +289,18 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
         err(at, `${l.qty} × ${l.unitPrice.toLocaleString("en-US")} is not the amount ${l.amount.toLocaleString("en-US")}.`);
       if (l.count !== null && l.count !== l.serials.length)
         review(at, `The report counts ${l.count} serials; ${l.serials.length} were read.`);
+      const kind = it?.identity === "SERIAL" ? "serial numbers" : "IMEIs";
       if (it?.tracks_serial && l.serials.length !== l.qty)
-        err(at, `${l.qty} units need ${l.qty} IMEIs; ${l.serials.length} found.`);
-      if (it && !it.tracks_serial && l.serials.length > 0)
-        review(at, `${it.code} does not track serials; its ${l.serials.length} will be kept as a note.`);
+        err(at, `${l.qty} units need ${l.qty} ${kind}; ${l.serials.length} found.`);
+      if (it?.identity === "OPTIONAL" && l.serials.length > l.qty)
+        err(at, `${l.serials.length} serials for ${l.qty} units.`);
+      if (it?.identity === "NONE" && l.serials.length > 0)
+        review(at, `${it.code} carries no serial; its ${l.serials.length} will be kept as a note.`);
+      for (const x of l.serials) {
+        if (it?.identity === "IMEI" && !/^\d{15}$/.test(x)) err(at, `${x} is not an IMEI — an IMEI is 15 digits.`);
+        const held = stock.get(x);
+        if (held && it && held !== it.code) review(at, `${x} is already in the system as ${held}, not ${it.code}.`);
+      }
       const dupInLine = l.serials.filter((x, k) => l.serials.indexOf(x) !== k);
       if (dupInLine.length) err(at, `IMEI ${dupInLine[0]} appears twice on this line.`);
       for (const imei of new Set(l.serials)) {
@@ -296,7 +310,7 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
         else firstSeen.set(imei, s.oldRef);
         if (/^\d{15}$/.test(imei) && !luhnOk(imei)) review(at, `IMEI ${imei} fails its check digit — a typo in the old system?`);
       }
-      return { ...l, itemId: it?.id ?? null, itemName: it?.name ?? null, tracksSerial: !!it?.tracks_serial };
+      return { ...l, itemId: it?.id ?? null, itemName: it?.name ?? null, tracksSerial: !!it?.tracks_serial, identity: it?.identity ?? null };
     });
 
     const lineTotal = s.lines.reduce((a, l) => a + l.amount, 0);
