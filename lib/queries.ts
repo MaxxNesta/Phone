@@ -385,7 +385,9 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
            -- (POS:<attempt>, how it recognises a resent sale), so the channel
            -- is read from that rather than stored twice.
            (select case when d.reference like 'POS:%' then 'POS' else 'INVOICE' end
-              from document d where d.id = v_invoice_status.document_id) as channel
+              from document d where d.id = v_invoice_status.document_id) as channel,
+           (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
+             where dl.document_id = v_invoice_status.document_id and dl.item_id is not null) as item_qty
       from v_invoice_status
      where company_id = ${companyId} and doc_type = ${docType}
        ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
@@ -396,7 +398,9 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
             d.partner_id, p.code as partner_code, p.name as partner_name,
             d.gross_total, 0::numeric as paid, 0::numeric as outstanding,
             d.status as doc_status, null as payment_status, null::int as days_overdue,
-            'INVOICE' as channel
+            'INVOICE' as channel,
+            (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
+              where dl.document_id = d.id and dl.item_id is not null) as item_qty
        from document d
        join business_partner p on p.id = d.partner_id
       -- Drafts only. This half used to admit anything not POSTED, which in

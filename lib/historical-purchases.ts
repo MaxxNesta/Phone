@@ -97,3 +97,14 @@ export async function listHistoricalPurchases(companyId: string, q = ""): Promis
      order by h.doc_date desc, h.invoice_no desc
      limit 200`) as unknown as HistoricalInvoice[];
 }
+
+/** Imported invoices for the purchase invoice list, beside the real ones. */
+export async function getImportedInvoiceRows(companyId: string, locs: string[] | null = null) {
+  return sql`
+    select h.id, h.invoice_no, h.old_ref, h.doc_date, h.partner_id, p.code as partner_code, p.name as partner_name,
+           h.net_total::float as net_total, h.total_qty::float as item_qty
+      from historical_purchase_invoice h
+      join business_partner p on p.id = h.partner_id
+     where h.company_id = ${companyId}
+       ${locs ? sql`and h.location_id = any(${locs})` : sql``}`;
+}

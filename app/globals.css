@@ -9118,3 +9118,5 @@ td.disccell { width: 9.5rem; }
 .pimp-sheet tr.pimp-end td, .pimp-sheet tr.pimp-end th { border-bottom: 2px solid var(--ink); }
 .pimp-sheet tr.pimp-band td { position: sticky; left: 0; padding: 7px 10px; font-weight: 600; font-size: 0.75rem; background: color-mix(in srgb, var(--ink) 7%, var(--surface)); border-right: 0; }
 .pimp, .pimp .card, .pimp .card-body, .pimp-pasted, .pimp-sheet-wrap { min-width: 0; max-width: 100%; }
+td.narrow, th.narrow { width: 1%; white-space: nowrap; }
+.pimp-lines th:first-child, .pimp-lines td:first-child, .pimp-lines th.r, .pimp-lines td.r { width: 1%; white-space: nowrap; }
