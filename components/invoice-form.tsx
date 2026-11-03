@@ -15,7 +15,7 @@ import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
 import { HelpHint } from "./help-hint";
-import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse } from "lucide-react";
+import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Gift } from "lucide-react";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ChannelPicker } from "./channel-picker";
 import type { Channel } from "@/lib/payment-channels";
@@ -1070,21 +1070,14 @@ export function InvoiceForm({
                             <option value="pct">%</option>
                             <option value="amount">{foreign ? currency : base}</option>
                           </select>
+                          {supplierFocId && !l.sourceLineId && (
+                            <button type="button" className={`foc-btn${l.hasFree ? " on" : ""}`} aria-pressed={!!l.hasFree}
+                              title="Units free from the supplier" aria-label={`Units free on line ${lines.indexOf(l) + 1}`}
+                              onClick={() => setLine(l.key, l.hasFree ? { hasFree: false, focQty: "" } : { hasFree: true })}>
+                              <Gift size={14} aria-hidden="true" />
+                            </button>
+                          )}
                         </span>
-                        {supplierFocId && !l.sourceLineId && (
-                          <div className="foc-free">
-                            <label className="foc-toggle" title="Units the supplier sends free on top of those billed: received at zero cost, under FOC Received">
-                              <input type="checkbox" checked={!!l.hasFree}
-                                onChange={(e) => setLine(l.key, e.target.checked ? { hasFree: true } : { hasFree: false, focQty: "" })}
-                                aria-label={`Units free on line ${lines.indexOf(l) + 1}`} /> Units free
-                            </label>
-                            {l.hasFree && (
-                              <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="Free qty" autoFocus
-                                onChange={(e) => setLine(l.key, { focQty: e.target.value })}
-                                aria-label={`Free quantity on line ${lines.indexOf(l) + 1}`} />
-                            )}
-                          </div>
-                        )}
                       </td>
                     )}
                     <td className="r">
@@ -1097,6 +1090,22 @@ export function InvoiceForm({
                       <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
                   </tr>,
+                  // Free units from the supplier, as the sales voucher gives them: on top of those billed.
+                  l.hasFree && !isSales ? (
+                    <tr key={`free-${l.key}`} className="vline-sub">
+                      <td className="vc-no" />
+                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}>
+                        <span className="foc-row">
+                          <Gift size={14} aria-hidden="true" />
+                          <strong>Free from the supplier</strong>
+                          <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="0" autoFocus
+                            onChange={(e) => setLine(l.key, { focQty: e.target.value })}
+                            aria-label={`Free quantity on line ${lines.indexOf(l) + 1}`} />
+                          <span className="subline">on top of {fmt(Number(l.qty) || 0)} billed · received at zero cost, under FOC Received</span>
+                        </span>
+                      </td>
+                    </tr>
+                  ) : null,
                   // Phones arriving on the bill are named under their line, the
                   // way the sales invoice names the ones it sells.
                   unitLines.includes(l) && byId(l.itemId)?.identity === "OPTIONAL" ? (
