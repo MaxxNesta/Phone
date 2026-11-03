@@ -1,4 +1,5 @@
 import type { TransactionSql } from "postgres";
+import { randomUUID } from "node:crypto";
 import { sql } from "./db";
 import { inTransaction, writeJournal } from "./posting";
 
@@ -174,13 +175,16 @@ export async function postShareTransfer(input: TransferInput, outer?: Transactio
 
     // One share transfer at a time per company: the replay below reads every
     // other one, and two posting at once could each pass it alone.
-    await tx`select id from company where id = ${companyId} for update`;
-    const parties = await tx`select id, name, folio_no from shareholder where company_id = ${companyId} and id = any(${[from, to].filter(Boolean) as string[]}) and is_active`;
+    // The lock, the parties and the next number in one round trip.
+    const year = input.date.slice(0, 4);
+    const [{ k, parties }] = await tx`
+      select (select count(*)::int + 1 from share_transfer where company_id = ${companyId} and transfer_no like ${`SHT-${year}-%`}) as k,
+             (select coalesce(json_agg(json_build_object('id', id, 'name', name, 'folio_no', folio_no)), '[]')
+                from shareholder where company_id = ${companyId} and id = any(${[from, to].filter(Boolean) as string[]}) and is_active) as parties
+        from company where id = ${companyId} for update`;
     for (const id of [from, to].filter(Boolean)) if (!(parties as any[]).some((p) => p.id === id)) throw new Error("That shareholder was not found or is inactive.");
     const nameOf = (id: string | null) => (parties as any[]).find((p) => p.id === id)?.name ?? "";
 
-    const year = input.date.slice(0, 4);
-    const [{ k }] = await tx`select count(*)::int + 1 as k from share_transfer where company_id = ${companyId} and transfer_no like ${`SHT-${year}-%`}`;
     const no = `SHT-${year}-${String(k).padStart(5, "0")}`;
     const toNo = fromNo + n - 1;
     replay([...(await movements(tx, companyId)), { id: "new", no, type, date: input.date, shareType: input.shareType,
@@ -188,28 +192,28 @@ export async function postShareTransfer(input: TransferInput, outer?: Transactio
 
     // A first-time recipient gets its folio number now.
     if (to && !(parties as any[]).find((p) => p.id === to)?.folio_no) {
-      const [{ f }] = await tx`select count(folio_no)::int + 1 as f from shareholder where company_id = ${companyId}`;
-      await tx`update shareholder set folio_no = ${`FN${String(f).padStart(5, "0")}`} where id = ${to}`;
+      await tx`update shareholder set folio_no = 'FN' || lpad(((select count(folio_no) from shareholder where company_id = ${companyId}) + 1)::text, 5, '0')
+                where id = ${to}`;
     }
 
     const amount = Math.round(n * input.rate * 100) / 100;
-    const [t] = await tx`
-      insert into share_transfer (company_id, transfer_no, transfer_type, transfer_date, from_shareholder_id, to_shareholder_id,
-        share_type, no_of_shares, from_no, to_no, rate, amount, equity_account_id, asset_account_id, remarks, created_by_id)
-      values (${companyId}, ${no}, ${type}, ${input.date}::date, ${from}, ${to}, ${input.shareType}, ${n}, ${fromNo}, ${toNo},
-        ${input.rate}, ${amount}, ${input.equityAccountId}, ${type === "TRANSFER" ? null : input.assetAccountId}, ${input.remarks}, ${input.userId})
-      returning id`;
-
+    // The id is chosen here so the journal can name it first, and the transfer goes in once, already linked.
+    const id = randomUUID();
+    let entry: string | null = null;
     // An issue brings money in for new equity; a buy-back pays it out. A
     // transfer between owners leaves the company's equity as it was.
     if (type !== "TRANSFER" && amount > 0) {
       const sign = type === "ISSUE" ? 1 : -1;
-      const entry = await writeJournal(tx, companyId, input.date, "SHARE_TRANSFER", t.id,
+      entry = await writeJournal(tx, companyId, input.date, "SHARE_TRANSFER", id,
         `${no} ${type === "ISSUE" ? `share issue to ${nameOf(to)}` : `share buy-back from ${nameOf(from)}`}${input.remarks ? ` · ${input.remarks}` : ""}`,
         [{ accountId: input.assetAccountId!, amount: sign * amount }, { accountId: input.equityAccountId, amount: -sign * amount }]);
-      await tx`update share_transfer set journal_entry_id = ${entry} where id = ${t.id}`;
     }
-    return { id: t.id as string, no };
+    await tx`
+      insert into share_transfer (id, journal_entry_id, company_id, transfer_no, transfer_type, transfer_date, from_shareholder_id, to_shareholder_id,
+        share_type, no_of_shares, from_no, to_no, rate, amount, equity_account_id, asset_account_id, remarks, created_by_id)
+      values (${id}, ${entry}, ${companyId}, ${no}, ${type}, ${input.date}::date, ${from}, ${to}, ${input.shareType}, ${n}, ${fromNo}, ${toNo},
+        ${input.rate}, ${amount}, ${input.equityAccountId}, ${type === "TRANSFER" ? null : input.assetAccountId}, ${input.remarks}, ${input.userId})`;
+    return { id, no };
   });
 }
 
@@ -219,17 +223,22 @@ export async function postShareTransfer(input: TransferInput, outer?: Transactio
  */
 export async function cancelShareTransfer(companyId: string, id: string, date: string, outer?: TransactionSql) {
   return inTransaction(outer, async (tx) => {
-    await tx`select id from company where id = ${companyId} for update`;
-    const [t] = await tx`select id, transfer_no, status, journal_entry_id from share_transfer where id = ${id} and company_id = ${companyId}`;
+    // The lock, the transfer and its journal lines in one round trip.
+    const [c] = await tx`
+      select (select json_build_object('transfer_no', t.transfer_no, 'status', t.status, 'journal_entry_id', t.journal_entry_id,
+                'lines', (select coalesce(json_agg(json_build_object('account_id', l.account_id, 'a', l.base_amount::float)), '[]')
+                            from journal_line l where l.journal_entry_id = t.journal_entry_id))
+                from share_transfer t where t.id = ${id} and t.company_id = ${companyId}) as t
+        from company where id = ${companyId} for update`;
+    const t = c?.t as { transfer_no: string; status: string; journal_entry_id: string | null; lines: { account_id: string; a: number }[] } | null;
     if (!t) throw new Error("That share transfer was not found.");
     if (t.status !== "POSTED") throw new Error(`${t.transfer_no} is already cancelled.`);
     try { replay(await movements(tx, companyId, id)); }
     catch (e) { throw new Error(`${t.transfer_no} cannot be cancelled: later transfers depend on it. ${e instanceof Error ? e.message : ""}`); }
     let reversal: string | null = null;
     if (t.journal_entry_id) {
-      const lines = await tx`select account_id, base_amount::float as a from journal_line where journal_entry_id = ${t.journal_entry_id}`;
       reversal = await writeJournal(tx, companyId, date, "SHARE_TRANSFER", id, `${t.transfer_no} cancelled`,
-        (lines as any[]).map((l) => ({ accountId: l.account_id, amount: -Number(l.a) })));
+        t.lines.map((l) => ({ accountId: l.account_id, amount: -Number(l.a) })));
     }
     await tx`update share_transfer set status = 'CANCELLED', cancelled_at = now(), cancel_entry_id = ${reversal} where id = ${id}`;
     return { no: t.transfer_no as string };
@@ -240,8 +249,9 @@ export async function createShareholder(companyId: string, s: { name: string; is
   const name = s.name.trim();
   if (!name) throw new Error("Enter the shareholder's name.");
   return inTransaction(undefined, async (tx) => {
-    await tx`select id from company where id = ${companyId} for update`;
-    const [{ k }] = await tx`select count(*)::int + 1 as k from shareholder where company_id = ${companyId}`;
+    const [{ k }] = await tx`
+      select (select count(*)::int + 1 from shareholder where company_id = ${companyId}) as k
+        from company where id = ${companyId} for update`;
     const [row] = await tx`
       insert into shareholder (company_id, code, name, is_company, phone, email, address, notes)
       values (${companyId}, ${`SH-${String(k).padStart(4, "0")}`}, ${name}, ${s.isCompany}, ${s.phone || null}, ${s.email || null}, ${s.address || null}, ${s.notes || null})
