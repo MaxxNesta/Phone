@@ -15,7 +15,7 @@ import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
 import { HelpHint } from "./help-hint";
-import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Gift } from "lucide-react";
+import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Pencil, X } from "lucide-react";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ChannelPicker } from "./channel-picker";
 import type { Channel } from "@/lib/payment-channels";
@@ -66,6 +66,8 @@ type Line = {
   discount?: string; discountKind?: "pct" | "amount";
   /** Purchase: units the supplier sends free (FOC) on top of those billed, as the sales voucher gives them. */
   hasFree?: boolean; focQty?: string;
+  /** The line editor's "has a discount" tick, kept while the amount is still blank. */
+  hasDiscount?: boolean;
   /** The handsets, when the bill receives phones itself — the same rows a
    *  goods receipt asks for, because this bill posts one. */
   serials?: UnitRow[];
@@ -456,6 +458,11 @@ export function InvoiceForm({
     isSales ? null : { pct: billKind === "pct" ? Number(billDiscount) || 0 : null, amount: billKind === "amount" ? Number(billDiscount) || 0 : null },
     0), [lines, billDiscount, billKind, isSales]);
   const pricedOf = (l: Line) => priced.lines[lines.indexOf(l)];
+  /** The line open in the Edit line popup, as on the sales voucher. */
+  const [editKey, setEditKey] = useState<number | null>(null);
+  const discOf = (l: Line) => pricedOf(l)?.itemDiscountAmount ?? 0;
+  const anyDisc = !isSales && lines.some((l) => (Number(l.discount) || 0) > 0);
+  const discCols = anyDisc ? 1 : 0;
   // A purchase line's amount is what the supplier is owed for it, after its discounts.
   const amount = (l: Line) => (isSales ? (Number(l.qty) || 0) * (Number(l.unitPrice) || 0) : pricedOf(l)?.net ?? 0);
   const goodsTotal = lines.reduce((s, l) => s + amount(l), 0);
@@ -923,14 +930,14 @@ export function InvoiceForm({
                 {anyOrdered && <th className="r">Order price</th>}
                 <th className="r vc-qty">Qty</th>
                 <th className="r">{matchedGr ? "Billed price" : "Unit price"}</th>
-                {!isSales && <th className="r vc-disc">Discount</th>}
+                {anyDisc && <th className="r vc-disc">Discount</th>}
                 <th className="r">Amount</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
+                <tr><td colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + discCols} className="page-sub" style={{ padding: "18px 12px", textAlign: "center" }}>
                   No items yet — search above, scan a barcode, or Browse / Add multiple.
                 </td></tr>
               )}
@@ -1059,25 +1066,16 @@ export function InvoiceForm({
                       />
                       </Flagged>
                     </td>
-                    {!isSales && (
-                      <td className="narrow disccell">
-                        <span className="disc-entry">
-                          <input type="number" min="0" step="any" value={l.discount ?? ""} placeholder="0"
-                            onChange={(e) => setLine(l.key, { discount: e.target.value })}
-                            aria-label={`Discount on line ${lines.indexOf(l) + 1}`} />
-                          <select value={l.discountKind ?? "pct"} aria-label="Discount as"
-                            onChange={(e) => setLine(l.key, { discountKind: e.target.value as "pct" | "amount" })}>
-                            <option value="pct">%</option>
-                            <option value="amount">{foreign ? currency : base}</option>
-                          </select>
-                          {supplierFocId && !l.sourceLineId && (
-                            <button type="button" className={`foc-btn${l.hasFree ? " on" : ""}`} aria-pressed={!!l.hasFree}
-                              title="Units free from the supplier" aria-label={`Units free on line ${lines.indexOf(l) + 1}`}
-                              onClick={() => setLine(l.key, l.hasFree ? { hasFree: false, focQty: "" } : { hasFree: true })}>
-                              <Gift size={14} aria-hidden="true" />
-                            </button>
-                          )}
-                        </span>
+                    {anyDisc && (
+                      <td className="r vc-disc" data-label="Discount">
+                        {discOf(l) > 0 ? (
+                          <button type="button" className="vdisc" onClick={() => setEditKey(l.key)} title="Change the discount">
+                            <span>{l.discountKind === "amount"
+                              ? `${Math.round((discOf(l) / ((Number(l.qty) || 0) * (Number(l.unitPrice) || 0) || 1)) * 1000) / 10}%`
+                              : `${Number(l.discount) || 0}%`}</span>
+                            <small>&minus;{fmt(discOf(l))}</small>
+                          </button>
+                        ) : <span className="subline">&ndash;</span>}
                       </td>
                     )}
                     <td className="r">
@@ -1086,24 +1084,35 @@ export function InvoiceForm({
                         <span className="subline" style={{ display: "block" }}>of {fmt(pricedOf(l)!.gross)}</span>
                       )}
                     </td>
-                    <td className="tight">
-                      <LineRemove onClick={() => removeLine(l.key)} />
+                    <td className="tight vc-act">
+                      <div className="line-acts">
+                        {!isSales && (
+                          <button type="button" className="vicon line-edit" aria-label={`Edit line ${i + 1}`} title="Edit line"
+                            onClick={() => setEditKey(l.key)}><Pencil size={15} /></button>
+                        )}
+                        <LineRemove onClick={() => removeLine(l.key)} />
+                      </div>
                     </td>
                   </tr>,
                   // Free units from the supplier, as the sales voucher gives them: on top of those billed.
-                  l.hasFree && !isSales ? (
-                    <tr key={`free-${l.key}`} className="vline-sub">
+                  freeOf(l) > 0 && item ? (
+                    <tr key={`free-${l.key}`} className="vline-free">
                       <td className="vc-no" />
-                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}>
-                        <span className="foc-row">
-                          <Gift size={14} aria-hidden="true" />
-                          <strong>Free from the supplier</strong>
-                          <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="0" autoFocus
-                            onChange={(e) => setLine(l.key, { focQty: e.target.value })}
-                            aria-label={`Free quantity on line ${lines.indexOf(l) + 1}`} />
-                          <span className="subline">on top of {fmt(Number(l.qty) || 0)} billed · received at zero cost, under FOC Received</span>
+                      <td colSpan={2 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0)}>
+                        <span className="vfree">
+                          <span className="vfree-elbow" aria-hidden="true" />
+                          <span className="vfree-chip">Free item</span>
+                          <span>
+                            <span className="vname">{item.name}</span>
+                            <span className="vcode">{item.code} (Free · from the supplier, at zero cost)</span>
+                          </span>
                         </span>
                       </td>
+                      <td className="r">{fmt(freeOf(l))}</td>
+                      <td className="r">0</td>
+                      {anyDisc && <td className="r"><span className="subline">&ndash;</span></td>}
+                      <td className="r">0</td>
+                      <td />
                     </tr>
                   ) : null,
                   // Phones arriving on the bill are named under their line, the
@@ -1111,14 +1120,14 @@ export function InvoiceForm({
                   unitLines.includes(l) && byId(l.itemId)?.identity === "OPTIONAL" ? (
                     <tr key={`opt-${l.key}`} className="vline-sub">
                       <td className="vc-no" />
-                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}>
+                      <td colSpan={6 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + discCols}>
                         <TrackMode code={byId(l.itemId)!.code} on={!!l.withSerials} note={false}
                           onChange={(v) => setLine(l.key, { withSerials: v })} />
                       </td>
                     </tr>
                   ) : null,
                   named(l) ? (
-                    <UnitsRow key={`units-${l.key}`} colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + (isSales ? 0 : 1)}
+                    <UnitsRow key={`units-${l.key}`} colSpan={7 + (matchedGr ? 1 : 0) + (anyOrdered ? 1 : 0) + discCols}
                       title={byId(l.itemId)?.name ?? ""} qty={arriving(l)} rows={l.serials ?? []}
                       onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
                   ) : null,
@@ -1176,6 +1185,102 @@ export function InvoiceForm({
             </tbody>
           </table>
         </div>
+        {(() => {
+          const l = lines.find((x) => x.key === editKey);
+          if (!l || isSales) return null;
+          const n = lines.indexOf(l) + 1;
+          const item = byId(l.itemId);
+          const disc = l.hasDiscount ?? (Number(l.discount) || 0) > 0;
+          const freeOn = !!l.hasFree;
+          const pct = (l.discountKind ?? "pct") === "pct";
+          const close = () => setEditKey(null);
+          return (
+            <div className="le-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+              <div className="le" role="dialog" aria-modal="true" aria-labelledby="le-title"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") close();
+                  // Inside the bill's form: Enter here must not post it.
+                  if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") { e.preventDefault(); close(); }
+                }}>
+                <header className="le-head">
+                  <div>
+                    <span className="le-eyebrow">Line {n}</span>
+                    <h2 id="le-title">{item?.name ?? "Item"}</h2>
+                    {item?.code && <span className="vcode">{item.code}</span>}
+                  </div>
+                  <button type="button" className="le-x" aria-label="Close" onClick={close}><X size={18} /></button>
+                </header>
+
+                <div className="le-body">
+                  <div className="le-grid">
+                    <label className="le-field">Quantity
+                      <input type="number" min="0" step="any" value={l.qty} readOnly={!!l.sourceLineId && !billPart}
+                        onChange={(e) => setLine(l.key, { qty: e.target.value })} />
+                    </label>
+                    <label className="le-field">Unit price{foreign ? ` (${currency})` : ""}
+                      <input type="number" min="0" step="any" value={l.unitPrice} readOnly={!!l.orderLineId}
+                        onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
+                    </label>
+                  </div>
+
+                  <section className="le-sec">
+                    <label className="le-check">
+                      <input type="checkbox" checked={disc}
+                        onChange={(e) => setLine(l.key, e.target.checked
+                          ? { hasDiscount: true, discountKind: l.discountKind ?? "pct" }
+                          : { hasDiscount: false, discount: "" })} />
+                      <span><strong>This item has a discount</strong><small>The supplier&apos;s discount on this line, before the bill discount.</small></span>
+                    </label>
+                    {disc && (
+                      <div className="le-sub">
+                        <div className="segmented" role="radiogroup" aria-label="Discount by">
+                          <button type="button" role="radio" aria-checked={pct} className={`seg${pct ? " on" : ""}`}
+                            onClick={() => setLine(l.key, { discountKind: "pct" })}>Percentage</button>
+                          <button type="button" role="radio" aria-checked={!pct} className={`seg${!pct ? " on" : ""}`}
+                            onClick={() => setLine(l.key, { discountKind: "amount" })}>Amount ({foreign ? currency : base})</button>
+                        </div>
+                        <label className="le-field le-affix">{pct ? "Percent off" : "Amount off"}
+                          <span className="le-input">
+                            <input type="number" min="0" max={pct ? 100 : undefined} step="any" value={l.discount ?? ""} placeholder="0" autoFocus
+                              onChange={(e) => setLine(l.key, { discount: e.target.value })} />
+                            <span className="le-unit">{pct ? "%" : foreign ? currency : base}</span>
+                          </span>
+                        </label>
+                        {discOf(l) > 0 && <p className="le-note">&minus;{fmt(discOf(l))} · line comes to {fmt(amount(l))}</p>}
+                      </div>
+                    )}
+                  </section>
+
+                  {supplierFocId && !l.sourceLineId && (
+                    <section className="le-sec">
+                      <label className="le-check">
+                        <input type="checkbox" checked={freeOn}
+                          onChange={(e) => setLine(l.key, e.target.checked ? { hasFree: true } : { hasFree: false, focQty: "" })} />
+                        <span><strong>Units free from the supplier</strong><small>On top of what is billed. They arrive at zero cost, under FOC Received.</small></span>
+                      </label>
+                      {freeOn && (
+                        <div className="le-sub">
+                          <label className="le-field le-narrow">Free quantity
+                            <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="0" autoFocus
+                              onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
+                          </label>
+                          {freeOf(l) > 0 && named(l) && (
+                            <p className="le-note">{fmt(arriving(l))} {modeOf(l) === "IMEI" ? "IMEIs" : "serials"} to enter under the line: {fmt(Number(l.qty) || 0)} billed + {fmt(freeOf(l))} free.</p>
+                          )}
+                        </div>
+                      )}
+                    </section>
+                  )}
+                </div>
+
+                <footer className="le-foot">
+                  <button type="button" className="btn ghost danger" onClick={() => { removeLine(l.key); close(); }}>Remove line</button>
+                  <button type="button" className="btn" onClick={close}>Done</button>
+                </footer>
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
 
