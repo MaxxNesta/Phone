@@ -6160,7 +6160,16 @@ export async function postPurchaseInvoice(
 
 /** The purchase-side mirror of postSaleWithDelivery: receive it and bill it in one step. */
 export async function postPurchaseWithReceipt(
-  input: InvoiceInput & { cashOut?: number; cashAccountId?: string | null },
+  input: InvoiceInput & {
+    cashOut?: number; cashAccountId?: string | null;
+    /**
+     * When the goods arrived. Left out — every bill typed by hand — it is the
+     * moment this posts. An import of past bills passes null: the arrival
+     * time is not known, and the receipt then dates its lot at the start of
+     * the document date, as a receipt posted on its own does.
+     */
+    receivedAt?: string | null;
+  },
   outer?: TransactionSql,
 ) {
   if (input.lines.length === 0) throw new Error("An invoice needs at least one line");
@@ -6232,7 +6241,7 @@ export async function postPurchaseWithReceipt(
         docDate: input.docDate,
         // "Received now" means now — the actual moment this posts, not
         // midnight on the document date.
-        receivedAt: new Date().toISOString(),
+        receivedAt: input.receivedAt === undefined ? new Date().toISOString() : input.receivedAt,
         memo: input.memo,
         reference: input.reference,
         sourceDocumentId: orderId,
