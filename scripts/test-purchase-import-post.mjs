@@ -148,6 +148,14 @@ try {
   check("a retry hands back the posted one", again.find((x) => x.oldRef === "t-ok").status === "already");
   check("and posts nothing new", (await sql`select count(*)::int as n from document`)[0].n === before + 2);
 
+  console.log("\n  A December bill posts on the company start\n");
+  a = await plan(bill("t-dec", "28/12/2025", [[IMEI, 1, 100_000, [next()]]]));
+  r = await postImportedPurchases(co.id, a.plan, a.mapping, a.master);
+  const dec = await docsFor("t-dec");
+  const [decMemo] = await sql`select memo from document where doc_no = ${r[0].invoiceNo ?? ""}`;
+  check("posted on 1 Jan 2026, PI and GR", r[0].status === "posted" && dec.length === 2 && dec.every((d) => d.date === "2026-01-01"), JSON.stringify(dec));
+  check("its own date is kept on the bill", /Dated 2025-12-28/.test(decMemo?.memo ?? ""), decMemo?.memo);
+
   console.log("\n  Duplicates\n");
   const re = await plan(bill("t-credit", "02/01/2026", [[IMEI, 1, 1, [next()]]]));
   check("a posted old ID is shown as posted", invoiceStatus(re.plan[0], re.mapping) === "imported" && re.plan[0].already.docNo === "DP20260102001");

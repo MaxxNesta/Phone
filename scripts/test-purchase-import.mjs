@@ -150,7 +150,7 @@ const one = (extra = [], code = "IPZ003", date = "06/01/2026") => parsePurchaseR
   ["Code", "Description", "Qty", "Pur.price", "Amount"], [code, "x", "1", "1000", "1000"], ["", "354630185148539"],
   ["Invoice Total", "1", "1000"], ...extra]);
 const loc = { suppliers: {}, locations: {} };
-check("before the ERP start blocks", planPurchaseImport(one([], "IPZ003", "31/12/2025"), master, loc)[0].issues.some((i) => /before the ERP start/.test(i.message)));
+{ const e = planPurchaseImport(one([], "IPZ003", "28/12/2025"), master, loc)[0]; check("a December bill posts on the company start", e.postDate === "2026-01-01" && e.date === "2025-12-28" && invoiceStatus(e, loc) === "review", JSON.stringify(e.issues)); }
 check("an inactive item blocks", planPurchaseImport(one([], "IPX999"), master, loc)[0].issues.some((i) => /inactive/.test(i.message)));
 const paid = planPurchaseImport(one([["Paid Amount", "", "400"]]), master, loc)[0];
 check("a paid amount waits for its account", invoiceStatus(paid, loc) === "unmapped" && invoiceStatus(paid, { ...loc, payAccount: "A-cash" }) === "ready");

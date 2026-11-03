@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, FileSpreadsheet, Info, PackageCheck, X } from "lucide-react";
 import { FileDrop } from "./file-drop";
 import { previewInvoicePosting, previewPurchaseImport, runPurchaseImport, type PurchaseImportResult, type SourceFormat } from "@/lib/purchase-import-actions";
-import type { PostingPreview } from "@/lib/purchase-import";
+import type { PostedResult, PostingPreview } from "@/lib/purchase-import";
 import { invoiceBlocks, parseTsv, invoiceStatus, netOf, resolved, type Mapping, type Match, type PlannedInvoice, type Status } from "@/lib/import-purchase-invoices";
 
 type Option = { id: string; code: string; name: string };
@@ -42,8 +42,10 @@ export function PurchaseImport() {
   const [open, setOpen] = useState<Set<number>>(new Set());
   const [postings, setPostings] = useState<Record<number, PostingPreview | "loading">>({});
   const [result, setResult] = useState<PurchaseImportResult | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [reading, startRead] = useTransition();
-  const [importing, startImport] = useTransition();
+  // Plain state, not a transition: a transition would hold every progress update until the batch ends.
+  const [importing, setImporting] = useState(false);
 
   const step = result ? 3 : preview ? 2 : 1;
 
@@ -96,11 +98,37 @@ export function PurchaseImport() {
       .catch((e) => setPostings((s) => ({ ...s, [row]: { error: e instanceof Error ? e.message : String(e) } })));
   }
 
+  /**
+   * One invoice per request, oldest first, so the bar moves as each one
+   * posts and a long batch never waits on one long request. Each still posts
+   * on its own key: a retry, or a second click, cannot post one twice.
+   */
   function doPost(only?: number[]) {
     if (!file) return;
-    startImport(async () => {
-      setResult(await runPurchaseImport({ content: file.content, format: file.format, filename: file.name, mapping, skip: [...skip], only }));
-    });
+    const queue = rows
+      .filter((r) => only ? only.includes(r.p.row) : r.status !== "imported" && !skip.has(r.p.row) && (r.status === "ready" || r.status === "review"))
+      .map((r) => r.p)
+      .sort((a, b) => a.postDate!.localeCompare(b.postDate!) || a.row - b.row);
+    // A retry keeps what already went through and replaces only what it reruns.
+    const kept = only && result?.ok ? result.results.filter((r) => !only.includes(r.row)) : [];
+    const skipped = only && result?.ok ? result.skipped : rows.length - queue.length;
+    setResult(null);
+    setImporting(true);
+    void (async () => {
+      const out: PostedResult[] = [...kept];
+      for (const [i, p] of queue.entries()) {
+        setProgress({ done: i, total: queue.length, current: p.oldRef || `Invoice ${i + 1}` });
+        try {
+          const r = await runPurchaseImport({ content: file.content, format: file.format, filename: file.name, mapping, skip: [], only: [p.row] });
+          out.push(...(r.ok ? r.results : [{ row: p.row, oldRef: p.oldRef, status: "failed" as const, error: r.error }]));
+        } catch (e) {
+          out.push({ row: p.row, oldRef: p.oldRef, status: "failed", error: e instanceof Error ? e.message : "The connection dropped. Retry — nothing posts twice." });
+        }
+      }
+      setProgress(null);
+      setImporting(false);
+      setResult({ ok: true, results: out.sort((a, b) => a.row - b.row), skipped });
+    })();
   }
 
   function restart() { setFile(null); setPreview(null); setResult(null); setError(null); }
@@ -223,7 +251,7 @@ export function PurchaseImport() {
                         <div><dt>Old document ID</dt><dd className="code">{p.oldRef || "—"}</dd></div>
                         <div><dt>New PI number</dt><dd className="subline">{p.already ? p.already.docNo : "Assigned on posting"}</dd></div>
                         <div><dt>Invoice date</dt><dd>{day(p.date, p.rawDate)}</dd></div>
-                        <div><dt>Receipt date</dt><dd>{day(p.date, p.rawDate)}</dd></div>
+                        <div><dt>Posting and receipt date</dt><dd>{day(p.postDate, p.rawDate)}{p.postDate !== p.date && <span className="subline"> · company start</span>}</dd></div>
                         <div><dt>Supplier</dt><dd>{sup ? sup.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Warehouse</dt><dd>{loc ? loc.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Payment</dt><dd>{p.payment ?? "—"}</dd></div>
@@ -275,6 +303,12 @@ export function PurchaseImport() {
                         <div className="strong"><dt>Net total</dt><dd>{money(netOf(p))} {p.totals.currency}</dd></div>
                       </dl>
 
+                      {posting === "loading" && (
+                        <div className="pimp-progress compact" role="status">
+                          <span className="subline">Posting it and rolling it back, to show exactly what it makes…</span>
+                          <div className="pimp-progress-track indeterminate"><span /></div>
+                        </div>
+                      )}
                       {posting && posting !== "loading" && <PostingView v={posting} />}
 
                       {status !== "imported" && (
@@ -297,7 +331,18 @@ export function PurchaseImport() {
           </div>
 
           <div className="pimp-foot">
-            <button type="button" className="ghost" onClick={restart}>Back</button>
+            {progress && (
+              <div className="pimp-progress" role="status" aria-live="polite">
+                <div className="pimp-progress-t">
+                  <strong>Posting {progress.done + 1} of {progress.total}</strong>
+                  <span className="subline">{progress.current} · its bill, goods receipt and journals</span>
+                  <span className="pimp-progress-n">{Math.round((progress.done / progress.total) * 100)}%</span>
+                </div>
+                <div className="pimp-progress-track"><span style={{ width: `${(progress.done / progress.total) * 100}%` }} /></div>
+                <span className="hint">Each invoice posts on its own. Keep this page open; if it is closed, the ones already posted stay posted and a retry skips them.</span>
+              </div>
+            )}
+            <button type="button" className="ghost" onClick={restart} disabled={importing}>Back</button>
             <span className="page-sub">
               {holding.length
                 ? `${holding.length} invoice${holding.length === 1 ? " needs" : "s need"} a choice or a fix — or leave ${holding.length === 1 ? "it" : "them"} out.`

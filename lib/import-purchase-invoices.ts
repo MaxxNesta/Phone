@@ -218,8 +218,9 @@ export function luhnOk(s: string): boolean {
 // --------------------------------------------------------------- plan ----
 
 /**
- * The first day this ERP keeps the books. A bill dated before it belongs in
- * the opening balances, not in a posting.
+ * The first day this ERP keeps the books. A bill dated before it — goods
+ * bought in December, still arriving — posts on this day, with its own date
+ * kept on the bill as a note.
  * ponytail: a constant for the one company; a company setting when there is a second.
  */
 export const ERP_START = "2026-01-01";
@@ -252,6 +253,8 @@ export type PlannedLine = SourceLine & { itemId: string | null; itemName: string
 export type PlannedInvoice = {
   row: number; oldRef: string; supplierInvoiceNo: string | null;
   date: string | null; rawDate: string; payment: string | null; remark: string | null;
+  /** The day it posts: its own date, or the ERP start for a bill from before it. */
+  postDate: string | null;
   supplier: Match; location: Match;
   lines: PlannedLine[];
   totals: SourceInvoice["totals"] & { lines: number };
@@ -301,7 +304,7 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     else if (refCount.get(norm(s.oldRef))! > 1) err("Docid", `${s.oldRef} appears more than once in this file.`);
     const date = reportDate(s.rawDate);
     if (!date) err("Date", s.rawDate ? `"${s.rawDate}" is not a date.` : "The invoice has no date.");
-    else if (date < ERP_START) err("Date", `Dated before the ERP start (${ERP_START}). Bills from before then belong in the opening balances.`);
+    else if (date < ERP_START) review("Date", `Dated before the company start: posts on ${ERP_START}, with its own date kept on the bill as a note.`);
     if (s.lines.length === 0) err("Products", "No product lines were found under this invoice.");
 
     const lines: PlannedLine[] = s.lines.map((l, n) => {
@@ -358,6 +361,7 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     const k = s.oldRef ? known.get(norm(s.oldRef)) : undefined;
     return {
       row: s.row, oldRef: s.oldRef, supplierInvoiceNo: s.supplierInvoiceNo, date, rawDate: s.rawDate,
+      postDate: date && date < ERP_START ? ERP_START : date,
       payment: s.payment, remark: s.remark,
       supplier: match(s.supplier, master.suppliers, mapping.suppliers[s.supplier]),
       location: match(s.location, master.locations, mapping.locations[s.location]),

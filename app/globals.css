@@ -9131,3 +9131,17 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .pimp-posting tbody + tbody tr:first-child td { border-top: 1px solid var(--line); }
 .pimp-mark.warn { stroke: var(--warn); }
 .pimp-map-out.wide { max-width: 760px; }
+/* Import: posting progress — a real bar for the batch, a moving one while a preview is worked out. */
+.pimp-progress { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 8px; }
+.pimp-progress.compact { margin: 0; padding: 10px 12px; }
+.pimp-progress-t { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.pimp-progress-n { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.pimp-progress-track { position: relative; height: 6px; border-radius: 980px; background: var(--line-soft); overflow: hidden; }
+.pimp-progress-track > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--link); transition: width 0.4s ease; }
+.pimp-progress-track.indeterminate > span { width: 35%; }
+@media (prefers-reduced-motion: no-preference) {
+  .pimp-progress-track.indeterminate > span { animation: pimp-slide 1.2s ease-in-out infinite; }
+}
+@keyframes pimp-slide { from { left: -35%; } to { left: 100%; } }
+.pimp-foot { flex-wrap: wrap; }
+.pimp-foot > .pimp-progress { flex: 1 0 100%; margin: 0 0 4px; }

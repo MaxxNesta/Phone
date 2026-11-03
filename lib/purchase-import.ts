@@ -64,13 +64,14 @@ function toInput(companyId: string, p: PlannedInvoice, mapping: Mapping, master:
   // Serials on an item that carries none have no unit to belong to; they stay readable on the bill.
   const loose = p.lines.filter((l) => l.identity === "NONE" && l.serials.length).map((l) => `${l.code}: ${l.serials.join(", ")}`);
   const discount = t.itemDiscount + t.voucherDiscount;
+  const early = p.postDate !== p.date ? `Dated ${p.date} in the old system; posted on the company start` : null;
   return {
     companyId, partnerId,
     locationId: resolved(p.location, mapping.locations)!,
-    docDate: p.date!,
+    docDate: p.postDate!,
     // The supplier's own terms decide when it is due; none means on the bill's date.
-    dueDate: addDays(p.date!, terms),
-    memo: [p.remark, ...loose].filter(Boolean).join(" · ") || null,
+    dueDate: addDays(p.postDate!, terms),
+    memo: [early, p.remark, ...loose].filter(Boolean).join(" · ") || null,
     reference: p.supplierInvoiceNo,
     ...(t.currency !== "MMK" ? { currency: t.currency, exchangeRate: t.exchangeRate } : {}),
     billDiscountAmount: discount > 0 ? discount : null,
@@ -157,7 +158,7 @@ export type PostedResult =
  * posted again.
  */
 export async function postImportedPurchases(companyId: string, invoices: PlannedInvoice[], mapping: Mapping, master: PurchaseImportMaster): Promise<PostedResult[]> {
-  const order = [...invoices].sort((a, b) => a.date!.localeCompare(b.date!) || a.row - b.row);
+  const order = [...invoices].sort((a, b) => a.postDate!.localeCompare(b.postDate!) || a.row - b.row);
   const out: PostedResult[] = [];
   const postedIds = new Map<string, number>();
   for (const p of order) {
