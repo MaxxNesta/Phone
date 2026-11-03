@@ -387,7 +387,8 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
            (select case when d.reference like 'POS:%' then 'POS' else 'INVOICE' end
               from document d where d.id = v_invoice_status.document_id) as channel,
            (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
-             where dl.document_id = v_invoice_status.document_id and dl.item_id is not null) as item_qty
+             where dl.document_id = v_invoice_status.document_id and dl.item_id is not null) as item_qty,
+           (select d.source_ref from document d where d.id = v_invoice_status.document_id) as source_ref
       from v_invoice_status
      where company_id = ${companyId} and doc_type = ${docType}
        ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
@@ -400,7 +401,8 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
             d.status as doc_status, null as payment_status, null::int as days_overdue,
             'INVOICE' as channel,
             (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
-              where dl.document_id = d.id and dl.item_id is not null) as item_qty
+              where dl.document_id = d.id and dl.item_id is not null) as item_qty,
+            d.source_ref
        from document d
        join business_partner p on p.id = d.partner_id
       -- Drafts only. This half used to admit anything not POSTED, which in

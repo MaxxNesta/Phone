@@ -5,7 +5,7 @@
 // Parser and checks only — pure, writes nothing. The sample is the report as
 // pasted from Excel (cells split by tabs), merged cells and all.
 
-const { parsePurchaseReport, planPurchaseImport, invoiceStatus, reportDate, luhnOk } =
+const { parsePurchaseReport, planPurchaseImport, invoiceStatus, reportDate, luhnOk, netOf } =
   await import("../lib/import-purchase-invoices.ts");
 
 let failures = 0;
@@ -104,11 +104,13 @@ check("where each invoice starts and ends", bl.length === 2 && bl[0].start === 0
 
 console.log("\n  Checks\n");
 const master = {
-  suppliers: [{ id: "S-china", code: "01-001", name: "China" }, { id: "S-thai", code: "01-002", name: "Thai" }],
+  suppliers: [{ id: "S-china", code: "01-001", name: "China", payment_terms_days: 30 }, { id: "S-thai", code: "01-002", name: "Thai", payment_terms_days: null }],
   locations: [{ id: "L-main", code: "MAIN-WH", name: "Main Warehouse" }],
-  items: [...["IPZ002", "IPZ003", "IPZ004", "IPZ007"].map((c) => ({ id: `I-${c}`, code: c, name: c, tracks_serial: true, identity: "IMEI" })),
-    { id: "I-MAC", code: "IPM001", name: "MacBook Air", tracks_serial: true, identity: "SERIAL" }],
-  importedRefs: [], importedSerials: [], stockSerials: [],
+  items: [...["IPZ002", "IPZ003", "IPZ004", "IPZ007"].map((c) => ({ id: `I-${c}`, code: c, name: c, is_active: true, tracks_serial: true, identity: "IMEI" })),
+    { id: "I-MAC", code: "IPM001", name: "MacBook Air", is_active: true, tracks_serial: true, identity: "SERIAL" },
+    { id: "I-OLD", code: "IPX999", name: "Old", is_active: false, tracks_serial: false, identity: "NONE" }],
+  payAccounts: [{ id: "A-cash", code: "11101", name: "Cash" }],
+  known: [], historySerials: [], stockSerials: [],
 };
 const none = { suppliers: {}, locations: {} };
 const [p] = planPurchaseImport(src, master, none);
@@ -125,10 +127,10 @@ check("unknown supplier is unmatched", bad.supplier.how === "none");
 
 const short = parsePurchaseReport(rows(SAMPLE.replace("354630185378847, ", "")));
 check("missing IMEI blocks", invoiceStatus(planPurchaseImport(short, master, none)[0], none) === "blocked");
-const again = planPurchaseImport(src, { ...master, importedRefs: ["S126010003"] }, none)[0];
-check("already imported is recognised", invoiceStatus(again, none) === "imported");
-const dupe = planPurchaseImport(src, { ...master, importedSerials: ["359337732992832"] }, none)[0];
-check("IMEI on an earlier import blocks", invoiceStatus(dupe, none) === "blocked");
+const again = planPurchaseImport(src, { ...master, known: [{ ref: "S126010003", doc_no: "DP20260102001", kind: "POSTED" }] }, none)[0];
+check("already posted is recognised", invoiceStatus(again, none) === "imported" && again.already.docNo === "DP20260102001");
+const hist = planPurchaseImport(src, { ...master, known: [{ ref: "s126010003", doc_no: "HPI-2026-00001", kind: "HISTORY" }] }, none)[0];
+check("a history record is never posted again", invoiceStatus(hist, none) === "imported" && hist.already.kind === "HISTORY");
 check("Luhn", luhnOk("354630185148539") && !luhnOk("354630185148538"));
 
 const mac = (serials, code = "IPM001") => planPurchaseImport(parsePurchaseReport([
@@ -140,8 +142,26 @@ check("Mac serials read as serials", m.lines[0].serials.length === 2 && invoiceS
 check("letters in an IMEI item's serial block", mac("C02XK0ABJGH5, C02XK0ABJGH6", "IPZ003").issues.some((i) => /is not an IMEI/.test(i.message)));
 check("a 14-digit IMEI blocks", mac("35463018514853, 354630185378847", "IPZ003").issues.some((i) => /is not an IMEI/.test(i.message)));
 const moved = planPurchaseImport(src, { ...master, stockSerials: [{ serial: "359337732992832", item_code: "IPZ009" }] }, none)[0];
-check("an IMEI held as another item needs review",
-  moved.issues.some((i) => i.level === "review" && /already in the system as IPZ009/.test(i.message)));
+check("an IMEI already received blocks", invoiceStatus(moved, none) === "blocked" && moved.issues.some((i) => /already in the system as IPZ009/.test(i.message)));
+
+console.log("\n  Posting rules\n");
+const one = (extra = [], code = "IPZ003", date = "06/01/2026") => parsePurchaseReport([
+  ["Docid", "p1", "Date", date], ["Supplier", "China", "Payment", "Credit"], ["Location", "Main Warehouse"],
+  ["Code", "Description", "Qty", "Pur.price", "Amount"], [code, "x", "1", "1000", "1000"], ["", "354630185148539"],
+  ["Invoice Total", "1", "1000"], ...extra]);
+const loc = { suppliers: {}, locations: {} };
+check("before the ERP start blocks", planPurchaseImport(one([], "IPZ003", "31/12/2025"), master, loc)[0].issues.some((i) => /before the ERP start/.test(i.message)));
+check("an inactive item blocks", planPurchaseImport(one([], "IPX999"), master, loc)[0].issues.some((i) => /inactive/.test(i.message)));
+const paid = planPurchaseImport(one([["Paid Amount", "", "400"]]), master, loc)[0];
+check("a paid amount waits for its account", invoiceStatus(paid, loc) === "unmapped" && invoiceStatus(paid, { ...loc, payAccount: "A-cash" }) === "ready");
+check("paid more than the bill blocks", invoiceStatus(planPurchaseImport(one([["Paid Amount", "", "1400"]]), master, loc)[0], { ...loc, payAccount: "A-cash" }) === "blocked");
+check("an advance is flagged, not applied", planPurchaseImport(one([["Advance Pay", "", "300"]]), master, loc)[0].issues.some((i) => i.level === "review" && /advance/i.test(i.message)));
+const disc = planPurchaseImport(one([["Voucher Discount", "", "100"], ["Net Total", "", "900"]]), master, loc)[0];
+check("a discount reconciles to the net", netOf(disc) === 900 && invoiceStatus(disc, loc) === "ready", JSON.stringify(disc.issues));
+check("a net that does not reconcile blocks", invoiceStatus(planPurchaseImport(one([["Voucher Discount", "", "100"], ["Net Total", "", "950"]]), master, loc)[0], loc) === "blocked");
+const noRef = planPurchaseImport(parsePurchaseReport([["Docid", "", "Date", "06/01/2026"], ["Supplier", "China"], ["Location", "Main Warehouse"],
+  ["Code", "Description", "Qty", "Pur.price", "Amount"], ["IPZ003", "x", "1", "1000", "1000"], ["", "354630185148539"], ["Invoice Total", "1", "1000"]]), master, loc)[0];
+check("no old ID is allowed, flagged for review", invoiceStatus(noRef, loc) === "review");
 
 console.log(failures ? `\n  ${failures} FAILED\n` : "\n  all passed\n");
 process.exit(failures ? 1 : 0);

@@ -9120,3 +9120,14 @@ td.disccell { width: 9.5rem; }
 .pimp, .pimp .card, .pimp .card-body, .pimp-pasted, .pimp-sheet-wrap { min-width: 0; max-width: 100%; }
 td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .pimp-lines th:first-child, .pimp-lines td:first-child, .pimp-lines th.r, .pimp-lines td.r { width: 1%; white-space: nowrap; }
+/* Import: the batch's fixed arrival, the posting a bill would make, the outcome. */
+.pimp-arrival { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px 20px; align-items: start; }
+.pimp-fixed { grid-column: 1 / -1; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.pimp-fixed > svg { flex: none; margin-top: 2px; }
+.pimp-fixed > span { display: flex; flex-direction: column; gap: 2px; }
+.pimp-posting { border-top: 1px solid var(--line-soft); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.pimp-posting h3 { font-size: 0.9375rem; margin: 0; }
+.pimp-stockin { margin: 0; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.pimp-posting tbody + tbody tr:first-child td { border-top: 1px solid var(--line); }
+.pimp-mark.warn { stroke: var(--warn); }
+.pimp-map-out.wide { max-width: 760px; }

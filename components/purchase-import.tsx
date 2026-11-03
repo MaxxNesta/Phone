@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, FileSpreadsheet, Info, X } from "lucide-react";
+import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, FileSpreadsheet, Info, PackageCheck, X } from "lucide-react";
 import { FileDrop } from "./file-drop";
-import { previewPurchaseImport, runPurchaseImport, type PurchaseImportResult, type SourceFormat } from "@/lib/purchase-import-actions";
-import { invoiceBlocks, parseTsv, invoiceStatus, resolved, type Mapping, type Match, type PlannedInvoice, type Status } from "@/lib/import-purchase-invoices";
+import { previewInvoicePosting, previewPurchaseImport, runPurchaseImport, type PurchaseImportResult, type SourceFormat } from "@/lib/purchase-import-actions";
+import type { PostingPreview } from "@/lib/purchase-import";
+import { invoiceBlocks, parseTsv, invoiceStatus, netOf, resolved, type Mapping, type Match, type PlannedInvoice, type Status } from "@/lib/import-purchase-invoices";
 
 type Option = { id: string; code: string; name: string };
 type Source = { content: string; format: SourceFormat; name: string };
-type Preview = { invoices: PlannedInvoice[]; suppliers: Option[]; locations: Option[] };
+type Preview = { invoices: PlannedInvoice[]; suppliers: Option[]; locations: Option[]; payAccounts: Option[] };
 
 const money = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const day = (d: string | null, raw: string) =>
@@ -18,25 +19,28 @@ const day = (d: string | null, raw: string) =>
 const STATUS: Record<Status, { label: string; pill: string }> = {
   ready: { label: "Ready", pill: "ok" },
   review: { label: "Needs review", pill: "warn" },
-  unmapped: { label: "Not mapped", pill: "info" },
-  blocked: { label: "Can't import", pill: "overdue" },
-  imported: { label: "Already imported", pill: "draft" },
+  unmapped: { label: "Needs a choice", pill: "info" },
+  blocked: { label: "Can't post", pill: "overdue" },
+  imported: { label: "Already posted", pill: "draft" },
 };
+const DOC: Record<string, string> = { PURCHASE_INVOICE: "Purchase invoice", GOODS_RECEIPT: "Goods receipt", SUPPLIER_PAYMENT: "Supplier payment" };
 
 /**
- * Bringing purchase invoices over from the old system's Excel report.
- * Upload, review each invoice (supplier and warehouse matched by name, a
- * guess confirmed once for every invoice that uses it), then import — as
- * history only: no stock, journal or payable.
+ * Purchase invoices from the old system's Excel report, posted as real bills.
+ * Upload or paste, review each invoice (supplier and warehouse matched by
+ * name, a guess confirmed once for every invoice that uses it), then post:
+ * each invoice with its goods receipt, as a bill typed in with "goods
+ * arriving with this bill" — the only way an import receives.
  */
 export function PurchaseImport() {
   const [mode, setMode] = useState<"upload" | "paste">("upload");
   const [file, setFile] = useState<Source | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [mapping, setMapping] = useState<Mapping>({ suppliers: {}, locations: {} });
-  const [skip, setSkip] = useState<Set<string>>(new Set());
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [mapping, setMapping] = useState<Mapping>({ suppliers: {}, locations: {}, payAccount: null });
+  const [skip, setSkip] = useState<Set<number>>(new Set());
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const [postings, setPostings] = useState<Record<number, PostingPreview | "loading">>({});
   const [result, setResult] = useState<PurchaseImportResult | null>(null);
   const [reading, startRead] = useTransition();
   const [importing, startImport] = useTransition();
@@ -44,12 +48,13 @@ export function PurchaseImport() {
   const step = result ? 3 : preview ? 2 : 1;
 
   function onPick(u: Source) {
-    setFile(u); setPreview(null); setError(null); setSkip(new Set()); setMapping({ suppliers: {}, locations: {} });
+    setFile(u); setPreview(null); setError(null); setSkip(new Set()); setPostings({});
+    setMapping({ suppliers: {}, locations: {}, payAccount: null });
     startRead(async () => {
       try {
         const p = await previewPurchaseImport(u.content, u.format);
         setPreview(p);
-        setOpen(new Set(p.invoices.slice(0, 1).map((i) => i.oldRef)));
+        setOpen(new Set(p.invoices.slice(0, 1).map((i) => i.row)));
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
@@ -58,9 +63,10 @@ export function PurchaseImport() {
 
   const rows = useMemo(() => (preview?.invoices ?? []).map((p) => ({ p, status: invoiceStatus(p, mapping) })), [preview, mapping]);
   const counts = rows.reduce((c, r) => ({ ...c, [r.status]: (c[r.status] ?? 0) + 1 }), {} as Partial<Record<Status, number>>);
-  const included = rows.filter((r) => r.status !== "imported" && !skip.has(r.p.oldRef));
+  const included = rows.filter((r) => r.status !== "imported" && !skip.has(r.p.row));
   const holding = included.filter((r) => r.status === "blocked" || r.status === "unmapped");
-  const total = included.reduce((a, r) => a + (r.p.totals.netTotal ?? r.p.totals.lines), 0);
+  const total = included.reduce((a, r) => a + netOf(r.p), 0);
+  const anyPaid = rows.some((r) => r.p.totals.paidAmount > 0);
 
   // Every source name that is not an exact match, once each, so a choice covers all its invoices.
   const toMap = (pick: (p: PlannedInvoice) => Match) => {
@@ -71,18 +77,29 @@ export function PurchaseImport() {
   const supplierMaps = toMap((p) => p.supplier);
   const locationMaps = toMap((p) => p.location);
 
-  const choose = (kind: keyof Mapping, source: string, id: string) =>
+  // A changed choice can change what an invoice posts, so earlier previews are dropped.
+  const choose = (kind: "suppliers" | "locations", source: string, id: string) => {
+    setPostings({});
     setMapping((m) => {
       const next = { ...m[kind] };
       if (id) next[source] = id; else delete next[source];
       return { ...m, [kind]: next };
     });
-  const toggle = (set: Set<string>, k: string) => { const n = new Set(set); if (n.has(k)) n.delete(k); else n.add(k); return n; };
+  };
+  const toggle = <T,>(set: Set<T>, k: T) => { const n = new Set(set); if (n.has(k)) n.delete(k); else n.add(k); return n; };
 
-  function doImport() {
+  function showPosting(row: number) {
+    if (!file) return;
+    setPostings((s) => ({ ...s, [row]: "loading" }));
+    previewInvoicePosting(file.content, file.format, row, mapping)
+      .then((r) => setPostings((s) => ({ ...s, [row]: r })))
+      .catch((e) => setPostings((s) => ({ ...s, [row]: { error: e instanceof Error ? e.message : String(e) } })));
+  }
+
+  function doPost(only?: number[]) {
     if (!file) return;
     startImport(async () => {
-      setResult(await runPurchaseImport({ content: file.content, format: file.format, filename: file.name, mapping, skip: [...skip] }));
+      setResult(await runPurchaseImport({ content: file.content, format: file.format, filename: file.name, mapping, skip: [...skip], only }));
     });
   }
 
@@ -91,7 +108,7 @@ export function PurchaseImport() {
   return (
     <div className="pimp">
       <ol className="pimp-steps" aria-label="Steps">
-        {[mode === "paste" ? "Paste report" : "Upload report", "Review", "Import"].map((s, i) => (
+        {[mode === "paste" ? "Paste report" : "Upload report", "Review", "Post"].map((s, i) => (
           <li key={s} data-state={step > i + 1 ? "done" : step === i + 1 ? "now" : "next"} aria-current={step === i + 1 ? "step" : undefined}>
             <span className="pimp-dot">{step > i + 1 ? <Check size={14} aria-hidden="true" /> : i + 1}</span>{s}
           </li>
@@ -112,8 +129,8 @@ export function PurchaseImport() {
             {mode === "upload"
               ? <FileDrop onPick={onPick} onClear={restart} picked={file?.name ?? null} busy={reading} accept=".xlsx" />
               : <PasteSheet busy={reading} onRead={(text) => onPick({ content: text, format: "tsv", name: "Pasted from Excel" })} />}
-            <p className="pimp-note"><Info size={14} aria-hidden="true" /><span>The old system&apos;s purchase invoice report. Each invoice
-              starts with its <strong>Docid</strong> row; the IMEIs sit under each line. Historical records — no stock, journal or payable is created.</span></p>
+            <p className="pimp-note"><Info size={14} aria-hidden="true" /><span>The purchase invoice report. Each invoice starts with its <strong>Docid</strong> row;
+              the IMEIs sit under each line. Every invoice posts as a real bill with its goods receipt — stock, payable and journals, as if typed in.</span></p>
             {error && <div className="alert" style={{ marginTop: 12 }}>{error}</div>}
           </div>
         </section>
@@ -122,7 +139,7 @@ export function PurchaseImport() {
       {step === 2 && preview && (
         <>
           <div className="pimp-bar">
-            <h2>Invoices to import <span className="subline">({rows.length})</span></h2>
+            <h2>Invoices to post <span className="subline">({rows.length})</span></h2>
             <span className="pimp-legend">
               {(["ready", "review", "unmapped", "blocked", "imported"] as Status[]).filter((s) => counts[s]).map((s) => (
                 <span key={s} className={`pill ${STATUS[s].pill}`}>{STATUS[s].label} {counts[s]}</span>
@@ -130,9 +147,36 @@ export function PurchaseImport() {
             </span>
           </div>
 
+          <section className="card pimp-map">
+            <div className="card-head"><h2>Goods arrival for this batch</h2></div>
+            <div className="card-body pimp-arrival">
+              <div className="pimp-fixed"><PackageCheck size={16} aria-hidden="true" />
+                <span><strong>Arriving with this bill</strong><span className="subline">Each invoice posts with its own goods receipt. An import always receives this way.</span></span></div>
+              <div className="field">
+                <label>Receipt date</label>
+                <span className="fixedfield">Use invoice date</span>
+                <span className="hint">The goods receipt carries the invoice&apos;s date; its stock counts from the start of that day.</span>
+              </div>
+              <div className="field">
+                <label>Due date</label>
+                <span className="fixedfield">Supplier&apos;s payment terms</span>
+              </div>
+              {anyPaid && (
+                <div className="field">
+                  <label htmlFor="pay-account">Paid from</label>
+                  <select id="pay-account" value={mapping.payAccount ?? ""} onChange={(e) => { setPostings({}); setMapping((m) => ({ ...m, payAccount: e.target.value || null })); }}>
+                    <option value="">Choose the cash or bank account…</option>
+                    {preview.payAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+                  </select>
+                  <span className="hint">For the paid amount the report shows. One supplier payment posts with that bill; the rest stays owing.</span>
+                </div>
+              )}
+            </div>
+          </section>
+
           {(supplierMaps.length > 0 || locationMaps.length > 0) && (
             <section className="card pimp-map">
-              <div className="card-head"><h2>Match names from the old system</h2>
+              <div className="card-head"><h2>Match names from the report</h2>
                 <span className="page-sub">Chosen once, used for every invoice with that name.</span></div>
               <div className="card-body">
                 {[...supplierMaps.map((m) => ["suppliers", "Supplier", m, preview.suppliers] as const),
@@ -159,25 +203,27 @@ export function PurchaseImport() {
 
           <div className="pimp-list">
             {rows.map(({ p, status }) => {
-              const isOpen = open.has(p.oldRef);
-              const left = skip.has(p.oldRef);
+              const isOpen = open.has(p.row);
+              const left = skip.has(p.row);
               const sup = preview.suppliers.find((x) => x.id === resolved(p.supplier, mapping.suppliers));
               const loc = preview.locations.find((x) => x.id === resolved(p.location, mapping.locations));
+              const posting = postings[p.row];
               return (
-                <section key={p.oldRef} className={`pimp-inv${left || status === "imported" ? " out" : ""}`} data-status={status}>
-                  <button type="button" className="pimp-head" aria-expanded={isOpen} onClick={() => setOpen(toggle(open, p.oldRef))}>
+                <section key={p.row} className={`pimp-inv${left || status === "imported" ? " out" : ""}`} data-status={status}>
+                  <button type="button" className="pimp-head" aria-expanded={isOpen} onClick={() => setOpen(toggle(open, p.row))}>
                     <ChevronDown size={16} className="pimp-chev" aria-hidden="true" />
                     <StatusIcon s={status} />
-                    <span className="pimp-title">{p.oldRef} · {p.supplier.source || "—"} · {day(p.date, p.rawDate)}</span>
-                    <span className={`pill ${STATUS[status].pill}`}>{left ? "Left out" : STATUS[status].label}</span>
-                    <span className="pimp-total"><span className="subline">Total</span> {money(p.totals.netTotal ?? p.totals.lines)} {p.totals.currency}</span>
+                    <span className="pimp-title">{p.oldRef || "No old ID"} · {p.supplier.source || "—"} · {day(p.date, p.rawDate)}</span>
+                    <span className={`pill ${STATUS[status].pill}`}>{left ? "Left out" : status === "imported" ? `Posted as ${p.already!.docNo}` : STATUS[status].label}</span>
+                    <span className="pimp-total"><span className="subline">Total</span> {money(netOf(p))} {p.totals.currency}</span>
                   </button>
                   {isOpen && (
                     <div className="pimp-body">
                       <dl className="pimp-info">
-                        <div><dt>Old document ID</dt><dd className="code">{p.oldRef}</dd></div>
-                        <div><dt>New invoice no.</dt><dd className="subline">Next purchase invoice number, given on import</dd></div>
+                        <div><dt>Old document ID</dt><dd className="code">{p.oldRef || "—"}</dd></div>
+                        <div><dt>New PI number</dt><dd className="subline">{p.already ? p.already.docNo : "Assigned on posting"}</dd></div>
                         <div><dt>Invoice date</dt><dd>{day(p.date, p.rawDate)}</dd></div>
+                        <div><dt>Receipt date</dt><dd>{day(p.date, p.rawDate)}</dd></div>
                         <div><dt>Supplier</dt><dd>{sup ? sup.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Warehouse</dt><dd>{loc ? loc.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Payment</dt><dd>{p.payment ?? "—"}</dd></div>
@@ -226,12 +272,19 @@ export function PurchaseImport() {
                         <div><dt>Advance pay</dt><dd>{money(p.totals.advancePay)}</dd></div>
                         <div><dt>Paid amount</dt><dd>{money(p.totals.paidAmount)}</dd></div>
                         <div><dt>Currency</dt><dd>{p.totals.currency} · {p.totals.exchangeRate}</dd></div>
-                        <div className="strong"><dt>Net total</dt><dd>{money(p.totals.netTotal ?? p.totals.lines)} {p.totals.currency}</dd></div>
+                        <div className="strong"><dt>Net total</dt><dd>{money(netOf(p))} {p.totals.currency}</dd></div>
                       </dl>
+
+                      {posting && posting !== "loading" && <PostingView v={posting} />}
 
                       {status !== "imported" && (
                         <div className="actions">
-                          <button type="button" className="ghost tiny" onClick={() => setSkip(toggle(skip, p.oldRef))}>
+                          {(status === "ready" || status === "review") && !left && (
+                            <button type="button" className="ghost tiny" disabled={posting === "loading"} onClick={() => showPosting(p.row)}>
+                              {posting === "loading" ? "Working it out…" : posting ? "Refresh what this posts" : "Show what this posts"}
+                            </button>
+                          )}
+                          <button type="button" className="ghost tiny" onClick={() => setSkip(toggle(skip, p.row))}>
                             {left ? "Include this invoice" : "Leave this invoice out"}
                           </button>
                         </div>
@@ -247,51 +300,114 @@ export function PurchaseImport() {
             <button type="button" className="ghost" onClick={restart}>Back</button>
             <span className="page-sub">
               {holding.length
-                ? `${holding.length} invoice${holding.length === 1 ? " needs" : "s need"} a match or a fix — or leave ${holding.length === 1 ? "it" : "them"} out.`
-                : included.length ? `${included.length} invoice${included.length === 1 ? "" : "s"} · ${money(total)} MMK · history only` : "Nothing to import."}
+                ? `${holding.length} invoice${holding.length === 1 ? " needs" : "s need"} a choice or a fix — or leave ${holding.length === 1 ? "it" : "them"} out.`
+                : included.length ? `${included.length} invoice${included.length === 1 ? "" : "s"} · ${money(total)} MMK · each with its goods receipt` : "Nothing to post."}
             </span>
-            <button type="button" onClick={doImport} disabled={importing || holding.length > 0 || included.length === 0}>
-              {importing ? "Importing…" : `Import ${included.length || ""} invoice${included.length === 1 ? "" : "s"}`}
+            <button type="button" onClick={() => doPost()} disabled={importing || holding.length > 0 || included.length === 0}>
+              {importing ? "Posting…" : `Import and post ${included.length || ""} invoice${included.length === 1 ? "" : "s"}`}
             </button>
           </div>
         </>
       )}
 
-      {step === 3 && result && (
-        <section className="card pimp-done">
-          {result.ok ? (
-            <>
-              <svg className="pimp-mark ok" viewBox="0 0 52 52" aria-hidden="true">
-                <circle cx="26" cy="26" r="24" /><path d="M15 27l7 7 15-16" />
-              </svg>
-              <h2>{result.imported.length} invoice{result.imported.length === 1 ? "" : "s"} imported</h2>
-              <p className="page-sub">Batch {result.batchRef}. The old IDs stay searchable. No stock, journal or payable was created.</p>
-              <div className="tablewrap pimp-map-out">
-                <table>
-                  <thead><tr><th>Old ID</th><th>New invoice no.</th></tr></thead>
-                  <tbody>{result.imported.map((r) => <tr key={r.id}><td className="code">{r.oldRef}</td><td className="code">{r.invoiceNo}</td></tr>)}</tbody>
-                </table>
-              </div>
-              <div className="actions">
-                <button type="button" className="ghost" onClick={restart}>Import another file</button>
-                <Link className="btn" href="/purchases/invoices/imported">View imported invoices</Link>
-              </div>
-            </>
-          ) : (
-            <>
-              <svg className="pimp-mark bad" viewBox="0 0 52 52" aria-hidden="true">
-                <circle cx="26" cy="26" r="24" /><path d="M18 18l16 16M34 18L18 34" />
-              </svg>
-              <h2>Nothing was imported</h2>
-              <p className="pimp-err">{result.error}</p>
-              <div className="actions">
-                <button type="button" className="ghost" onClick={() => setResult(null)}>Back to review</button>
-              </div>
-            </>
-          )}
-        </section>
-      )}
+      {step === 3 && result && <Done result={result} busy={importing} onRetry={doPost} onBack={() => setResult(null)} onRestart={restart} />}
     </div>
+  );
+}
+
+/** What one invoice posts, as the engine posted it and rolled it back. */
+function PostingView({ v }: { v: PostingPreview }) {
+  if ("error" in v) return <div className="alert">It would not post: {v.error}</div>;
+  const entries = [...new Set(v.journal.map((j) => j.entry))];
+  return (
+    <div className="pimp-posting">
+      <h3>What this posts</h3>
+      <p className="subline">{v.documents.map((d) => DOC[d.type] ?? d.type).join(" · ")} — numbers are given when it posts.</p>
+      {v.stock.length > 0 && (
+        <p className="pimp-stockin">{v.stock.map((s) => `+${money(s.qty)} ${s.code} into ${s.location} at ${money(s.cost)}`).join(" · ")}</p>
+      )}
+      <div className="tablewrap">
+        <table className="pimp-lines">
+          <thead><tr><th>Account</th><th>Partner</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
+          {entries.map((e) => (
+            <tbody key={e}>
+              {v.journal.filter((j) => j.entry === e).map((j, k) => (
+                <tr key={k}>
+                  <td><span className="code">{j.code}</span> {j.account}</td>
+                  <td>{j.partner ?? ""}</td>
+                  <td className="r">{j.debit ? money(j.debit) : ""}</td>
+                  <td className="r">{j.credit ? money(j.credit) : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Posted, already posted, failed: each invoice's outcome, and a retry that cannot repost the ones that went through. */
+function Done({ result, busy, onRetry, onBack, onRestart }: {
+  result: PurchaseImportResult; busy: boolean; onRetry: (only: number[]) => void; onBack: () => void; onRestart: () => void;
+}) {
+  if (!result.ok) {
+    return (
+      <section className="card pimp-done">
+        <svg className="pimp-mark bad" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24" /><path d="M18 18l16 16M34 18L18 34" /></svg>
+        <h2>Nothing was posted</h2>
+        <p className="pimp-err">{result.error}</p>
+        <div className="actions"><button type="button" className="ghost" onClick={onBack}>Back to review</button></div>
+      </section>
+    );
+  }
+  const posted = result.results.filter((r) => r.status === "posted");
+  const already = result.results.filter((r) => r.status === "already");
+  const failed = result.results.filter((r) => r.status === "failed");
+  const tone = failed.length === 0 ? "ok" : posted.length + already.length === 0 ? "bad" : "warn";
+  return (
+    <section className="card pimp-done">
+      <svg className={`pimp-mark ${tone}`} viewBox="0 0 52 52" aria-hidden="true">
+        <circle cx="26" cy="26" r="24" />
+        {tone === "ok" ? <path d="M15 27l7 7 15-16" /> : tone === "bad" ? <path d="M18 18l16 16M34 18L18 34" /> : <path d="M26 14v15M26 36v1" />}
+      </svg>
+      <h2>{posted.length} invoice{posted.length === 1 ? "" : "s"} posted{failed.length ? ` · ${failed.length} failed` : ""}</h2>
+      <p className="page-sub">
+        {[already.length && `${already.length} already posted earlier`, result.skipped && `${result.skipped} left out or not ready`].filter(Boolean).join(" · ") ||
+          "Each with its goods receipt, stock, payable and journals."}
+      </p>
+      <div className="tablewrap pimp-map-out wide">
+        <table>
+          <thead><tr><th>Old ID</th><th>Purchase invoice</th><th>Goods receipt</th><th>Payment</th><th>Result</th></tr></thead>
+          <tbody>
+            {result.results.map((r) => (
+              <tr key={r.row}>
+                <td className="code">{r.oldRef || "—"}</td>
+                {r.status === "failed" ? (
+                  <td colSpan={4} className="pimp-err wrap">{r.error}</td>
+                ) : (
+                  <>
+                    <td className="code">{r.invoiceNo}</td>
+                    <td className="code">{r.receiptNo ?? "—"}</td>
+                    <td className="code">{r.paymentNo ?? "—"}</td>
+                    <td>{r.status === "posted" ? "Posted" : "Already posted"}</td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="actions">
+        {failed.length > 0 && (
+          <button type="button" className="ghost" disabled={busy} onClick={() => onRetry(failed.map((f) => f.row))}>
+            {busy ? "Retrying…" : `Retry ${failed.length} failed`}
+          </button>
+        )}
+        <button type="button" className="ghost" onClick={onRestart}>Import another file</button>
+        <Link className="btn" href="/purchases/invoices">View purchase invoices</Link>
+      </div>
+    </section>
   );
 }
 

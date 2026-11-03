@@ -25,7 +25,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
          where company_id = ${co} and (imei = ${q} or imei2 = ${q} or device_serial = ${q}
                or imei ilike ${like}) ${locs ? sql`and location_id = any(${locs})` : sql``} limit 20`,
     sql`select id, doc_no, doc_type, posting_date, gross_total::float as total from document
-         where company_id = ${co} and doc_no ilike ${like} and status <> 'DRAFT' ${locs ? sql`and location_id = any(${locs})` : sql``}
+         where company_id = ${co} and (doc_no ilike ${like} or source_ref ilike ${like}) and status <> 'DRAFT' ${locs ? sql`and location_id = any(${locs})` : sql``}
          order by posting_date desc limit 20`,
     sql`select id, name, code, is_customer from business_partner
          where company_id = ${co} and (name ilike ${like} or code ilike ${like}) limit 20`,

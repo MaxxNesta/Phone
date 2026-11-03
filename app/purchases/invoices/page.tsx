@@ -14,7 +14,7 @@ const toTime = (v: unknown) => (v ? new Date(v as string).getTime() : 0);
 
 /** Imported from the old system: a record, never a payable, so a status of its own. */
 type ListStatus = InvoiceDisplayStatus | "IMPORTED";
-const LABEL: Record<ListStatus, string> = { ...INVOICE_STATUS_LABEL, IMPORTED: "Imported" };
+const LABEL: Record<ListStatus, string> = { ...INVOICE_STATUS_LABEL, IMPORTED: "History" };
 const PILL: Record<ListStatus, string> = { ...INVOICE_STATUS_PILL, IMPORTED: "info" };
 
 const TABS: Array<["" | ListStatus, string]> = [
@@ -24,7 +24,7 @@ const TABS: Array<["" | ListStatus, string]> = [
   ["PARTIALLY_PAID", "Partially Paid"],
   ["PAID", "Paid"],
   ["OVERDUE", "Overdue"],
-  ["IMPORTED", "Imported"],
+  ["IMPORTED", "History records"],
 ];
 
 export default async function PurchaseInvoices({
@@ -95,11 +95,11 @@ export default async function PurchaseInvoices({
 
   const rows: DataRow[] = invoices.map((i) => ({
     key: i.document_id,
-    searchText: [i.doc_no, i.old_ref, i.partner_name].filter(Boolean).join(" "),
+    searchText: [i.doc_no, i.old_ref, i.source_ref, i.partner_name].filter(Boolean).join(" "),
     sort: {
       doc_no: i.doc_no ?? "",
-      kind: i.imported ? "Imported" : "Normal",
-      old_ref: i.old_ref ?? "",
+      kind: i.imported ? "Imported historical" : i.source_ref ? "Imported" : "Normal",
+      old_ref: i.old_ref ?? i.source_ref ?? "",
       item_qty: Number(i.item_qty ?? 0),
       posting_date: toTime(i.posting_date),
       due_date: toTime(i.due_date),
@@ -120,8 +120,8 @@ export default async function PurchaseInvoices({
             {i.doc_no ?? "Resume"}
           </Link>
         </td>
-        <td className="narrow">{i.imported ? "Imported historical" : "Normal"}</td>
-        <td className="code narrow">{i.old_ref ?? "—"}</td>
+        <td className="narrow">{i.imported ? "Imported historical" : i.source_ref ? "Imported" : "Normal"}</td>
+        <td className="code narrow">{i.old_ref ?? i.source_ref ?? "—"}</td>
         <td className="code">{shortDate(i.posting_date)}</td>
         <td className="code">{i.due_date ? shortDate(i.due_date) : "—"}</td>
         <td className="wrap">

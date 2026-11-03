@@ -16,7 +16,7 @@
  *   354630185148539, 354630185378847, …
  *   Invoice Total 11.00 50,387,932.00 …
  *
- * Pure: text in, a verdict out. The preview and the import both run it, so
+ * Pure: text in, a verdict out. The review and the posting both run it, so
  * what was approved is what is written.
  */
 
@@ -217,18 +217,30 @@ export function luhnOk(s: string): boolean {
 
 // --------------------------------------------------------------- plan ----
 
+/**
+ * The first day this ERP keeps the books. A bill dated before it belongs in
+ * the opening balances, not in a posting.
+ * ponytail: a constant for the one company; a company setting when there is a second.
+ */
+export const ERP_START = "2026-01-01";
+
 export type PurchaseImportMaster = {
-  suppliers: { id: string; code: string; name: string }[];
+  suppliers: { id: string; code: string; name: string; payment_terms_days: number | null }[];
   locations: { id: string; code: string; name: string }[];
-  items: { id: string; code: string; name: string; tracks_serial: boolean; identity: "IMEI" | "SERIAL" | "OPTIONAL" | "NONE" }[];
-  /** Old refs already imported, and IMEIs already on an imported invoice. */
-  importedRefs: string[];
-  importedSerials: string[];
+  /** Inactive items too, so a file naming one is told so rather than told it does not exist. */
+  items: { id: string; code: string; name: string; is_active: boolean; tracks_serial: boolean; identity: "IMEI" | "SERIAL" | "OPTIONAL" | "NONE" }[];
+  /** Cash and bank accounts a paid bill may be paid from. */
+  payAccounts: { id: string; code: string; name: string }[];
+  /** Old ids this file names that are already posted here, or held as a history record. */
+  known: { ref: string; doc_no: string; kind: "POSTED" | "HISTORY" }[];
+  /** IMEIs this file names that sit on a history record. */
+  historySerials: string[];
   /** Units already in the system with a serial this file names, and the item each is. */
   stockSerials: { serial: string; item_code: string }[];
 };
 
-export type Mapping = { suppliers: Record<string, string>; locations: Record<string, string> };
+/** The reviewer's choices: a match per source name, and the account any money paid now leaves from. */
+export type Mapping = { suppliers: Record<string, string>; locations: Record<string, string>; payAccount?: string | null };
 
 /** How a source name met the ERP: exactly, by a guess the user should confirm, or not at all. */
 export type Match = { source: string; id: string | null; how: "exact" | "guess" | "none" };
@@ -243,12 +255,14 @@ export type PlannedInvoice = {
   supplier: Match; location: Match;
   lines: PlannedLine[];
   totals: SourceInvoice["totals"] & { lines: number };
-  /** Everything but the supplier and warehouse match, which the reviewer may still change. */
+  /** Everything but the supplier, warehouse and payment account, which the reviewer may still choose. */
   issues: Issue[];
-  alreadyImported: boolean;
+  /** Already posted here (or kept as history) under this old id: never posted again. */
+  already: { docNo: string; kind: "POSTED" | "HISTORY" } | null;
 };
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 function match(source: string, list: { id: string; code: string; name: string }[], chosen?: string): Match {
   if (chosen && list.some((x) => x.id === chosen)) return { source, id: chosen, how: "exact" };
@@ -262,34 +276,42 @@ function match(source: string, list: { id: string; code: string; name: string }[
   return guess ? { source, id: guess.id, how: "guess" } : { source, id: null, how: "none" };
 }
 
+/** What the bill comes to after its discounts: the figure the posting will carry. */
+export const netOf = (p: { totals: PlannedInvoice["totals"] }) =>
+  (p.totals.invoiceTotal ?? p.totals.lines) - p.totals.itemDiscount - p.totals.voucherDiscount;
+
 export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImportMaster, mapping: Mapping): PlannedInvoice[] {
   const items = new Map(master.items.map((i) => [norm(i.code), i]));
-  const importedRefs = new Set(master.importedRefs.map(norm));
-  const importedSerials = new Set(master.importedSerials);
+  const known = new Map(master.known.map((k) => [norm(k.ref), k]));
+  const historySerials = new Set(master.historySerials);
   const stock = new Map(master.stockSerials.map((x) => [x.serial, x.item_code]));
   // Where each IMEI first appears in this file, so a repeat names both invoices.
   const firstSeen = new Map<string, string>();
   const refCount = new Map<string, number>();
-  for (const s of source) refCount.set(norm(s.oldRef), (refCount.get(norm(s.oldRef)) ?? 0) + 1);
+  for (const s of source) if (s.oldRef) refCount.set(norm(s.oldRef), (refCount.get(norm(s.oldRef)) ?? 0) + 1);
 
-  return source.map((s) => {
+  return source.map((s, idx) => {
     const issues: Issue[] = [];
     const err = (field: string, message: string) => issues.push({ level: "error", field, message });
     const review = (field: string, message: string) => issues.push({ level: "review", field, message });
+    const label = s.oldRef || `Invoice ${idx + 1}`;
 
-    if (!s.oldRef) err("Docid", "The invoice has no Docid.");
+    // A bill typed in today needs no old id; one from the old system keeps it, once.
+    if (!s.oldRef) review("Docid", "No old document ID — nothing will stop this bill being posted again from another file.");
     else if (refCount.get(norm(s.oldRef))! > 1) err("Docid", `${s.oldRef} appears more than once in this file.`);
     const date = reportDate(s.rawDate);
     if (!date) err("Date", s.rawDate ? `"${s.rawDate}" is not a date.` : "The invoice has no date.");
+    else if (date < ERP_START) err("Date", `Dated before the ERP start (${ERP_START}). Bills from before then belong in the opening balances.`);
     if (s.lines.length === 0) err("Products", "No product lines were found under this invoice.");
 
     const lines: PlannedLine[] = s.lines.map((l, n) => {
       const it = items.get(norm(l.code));
       const at = `Line ${n + 1} (${l.code})`;
       if (!it) err(at, `No item is coded ${l.code} in the catalogue. Add it, then upload again.`);
+      else if (!it.is_active) err(at, `${it.code} is inactive. Reactivate it before posting.`);
       if (!(l.qty > 0)) err(at, "Quantity must be more than zero.");
       if (Math.abs(l.qty * l.unitPrice - l.amount) > Math.max(1, l.amount * 1e-6))
-        err(at, `${l.qty} × ${l.unitPrice.toLocaleString("en-US")} is not the amount ${l.amount.toLocaleString("en-US")}.`);
+        err(at, `${l.qty} × ${fmt(l.unitPrice)} is not the amount ${fmt(l.amount)}.`);
       if (l.count !== null && l.count !== l.serials.length)
         review(at, `The report counts ${l.count} serials; ${l.serials.length} were read.`);
       const kind = it?.identity === "SERIAL" ? "serial numbers" : "IMEIs";
@@ -302,15 +324,16 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
       for (const x of l.serials) {
         if (it?.identity === "IMEI" && !/^\d{15}$/.test(x)) err(at, `${x} is not an IMEI — an IMEI is 15 digits.`);
         const held = stock.get(x);
-        if (held && it && held !== it.code) review(at, `${x} is already in the system as ${held}, not ${it.code}.`);
+        // A unit arrives once: receiving one already here would put it on the shelf twice.
+        if (held) err(at, `${x} is already in the system${held !== it?.code ? ` as ${held}` : ""} — it has been received before.`);
       }
       const dupInLine = l.serials.filter((x, k) => l.serials.indexOf(x) !== k);
-      if (dupInLine.length) err(at, `IMEI ${dupInLine[0]} appears twice on this line.`);
+      if (dupInLine.length) err(at, `${dupInLine[0]} appears twice on this line.`);
       for (const imei of new Set(l.serials)) {
-        if (importedSerials.has(imei)) err(at, `IMEI ${imei} is already on an imported invoice.`);
+        if (historySerials.has(imei)) review(at, `${imei} is on a history record imported earlier.`);
         const other = firstSeen.get(imei);
-        if (other && other !== s.oldRef) err(at, `IMEI ${imei} is also on ${other} in this file.`);
-        else firstSeen.set(imei, s.oldRef);
+        if (other && other !== label) err(at, `${imei} is also on ${other} in this file.`);
+        else firstSeen.set(imei, label);
         if (/^\d{15}$/.test(imei) && !luhnOk(imei)) review(at, `IMEI ${imei} fails its check digit — a typo in the old system?`);
       }
       return { ...l, itemId: it?.id ?? null, itemName: it?.name ?? null, tracksSerial: !!it?.tracks_serial, identity: it?.identity ?? null };
@@ -319,18 +342,27 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     const lineTotal = s.lines.reduce((a, l) => a + l.amount, 0);
     const t = s.totals;
     if (t.invoiceTotal !== null && Math.abs(t.invoiceTotal - lineTotal) > 1)
-      err("Invoice total", `Lines add up to ${lineTotal.toLocaleString("en-US")}; the report's total is ${t.invoiceTotal.toLocaleString("en-US")}.`);
+      err("Invoice total", `Lines add up to ${fmt(lineTotal)}; the report's total is ${fmt(t.invoiceTotal)}.`);
     const net = (t.invoiceTotal ?? lineTotal) - t.itemDiscount - t.voucherDiscount;
     if (t.netTotal !== null && Math.abs(t.netTotal - net) > 1)
-      review("Net total", `Total less discounts is ${net.toLocaleString("en-US")}; the report says ${t.netTotal.toLocaleString("en-US")}.`);
+      err("Net total", `Total less discounts is ${fmt(net)}; the report says ${fmt(t.netTotal)}.`);
+    if (t.itemDiscount > 0)
+      review("Item discount", `The report gives item discounts only as a total (${fmt(t.itemDiscount)}); it posts as a discount on the whole bill.`);
+    if (t.paidAmount > net + 1) err("Paid amount", `${fmt(t.paidAmount)} paid is more than the bill's ${fmt(net)}.`);
+    if (t.advancePay > 0)
+      review("Advance pay", `${fmt(t.advancePay)} was settled from an advance in the old system. It is not applied here — apply the supplier's advance to this bill after posting.`);
+    if (/cash/i.test(s.payment ?? "") && t.paidAmount === 0)
+      review("Payment", "Marked Cash, but the report shows nothing paid. It posts as owing; record the payment separately.");
+    if (t.currency !== "MMK") review("Currency", `In ${t.currency} at ${t.exchangeRate}.`);
 
+    const k = s.oldRef ? known.get(norm(s.oldRef)) : undefined;
     return {
       row: s.row, oldRef: s.oldRef, supplierInvoiceNo: s.supplierInvoiceNo, date, rawDate: s.rawDate,
       payment: s.payment, remark: s.remark,
       supplier: match(s.supplier, master.suppliers, mapping.suppliers[s.supplier]),
       location: match(s.location, master.locations, mapping.locations[s.location]),
       lines, totals: { ...t, lines: lineTotal }, issues,
-      alreadyImported: importedRefs.has(norm(s.oldRef)),
+      already: k ? { docNo: k.doc_no, kind: k.kind } : null,
     };
   });
 }
@@ -341,10 +373,11 @@ export const resolved = (m: Match, chosen: Record<string, string>) =>
 
 export type Status = "imported" | "blocked" | "unmapped" | "review" | "ready";
 
-/** Ready to import, needing a look or a choice, or blocked. */
+/** Ready to post, needing a look or a choice, or blocked. */
 export function invoiceStatus(p: PlannedInvoice, chosen: Mapping): Status {
-  if (p.alreadyImported) return "imported";
+  if (p.already) return "imported";
   if (p.issues.some((i) => i.level === "error")) return "blocked";
   if (!resolved(p.supplier, chosen.suppliers) || !resolved(p.location, chosen.locations)) return "unmapped";
+  if (p.totals.paidAmount > 0 && !chosen.payAccount) return "unmapped";
   return p.issues.length ? "review" : "ready";
 }
