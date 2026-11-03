@@ -269,6 +269,8 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
   const stock = new Map(master.stockSerials.map((x) => [x.serial, x.item_code]));
   // Where each IMEI first appears in this file, so a repeat names both invoices.
   const firstSeen = new Map<string, string>();
+  const refCount = new Map<string, number>();
+  for (const s of source) refCount.set(norm(s.oldRef), (refCount.get(norm(s.oldRef)) ?? 0) + 1);
 
   return source.map((s) => {
     const issues: Issue[] = [];
@@ -276,6 +278,7 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     const review = (field: string, message: string) => issues.push({ level: "review", field, message });
 
     if (!s.oldRef) err("Docid", "The invoice has no Docid.");
+    else if (refCount.get(norm(s.oldRef))! > 1) err("Docid", `${s.oldRef} appears more than once in this file.`);
     const date = reportDate(s.rawDate);
     if (!date) err("Date", s.rawDate ? `"${s.rawDate}" is not a date.` : "The invoice has no date.");
     if (s.lines.length === 0) err("Products", "No product lines were found under this invoice.");

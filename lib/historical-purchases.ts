@@ -2,73 +2,102 @@ import { sql } from "./db";
 import type { PlannedInvoice, PurchaseImportMaster, Mapping } from "./import-purchase-invoices";
 import { resolved } from "./import-purchase-invoices";
 
-/** What an old report is checked against: suppliers, stock locations, the catalogue, and what came in before. */
-export async function getPurchaseImportMaster(companyId: string, fileSerials: string[] = []): Promise<PurchaseImportMaster> {
-  const [suppliers, locations, items, refs, serials, stock] = await Promise.all([
+/**
+ * What an old report is checked against: suppliers, stock locations, the
+ * catalogue, and — for only the old IDs and serials this file names — what
+ * came in before and what is in the system now. One round trip; the history
+ * is matched through the GIN index rather than read whole.
+ */
+export async function getPurchaseImportMaster(companyId: string, file: { refs: string[]; serials: string[] }): Promise<PurchaseImportMaster> {
+  const refs = file.refs.map((r) => r.trim().toLowerCase());
+  const [suppliers, locations, items, imported, serials, stock] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${companyId} and is_supplier order by code`,
     sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active order by name`,
     sql`select id, code, name, tracks_serial, identity from item where company_id = ${companyId} and is_active`,
-    sql`select old_ref from historical_purchase_invoice where company_id = ${companyId}`,
-    sql`select distinct unnest(l.serials) as s from historical_purchase_invoice_line l
-          join historical_purchase_invoice h on h.id = l.invoice_id where h.company_id = ${companyId}`,
-    // Only the units this file names: the whole serial register is not needed to check a few hundred.
+    sql`select old_ref from historical_purchase_invoice where company_id = ${companyId} and lower(old_ref) = any(${refs})`,
+    sql`select distinct s from historical_purchase_invoice_line l
+          join historical_purchase_invoice h on h.id = l.invoice_id
+          cross join unnest(l.serials) s
+         where h.company_id = ${companyId} and l.serials && ${file.serials}::text[] and s = any(${file.serials})`,
     sql`select s.serial_no as serial, i.code as item_code from stock_serial s join item i on i.id = s.item_id
-          where s.company_id = ${companyId} and (s.serial_no = any(${fileSerials}) or s.imei2 = any(${fileSerials}))`,
+          where s.company_id = ${companyId} and (s.serial_no = any(${file.serials}) or s.imei2 = any(${file.serials}))`,
   ]);
   return {
     suppliers: suppliers as unknown as PurchaseImportMaster["suppliers"],
     locations: locations as unknown as PurchaseImportMaster["locations"],
     items: items as unknown as PurchaseImportMaster["items"],
-    importedRefs: refs.map((r) => r.old_ref as string),
+    importedRefs: imported.map((r) => r.old_ref as string),
     importedSerials: serials.map((r) => r.s as string),
     stockSerials: stock as unknown as PurchaseImportMaster["stockSerials"],
   };
 }
 
+/** Rows per insert: 21 values a header keeps a chunk far under Postgres's 65,534 parameters. */
+const CHUNK = 2000;
+
 /**
  * Writes the chosen invoices, all or none. Each takes the next number from the
  * purchase invoice series for its date — the series real invoices draw from,
  * so the two can never share a number. Nothing touches stock, the journal or payables.
+ *
+ * A fixed number of statements however big the file: one to lock and name the
+ * batch, one to draw every number, then the headers and the lines in bulk.
+ * Row by row, 300 invoices of five lines was 2,100 round trips.
  */
 export async function importHistoricalPurchases(input: {
   companyId: string; userId: string | null; filename: string; invoices: PlannedInvoice[]; mapping: Mapping;
 }): Promise<{ batchRef: string; imported: { oldRef: string; invoiceNo: string; id: string }[] }> {
-  const { companyId, invoices, mapping } = input;
-  if (invoices.length === 0) throw new Error("There is nothing to import.");
+  const { companyId, mapping } = input;
+  if (input.invoices.length === 0) throw new Error("There is nothing to import.");
+  // Oldest first, so numbers run with the dates.
+  const invoices = [...input.invoices].sort((a, b) => a.date!.localeCompare(b.date!) || a.oldRef.localeCompare(b.oldRef));
+
   return sql.begin(async (tx) => {
     // One import at a time per company, so two uploads cannot take the same numbers.
-    await tx`select id from company where id = ${companyId} for update`;
     const [{ next }] = await tx`
-      select coalesce(max(substring(batch_ref from '[0-9]+$')::int), 0) + 1 as next
-        from historical_purchase_invoice where company_id = ${companyId}`;
+      select (select coalesce(max(substring(batch_ref from '[0-9]+$')::int), 0) + 1
+                from historical_purchase_invoice where company_id = ${companyId}) as next
+        from company where id = ${companyId} for update`;
     const batchRef = `HIMP-${String(next).padStart(6, "0")}`;
-    const imported: { oldRef: string; invoiceNo: string; id: string }[] = [];
 
-    for (const p of [...invoices].sort((a, b) => a.date!.localeCompare(b.date!) || a.oldRef.localeCompare(b.oldRef))) {
-      const [{ no: invoiceNo }] = await tx`select fn_next_document_no(${companyId}, 'PURCHASE_INVOICE', ${p.date}::date) as no`;
+    // Drawn in array order, so each date's numbers ascend with the sort above.
+    const numbers = await tx`
+      select n.o, fn_next_document_no(${companyId}, 'PURCHASE_INVOICE', n.d) as no
+        from unnest(${invoices.map((p) => p.date!)}::date[]) with ordinality as n(d, o)
+       order by n.o`;
+
+    const headers = invoices.map((p, k) => {
       const t = p.totals;
-      const [h] = await tx`
-        insert into historical_purchase_invoice (company_id, invoice_no, old_ref, doc_date, partner_id, location_id,
-          payment, supplier_invoice_no, remark, total_qty, gross_total, item_discount, voucher_discount, advance_pay,
-          paid_amount, net_total, currency, exchange_rate, batch_ref, filename, created_by)
-        values (${companyId}, ${invoiceNo}, ${p.oldRef}, ${p.date}, ${resolved(p.supplier, mapping.suppliers)},
-          ${resolved(p.location, mapping.locations)}, ${p.payment}, ${p.supplierInvoiceNo}, ${p.remark},
-          ${t.qty ?? p.lines.reduce((a, l) => a + l.qty, 0)}, ${t.invoiceTotal ?? t.lines}, ${t.itemDiscount},
-          ${t.voucherDiscount}, ${t.advancePay}, ${t.paidAmount},
-          ${t.netTotal ?? (t.invoiceTotal ?? t.lines) - t.itemDiscount - t.voucherDiscount},
-          ${t.currency}, ${t.exchangeRate}, ${batchRef}, ${input.filename}, ${input.userId})
-        returning id`;
-      let lineNo = 0;
-      for (const l of p.lines) {
-        await tx`
-          insert into historical_purchase_invoice_line (invoice_id, line_no, item_id, item_code, description,
-            qty, unit_price, amount, remark, serials)
-          values (${h.id}, ${++lineNo}, ${l.itemId}, ${l.code}, ${l.description}, ${l.qty}, ${l.unitPrice},
-            ${l.amount}, ${l.remark}, ${l.serials})`;
-      }
-      imported.push({ oldRef: p.oldRef, invoiceNo, id: h.id });
+      return {
+        company_id: companyId, invoice_no: numbers[k].no as string, old_ref: p.oldRef, doc_date: p.date,
+        partner_id: resolved(p.supplier, mapping.suppliers), location_id: resolved(p.location, mapping.locations),
+        payment: p.payment, supplier_invoice_no: p.supplierInvoiceNo, remark: p.remark,
+        total_qty: t.qty ?? p.lines.reduce((a, l) => a + l.qty, 0), gross_total: t.invoiceTotal ?? t.lines,
+        item_discount: t.itemDiscount, voucher_discount: t.voucherDiscount, advance_pay: t.advancePay,
+        paid_amount: t.paidAmount, net_total: t.netTotal ?? (t.invoiceTotal ?? t.lines) - t.itemDiscount - t.voucherDiscount,
+        currency: t.currency, exchange_rate: t.exchangeRate, batch_ref: batchRef, filename: input.filename,
+        created_by: input.userId,
+      };
+    });
+    // Ids matched back by old ID, which is unique per company — not by the order rows come back in.
+    const idOf = new Map<string, string>();
+    for (let i = 0; i < headers.length; i += CHUNK) {
+      const rows = await tx`insert into historical_purchase_invoice ${tx(headers.slice(i, i + CHUNK))} returning id, old_ref`;
+      for (const r of rows) idOf.set(r.old_ref as string, r.id as string);
     }
-    return { batchRef, imported };
+
+    const lines = invoices.flatMap((p) => p.lines.map((l, n) => ({
+      invoice_id: idOf.get(p.oldRef)!, line_no: n + 1, item_id: l.itemId, item_code: l.code, description: l.description,
+      qty: l.qty, unit_price: l.unitPrice, amount: l.amount, remark: l.remark, serials: l.serials,
+    })));
+    for (let i = 0; i < lines.length; i += CHUNK) {
+      await tx`insert into historical_purchase_invoice_line ${tx(lines.slice(i, i + CHUNK))}`;
+    }
+
+    return {
+      batchRef,
+      imported: invoices.map((p, k) => ({ oldRef: p.oldRef, invoiceNo: numbers[k].no as string, id: idOf.get(p.oldRef)! })),
+    };
   });
 }
 

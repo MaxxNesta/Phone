@@ -36,13 +36,20 @@ export default async function PurchaseInvoices({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const postedRows = (await getInvoiceList(company.id, "PURCHASE_INVOICE", await seenLocations())) as any[];
+  // Independent reads, so in parallel: one wait, not three.
+  const locs = await seenLocations();
+  const [posted0, drafts0, imported0] = await Promise.all([
+    getInvoiceList(company.id, "PURCHASE_INVOICE", locs),
+    getDocumentDrafts(company.id, "PURCHASE_INVOICE"),
+    getImportedInvoiceRows(company.id, locs),
+  ]);
+  const postedRows = posted0 as any[];
 
   // Unfinished bills, in the same shape as the rest of the list. They live in
   // their own table rather than in `document` (migration 0103), so they are
   // joined on here. Nil paid and nil outstanding are the truth: a draft has
   // never been a payable.
-  const drafts = (await getDocumentDrafts(company.id, "PURCHASE_INVOICE")) as any[];
+  const drafts = drafts0 as any[];
   const draftRows = drafts.map((d) => ({
     document_id: d.id, draft_id: d.id as string,
     doc_no: null, posting_date: d.doc_date, due_date: null,
@@ -55,7 +62,7 @@ export default async function PurchaseInvoices({
 
   // Imported from the old system. Nothing paid, nothing owing: they never
   // were payables here, so they stay out of every total above the list.
-  const importedRows = ((await getImportedInvoiceRows(company.id, await seenLocations())) as any[]).map((h) => ({
+  const importedRows = (imported0 as any[]).map((h) => ({
     document_id: h.id, imported: true, old_ref: h.old_ref as string,
     doc_no: h.invoice_no, posting_date: h.doc_date, due_date: null,
     partner_id: h.partner_id, partner_code: h.partner_code, partner_name: h.partner_name,

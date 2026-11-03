@@ -14,13 +14,16 @@ async function read(content: string, format: SourceFormat) {
   return parsePurchaseReport(format === "xlsx" ? await xlsxToRows(content, true) : format === "tsv" ? parseTsv(content) : parseCsv(content));
 }
 
-const serialsOf = (src: Awaited<ReturnType<typeof read>>) => src.flatMap((i) => i.lines.flatMap((l) => l.serials));
+// Only what the file names is looked up in the history and the serial register.
+const namedIn = (src: Awaited<ReturnType<typeof read>>) => ({
+  refs: src.map((i) => i.oldRef), serials: src.flatMap((i) => i.lines.flatMap((l) => l.serials)),
+});
 
 /** The file read and checked, with the suppliers and warehouses a reviewer may map to. Writes nothing. */
 export async function previewPurchaseImport(content: string, format: SourceFormat) {
   const u = await requirePermission("purchase.post");
   const source = await read(content, format);
-  const master = await getPurchaseImportMaster(u.companyId, serialsOf(source));
+  const master = await getPurchaseImportMaster(u.companyId, namedIn(source));
   if (source.length === 0) throw new Error("No invoices were found. Each invoice starts with a Docid row — is this the purchase invoice report?");
   return {
     invoices: planPurchaseImport(source, master, { suppliers: {}, locations: {} }),
@@ -39,7 +42,7 @@ export async function runPurchaseImport(input: {
   const u = await requirePermission("purchase.post");
   try {
     const source = await read(input.content, input.format);
-    const master = await getPurchaseImportMaster(u.companyId, serialsOf(source));
+    const master = await getPurchaseImportMaster(u.companyId, namedIn(source));
     const plan = planPurchaseImport(source, master, input.mapping);
     const chosen: PlannedInvoice[] = [];
     for (const p of plan) {
