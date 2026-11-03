@@ -9092,3 +9092,29 @@ td.disccell { width: 9.5rem; }
   .pimp-head { flex-wrap: wrap; }
   .pimp-total { margin-left: 0; }
 }
+
+/* Import: paste from Excel — the same dashed target as the file drop, then the sheet with each invoice marked. */
+.pimp-mode { margin: 0 0 14px; }
+.pimp-mode .seg { display: inline-flex; align-items: center; gap: 6px; }
+.pimp-paste { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1.6rem 1rem; border: 1.5px dashed var(--line); border-radius: var(--radius, 8px); text-align: center; cursor: text; color: var(--ink); }
+.pimp-paste:focus-within { border-color: var(--ink); background: var(--line-soft); }
+.pimp-paste > svg { color: var(--muted); }
+.pimp-paste-t { font-weight: 600; }
+.pimp-paste textarea { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; resize: none; cursor: text; border: 0; }
+.pimp-pasted { display: flex; flex-direction: column; gap: 10px; }
+.pimp-pasted-bar { display: flex; align-items: baseline; gap: 10px; }
+.pimp-pasted-bar button { margin-left: auto; }
+.pimp-pasted-foot { display: flex; justify-content: flex-end; }
+.pimp-sheet-wrap { max-height: 460px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 10px; }
+.pimp-sheet { border-collapse: collapse; width: 100%; font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.pimp-sheet th, .pimp-sheet td { padding: 5px 10px; border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); white-space: nowrap; text-align: left; font-weight: 400; }
+.pimp-sheet thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); text-align: center; color: var(--muted); font-size: 0.75rem; box-shadow: inset 0 -1px 0 var(--line); }
+.pimp-sheet tbody th { width: 1%; text-align: right; color: var(--muted); opacity: 0.7; font-size: 0.75rem; background: color-mix(in srgb, var(--ink) 2%, transparent); }
+.pimp-sheet td.r { text-align: right; }
+.pimp-sheet tr[data-inv="odd"] td { background: color-mix(in srgb, var(--ink) 2.5%, transparent); }
+.pimp-sheet tr[data-inv="none"] td { opacity: 0.45; }
+.pimp-sheet tr.pimp-colhead td { font-weight: 600; background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.pimp-sheet tr.pimp-net td { font-weight: 700; }
+.pimp-sheet tr.pimp-end td, .pimp-sheet tr.pimp-end th { border-bottom: 2px solid var(--ink); }
+.pimp-sheet tr.pimp-band td { position: sticky; left: 0; padding: 7px 10px; font-weight: 600; font-size: 0.75rem; background: color-mix(in srgb, var(--ink) 7%, var(--surface)); border-right: 0; }
+.pimp, .pimp .card, .pimp .card-body, .pimp-pasted, .pimp-sheet-wrap { min-width: 0; max-width: 100%; }

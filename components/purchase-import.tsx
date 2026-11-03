@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, Info, X } from "lucide-react";
-import { FileDrop, type Upload } from "./file-drop";
-import { previewPurchaseImport, runPurchaseImport, type PurchaseImportResult } from "@/lib/purchase-import-actions";
-import { invoiceStatus, resolved, type Mapping, type Match, type PlannedInvoice, type Status } from "@/lib/import-purchase-invoices";
+import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, FileSpreadsheet, Info, X } from "lucide-react";
+import { FileDrop } from "./file-drop";
+import { previewPurchaseImport, runPurchaseImport, type PurchaseImportResult, type SourceFormat } from "@/lib/purchase-import-actions";
+import { invoiceBlocks, parseTsv, invoiceStatus, resolved, type Mapping, type Match, type PlannedInvoice, type Status } from "@/lib/import-purchase-invoices";
 
 type Option = { id: string; code: string; name: string };
+type Source = { content: string; format: SourceFormat; name: string };
 type Preview = { invoices: PlannedInvoice[]; suppliers: Option[]; locations: Option[] };
 
 const money = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -29,7 +30,8 @@ const STATUS: Record<Status, { label: string; pill: string }> = {
  * history only: no stock, journal or payable.
  */
 export function PurchaseImport() {
-  const [file, setFile] = useState<Upload | null>(null);
+  const [mode, setMode] = useState<"upload" | "paste">("upload");
+  const [file, setFile] = useState<Source | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mapping, setMapping] = useState<Mapping>({ suppliers: {}, locations: {} });
@@ -41,7 +43,7 @@ export function PurchaseImport() {
 
   const step = result ? 3 : preview ? 2 : 1;
 
-  function onPick(u: Upload) {
+  function onPick(u: Source) {
     setFile(u); setPreview(null); setError(null); setSkip(new Set()); setMapping({ suppliers: {}, locations: {} });
     startRead(async () => {
       try {
@@ -89,7 +91,7 @@ export function PurchaseImport() {
   return (
     <div className="pimp">
       <ol className="pimp-steps" aria-label="Steps">
-        {["Upload report", "Review", "Import"].map((s, i) => (
+        {[mode === "paste" ? "Paste report" : "Upload report", "Review", "Import"].map((s, i) => (
           <li key={s} data-state={step > i + 1 ? "done" : step === i + 1 ? "now" : "next"} aria-current={step === i + 1 ? "step" : undefined}>
             <span className="pimp-dot">{step > i + 1 ? <Check size={14} aria-hidden="true" /> : i + 1}</span>{s}
           </li>
@@ -99,9 +101,19 @@ export function PurchaseImport() {
       {step === 1 && (
         <section className="card">
           <div className="card-body">
-            <FileDrop onPick={onPick} onClear={restart} picked={file?.name ?? null} busy={reading} accept=".xlsx" />
-            <p className="pimp-note"><Info size={14} aria-hidden="true" /> The old system&apos;s purchase invoice report, as exported to Excel. Each invoice
-              starts with its <strong>Docid</strong> row; the IMEIs sit under each line. Historical records — no stock, journal or payable is created.</p>
+            <div className="segmented pimp-mode" role="radiogroup" aria-label="How to add the report">
+              {([["upload", "Upload Excel file", FileSpreadsheet], ["paste", "Paste from Excel", ClipboardPaste]] as const).map(([k, label, Icon]) => (
+                <button key={k} type="button" role="radio" aria-checked={mode === k} className={`seg${mode === k ? " on" : ""}`}
+                  onClick={() => { setMode(k); setError(null); }}>
+                  <Icon size={15} aria-hidden="true" /> {label}
+                </button>
+              ))}
+            </div>
+            {mode === "upload"
+              ? <FileDrop onPick={onPick} onClear={restart} picked={file?.name ?? null} busy={reading} accept=".xlsx" />
+              : <PasteSheet busy={reading} onRead={(text) => onPick({ content: text, format: "tsv", name: "Pasted from Excel" })} />}
+            <p className="pimp-note"><Info size={14} aria-hidden="true" /><span>The old system&apos;s purchase invoice report. Each invoice
+              starts with its <strong>Docid</strong> row; the IMEIs sit under each line. Historical records — no stock, journal or payable is created.</span></p>
             {error && <div className="alert" style={{ marginTop: 12 }}>{error}</div>}
           </div>
         </section>
@@ -279,6 +291,83 @@ export function PurchaseImport() {
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+const COLS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const SHOW = 1500;
+
+/**
+ * Cells pasted from Excel, shown as the sheet they came from, with a band
+ * where each invoice starts and a line where it ends — so a paste of many
+ * invoices can be checked for where one stops before anything is read.
+ */
+function PasteSheet({ busy, onRead }: { busy: boolean; onRead: (text: string) => void }) {
+  const [text, setText] = useState("");
+  const rows = useMemo(() => {
+    const r = parseTsv(text);
+    while (r.length && r[r.length - 1].every((c) => !c.trim())) r.pop();
+    return r;
+  }, [text]);
+  const blocks = useMemo(() => invoiceBlocks(rows), [rows]);
+  const width = Math.min(COLS.length, Math.max(0, ...rows.slice(0, SHOW).map((r) => {
+    let w = r.length; while (w > 0 && !r[w - 1].trim()) w--; return w;
+  })));
+  const inBlock = (i: number) => blocks.findIndex((b) => i >= b.start && i <= b.end);
+
+  if (!text) {
+    return (
+      <label className="pimp-paste">
+        <ClipboardPaste size={30} aria-hidden="true" />
+        <span className="pimp-paste-t">Copy the report in Excel, then paste it here</span>
+        <span className="hint">Select the cells · Ctrl+C · click here · Ctrl+V</span>
+        <textarea aria-label="Paste the report from Excel" value="" onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => { e.preventDefault(); setText(e.clipboardData.getData("text/plain")); }} />
+      </label>
+    );
+  }
+
+  return (
+    <div className="pimp-pasted">
+      <div className="pimp-pasted-bar">
+        <strong>{blocks.length} invoice{blocks.length === 1 ? "" : "s"} found</strong>
+        <span className="subline">{rows.length} rows pasted{rows.length > SHOW ? ` · first ${SHOW} shown` : ""}</span>
+        <button type="button" className="ghost tiny" onClick={() => setText("")} disabled={busy}>Clear</button>
+      </div>
+      <div className="pimp-sheet-wrap">
+        <table className="pimp-sheet">
+          <thead><tr><th />{COLS.slice(0, width).split("").map((c) => <th key={c}>{c}</th>)}</tr></thead>
+          <tbody>
+            {rows.slice(0, SHOW).flatMap((r, i) => {
+              const b = inBlock(i);
+              const startsHere = b >= 0 && blocks[b].start === i;
+              const out = [];
+              if (startsHere) out.push(
+                <tr key={`b${i}`} className="pimp-band"><td colSpan={width + 1}>
+                  Invoice {b + 1} · <span className="code">{blocks[b].ref || "no Docid"}</span> · rows {blocks[b].start + 1}–{blocks[b].end + 1}
+                </td></tr>);
+              const first = (r.find((c) => c.trim()) ?? "").toLowerCase();
+              out.push(
+                <tr key={i} data-inv={b < 0 ? "none" : b % 2 ? "odd" : "even"}
+                  className={[blocks[b]?.end === i ? "pimp-end" : "", first === "code" ? "pimp-colhead" : "", /^net total/.test(first) ? "pimp-net" : ""].join(" ")}>
+                  <th>{i + 1}</th>
+                  {Array.from({ length: width }, (_, k) => {
+                    const v = (r[k] ?? "").trim();
+                    return <td key={k} className={/^-?[d,]+(.d+)?$/.test(v) && v.length < 14 ? "r" : undefined}>{v}</td>;
+                  })}
+                </tr>);
+              return out;
+            })}
+          </tbody>
+        </table>
+      </div>
+      {blocks.length > 0 && blocks[0].start > 0 && <p className="hint">Rows 1–{blocks[0].start} come before the first Docid and are not read.</p>}
+      <div className="pimp-pasted-foot">
+        <button type="button" onClick={() => onRead(text)} disabled={busy || blocks.length === 0}>
+          {busy ? "Reading…" : `Read ${blocks.length || ""} invoice${blocks.length === 1 ? "" : "s"}`}
+        </button>
+      </div>
     </div>
   );
 }

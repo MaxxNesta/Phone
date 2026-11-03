@@ -42,17 +42,54 @@ const num = (s: string) => Number(s.replace(/,/g, ""));
 const isNum = (s: string) => NUM.test(s.trim());
 const key = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
 
+/** Header labels the report prints; pasted, they may come without their colon. */
+const KNOWN = /^(docid|invoiceno|date|supplier|payment|location|remark)$/;
+const LABEL = /^([A-Za-z_. ]+?)\s*:\s*(.*)$/;
+const isLabel = (c: string) => LABEL.test(c) || KNOWN.test(key(c));
+
 /** "Label : value" pairs on a header row; a value may sit in the next cell. */
 function labelled(cells: string[]): Record<string, string> {
   const out: Record<string, string> = {};
-  const LABEL = /^([A-Za-z_. ]+?)\s*:\s*(.*)$/;
   for (let i = 0; i < cells.length; i++) {
-    const m = cells[i].match(LABEL);
+    const m = cells[i].match(LABEL) ?? (KNOWN.test(key(cells[i])) ? [cells[i], cells[i], ""] : null);
     if (!m) continue;
     let v = m[2].trim();
-    if (!v && i + 1 < cells.length && cells[i + 1] && !LABEL.test(cells[i + 1])) v = cells[++i].trim();
+    if (!v && i + 1 < cells.length && cells[i + 1] && !isLabel(cells[i + 1])) v = cells[++i].trim();
     out[key(m[1])] = v;
   }
+  return out;
+}
+
+/** Cells copied from Excel: tabs between cells; a quoted cell may hold tabs, newlines or "". */
+export function parseTsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c !== '"') cell += c;
+      else if (text[i + 1] === '"') { cell += '"'; i++; }
+      else quoted = false;
+    } else if (c === '"' && cell === "") quoted = true;
+    else if (c === "\t") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+const isDocid = (cells: string[]) => /^docid/.test(key((cells.find((c) => c.trim()) ?? "").split(":")[0]));
+
+/** Where each invoice starts (its Docid row) and ends (the last filled row before the next), 0-based. */
+export function invoiceBlocks(rows: string[][]): { start: number; end: number; ref: string }[] {
+  const out: { start: number; end: number; ref: string }[] = [];
+  rows.forEach((r, i) => {
+    if (isDocid(r)) out.push({ start: i, end: i, ref: labelled(r.map((c) => c.trim())).docid ?? "" });
+    else if (out.length && r.some((c) => c.trim())) out[out.length - 1].end = i;
+  });
   return out;
 }
 
@@ -75,7 +112,7 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
     // "Supplier : China" and "Supplier :" both start with the label "supplier".
     const first = key(filled[0].split(":")[0]);
 
-    if (/^docid/.test(first)) {
+    if (isDocid(cells)) {
       const kv = labelled(cells);
       cur = {
         row: i + 1, oldRef: kv.docid ?? "", supplierInvoiceNo: kv.invoiceno || null, rawDate: kv.date ?? "",

@@ -80,6 +80,28 @@ check("two invoices", two.length === 2);
 check("value in the next cell", two[0].oldRef === "s1" && two[0].supplierInvoiceNo === "INV-9" && two[0].supplier === "Thai");
 check("label and value in one cell", two[1].oldRef === "s2" && two[1].supplier === "Nobody" && two[1].location === "Nowhere");
 
+console.log("\n  Pasted, labels in their own cells\n");
+const { parseTsv, invoiceBlocks } = await import("../lib/import-purchase-invoices.ts");
+const PASTE = [
+  "Docid\ts126010001\tDate\t01/01/2026", "Supplier\tChina\tPayment\tCredit", "Location\tMain Store",
+  "Code\tDescription\tQty\tPur.price\tAmount", "IPC006\tiPhone 16 Pro (128GB) CH/A - Black\t5\t3,366,421\t16,832,105",
+  "\t\"350657306659247, 351989738727535,\n355040520651214, 359135885267006, 359135886600353\"",
+  "\t\tInvoice Total\t\t5\t16,832,105", "\t\tNet Total\t\t\t16,832,105", "",
+  "Docid\ts126010002\tDate\t04/01/2026", "Supplier\tThai", "Location\tMain Store",
+  "Code\tDescription\tQty\tPur.price\tAmount", "IPC006\tBlack\t1\t100\t100", "\t\tInvoice Total\t\t1\t100",
+].join("\r\n");
+const pr = parseTsv(PASTE);
+const ps = parsePurchaseReport(pr);
+check("quoted cell with a newline stays one cell", pr[5][1].includes("355040520651214"));
+check("two pasted invoices", ps.length === 2);
+check("colonless labels", ps[0].oldRef === "s126010001" && ps[0].supplier === "China" && ps[0].payment === "Credit"
+  && ps[0].location === "Main Store" && reportDate(ps[0].rawDate) === "2026-01-01", JSON.stringify([ps[0].oldRef, ps[0].supplier, ps[0].payment]));
+check("five IMEIs across a wrapped cell", ps[0].lines[0].serials.length === 5);
+check("totals with the label mid-row", ps[0].totals.invoiceTotal === 16832105 && ps[0].totals.netTotal === 16832105);
+const bl = invoiceBlocks(pr);
+check("where each invoice starts and ends", bl.length === 2 && bl[0].start === 0 && bl[0].end === 7 && bl[1].start === 9 && bl[1].end === 14,
+  JSON.stringify(bl));
+
 console.log("\n  Checks\n");
 const master = {
   suppliers: [{ id: "S-china", code: "01-001", name: "China" }, { id: "S-thai", code: "01-002", name: "Thai" }],

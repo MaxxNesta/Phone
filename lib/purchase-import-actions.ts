@@ -4,19 +4,22 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "./auth";
 import { xlsxToRows } from "./read-spreadsheet";
 import { parseCsv } from "./import-items";
-import { parsePurchaseReport, planPurchaseImport, invoiceStatus, type Mapping, type PlannedInvoice } from "./import-purchase-invoices";
+import { parsePurchaseReport, parseTsv, planPurchaseImport, invoiceStatus, type Mapping, type PlannedInvoice } from "./import-purchase-invoices";
 import { getPurchaseImportMaster, importHistoricalPurchases } from "./historical-purchases";
 
-async function read(content: string, format: "csv" | "xlsx") {
-  return parsePurchaseReport(format === "xlsx" ? await xlsxToRows(content, true) : parseCsv(content));
+export type SourceFormat = "csv" | "xlsx" | "tsv";
+
+/** An uploaded workbook or CSV, or cells pasted from Excel (tab-separated). */
+async function read(content: string, format: SourceFormat) {
+  return parsePurchaseReport(format === "xlsx" ? await xlsxToRows(content, true) : format === "tsv" ? parseTsv(content) : parseCsv(content));
 }
 
 /** The file read and checked, with the suppliers and warehouses a reviewer may map to. Writes nothing. */
-export async function previewPurchaseImport(content: string, format: "csv" | "xlsx") {
+export async function previewPurchaseImport(content: string, format: SourceFormat) {
   const u = await requirePermission("purchase.post");
   const master = await getPurchaseImportMaster(u.companyId);
   const source = await read(content, format);
-  if (source.length === 0) throw new Error("No invoices were found. The report's blocks start with a \"Docid :\" row — is this the purchase invoice report?");
+  if (source.length === 0) throw new Error("No invoices were found. Each invoice starts with a Docid row — is this the purchase invoice report?");
   return {
     invoices: planPurchaseImport(source, master, { suppliers: {}, locations: {} }),
     suppliers: master.suppliers, locations: master.locations,
@@ -29,7 +32,7 @@ export type PurchaseImportResult =
 
 /** Re-reads the file against the database as it is now, then writes the chosen invoices, all or none. */
 export async function runPurchaseImport(input: {
-  content: string; format: "csv" | "xlsx"; filename: string; mapping: Mapping; skip: string[];
+  content: string; format: SourceFormat; filename: string; mapping: Mapping; skip: string[];
 }): Promise<PurchaseImportResult> {
   const u = await requirePermission("purchase.post");
   try {
