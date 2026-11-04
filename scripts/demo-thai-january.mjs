@@ -6,7 +6,7 @@
 //   npx tsx scripts/demo-thai-january.mjs --remove   take it all back out
 //
 // DEV only. The bills' lines are not in the old ledger, only their totals, so
-// each is one line of a demo item ("ZZ-DEMO", no IMEI) at the bill's total; the
+// each is one line of a demo item ("ZZDEMO", no IMEI) at the bill's total; the
 // item and everything posted here go with --remove.
 
 const { sql } = await import("../lib/db.ts");
@@ -24,7 +24,7 @@ if (process.argv.includes("--remove")) {
   const other = await sql`select count(*)::int as n from document where company_id = ${co.id} and partner_id is distinct from ${thai.id}`;
   if (other[0].n) throw new Error(`${other[0].n} documents for other partners exist; not resetting`);
   await resetTransactions(sql);
-  await sql`delete from item where company_id = ${co.id} and code = 'ZZ-DEMO'`;
+  await sql`delete from item where company_id = ${co.id} and code = 'ZZDEMO'`;
   console.log("removed");
   await sql.end(); process.exit(0);
 }
@@ -35,10 +35,10 @@ const loc = await one(sql`select id from location where company_id = ${co.id} an
 const item = await one(sql`
   insert into item (company_id, item_group_id, code, name, base_uom_id, valuation_method, is_stocked, tracks_batch, tracks_expiry,
                     is_active, serial, identity, tracks_serial, code_is_manual, name_is_custom)
-  select company_id, item_group_id, 'ZZ-DEMO', 'ZZ Demo — Thai January bill (old ledger total)', base_uom_id, valuation_method,
+  select company_id, item_group_id, 'ZZDEMO', 'ZZ Demo — Thai January bill (old ledger total)', base_uom_id, valuation_method,
          true, false, false, true, 'ZZDEMO', 'NONE', false, true, true
     from item where company_id = ${co.id} and code = 'LTC01'
-  on conflict do nothing returning id`) ?? await one(sql`select id from item where company_id = ${co.id} and code = 'ZZ-DEMO'`);
+  on conflict do nothing returning id`) ?? await one(sql`select id from item where company_id = ${co.id} and code = 'ZZDEMO'`);
 
 const addDays = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
 
