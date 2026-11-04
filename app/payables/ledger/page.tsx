@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getCompany } from "@/lib/queries";
+import { getCompany, getBranches } from "@/lib/queries";
+import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
 import { getPartnerLedger } from "@/lib/partner-ledger";
 import { PartnerLedgerView } from "@/components/partner-ledger-view";
@@ -13,14 +14,17 @@ export const metadata = { title: "Supplier ledger" };
  * it shows on the day it was paid and the balance goes below zero until the
  * bill arrives; applying it moves nothing here.
  */
-export default async function SupplierLedgerPage({ searchParams }: { searchParams: Promise<{ partner?: string; supplier?: string; from?: string; to?: string }> }) {
+export default async function SupplierLedgerPage({ searchParams }: { searchParams: Promise<{ branch?: string; partner?: string; supplier?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
+  // Someone limited to a branch sees that branch only, whatever the link asks for.
+  const branch = await scopedBranch(sp.branch);
+  const branches = await seenBranches((await getBranches(company.id)) as unknown as { id: string; code: string; name: string }[]);
   const partner = sp.partner || sp.supplier || "";
   const [suppliers, ledger] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${company.id} and is_supplier order by code`,
-    getPartnerLedger(company.id, "SUPPLIER", { partnerId: partner || null, from: sp.from || null, to: sp.to || null }),
+    getPartnerLedger(company.id, "SUPPLIER", { branchId: branch, partnerId: partner || null, from: sp.from || null, to: sp.to || null }),
   ]);
   return (
     <>
@@ -37,7 +41,7 @@ export default async function SupplierLedgerPage({ searchParams }: { searchParam
         <Link href="/payables" role="tab" aria-selected={false}>Suppliers</Link>
         <Link href="/payables/ledger" role="tab" aria-selected className="on">Supplier ledger</Link>
       </div>
-      <PartnerLedgerView side="SUPPLIER" ledger={ledger} partners={suppliers as never} sp={{ ...sp, partner }} base="/payables/ledger" />
+      <PartnerLedgerView side="SUPPLIER" branches={branches} ledger={ledger} partners={suppliers as never} sp={{ ...sp, partner, branch: branch ?? "" }} base="/payables/ledger" />
     </>
   );
 }

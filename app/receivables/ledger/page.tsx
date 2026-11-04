@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getCompany } from "@/lib/queries";
+import { getCompany, getBranches } from "@/lib/queries";
+import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
 import { getPartnerLedger } from "@/lib/partner-ledger";
 import { PartnerLedgerView } from "@/components/partner-ledger-view";
@@ -13,16 +14,19 @@ export const metadata = { title: "Customer ledger" };
  * invoice is a customer advance (Sale Advance): it shows on the day it was
  * received, and applying it to the invoice moves nothing here.
  */
-export default async function CustomerLedgerPage({ searchParams }: { searchParams: Promise<{ partner?: string; township?: string; from?: string; to?: string }> }) {
+export default async function CustomerLedgerPage({ searchParams }: { searchParams: Promise<{ branch?: string; partner?: string; township?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
+  // Someone limited to a branch sees that branch only, whatever the link asks for.
+  const branch = await scopedBranch(sp.branch);
+  const branches = await seenBranches((await getBranches(company.id)) as unknown as { id: string; code: string; name: string }[]);
   const [customers, towns, ledger] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${company.id} and is_customer
           ${sp.township ? (sp.township === "-" ? sql`and township is null` : sql`and township = ${sp.township}`) : sql``}
         order by code`,
     sql`select distinct township from business_partner where company_id = ${company.id} and is_customer and township is not null order by township`,
-    getPartnerLedger(company.id, "CUSTOMER", { partnerId: sp.partner || null, township: sp.township || null, from: sp.from || null, to: sp.to || null }),
+    getPartnerLedger(company.id, "CUSTOMER", { branchId: branch, partnerId: sp.partner || null, township: sp.township || null, from: sp.from || null, to: sp.to || null }),
   ]);
   return (
     <>
@@ -38,8 +42,8 @@ export default async function CustomerLedgerPage({ searchParams }: { searchParam
         <Link href="/receivables" role="tab" aria-selected={false}>Customers</Link>
         <Link href="/receivables/ledger" role="tab" aria-selected className="on">Customer ledger</Link>
       </div>
-      <PartnerLedgerView side="CUSTOMER" ledger={ledger} partners={customers as never}
-        townships={towns.map((t) => t.township as string)} sp={sp} base="/receivables/ledger" />
+      <PartnerLedgerView side="CUSTOMER" branches={branches} ledger={ledger} partners={customers as never}
+        townships={towns.map((t) => t.township as string)} sp={{ ...sp, branch: branch ?? "" }} base="/receivables/ledger" />
     </>
   );
 }

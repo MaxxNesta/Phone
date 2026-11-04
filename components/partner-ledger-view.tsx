@@ -9,11 +9,13 @@ import { AutoSubmit } from "./auto-submit";
  * partner — and, for customers, per township above them, with the township's
  * total — then opening, each document with the running balance, and the total.
  */
-export function PartnerLedgerView({ side, ledger, partners, townships, sp, base }: {
+export function PartnerLedgerView({ side, ledger, partners, townships, branches = [], sp, base }: {
   side: Side; ledger: PartnerLedger;
   partners: { id: string; code: string; name: string }[];
   townships?: string[];
-  sp: { partner?: string; township?: string; from?: string; to?: string };
+  /** The branches this person may pick from; one or none hides the choice. */
+  branches?: { id: string; code: string; name: string }[];
+  sp: { partner?: string; township?: string; from?: string; to?: string; branch?: string };
   base: string;
 }) {
   const cust = side === "CUSTOMER";
@@ -36,6 +38,15 @@ export function PartnerLedgerView({ side, ledger, partners, townships, sp, base 
     <>
       <form className="sl-filter card" action={base}>
         <AutoSubmit />
+        {branches.length > 1 && (
+          <div className="field">
+            <label htmlFor="branch">Branch</label>
+            <select id="branch" name="branch" defaultValue={sp.branch ?? ""}>
+              <option value="">All branches</option>
+              {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </div>
+        )}
         {cust && townships && (
           <div className="field">
             <label htmlFor="township">Township</label>

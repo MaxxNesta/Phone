@@ -1,4 +1,5 @@
 import { sql } from "./db";
+import { branchFilterOn } from "./queries";
 
 /**
  * The supplier and customer ledgers: each partner's documents in date order,
@@ -13,6 +14,11 @@ import { sql } from "./db";
  * the bill comes, as it always did. Applying an advance only moves the amount
  * between the two accounts for the same partner — it nets to nothing here and is
  * left out.
+ *
+ * By branch, each line counts where it sits: an advance taken in Yangon and
+ * applied to a Mandalay invoice clears Yangon's advance and Mandalay's
+ * receivable, so narrowed to one branch the application shows as "Advance
+ * applied" — the half that branch carries.
  */
 export type Side = "SUPPLIER" | "CUSTOMER";
 
@@ -40,10 +46,13 @@ const KIND: Record<string, string> = {
   PURCHASE_INVOICE: "Purchase", DEBIT_NOTE: "Debit note", PURCHASE_RETURN: "Return",
   SALES_INVOICE: "Sales", CREDIT_NOTE: "Credit note", SALES_RETURN: "Return",
   JOURNAL_VOUCHER: "Journal", OPENING_BALANCE: "Opening balance",
+  ADVANCE_APPLICATION: "Advance applied",
 };
 
 export async function getPartnerLedger(companyId: string, side: Side, f: {
   partnerId?: string | null; township?: string | null; from?: string | null; to?: string | null;
+  /** One branch and its warehouses; null is every branch. Callers pass scopedBranch's answer. */
+  branchId?: string | null;
 }): Promise<PartnerLedger> {
   const r0 = ROLE[side];
   // Every partner line on its control account or the advances account, summed per entry.
@@ -61,6 +70,7 @@ export async function getPartnerLedger(companyId: string, side: Side, f: {
          ${f.partnerId ? sql`and jl.partner_id = ${f.partnerId}` : sql``}
          ${f.township ? (f.township === "-" ? sql`and p.township is null` : sql`and p.township = ${f.township}`) : sql``}
          ${f.to ? sql`and je.entry_date <= ${f.to}::date` : sql``}
+         ${branchFilterOn(sql`jl`, f.branchId)}
          and (jl.account_id = (select id from adv)
               or jl.account_id = fn_resolve_control_account(${companyId}, ${r0.control}, jl.partner_id))
     ),
@@ -111,12 +121,13 @@ export async function getPartnerLedger(companyId: string, side: Side, f: {
 }
 
 /** Each partner's unapplied advance: paid or taken ahead, not yet set against a bill (positive either side). */
-export async function getAdvanceBalances(companyId: string, side: Side): Promise<Map<string, number>> {
+export async function getAdvanceBalances(companyId: string, side: Side, branchId: string | null = null): Promise<Map<string, number>> {
   const rows = await sql`
     select jl.partner_id, sum(jl.base_amount)::float as bal
       from journal_line jl
      where jl.company_id = ${companyId} and jl.account_id = fn_system_account(${companyId}, ${ROLE[side].advance})
        and jl.partner_id is not null
+       ${branchFilterOn(sql`jl`, branchId)}
      group by jl.partner_id
     having round(sum(jl.base_amount), 2) <> 0`;
   return new Map(rows.map((r) => [r.partner_id as string, side === "SUPPLIER" ? Number(r.bal) : -Number(r.bal)]));

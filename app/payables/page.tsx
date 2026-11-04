@@ -1,5 +1,5 @@
 import { BranchScope } from "@/components/branch-scope";
-import { seenLocations } from "@/lib/branch-scope";
+import { seenLocations, scopedBranch } from "@/lib/branch-scope";
 import { periodFromParams } from "@/lib/date-range";
 import { UrlDateFilter } from "@/components/date-filter";
 import Link from "next/link";
@@ -67,7 +67,8 @@ export default async function Payables({
     getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations(), period) as Promise<any[]>,
     seenLocations().then((locs) => unbilledReceipts(company.id, locs))
       .then((rows) => period ? rows.filter((r) => r.docDate >= period.from && r.docDate < period.to) : rows),
-    getAdvanceBalances(company.id, "SUPPLIER"),
+    // Only the branch someone is limited to; everything for everyone else.
+    scopedBranch(null).then((b) => getAdvanceBalances(company.id, "SUPPLIER", b)),
   ]);
   // Paid ahead and not yet set against a bill: shown beside what is owed, and a
   // supplier with only an advance still gets a row — its balance is below zero.
