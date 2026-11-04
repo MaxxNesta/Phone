@@ -2,7 +2,8 @@
 // through the ordinary engine — to check the customer ledger reads as the old
 // report did, township by township.
 //
-//   npx tsx scripts/demo-customers-january.mjs
+//   npx tsx scripts/demo-customers-january.mjs            the four customers
+//   npx tsx scripts/demo-customers-january.mjs --advance  plus an example customer advance (C0361)
 //
 // DEV only, after demo-thai-january.mjs (it uses that demo item, ZZDEMO). The
 // invoices' lines are not in the old ledger, only their totals, so each is one
@@ -37,6 +38,20 @@ const receipt = async (partner, date, cash, ref, invoiceId, amount, memo) => {
   console.log("receipt", date, ref, amount, r.docNo);
 };
 
+// --advance: an example, not from the old ledger — money taken before the invoice
+// (a customer advance), then the invoice, and the advance applied to it.
+if (process.argv.includes("--advance")) {
+  const ngwe = await cust("C0361");
+  const r = await P.postCustomerReceipt({ companyId: co.id, partnerId: ngwe, docDate: "2026-01-20", cashAccountId: KBZ,
+    allocations: [], advance: 1_500_000, locationId: loc.id, reference: "demo-adv-1", memo: "Example advance (not from the old ledger)" });
+  console.log("advance 2026-01-20", r.docNo);
+  const inv = await sale(ngwe, "2026-01-25", "demo-sale-1", 1_500_000, "Example sale against the advance");
+  await P.applyAdvance({ companyId: co.id, invoiceId: inv, docDate: "2026-01-25", allocations: [{ paymentId: r.id, amount: 1_500_000 }] });
+  console.log("applied");
+  await sql.end(); process.exit(0);
+}
+
+if (!process.argv.includes("--advance")) {
 const htet = await cust("C0265");
 const h1 = await sale(htet, "2026-01-11", "c226010058", 2_380_000, "11/01/2026");
 await receipt(htet, "2026-01-13", MMQR, "c226010058", h1, 2_380_000, "Htet Wai MMQR Cash နှင့်ရှင်း");
@@ -54,5 +69,7 @@ const yay = await cust("C0274");
 const y1 = await sale(yay, "2026-01-22", "c226020011", 3_250_000, "22.1.26");
 await receipt(yay, "2026-01-24", UAB, "c226020011", y1, 3_250_000, "ရေခဲတောင် (မုဒုံ) Mobile UAB Bank AC ဝင်");
 
+
 console.log("done");
+}
 await sql.end();

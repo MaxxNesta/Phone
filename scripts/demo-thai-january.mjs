@@ -23,7 +23,7 @@ if (process.argv.includes("--remove")) {
   const { resetTransactions } = await import("./test-reset.mjs");
   // The customer demo (demo-customers-january.mjs) goes with it: posted journals cannot be removed one by one.
   const extra = await sql`select count(*)::int as n from document d left join business_partner p on p.id = d.partner_id
-    where d.company_id = ${co.id} and (p.code is null or p.code not in ('01-002', 'C0265', 'C0274', 'C0297', 'C0360'))`;
+    where d.company_id = ${co.id} and (p.code is null or p.code not in ('01-002', 'C0265', 'C0274', 'C0297', 'C0360', 'C0361'))`;
   if (extra[0].n) throw new Error(`${extra[0].n} documents not from the demos exist; not resetting`);
   await resetTransactions(sql);
   await sql`delete from item where company_id = ${co.id} and code = 'ZZDEMO'`;
