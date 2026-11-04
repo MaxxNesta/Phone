@@ -5790,6 +5790,8 @@ export async function getAdvancesFor(companyId: string, documentId: string) {
 export type AdvanceApplication = {
   invoice_id: string;
   invoice_no: string;
+  /** The invoice's old-system id (s126010015), when it was imported. */
+  invoice_ref: string | null;
   application_id: string | null;
   application_no: string | null;
   applied_on: string;
@@ -5809,6 +5811,8 @@ export type AdvanceRow = {
   method: string | null;
   method_kind: string | null;
   reference: string | null;
+  /** The old system's reference for the payment itself (sa26010001), when it has one. */
+  old_ref: string | null;
   /** The cash or bank account it moved through. */
   account: string | null;
   taken: number;
@@ -5873,7 +5877,7 @@ export async function getAdvanceLedger(
     select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as doc_date,
            d.partner_id, p.code as partner_code, p.name as partner_name,
            l.name as branch,
-           pc.name as method, pc.kind as method_kind, d.payment_reference as reference,
+           pc.name as method, pc.kind as method_kind, d.payment_reference as reference, d.reference as old_ref,
            (select x.code || ' · ' || x.name from journal_line jl join account x on x.id = jl.account_id
              where jl.journal_entry_id = d.journal_entry_id and x.is_cash_account limit 1) as account,
            d.gross_total::float                                    as taken,
@@ -5897,7 +5901,7 @@ export async function getAdvanceLedger(
 
   const applied = await sql`
     select pa.payment_id,
-           pa.invoice_id, inv.doc_no as invoice_no,
+           pa.invoice_id, inv.doc_no as invoice_no, inv.source_ref as invoice_ref,
            pa.applied_by_document_id as application_id,
            app.doc_no as application_no,
            -- The application document's own date where there is one. An

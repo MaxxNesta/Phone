@@ -2,6 +2,7 @@ import Link from "next/link";
 import { money, shortDate } from "@/lib/format";
 import { DataTable, type DataRow } from "@/components/data-table";
 import type { AdvanceRow } from "@/lib/queries";
+import { ExportCsvButton } from "@/components/export-csv";
 
 const TABS: Array<["" | "open" | "spent", string]> = [
   ["", "All"],
@@ -48,10 +49,24 @@ export function AdvanceLedger({
     return m;
   }, new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 
+  // The export keeps what the screen shows under each advance: one line for the
+  // money, then one per invoice it went to — so the file answers "which bills".
+  const csv: (string | number)[][] = [[
+    "Line", "Date", "Document", "Old ref", `${who} code`, who, "Branch", "Method", "Account",
+    sales ? "Taken" : "Paid", "Applied", "Left", "Applied on", "Application", "Invoice", "Invoice old ref", "Amount applied",
+  ]];
+  for (const r of shown) {
+    const lead = [r.doc_date, r.doc_no, r.old_ref ?? "", r.partner_code, r.partner_name, r.branch ?? "", r.method ?? "", r.account ?? ""];
+    csv.push(["Advance", ...lead, r.taken, r.applied, r.remaining, "", "", "", "", ""]);
+    for (const a of r.applications) {
+      csv.push(["Applied", ...lead, "", "", "", a.applied_on, a.application_no ?? "when taken", a.invoice_no, a.invoice_ref ?? "", a.amount]);
+    }
+  }
+
   const rows: DataRow[] = shown.map((r) => ({
     key: r.id,
-    searchText: [r.doc_no, r.partner_code, r.partner_name, r.method, r.reference,
-      ...r.applications.map((a) => `${a.invoice_no} ${a.application_no ?? ""}`)]
+    searchText: [r.doc_no, r.old_ref, r.partner_code, r.partner_name, r.method, r.reference,
+      ...r.applications.map((a) => `${a.invoice_no} ${a.invoice_ref ?? ""} ${a.application_no ?? ""}`)]
       .filter(Boolean).join(" "),
     sort: {
       doc_date: r.doc_date,
@@ -92,6 +107,7 @@ export function AdvanceLedger({
               ? <span className={`pill ${r.method_kind === "WALLET" || r.method_kind === "QR" ? "info" : ""}`}>{r.method}</span>
               : <span style={{ color: "var(--muted)" }}>—</span>}
             {r.reference && <div className="m">{r.reference}</div>}
+            {r.old_ref && <div className="m" style={{ color: "var(--muted)" }}>Old ref {r.old_ref}</div>}
             {r.account && <div className="m" style={{ color: "var(--muted)" }}>{r.account}</div>}
           </td>
           <td className="r">{money(r.taken)}</td>
@@ -121,6 +137,7 @@ export function AdvanceLedger({
                 : <span className="adv-note"> allocated when taken</span>}
               {" → "}
               <Link href={`/documents/${a.invoice_id}`} className="m">{a.invoice_no}</Link>
+              {a.invoice_ref && <span className="adv-note"> · {a.invoice_ref}</span>}
             </td>
             <td className="r">{money(a.amount)}</td>
             <td />
@@ -180,6 +197,7 @@ export function AdvanceLedger({
             <h2>{who} advances</h2>
             <span className="actions">
               <span className="page-sub">{shown.length} shown</span>
+              <ExportCsvButton name={sales ? "customer-advances" : "supplier-advances"} rows={csv} />
               <Link href={sales ? "/receivables/receive" : "/payables/pay"} className="btn">
                 {sales ? "Receive payment" : "Pay supplier"}
               </Link>
