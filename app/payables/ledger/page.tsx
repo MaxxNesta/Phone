@@ -22,11 +22,11 @@ export default async function SupplierLedgerPage({ searchParams }: { searchParam
     getSupplierLedger(company.id, { partnerId: sp.supplier || null, from: sp.from || null, to: sp.to || null }),
   ]);
   const neg = (n: number) => (n < 0 ? { color: "var(--bad)" } : undefined);
-  const csv: (string | number)[][] = [["Supplier code", "Supplier", "Date", "Type", "Reference", "Purchase", "Payment", "Balance"]];
+  const csv: (string | number)[][] = [["Supplier code", "Supplier", "Date", "Type", "Document", "Old ref", "Description", "Purchase", "Payment", "Balance"]];
   for (const g of ledger) {
-    csv.push([g.code, g.name, "", "Opening", "", "", "", g.opening]);
-    for (const r of g.rows) csv.push([g.code, g.name, r.date, r.kind, r.reference, r.purchase || "", r.payment || "", r.balance]);
-    csv.push([g.code, g.name, "", "Total", "", g.purchases, g.payments, g.closing]);
+    csv.push([g.code, g.name, "", "Opening", "", "", "", "", "", g.opening]);
+    for (const r of g.rows) csv.push([g.code, g.name, r.date, r.kind, r.docNo ?? r.entryNo, r.oldRef ?? "", r.description, r.purchase || "", r.payment || "", r.balance]);
+    csv.push([g.code, g.name, "", "Total", "", "", "", g.purchases, g.payments, g.closing]);
   }
 
   return (
@@ -68,24 +68,26 @@ export default async function SupplierLedgerPage({ searchParams }: { searchParam
           <div className="tablewrap">
             <table className="sl-table">
               <thead>
-                <tr><th>Date</th><th>Type</th><th>Reference</th><th className="r">Purchase</th><th className="r">Payment</th><th className="r">Balance</th></tr>
+                <tr><th>Date</th><th>Type</th><th>Document</th><th>Old ref</th><th>Description</th><th className="r">Purchase</th><th className="r">Payment</th><th className="r">Balance</th></tr>
               </thead>
               {ledger.map((g) => (
                 <tbody key={g.partnerId}>
-                  <tr className="sl-head"><td className="code">{g.code}</td><td colSpan={5}><strong>{g.name}</strong></td></tr>
-                  <tr className="sl-open"><td /><td><strong>Opening</strong></td><td /><td /><td /><td className="r" style={neg(g.opening)}>{money(g.opening)}</td></tr>
+                  <tr className="sl-head"><td className="code">{g.code}</td><td colSpan={7}><strong>{g.name}</strong></td></tr>
+                  <tr className="sl-open"><td /><td><strong>Opening</strong></td><td colSpan={5} /><td className="r" style={neg(g.opening)}>{money(g.opening)}</td></tr>
                   {g.rows.map((r) => (
                     <tr key={`${r.entryNo}-${r.partnerId}`}>
                       <td className="code">{shortDate(r.date)}</td>
                       <td>{r.kind}</td>
-                      <td className="wrap">{r.docId ? <Link href={`/documents/${r.docId}`}>{r.reference || r.docNo}</Link> : r.reference || r.entryNo}</td>
+                      <td className="code narrow">{r.docId ? <Link href={`/documents/${r.docId}`}>{r.docNo}</Link> : r.entryNo}</td>
+                      <td className="code narrow">{r.oldRef ?? ""}</td>
+                      <td className="sl-desc" title={r.description}>{r.description}</td>
                       <td className="r">{r.purchase ? money(r.purchase) : ""}</td>
                       <td className="r">{r.payment ? money(r.payment) : ""}</td>
                       <td className="r" style={neg(r.balance)}>{money(r.balance)}</td>
                     </tr>
                   ))}
                   <tr className="sl-total">
-                    <td colSpan={3} className="r"><strong>Total {g.name}</strong></td>
+                    <td colSpan={5} className="r"><strong>Total {g.name}</strong></td>
                     <td className="r"><strong>{money(g.purchases)}</strong></td>
                     <td className="r"><strong>{money(g.payments)}</strong></td>
                     <td className="r" style={neg(g.closing)}><strong>{money(g.closing)}</strong></td>

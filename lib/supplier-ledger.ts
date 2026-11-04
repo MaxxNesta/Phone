@@ -15,7 +15,11 @@ import { sql } from "./db";
 export type LedgerRow = {
   partnerId: string; code: string; name: string;
   date: string; entryNo: string; docId: string | null; docNo: string | null; kind: string;
-  reference: string; purchase: number; payment: number; balance: number;
+  /** The old system's reference (s126010015, sa26010001), when it came from there. */
+  oldRef: string | null;
+  /** What it was: the bank or cash a payment left from, and the remark. */
+  description: string;
+  purchase: number; payment: number; balance: number;
 };
 export type SupplierLedger = {
   partnerId: string; code: string; name: string;
@@ -71,11 +75,13 @@ export async function getSupplierLedger(companyId: string, f: { partnerId?: stri
     const kind = r.doc_type === "SUPPLIER_PAYMENT"
       ? (r.on_adv && owed < 0 ? "Supplier advance" : "Payment")
       : KIND[r.doc_type as string] ?? (r.doc_type ? String(r.doc_type).replace(/_/g, " ").toLowerCase() : String(r.source_type).toLowerCase());
-    const reference = [r.source_ref, r.doc_no, r.paid_from, r.reference !== r.source_ref ? r.reference : null, r.memo]
-      .filter((x, i, all) => x && String(x).trim() && all.indexOf(x) === i).join(" · ");
+    // A bill keeps its old id as source_ref; a payment keeps it as its reference.
+    const oldRef = (r.source_ref || r.reference || null) as string | null;
+    const description = [r.paid_from, r.memo]
+      .filter((x, i, all) => x && String(x).trim() && x !== oldRef && all.indexOf(x) === i).join(" · ");
     g.rows.push({
       partnerId: id, code: r.code, name: r.name, date: r.date, entryNo: r.entry_no, docId: r.doc_id ?? null, docNo: r.doc_no ?? null,
-      kind, reference, purchase: owed > 0 ? owed : 0, payment: owed < 0 ? -owed : 0, balance: 0,
+      kind, oldRef, description, purchase: owed > 0 ? owed : 0, payment: owed < 0 ? -owed : 0, balance: 0,
     });
   }
   for (const g of out.values()) {

@@ -9154,3 +9154,4 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .sl-table tr.sl-head > td { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); padding-top: 10px; padding-bottom: 10px; }
 .sl-table tr.sl-open > td { border-bottom: 1px solid var(--line); }
 .sl-table tr.sl-total > td { border-top: 1px solid var(--line); border-bottom: 2px solid var(--line); }
+.sl-table td.sl-desc { color: var(--muted); max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
