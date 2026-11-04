@@ -74,7 +74,7 @@ export default async function Receivables({
         </td>
         <td className="r">{c.credit_limit != null ? money(c.credit_limit) : "—"}</td>
         <td className="tight">
-          <Link href={`/sales/invoices?customer=${c.partner_id}`} className="btn ghost tiny">View</Link>
+          <Link href={`/receivables/ledger?partner=${c.partner_id}`} className="btn ghost tiny">Ledger</Link>
         </td>
       </tr>
     ),
@@ -91,6 +91,10 @@ export default async function Receivables({
           balance kept on the customer, so it can never drift from the invoices
           behind it.
         </HelpHint>
+      </div>
+      <div className="vtabs pay-tabs" role="tablist" aria-label="Receivables">
+        <Link href="/receivables" role="tab" aria-selected className="on">Customers</Link>
+        <Link href="/receivables/ledger" role="tab" aria-selected={false}>Customer ledger</Link>
       </div>
 
       <div className="kpis">

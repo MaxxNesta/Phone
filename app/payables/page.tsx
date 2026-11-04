@@ -10,7 +10,7 @@ import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { CouriersView } from "./couriers-view";
 import { costSection } from "@/lib/courier-payables";
-import { getSupplierAdvanceBalances } from "@/lib/supplier-ledger";
+import { getAdvanceBalances } from "@/lib/partner-ledger";
 
 const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
   ["", "All"],
@@ -67,7 +67,7 @@ export default async function Payables({
     getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations(), period) as Promise<any[]>,
     seenLocations().then((locs) => unbilledReceipts(company.id, locs))
       .then((rows) => period ? rows.filter((r) => r.docDate >= period.from && r.docDate < period.to) : rows),
-    getSupplierAdvanceBalances(company.id),
+    getAdvanceBalances(company.id, "SUPPLIER"),
   ]);
   // Paid ahead and not yet set against a bill: shown beside what is owed, and a
   // supplier with only an advance still gets a row — its balance is below zero.
@@ -140,7 +140,7 @@ export default async function Payables({
           {money(Number(s.outstanding) - advanceOf(s.partner_id))}
         </td>
         <td className="tight">
-          <Link href={`/payables/ledger?supplier=${s.partner_id}`} className="btn ghost tiny">Ledger</Link>
+          <Link href={`/payables/ledger?partner=${s.partner_id}`} className="btn ghost tiny">Ledger</Link>
         </td>
       </tr>
     ),
