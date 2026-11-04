@@ -7003,8 +7003,11 @@ async function _postNote(
       select fn_resolve_control_account(${companyId}, 'AP_CONTROL', ${partnerId}) as a`;
     journal.push({ accountId: ap[0].a, amount: gross, partnerId,
                    ...(fx ? { currency: fx.currency, fcAmount: toFc(gross, fx) } : {}) });
-    const ret = await tx`
-      select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
+    // A discount the supplier allows after billing lands where the bill's own
+    // discounts do (Purchase Discounts); any other correction is a return of cost.
+    const ret = input.category === "DISCOUNT"
+      ? await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`
+      : await tx`select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
     journal.push({ accountId: ret[0].a, amount: -amount });
     if (tax !== 0 && rate) {
       journal.push({ accountId: taxAccountFor(rate, "input"), amount: -tax });
@@ -8246,7 +8249,7 @@ export async function applyAdvance(input: {
 
     const entryId = await writeJournal(
       tx, companyId, docDate, "ADVANCE_APPLICATION", doc.id,
-      `${docNo} applying ${total} to ${inv.doc_no}`,
+      `${docNo} applying ${total.toLocaleString("en-US", { maximumFractionDigits: 2 })} to ${inv.doc_no}`,
       journal
     );
     await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;

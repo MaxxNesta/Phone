@@ -9147,3 +9147,10 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .pimp-foot > .pimp-progress { flex: 1 0 100%; margin: 0 0 4px; }
 /* A purchase line's free units, as the sales voucher shows them: the Free item row under the line. */
 .linetable.vgrid tr.vline-free > td { background: var(--ground); padding-top: 10px; padding-bottom: 10px; font-variant-numeric: tabular-nums; }
+/* Supplier ledger: the old report's shape — a grey band per supplier, opening, rows, total. */
+.sl-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 14px 16px; margin-bottom: 14px; }
+.sl-filter .field { min-width: 12rem; }
+.sl-table { font-variant-numeric: tabular-nums; }
+.sl-table tr.sl-head > td { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); padding-top: 10px; padding-bottom: 10px; }
+.sl-table tr.sl-open > td { border-bottom: 1px solid var(--line); }
+.sl-table tr.sl-total > td { border-top: 1px solid var(--line); border-bottom: 2px solid var(--line); }
