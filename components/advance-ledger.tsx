@@ -37,9 +37,10 @@ export function AdvanceLedger({ side, advances }: { side: "CUSTOMER" | "SUPPLIER
   const scoped = useMemo(() => advances.filter((r) => (!partner || r.partner_id === partner) && inDateRange(r.doc_date, dates)), [advances, partner, dates]);
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return scoped.filter((r) => (!tab || state(r) === tab) && (!needle || [r.doc_no, r.old_ref, r.partner_code, r.partner_name, r.account, r.reference,
+    return scoped.filter((r) => (!tab || state(r) === tab) && (!needle || [r.doc_no, r.old_ref, r.account, r.reference,
       ...r.applications.flatMap((a) => [a.invoice_no, a.invoice_ref, a.application_no])].some((x) => x && String(x).toLowerCase().includes(needle))));
   }, [scoped, tab, q]);
+  // The supplier or customer is chosen in its own picker; the search finds documents.
   useEffect(() => setPage(0), [tab, q, partner, dates, size]);
   const pages = Math.max(1, Math.ceil(shown.length / size));
   const rows = shown.slice(page * size, page * size + size);
@@ -80,7 +81,7 @@ export function AdvanceLedger({ side, advances }: { side: "CUSTOMER" | "SUPPLIER
         </div>
         <label className="adv-search">
           <Search size={15} aria-hidden="true" />
-          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${who.toLowerCase()} or document`} aria-label="Search advances" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search document or old ref" aria-label="Search advances by document or old reference" />
         </label>
         <PartnerFilter partners={partners} value={partner} onChange={setPartner} all={sales ? "All customers" : "All suppliers"} who={who} />
         <DateFilter value={dates} onChange={setDates} />
