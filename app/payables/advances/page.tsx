@@ -7,9 +7,9 @@ import { HelpHint } from "@/components/help-hint";
 export default async function SupplierAdvances({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { status } = await searchParams;
+  await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -28,7 +28,7 @@ export default async function SupplierAdvances({
         </HelpHint>
       </div>
 
-      <AdvanceLedger side="SUPPLIER" advances={advances} status={status} />
+      <AdvanceLedger side="SUPPLIER" advances={advances} />
     </>
   );
 }

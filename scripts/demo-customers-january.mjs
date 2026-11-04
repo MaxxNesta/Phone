@@ -4,6 +4,7 @@
 //
 //   npx tsx scripts/demo-customers-january.mjs            the four customers
 //   npx tsx scripts/demo-customers-january.mjs --advance  plus an example customer advance (C0361)
+//   npx tsx scripts/demo-customers-january.mjs --more     a partly used supplier advance (China) and an unused customer one (C0359)
 //
 // DEV only, after demo-thai-january.mjs (it uses that demo item, ZZDEMO). The
 // invoices' lines are not in the old ledger, only their totals, so each is one
@@ -51,7 +52,25 @@ if (process.argv.includes("--advance")) {
   await sql.end(); process.exit(0);
 }
 
-if (!process.argv.includes("--advance")) {
+// --more: examples, not from the old ledgers — a supplier advance partly used and a
+// customer advance not used yet, so each partner shows a balance of its own.
+if (process.argv.includes("--more")) {
+  const china = await cust("01-001");
+  const sup = await P.postSupplierPayment({ companyId: co.id, partnerId: china, docDate: "2026-01-08", cashAccountId: KBZ,
+    allocations: [], advance: 5_000_000, locationId: loc.id, reference: "demo-adv-2", memo: "Example supplier advance (not from the old ledger)" });
+  const bill = await P.postPurchaseWithReceipt({ companyId: co.id, partnerId: china, locationId: loc.id, docDate: "2026-01-09", dueDate: "2026-02-08",
+    memo: "Example bill against the advance", receivedAt: null, lines: [{ itemId: item.id, qty: 1, unitPrice: 3_000_000 }] });
+  await sql`update document set source_ref = 'demo-bill-2' where id = ${bill.id} or id = (select source_document_id from document where id = ${bill.id})`;
+  await P.applyAdvance({ companyId: co.id, invoiceId: bill.id, docDate: "2026-01-09", allocations: [{ paymentId: sup.id, amount: 3_000_000 }] });
+  console.log("China advance", sup.docNo, "bill", bill.docNo, "applied 3,000,000 of 5,000,000");
+  const koAung = await cust("C0359");
+  const r = await P.postCustomerReceipt({ companyId: co.id, partnerId: koAung, docDate: "2026-01-21", cashAccountId: MMQR,
+    allocations: [], advance: 2_000_000, locationId: loc.id, reference: "demo-adv-3", memo: "Example advance not yet used (not from the old ledger)" });
+  console.log("Ko Aung advance", r.docNo, "unapplied");
+  await sql.end(); process.exit(0);
+}
+
+if (!process.argv.includes("--advance") && !process.argv.includes("--more")) {
 const htet = await cust("C0265");
 const h1 = await sale(htet, "2026-01-11", "c226010058", 2_380_000, "11/01/2026");
 await receipt(htet, "2026-01-13", MMQR, "c226010058", h1, 2_380_000, "Htet Wai MMQR Cash နှင့်ရှင်း");
