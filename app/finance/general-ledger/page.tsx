@@ -315,11 +315,30 @@ function toDetailBlocks(blocks: Awaited<ReturnType<typeof getLedgerDetails>>): D
     partnerName: b.partnerName, split: b.partnerId !== null || b.partnerName !== null,
     opening: b.opening, debits: b.debits, credits: b.credits, closing: b.closing,
     lines: b.lines.map((l) => ({ date: l.date, docId: l.docId, docNo: l.docNo, entryNo: l.entryNo, contra: l.contra,
-      debit: l.debit, credit: l.credit,
+      debit: l.debit, credit: l.credit, ...asTheOldLedgerReads(b.partnerName, l) ?? {
       // Its own note, else the entry's; else, as the legacy report reads, "Kant Kaw – Sales invoice".
       text: l.lineMemo?.trim() || cleanMemo(l.memo, l.docNo, LABEL[l.docType ?? ""] ?? l.docType ?? "")
-        || [b.partnerName, LABEL[l.docType ?? ""] ?? l.docType].filter(Boolean).join(" – ") || "—" })),
+        || [b.partnerName, LABEL[l.docType ?? ""] ?? l.docType].filter(Boolean).join(" – ") || "—" } })),
   }));
+}
+
+/**
+ * A partner's line, read as the old ledger read it. A bill names itself — its
+ * old number, else this one — and "Thai – Purchase Credit", rather than the
+ * GR/IR clearing it actually posts against (the receipt it came with clears
+ * that the same day). A payment or receipt reads "Bank" or "Cash". The real
+ * accounts stay behind the line, on hover.
+ */
+function asTheOldLedgerReads(partner: string | null, l: Awaited<ReturnType<typeof getLedgerDetails>>[number]["lines"][number]) {
+  if (!partner) return null;
+  if (l.docType === "PURCHASE_INVOICE" || l.docType === "SALES_INVOICE") {
+    const what = l.docType === "PURCHASE_INVOICE" ? "Purchase" : "Sales";
+    return { shown: l.sourceRef || l.docNo || l.entryNo, text: `${partner} – ${what} ${l.paymentType === "CASH" ? "Cash" : "Credit"}` };
+  }
+  if ((l.docType === "SUPPLIER_PAYMENT" || l.docType === "CUSTOMER_RECEIPT") && l.contra[0]?.money) {
+    return { text: l.contra[0].money };
+  }
+  return null;
 }
 
 // ------------------------------------------------------------ one account --

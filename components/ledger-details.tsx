@@ -8,6 +8,8 @@ import { ExportCsvButton } from "./export-csv";
 export type DetailLine = {
   date: string; docId: string | null; docNo: string | null; entryNo: string;
   contra: { account: string; amount: number }[]; text: string; debit: number; credit: number;
+  /** What the account column reads, where it is not simply the other side's account (a bill reads its own number). */
+  shown?: string;
 };
 export type DetailBlock = {
   key: string; accountCode: string; accountName: string; partnerName: string | null; split: boolean;
@@ -34,7 +36,7 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
   // The export is this layout: each block's lines, then its total, opening and closing.
   const csv: (string | number)[][] = [["Account code", "Account", "Date", "Document", "Account name (other side)", "Description", "Debit", "Credit"],
     ...blocks.flatMap((b) => [
-      ...b.lines.map((l) => [b.accountCode, name(b), l.date, l.docNo ?? l.entryNo, l.contra.map((c) => c.account).join(" / "), l.text, l.debit || "", l.credit || ""]),
+      ...b.lines.map((l) => [b.accountCode, name(b), l.date, l.docNo ?? l.entryNo, l.shown ?? l.contra.map((c) => c.account).join(" / "), l.text, l.debit || "", l.credit || ""]),
       [b.accountCode, name(b), "", "", "", "Total", b.debits, b.credits],
       [b.accountCode, name(b), "", "", "", "Opening", b.opening > 0 ? b.opening : "", b.opening < 0 ? -b.opening : ""],
       [b.accountCode, name(b), "", "", "", "Closing", b.closing < 0 ? -b.closing : "", b.closing > 0 ? b.closing : ""],
@@ -81,7 +83,7 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
                       <td className="code">{b.accountCode}</td>
                       {/* The main account on the other side (a sale: Sales); hover lists every account with its amount. */}
                       <td className="ledger-desc" title={l.contra.map((c) => `${c.account}  ${money(c.amount)}`).join("\n") || undefined}>
-                        <span className="clip">{l.contra[0]?.account ?? "—"}</span>
+                        <span className="clip">{l.shown ?? l.contra[0]?.account ?? "—"}</span>
                       </td>
                       <td className="code">{l.docId ? <Link href={`/documents/${l.docId}`} style={{ color: "var(--link)" }}>{l.docNo}</Link> : l.entryNo}</td>
                       <td className="ledger-desc" title={l.text}><span className="clip">{l.text}</span></td>
