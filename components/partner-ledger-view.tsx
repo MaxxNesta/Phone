@@ -2,6 +2,7 @@ import Link from "next/link";
 import { money, shortDate } from "@/lib/db";
 import type { PartnerLedger, Side } from "@/lib/partner-ledger";
 import { ExportCsvButton } from "./export-csv";
+import { AutoSubmit } from "./auto-submit";
 
 /**
  * The supplier or customer ledger, as the old reports printed it: a band per
@@ -34,6 +35,7 @@ export function PartnerLedgerView({ side, ledger, partners, townships, sp, base 
   return (
     <>
       <form className="sl-filter card" action={base}>
+        <AutoSubmit />
         {cust && townships && (
           <div className="field">
             <label htmlFor="township">Township</label>
@@ -54,7 +56,6 @@ export function PartnerLedgerView({ side, ledger, partners, townships, sp, base 
         <div className="field"><label htmlFor="from">From</label><input id="from" name="from" type="date" defaultValue={sp.from ?? ""} /></div>
         <div className="field"><label htmlFor="to">To</label><input id="to" name="to" type="date" defaultValue={sp.to ?? ""} /></div>
         <div className="actions">
-          <button type="submit">Show</button>
           <ExportCsvButton name={cust ? "customer-ledger" : "supplier-ledger"} rows={csv} />
         </div>
       </form>
