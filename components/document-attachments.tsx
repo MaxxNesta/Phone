@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Paperclip, Trash2, FileText, Image as ImageIcon } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { shortDate } from "@/lib/format";
+import { ConfirmDelete } from "./confirm-delete";
 
 export type Attachment = {
   id: string;
@@ -110,13 +111,13 @@ export function DocumentAttachments({
                       {a.note ? ` · ${a.note}` : ""}
                     </span>
                   </span>
-                  <form action={deleteAction}>
+                  <ConfirmDelete action={deleteAction} pending={deleting}
+                    error={delResult && "error" in delResult ? delResult.error : null}
+                    className="btn ghost tiny" ariaLabel={`Remove ${a.filename}`}
+                    label={<Trash2 size={13} aria-hidden="true" />} pendingLabel="…"
+                    title={`Remove ${a.filename}?`} detail="The file is deleted from this document. This cannot be undone.">
                     <input type="hidden" name="attachment_id" value={a.id} />
-                    <button type="submit" className="btn ghost tiny" disabled={deleting}
-                            aria-label={`Remove ${a.filename}`}>
-                      <Trash2 size={13} aria-hidden="true" />
-                    </button>
-                  </form>
+                  </ConfirmDelete>
                 </li>
               );
             })}

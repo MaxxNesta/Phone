@@ -31,7 +31,7 @@ export async function saveCurrency(_prev: Result, fd: FormData): Promise<Result>
   return { ok: `${code} saved` };
 }
 
-export async function deleteCurrency(fd: FormData) {
+export async function deleteCurrency(_prev: unknown, fd: FormData) {
   await requirePermission("settings.manage");
   const code = str(fd, "code");
   const [used] = await sql`
@@ -42,9 +42,10 @@ export async function deleteCurrency(fd: FormData) {
          or exists (select 1 from company where base_currency = ${code})
          or exists (select 1 from account where currency = ${code})
          or exists (select 1 from item_price where currency = ${code})) as yes`;
-  if (used?.yes) throw new Error(`${code} is in use and cannot be deleted.`);
+  if (used?.yes) return { error: `${code} is used by documents, rates, partners, accounts or prices, so it stays. Stop using it there first.` };
   await sql`delete from currency where code = ${code}`;
   revalidatePath("/settings/currencies");
+  return { ok: true as const };
 }
 
 /** Who may keep rates: whoever buys stock or keeps the books. */
@@ -81,8 +82,13 @@ export async function saveRate(_prev: Result, fd: FormData): Promise<Result> {
   return { ok: `1 ${from} = ${rate.toLocaleString("en-US")} ${co.base_currency} from ${validFrom}` };
 }
 
-export async function deleteRate(fd: FormData) {
-  const user = await rateKeeper();
-  await sql`delete from exchange_rate where id = ${str(fd, "id")} and company_id = ${user.companyId}`;
+export async function deleteRate(_prev: unknown, fd: FormData) {
+  try {
+    const user = await rateKeeper();
+    await sql`delete from exchange_rate where id = ${str(fd, "id")} and company_id = ${user.companyId}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
   revalidatePath("/settings/currencies");
+  return { ok: true as const };
 }

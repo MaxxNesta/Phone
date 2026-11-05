@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
 import { RowMenu } from "./row-menu";
+import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
 
 type Category = {
@@ -41,7 +42,7 @@ export function PartnerCategoryRow({
   const [activeState, activeFormAction] = useActionState<ActionResult | null, FormData>(
     setActiveAction as never, null,
   );
-  const [delState, delFormAction] = useActionState<ActionResult | null, FormData>(
+  const [delState, delFormAction, delPending] = useActionState<ActionResult | null, FormData>(
     deleteAction as never, null,
   );
 
@@ -151,10 +152,11 @@ export function PartnerCategoryRow({
               </button>
             </form>
             {!inUse && (
-              <form action={delFormAction}>
+              <ConfirmDelete action={delFormAction} pending={delPending}
+                error={delState && "error" in delState ? delState.error : null}
+                className="danger" title={c("deleteName", { name: category.name })} detail={c("cannotUndo")}>
                 <input type="hidden" name="id" value={category.id} />
-                <button type="submit">{c("delete")}</button>
-              </form>
+              </ConfirmDelete>
             )}
           </RowMenu>
         </td>

@@ -2,6 +2,7 @@ import { sql } from "@/lib/db";
 import { requireUser, can } from "@/lib/auth";
 import { deleteCurrency, deleteRate } from "@/lib/currency-actions";
 import { CurrencyForm, RateForm } from "@/components/currency-forms";
+import { DeleteButton } from "@/components/confirm-delete";
 import { shortDate } from "@/lib/format";
 
 export const metadata = { title: "Currencies" };
@@ -59,10 +60,10 @@ export default async function Currencies() {
                             <summary className="linkish">Edit</summary>
                             <div className="rowpop-panel">
                               <CurrencyForm currency={c} />
-                              <form action={deleteCurrency}>
+                              <DeleteButton action={deleteCurrency} className="linkish danger" label="Delete (only if unused)"
+                                title={`Delete ${c.code} · ${c.name}?`} detail="Only a currency nothing uses can go. This cannot be undone.">
                                 <input type="hidden" name="code" value={c.code} />
-                                <button className="linkish" style={{ color: "var(--bad)" }}>Delete (only if unused)</button>
-                              </form>
+                              </DeleteButton>
                             </div>
                           </details>
                         )}
@@ -103,10 +104,11 @@ export default async function Currencies() {
                 <td>{r.rate_type.toLowerCase()}</td>
                 <td className="num">{r.rate.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td>
                 <td>
-                  <form action={deleteRate}>
+                  <DeleteButton action={deleteRate} className="linkish" ariaLabel={`Delete ${r.from_currency} rate of ${shortDate(r.valid_from)}`}
+                    title={`Delete the ${r.from_currency} rate of ${shortDate(r.valid_from)}?`}
+                    detail="Documents already posted keep the rate they used.">
                     <input type="hidden" name="id" value={r.id} />
-                    <button className="linkish" aria-label={`Delete ${r.from_currency} rate of ${shortDate(r.valid_from)}`}>Delete</button>
-                  </form>
+                  </DeleteButton>
                 </td>
               </tr>
             ))}

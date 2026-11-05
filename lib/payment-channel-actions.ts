@@ -144,7 +144,7 @@ export async function setPaymentChannelActive(fd: FormData): Promise<void> {
 }
 
 /** Only a channel no payment has used; one that has is deactivated instead. */
-export async function deletePaymentChannel(fd: FormData): Promise<void> {
+export async function deletePaymentChannel(_prev: unknown, fd: FormData): Promise<ActionResult> {
   const user = await requirePermission("settings.manage");
   const id = str(fd, "id");
   await sql.begin(async (tx) => {
@@ -159,4 +159,5 @@ export async function deletePaymentChannel(fd: FormData): Promise<void> {
     if (gone) await audit(tx as never, user.companyId, null, user.id, "DELETE", { id, name: gone.name });
   });
   revalidatePath(PATH);
+  return { ok: true as const };
 }

@@ -5748,6 +5748,13 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 button.danger-solid { background: var(--bad); border-color: var(--bad); color: #fff; }
 button.danger-solid:hover { opacity: 0.9; }
 .confirm.alertish .confirm-icon:not(.info) { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+/* Why a delete was refused: the answer, so it reads as content, not a caption. */
+.confirm-reason {
+  color: var(--ink); white-space: pre-line; text-align: left;
+  background: var(--ground); border-radius: 10px; padding: 10px 12px;
+}
+.confirm.alertish .confirm-actions { flex-wrap: wrap; }
+.confirm.alertish .confirm-actions > .field { flex-basis: 100%; }
 
 /* An item's code, on hover: names carry the line, the code is there when
    somebody needs to quote it. */
@@ -9181,3 +9188,6 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .tb-ws tr.tb-ws-adj > td { background: color-mix(in srgb, var(--ink) 3%, transparent); }
 .tb-switch { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; }
 .tb-switch .vtabs { margin: 0; }
+
+/* A refusal under a row wraps inside its cell instead of running off the table. */
+td > .hint { white-space: normal; max-width: 32rem; }

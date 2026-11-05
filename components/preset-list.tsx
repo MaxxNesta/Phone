@@ -7,6 +7,7 @@ import type { ActionResult } from "@/lib/actions";
 import { METRICS, type MetricId } from "@/lib/supplier-metrics";
 import { shortDate } from "@/lib/format";
 import { HelpHint } from "./help-hint";
+import { ConfirmDelete } from "./confirm-delete";
 
 /**
  * Saved radar layouts, managed away from the chart that uses them.
@@ -89,12 +90,12 @@ export function PresetList({
                               href={`/purchases/supplier-performance?axes=${p.axes.join(",")}`}>
                           Open
                         </Link>
-                        <form action={formAction}>
+                        <ConfirmDelete action={formAction} pending={pending}
+                          error={state && "error" in state ? state.error : null}
+                          className="ghost" title={`Delete ${p.name}?`}
+                          detail="The saved layout goes; the measurements it showed are not touched.">
                           <input type="hidden" name="id" value={p.id} />
-                          <button type="submit" className="ghost" disabled={pending}>
-                            Delete
-                          </button>
-                        </form>
+                        </ConfirmDelete>
                       </div>
                     </td>
                   </tr>

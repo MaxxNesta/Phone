@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { DeleteButton } from "./confirm-delete";
 
 export type ChannelRow = {
   id: string; code: string; name: string; kind: string; is_active: boolean;
@@ -106,7 +107,7 @@ export function PaymentChannelRow({ c, accounts, branches, update, setActive, re
   c: ChannelRow; accounts: Opt[]; branches: Opt[];
   update: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   setActive: (fd: FormData) => Promise<void>;
-  remove: (fd: FormData) => Promise<void>;
+  remove: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(update as never, null);
@@ -128,6 +129,11 @@ export function PaymentChannelRow({ c, accounts, branches, update, setActive, re
         <td>{c.is_active ? "Active" : "Inactive"}</td>
         <td className="r" style={{ whiteSpace: "nowrap" }}>
           <button type="button" className="linkish" onClick={() => setEditing((e) => !e)}>{editing ? "Close" : "Edit"}</button>
+          {c.used === 0 && (
+            <>{" · "}<DeleteButton action={remove} className="linkish danger" title={`Delete ${c.name}?`} detail="No payment has used it. This cannot be undone.">
+              <input type="hidden" name="id" value={c.id} />
+            </DeleteButton></>
+          )}
         </td>
       </tr>
       {editing && (
@@ -142,10 +148,6 @@ export function PaymentChannelRow({ c, accounts, branches, update, setActive, re
                 <button type="submit" className="btn ghost" formAction={setActive} name="active" value={c.is_active ? "0" : "1"}>
                   {c.is_active ? "Deactivate" : "Activate"}
                 </button>
-                {c.used === 0 && (
-                  <button type="submit" className="btn ghost danger" formAction={remove}
-                    onClick={(e) => { if (!confirm(`Delete ${c.name}?`)) e.preventDefault(); }}>Delete</button>
-                )}
               </div>
             </form>
           </td>

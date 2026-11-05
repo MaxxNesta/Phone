@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronUp, ChevronDown, X, Plus, Pencil } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
 
 export type Option = {
@@ -45,13 +46,13 @@ export function AttributeCard({
 
   const [addRes, addAction, adding] =
     useActionState<ActionResult | null, FormData>(addOption as never, null);
-  const [rmRes, rmAction] =
+  const [rmRes, rmAction, rmPending] =
     useActionState<ActionResult | null, FormData>(removeOption as never, null);
   const [mvRes, mvAction] =
     useActionState<ActionResult | null, FormData>(moveOption as never, null);
   const [upRes, upAction] =
     useActionState<ActionResult | null, FormData>(update as never, null);
-  const [delRes, delAction] =
+  const [delRes, delAction, delPending] =
     useActionState<ActionResult | null, FormData>(remove as never, null);
   const [edRes, edAction] =
     useActionState<ActionResult | null, FormData>(updateOption as never, null);
@@ -169,13 +170,13 @@ export function AttributeCard({
                     <ChevronDown size={13} aria-hidden="true" />
                   </button>
                 </form>
-                <form action={rmAction}>
+                <ConfirmDelete action={rmAction} pending={rmPending}
+                  error={rmRes && "error" in rmRes ? rmRes.error : null}
+                  className="btn ghost tiny" ariaLabel={t("remove", { name: o.name })}
+                  label={<X size={13} aria-hidden="true" />} pendingLabel="…"
+                  title={c("deleteName", { name: o.name })} detail={c("cannotUndo")}>
                   <input type="hidden" name="id" value={o.id} />
-                  <button type="submit" className="btn ghost tiny"
-                          aria-label={t("remove", { name: o.name })}>
-                    <X size={13} aria-hidden="true" />
-                  </button>
-                </form>
+                </ConfirmDelete>
                 </>
                 )}
               </li>
@@ -207,10 +208,12 @@ export function AttributeCard({
             </button>
           </form>
           {attribute.products === 0 && (
-            <form action={delAction}>
+            <ConfirmDelete action={delAction} pending={delPending}
+              error={delRes && "error" in delRes ? delRes.error : null}
+              className="btn ghost tiny"
+              title={c("deleteName", { name: attribute.name })} detail={c("cannotUndo")}>
               <input type="hidden" name="id" value={attribute.id} />
-              <button type="submit" className="btn ghost tiny">{c("delete")}</button>
-            </form>
+            </ConfirmDelete>
           )}
         </div>
       </div>

@@ -214,7 +214,9 @@
     "viewAll": "View all",
     "from": "From",
     "to": "To",
-    "allItems": "All items"
+    "allItems": "All items",
+    "cantDelete": "Can't delete",
+    "ok": "OK"
   },
   "products": {
     "title": "Products",
@@ -958,7 +960,8 @@
     "modelCodeInvalid": "Type a model code of letters and digits, e.g. IPC.",
     "variantCodesMissing": "Every variant needs a code.",
     "variantCodeInvalid": "{code} is not a usable code. Use letters, digits and - . _ / only.",
-    "variantCodeTwice": "Code {code} is typed for two variants."
+    "variantCodeTwice": "Code {code} is typed for two variants.",
+    "locationUsedBy": "Still in use by {list}. Move or remove those first, or deactivate it instead: that keeps its history."
   },
   "pos": {
     "title": "Counter sale",

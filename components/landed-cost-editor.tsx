@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { Plus, Trash2, Link2 } from "lucide-react";
 import { saveLandedCostAction, landedCostStepAction } from "@/lib/landed-cost-actions";
+import { ConfirmDelete } from "./confirm-delete";
 
 type Method = "VALUE" | "EQUAL" | "MANUAL";
 const METHODS: [Method, string][] = [
@@ -355,9 +356,24 @@ export function LandedCostStep({ id, step, label, prominent, confirm, children }
   label: string; prominent?: boolean; confirm?: string; children?: React.ReactNode;
 }) {
   const [state, act, pending] = useActionState(landedCostStepAction, null);
+  // A step that needs a second look asks in the app's own dialog; anything
+  // the step needs (the reason to reverse) is asked for there too.
+  if (confirm) return (
+    <div className="lc-step">
+      <ConfirmDelete action={act} pending={pending} error={state?.error ?? null}
+        className={prominent ? "btn" : "btn ghost"} label={label} pendingLabel="Working…"
+        title={confirm} confirmLabel={label}
+        confirmClassName={step === "post" ? "" : "danger-solid"}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="step" value={step} />
+        {children && <div className="field" style={{ width: "100%", textAlign: "left" }}>{children}</div>}
+      </ConfirmDelete>
+      {state?.error && <span className="lc-step-msg bad" role="alert">{state.error}</span>}
+      {state?.ok && <span className="lc-step-msg ok" role="status">{state.ok}</span>}
+    </div>
+  );
   return (
-    <form action={act} className="lc-step"
-      onSubmit={(e) => { if (confirm && !window.confirm(confirm)) e.preventDefault(); }}>
+    <form action={act} className="lc-step">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="step" value={step} />
       {children}
