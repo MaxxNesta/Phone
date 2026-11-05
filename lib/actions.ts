@@ -4330,17 +4330,45 @@ export async function activateLocation(_prev: unknown, fd: FormData): Promise<Ac
  * transactions are append-only, so a warehouse with history stays as a
  * foreign key everywhere it was used. Deactivating is the way to retire one.
  */
+/** Plain names for the tables that point at a location; anything else reads as its table name. */
+const HOLDERS: Record<string, string> = {
+  app_user: "user", location: "warehouse", receipt_template: "receipt template", document: "document",
+  stock_movement: "stock movement", stock_balance: "stock balance", stock_serial: "phone",
+  journal_line: "ledger line", payment_channel_branch_account: "payment method account",
+};
+
+/**
+ * What still points at a row, counted from the database's own foreign keys —
+ * so the answer to "why can't I delete this" stays true as tables are added.
+ * Only run after a delete has already been refused.
+ */
+async function whatUses(table: string, id: string): Promise<string> {
+  const fks = await sql`
+    select c.conrelid::regclass::text as tbl, a.attname as col
+      from pg_constraint c
+      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+     where c.contype = 'f' and c.confrelid = ${table}::regclass and cardinality(c.conkey) = 1`;
+  const counts = await Promise.all(fks.map(async (f) => {
+    const [r] = await sql`select count(*)::int as n from ${sql(f.tbl as string)} where ${sql(f.col as string)} = ${id}`;
+    return { what: HOLDERS[f.tbl as string] ?? (f.tbl as string).replace(/_/g, " "), n: r.n as number };
+  }));
+  const by = new Map<string, number>();
+  for (const c of counts) if (c.n) by.set(c.what, (by.get(c.what) ?? 0) + c.n);
+  return [...by].map(([what, n]) => `${n.toLocaleString("en-US")} ${what}${n === 1 ? "" : "s"}`).join(", ");
+}
+
 export async function deleteLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("settings.manage");
+  const id = str(fd, "id");
   try {
     const co = await companyId();
-    const id = str(fd, "id");
     if (!id) return { error: await m("chooseWarehouse") };
 
     await sql`delete from location where id = ${id} and company_id = ${co}`;
   } catch (e) {
     if (isForeignKeyViolation(e)) {
-      return { error: await m("warehouseInUse") };
+      const list = await whatUses("location", id!).catch(() => "");
+      return { error: list ? await m("locationUsedBy", { list }) : await m("warehouseInUse") };
     }
     return { error: e instanceof Error ? e.message : String(e) };
   }
