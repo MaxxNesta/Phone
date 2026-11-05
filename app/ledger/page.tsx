@@ -267,6 +267,7 @@ export default async function TrialBalance({
         </div>
       </div>
 
+      <div className={selected ? "tb-split" : ""}>
       {version === "worksheet" ? (
         <section>
           <div className="card">
@@ -283,9 +284,9 @@ export default async function TrialBalance({
                 </thead>
                 <tbody>
                   {ws.filter((r) => r.un.dr || r.un.cr || r.aj.dr || r.aj.cr || r.ad.dr || r.ad.cr).map((r) => (
-                    <tr key={r.id} className={r.aj.dr || r.aj.cr ? "tb-ws-adj" : undefined}>
-                      <td className="code"><Link href={glHref(r.id, "account")} style={{ color: "var(--link)" }}>{r.code}</Link></td>
-                      <td>{r.name}</td>
+                    <tr key={r.id} className={[r.aj.dr || r.aj.cr ? "tb-ws-adj" : "", r.id === p.account ? "tb-selected" : ""].join(" ").trim() || undefined}>
+                      <td className="code"><Link href={keep({ account: r.id })} style={{ color: "var(--link)" }}>{r.code}</Link></td>
+                      <td><Link href={keep({ account: r.id })} style={{ color: "var(--link)" }}>{r.name}</Link></td>
                       <td className="r dr">{r.un.dr ? money(r.un.dr) : "–"}</td><td className="r cr">{r.un.cr ? money(r.un.cr) : "–"}</td>
                       <td className="r dr">{r.aj.dr ? money(r.aj.dr) : ""}</td><td className="r cr">{r.aj.cr ? money(r.aj.cr) : ""}</td>
                       <td className="r dr">{r.ad.dr ? money(r.ad.dr) : "–"}</td><td className="r cr">{r.ad.cr ? money(r.ad.cr) : "–"}</td>
@@ -310,7 +311,6 @@ export default async function TrialBalance({
           </div>
         </section>
       ) : (
-      <div className={selected ? "tb-split" : ""}>
         <section>
           <div className="card">
             <div className="card-head">
@@ -393,6 +393,7 @@ export default async function TrialBalance({
             </div>
           </div>
         </section>
+      )}
 
         {selected && (
           <aside className="card tb-aside">
@@ -421,6 +422,20 @@ export default async function TrialBalance({
               <dl className="kv">
                 <dt>Debits</dt><dd className="r dr">{money(selected.debit)}</dd>
                 <dt>Credits</dt><dd className="r cr">{money(selected.credit)}</dd>
+                {(() => {
+                  const full = (all as any[]).find((x) => x.id === selected.id);
+                  const adj = Number(full?.adj_balance) || 0;
+                  if (!full || (!Number(full.adj_debit) && !Number(full.adj_credit))) return null;
+                  const un = Number(full.balance) - adj;
+                  const fmt = (v: number) => `${money(Math.abs(v))}${v ? (v > 0 ? " Dr" : " Cr") : ""}`;
+                  return (
+                    <>
+                      <dt>Unadjusted balance</dt><dd className="r">{fmt(un)}</dd>
+                      <dt>Adjustments</dt><dd className="r">{fmt(adj)}</dd>
+                      <dt>Adjusted balance</dt><dd className="r">{fmt(Number(full.balance))}</dd>
+                    </>
+                  );
+                })()}
                 <dt>Normal balance</dt>
                 <dd>{NORMAL[selected.account_type] ?? "—"}</dd>
                 <dt>On the expected side</dt>
@@ -447,7 +462,6 @@ export default async function TrialBalance({
           </aside>
         )}
       </div>
-      )}
     </>
   );
 }
