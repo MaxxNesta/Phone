@@ -89,6 +89,35 @@ const PRODUCTS = [
       ["LTC05", "Flip Cover (Lenovo 11” TB335FC)"],
       ["LTG01", "Glass (Lenovo TB335FC 11”)"], ["LTG02", "Glass (Lenovo TB365FC 12”)"]]
     .map(([code, name]) => ({ code, name, group: "ACC", brand: "LENOVO", identity: "NONE", attrs: [], variants: [] })),
+  // The shop's "Apple Accessories" list. Each one its own item, no variants (the
+  // user: too few options to be worth it); names exactly as the shop has them.
+  // AirPods go under Earbuds & Audio with an optional serial; Jisulife Fun Life
+  // are handheld fans. APP01 has no name in the shop's list and is left out.
+  ...[["AP001", "Airpod Pro 3"], ["AP002", "Airpod 4"], ["AP003", "Airpod 4 (ANC)"], ["AP004", "IP Airpod 4"],
+      ["AP005", "IP Airpod 4 (ANC)"], ["AP006", "Airpod 4 ZA/A"], ["AP007", "Airpod Pro 3 ZA/A"]]
+    .map(([code, name]) => ({ code, name, group: "AUD", brand: "APPLE", identity: "OPTIONAL", attrs: [], variants: [] })),
+  ...[["A001", "Air 6 13 inch case"], ["A002", "Air 6 13 inch film"], ["ADP01", "Iphone 20W Adaptor"],
+      ["AK001", "Magic Keyboard cover - black"], ["AKL01", "Iphone C to C 60W Cable"],
+      ["AKL02", "Iphone C to Lighting Cable"], ["AKL03", "Iphone C to C 240W Cable"],
+      ["APP02", "IP Pencil Lightning"], ["APP03", "IP Pencil USB-C"], ["IPK001", "iPad pro magic keyboard"],
+      ["IPP001", "IPad Pencil Pro"],
+      ["IPR001", "IPhone 17 Pro Max Silicon Clear Magsafe Cover"], ["IPR002", "IPhone 16 Pro Max Silicon Clear Magsafe Cover"],
+      ["IPR003", "iPhone 16 Pro Silicon Clear Magsafe Cover"], ["IPR004", "iPhone 16 Silicon Clear Magsafe Cover"],
+      ["IPR005", "Iphone 15 Silicon Clear Magsafe Cover"], ["IPR006", "IPhone 13 Silicon Clear Magsafe Cover"],
+      ["IPR007", "Iphone 15 Pro Max Silicon Clear Magsafe Cover"], ["IPR008", "IPhone 17 Pro TechWoven Case (Brown)"],
+      ["IPR009", "IPhone 17 Pro TechWoven Case (Black)"], ["IPR010", "IPhone 17 Pro TechWoven Case (Blue)"],
+      ["IPS001", "iPhone Seals (16)"], ["IPS002", "iPhone Seals (17 Pro max)"], ["IPS003", "iPhone Seals (17)"],
+      ["IPS004", "iPhone Seals(16 pro)"], ["IPS005", "iPhone Seals(17 pro)"], ["IPS006", "IPhone Seals (low) 2024"],
+      ["IPS007", "iPhone Seals (low) 2025"], ["IPS008", "iPhone Seals (18 Pro Max)"], ["IPS009", "iPhone Seals (low) 2026"]]
+    .map(([code, name]) => ({ code, name, group: "ACC", brand: "APPLE", identity: "NONE", attrs: [], variants: [] })),
+  ...[["AKN01", "Anker Nano 45W Charger - White", "ANKER"], ["AKN02", "Anker Nano 45W Charger - Black", "ANKER"],
+      ["AKN03", "Anker Nano 45W Charger - Blue", "ANKER"], ["MMX01", "MOMAX PD 20W", "MOMAX"],
+      ["MPG01", "Mophie 45W GAN", "MOPHIE"], ["MPG02", "Mophie 30W", "MOPHIE"]]
+    .map(([code, name, brand]) => ({ code, name, group: "ACC", brand, identity: "NONE", attrs: [], variants: [] })),
+  ...[["JFL10", "Jisulife Fun life 10 4000 mah-Blue"], ["JFL5", "Jisulife Fun life 5plus 4000 mah-brown"],
+      ["JFL7", "Jisulife Fun life 7 3600 mah-pink"]]
+    .map(([code, name]) => ({ code, name, group: "FAN", brand: "JISULIFE", identity: "NONE", attrs: [], variants: [] })),
+  { code: "SIM01", name: "Mytel Sim", group: "SIM", brand: "MYTEL", identity: "NONE", attrs: [], variants: [] },
 ];
 
 try {
