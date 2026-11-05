@@ -102,6 +102,23 @@ const bl = invoiceBlocks(pr);
 check("where each invoice starts and ends", bl.length === 2 && bl[0].start === 0 && bl[0].end === 7 && bl[1].start === 9 && bl[1].end === 14,
   JSON.stringify(bl));
 
+console.log("\n  A paste that lost its line breaks\n");
+{
+  const flat = PASTE.split(/\r?\n/).join("\t");
+  const a = parsePurchaseReport(parseTsv(PASTE)), b = parsePurchaseReport(parseTsv(flat));
+  check("one long line reads as the rows it was", b.length === 2 && JSON.stringify(b.map((i) => [i.oldRef, i.supplier, i.location, i.lines.map((l) => [l.code, l.qty, l.amount, l.serials.length]), i.totals.invoiceTotal]))
+    === JSON.stringify(a.map((i) => [i.oldRef, i.supplier, i.location, i.lines.map((l) => [l.code, l.qty, l.amount, l.serials.length]), i.totals.invoiceTotal])),
+    JSON.stringify(b.map((i) => [i.oldRef, i.lines.length])));
+  const sample = parsePurchaseReport(parseTsv(SAMPLE.split("\n").join("\t")));
+  check("the purchase sample too, Count at the end of each line", sample.length === 1 && sample[0].lines.length === 4
+    && sample[0].lines.every((l) => l.count === l.serials.length) && sample[0].totals.netTotal === 50387932, JSON.stringify(sample[0]?.lines.map((l) => [l.code, l.count, l.serials.length])));
+  const noA = parsePurchaseReport(parseTsv("Description\tQty\tPur.price\tAmount\tType\tRemark\nIPhone 17 (256GB) ZA/A - Silver/White\t5.00\t3,727,011.00\t18,635,055.00\t\t1128390\tCount :5"));
+  check("without column A there is no invoice to read", noA.length === 0);
+  const coded = parsePurchaseReport(parseTsv("Docid : x1\tDate : 02/01/2026\nSupplier : China\nLocation : Main Warehouse\nDescription\tQty\tPur.price\tAmount\nIPZ003 name\t1.00\t100.00\t100.00\nInvoice Total\t1\t100"));
+  check("a line with no code keeps its description and numbers", coded[0]?.lines[0]?.code === "" && coded[0].lines[0].description === "IPZ003 name" && coded[0].lines[0].qty === 1 && coded[0].lines[0].amount === 100,
+    JSON.stringify(coded[0]?.lines));
+}
+
 console.log("\n  Checks\n");
 const master = {
   suppliers: [{ id: "S-china", code: "01-001", name: "China", payment_terms_days: 30 }, { id: "S-thai", code: "01-002", name: "Thai", payment_terms_days: null }],

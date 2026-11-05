@@ -558,6 +558,13 @@ function PasteSheet({ busy, onRead }: { busy: boolean; onRead: (text: string) =>
         </table>
       </div>
       {blocks.length > 0 && blocks[0].start > 0 && <p className="hint">Rows 1–{blocks[0].start} come before the first Docid and are not read.</p>}
+      {blocks.length === 0 && (
+        <div className="alert">
+          No <strong>Docid</strong> row in what was pasted, so no invoice can be read. In this report the Docid, Supplier and
+          Location rows, the item <strong>codes</strong> and the <strong>IMEIs</strong> are all in <strong>column A</strong> — select
+          from column A across to the last column, from the Docid row down to the last total, then copy.
+        </div>
+      )}
       <div className="pimp-pasted-foot">
         <button type="button" onClick={() => onRead(text)} disabled={busy || blocks.length === 0}>
           {busy ? "Reading…" : `Read ${blocks.length || ""} invoice${blocks.length === 1 ? "" : "s"}`}

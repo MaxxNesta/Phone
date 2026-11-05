@@ -81,7 +81,46 @@ export function parseTsv(text: string): string[][] {
     } else cell += c;
   }
   if (cell || row.length) { row.push(cell); rows.push(row); }
-  return rows;
+  return rejoin(rows);
+}
+
+/** Where a row of the report begins: a header label, the line table's head, a total, a serial list. */
+/** The labels of the line table's head. */
+const HEAD = /^(code|description|qty|purprice|saleprice|price|amount|type|remark)$/;
+
+const ROW_START = /^(docid|supplier|customer|location|code|description|invoicetotal|itemdiscount|voucherdiscount|advancepay|paidamount|nettotal|netamount)$/;
+
+/**
+ * A paste that arrived as one long line — tabs between the cells, no breaks
+ * between the rows, as some viewers copy a report — is cut back into rows
+ * where the report's rows begin. A paste with its breaks intact is returned
+ * as it came.
+ */
+function rejoin(rows: string[][]): string[][] {
+  const long = rows.filter((r) => r.filter((c) => c.trim()).length > 0);
+  if (long.length > 2) return rows;
+  const cells = long.flat();
+  const starts = cells.filter((c) => ROW_START.test(key(c.split(":")[0]))).length;
+  if (starts < 2) return rows;
+  const out: string[][] = [];
+  let cur: string[] = [];
+  let inHead = false;
+  const cut = () => { if (cur.some((c) => c.trim())) out.push(cur); cur = []; inHead = false; };
+  const serials = (t: string) => /^\d{8,}(\s*,\s*\d{8,})*$/.test(t);
+  for (const c of cells) {
+    const t = c.trim();
+    const label = key(t.split(":")[0]);
+    // The line table's head ends where its labels do: the next cell starts the first line.
+    if (inHead && t && !HEAD.test(key(t))) cut();
+    // A header label, a total, the head and a list of serials each start a row; "Count :N"
+    // and a list of serials stand on rows of their own, where the line above takes them.
+    if (t && (ROW_START.test(label) || serials(t) || /^count\s*:/i.test(t))) cut();
+    if (t && /^(code|description)$/.test(label) && !cur.some((x) => x.trim())) inHead = true;
+    cur.push(c);
+    if (/^count\s*:/i.test(t) || serials(t)) cut();
+  }
+  cut();
+  return out;
 }
 
 const isDocid = (cells: string[]) => /^docid/.test(key((cells.find((c) => c.trim()) ?? "").split(":")[0]));
@@ -142,7 +181,8 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
       if (kv.remark !== undefined) inv.remark = kv.remark || null;
       return;
     }
-    if (first === "code") { mode = "lines"; return; }
+    // The line table's head; copied without column A it starts at "Description".
+    if (first === "code" || (first === "description" && filled.some((c) => key(c) === "qty"))) { mode = "lines"; return; }
 
     if (first === "invoicetotal" || mode === "totals") {
       mode = "totals";
@@ -184,7 +224,10 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
       return;
     }
     // An item line: code, description, then qty, price, amount; what follows is remark and "Count :N".
-    const [code, description = "", ...rest] = filled;
+    // Copied without the Code column, a line starts at its description: the code is then unknown
+    // and the item is found by its exact name.
+    const noCode = filled.length > 1 && isNum(filled[1]);
+    const [code, description = "", ...rest] = noCode ? ["", ...filled] : filled;
     const nums: number[] = [];
     const extra: string[] = [];
     let count: number | null = null;
@@ -303,6 +346,7 @@ export const netOf = (p: { totals: PlannedInvoice["totals"] }) =>
 
 export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImportMaster, mapping: Mapping): PlannedInvoice[] {
   const items = new Map(master.items.map((i) => [norm(i.code), i]));
+  const byName = new Map(master.items.map((i) => [norm(i.name), i]));
   const known = new Map(master.known.map((k) => [norm(k.ref), k]));
   const historySerials = new Set(master.historySerials);
   const stock = new Map(master.stockSerials.map((x) => [x.serial, x.item_code]));
@@ -325,10 +369,12 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     else if (date < ERP_START) review("Date", `Dated before the company start: posts on ${ERP_START}, with its own date kept on the bill as a note.`);
     if (s.lines.length === 0) err("Products", "No product lines were found under this invoice.");
 
-    const lines: PlannedLine[] = s.lines.map((l, n) => {
-      const it = items.get(norm(l.code));
-      const at = `Line ${n + 1} (${l.code})`;
-      if (!it) err(at, `No item is coded ${l.code} in the catalogue. Add it, then upload again.`);
+    const lines: PlannedLine[] = s.lines.map((l0, n) => {
+      const it = l0.code ? items.get(norm(l0.code)) : byName.get(norm(l0.description));
+      const l = l0.code || !it ? l0 : { ...l0, code: it.code };
+      const at = `Line ${n + 1} (${l.code || l.description})`;
+      if (!it) err(at, l.code ? `No item is coded ${l.code} in the catalogue. Add it, then upload again.`
+        : `No code was copied, and no item is named "${l.description}". Copy column A too — the codes are there.`);
       else if (!it.is_active) err(at, `${it.code} is inactive. Reactivate it before posting.`);
       if (!(l.qty > 0)) err(at, "Quantity must be more than zero.");
       if (Math.abs(l.qty * l.unitPrice - l.amount) > Math.max(1, l.amount * 1e-6))

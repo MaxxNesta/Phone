@@ -32,6 +32,7 @@ const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 
 
 export function planSalesImport(source: SourceInvoice[], master: SalesImportMaster, mapping: Mapping): PlannedInvoice[] {
   const items = new Map(master.items.map((i) => [norm(i.code), i]));
+  const byName = new Map(master.items.map((i) => [norm(i.name), i]));
   const known = new Map(master.known.map((k) => [norm(k.ref), k]));
   const units = new Map(master.units.map((u) => [u.serial, u]));
   const firstSeen = new Map<string, string>();
@@ -55,10 +56,12 @@ export function planSalesImport(source: SourceInvoice[], master: SalesImportMast
     const location = match(s.location, master.locations, mapping.locations[s.location]);
     const where = resolved(location, mapping.locations);
 
-    const lines: PlannedLine[] = s.lines.map((l, n) => {
-      const it = items.get(norm(l.code));
-      const at = `Line ${n + 1} (${l.code})`;
-      if (!it) err(at, `No item is coded ${l.code} in the catalogue.`);
+    const lines: PlannedLine[] = s.lines.map((l0, n) => {
+      const it = l0.code ? items.get(norm(l0.code)) : byName.get(norm(l0.description));
+      const l = l0.code || !it ? l0 : { ...l0, code: it.code };
+      const at = `Line ${n + 1} (${l.code || l.description})`;
+      if (!it) err(at, l.code ? `No item is coded ${l.code} in the catalogue.`
+        : `No code was copied, and no item is named "${l.description}". Copy column A too — the codes are there.`);
       else if (!it.is_active) err(at, `${it.code} is inactive. Reactivate it before posting.`);
       if (!(l.qty > 0)) err(at, "Quantity must be more than zero.");
       if (Math.abs(l.qty * l.unitPrice - l.amount) > Math.max(1, l.amount * 1e-6))
