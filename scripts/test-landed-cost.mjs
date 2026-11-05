@@ -399,14 +399,12 @@ try {
       { itemId: it.id, qty: 1, unitCost: 1_000_000, serials: [imei()] }, { itemId: acc.id, qty: 10, unitCost: 5_000 } ] });
     const lc2 = await L.createLandedCost({ ...actor, docDate: today, receiptIds: [mixed.id] });
     await L.saveLandedCost({ ...actor, id: lc2.id, docDate: today, receiptIds: [mixed.id], charges: [charge("FREIGHT", 10_000, "VALUE")] });
-    const ack = await refused(() => L.calculateLandedCost({ ...actor, id: lc2.id }), /Confirm that the charges go to the IMEI-tracked phones only/);
-    check("a receipt with accessories needs the acknowledgement", ack.ok, ack.msg);
-    await L.acknowledgeExcluded({ ...actor, id: lc2.id });
+    // Every product carries its share now: the cases by their value, no acknowledgement asked.
     await L.calculateLandedCost({ ...actor, id: lc2.id });
     const [a] = await sql`select count(*)::int n, sum(amount)::float v from landed_cost_allocation where landed_cost_id = ${lc2.id}`;
-    check("then the whole 10,000 goes to the one phone", a.n === 1 && near(a.v, 10_000));
-    const ex = await sql`select 1 from landed_cost_allocation a join item i on i.id = a.item_id where a.landed_cost_id = ${lc2.id} and not i.tracks_serial`;
-    check("and nothing to the cases", ex.length === 0);
+    check("a receipt with accessories spreads the 10,000 over the phone and the cases", a.n === 2 && near(a.v, 10_000), JSON.stringify(a));
+    const [cs] = await sql`select sum(a.amount)::float v from landed_cost_allocation a join item i on i.id = a.item_id where a.landed_cost_id = ${lc2.id} and not i.tracks_serial`;
+    check("  the cases by value: 50,000 of 1,050,000 is 476", Math.abs(cs.v - 476.19) < 1, String(cs.v));
     const uncal = await L.createLandedCost({ ...actor, docDate: today, receiptIds: [gr.id] });
     const nc = await refused(() => L.postLandedCost({ ...actor, id: uncal.id }), /Calculate/);
     check("posting before calculating is refused", nc.ok, nc.msg);

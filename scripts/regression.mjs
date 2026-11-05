@@ -61,7 +61,7 @@ const run = (name) => new Promise((resolve) => {
   }, 1000);
   child.on("close", () => {
     clearInterval(tick);
-    const pass = (out.match(/^\s*PASS/gm) ?? []).length;
+    const pass = (out.match(/^\s*(PASS|ok)\b/gm) ?? []).length;
     const fail = (out.match(/^\s*FAIL/gm) ?? []).length;
     const error = /^\s*(ERROR|Error:)|Error: /m.test(out);
     resolve({ name, pass, fail, error, secs: Math.round((Date.now() - started) / 1000), out });

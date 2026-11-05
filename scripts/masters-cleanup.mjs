@@ -25,7 +25,7 @@ const TABLES = ["item", "item_group", "brand", "business_partner"];
 
 export async function snapshotMasters(sql) {
   const snap = {};
-  for (const t of TABLES) snap[t] = new Set((await sql`select id from ${sql(t)}`).map((r) => r.id));
+  for (const t of [...TABLES, "location"]) snap[t] = new Set((await sql`select id from ${sql(t)}`).map((r) => r.id));
   return snap;
 }
 
@@ -76,13 +76,22 @@ async function removeIds(sql, plan) {
     await removeWithDependents(sql, t, ids);
     counts[t] = ids.length;
   }
+  // Branches and warehouses a suite made: warehouses before their branch. Not
+  // through removeWithDependents — users and settings point at locations, and
+  // a row that still holds one is left rather than taken with it.
+  const locs = plan.location ?? [];
+  let gone = 0;
+  for (const id of await sql`select id from location where id = any(${locs}) order by (parent_id is null)`) {
+    gone += await sql`delete from location where id = ${id.id}`.then((r) => r.count, () => 0);
+  }
+  if (locs.length) counts.location = gone;
   return counts;
 }
 
 /** What a run added, taken away. */
 export async function removeNewMasters(sql, snap) {
   const plan = {};
-  for (const t of TABLES) {
+  for (const t of [...TABLES, "location"]) {
     plan[t] = (await sql`select id from ${sql(t)}`).map((r) => r.id).filter((id) => !snap[t].has(id));
   }
   return removeIds(sql, plan);

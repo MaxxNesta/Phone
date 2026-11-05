@@ -43,6 +43,13 @@ const branch = async (name) => (await sql`select id from location where company_
 const cat = async (code) => (await sql`select id from fa_category where company_id = ${co.id} and code = ${code}`)[0].id;
 const [admin] = await sql`select id from app_user where company_id = ${co.id} and role = 'ADMIN' order by created_at limit 1`;
 const NOW = "2026-10"; // the posting run's "current month"
+// The two branches it posts between; made for the suite where the shop has
+// neither, and taken away by the sweep's clean-up.
+for (const [code, name] of [["ZHO", "Head Office"], ["ZB2", "Branch 2"]]) {
+  await sql`insert into location (company_id, code, name, is_stock_location)
+    select ${co.id}, ${code}, ${name}, false
+     where not exists (select 1 from location where company_id = ${co.id} and parent_id is null and name = ${name})`;
+}
 const HO = await branch("Head Office"), B2 = await branch("Branch 2");
 
 async function cleanup() {

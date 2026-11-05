@@ -50,7 +50,7 @@ const near = (a, b) => Math.abs(n(a) - n(b)) < 0.01;
 const tr = (k, v) => `${k}${v ? " " + JSON.stringify(v) : ""}`;
 const refused = async (f) => { try { await f(); return null; } catch (e) { return String(e.message ?? e); } };
 
-let kbzBefore = null;
+let kbzBefore = null, madeKbz = null;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const disposable = /—\s*DEV\b|\bDEV\b/i.test(String(co.name));
@@ -108,6 +108,10 @@ try {
     lines: [{ itemId: item.id, qty: 100, unitCost: 1000 }] });
 
   const channel = async (code) => (await sql`select id from payment_channel where company_id = ${co.id} and code = ${code}`)[0].id;
+  // A shop that dropped KBZPay gets one for the suite, removed again afterwards.
+  [madeKbz] = await sql`insert into payment_channel (company_id, code, name, kind, requires_reference, sort_order)
+    select ${co.id}, 'KBZPAY', 'KBZPay', 'WALLET', true, 30
+     where not exists (select 1 from payment_channel where company_id = ${co.id} and code = 'KBZPAY') returning id`;
   const CASH = await channel("CASH"), KBZ = await channel("KBZPAY"), BANK = await channel("BANK");
   // The wallet's own account: reused if the chart has it, else made, as Settings does.
   // A wallet account of the test's own: a real KBZPay account, active or
@@ -306,6 +310,7 @@ try {
     for (const r of kbzBefore.rows) await sql`insert into payment_channel_account ${sql(r)}`.catch(() => {});
     await sql`delete from account where id = ${kbzBefore.wallet}`.catch(() => {});
   }
+  if (madeKbz) await sql`delete from payment_channel where id = ${madeKbz.id}`.catch(() => {});
   await resetTransactions(sql).catch(() => {});
   await sql`delete from item where code like '98%'`.catch(() => {});
   await sql`delete from item_group where segment = '98'`.catch(() => {});

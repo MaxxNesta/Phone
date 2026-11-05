@@ -47,8 +47,17 @@ try {
 
   await resetTransactions(sql);
 
-  const branches = await sql`select id, code from location
+  // A shop with one branch gets a second one for the suite, with its own
+  // warehouse; the sweep's clean-up takes both away afterwards.
+  const top = () => sql`select id, code from location
      where company_id = ${co.id} and parent_id is null and is_active order by code`;
+  if ((await top()).length < 2) {
+    const [b] = await sql`insert into location (company_id, code, name, is_stock_location)
+      values (${co.id}, 'ZBR', 'Test Branch', false) on conflict do nothing returning id`;
+    if (b) await sql`insert into location (company_id, parent_id, code, name, is_stock_location)
+      values (${co.id}, ${b.id}, 'ZBR-WH', 'Test Branch Warehouse', true)`;
+  }
+  const branches = await top();
   check("the company has more than one branch to add up", branches.length > 1,
     branches.map((b) => b.code).join(", "));
 
