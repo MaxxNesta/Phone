@@ -76,7 +76,7 @@ export async function courierCharges(companyId: string, partnerId: string | null
     select c.id, c.partner_id, lc.id as lc_id, lc.doc_no as lc_no, lc.doc_date::text as doc_date, t.name as cost_type, c.reference,
            coalesce((select json_agg(json_build_object('id', r.id, 'no', r.doc_no) order by r.doc_no)
                from landed_cost_receipt x join document r on r.id = x.receipt_id where x.landed_cost_id = lc.id), '[]'::json) as receipts,
-           (select count(*)::int from landed_cost_allocation a where a.charge_id = c.id) as phones,
+           (select coalesce(sum(a.qty), 0)::float from landed_cost_allocation a where a.charge_id = c.id) as phones,
            c.base_amount::float as owed, ${paidOn()}::float as paid
       from landed_cost_charge c
       join document lc on lc.id = c.landed_cost_id
@@ -188,8 +188,8 @@ export type CourierBillInput = {
   preview?: boolean;
 };
 
-/** One phone's share of a previewed charge. */
-export type PreviewShare = { receiptNo: string; serial: string; item: string; before: number; amount: number };
+/** One phone's share of a previewed charge, or a receipt line's for goods without an IMEI (qty its units). */
+export type PreviewShare = { receiptNo: string; serial: string; item: string; before: number; amount: number; qty: number };
 
 /**
  * A courier's charge for goods already received, booked and spread in one
@@ -272,15 +272,17 @@ export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   await L.calculateLandedCost({ ...actor, id: lc.id }, tx);
   if (input.preview) {
     const shares = await tx`
-      select r.doc_no as "receiptNo", s.serial_no as serial, i.name as item,
-             a.original_cost::float as before, sum(a.amount)::float as amount
+      select r.doc_no as "receiptNo",
+             coalesce(s.serial_no, 'Line ' || dl.line_no || ' · ' || (a.qty::float)::text || ' units') as serial, i.name as item,
+             (a.original_cost * a.qty)::float as before, sum(a.amount)::float as amount, a.qty::float as qty
         from landed_cost_allocation a
-        join stock_serial s on s.id = a.serial_id
+        left join stock_serial s on s.id = a.serial_id
+        left join document_line dl on dl.id = a.receipt_line_id
         join document r on r.id = a.receipt_id
         join item i on i.id = a.item_id
        where a.landed_cost_id = ${lc.id}
-       group by r.doc_no, s.serial_no, i.name, a.original_cost
-       order by r.doc_no, i.name, s.serial_no`;
+       group by r.doc_no, s.serial_no, dl.line_no, i.name, a.original_cost, a.qty
+       order by r.doc_no, i.name, s.serial_no nulls last, dl.line_no`;
     return { ...lc, shares: shares as unknown as PreviewShare[] };
   }
   await L.postLandedCost({ ...actor, id: lc.id }, tx);

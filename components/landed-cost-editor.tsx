@@ -8,7 +8,7 @@ import { ConfirmDelete } from "./confirm-delete";
 type Method = "VALUE" | "EQUAL" | "MANUAL";
 const METHODS: [Method, string][] = [
   ["VALUE", "By purchase value"],
-  ["EQUAL", "Equal per phone"],
+  ["EQUAL", "Equal per unit"],
   ["MANUAL", "Manual by product variant"],
 ];
 

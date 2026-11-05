@@ -3,7 +3,7 @@ import { sql } from "@/lib/db";
 import { DocRefs } from "./doc-refs";
 
 const money = (v: string | number) => Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
-const SPREAD: Record<string, string> = { VALUE: "by purchase value", EQUAL: "equal per phone", MANUAL: "manual by variant" };
+const SPREAD: Record<string, string> = { VALUE: "by purchase value", EQUAL: "equal per unit", MANUAL: "manual by variant" };
 const STATUS: Record<string, string> = { DRAFT: "Draft", CALCULATED: "Calculated", POSTED: "Posted", REVERSED: "Reversed" };
 
 /**

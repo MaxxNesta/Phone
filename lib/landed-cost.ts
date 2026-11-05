@@ -15,18 +15,23 @@
  * with no journal. Once alone on a layer it stays there; later landed costs
  * and reversals reuse that layer.
  *
- * Accessories (items without an IMEI) are not eligible in this version.
+ * Goods without an IMEI or serial number (cases, chargers, SIMs) are fungible
+ * inside their receipt line, so they are costed by the line instead: the
+ * line's share goes onto its cost layer and follows the goods the way a
+ * supplier bill's price correction does — stock value for what is still on
+ * the shelf, cost of sales for what has been sold, carried along with what
+ * was moved to another warehouse (addValueToReceiptLine).
  */
 
 import type { TransactionSql } from "postgres";
 import {
-  round4, inTransaction, writeJournal, createFifoLot, moveSerialsTo, type JournalLine,
+  round4, inTransaction, writeJournal, createFifoLot, moveSerialsTo, addValueToReceiptLine, type JournalLine,
 } from "./posting";
 
 export type Method = "VALUE" | "EQUAL" | "MANUAL";
 export const METHOD_LABEL: Record<Method, string> = {
   VALUE: "By purchase value",
-  EQUAL: "Equal per phone",
+  EQUAL: "Equal per unit",
   MANUAL: "Manual by product variant",
 };
 const METHODS = Object.keys(METHOD_LABEL) as Method[];
@@ -133,40 +138,63 @@ async function assertReceipts(tx: TransactionSql, companyId: string, ids: string
 
 // ------------------------------------------------------ eligible units --
 
+/** A phone (serial_id, qty 1), or a receipt line of goods without one (serial_id null, qty its units). */
 export type Unit = {
-  serial_id: string; serial_no: string; item_id: string; item_name: string;
+  serial_id: string | null; serial_no: string | null; item_id: string; item_name: string;
   receipt_id: string; receipt_no: string; receipt_line_id: string | null; line_no: number;
+  /** Per unit. */
   original_cost: number;
+  qty: number;
 };
 
 /**
- * The phones the receipts brought in, with what each cost to buy: the receipt
+ * What the receipts brought in, with what each cost to buy: the receipt
  * layer's price and any correction a supplier bill made to it, but not
  * earlier landed costs — "by purchase value" means by what was paid for the
- * phone itself.
+ * goods themselves. A phone is a unit of its own; anything else is its
+ * receipt line.
  */
 export async function eligibleUnits(tx: TransactionSql, companyId: string, receiptIds: string[]): Promise<Unit[]> {
   if (receiptIds.length === 0) return [];
-  const rows = await tx`
+  // Bill corrections on the receipt layer gl, never an earlier landed cost.
+  const notLanded = () => tx`
+    coalesce((select sum(a.delta_unit_cost) from stock_lot_adjustment a
+                left join document ad on ad.id = a.document_id
+               where a.lot_id = gl.id and coalesce(ad.doc_type, '') <> 'LANDED_COST'), 0)`;
+  const phones = await tx`
     select s.id as serial_id, s.serial_no, s.item_id, i.name as item_name,
            sm.document_id as receipt_id, d.doc_no as receipt_no,
            sm.document_line_id as receipt_line_id, coalesce(dl.line_no, 0)::int as line_no,
-           (gl.unit_cost + coalesce((
-              select sum(a.delta_unit_cost) from stock_lot_adjustment a
-                left join document ad on ad.id = a.document_id
-               where a.lot_id = gl.id and coalesce(ad.doc_type, '') <> 'LANDED_COST'), 0))::float as original_cost
+           (gl.unit_cost + ${notLanded()})::float as original_cost, 1 as qty
       from stock_serial s
       join stock_movement sm on sm.id = s.stock_movement_id
       join document d on d.id = sm.document_id
       join item i on i.id = s.item_id
       left join document_line dl on dl.id = sm.document_line_id
       join stock_lot gl on gl.stock_movement_id = sm.id
-     where s.company_id = ${companyId} and sm.document_id = any(${receiptIds})
+     where s.company_id = ${companyId} and sm.document_id = any(${receiptIds}) and i.tracks_serial
      order by d.doc_no, dl.line_no, s.serial_no`;
-  return rows as unknown as Unit[];
+  // Lines whose units have no identity of their own: what the line received
+  // and what each unit cost, corrections by a bill included.
+  const lines = await tx`
+    select null::uuid as serial_id, null::text as serial_no, sm.item_id, i.name as item_name,
+           sm.document_id as receipt_id, d.doc_no as receipt_no,
+           sm.document_line_id as receipt_line_id, dl.line_no::int as line_no,
+           (sum(sm.total_cost + coalesce(gl.qty_received, 0) * ${notLanded()}) / sum(sm.qty))::float as original_cost,
+           sum(sm.qty)::float as qty
+      from stock_movement sm
+      join document d on d.id = sm.document_id
+      join item i on i.id = sm.item_id
+      join document_line dl on dl.id = sm.document_line_id
+      left join stock_lot gl on gl.stock_movement_id = sm.id
+     where sm.company_id = ${companyId} and sm.document_id = any(${receiptIds})
+       and sm.qty > 0 and sm.kind is null and not coalesce(i.tracks_serial, false)
+     group by sm.item_id, i.name, sm.document_id, d.doc_no, sm.document_line_id, dl.line_no
+     order by d.doc_no, dl.line_no`;
+  return [...phones, ...lines] as unknown as Unit[];
 }
 
-/** Receipt lines whose goods are not phones: not eligible in this version. */
+/** Receipt lines that put nothing in stock, so nothing can carry a charge. */
 export async function excludedLines(tx: TransactionSql, companyId: string, receiptIds: string[]) {
   if (receiptIds.length === 0) return [];
   return tx`
@@ -176,7 +204,7 @@ export async function excludedLines(tx: TransactionSql, companyId: string, recei
       join document d on d.id = dl.document_id
       join item i on i.id = dl.item_id
      where d.company_id = ${companyId} and d.id = any(${receiptIds})
-       and not coalesce(i.tracks_serial, false)
+       and not exists (select 1 from stock_movement sm where sm.document_line_id = dl.id and sm.qty > 0)
      order by d.doc_no, dl.line_no` as unknown as Promise<Array<{
       receipt_id: string; receipt_no: string; line_id: string; line_no: number;
       item_name: string; qty: number; value: number }>>;
@@ -203,22 +231,23 @@ export function spread(amount: number, weights: number[], dp: number): number[] 
   return parts;
 }
 
-/** Each charge's share per phone, by its method. */
+/** Each charge's share per unit row (a phone, or a line's units together), by its method. */
 export function allocate(
   charge: { base_amount: number; method: Method; manual: { item_id: string; amount: number }[] },
   units: Unit[], dp: number, chargeLabel: string,
 ): number[] {
   const amount = roundTo(Number(charge.base_amount), dp);
+  const qty = (u: Unit) => Number(u.qty ?? 1);
   if (charge.method === "VALUE") {
     if (!units.some((u) => u.original_cost > 0)) {
-      throw new Error(`${chargeLabel}: the phones have no purchase value to spread by. Use Equal per phone.`);
+      throw new Error(`${chargeLabel}: the goods have no purchase value to spread by. Use Equal per unit.`);
     }
-    return spread(amount, units.map((u) => Math.max(0, u.original_cost)), dp);
+    return spread(amount, units.map((u) => Math.max(0, u.original_cost) * qty(u)), dp);
   }
-  if (charge.method === "EQUAL") return spread(amount, units.map(() => 1), dp);
+  if (charge.method === "EQUAL") return spread(amount, units.map(qty), dp);
 
   // Manual by product variant: the variants must account for the whole
-  // charge, and each variant's share is divided evenly among its phones.
+  // charge, and each variant's share is divided evenly among its units.
   const byItem = new Map(charge.manual.map((m) => [m.item_id, roundTo(Number(m.amount), dp)]));
   const sum = roundTo([...byItem.values()].reduce((s, v) => s + v, 0), dp);
   if (sum !== amount) {
@@ -229,10 +258,10 @@ export function allocate(
   for (const [itemId, share] of byItem) {
     const idx = units.map((u, i) => (u.item_id === itemId ? i : -1)).filter((i) => i >= 0);
     if (idx.length === 0) {
-      if (share !== 0) throw new Error(`${chargeLabel}: a variant was given an amount but has no eligible phones.`);
+      if (share !== 0) throw new Error(`${chargeLabel}: a variant was given an amount but has nothing received to carry it.`);
       continue;
     }
-    const parts = share === 0 ? idx.map(() => 0) : spread(share, idx.map(() => 1), dp);
+    const parts = share === 0 ? idx.map(() => 0) : spread(share, idx.map((i) => qty(units[i])), dp);
     idx.forEach((i, k) => { out[i] = parts[k]; });
   }
   return out;
@@ -401,7 +430,7 @@ export async function acknowledgeExcluded(input: Actor & { id: string }, outer?:
     assertDraft(doc);
     await tx`update landed_cost set excluded_ack_at = now(), excluded_ack_by = ${input.userId} where document_id = ${doc.id}`;
     await history(tx, input.companyId, doc.id, "ACKNOWLEDGE", input.userId,
-      "Charges go to IMEI-tracked phones only; accessory lines get none in this version.");
+      "Charges go to the goods that were put in stock; lines that put nothing there get none.");
   });
 }
 
@@ -415,11 +444,11 @@ export async function calculateLandedCost(input: Actor & { id: string }, outer?:
       .map((r) => r.receipt_id as string);
     await assertReceipts(tx, input.companyId, receipts);
     const units = await eligibleUnits(tx, input.companyId, receipts);
-    if (units.length === 0) throw new Error("The chosen receipts have no IMEI-tracked phones to carry the charges.");
+    if (units.length === 0) throw new Error("The chosen receipts put nothing in stock to carry the charges.");
     const excluded = await excludedLines(tx, input.companyId, receipts);
     const [lc] = await tx`select excluded_ack_at from landed_cost where document_id = ${doc.id}`;
     if (excluded.length > 0 && !lc.excluded_ack_at) {
-      throw new Error("These receipts include items that are not phones. Confirm that the charges go to the IMEI-tracked phones only.");
+      throw new Error("Some receipt lines put nothing in stock. Confirm that the charges go to the goods that did.");
     }
     const charges = await tx`
       select c.id, c.line_no, c.base_amount::float as base_amount, c.method, t.name,
@@ -435,6 +464,7 @@ export async function calculateLandedCost(input: Actor & { id: string }, outer?:
       const rows = units.map((u, i) => ({
         landed_cost_id: doc.id, charge_id: c.id, serial_id: u.serial_id, receipt_id: u.receipt_id,
         receipt_line_id: u.receipt_line_id, item_id: u.item_id, original_cost: u.original_cost, amount: parts[i],
+        qty: u.qty,
       }));
       for (let i = 0; i < rows.length; i += 2000) {
         await tx`insert into landed_cost_allocation ${tx(rows.slice(i, i + 2000))}`;
@@ -569,7 +599,46 @@ async function revalueOwned(tx: TransactionSql, companyId: string, documentId: s
     values (${companyId}, ${itemId}, ${locationId}, ${date}::date, 0, 0, ${amount}, ${documentId})`;
 }
 
-/** Post a calculated draft: the phones' costs change and the entry is written, together or not at all. */
+/**
+ * Put each receipt line's share onto its goods wherever they are now, and
+ * keep a posting row per account that took a part. `documentId` is the
+ * document whose journal carries it: the landed cost, or its reversal.
+ * Whatever the walk could not place — units that only covered a shortage at
+ * another warehouse — goes to the item's cost of sales, so the entry balances
+ * to the charge.
+ */
+async function postLines(tx: TransactionSql, companyId: string, landedCostId: string, documentId: string,
+  date: string, reason: string, lines: { receipt_line_id: string; amount: number }[], journal: JournalLine[]) {
+  const todo = lines.filter((l) => l.amount !== 0);
+  if (todo.length === 0) return;
+  // Every line's item and warehouse in one read, and every posting row in one write.
+  const where = new Map((await tx`
+    select dl.id, dl.item_id, d.location_id from document_line dl join document d on d.id = dl.document_id
+     where dl.id = any(${todo.map((l) => l.receipt_line_id)})`).map((r) => [r.id as string, r]));
+  const rows: Record<string, unknown>[] = [];
+  for (const l of todo) {
+    const rl = where.get(l.receipt_line_id)!;
+    // One line at a time: each walk locks and reads the lots it changes.
+    const r = await addValueToReceiptLine(tx, {
+      companyId, documentId, docDate: date, locationId: rl.location_id, reason,
+      receiptLineId: l.receipt_line_id, amount: l.amount,
+    });
+    const parts = [...r.parts];
+    const left = round4(l.amount - r.toInventory - r.toCogs);
+    if (left !== 0) {
+      const [cogs] = await tx`select fn_resolve_account_for_item(${companyId}, 'COGS', ${rl.item_id}) as a`;
+      parts.push({ treatment: "COGS", accountId: cogs.a, locationId: rl.location_id as string, amount: left });
+    }
+    for (const p of parts) {
+      journal.push({ accountId: p.accountId, amount: p.amount, locationId: p.locationId });
+      rows.push({ landed_cost_id: landedCostId, document_id: documentId, receipt_line_id: l.receipt_line_id,
+        status_then: "BY_LINE", treatment: p.treatment, account_id: p.accountId, location_id: p.locationId, amount: p.amount });
+    }
+  }
+  if (rows.length) await tx`insert into landed_cost_posting ${tx(rows as never)}`;
+}
+
+/** Post a calculated draft: the goods' costs change and the entry is written, together or not at all. */
 export async function postLandedCost(input: Actor & { id: string }, outer?: TransactionSql) {
   return inTransaction(outer, async (tx) => {
     const doc = await lockDraft(tx, input.companyId, input.id);
@@ -598,7 +667,7 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
     const perSerial = await tx`
       select a.serial_id, s.serial_no, sum(a.amount)::float as amount
         from landed_cost_allocation a join stock_serial s on s.id = a.serial_id
-       where a.landed_cost_id = ${doc.id}
+       where a.landed_cost_id = ${doc.id} and a.serial_id is not null
        group by a.serial_id, s.serial_no order by a.serial_id`;
     await tx`select id from stock_serial where id = any(${perSerial.map((r) => r.serial_id)}) order by id for update`;
 
@@ -625,6 +694,12 @@ export async function postLandedCost(input: Actor & { id: string }, outer?: Tran
         values (${input.companyId}, ${p.serial_id}, 'LANDED_COST', ${doc.id}, ${w.location_id}, ${lotId},
                 ${NOTE[w.treatment]})`;
     }
+    const perLine = await tx`
+      select receipt_line_id, sum(amount)::float as amount from landed_cost_allocation
+       where landed_cost_id = ${doc.id} and serial_id is null
+       group by receipt_line_id order by receipt_line_id`;
+    await postLines(tx, input.companyId, doc.id, doc.id, doc.doc_date, reason,
+      perLine.map((l) => ({ receipt_line_id: l.receipt_line_id as string, amount: roundTo(Number(l.amount), base.dp) })), journal);
     // A charge with a payee and no bill behind it is a debt to that payee:
     // it is owed in Payable (Other) until a courier payment settles it. One
     // linked to a bill only spends what the bill put into clearing.
@@ -715,7 +790,7 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
 
     const posted = await tx`
       select serial_id, sum(amount)::float as amount from landed_cost_posting
-       where landed_cost_id = ${doc.id} and document_id = ${doc.id}
+       where landed_cost_id = ${doc.id} and document_id = ${doc.id} and serial_id is not null
        group by serial_id order by serial_id`;
     await tx`select id from stock_serial where id = any(${posted.map((r) => r.serial_id)}) order by id for update`;
 
@@ -741,6 +816,13 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
         values (${input.companyId}, ${p.serial_id}, 'LANDED_COST', ${rev.id}, ${w.location_id}, ${lotId},
                 ${`Reversed (${doc.doc_no})`})`;
     }
+    // Lines: the same walk with the opposite sign, from wherever the goods are now.
+    const lines = await tx`
+      select receipt_line_id, sum(amount)::float as amount from landed_cost_posting
+       where landed_cost_id = ${doc.id} and document_id = ${doc.id} and receipt_line_id is not null
+       group by receipt_line_id order by receipt_line_id`;
+    await postLines(tx, input.companyId, doc.id, rev.id, date, `Reverses ${doc.doc_no}`,
+      lines.map((l) => ({ receipt_line_id: l.receipt_line_id as string, amount: -roundTo(Number(l.amount), base.dp) })), journal);
     const charges = await tx`
       select clearing_account_id, owed_account_id, via_account_id, partner_id, base_amount::float as base_amount
         from landed_cost_charge where landed_cost_id = ${doc.id} and is_active`;

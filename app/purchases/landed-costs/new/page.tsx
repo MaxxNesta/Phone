@@ -70,7 +70,7 @@ export default async function NewLandedCost({ searchParams }: { searchParams: Pr
                     <span>{r.supplier ?? "—"}</span>
                   </span>
                   <span className="lc-pick-meta">
-                    {r.doc_date} · {r.warehouse ?? "—"} · {r.phones} phone{r.phones === 1 ? "" : "s"}
+                    {r.doc_date} · {r.warehouse ?? "—"} · {Number(r.units).toLocaleString("en-US")} unit{r.units === 1 ? "" : "s"}
                     {r.landed_costs > 0 && <span className="lc-note"> · already has {r.landed_costs} landed cost{r.landed_costs === 1 ? "" : "s"}</span>}
                   </span>
                 </label>

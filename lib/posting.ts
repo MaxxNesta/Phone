@@ -2277,8 +2277,10 @@ async function adjustReceiptCost(
       receiptLineId: string; qty: number; newUnitCost: number; heldValue: number;
     }[];
   }
-): Promise<{ journal: JournalLine[]; toInventory: number; toCogs: number }> {
+): Promise<{ journal: JournalLine[]; toInventory: number; toCogs: number;
+  parts: { treatment: "INVENTORY" | "COGS"; accountId: string; locationId: string; amount: number }[] }> {
   const journal: JournalLine[] = [];
+  const parts: { treatment: "INVENTORY" | "COGS"; accountId: string; locationId: string; amount: number }[] = [];
 
   // Per item and location, because that is the grain a stock movement and an
   // inventory account both work at — several receipt lines of the same item
@@ -2536,6 +2538,7 @@ async function adjustReceiptCost(
       select fn_resolve_account_for_item(
         ${input.companyId}, 'INVENTORY', ${at.itemId}, null, ${at.locationId}) as a`;
     journal.push({ accountId: inv[0].a, amount: at.amount, locationId: at.locationId });
+    parts.push({ treatment: "INVENTORY", accountId: inv[0].a, locationId: at.locationId, amount: at.amount });
     toInventory = round4(toInventory + at.amount);
   }
 
@@ -2546,10 +2549,26 @@ async function adjustReceiptCost(
       select fn_resolve_account_for_item(
         ${input.companyId}, 'COGS', ${at.itemId}) as a`)[0].a as string;
     journal.push({ accountId, amount: at.amount, locationId: input.locationId });
+    parts.push({ treatment: "COGS", accountId, locationId: input.locationId, amount: at.amount });
     toCogs = round4(toCogs + at.amount);
   }
 
-  return { journal, toInventory, toCogs };
+  return { journal, toInventory, toCogs, parts };
+}
+
+/**
+ * Put `amount` onto a receipt line's goods, wherever they are now — the same
+ * walk a supplier bill's price correction takes (adjustReceiptCost): on the
+ * shelf it is stock value, sold it is cost of sales, moved it follows them.
+ * Landed cost uses it for goods without an IMEI, which are one cost layer per
+ * receipt line rather than a phone each.
+ */
+export async function addValueToReceiptLine(tx: TransactionSql, input: {
+  companyId: string; documentId: string; docDate: string; locationId: string; reason: string;
+  receiptLineId: string; amount: number;
+}) {
+  // A difference of exactly `amount`: one unit billed at it, nothing held.
+  return adjustReceiptCost(tx, { ...input, billed: [{ receiptLineId: input.receiptLineId, qty: 1, newUnitCost: input.amount, heldValue: 0 }] });
 }
 
 /**

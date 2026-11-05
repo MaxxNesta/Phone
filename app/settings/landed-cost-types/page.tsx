@@ -6,7 +6,7 @@ import { LcForm } from "@/components/landed-cost-editor";
 import { HelpHint } from "@/components/help-hint";
 
 const METHODS: [string, string][] = [
-  ["VALUE", "By purchase value"], ["EQUAL", "Equal per phone"], ["MANUAL", "Manual by product variant"],
+  ["VALUE", "By purchase value"], ["EQUAL", "Equal per unit"], ["MANUAL", "Manual by product variant"],
 ];
 
 function Fields({ t, accounts, partners, currencies }: { t?: any; accounts: any[]; partners: any[]; currencies: any[] }) {

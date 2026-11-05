@@ -6,7 +6,7 @@ import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eye, FileText, Ha
 import type { PreviewShare } from "@/lib/courier-payables";
 
 type Opt = { id: string; label: string };
-type Receipt = { id: string; no: string; date: string; supplier: string | null; warehouse: string | null; phones: number; landed: number };
+type Receipt = { id: string; no: string; date: string; supplier: string | null; warehouse: string | null; units: number; landed: number };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
@@ -48,7 +48,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
   const [payment, setPayment] = useState("");
   const paidNow = payment !== "";
   const paidLabel = paidFrom.find((a) => a.id === payment)?.label;
-  const phones = receipts.filter((r) => chosen.includes(r.id)).reduce((s, r) => s + r.phones, 0);
+  const phones = receipts.filter((r) => chosen.includes(r.id)).reduce((s, r) => s + r.units, 0);
   const value = Number(amount) || 0;
   const total = method === "PER" ? value * phones : value;
   const each = phones > 0 && value > 0 ? (method === "PER" ? value : value / phones) : 0;
@@ -85,7 +85,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} max={today} required />
             </div>
             <div className="field">
-              <label htmlFor="amount"><Hash size={13} aria-hidden="true" />{method === "PER" ? "Per phone" : "Amount"}</label>
+              <label htmlFor="amount"><Hash size={13} aria-hidden="true" />{method === "PER" ? "Per unit" : "Amount"}</label>
               <input id="amount" type="number" min="0" step="any" inputMode="decimal" value={amount}
                 onChange={(e) => setAmount(e.target.value)} placeholder={method === "PER" ? "e.g. 45000" : "e.g. 900000"} required />
               <input type="hidden" name="amount" value={total > 0 ? String(total) : ""} />
@@ -102,7 +102,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
               <label htmlFor="method"><Layers size={13} aria-hidden="true" />Spread</label>
               <select id="method" value={method} onChange={(e) => setMethod(e.target.value)}>
                 <option value="EQUAL">Total, shared equally</option>
-                <option value="PER">Fixed per phone</option>
+                <option value="PER">Fixed per unit</option>
                 <option value="VALUE">Total, by purchase value</option>
               </select>
               <input type="hidden" name="method" value={method === "VALUE" ? "VALUE" : "EQUAL"} />
@@ -128,7 +128,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
 
       <section className="card">
         <div className="card-head"><h2><Package size={15} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> {carriage ? "Which goods did they carry?" : `Which goods is this ${type?.label.toLowerCase() ?? "cost"} for?`}</h2>
-          <span className="page-sub">{chosen.length ? `${phones} phone${phones === 1 ? "" : "s"} chosen` : "Choose one or more posted goods receipts"}</span></div>
+          <span className="page-sub">{chosen.length ? `${phones.toLocaleString("en-US")} unit${phones === 1 ? "" : "s"} chosen` : "Choose one or more posted goods receipts"}</span></div>
         <div className="tablewrap" style={{ maxHeight: 340, overflow: "auto" }}>
           <table>
             <thead><tr><th className="tight" /><th>Goods receipt</th><th>Date</th><th>Supplier</th><th>Warehouse</th><th className="r">Phones</th><th>Landed costs</th></tr></thead>
@@ -141,11 +141,11 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
                   <td>{r.date}</td>
                   <td>{r.supplier ?? "—"}</td>
                   <td>{r.warehouse ?? "—"}</td>
-                  <td className="r">{r.phones}</td>
+                  <td className="r">{r.units.toLocaleString("en-US")}</td>
                   <td>{r.landed > 0 ? `${r.landed} already` : "—"}</td>
                 </tr>
               ))}
-              {receipts.length === 0 && <tr><td colSpan={7} className="empty">No posted goods receipts with phones yet.</td></tr>}
+              {receipts.length === 0 && <tr><td colSpan={7} className="empty">No posted goods receipts with stock yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -155,7 +155,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
       {total > 0 && (
         <section className="card">
           <div className="card-head"><h2>What this posts</h2>
-            {method !== "VALUE" && each > 0 && <span className="page-sub">{fmt(each)} on each phone{method === "PER" ? ` · ${phones} phones = ${fmt(total)}` : ""}</span>}</div>
+            {method !== "VALUE" && each > 0 && <span className="page-sub">{fmt(each)} on each unit{method === "PER" ? ` · ${phones} units = ${fmt(total)}` : ""}</span>}</div>
           <div className="tablewrap">
             <table>
               <thead><tr><th>Entry</th><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
@@ -164,12 +164,12 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
                   <>
                     <tr><td>{type?.label ?? "Charge"}</td><td>{via}</td><td className="r">{fmt(total)}</td><td /></tr>
                     <tr><td /><td>{credit}</td><td /><td className="r">{fmt(total)}</td></tr>
-                    <tr><td>Spread onto phones</td><td>Inventory · {phones || "the chosen"} phone{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
+                    <tr><td>Spread onto the goods</td><td>Inventory · {phones || "the chosen"} unit{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
                     <tr><td /><td>{via}</td><td /><td className="r">{fmt(total)}</td></tr>
                   </>
                 ) : (
                   <>
-                    <tr><td>{type?.label ?? "Charge"}, onto phones</td><td>Inventory · {phones || "the chosen"} phone{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
+                    <tr><td>{type?.label ?? "Charge"}, onto the goods</td><td>Inventory · {phones || "the chosen"} unit{phones === 1 ? "" : "s"}</td><td className="r">{fmt(total)}</td><td /></tr>
                     <tr><td /><td>{credit}</td><td /><td className="r">{fmt(total)}</td></tr>
                   </>
                 )}
@@ -185,7 +185,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
         <button type="button" onClick={openPreview} disabled={previewing || pending || chosen.length === 0 || !(total > 0)}>
           <Eye size={15} aria-hidden="true" /> {previewing ? "Working it out…" : "Preview"}
         </button>
-        <span className="page-sub">Cost of sales takes each phone&rsquo;s share when that phone is sold.</span>
+        <span className="page-sub">Cost of sales takes each unit&rsquo;s share when that unit is sold.</span>
       </div>
 
       <dialog ref={dialogRef} className="cbp" aria-labelledby="cbp-title" onClose={() => setShown(null)}>
@@ -197,7 +197,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
               { icon: CalendarDays, label: "Bill date", value: shown.date ? new Date(shown.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—" },
               { icon: Hash, label: "Amount", value: `${fmt(total)} MMK` },
               { icon: Wallet, label: "Payment", value: paidNow ? `Paid now · ${paidLabel}` : "Pay later" },
-              { icon: Layers, label: "Spread", value: method === "PER" ? "Fixed per phone" : method === "VALUE" ? "By purchase value" : "Equal per phone" },
+              { icon: Layers, label: "Spread", value: method === "PER" ? "Fixed per unit" : method === "VALUE" ? "By purchase value" : "Equal per unit" },
               { icon: FileText, label: "Reference", value: shown.reference || "—" },
             ]}
             note={shown.note}
@@ -226,11 +226,13 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
   const [open, setOpen] = useState<Set<string>>(() => new Set(groups.slice(0, 1).map(([no]) => no)));
   const allOpen = open.size === groups.length;
   const total = shares.reduce((s, x) => s + x.amount, 0);
-  /** "+10,000" when every phone gets the same, otherwise the range. */
+  /** "+10,000" when every unit gets the same, otherwise the range. */
   const each = (list: PreviewShare[]) => {
-    const lo = Math.min(...list.map((x) => x.amount)), hi = Math.max(...list.map((x) => x.amount));
+    const per = list.map((x) => x.amount / (x.qty || 1));
+    const lo = Math.min(...per), hi = Math.max(...per);
     return lo === hi ? `+${fmt(lo)}` : `+${fmt(lo)} – ${fmt(hi)}`;
   };
+  const units = (list: PreviewShare[]) => list.reduce((s, x) => s + (x.qty || 1), 0);
 
   return (
     <div className="cbp-body">
@@ -257,8 +259,8 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
         <section className="cbp-card cbp-summary" aria-label="Allocation summary">
           {[
             { icon: FileText, value: String(groups.length), label: groups.length === 1 ? "Goods receipt" : "Goods receipts" },
-            { icon: Smartphone, value: String(shares.length), label: "Phones" },
-            { icon: Layers, value: shares.length ? `${each(shares)} MMK` : "—", label: `${costLabel} per phone` },
+            { icon: Smartphone, value: units(shares).toLocaleString("en-US"), label: "Units" },
+            { icon: Layers, value: shares.length ? `${each(shares)} MMK` : "—", label: `${costLabel} per unit` },
             { icon: Hash, value: `${fmt(total)} MMK`, label: "Total spread" },
           ].map(({ icon: Icon, value, label }) => (
             <div key={label} className="cbp-stat">
@@ -270,7 +272,7 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
 
         <section className="cbp-card">
           <div className="cbp-groups-head">
-            <div><h3>By goods receipt</h3><p className="page-sub">Each phone&rsquo;s cost now, its share, and its cost after posting.</p></div>
+            <div><h3>By goods receipt</h3><p className="page-sub">Each phone or line&rsquo;s cost now, its share, and its cost after posting.</p></div>
             {groups.length > 1 && (
               <button type="button" className="ghost tiny" onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map(([no]) => no)))}>
                 <ChevronDown size={14} aria-hidden="true" style={{ transform: allOpen ? "rotate(180deg)" : undefined }} />
@@ -287,14 +289,14 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
                   onClick={() => setOpen((o) => { const n = new Set(o); if (n.has(no)) n.delete(no); else n.add(no); return n; })}>
                   {isOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
                   <strong>{no}</strong>
-                  <span className="page-sub">{list.length} phone{list.length === 1 ? "" : "s"}</span>
-                  <span className="cbp-pill">{each(list)} per phone</span>
+                  <span className="page-sub">{units(list).toLocaleString("en-US")} unit{units(list) === 1 ? "" : "s"}</span>
+                  <span className="cbp-pill">{each(list)} per unit</span>
                   <strong className="cbp-sum">{fmt(sum)} MMK</strong>
                 </button>
                 {isOpen && (
                   <div className="tablewrap">
                     <table>
-                      <thead><tr><th className="tight">#</th><th>IMEI / serial</th><th>Phone</th><th className="r">Cost now</th><th className="r">{costLabel}</th><th className="r">Cost after</th></tr></thead>
+                      <thead><tr><th className="tight">#</th><th>IMEI / line</th><th>Product</th><th className="r">Cost now</th><th className="r">{costLabel}</th><th className="r">Cost after</th></tr></thead>
                       <tbody>
                         {list.map((x, i) => (
                           <tr key={x.serial}>

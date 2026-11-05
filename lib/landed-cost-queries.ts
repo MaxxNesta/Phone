@@ -39,8 +39,8 @@ export async function listLandedCosts(companyId: string, locs: string[] | null) 
 export async function postedReceipts(companyId: string, locs: string[] | null) {
   return sql`
     select d.id, d.doc_no, d.doc_date::text as doc_date, p.name as supplier, l.name as warehouse,
-           (select count(*)::int from stock_serial s join stock_movement sm on sm.id = s.stock_movement_id
-             where sm.document_id = d.id) as phones,
+           (select coalesce(sum(sm.qty), 0)::float from stock_movement sm
+             where sm.document_id = d.id and sm.qty > 0 and sm.kind is null) as units,
            (select count(*)::int from landed_cost_receipt r join document x on x.id = r.landed_cost_id
              where r.receipt_id = d.id and x.status = 'POSTED') as landed_costs
       from document d
@@ -78,7 +78,8 @@ export async function getLandedCost(companyId: string, id: string) {
 
   const receipts = await sql`
     select g.id, g.doc_no, g.doc_date::text as doc_date, g.location_id, p.name as supplier, l.name as warehouse,
-           (select count(*)::int from stock_serial s join stock_movement sm on sm.id = s.stock_movement_id where sm.document_id = g.id) as phones,
+           (select coalesce(sum(sm.qty), 0)::float from stock_movement sm
+             where sm.document_id = g.id and sm.qty > 0 and sm.kind is null) as units,
            (select coalesce(sum(total_cost), 0)::float from stock_movement sm where sm.document_id = g.id and sm.qty > 0) as original_value,
            (select coalesce(string_agg(x.doc_no, ', '), '') from landed_cost_receipt r2 join document x on x.id = r2.landed_cost_id
              where r2.receipt_id = g.id and x.status = 'POSTED' and x.id <> ${id}) as earlier
@@ -113,7 +114,7 @@ export async function getLandedCost(companyId: string, id: string) {
   // Per phone: what it cost to buy, this landed cost's share, and where it is now.
   const phones = await sql`
     select a.serial_id, s.serial_no, a.item_id, i.name as item_name, g.doc_no as receipt_no, g.id as receipt_id,
-           max(a.original_cost)::float as original_cost, sum(a.amount)::float as allocated,
+           1 as qty, max(a.original_cost)::float as original_cost, sum(a.amount)::float as allocated,
            v.status, v.location_name, v.unit_cost::float as current_cost,
            (select p.treatment from landed_cost_posting p where p.landed_cost_id = ${id}
              and p.document_id = ${id} and p.serial_id = a.serial_id limit 1) as treatment
@@ -126,16 +127,41 @@ export async function getLandedCost(companyId: string, id: string) {
      group by a.serial_id, s.serial_no, a.item_id, i.name, g.doc_no, g.id, v.status, v.location_name, v.unit_cost
      order by i.name, g.doc_no, s.serial_no`;
 
-  // Before calculating, the phones the receipts brought in, with no share yet.
+  // Per receipt line of goods with no IMEI: its units together, their cost each,
+  // this landed cost's share of the line, and where that share went.
+  const lines = await sql`
+    select a.receipt_line_id, dl.line_no, a.item_id, i.name as item_name, g.doc_no as receipt_no, g.id as receipt_id,
+           max(a.qty)::float as qty, max(a.original_cost)::float as original_cost, sum(a.amount)::float as allocated,
+           (select string_agg(distinct p.treatment, ',') from landed_cost_posting p where p.landed_cost_id = ${id}
+             and p.document_id = ${id} and p.receipt_line_id = a.receipt_line_id) as treatment
+      from landed_cost_allocation a
+      join document_line dl on dl.id = a.receipt_line_id
+      join item i on i.id = a.item_id
+      join document g on g.id = a.receipt_id
+     where a.landed_cost_id = ${id} and a.serial_id is null
+     group by a.receipt_line_id, dl.line_no, a.item_id, i.name, g.doc_no, g.id
+     order by i.name, g.doc_no, dl.line_no`;
+
+  // Before calculating, what the receipts brought in, with no share yet.
   const eligible = await sql`
-    select s.id as serial_id, s.serial_no, s.item_id, i.name as item_name, g.doc_no as receipt_no, g.id as receipt_id
+    select s.id as serial_id, s.serial_no, s.item_id, i.name as item_name, g.doc_no as receipt_no, g.id as receipt_id,
+           null::uuid as receipt_line_id, null::int as line_no, 1 as qty
       from landed_cost_receipt r
       join stock_movement sm on sm.document_id = r.receipt_id
       join stock_serial s on s.stock_movement_id = sm.id
       join item i on i.id = s.item_id
       join document g on g.id = r.receipt_id
-     where r.landed_cost_id = ${id}
-     order by i.name, s.serial_no`;
+     where r.landed_cost_id = ${id} and i.tracks_serial
+    union all
+    select null, null, sm.item_id, i.name, g.doc_no, g.id, sm.document_line_id, dl.line_no, sum(sm.qty)::float
+      from landed_cost_receipt r
+      join stock_movement sm on sm.document_id = r.receipt_id and sm.qty > 0 and sm.kind is null
+      join document_line dl on dl.id = sm.document_line_id
+      join item i on i.id = sm.item_id
+      join document g on g.id = r.receipt_id
+     where r.landed_cost_id = ${id} and not coalesce(i.tracks_serial, false)
+     group by sm.item_id, i.name, g.doc_no, g.id, sm.document_line_id, dl.line_no
+     order by 4, 2`;
 
   const excluded = await sql`
     select g.doc_no as receipt_no, dl.line_no, i.name as item_name, dl.base_qty::float as qty, dl.net_amount::float as value
@@ -143,7 +169,8 @@ export async function getLandedCost(companyId: string, id: string) {
       join document g on g.id = r.receipt_id
       join document_line dl on dl.document_id = g.id
       join item i on i.id = dl.item_id
-     where r.landed_cost_id = ${id} and not coalesce(i.tracks_serial, false)
+     where r.landed_cost_id = ${id}
+       and not exists (select 1 from stock_movement sm where sm.document_line_id = dl.id and sm.qty > 0)
      order by g.doc_no, dl.line_no`;
 
   const history = await sql`
@@ -151,7 +178,7 @@ export async function getLandedCost(companyId: string, id: string) {
       from document_history h left join app_user u on u.id = h.acted_by
      where h.document_id = ${id} order by h.acted_at`;
 
-  return { head, receipts, charges, phones, eligible, excluded, history };
+  return { head, receipts, charges, phones, lines, eligible, excluded, history };
 }
 
 /** Debits to a clearing account no landed cost has spread yet: bills to link. */
@@ -206,11 +233,12 @@ export async function receiptLandedSummary(companyId: string, receiptId: string)
            (select count(distinct r.landed_cost_id)::int from landed_cost_receipt r join document d on d.id = r.landed_cost_id
              where r.receipt_id = ${receiptId} and d.status in ('DRAFT', 'POSTED', 'REVERSED') and d.reverses_document_id is null
                and d.company_id = ${companyId}) as count`;
-  // Net of reversals: each posting row is one phone's amount, once.
+  // Net of reversals: each posting row is one phone's amount, or a part of a line's, once.
   const [added] = await sql`
     select coalesce(sum(p.amount), 0)::float as v
       from landed_cost_posting p
      where p.serial_id in (select s.id from stock_serial s join stock_movement sm on sm.id = s.stock_movement_id
-                            where sm.document_id = ${receiptId})`;
+                            where sm.document_id = ${receiptId})
+        or p.receipt_line_id in (select id from document_line where document_id = ${receiptId})`;
   return { original: r.original, added: added.v, final: r.original + added.v, count: r.count };
 }

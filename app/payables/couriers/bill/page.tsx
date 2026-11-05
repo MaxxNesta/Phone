@@ -38,7 +38,7 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
         action={recordCourierBillAction}
         preview={previewCourierBillAction}
         couriers={couriers.map((c) => ({ id: c.id, label: `${c.name} · ${c.code}` }))}
-        receipts={receipts.filter((r) => r.phones > 0).map((r) => ({ id: r.id, no: r.doc_no, date: r.doc_date, supplier: r.supplier, warehouse: r.warehouse, phones: r.phones, landed: r.landed_costs }))}
+        receipts={receipts.filter((r) => r.units > 0).map((r) => ({ id: r.id, no: r.doc_no, date: r.doc_date, supplier: r.supplier, warehouse: r.warehouse, units: r.units, landed: r.landed_costs }))}
         types={types.map((t) => ({ id: t.id, label: t.name, code: t.code, method: t.default_method }))}
         carriageAccount={label("CARRIAGE_INWARD")}
         clearingAccount={label("LANDED_COST_CLEARING")}
