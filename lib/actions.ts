@@ -4348,13 +4348,20 @@ async function whatUses(table: string, id: string): Promise<string> {
       from pg_constraint c
       join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
      where c.contype = 'f' and c.confrelid = ${table}::regclass and cardinality(c.conkey) = 1`;
-  const counts = await Promise.all(fks.map(async (f) => {
-    const [r] = await sql`select count(*)::int as n from ${sql(f.tbl as string)} where ${sql(f.col as string)} = ${id}`;
-    return { what: HOLDERS[f.tbl as string] ?? (f.tbl as string).replace(/_/g, " "), n: r.n as number };
-  }));
+  // Capped: the answer only has to say what is in the way, not count a
+  // warehouse's whole history. Every table counted in one round trip.
+  const CAP = 1000;
+  if (fks.length === 0) return "";
+  const parts = fks.map((f) => sql`
+    select ${f.tbl as string} as tbl, (select count(*) from (select 1 from ${sql(f.tbl as string)}
+      where ${sql(f.col as string)} = ${id} limit ${CAP}) x)::int as n`);
+  const counts = await sql`${parts.reduce((q, p) => sql`${q} union all ${p}`)}`;
   const by = new Map<string, number>();
-  for (const c of counts) if (c.n) by.set(c.what, (by.get(c.what) ?? 0) + c.n);
-  return [...by].map(([what, n]) => `${n.toLocaleString("en-US")} ${what}${n === 1 ? "" : "s"}`).join(", ");
+  for (const c of counts) {
+    const what = HOLDERS[c.tbl as string] ?? (c.tbl as string).replace(/_/g, " ");
+    if (c.n) by.set(what, (by.get(what) ?? 0) + (c.n as number));
+  }
+  return [...by].map(([what, n]) => `${n >= CAP ? `${CAP.toLocaleString("en-US")}+` : n.toLocaleString("en-US")} ${what}${n === 1 ? "" : "s"}`).join(", ");
 }
 
 export async function deleteLocation(_prev: unknown, fd: FormData): Promise<ActionResult> {
