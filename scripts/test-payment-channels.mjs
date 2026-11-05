@@ -50,7 +50,7 @@ const near = (a, b) => Math.abs(n(a) - n(b)) < 0.01;
 const tr = (k, v) => `${k}${v ? " " + JSON.stringify(v) : ""}`;
 const refused = async (f) => { try { await f(); return null; } catch (e) { return String(e.message ?? e); } };
 
-let kbzBefore = null, madeKbz = null;
+let kbzBefore = null, madeKbz = null, madeQr = null;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const disposable = /—\s*DEV\b|\bDEV\b/i.test(String(co.name));
@@ -252,7 +252,10 @@ try {
                                values (${co.id}, ${KBZ}, ${loc.id}, ${wallet.id})`);
   const isRoot = (await sql`select parent_id is null as r from location where id = ${loc.id}`)[0].r;
   check("an account set per branch must name a branch", isRoot || /branch/.test(e ?? ""), e ?? "allowed");
-  const unmapped = (await C.channelsAt(co.id, loc.id)).find((c) => c.code === "MMQR");
+  // A channel of the suite's own with no account: the shop's real ones may all be mapped.
+  [madeQr] = await sql`insert into payment_channel (company_id, code, name, kind, requires_reference, sort_order)
+    values (${co.id}, 'ZQR', 'Test QR', 'WALLET', true, 99) returning id`;
+  const unmapped = (await C.channelsAt(co.id, loc.id)).find((c) => c.code === "ZQR");
   e = await refused(() => sale(100_000, [{ channelId: unmapped.id, amount: 100_000, reference: "Q1" }]));
   check("a channel with no account is refused at the till", /channelUnmapped/.test(e ?? ""), e ?? "posted");
 
@@ -285,7 +288,7 @@ try {
   });
   const suppLedger = (await Q.getAdvanceLedger(co.id, "SUPPLIER")).find((a) => a.id === suppAdv.id);
   check("a supplier advance by bank transfer is listed with its method and ID",
-    suppLedger?.method === "Bank Transfer" && suppLedger?.reference === "BT-0001");
+    suppLedger?.method === (await sql`select name from payment_channel where id = ${BANK}`)[0].name && suppLedger?.reference === "BT-0001");
   check("  and leaves the bank account", near(await bal(bankAcct) - b0, -200_000));
   e = await refused(() => sql.begin(async (tx) => {
     const p = await P.postSupplierPayment({ companyId: co.id, partnerId: supp.id, docDate: today,
@@ -310,7 +313,7 @@ try {
     for (const r of kbzBefore.rows) await sql`insert into payment_channel_account ${sql(r)}`.catch(() => {});
     await sql`delete from account where id = ${kbzBefore.wallet}`.catch(() => {});
   }
-  if (madeKbz) await sql`delete from payment_channel where id = ${madeKbz.id}`.catch(() => {});
+  for (const m of [madeKbz, madeQr]) if (m) await sql`delete from payment_channel where id = ${m.id}`.catch(() => {});
   await resetTransactions(sql).catch(() => {});
   await sql`delete from item where code like '98%'`.catch(() => {});
   await sql`delete from item_group where segment = '98'`.catch(() => {});
