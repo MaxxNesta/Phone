@@ -38,6 +38,10 @@ const n = (v) => Number(v ?? 0);
 
 try {
   const [co] = await sql`select id from company limit 1`;
+  // This empties the catalogue. A database holding the shop's real items
+  // (DEV, pilot, prod) is refused outright — it is for a throwaway database only.
+  const [real] = await sql`select code from item where code = any(${["IPC001", "AP001", "IW001", "SPR001", "IPB001"]}) limit 1`;
+  if (real) throw new Error(`Refusing: ${real.code} is real catalogue — run this only on a throwaway database.`);
 
   // Start from a known state. These tests post real documents, and journal
   // entries and stock movements refuse row deletion by design, so anything a

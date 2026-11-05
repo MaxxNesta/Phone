@@ -34,8 +34,8 @@ try {
 
   await resetTransactions(sql);
   await sql`delete from business_partner where code = 'ABC'`;
-  await sql`delete from item where code like 'SP%'`;
-  await sql`delete from item_group where code like 'SP%'`;
+  await sql`delete from item where code like 'ZS%'`;
+  await sql`delete from item_group where code like 'ZS%'`;
 
   // One row, both boxes ticked — exactly the checkbox pair the UI offers.
   const [abc] = await sql`
@@ -60,7 +60,7 @@ try {
   // Post an actual sale and an actual purchase to the same id.
   const [grp] = await sql`
     insert into item_group (company_id, segment, code, name)
-    values (${co.id}, 'SP', 'x', 'Shared Partner Test') returning id`;
+    values (${co.id}, 'ZS', 'x', 'Shared Partner Test') returning id`;
   const [uom] = await sql`select id from uom where company_id = ${co.id} limit 1`;
   const [item] = await sql`
     insert into item (company_id, item_group_id, serial, code, name, base_uom_id)
@@ -96,8 +96,8 @@ try {
 
   await resetTransactions(sql);
   await sql`delete from business_partner where code = 'ABC'`;
-  await sql`delete from item where code like 'SP%'`;
-  await sql`delete from item_group where code like 'SP%'`;
+  await sql`delete from item where code like 'ZS%'`;
+  await sql`delete from item_group where code like 'ZS%'`;
 
   console.log(bad === 0 ? "\n  one partner, both roles, no duplication\n" : `\n  ${bad} failed\n`);
 } catch (err) {
