@@ -3055,10 +3055,17 @@ async function postVoucherFrom(
     lines,
   };
 
-  const r = await postOnce(co, attemptKey(fd), (tx) =>
-    kind === "cash" ? postCashVoucher(input, tx)
+  // A journal voucher may be a period-end adjustment (accrual, deferral,
+  // prepaid write-off); the trial balance shows it apart. Cash and bank
+  // vouchers move money and are routine.
+  const adjusting = kind !== "cash" && kind !== "bank" && fd.get("is_adjusting") !== null;
+  const r = await postOnce(co, attemptKey(fd), async (tx) => {
+    const posted = await (kind === "cash" ? postCashVoucher(input, tx)
       : kind === "bank" ? postBankVoucher(input, tx)
       : postJournalVoucher(input, tx));
+    if (adjusting) await tx`update document set is_adjusting = true where id = ${posted.id}`;
+    return posted;
+  });
 
   return { id: r.id, docNo: r.docNo };
 }

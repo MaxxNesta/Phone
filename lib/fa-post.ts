@@ -175,6 +175,8 @@ export async function postRun(co: string, runId: string, userId: string, now: Mo
       ],
     }, tx);
 
+    // Depreciation is a period-end adjustment: the unadjusted trial balance leaves it out.
+    await tx`update document set is_adjusting = true where id = ${doc.id}`;
     // Each asset row onto the credit line of its accumulated-depreciation account.
     const [entry] = await tx`select journal_entry_id from document where id = ${doc.id}`;
     const lines = await tx`select id, account_id, base_amount::text as amount from journal_line where journal_entry_id = ${entry.journal_entry_id}`;

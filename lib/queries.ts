@@ -6302,12 +6302,21 @@ export async function getTrialBalanceAsOf(companyId: string, f: TrialBalanceFilt
            coalesce(sec.name, initcap(lower(a.account_type::text))) as section,
            sum(case when jl.base_amount > 0 then  jl.base_amount else 0 end) as debit,
            sum(case when jl.base_amount < 0 then -jl.base_amount else 0 end) as credit,
-           sum(jl.base_amount) as balance
+           sum(jl.base_amount) as balance,
+           -- The period-end adjusting entries' part (0171): the unadjusted
+           -- trial balance is the whole less this.
+           sum(case when adj.is_adjusting and jl.base_amount > 0 then  jl.base_amount else 0 end) as adj_debit,
+           sum(case when adj.is_adjusting and jl.base_amount < 0 then -jl.base_amount else 0 end) as adj_credit,
+           sum(case when adj.is_adjusting then jl.base_amount else 0 end) as adj_balance
       from journal_line jl
       join journal_entry je on je.id = jl.journal_entry_id
       join account a on a.id = jl.account_id
       left join account sec on sec.id = a.parent_id
+      left join lateral (select d.is_adjusting from document d where d.id = je.source_id) adj on true
      where jl.company_id = ${companyId}
+       -- Before closing: the year-end close empties income and expense into
+       -- retained earnings, which is a step after the trial balance, not in it.
+       and je.source_type <> 'YEAR_END_CLOSE'
        ${f.asOf ? sql`and je.entry_date <= ${f.asOf}::date` : sql``}
        ${branchFilter(f.locationId)}
        ${liveEntriesOnly(f.showVoided)}

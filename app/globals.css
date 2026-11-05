@@ -9175,3 +9175,7 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .adv-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
 .adv-pager { display: inline-flex; align-items: center; gap: 8px; }
 @media (max-width: 720px) { .adv-bar-end { margin-left: 0; } .adv-app { grid-template-columns: 1fr auto; } .adv-app > :first-child { grid-column: 1 / -1; } }
+/* Trial balance worksheet: three pairs of columns; rows an adjustment touched stand out a little. */
+.tb-ws { font-variant-numeric: tabular-nums; }
+.tb-ws th.c { text-align: center; border-bottom: 1px solid var(--line-soft); }
+.tb-ws tr.tb-ws-adj > td { background: color-mix(in srgb, var(--ink) 3%, transparent); }

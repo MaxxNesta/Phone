@@ -206,6 +206,17 @@ export function VoucherForm({
                      onChange={(e) => setReference(e.target.value)}
                      placeholder="Voucher or cheque no." />
             </div>
+            {kind === "journal" && (
+              <div className="field">
+                <label aria-hidden="true">&nbsp;</label>
+                {/* Period-end adjustments sit apart in the trial balance: the
+                    unadjusted version leaves them out, the adjusted adds them. */}
+                <label className="check" title="Accruals (unpaid wages), deferrals, prepaid write-offs, depreciation">
+                  <input type="checkbox" name="is_adjusting" /> Adjusting entry
+                </label>
+                <span className="hint">Accrual, deferral or prepaid write-off at period end</span>
+              </div>
+            )}
           </div>
         </div>
       </div>

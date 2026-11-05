@@ -44,6 +44,8 @@ export default async function TrialBalance({
   searchParams: Promise<{
     asOf?: string; location?: string; type?: string; account?: string; back?: string;
     voided?: string;
+    /** "" adjusted (the default), "unadjusted", or "worksheet": both side by side. */
+    version?: string;
     page?: string;
   }>;
 }) {
@@ -51,7 +53,7 @@ export default async function TrialBalance({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const [rows, health, finance, unassigned] = await Promise.all([
+  const [all, health, finance, unassigned] = await Promise.all([
     getTrialBalanceAsOf(company.id, {
       asOf: p.asOf, locationId: p.location, accountType: p.type,
       showVoided: p.voided === "1",
@@ -62,8 +64,23 @@ export default async function TrialBalance({
   ]);
   const locations = finance.branches as never as { id: string; code: string; name: string }[];
 
-  const totalDr = rows.reduce((s, r) => s + Number(r.debit), 0);
-  const totalCr = rows.reduce((s, r) => s + Number(r.credit), 0);
+  /* Unadjusted: the ledger after the routine postings. Adjusted: those plus
+     the period-end adjusting entries (depreciation, and journal vouchers
+     marked as adjustments). Both before the year-end close. */
+  const version = p.version === "unadjusted" || p.version === "worksheet" ? p.version : "";
+  const n = (v: unknown) => Number(v) || 0;
+  const rows = (all as any[]).map((r) => version === "unadjusted"
+    ? { ...r, debit: n(r.debit) - n(r.adj_debit), credit: n(r.credit) - n(r.adj_credit), balance: n(r.balance) - n(r.adj_balance) }
+    : r).filter((r) => n(r.debit) !== 0 || n(r.credit) !== 0);
+  const adjustments = (all as any[]).filter((r) => n(r.adj_debit) || n(r.adj_credit));
+  const side = (b: number) => ({ dr: b > 0 ? b : 0, cr: b < 0 ? -b : 0 });
+  const ws = (all as any[]).map((r) => ({ ...r, un: side(n(r.balance) - n(r.adj_balance)), aj: { dr: n(r.adj_debit), cr: n(r.adj_credit) }, ad: side(n(r.balance)) }));
+  const wsTotal = ws.reduce((t, r) => ({ unDr: t.unDr + r.un.dr, unCr: t.unCr + r.un.cr, ajDr: t.ajDr + r.aj.dr, ajCr: t.ajCr + r.aj.cr, adDr: t.adDr + r.ad.dr, adCr: t.adCr + r.ad.cr }),
+    { unDr: 0, unCr: 0, ajDr: 0, ajCr: 0, adDr: 0, adCr: 0 });
+
+  // The worksheet is in balances, so its cards are the adjusted column; the other views total the movements.
+  const totalDr = version === "worksheet" ? wsTotal.adDr : rows.reduce((s, r) => s + Number(r.debit), 0);
+  const totalCr = version === "worksheet" ? wsTotal.adCr : rows.reduce((s, r) => s + Number(r.credit), 0);
   const difference = totalDr - totalCr;
   const balanced = Math.abs(difference) < 0.0001 && health.trialBalance === 0;
 
@@ -103,10 +120,13 @@ export default async function TrialBalance({
               </Link>
             : "Accounting"}
         </span>
-        <h1>Trial balance</h1>
+        <h1>{version === "unadjusted" ? "Unadjusted trial balance" : version === "worksheet" ? "Trial balance worksheet" : "Adjusted trial balance"}</h1>
         <HelpHint>
           Summary of debit and credit balances, read from the ledger and never
-          from the documents.
+          from the documents. Unadjusted: after the routine postings. Adjusted:
+          with the period-end adjusting entries too — depreciation, and journal
+          vouchers marked as adjusting (accruals, deferrals, prepaid write-offs).
+          Both are before the year-end close.
         </HelpHint>
         <span className="actions">
           <Link href={glHref()} className="btn ghost tiny">
@@ -121,6 +141,15 @@ export default async function TrialBalance({
         {p.account && <input type="hidden" name="account" value={p.account} />}
         <div className="card-body">
           <div className="row">
+            <div className="field">
+              <label htmlFor="version">Version</label>
+              <select id="version" name="version" defaultValue={version}>
+                <option value="">Adjusted</option>
+                <option value="unadjusted">Unadjusted</option>
+                <option value="worksheet">Worksheet (both)</option>
+              </select>
+              <span className="hint">{adjustments.length ? `${adjustments.length} account${adjustments.length === 1 ? "" : "s"} adjusted` : "No adjusting entries yet"}</span>
+            </div>
             <div className="field">
               <label htmlFor="asOf">As of date</label>
               <input id="asOf" name="asOf" type="date" defaultValue={p.asOf ?? ""} />
@@ -232,6 +261,49 @@ export default async function TrialBalance({
         </div>
       </div>
 
+      {version === "worksheet" ? (
+        <section>
+          <div className="card">
+            <div className="card-head">
+              <h2>Worksheet</h2>
+              <span className="page-sub">Unadjusted, the adjusting entries, and the adjusted balances</span>
+            </div>
+            <div className="tablewrap">
+              <table className="tb-ws">
+                <thead>
+                  <tr><th rowSpan={2}>Code</th><th rowSpan={2}>Account</th>
+                    <th colSpan={2} className="c">Unadjusted</th><th colSpan={2} className="c">Adjustments</th><th colSpan={2} className="c">Adjusted</th></tr>
+                  <tr><th className="r">Debit</th><th className="r">Credit</th><th className="r">Debit</th><th className="r">Credit</th><th className="r">Debit</th><th className="r">Credit</th></tr>
+                </thead>
+                <tbody>
+                  {ws.filter((r) => r.un.dr || r.un.cr || r.aj.dr || r.aj.cr || r.ad.dr || r.ad.cr).map((r) => (
+                    <tr key={r.id} className={r.aj.dr || r.aj.cr ? "tb-ws-adj" : undefined}>
+                      <td className="code"><Link href={glHref(r.id, "account")} style={{ color: "var(--link)" }}>{r.code}</Link></td>
+                      <td>{r.name}</td>
+                      <td className="r dr">{r.un.dr ? money(r.un.dr) : "–"}</td><td className="r cr">{r.un.cr ? money(r.un.cr) : "–"}</td>
+                      <td className="r dr">{r.aj.dr ? money(r.aj.dr) : ""}</td><td className="r cr">{r.aj.cr ? money(r.aj.cr) : ""}</td>
+                      <td className="r dr">{r.ad.dr ? money(r.ad.dr) : "–"}</td><td className="r cr">{r.ad.cr ? money(r.ad.cr) : "–"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr><td colSpan={2}>Total</td>
+                    <td className="r dr">{money(wsTotal.unDr)}</td><td className="r cr">{money(wsTotal.unCr)}</td>
+                    <td className="r dr">{money(wsTotal.ajDr)}</td><td className="r cr">{money(wsTotal.ajCr)}</td>
+                    <td className="r dr">{money(wsTotal.adDr)}</td><td className="r cr">{money(wsTotal.adCr)}</td></tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+          <div className={`tb-verdict ${Math.abs(wsTotal.unDr - wsTotal.unCr) < 0.0001 && Math.abs(wsTotal.adDr - wsTotal.adCr) < 0.0001 ? "ok" : "bad"}`}>
+            <CheckCircle2 size={16} aria-hidden="true" />
+            <div>
+              <strong>Each column balances on its own</strong>
+              <div className="hint">Unadjusted {money(wsTotal.unDr)} = {money(wsTotal.unCr)} · Adjustments {money(wsTotal.ajDr)} = {money(wsTotal.ajCr)} · Adjusted {money(wsTotal.adDr)} = {money(wsTotal.adCr)}</div>
+            </div>
+          </div>
+        </section>
+      ) : (
       <div className={selected ? "tb-split" : ""}>
         <section>
           <div className="card">
@@ -369,6 +441,7 @@ export default async function TrialBalance({
           </aside>
         )}
       </div>
+      )}
     </>
   );
 }

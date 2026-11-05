@@ -4,6 +4,7 @@
 //
 //   npx tsx scripts/demo-customers-january.mjs            the four customers
 //   npx tsx scripts/demo-customers-january.mjs --advance  plus an example customer advance (C0361)
+//   npx tsx scripts/demo-customers-january.mjs --adjust   an example accrual, marked adjusting
 //   npx tsx scripts/demo-customers-january.mjs --more     a partly used supplier advance (China) and an unused customer one (C0359)
 //
 // DEV only, after demo-thai-january.mjs (it uses that demo item, ZZDEMO). The
@@ -54,6 +55,17 @@ if (process.argv.includes("--advance")) {
 
 // --more: examples, not from the old ledgers — a supplier advance partly used and a
 // customer advance not used yet, so each partner shows a balance of its own.
+// --adjust: an example period-end adjusting entry, not from the old ledger — January
+// salary owed but not yet paid (an accrual), marked adjusting like depreciation is.
+if (process.argv.includes("--adjust")) {
+  const doc = await P.postJournalVoucher({ companyId: co.id, docDate: "2026-01-31", locationId: loc.id,
+    memo: "Example accrual: January salary owed, not yet paid (not from the old ledger)", reference: "demo-adj-1",
+    lines: [{ accountId: await acct("61252"), amount: 3_000_000 }, { accountId: await acct("21108"), amount: -3_000_000 }] });
+  await sql`update document set is_adjusting = true where id = ${doc.id}`;
+  console.log("adjusting entry", doc.docNo);
+  await sql.end(); process.exit(0);
+}
+
 if (process.argv.includes("--more")) {
   const china = await cust("01-001");
   const sup = await P.postSupplierPayment({ companyId: co.id, partnerId: china, docDate: "2026-01-08", cashAccountId: KBZ,
@@ -70,7 +82,7 @@ if (process.argv.includes("--more")) {
   await sql.end(); process.exit(0);
 }
 
-if (!process.argv.includes("--advance") && !process.argv.includes("--more")) {
+if (!["--advance", "--more", "--adjust"].some((a) => process.argv.includes(a))) {
 const htet = await cust("C0265");
 const h1 = await sale(htet, "2026-01-11", "c226010058", 2_380_000, "11/01/2026");
 await receipt(htet, "2026-01-13", MMQR, "c226010058", h1, 2_380_000, "Htet Wai MMQR Cash နှင့်ရှင်း");
