@@ -344,12 +344,36 @@ export function match(source: string, list: { id: string; code: string; name: st
 export const netOf = (p: { totals: PlannedInvoice["totals"] }) =>
   (p.totals.invoiceTotal ?? p.totals.lines) - p.totals.itemDiscount - p.totals.voucherDiscount;
 
-export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImportMaster, mapping: Mapping): PlannedInvoice[] {
-  const items = new Map(master.items.map((i) => [norm(i.code), i]));
-  const byName = new Map(master.items.map((i) => [norm(i.name), i]));
-  const known = new Map(master.known.map((k) => [norm(k.ref), k]));
-  const historySerials = new Set(master.historySerials);
-  const stock = new Map(master.stockSerials.map((x) => [x.serial, x.item_code]));
+type Item = PurchaseImportMaster["items"][number];
+
+/**
+ * One side's own rules, for the checker both imports share. Everything else —
+ * the old id, the date, each line's item, quantity, amount and serials, the
+ * totals, discounts, free lines, payment and currency — is checked the same
+ * way for a bill and a sale, so a fix to one is a fix to both.
+ */
+export type ImportSide = {
+  /** Who the invoice is with: suppliers for a bill, customers for a sale. */
+  parties: { id: string; code: string; name: string }[];
+  items: Item[];
+  known: { ref: string; doc_no: string; kind: "POSTED" | "HISTORY" }[];
+  /** The reason a free line posts under, and what to call it when there is none. */
+  focId: string | null;
+  noFoc: string;
+  /** A foreign-currency invoice: posted at its rate (a bill), or refused (a sale). */
+  foreign: (currency: string, rate: number) => Issue;
+  /** What a discount on the report becomes when it posts. */
+  discount: (t: SourceInvoice["totals"]) => string | null;
+  /** The side's own check of one serial, beyond its shape and repeats. */
+  serial: (x: string, it: Item | undefined, at: { postDate: string | null; locationId: string | null },
+           err: (message: string) => void, review: (message: string) => void) => void;
+  remark?: (s: SourceInvoice) => string | null;
+};
+
+export function planInvoices(source: SourceInvoice[], side: ImportSide, mapping: Mapping, locations: PurchaseImportMaster["locations"]): PlannedInvoice[] {
+  const items = new Map(side.items.map((i) => [norm(i.code), i]));
+  const byName = new Map(side.items.map((i) => [norm(i.name), i]));
+  const known = new Map(side.known.map((k) => [norm(k.ref), k]));
   // Where each IMEI first appears in this file, so a repeat names both invoices.
   const firstSeen = new Map<string, string>();
   const refCount = new Map<string, number>();
@@ -361,13 +385,16 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     const review = (field: string, message: string) => issues.push({ level: "review", field, message });
     const label = s.oldRef || `Invoice ${idx + 1}`;
 
-    // A bill typed in today needs no old id; one from the old system keeps it, once.
-    if (!s.oldRef) review("Docid", "No old document ID — nothing will stop this bill being posted again from another file.");
+    // An invoice typed in today needs no old id; one from the old system keeps it, once.
+    if (!s.oldRef) review("Docid", "No old document ID — nothing will stop this invoice being posted again from another file.");
     else if (refCount.get(norm(s.oldRef))! > 1) err("Docid", `${s.oldRef} appears more than once in this file.`);
     const date = reportDate(s.rawDate);
     if (!date) err("Date", s.rawDate ? `"${s.rawDate}" is not a date.` : "The invoice has no date.");
-    else if (date < ERP_START) review("Date", `Dated before the company start: posts on ${ERP_START}, with its own date kept on the bill as a note.`);
+    else if (date < ERP_START) review("Date", `Dated before the company start: posts on ${ERP_START}, with its own date kept on the invoice as a note.`);
+    const postDate = date && date < ERP_START ? ERP_START : date;
     if (s.lines.length === 0) err("Products", "No product lines were found under this invoice.");
+    const location = match(s.location, locations, mapping.locations[s.location]);
+    const locationId = resolved(location, mapping.locations);
 
     const lines: PlannedLine[] = s.lines.map((l0, n) => {
       const it = l0.code ? items.get(norm(l0.code)) : byName.get(norm(l0.description));
@@ -388,24 +415,19 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
         err(at, `${l.serials.length} serials for ${l.qty} units.`);
       if (it?.identity === "NONE" && l.serials.length > 0)
         review(at, `${it.code} carries no serial; its ${l.serials.length} will be kept as a note.`);
-      for (const x of l.serials) {
-        if (it?.identity === "IMEI" && !/^\d{15}$/.test(x)) err(at, `${x} is not an IMEI — an IMEI is 15 digits.`);
-        const held = stock.get(x);
-        // A unit arrives once: receiving one already here would put it on the shelf twice.
-        if (held) err(at, `${x} is already in the system${held !== it?.code ? ` as ${held}` : ""} — it has been received before.`);
-      }
       const dupInLine = l.serials.filter((x, k) => l.serials.indexOf(x) !== k);
       if (dupInLine.length) err(at, `${dupInLine[0]} appears twice on this line.`);
-      for (const imei of new Set(l.serials)) {
-        if (historySerials.has(imei)) review(at, `${imei} is on a history record imported earlier.`);
-        const other = firstSeen.get(imei);
-        if (other && other !== label) err(at, `${imei} is also on ${other} in this file.`);
-        else firstSeen.set(imei, label);
-        if (/^\d{15}$/.test(imei) && !luhnOk(imei)) review(at, `IMEI ${imei} fails its check digit — a typo in the old system?`);
+      if (it?.identity !== "NONE") for (const x of new Set(l.serials)) {
+        if (it?.identity === "IMEI" && !/^\d{15}$/.test(x)) err(at, `${x} is not an IMEI — an IMEI is 15 digits.`);
+        else if (/^\d{15}$/.test(x) && !luhnOk(x)) review(at, `IMEI ${x} fails its check digit — a typo in the old system?`);
+        const other = firstSeen.get(x);
+        if (other && other !== label) err(at, `${x} is also on ${other} in this file.`);
+        else firstSeen.set(x, label);
+        side.serial(x, it, { postDate, locationId }, (m) => err(at, m), (m) => review(at, m));
       }
-      // A line the supplier charged nothing for is their FOC: it posts as one, at zero cost.
+      // A line at nothing is free: the supplier's FOC on a bill, a giveaway on a sale.
       const free = l.qty > 0 && l.unitPrice === 0 && l.amount === 0;
-      if (free && !master.supplierFocId) err(at, "Free from the supplier, but no supplier FOC reason is set up to post it under.");
+      if (free && !side.focId) err(at, side.noFoc);
       return { ...l, itemId: it?.id ?? null, itemName: it?.name ?? null, tracksSerial: !!it?.tracks_serial, identity: it?.identity ?? null, free };
     });
 
@@ -416,26 +438,45 @@ export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImpo
     const net = (t.invoiceTotal ?? lineTotal) - t.itemDiscount - t.voucherDiscount;
     if (t.netTotal !== null && Math.abs(t.netTotal - net) > 1)
       err("Net total", `Total less discounts is ${fmt(net)}; the report says ${fmt(t.netTotal)}.`);
-    if (t.itemDiscount > 0)
-      review("Item discount", `The report gives item discounts only as a total (${fmt(t.itemDiscount)}); it posts as a discount on the whole bill.`);
-    if (t.paidAmount > net + 1) err("Paid amount", `${fmt(t.paidAmount)} paid is more than the bill's ${fmt(net)}.`);
+    if (net < -1) err("Discount", `The discounts (${fmt(t.itemDiscount + t.voucherDiscount)}) are more than the invoice.`);
+    const said = side.discount(t);
+    if (said) review("Discount", said);
+    if (t.paidAmount > net + 1) err("Paid amount", `${fmt(t.paidAmount)} paid is more than the invoice's ${fmt(net)}.`);
     if (t.advancePay > 0)
-      review("Advance pay", `${fmt(t.advancePay)} was settled from an advance in the old system. It is not applied here — apply the supplier's advance to this bill after posting.`);
-    if (/cash/i.test(s.payment ?? "") && t.paidAmount === 0)
+      review("Advance pay", `${fmt(t.advancePay)} was settled from an advance in the old system. It is not applied here — apply the advance to this invoice after posting.`);
+    if (/^c(a)?sh/i.test(s.payment ?? "") && t.paidAmount === 0)
       review("Payment", "Marked Cash, but the report shows nothing paid. It posts as owing; record the payment separately.");
-    if (t.currency !== "MMK") review("Currency", `In ${t.currency} at ${t.exchangeRate}.`);
+    if (t.currency !== "MMK") issues.push(side.foreign(t.currency, t.exchangeRate));
 
     const k = s.oldRef ? known.get(norm(s.oldRef)) : undefined;
     return {
-      row: s.row, oldRef: s.oldRef, supplierInvoiceNo: s.supplierInvoiceNo, date, rawDate: s.rawDate,
-      postDate: date && date < ERP_START ? ERP_START : date,
-      payment: s.payment, remark: s.remark,
-      supplier: match(s.supplier, master.suppliers, mapping.suppliers[s.supplier]),
-      location: match(s.location, master.locations, mapping.locations[s.location]),
-      lines, totals: { ...t, lines: lineTotal }, issues,
+      row: s.row, oldRef: s.oldRef, supplierInvoiceNo: s.supplierInvoiceNo, date, rawDate: s.rawDate, postDate,
+      payment: s.payment, remark: side.remark ? side.remark(s) : s.remark,
+      supplier: match(s.supplier, side.parties, mapping.suppliers[s.supplier]),
+      location, lines, totals: { ...t, lines: lineTotal }, issues,
       already: k ? { docNo: k.doc_no, kind: k.kind } : null,
     };
   });
+}
+
+/** A bill: each unit arrives once, and a free line is the supplier's FOC at zero cost. */
+export function planPurchaseImport(source: SourceInvoice[], master: PurchaseImportMaster, mapping: Mapping): PlannedInvoice[] {
+  const historySerials = new Set(master.historySerials);
+  const stock = new Map(master.stockSerials.map((x) => [x.serial, x.item_code]));
+  return planInvoices(source, {
+    parties: master.suppliers, items: master.items, known: master.known,
+    focId: master.supplierFocId,
+    noFoc: "Free from the supplier, but no supplier FOC reason is set up to post it under.",
+    foreign: (c, rate) => ({ level: "review", field: "Currency", message: `In ${c} at ${rate}.` }),
+    discount: (t) => t.itemDiscount > 0
+      ? `The report gives item discounts only as a total (${fmt(t.itemDiscount)}); it posts as a discount on the whole bill.` : null,
+    serial: (x, it, _at, err, review) => {
+      const held = stock.get(x);
+      // A unit arrives once: receiving one already here would put it on the shelf twice.
+      if (held) err(`${x} is already in the system${held !== it?.code ? ` as ${held}` : ""} — it has been received before.`);
+      if (historySerials.has(x)) review(`${x} is on a history record imported earlier.`);
+    },
+  }, mapping, master.locations);
 }
 
 /** The ERP record a source name resolves to: the reviewer's choice, else an exact match. A guess counts only once chosen. */

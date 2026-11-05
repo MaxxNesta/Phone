@@ -181,5 +181,26 @@ const noRef = planPurchaseImport(parsePurchaseReport([["Docid", "", "Date", "06/
   ["Code", "Description", "Qty", "Pur.price", "Amount"], ["IPZ003", "x", "1", "1000", "1000"], ["", "354630185148539"], ["Invoice Total", "1", "1000"]]), master, loc)[0];
 check("no old ID is allowed, flagged for review", invoiceStatus(noRef, loc) === "review");
 
+// The sales import runs the same checker with a sale's own stock rules.
+console.log("\n  Sales, on the same checker\n");
+const { planSalesImport, lineDiscounts } = await import("../lib/import-sales-invoices.ts");
+const shelf = { serial: "354630185148539", item_code: "IPZ003", status: "IN_STOCK", location_id: null, location: null, received_on: "2026-01-02", out_doc_no: null };
+const sm = { customers: [{ id: "C1", code: "C0001", name: "China" }], locations: master.locations, items: master.items, payAccounts: [],
+  focId: "F-promo", focName: "Promotional giveaway", known: [], units: [shelf] };
+const sale = (extra = [], m = sm, lines = [["IPZ003", "x", "1", "1000", "1000"], ["", "354630185148539"]]) => planSalesImport(parsePurchaseReport([
+  ["Docid", "c1", "Date", "06/01/2026"], ["Customer", "China", "Payment", "Crd"], ["Location", "Main Warehouse"],
+  ["Code", "Description", "Qty", "Sale price", "Amount"], ...lines, ["Invoice Total", "1", "1000"], ...extra]), m, loc)[0];
+check("a phone in stock sells", invoiceStatus(sale(), loc) === "ready", JSON.stringify(sale().issues));
+check("a phone never received blocks", sale([], { ...sm, units: [] }).issues.some((i) => /never been received/.test(i.message)));
+check("a phone received after the sale blocks", sale([], { ...sm, units: [{ ...shelf, received_on: "2026-01-09" }] }).issues.some((i) => /after this sale/.test(i.message)));
+const sd = sale([["Voucher Discount", "", "100"], ["Net Total", "", "900"]]);
+check("a discount on a sale is taken, for review", invoiceStatus(sd, loc) === "review" && netOf(sd) === 900, JSON.stringify(sd.issues));
+const gift = (m) => sale([], m, [["IPZ003", "x", "1", "1000", "1000"], ["", "354630185148539"], ["AKN01", "charger", "1", "0", "0"]]);
+const gm = { ...sm, items: [...sm.items, { id: "I-akn", code: "AKN01", name: "charger", is_active: true, tracks_serial: false, identity: "NONE" }] };
+check("a free line on a sale posts as a giveaway", gift(gm).lines[1].free && invoiceStatus(gift(gm), loc) === "ready", JSON.stringify(gift(gm).issues));
+check("a free line with no giveaway reason blocks", invoiceStatus(gift({ ...gm, focId: null }), loc) === "blocked");
+const parts = lineDiscounts([3000, 1000, 0], 101);
+check("a discount is shared by amount and adds back", parts.reduce((a, b) => a + b, 0) === 101 && parts[2] === 0 && parts[0] > parts[1], JSON.stringify(parts));
+
 console.log(failures ? `\n  ${failures} FAILED\n` : "\n  all passed\n");
 process.exit(failures ? 1 : 0);

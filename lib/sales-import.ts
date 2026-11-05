@@ -4,7 +4,7 @@ import { sql } from "./db";
 import { postOnce } from "./idempotency";
 import { postSaleWithDelivery } from "./posting";
 import { netOf, resolved, type Mapping, type PlannedInvoice } from "./import-purchase-invoices";
-import type { SalesImportMaster } from "./import-sales-invoices";
+import { lineDiscounts, type SalesImportMaster } from "./import-sales-invoices";
 import type { PostedResult, PostingPreview } from "./purchase-import";
 
 /**
@@ -20,7 +20,7 @@ import type { PostedResult, PostingPreview } from "./purchase-import";
 /** Everything a report is checked against, in one round trip; history only for what the file names. */
 export async function getSalesImportMaster(companyId: string, file: { refs: string[]; serials: string[] }): Promise<SalesImportMaster> {
   const refs = file.refs.filter(Boolean).map((r) => r.trim().toLowerCase());
-  const [customers, locations, items, payAccounts, known, units] = await Promise.all([
+  const [customers, locations, items, payAccounts, known, units, [foc]] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${companyId} and is_customer order by code`,
     sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active order by name`,
     sql`select id, code, name, is_active, tracks_serial, identity from item where company_id = ${companyId}`,
@@ -32,16 +32,20 @@ export async function getSalesImportMaster(companyId: string, file: { refs: stri
                to_char(v.received_date, 'YYYY-MM-DD') as received_on, v.out_doc_no
           from v_stock_serial v
          where v.company_id = ${companyId} and (v.imei = any(${file.serials}) or v.imei2 = any(${file.serials}))`,
+    // A free line on the old report was a promotion; any giveaway reason will do where that one is missing.
+    sql`select id, name from foc_reason where company_id = ${companyId} and applies_to = 'SALE'
+         order by (code = 'PROMOTION') desc, code limit 1`,
   ]);
   return {
     customers: customers as never, locations: locations as never, items: items as never, payAccounts: payAccounts as never,
-    known: known as never, units: units as never,
+    known: known as never, units: units as never, focId: (foc?.id as string) ?? null, focName: (foc?.name as string) ?? null,
   };
 }
 
 /** The sale as the engine takes it — the same input the counter builds. */
-function toInput(companyId: string, p: PlannedInvoice, mapping: Mapping) {
+function toInput(companyId: string, p: PlannedInvoice, mapping: Mapping, focId: string | null) {
   const t = p.totals;
+  const off = lineDiscounts(p.lines.map((l) => (l.free ? 0 : l.amount)), t.itemDiscount + t.voucherDiscount);
   const early = p.postDate !== p.date ? `Dated ${p.date} in the old system; posted on the company start` : null;
   const loose = p.lines.filter((l) => l.identity === "NONE" && l.serials.length).map((l) => `${l.code}: ${l.serials.join(", ")}`);
   return {
@@ -55,7 +59,11 @@ function toInput(companyId: string, p: PlannedInvoice, mapping: Mapping) {
     reference: p.supplierInvoiceNo,
     cashIn: t.paidAmount,
     cashAccountId: t.paidAmount > 0 ? mapping.payAccount ?? null : null,
-    lines: p.lines.map((l) => ({ itemId: l.itemId!, qty: l.qty, unitPrice: l.unitPrice, serials: l.identity === "NONE" ? undefined : l.serials })),
+    lines: p.lines.map((l, i) => ({
+      itemId: l.itemId!, qty: l.qty, unitPrice: l.unitPrice, serials: l.identity === "NONE" ? undefined : l.serials,
+      discountAmount: off[i] > 0 ? off[i] : null,
+      focReasonId: l.free ? focId : null,
+    })),
   };
 }
 
@@ -65,8 +73,17 @@ function keyOf(p: PlannedInvoice) {
   return `si-import:#${h.slice(0, 32)}`;
 }
 
-async function post(tx: TransactionSql, companyId: string, p: PlannedInvoice, mapping: Mapping) {
-  const posted = await postSaleWithDelivery(toInput(companyId, p, mapping), tx);
+/** The giveaway reason a free line posts under: read once for a whole batch, and only when a line is free. */
+async function giveaway(companyId: string, invoices: PlannedInvoice[]): Promise<string | null> {
+  if (!invoices.some((p) => p.lines.some((l) => l.free))) return null;
+  const [foc] = await sql`
+    select id from foc_reason where company_id = ${companyId} and applies_to = 'SALE'
+     order by (code = 'PROMOTION') desc, code limit 1`;
+  return (foc?.id as string) ?? null;
+}
+
+async function post(tx: TransactionSql, companyId: string, p: PlannedInvoice, mapping: Mapping, focId: string | null) {
+  const posted = await postSaleWithDelivery(toInput(companyId, p, mapping, focId), tx);
   // The old id on the invoice and the delivery it owns, so either is found by it.
   if (p.oldRef) await tx`
     update document set source_ref = ${p.oldRef}
@@ -78,9 +95,10 @@ class Rollback extends Error { constructor(readonly value: PostingPreview) { sup
 
 /** What posting this invoice would create, from a real posting that is then rolled back. */
 export async function previewSalesPosting(companyId: string, p: PlannedInvoice, mapping: Mapping): Promise<PostingPreview> {
+  const focId = await giveaway(companyId, [p]);
   try {
     await sql.begin(async (tx) => {
-      const posted = await post(tx, companyId, p, mapping);
+      const posted = await post(tx, companyId, p, mapping, focId);
       const docs = await tx`
         select id, doc_type, doc_no from document
          where id = ${posted.id} or lifecycle_owner_id = ${posted.id} or source_document_id = ${posted.id}`;
@@ -107,11 +125,12 @@ export async function previewSalesPosting(companyId: string, p: PlannedInvoice, 
 /** Each invoice on its own, oldest first so stock leaves in the order it did; a retry posts nothing twice. */
 export async function postImportedSales(companyId: string, invoices: PlannedInvoice[], mapping: Mapping): Promise<PostedResult[]> {
   const order = [...invoices].sort((a, b) => a.postDate!.localeCompare(b.postDate!) || a.row - b.row);
+  const focId = await giveaway(companyId, order);
   const out: PostedResult[] = [];
   const postedIds = new Map<string, number>();
   for (const p of order) {
     try {
-      const r = await postOnce(companyId, keyOf(p), (tx) => post(tx, companyId, p, mapping));
+      const r = await postOnce(companyId, keyOf(p), (tx) => post(tx, companyId, p, mapping, focId));
       postedIds.set(r.id, p.row);
       out.push({ row: p.row, oldRef: p.oldRef, status: r.repeated ? "already" : "posted", invoiceNo: r.docNo, receiptNo: null, paymentNo: null, total: netOf(p) });
     } catch (e) {
