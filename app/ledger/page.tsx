@@ -136,20 +136,26 @@ export default async function TrialBalance({
         </span>
       </div>
 
+      {/* Each version is its own page; switching keeps the date, branch and other filters. */}
+      <div className="tb-switch">
+        <div className="vtabs pay-tabs" role="tablist" aria-label="Trial balance version">
+          {([["", "Adjusted"], ["unadjusted", "Unadjusted"], ["worksheet", "Worksheet"]] as const).map(([v, label]) => (
+            <Link key={v} href={keep({ version: v || undefined, page: undefined })} role="tab" aria-selected={version === v}
+              className={version === v ? "on" : undefined}>{label}</Link>
+          ))}
+        </div>
+        <span className="hint">
+          {adjustments.length ? `${adjustments.length} account${adjustments.length === 1 ? "" : "s"} touched by adjusting entries` : "No adjusting entries yet"}
+          {" · "}depreciation and journal vouchers marked adjusting
+        </span>
+      </div>
+
       <form method="get" className="card doc-meta" style={{ marginBottom: "1rem" }}>
+        {version && <input type="hidden" name="version" value={version} />}
         {backHref && <input type="hidden" name="back" value={backHref} />}
         {p.account && <input type="hidden" name="account" value={p.account} />}
         <div className="card-body">
           <div className="row">
-            <div className="field">
-              <label htmlFor="version">Version</label>
-              <select id="version" name="version" defaultValue={version}>
-                <option value="">Adjusted</option>
-                <option value="unadjusted">Unadjusted</option>
-                <option value="worksheet">Worksheet (both)</option>
-              </select>
-              <span className="hint">{adjustments.length ? `${adjustments.length} account${adjustments.length === 1 ? "" : "s"} adjusted` : "No adjusting entries yet"}</span>
-            </div>
             <div className="field">
               <label htmlFor="asOf">As of date</label>
               <input id="asOf" name="asOf" type="date" defaultValue={p.asOf ?? ""} />

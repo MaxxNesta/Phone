@@ -9179,3 +9179,5 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 .tb-ws { font-variant-numeric: tabular-nums; }
 .tb-ws th.c { text-align: center; border-bottom: 1px solid var(--line-soft); }
 .tb-ws tr.tb-ws-adj > td { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+.tb-switch { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; }
+.tb-switch .vtabs { margin: 0; }
