@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, FileSpreadsheet, Info, PackageCheck, X } from "lucide-react";
 import { FileDrop } from "./file-drop";
 import { previewInvoicePosting, previewPurchaseImport, runPurchaseImport, type PurchaseImportResult, type SourceFormat } from "@/lib/purchase-import-actions";
+import { previewSalesImport, previewSalesInvoicePosting, runSalesImport } from "@/lib/sales-import-actions";
 import type { PostedResult, PostingPreview } from "@/lib/purchase-import";
 import { invoiceBlocks, parseTsv, invoiceStatus, netOf, resolved, type Mapping, type Match, type PlannedInvoice, type Status } from "@/lib/import-purchase-invoices";
 
@@ -23,16 +24,48 @@ const STATUS: Record<Status, { label: string; pill: string }> = {
   blocked: { label: "Can't post", pill: "overdue" },
   imported: { label: "Already posted", pill: "draft" },
 };
-const DOC: Record<string, string> = { PURCHASE_INVOICE: "Purchase invoice", GOODS_RECEIPT: "Goods receipt", SUPPLIER_PAYMENT: "Supplier payment" };
+const DOC: Record<string, string> = {
+  PURCHASE_INVOICE: "Purchase invoice", GOODS_RECEIPT: "Goods receipt", SUPPLIER_PAYMENT: "Supplier payment",
+  SALES_INVOICE: "Sales invoice", DELIVERY: "Delivery", CUSTOMER_RECEIPT: "Customer receipt",
+};
+
+/** One screen, two reports: what each side calls things, and the actions behind it. */
+const SIDE = {
+  purchase: {
+    preview: previewPurchaseImport, previewPosting: previewInvoicePosting, run: runPurchaseImport,
+    report: "purchase invoice report", partner: "Supplier", arrival: "Goods arrival for this batch",
+    arrivalHow: "Arriving with this bill", arrivalNote: "Each invoice posts with its own goods receipt. An import always receives this way.",
+    moveDate: "Receipt date", moveHint: "The goods receipt carries the invoice's date; its stock counts from the start of that day.",
+    due: "Supplier's payment terms", money: "Paid from",
+    moneyHint: "For the paid amount the report shows. One supplier payment posts with that bill; the rest stays owing.",
+    newNo: "New PI number", dateLabel: "Posting and receipt date", partnerRef: "Supplier invoice no.",
+    makes: "its bill, goods receipt and journals", each: "each with its goods receipt",
+    lead: "Every invoice posts as a real bill with its goods receipt — stock, payable and journals, as if typed in.",
+    cols: ["Purchase invoice", "Goods receipt", "Payment"], list: "/purchases/invoices", listLabel: "View purchase invoices",
+  },
+  sales: {
+    preview: previewSalesImport, previewPosting: previewSalesInvoicePosting, run: runSalesImport,
+    report: "sales invoice report", partner: "Customer", arrival: "Delivery for this batch",
+    arrivalHow: "Delivered with this invoice", arrivalNote: "Each invoice posts with its own delivery: the phones leave stock at their FIFO cost. An import always delivers this way.",
+    moveDate: "Delivery date", moveHint: "The delivery carries the invoice's date. Every phone must be in stock there, received on or before that day.",
+    due: "On the invoice date", money: "Received into",
+    moneyHint: "For the paid amount the report shows. One customer receipt posts with that invoice; the rest stays owing.",
+    newNo: "New invoice number", dateLabel: "Posting and delivery date", partnerRef: "Reference",
+    makes: "its invoice, delivery and journals", each: "each with its delivery",
+    lead: "Every invoice posts as a real sale with its delivery — stock out, cost of sales, receivable and journals, as if entered at the counter.",
+    cols: ["Sales invoice", "Delivery", "Receipt"], list: "/sales/invoices", listLabel: "View sales invoices",
+  },
+} as const;
 
 /**
- * Purchase invoices from the old system's Excel report, posted as real bills.
- * Upload or paste, review each invoice (supplier and warehouse matched by
+ * Purchase or sales invoices from the old system's Excel report, posted as real documents.
+ * Upload or paste, review each invoice (supplier or customer and warehouse matched by
  * name, a guess confirmed once for every invoice that uses it), then post:
- * each invoice with its goods receipt, as a bill typed in with "goods
- * arriving with this bill" — the only way an import receives.
+ * each invoice with its goods receipt or delivery, as one entered by hand with "goods
+ * arriving with this bill" or "delivered now" — the only way an import moves stock.
  */
-export function PurchaseImport() {
+export function PurchaseImport({ side = "purchase" }: { side?: "purchase" | "sales" }) {
+  const T = SIDE[side];
   const [mode, setMode] = useState<"upload" | "paste">("upload");
   const [file, setFile] = useState<Source | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -54,7 +87,7 @@ export function PurchaseImport() {
     setMapping({ suppliers: {}, locations: {}, payAccount: null });
     startRead(async () => {
       try {
-        const p = await previewPurchaseImport(u.content, u.format);
+        const p = await T.preview(u.content, u.format);
         setPreview(p);
         setOpen(new Set(p.invoices.slice(0, 1).map((i) => i.row)));
       } catch (e) {
@@ -93,7 +126,7 @@ export function PurchaseImport() {
   function showPosting(row: number) {
     if (!file) return;
     setPostings((s) => ({ ...s, [row]: "loading" }));
-    previewInvoicePosting(file.content, file.format, row, mapping)
+    T.previewPosting(file.content, file.format, row, mapping)
       .then((r) => setPostings((s) => ({ ...s, [row]: r })))
       .catch((e) => setPostings((s) => ({ ...s, [row]: { error: e instanceof Error ? e.message : String(e) } })));
   }
@@ -119,7 +152,7 @@ export function PurchaseImport() {
       for (const [i, p] of queue.entries()) {
         setProgress({ done: i, total: queue.length, current: p.oldRef || `Invoice ${i + 1}` });
         try {
-          const r = await runPurchaseImport({ content: file.content, format: file.format, filename: file.name, mapping, skip: [], only: [p.row] });
+          const r = await T.run({ content: file.content, format: file.format, filename: file.name, mapping, skip: [], only: [p.row] });
           out.push(...(r.ok ? r.results : [{ row: p.row, oldRef: p.oldRef, status: "failed" as const, error: r.error }]));
         } catch (e) {
           out.push({ row: p.row, oldRef: p.oldRef, status: "failed", error: e instanceof Error ? e.message : "The connection dropped. Retry — nothing posts twice." });
@@ -157,8 +190,8 @@ export function PurchaseImport() {
             {mode === "upload"
               ? <FileDrop onPick={onPick} onClear={restart} picked={file?.name ?? null} busy={reading} accept=".xlsx" />
               : <PasteSheet busy={reading} onRead={(text) => onPick({ content: text, format: "tsv", name: "Pasted from Excel" })} />}
-            <p className="pimp-note"><Info size={14} aria-hidden="true" /><span>The purchase invoice report. Each invoice starts with its <strong>Docid</strong> row;
-              the IMEIs sit under each line. Every invoice posts as a real bill with its goods receipt — stock, payable and journals, as if typed in.</span></p>
+            <p className="pimp-note"><Info size={14} aria-hidden="true" /><span>The {T.report}. Each invoice starts with its <strong>Docid</strong> row;
+              the IMEIs sit under each line. {T.lead}</span></p>
             {error && <div className="alert" style={{ marginTop: 12 }}>{error}</div>}
           </div>
         </section>
@@ -176,27 +209,27 @@ export function PurchaseImport() {
           </div>
 
           <section className="card pimp-map">
-            <div className="card-head"><h2>Goods arrival for this batch</h2></div>
+            <div className="card-head"><h2>{T.arrival}</h2></div>
             <div className="card-body pimp-arrival">
               <div className="pimp-fixed"><PackageCheck size={16} aria-hidden="true" />
-                <span><strong>Arriving with this bill</strong><span className="subline">Each invoice posts with its own goods receipt. An import always receives this way.</span></span></div>
+                <span><strong>{T.arrivalHow}</strong><span className="subline">{T.arrivalNote}</span></span></div>
               <div className="field">
-                <label>Receipt date</label>
+                <label>{T.moveDate}</label>
                 <span className="fixedfield">Use invoice date</span>
-                <span className="hint">The goods receipt carries the invoice&apos;s date; its stock counts from the start of that day.</span>
+                <span className="hint">{T.moveHint}</span>
               </div>
               <div className="field">
                 <label>Due date</label>
-                <span className="fixedfield">Supplier&apos;s payment terms</span>
+                <span className="fixedfield">{T.due}</span>
               </div>
               {anyPaid && (
                 <div className="field">
-                  <label htmlFor="pay-account">Paid from</label>
+                  <label htmlFor="pay-account">{T.money}</label>
                   <select id="pay-account" value={mapping.payAccount ?? ""} onChange={(e) => { setPostings({}); setMapping((m) => ({ ...m, payAccount: e.target.value || null })); }}>
                     <option value="">Choose the cash or bank account…</option>
                     {preview.payAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
                   </select>
-                  <span className="hint">For the paid amount the report shows. One supplier payment posts with that bill; the rest stays owing.</span>
+                  <span className="hint">{T.moneyHint}</span>
                 </div>
               )}
             </div>
@@ -207,7 +240,7 @@ export function PurchaseImport() {
               <div className="card-head"><h2>Match names from the report</h2>
                 <span className="page-sub">Chosen once, used for every invoice with that name.</span></div>
               <div className="card-body">
-                {[...supplierMaps.map((m) => ["suppliers", "Supplier", m, preview.suppliers] as const),
+                {[...supplierMaps.map((m) => ["suppliers", T.partner, m, preview.suppliers] as const),
                   ...locationMaps.map((m) => ["locations", "Warehouse", m, preview.locations] as const)].map(([kind, label, m, list]) => {
                   const id = mapping[kind][m.source] ?? "";
                   return (
@@ -249,13 +282,13 @@ export function PurchaseImport() {
                     <div className="pimp-body">
                       <dl className="pimp-info">
                         <div><dt>Old document ID</dt><dd className="code">{p.oldRef || "—"}</dd></div>
-                        <div><dt>New PI number</dt><dd className="subline">{p.already ? p.already.docNo : "Assigned on posting"}</dd></div>
+                        <div><dt>{T.newNo}</dt><dd className="subline">{p.already ? p.already.docNo : "Assigned on posting"}</dd></div>
                         <div><dt>Invoice date</dt><dd>{day(p.date, p.rawDate)}</dd></div>
-                        <div><dt>Posting and receipt date</dt><dd>{day(p.postDate, p.rawDate)}{p.postDate !== p.date && <span className="subline"> · company start</span>}</dd></div>
-                        <div><dt>Supplier</dt><dd>{sup ? sup.name : <span className="pimp-need">Choose above</span>}</dd></div>
+                        <div><dt>{T.dateLabel}</dt><dd>{day(p.postDate, p.rawDate)}{p.postDate !== p.date && <span className="subline"> · company start</span>}</dd></div>
+                        <div><dt>{T.partner}</dt><dd>{sup ? sup.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Warehouse</dt><dd>{loc ? loc.name : <span className="pimp-need">Choose above</span>}</dd></div>
                         <div><dt>Payment</dt><dd>{p.payment ?? "—"}</dd></div>
-                        <div><dt>Supplier invoice no.</dt><dd>{p.supplierInvoiceNo ?? <span className="subline">Not provided</span>}</dd></div>
+                        <div><dt>{T.partnerRef}</dt><dd>{p.supplierInvoiceNo ?? <span className="subline">Not provided</span>}</dd></div>
                         {p.remark && <div className="wide"><dt>Remark</dt><dd>{p.remark}</dd></div>}
                       </dl>
 
@@ -335,7 +368,7 @@ export function PurchaseImport() {
               <div className="pimp-progress" role="status" aria-live="polite">
                 <div className="pimp-progress-t">
                   <strong>Posting {progress.done + 1} of {progress.total}</strong>
-                  <span className="subline">{progress.current} · its bill, goods receipt and journals</span>
+                  <span className="subline">{progress.current} · {T.makes}</span>
                   <span className="pimp-progress-n">{Math.round((progress.done / progress.total) * 100)}%</span>
                 </div>
                 <div className="pimp-progress-track"><span style={{ width: `${(progress.done / progress.total) * 100}%` }} /></div>
@@ -346,7 +379,7 @@ export function PurchaseImport() {
             <span className="page-sub">
               {holding.length
                 ? `${holding.length} invoice${holding.length === 1 ? " needs" : "s need"} a choice or a fix — or leave ${holding.length === 1 ? "it" : "them"} out.`
-                : included.length ? `${included.length} invoice${included.length === 1 ? "" : "s"} · ${money(total)} MMK · each with its goods receipt` : "Nothing to post."}
+                : included.length ? `${included.length} invoice${included.length === 1 ? "" : "s"} · ${money(total)} MMK · ${T.each}` : "Nothing to post."}
             </span>
             <button type="button" onClick={() => doPost()} disabled={importing || holding.length > 0 || included.length === 0}>
               {importing ? "Posting…" : `Import and post ${included.length || ""} invoice${included.length === 1 ? "" : "s"}`}
@@ -355,7 +388,7 @@ export function PurchaseImport() {
         </>
       )}
 
-      {step === 3 && result && <Done result={result} busy={importing} onRetry={doPost} onBack={() => setResult(null)} onRestart={restart} />}
+      {step === 3 && result && <Done side={side} result={result} busy={importing} onRetry={doPost} onBack={() => setResult(null)} onRestart={restart} />}
     </div>
   );
 }
@@ -369,7 +402,7 @@ function PostingView({ v }: { v: PostingPreview }) {
       <h3>What this posts</h3>
       <p className="subline">{v.documents.map((d) => DOC[d.type] ?? d.type).join(" · ")} — numbers are given when it posts.</p>
       {v.stock.length > 0 && (
-        <p className="pimp-stockin">{v.stock.map((s) => `+${money(s.qty)} ${s.code} into ${s.location} at ${money(s.cost)}`).join(" · ")}</p>
+        <p className="pimp-stockin">{v.stock.map((s) => s.qty < 0 ? `−${money(-s.qty)} ${s.code} out of ${s.location} at ${money(-s.cost)}` : `+${money(s.qty)} ${s.code} into ${s.location} at ${money(s.cost)}`).join(" · ")}</p>
       )}
       <div className="tablewrap">
         <table className="pimp-lines">
@@ -393,9 +426,10 @@ function PostingView({ v }: { v: PostingPreview }) {
 }
 
 /** Posted, already posted, failed: each invoice's outcome, and a retry that cannot repost the ones that went through. */
-function Done({ result, busy, onRetry, onBack, onRestart }: {
-  result: PurchaseImportResult; busy: boolean; onRetry: (only: number[]) => void; onBack: () => void; onRestart: () => void;
+function Done({ side, result, busy, onRetry, onBack, onRestart }: {
+  side: "purchase" | "sales"; result: PurchaseImportResult; busy: boolean; onRetry: (only: number[]) => void; onBack: () => void; onRestart: () => void;
 }) {
+  const T = SIDE[side];
   if (!result.ok) {
     return (
       <section className="card pimp-done">
@@ -419,11 +453,11 @@ function Done({ result, busy, onRetry, onBack, onRestart }: {
       <h2>{posted.length} invoice{posted.length === 1 ? "" : "s"} posted{failed.length ? ` · ${failed.length} failed` : ""}</h2>
       <p className="page-sub">
         {[already.length && `${already.length} already posted earlier`, result.skipped && `${result.skipped} left out or not ready`].filter(Boolean).join(" · ") ||
-          "Each with its goods receipt, stock, payable and journals."}
+          (side === "sales" ? "Each with its delivery, stock out, receivable and journals." : "Each with its goods receipt, stock, payable and journals.")}
       </p>
       <div className="tablewrap pimp-map-out wide">
         <table>
-          <thead><tr><th>Old ID</th><th>Purchase invoice</th><th>Goods receipt</th><th>Payment</th><th>Result</th></tr></thead>
+          <thead><tr><th>Old ID</th><th>{T.cols[0]}</th><th>{T.cols[1]}</th><th>{T.cols[2]}</th><th>Result</th></tr></thead>
           <tbody>
             {result.results.map((r) => (
               <tr key={r.row}>
@@ -450,7 +484,7 @@ function Done({ result, busy, onRetry, onBack, onRestart }: {
           </button>
         )}
         <button type="button" className="ghost" onClick={onRestart}>Import another file</button>
-        <Link className="btn" href="/purchases/invoices">View purchase invoices</Link>
+        <Link className="btn" href={T.list}>{T.listLabel}</Link>
       </div>
     </section>
   );

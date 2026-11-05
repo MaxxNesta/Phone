@@ -169,6 +169,7 @@ export default async function SalesInvoices({
 
       <div className="actions">
         <Link href="/sales/new" className="btn">+ New sales invoice</Link>
+        <Link href="/sales/invoices/import" className="btn ghost">Import invoices</Link>
         <Link href="/pos" className="btn ghost">Open POS</Link>
       </div>
 

@@ -29,7 +29,10 @@ export type SourceInvoice = {
   /** Row in the sheet the invoice's Docid sits on, for messages. */
   row: number;
   oldRef: string; supplierInvoiceNo: string | null; rawDate: string;
+  /** The other party: the supplier on a purchase report, the customer on a sales one. */
   supplier: string; payment: string | null; location: string; remark: string | null;
+  /** Sales reports: who sold it, as the old system printed it. */
+  salesman: string | null;
   lines: SourceLine[];
   totals: {
     qty: number | null; invoiceTotal: number | null; itemDiscount: number; voucherDiscount: number;
@@ -43,7 +46,7 @@ const isNum = (s: string) => NUM.test(s.trim());
 const key = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
 
 /** Header labels the report prints; pasted, they may come without their colon. */
-const KNOWN = /^(docid|invoiceno|date|supplier|payment|location|remark)$/;
+const KNOWN = /^(docid|invoiceno|date|supplier|customer|membercard|salesmen|payment|location|remark)$/;
 const LABEL = /^([A-Za-z_. ]+?)\s*:\s*(.*)$/;
 const isLabel = (c: string) => LABEL.test(c) || KNOWN.test(key(c));
 
@@ -119,7 +122,7 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
       const kv = labelled(cells);
       cur = {
         row: i + 1, oldRef: kv.docid ?? "", supplierInvoiceNo: kv.invoiceno || null, rawDate: kv.date ?? "",
-        supplier: "", payment: null, location: "", remark: null, lines: [],
+        supplier: "", payment: null, location: "", remark: null, salesman: null, lines: [],
         totals: { qty: null, invoiceTotal: null, itemDiscount: 0, voucherDiscount: 0, advancePay: 0,
                   paidAmount: 0, netTotal: null, currency: "MMK", exchangeRate: 1 },
       };
@@ -129,9 +132,11 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
     if (!cur) return;
     const inv: SourceInvoice = cur;
 
-    if (mode === "head" && /^(supplier|location|payment|remark)$/.test(first)) {
+    if (mode === "head" && /^(supplier|customer|membercard|salesmen|location|payment|remark)$/.test(first)) {
       const kv = labelled(cells);
       if (kv.supplier !== undefined) inv.supplier = kv.supplier;
+      if (kv.customer !== undefined) inv.supplier = kv.customer;
+      if (kv.salesmen !== undefined) inv.salesman = kv.salesmen || null;
       if (kv.payment !== undefined) inv.payment = kv.payment || null;
       if (kv.location !== undefined) inv.location = kv.location;
       if (kv.remark !== undefined) inv.remark = kv.remark || null;
@@ -160,11 +165,18 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
       }
       else if (label === "advancepay") t.advancePay = nums[0] ?? 0;
       else if (label === "paidamount") t.paidAmount = nums[0] ?? 0;
-      else if (label === "nettotal") t.netTotal = nums[0] ?? null;
+      else if (label === "nettotal" || label === "netamount") t.netTotal = nums[0] ?? null;
       return;
     }
 
     if (mode !== "lines") return;
+    // "Count :2" on a row of its own (the sales report): how many serials the line above carries.
+    const counted = filled.length === 1 && filled[0].match(/^count\s*:\s*(\d+)/i);
+    if (counted) {
+      const last = inv.lines[inv.lines.length - 1];
+      if (last) last.count = Number(counted[1]);
+      return;
+    }
     const serials = isItemLine(filled) ? null : serialTokens(filled);
     if (serials) {
       const last = inv.lines[inv.lines.length - 1];
@@ -270,10 +282,10 @@ export type PlannedInvoice = {
   already: { docNo: string; kind: "POSTED" | "HISTORY" } | null;
 };
 
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+export const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
-function match(source: string, list: { id: string; code: string; name: string }[], chosen?: string): Match {
+export function match(source: string, list: { id: string; code: string; name: string }[], chosen?: string): Match {
   if (chosen && list.some((x) => x.id === chosen)) return { source, id: chosen, how: "exact" };
   const s = norm(source);
   if (!s) return { source, id: null, how: "none" };
