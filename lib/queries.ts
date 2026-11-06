@@ -1,4 +1,5 @@
 import { cache } from "react";
+import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { grirMatcher, type MatchableLine, type DraftDocType } from "./posting";
 import type { Plan } from "./plans";
@@ -4847,17 +4848,20 @@ const CYCLE_ROLE = {
   payable: "AP_CONTROL",
 } as const;
 
+/** The cycle reads through the pool, or a transaction a test rolls back. */
+type Sql = typeof sql | TransactionSql;
+
 const ratio = (num: number, den: number, days: number) =>
   den > 0.0001 ? (num / den) * days : null;
 
 async function cycleWindow(
-  companyId: string, from: string, to: string,
+  companyId: string, from: string, to: string, db: Sql = sql,
 ): Promise<CycleMetrics> {
   // Trading within the window. Year-end closes are excluded: closing a year
   // empties revenue and cost of sales into retained earnings, so a window
   // containing the close sums to zero — and a cycle divided by zero revenue
   // is not a large number, it is a missing one.
-  const [flow] = await sql`
+  const [flow] = await db`
     select
       -coalesce(sum(jl.base_amount) filter (where a.account_type = 'REVENUE'), 0)::float as revenue,
        coalesce(sum(jl.base_amount) filter (where a.account_type = 'COGS'), 0)::float as cogs
@@ -4872,7 +4876,7 @@ async function cycleWindow(
   // Averaged across the window, not taken at its end: a closing balance on a
   // day a big delivery happened to land would swing the whole metric, and
   // the question is how much was tied up *through* the period.
-  const [bal] = await sql`
+  const [bal] = await db`
     with roles as (
       select role, account_id from account_determination where company_id = ${companyId}
     ),
@@ -4900,7 +4904,7 @@ async function cycleWindow(
   // Current and quick ratios, from the chart's own Current Assets and
   // Current Liabilities headings rather than from account_type — the split
   // between current and fixed is a position in the tree, not a type.
-  const [liq] = await sql`
+  const [liq] = await db`
     with tree as (
       select id, parent_id, code from account where company_id = ${companyId}
     ),
@@ -4965,13 +4969,13 @@ async function cycleWindow(
  * The previous period is the same length immediately before, so "24 days
  * worse" compares like with like rather than a quarter against a year.
  */
-export async function getCashConversionCycle(companyId: string, from: string, to: string) {
+export async function getCashConversionCycle(companyId: string, from: string, to: string, db: Sql = sql) {
   const span = new Date(to).getTime() - new Date(from).getTime();
   const prevFrom = new Date(new Date(from).getTime() - span).toISOString().slice(0, 10);
 
   const [current, previous] = await Promise.all([
-    cycleWindow(companyId, from, to),
-    cycleWindow(companyId, prevFrom, from),
+    cycleWindow(companyId, from, to, db),
+    cycleWindow(companyId, prevFrom, from, db),
   ]);
 
   // Twelve months to the window's end, each a rolling twelve-month view —
@@ -4990,7 +4994,7 @@ export async function getCashConversionCycle(companyId: string, from: string, to
   }
   const trend = await Promise.all(
     months.map(async (m) => {
-      const w = await cycleWindow(companyId, m.from, m.to);
+      const w = await cycleWindow(companyId, m.from, m.to, db);
       return { label: m.label, ccc: w.ccc, dio: w.dio, dso: w.dso, dpo: w.dpo };
     }),
   );
