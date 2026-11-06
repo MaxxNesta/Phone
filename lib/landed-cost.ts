@@ -30,8 +30,8 @@ import {
 
 export type Method = "VALUE" | "EQUAL" | "MANUAL";
 export const METHOD_LABEL: Record<Method, string> = {
-  VALUE: "By purchase value",
-  EQUAL: "Equal per unit",
+  VALUE: "Split by item cost",
+  EQUAL: "Split equally per item",
   MANUAL: "Manual by product variant",
 };
 const METHODS = Object.keys(METHOD_LABEL) as Method[];
@@ -240,7 +240,7 @@ export function allocate(
   const qty = (u: Unit) => Number(u.qty ?? 1);
   if (charge.method === "VALUE") {
     if (!units.some((u) => u.original_cost > 0)) {
-      throw new Error(`${chargeLabel}: the goods have no purchase value to spread by. Use Equal per unit.`);
+      throw new Error(`${chargeLabel}: the goods have no cost to split by. Use Split equally per item.`);
     }
     return spread(amount, units.map((u) => Math.max(0, u.original_cost) * qty(u)), dp);
   }

@@ -1291,7 +1291,7 @@ export function InvoiceForm({
           brought the goods is asked about here, as the receipt would ask. */}
       {!isSales && receiveMode === "now" && (
         <CarriageSection couriers={partners as never} base={base} paidFrom={paidFrom}
-          phones={lines.filter(named).reduce((s, l) => s + (Number(l.qty) || 0), 0)}
+          units={lines.filter(named).reduce((s, l) => s + (Number(l.qty) || 0), 0)}
           onBlocked={setCarriageBlock} />
       )}
 

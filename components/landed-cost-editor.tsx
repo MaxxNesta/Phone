@@ -8,8 +8,8 @@ import { useNotice } from "@/components/toast";
 
 type Method = "VALUE" | "EQUAL" | "MANUAL";
 const METHODS: [Method, string][] = [
-  ["VALUE", "By purchase value"],
-  ["EQUAL", "Equal per unit"],
+  ["VALUE", "Split by item cost"],
+  ["EQUAL", "Split equally per item"],
   ["MANUAL", "Manual by product variant"],
 ];
 

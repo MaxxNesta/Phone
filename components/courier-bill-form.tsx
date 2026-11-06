@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eye, FileText, Hash, Layers, Package, Smartphone, StickyNote, Wallet, X } from "lucide-react";
 import type { PreviewShare } from "@/lib/courier-payables";
 import { useNotice } from "@/components/toast";
+import { SpreadField, SPREAD, postedSpread, type Spread } from "./spread-field";
 
 type Opt = { id: string; label: string };
 type Receipt = { id: string; no: string; date: string; supplier: string | null; warehouse: string | null; units: number; landed: number };
@@ -45,7 +46,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
   };
   const [chosen, setChosen] = useState<string[]>(initialReceiptId ? [initialReceiptId] : []);
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState("EQUAL");
+  const [method, setMethod] = useState<Spread>("EQUAL");
   // "" = owed to the courier, paid later; otherwise the account it is paid from now.
   const [payment, setPayment] = useState("");
   const paidNow = payment !== "";
@@ -87,7 +88,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} max={today} required />
             </div>
             <div className="field">
-              <label htmlFor="amount"><Hash size={13} aria-hidden="true" />{method === "PER" ? "Per unit" : "Amount"}</label>
+              <label htmlFor="amount"><Hash size={13} aria-hidden="true" />{method === "PER" ? "Per item" : "Total charge"}</label>
               <input id="amount" type="number" min="0" step="any" inputMode="decimal" value={amount}
                 onChange={(e) => setAmount(e.target.value)} placeholder={method === "PER" ? "e.g. 45000" : "e.g. 900000"} required />
               <input type="hidden" name="amount" value={total > 0 ? String(total) : ""} />
@@ -100,15 +101,8 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
               </select>
               <input type="hidden" name="paid_from" value={payment} />
             </div>
-            <div className="field">
-              <label htmlFor="method"><Layers size={13} aria-hidden="true" />Spread</label>
-              <select id="method" value={method} onChange={(e) => setMethod(e.target.value)}>
-                <option value="EQUAL">Total, shared equally</option>
-                <option value="PER">Fixed per unit</option>
-                <option value="VALUE">Total, by purchase value</option>
-              </select>
-              <input type="hidden" name="method" value={method === "VALUE" ? "VALUE" : "EQUAL"} />
-            </div>
+            <SpreadField id="method" value={method} onChange={setMethod} />
+            <input type="hidden" name="method" value={postedSpread(method)} />
           </div>
           <div className="doc-info-foot">
             <details className="moredetails">
@@ -157,7 +151,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
       {total > 0 && (
         <section className="card">
           <div className="card-head"><h2>What this posts</h2>
-            {method !== "VALUE" && each > 0 && <span className="page-sub">{fmt(each)} on each unit{method === "PER" ? ` · ${phones} units = ${fmt(total)}` : ""}</span>}</div>
+            {method !== "VALUE" && each > 0 && <span className="page-sub">{fmt(each)} on each item{method === "PER" ? ` · ${phones} items = ${fmt(total)}` : ""}</span>}</div>
           <div className="tablewrap">
             <table>
               <thead><tr><th>Entry</th><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
@@ -199,7 +193,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
               { icon: CalendarDays, label: "Bill date", value: shown.date ? new Date(shown.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—" },
               { icon: Hash, label: "Amount", value: `${fmt(total)} MMK` },
               { icon: Wallet, label: "Payment", value: paidNow ? `Paid now · ${paidLabel}` : "Pay later" },
-              { icon: Layers, label: "Spread", value: method === "PER" ? "Fixed per unit" : method === "VALUE" ? "By purchase value" : "Equal per unit" },
+              { icon: Layers, label: "Spread", value: SPREAD[method].label },
               { icon: FileText, label: "Reference", value: shown.reference || "—" },
             ]}
             note={shown.note}

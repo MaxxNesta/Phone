@@ -5,7 +5,7 @@ import { LcForm } from "@/components/landed-cost-editor";
 import { HelpHint } from "@/components/help-hint";
 
 const METHODS: [string, string][] = [
-  ["VALUE", "By purchase value"], ["EQUAL", "Equal per unit"], ["MANUAL", "Manual by product variant"],
+  ["VALUE", "Split by item cost"], ["EQUAL", "Split equally per item"], ["MANUAL", "Manual by product variant"],
 ];
 
 /** A template's charges: one row per cost type, ticked to include it. */

@@ -14,7 +14,7 @@ import { DocumentAttachments } from "@/components/document-attachments";
 import { LandedCostEditor, LandedCostStep, type EditorCharge } from "@/components/landed-cost-editor";
 import { ErpCrumbs } from "@/components/erp-worklist";
 
-const METHOD: Record<string, string> = { VALUE: "By purchase value", EQUAL: "Equal per unit", MANUAL: "Manual by product variant" };
+const METHOD: Record<string, string> = { VALUE: "Split by item cost", EQUAL: "Split equally per item", MANUAL: "Manual by product variant" };
 const STATUS_NOW: Record<string, string> = {
   IN_STOCK: "In stock", SOLD: "Sold", RETURNED_TO_SUPPLIER: "Returned to supplier", WRITTEN_OFF: "Written off",
   ISSUED: "Issued", RESERVED: "Reserved", REPAIR: "In repair",

@@ -848,7 +848,7 @@ export function ReceiptForm({
       </div>
 
       <CarriageSection couriers={suppliers} base={base} paidFrom={paidFrom ?? []}
-        phones={tracked.reduce((s, l) => s + (Number(l.qty) || 0), 0)} onBlocked={setCarriageBlock} />
+        units={tracked.reduce((s, l) => s + (Number(l.qty) || 0), 0)} onBlocked={setCarriageBlock} />
 
       {matchedPi && (
         <div className="hint" style={{ marginBottom: "0.75rem" }}>
