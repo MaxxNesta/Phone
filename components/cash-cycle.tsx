@@ -13,6 +13,10 @@ type Metrics = {
   from: string; to: string; days: number;
   revenue: number; cogs: number;
   inventory: number; receivable: number; payable: number;
+  inventoryOpen: number; inventoryClose: number;
+  receivableOpen: number; receivableClose: number;
+  payableOpen: number; payableClose: number;
+  currentAssets: number; currentLiabilities: number; stockInCurrent: number;
   dio: number | null; dso: number | null; dpo: number | null; ccc: number | null;
   currentRatio: number | null; quickRatio: number | null;
 };
@@ -20,9 +24,13 @@ type Metrics = {
 type Point = {
   label: string; ccc: number | null;
   dio: number | null; dso: number | null; dpo: number | null;
+  revenue: number; cogs: number;
 };
 
 const d0 = (v: number | null) => (v === null ? "—" : Math.round(v).toString());
+const d1 = (v: number | null) => (v === null ? "—" : v.toFixed(1));
+const pct = (num: number, den: number) => (Math.abs(den) > 0.0001 ? `${((num / den) * 100).toFixed(1)}%` : "—");
+const r2 = (v: number | null) => (v === null ? "—" : v.toFixed(2));
 
 /**
  * The four spans, once, so both charts colour them the same.
@@ -174,23 +182,40 @@ export function CashCycle({
 
   const rows = [
     {
-      key: "dio", label: "Days inventory", sense: "Goods sit on the shelf",
+      key: "dio", label: "Days inventory", formula: "Avg inventory ÷ COGS × days",
       now: c.dio, before: previous.dio, betterWhenLower: true,
-      balance: c.inventory, base: c.cogs, baseLabel: "Cost of sales",
-      formula: "Avg inventory / COGS × days",
+      open: c.inventoryOpen, close: c.inventoryClose, balance: c.inventory,
+      base: c.cogs, baseLabel: "Cost of sales",
     },
     {
-      key: "dso", label: "Days receivable", sense: "Customers take to pay",
+      key: "dso", label: "Days receivable", formula: "Avg receivable ÷ revenue × days",
       now: c.dso, before: previous.dso, betterWhenLower: true,
-      balance: c.receivable, base: c.revenue, baseLabel: "Revenue",
-      formula: "Avg receivable / Revenue × days",
+      open: c.receivableOpen, close: c.receivableClose, balance: c.receivable,
+      base: c.revenue, baseLabel: "Revenue",
     },
     {
-      key: "dpo", label: "Days payable", sense: "We take to pay suppliers",
+      key: "dpo", label: "Days payable", formula: "Avg payable ÷ COGS × days",
       now: c.dpo, before: previous.dpo, betterWhenLower: false,
-      balance: c.payable, base: c.cogs, baseLabel: "Cost of sales",
-      formula: "Avg payable / COGS × days",
+      open: c.payableOpen, close: c.payableClose, balance: c.payable,
+      base: c.cogs, baseLabel: "Cost of sales",
     },
+  ];
+
+  // This period beside the one before, line by line.
+  const p = previous;
+  const figures: { label: string; now: string; before: string; strong?: boolean }[] = [
+    { label: "Days in period", now: String(c.days), before: String(p.days) },
+    { label: "Revenue", now: money(c.revenue), before: money(p.revenue) },
+    { label: "Cost of sales", now: money(c.cogs), before: money(p.cogs) },
+    { label: "Gross profit", now: money(c.revenue - c.cogs), before: money(p.revenue - p.cogs), strong: true },
+    { label: "Gross margin", now: pct(c.revenue - c.cogs, c.revenue), before: pct(p.revenue - p.cogs, p.revenue) },
+    { label: "Current assets", now: money(c.currentAssets), before: money(p.currentAssets) },
+    { label: "Current liabilities", now: money(c.currentLiabilities), before: money(p.currentLiabilities) },
+    { label: "Inventory in current assets", now: money(c.stockInCurrent), before: money(p.stockInCurrent) },
+    { label: "Working capital", now: money(c.currentAssets - c.currentLiabilities),
+      before: money(p.currentAssets - p.currentLiabilities), strong: true },
+    { label: "Current ratio", now: r2(c.currentRatio), before: r2(p.currentRatio) },
+    { label: "Quick ratio", now: r2(c.quickRatio), before: r2(p.quickRatio) },
   ];
 
   const suspicious =
@@ -207,21 +232,13 @@ export function CashCycle({
                 <h2 style={{ fontSize: "var(--t-md)" }}>
                   Cash conversion cycle
                   <HelpHint label="How the cycle is worked out">
-                    <strong>DIO + DSO − DPO</strong>
-                    <br /><br />
-                    Days to fund between paying for goods and being paid for
-                    them. Negative means suppliers fund it.
-                    <br /><br />
-                    Year-end closing entries excluded.
+                    <strong>DIO + DSO − DPO</strong>, year-end closing entries left out.
                   </HelpHint>
                 </h2>
               </div>
             </div>
             {unanswerable ? (
-              <div className="empty">
-                Not enough trading in this period. The cycle needs revenue and
-                cost of sales to divide by, and one of them is nil.
-              </div>
+              <div className="empty">No revenue or cost of sales in this period.</div>
             ) : (
               <>
                 <div style={{
@@ -244,28 +261,13 @@ export function CashCycle({
               than days inventory in any real trade. */}
           <CycleGauge value={c.dio} max={180} label="Days Inventory (DIO)"
                       hint="Goods sit on the shelf"
-                      explain={<>
-                        <strong>Avg inventory ÷ cost of sales × days</strong>
-                        <br /><br />
-                        How long stock waits between arriving and being sold.
-                        Lower is better.
-                      </>} />
+                      explain={<strong>Avg inventory ÷ cost of sales × days</strong>} />
           <CycleGauge value={c.dso} max={180} label="Days Receivable (DSO)"
                       hint="Customers take to pay"
-                      explain={<>
-                        <strong>Avg receivable ÷ revenue × days</strong>
-                        <br /><br />
-                        How long customers take to pay after invoicing.
-                        Lower is better.
-                      </>} />
+                      explain={<strong>Avg receivable ÷ revenue × days</strong>} />
           <CycleGauge value={c.dpo} max={600} label="Days Payable (DPO)"
-                      hint="We take to pay suppliers" invert
-                      explain={<>
-                        <strong>Avg payable ÷ cost of sales × days</strong>
-                        <br /><br />
-                        How long you take to pay suppliers. Higher is better
-                        here, so the dial runs the other way.
-                      </>} />
+                      hint="We take to pay suppliers · higher is better" invert
+                      explain={<strong>Avg payable ÷ cost of sales × days</strong>} />
 
           <div className="dash-card dash-card-pad">
             <div className="dash-section-head">
@@ -274,8 +276,6 @@ export function CashCycle({
                   Current ratio
                   <HelpHint label="How the current ratio is worked out">
                     <strong>Current assets ÷ current liabilities</strong>
-                    <br /><br />
-                    Below 1 means what falls due this year is not covered.
                   </HelpHint>
                 </h2>
               </div>
@@ -290,10 +290,7 @@ export function CashCycle({
                 <h2 style={{ fontSize: "var(--t-md)" }}>
                   Quick ratio
                   <HelpHint label="How the quick ratio is worked out">
-                    <strong>(Current assets − inventory) ÷ current
-                    liabilities</strong>
-                    <br /><br />
-                    The same test without stock, which must be sold first.
+                    <strong>(Current assets − inventory) ÷ current liabilities</strong>
                   </HelpHint>
                 </h2>
               </div>
@@ -349,30 +346,12 @@ export function CashCycle({
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} stroke="var(--muted)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--muted)" />
                 <ReferenceLine y={0} stroke="var(--muted)" />
-                {/* minPointSize keeps a span of nil on the chart as a
-                    hairline instead of nothing. Two reasons, and the second
-                    is the load-bearing one. A reader cannot tell a missing
-                    figure from a zero one when the bar simply is not there —
-                    pilot sells for cash, so its DSO is a true nil and looked
-                    like a gap. And Recharts numbers labels by *rendered*
-                    rectangle: drop one and every label after it slides onto
-                    the bar below, which put DSO's "0 days" on the payables
-                    bar and left the cycle's own total unlabelled. Same
-                    class of fault as the hidden-series case above, arriving
-                    through a different door. */}
+                {/* minPointSize keeps a nil span as a hairline: Recharts
+                    numbers labels by rendered bar, so a missing bar would
+                    slide every later label onto the wrong one. */}
                 <Bar dataKey="range" radius={[3, 3, 3, 3]} minPointSize={2}>
-                  {/* Outside the bar whichever way it points — "top" puts a
-                      negative bar's label underneath the axis, on top of the
-                      bar it belongs to. */}
-                  {/* The step, not the bar's own extent — a floating bar's
-                      value is a pair, and what a reader wants is how far
-                      this span moved the cycle. */}
-                  {/* The step, not the bar's own extent — a floating bar's
-                      value is a pair, and what a reader wants is how far
-                      this span moved the cycle. Inside the bar where there
-                      is room for it, just outside where there is not, and
-                      under a bar that hangs below the axis rather than on
-                      top of the bar it belongs to. */}
+                  {/* The step this span adds, inside the bar where it fits,
+                      outside where it does not. */}
                   <LabelList dataKey="delta"
                              content={(props: any) => {
                                const { x, y, width, height, index } = props;
@@ -409,10 +388,7 @@ export function CashCycle({
           <div className="card">
             <div className="card-body">
               <div className="hintbar caution">
-                <strong>These spans look long.</strong> On a young ledger, or one
-                where little has been settled, that usually means invoices and
-                bills are still open rather than that money is moving slowly.
-                The table below says which figures produced them.
+                <strong>These spans look long.</strong> Usually open invoices or bills on a young ledger — see the balances below.
               </div>
             </div>
           </div>
@@ -423,9 +399,7 @@ export function CashCycle({
         <div className="card">
           <div className="card-head">
             <h2>Key metrics</h2>
-            <span className="page-sub">
-              every span, with the two figures behind it
-            </span>
+            <span className="page-sub">{c.days} days · amounts in {currency}</span>
           </div>
           <div className="tablewrap">
             <table>
@@ -435,9 +409,10 @@ export function CashCycle({
                   <th className="r">Days</th>
                   <th className="r">Previous</th>
                   <th>Change</th>
-                  <th className="r">Average balance</th>
-                  <th className="r">Annualised base</th>
-                  <th>Formula</th>
+                  <th className="r">Opening</th>
+                  <th className="r">Closing</th>
+                  <th className="r">Average</th>
+                  <th className="r">Divided by</th>
                 </tr>
               </thead>
               <tbody>
@@ -445,31 +420,98 @@ export function CashCycle({
                   <tr key={r.key}>
                     <td className="wrap">
                       <strong>{r.label}</strong>
-                      <div className="subline">{r.sense}</div>
+                      <div className="subline">{r.formula}</div>
                     </td>
-                    <td className="r"><strong>{d0(r.now)}</strong></td>
-                    <td className="r">{d0(r.before)}</td>
+                    <td className="r"><strong>{d1(r.now)}</strong></td>
+                    <td className="r">{d1(r.before)}</td>
                     <td>
                       <Delta now={r.now} before={r.before}
                              betterWhenLower={r.betterWhenLower} />
                     </td>
-                    <td className="r">{money(r.balance)}</td>
+                    <td className="r">{money(r.open)}</td>
+                    <td className="r">{money(r.close)}</td>
+                    <td className="r"><strong>{money(r.balance)}</strong></td>
                     <td className="r">
                       {money(r.base)}
-                      <div className="subline">{r.baseLabel} · {currency}</div>
+                      <div className="subline">{r.baseLabel}</div>
                     </td>
-                    <td className="wrap subline">{r.formula}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6}>
-                    Cash conversion cycle — {d0(c.dio)} + {d0(c.dso)} − {d0(c.dpo)}
+                  <td colSpan={7}>
+                    Cash conversion cycle{unanswerable ? "" : ` — ${d1(c.dio)} + ${d1(c.dso)} − ${d1(c.dpo)}`}
                   </td>
-                  <td className="r"><strong>{d0(c.ccc)} days</strong></td>
+                  <td className="r"><strong>{unanswerable ? "no cycle" : `${d1(c.ccc)} days`}</strong></td>
                 </tr>
               </tfoot>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="card">
+          <div className="card-head">
+            <h2>Figures behind it</h2>
+            <span className="page-sub">this period beside the one before</span>
+          </div>
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th className="r">This period</th>
+                  <th className="r">Previous</th>
+                </tr>
+              </thead>
+              <tbody>
+                {figures.map((f) => (
+                  <tr key={f.label}>
+                    <td>{f.strong ? <strong>{f.label}</strong> : f.label}</td>
+                    <td className="r">{f.strong ? <strong>{f.now}</strong> : f.now}</td>
+                    <td className="r">{f.before}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="card">
+          <div className="card-head">
+            <h2>By month</h2>
+            <span className="page-sub">each month looks back twelve months</span>
+          </div>
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>To the start of</th>
+                  <th className="r">Revenue</th>
+                  <th className="r">Cost of sales</th>
+                  <th className="r">DIO</th>
+                  <th className="r">DSO</th>
+                  <th className="r">DPO</th>
+                  <th className="r">CCC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trend.map((t) => (
+                  <tr key={t.label}>
+                    <td>{t.label}</td>
+                    <td className="r">{money(t.revenue)}</td>
+                    <td className="r">{money(t.cogs)}</td>
+                    <td className="r">{d1(t.dio)}</td>
+                    <td className="r">{d1(t.dso)}</td>
+                    <td className="r">{d1(t.dpo)}</td>
+                    <td className="r"><strong>{d1(t.ccc)}</strong></td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
         </div>

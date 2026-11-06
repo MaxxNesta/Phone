@@ -71,6 +71,9 @@ try {
       check("DSO = 200,000 / 600,000 × 30 = 10", near(c.dso, 10), c.dso);
       check("DPO = 250,000 / 320,000 × 30 = 23.44", near(c.dpo, 23.4375), c.dpo);
       check("CCC = 22.5 + 10 − 23.44 = 9.06", near(c.ccc, 9.0625), c.ccc);
+      check("opening balances nil, closing 480,000 / 400,000 / 500,000",
+        c.inventoryOpen === 0 && c.receivableOpen === 0 && c.payableOpen === 0 &&
+        near(c.inventoryClose, 480000) && near(c.receivableClose, 400000) && near(c.payableClose, 500000), c);
       check("the month before had no trading, so no cycle", previous.ccc === null, previous.ccc);
     } else {
       console.log(`  (exact figures skipped: ${before} lines already in the window)`);
