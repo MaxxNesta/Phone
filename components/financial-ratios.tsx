@@ -121,7 +121,8 @@ const compact = (v: number) => {
   return a >= 1e9 ? `${+(v / 1e9).toFixed(1)}B` : a >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : a >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`;
 };
 
-const COLOURS = ["var(--chart-1)", "var(--ink)", "var(--muted)", "var(--chart-3)"];
+// Four hues apart, so no two lines read as the same in either theme: blue, orange, pink, teal.
+const COLOURS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-5)", "var(--chart-4)"];
 
 function Trend({ title, sub, data, keys, kind }: {
   title: string; sub: string; data: Point[]; keys: (RatioKey | "workingCapital")[]; kind: Kind | "money";
@@ -200,7 +201,10 @@ function RatioTable({ keys, now, before, currency }: { keys: RatioKey[]; now: Ra
 }
 
 /** Lines of money, this period beside the one before. */
-function Figures({ title, rows }: { title: string; rows: [string, number, number, boolean?][] }) {
+/** A line's place in the statement: a total in bold under a rule, a part indented beneath what it adds up to. */
+type Line = [label: string, now: number, before: number, role?: "total" | "part"];
+
+function Figures({ title, rows }: { title: string; rows: Line[] }) {
   return (
     <div className="card">
       <div className="card-head"><h2>{title}</h2></div>
@@ -208,10 +212,10 @@ function Figures({ title, rows }: { title: string; rows: [string, number, number
         <table>
           <thead><tr><th></th><th className="r">This period</th><th className="r">Previous</th><th>Change</th></tr></thead>
           <tbody>
-            {rows.map(([l, a, b, strong]) => (
-              <tr key={l}>
-                <td>{strong ? <strong>{l}</strong> : l}</td>
-                <td className="r">{strong ? <strong>{money(a)}</strong> : money(a)}</td>
+            {rows.map(([l, a, b, role]) => (
+              <tr key={l} className={role === "total" ? "fr-total" : role === "part" ? "fr-part" : undefined}>
+                <td>{l}</td>
+                <td className="r">{money(a)}</td>
                 <td className="r">{money(b)}</td>
                 <td><Change now={a} before={b} kind="money" /></td>
               </tr>
@@ -242,8 +246,13 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
         </div>
         <Trend title="Liquidity trend" sub="Current ratio and quick ratio" data={trend} keys={["current", "quick"]} kind="x" />
         <Figures title="Performance comparison" rows={[
-          ["Net sales", c.netSales, p.netSales], ["Gross profit", c.grossProfit, p.grossProfit],
-          ["Operating profit", c.operatingProfit, p.operatingProfit], ["Net profit", c.netProfit, p.netProfit, true],
+          ["Net sales", c.netSales, p.netSales],
+          ["Cost of sales", c.cogs, p.cogs, "part"],
+          ["Gross profit", c.grossProfit, p.grossProfit, "total"],
+          ["Operating expenses", c.operatingExpenses, p.operatingExpenses, "part"],
+          ["Operating profit", c.operatingProfit, p.operatingProfit, "total"],
+          ["Interest and other income, net", c.otherIncome - c.interest, p.otherIncome - p.interest, "part"],
+          ["Net profit", c.netProfit, p.netProfit, "total"],
         ]} />
         <RatioTable keys={["netMargin", "current", "quick", "roe"]} now={c} before={p} currency={currency} />
       </>
@@ -288,16 +297,17 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
             <div className="tablewrap">
               <table>
                 <tbody>
-                  <tr><th>Current assets</th><th className="r">{currency}</th></tr>
-                  <tr><td>Cash and bank</td><td className="r">{money(c.cash)}</td></tr>
-                  <tr><td>Trade receivables</td><td className="r">{money(c.receivable)}</td></tr>
-                  <tr><td>Inventory</td><td className="r">{money(c.inventory)}</td></tr>
-                  <tr><td>Other current assets</td><td className="r">{money(c.otherCurrentAssets)}</td></tr>
-                  <tr><td><strong>Total current assets</strong></td><td className="r"><strong>{money(c.currentAssets)}</strong></td></tr>
-                  <tr><th>Current liabilities</th><th className="r">{currency}</th></tr>
-                  <tr><td>Trade payables</td><td className="r">{money(c.payable)}</td></tr>
-                  <tr><td>Other current liabilities</td><td className="r">{money(c.otherCurrentLiabilities)}</td></tr>
-                  <tr><td><strong>Total current liabilities</strong></td><td className="r"><strong>{money(c.currentLiabilities)}</strong></td></tr>
+                  <tr className="fr-group"><td>Current assets</td><td className="r">{currency}</td></tr>
+                  <tr className="fr-part"><td>Cash and bank</td><td className="r">{money(c.cash)}</td></tr>
+                  <tr className="fr-part"><td>Trade receivables</td><td className="r">{money(c.receivable)}</td></tr>
+                  <tr className="fr-part"><td>Inventory</td><td className="r">{money(c.inventory)}</td></tr>
+                  <tr className="fr-part"><td>Other current assets</td><td className="r">{money(c.otherCurrentAssets)}</td></tr>
+                  <tr className="fr-total"><td>Total current assets</td><td className="r">{money(c.currentAssets)}</td></tr>
+                  <tr className="fr-group"><td>Current liabilities</td><td className="r">{currency}</td></tr>
+                  <tr className="fr-part"><td>Trade payables</td><td className="r">{money(c.payable)}</td></tr>
+                  <tr className="fr-part"><td>Other current liabilities</td><td className="r">{money(c.otherCurrentLiabilities)}</td></tr>
+                  <tr className="fr-total"><td>Total current liabilities</td><td className="r">{money(c.currentLiabilities)}</td></tr>
+                  <tr className="fr-total fr-grand"><td>Working capital</td><td className="r">{money(c.workingCapital)}</td></tr>
                 </tbody>
               </table>
             </div>
@@ -327,9 +337,14 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
         <Trend title="Returns" sub={sub} data={trend} keys={["roi", "roe", "roa"]} kind="pct" />
         <RatioTable keys={["grossMargin", "operatingMargin", "netMargin", "roa", "roe", "roi"]} now={c} before={p} currency={currency} />
         <Figures title="Profit and loss" rows={[
-          ["Net sales", c.netSales, p.netSales], ["Cost of sales", c.cogs, p.cogs], ["Gross profit", c.grossProfit, p.grossProfit, true],
-          ["Operating expenses", c.operatingExpenses, p.operatingExpenses], ["Operating profit", c.operatingProfit, p.operatingProfit, true],
-          ["Interest expense", c.interest, p.interest], ["Other income", c.otherIncome, p.otherIncome], ["Net profit", c.netProfit, p.netProfit, true],
+          ["Net sales", c.netSales, p.netSales],
+          ["Cost of sales", c.cogs, p.cogs, "part"],
+          ["Gross profit", c.grossProfit, p.grossProfit, "total"],
+          ["Operating expenses", c.operatingExpenses, p.operatingExpenses, "part"],
+          ["Operating profit", c.operatingProfit, p.operatingProfit, "total"],
+          ["Interest expense", c.interest, p.interest, "part"],
+          ["Other income", c.otherIncome, p.otherIncome, "part"],
+          ["Net profit", c.netProfit, p.netProfit, "total"],
         ]} />
       </>
     );
@@ -346,9 +361,12 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
         <Trend title="Leverage and coverage trend" sub={sub} data={trend}
                keys={["interestCover", "liabilitiesToEquity", "debtToEquity", "financialLeverage"]} kind="x" />
         <Figures title="Key figures" rows={[
-          ["Total assets", c.totalAssets, p.totalAssets], ["Total liabilities", c.totalLiabilities, p.totalLiabilities],
-          ["Total equity", c.equity, p.equity, true], ["Debt (loans under 23)", c.debt, p.debt],
-          ["Interest expense", c.interest, p.interest], ["Operating profit", c.operatingProfit, p.operatingProfit],
+          ["Total assets", c.totalAssets, p.totalAssets],
+          ["Total liabilities", c.totalLiabilities, p.totalLiabilities],
+          ["of which debt (loans under 23)", c.debt, p.debt, "part"],
+          ["Total equity", c.equity, p.equity, "total"],
+          ["Operating profit", c.operatingProfit, p.operatingProfit],
+          ["Interest expense", c.interest, p.interest, "part"],
         ]} />
       <RatioTable keys={["debtToEquity", "debtToAssets", "liabilitiesToEquity", "interestCover", "financialLeverage", "operatingLeverage"]}
                   now={c} before={p} currency={currency} />

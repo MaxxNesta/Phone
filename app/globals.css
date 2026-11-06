@@ -9206,14 +9206,13 @@ td > .hint { white-space: normal; max-width: 32rem; }
 
 /* ------ notices (components/toast.tsx) ------ */
 
-/* Top right on a desk, top centre on a phone; newest at the bottom of the stack.
+/* Top centre, where invoices and orders have always said they posted; newest at the bottom.
    Success is blue, not green: the house colours are black, white and blue. */
 .notices {
-  position: fixed; z-index: 1000; top: 16px; right: 16px;
+  position: fixed; z-index: 1000; top: 16px; left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; gap: 10px;
   width: min(380px, calc(100vw - 32px)); pointer-events: none;
 }
-@media (max-width: 640px) { .notices { right: 50%; transform: translateX(50%); } }
 .notice {
   --tone: var(--chart-1);
   display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 12px;
@@ -9264,3 +9263,11 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .busy-actions { display: flex; gap: 10px; justify-content: center; }
 .busy-actions button { min-width: 120px; }
 @media (prefers-reduced-motion: reduce) { .busy-card { animation: none; } }
+.gauge-sub { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Statements on the ratios page: a group heads its parts, parts sit indented
+   beneath, and the total they add up to is bold under a rule. */
+.fr-group td { background: var(--ground); font-weight: 600; font-size: var(--t-sm); color: var(--ink); }
+.fr-part td:first-child { padding-left: 2.75rem; color: var(--ink-soft, var(--muted)); }
+.fr-total td { font-weight: 600; border-top: 1px solid var(--line); }
+.fr-grand td { border-top: 2px solid var(--ink); }

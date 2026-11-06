@@ -266,8 +266,8 @@ export function CashCycle({
                       hint="Customers take to pay"
                       explain={<strong>Avg receivable ÷ revenue × days</strong>} />
           <CycleGauge value={c.dpo} max={600} label="Days Payable (DPO)"
-                      hint="We take to pay suppliers · higher is better" invert
-                      explain={<strong>Avg payable ÷ cost of sales × days</strong>} />
+                      hint="We take to pay suppliers" invert
+                      explain={<><strong>Avg payable ÷ cost of sales × days</strong><br />Higher is better here: paying later is free funding.</>} />
 
           <div className="dash-card dash-card-pad">
             <div className="dash-section-head">

@@ -78,7 +78,8 @@ export function CycleGauge({
             {label}
             {explain && <HelpHint label={`How ${label} is worked out`}>{explain}</HelpHint>}
           </h2>
-          {hint && <span className="dash-sub">{hint}</span>}
+          {/* One line, so every dial in the row sits at the same height. */}
+          {hint && <span className="dash-sub gauge-sub" title={hint}>{hint}</span>}
         </div>
       </div>
 
