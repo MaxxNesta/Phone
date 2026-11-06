@@ -20,6 +20,7 @@ import { headers } from "next/headers";
 import { currentUser, can, authRequired, type Permission } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { DatePickerFix } from "@/components/date-picker-fix";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 // One face for the whole product, chosen for the thing an ERP does most:
 // show a column of numbers.
@@ -389,6 +390,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </div>
         <Toast />
         </NextIntlClientProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
