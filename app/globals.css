@@ -9191,3 +9191,13 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 
 /* A refusal under a row wraps inside its cell instead of running off the table. */
 td > .hint { white-space: normal; max-width: 32rem; }
+
+/* ------ financial ratios ------ */
+
+/* A sum read left to right: the date, the figures, the answer. */
+.fr-equation { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.25rem; }
+.fr-equation > span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.chart-legend > span {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.12rem 0.55rem; font-size: var(--t-xs); color: var(--ink);
+}

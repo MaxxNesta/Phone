@@ -238,13 +238,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </NavSubGroup>
                 <NavSubGroup label={n("financialReports")} match={[
                   "/finance/income-statement", "/finance/balance-sheet", "/finance/cash-flow",
-                  "/finance/inventory-cogs", "/finance/cash-cycle",
+                  "/finance/inventory-cogs",
                 ]}>
                   <NavLink href="/finance/income-statement" sub>{n("incomeStatement")}</NavLink>
                   <NavLink href="/finance/balance-sheet" sub>{n("balanceSheet")}</NavLink>
                   <NavLink href="/finance/cash-flow" sub>{n("cashFlow")}</NavLink>
                   <NavLink href="/finance/inventory-cogs" sub>{n("inventoryCogs")}</NavLink>
-                  <NavLink href="/finance/cash-cycle" sub>{n("cashCycle")}</NavLink>
                 </NavSubGroup>
                 <NavLink href="/finance/aging">{n("arApAging")}</NavLink>
                 {wholesale && <NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
@@ -280,6 +279,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/reports/phone-stock">{n("stockAging")}</NavLink>
                 <NavLink href="/sales/reports">{n("salesReportDetailed")}</NavLink>
                 <NavLink href="/reports/price-history">{n("priceHistory")}</NavLink>
+                {may("accounting.view") && <NavLink href="/reports/financial-ratios">{n("financialRatios")}</NavLink>}
               </NavGroup>
             )}
 
