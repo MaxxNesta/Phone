@@ -9,6 +9,7 @@ import {
 } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { KpiCard } from "@/components/kpi-card";
 import { AgingBands, BUCKETS } from "@/components/aging-bands";
 import { AgingRow, type AgingPartner } from "@/components/aging-row";
 
@@ -178,71 +179,20 @@ export default async function AgingPage({
         </HelpHint>
       </div>
 
-      <div className="kpis kpis-tiled kpis-five">
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "#3B6FD4", background: "color-mix(in srgb, #3B6FD4 12%, transparent)",
-          }}><Users size={17} aria-hidden="true" /></span>
-          <span className="kpi-body">
-            <span className="kpi-label">Total receivables</span>
-            <span className="kpi-value">{money(arTotal)}</span>
-            <span className="kpi-note">
-              {partnerCount(ar)} open invoice{partnerCount(ar) === 1 ? "" : "s"}
-            </span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "var(--bad)", background: "color-mix(in srgb, var(--bad) 12%, transparent)",
-          }}><AlertTriangle size={17} aria-hidden="true" /></span>
-          <span className="kpi-body">
-            <span className="kpi-label">Overdue receivables</span>
-            <span className="kpi-value" style={{ color: arOverdue > 0 ? "var(--bad)" : undefined }}>
-              {money(arOverdue)}
-            </span>
-            <span className="kpi-note">{pct(arOverdue, arTotal)} of total receivables</span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "var(--warn)", background: "color-mix(in srgb, var(--warn) 14%, transparent)",
-          }}><CreditCard size={17} aria-hidden="true" /></span>
-          <span className="kpi-body">
-            <span className="kpi-label">Total payables</span>
-            <span className="kpi-value">{money(apTotal)}</span>
-            <span className="kpi-note">
-              {partnerCount(ap)} open bill{partnerCount(ap) === 1 ? "" : "s"}
-            </span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "var(--bad)", background: "color-mix(in srgb, var(--bad) 12%, transparent)",
-          }}><AlertTriangle size={17} aria-hidden="true" /></span>
-          <span className="kpi-body">
-            <span className="kpi-label">Overdue payables</span>
-            <span className="kpi-value" style={{ color: apOverdue > 0 ? "var(--bad)" : undefined }}>
-              {money(apOverdue)}
-            </span>
-            <span className="kpi-note">{pct(apOverdue, apTotal)} of total payables</span>
-          </span>
-        </div>
-
-        <div className="kpi">
-          <span className="kpi-icon" style={{
-            color: "#6C5CE0", background: "color-mix(in srgb, #6C5CE0 12%, transparent)",
-          }}><CalendarClock size={17} aria-hidden="true" /></span>
-          <span className="kpi-body">
-            <span className="kpi-label">Due this week</span>
-            <span className="kpi-value">{money(dueSoon.total)}</span>
-            <span className="kpi-note">
-              {dueSoon.invoices} supplier bill{dueSoon.invoices === 1 ? "" : "s"} within 7 days
-            </span>
-          </span>
-        </div>
+      {/* The dashboards' low row: muted marks, the detail behind each "?". */}
+      <div className="kpis kpis-tiled kpis-compact kpis-five">
+        <KpiCard icon={<Users size={16} aria-hidden="true" />} label="Total receivables" value={money(arTotal)}
+          hint={`${partnerCount(ar)} open invoice${partnerCount(ar) === 1 ? "" : "s"} owed by customers.`} />
+        <KpiCard icon={<AlertTriangle size={16} aria-hidden="true" />} label="Overdue receivables" value={money(arOverdue)}
+          tone={arOverdue > 0 ? "bad" : undefined}
+          hint={`Past their due date: ${pct(arOverdue, arTotal)} of total receivables.`} />
+        <KpiCard icon={<CreditCard size={16} aria-hidden="true" />} label="Total payables" value={money(apTotal)}
+          hint={`${partnerCount(ap)} open bill${partnerCount(ap) === 1 ? "" : "s"} owed to suppliers.`} />
+        <KpiCard icon={<AlertTriangle size={16} aria-hidden="true" />} label="Overdue payables" value={money(apOverdue)}
+          tone={apOverdue > 0 ? "bad" : undefined}
+          hint={`Past their due date: ${pct(apOverdue, apTotal)} of total payables.`} />
+        <KpiCard icon={<CalendarClock size={16} aria-hidden="true" />} label="Due this week" value={money(dueSoon.total)}
+          hint={`${dueSoon.invoices} supplier bill${dueSoon.invoices === 1 ? "" : "s"} falling due within 7 days.`} />
       </div>
 
       <div className="grid2">
