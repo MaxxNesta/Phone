@@ -741,3 +741,65 @@ export async function recentMovements(companyId: string, limit = 8, locs: string
        ${locs ? sql`and sm.location_id = any(${locs})` : sql`and not (d.doc_type = 'STOCK_TRANSFER' and sm.qty > 0)`}
      order by sm.created_at desc limit ${limit}`;
 }
+
+/**
+ * One phone's journey for anyone who can see the document it was on: what it
+ * is, where it came from, where it went. Physical facts only — no cost,
+ * margin or purchase amount; those stay in the inventory module's panel,
+ * behind its own permission. Landed-cost events are bookkeeping on its cost,
+ * not movements of the phone, so they are left out too.
+ */
+export async function serialJourney(companyId: string, serialId: string) {
+  const [unit] = await sql`
+    select v.serial_id, v.item_id, v.imei, v.imei2, v.device_serial, v.status, v.was_returned, v.hold_kind,
+           v.item_name, v.model_name, v.brand_name, v.location_id, v.location_name, v.notes,
+           v.supplier_id, v.supplier_name, v.received_document_id, v.received_on, v.received_date,
+           v.supplier_warranty_months,
+           (v.received_date + make_interval(months => coalesce(v.supplier_warranty_months, 0)))::date as supplier_warranty_expiry,
+           v.out_document_id, v.out_doc_no, v.out_date, v.customer_id, v.customer_name,
+           v.warranty_months, v.warranty_expiry,
+           (select json_agg(o.name order by a.sort_order)
+              from item_variant_option ivo
+              join variant_option o on o.id = ivo.option_id
+              join variant_attribute a on a.id = o.attribute_id
+             where ivo.item_id = i.id) as options,
+           case when i.photo_updated_at is not null
+                  then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
+                when p.photo_updated_at is not null
+                  then '/items/' || p.id || '/photo?v=' || to_char(p.photo_updated_at, 'YYYYMMDDHH24MISSMS')
+           end as photo,
+           -- The bill behind the receipt: the one it came in with, the one it was received against, or one billing its lines.
+           (select json_build_object('id', b.id, 'no', b.doc_no) from document b, document gr
+             where gr.id = v.received_document_id and b.doc_type = 'PURCHASE_INVOICE' and b.status = 'POSTED'
+               and (b.id = gr.lifecycle_owner_id or b.id = gr.source_document_id
+                    or exists (select 1 from document_line bl join document_line gl on gl.id = bl.source_line_id
+                                where bl.document_id = b.id and gl.document_id = gr.id))
+             order by b.doc_date limit 1) as bill,
+           -- The sales invoice: the document that took it out, or the invoice that delivery belongs to.
+           (select json_build_object('id', s.id, 'no', s.doc_no) from document o, document s
+             where o.id = v.out_document_id and s.doc_type = 'SALES_INVOICE'
+               and (s.id = o.id or s.id = o.lifecycle_owner_id or s.id = o.source_document_id)
+             limit 1) as invoice
+      from v_stock_serial v
+      join item i on i.id = v.item_id
+      left join item p on p.id = i.parent_item_id
+     where v.company_id = ${companyId} and v.serial_id = ${serialId}`;
+  if (!unit) return null;
+  const events = await sql`
+    select e.event, e.created_at, e.note, d.id as document_id, d.doc_no, d.doc_type, d.status,
+           to_char(coalesce(d.doc_date, e.created_at::date), 'YYYY-MM-DD') as doc_date,
+           d.partner_id, bp.name as partner_name,
+           fl.name as from_location, tl.name as to_location, u.name as acted_by
+      from stock_serial_event e
+      left join document d on d.id = e.document_id
+      left join business_partner bp on bp.id = d.partner_id
+      left join location fl on fl.id = e.from_location_id
+      left join location tl on tl.id = e.to_location_id
+      left join app_user u on u.id = e.acted_by
+     where e.serial_id = ${serialId} and e.event not in ('LANDED_COST', 'COST_LAYER_SPLIT')
+     order by e.created_at, e.id`;
+  const holds = await sql`
+    select kind, note, created_at, released_at from stock_serial_hold
+     where serial_id = ${serialId} order by created_at`;
+  return { unit, events, holds };
+}

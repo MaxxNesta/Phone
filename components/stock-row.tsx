@@ -270,7 +270,7 @@ function Units({ itemId }: { itemId: string }) {
       <tbody>
         {s.data.map((u) => (
           <tr key={u.id}>
-            <td className="code"><Link href={`/inventory/phones/${u.id}`}>{u.imei}</Link>{u.imei2 && <span className="subline"> · {u.imei2}</span>}</td>
+            <td className="code"><Link href={`/imei/${u.id}`}>{u.imei}</Link>{u.imei2 && <span className="subline"> · {u.imei2}</span>}</td>
             <td>{u.location ?? DASH}</td>
             <td>{u.status === "IN_STOCK" ? <span className="inv-status ok">On shelf</span>
               : <span className="inv-status low">{u.status.replace(/_/g, " ").toLowerCase()}</span>}</td>

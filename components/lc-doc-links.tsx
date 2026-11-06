@@ -111,7 +111,7 @@ export async function LcDocLinks({ journalEntryId, documentId }: { journalEntryI
                       <thead><tr><th>IMEI</th><th>Item</th><th className="r">Purchase cost</th><th className="r">This charge</th><th className="r">Together</th></tr></thead>
                       <tbody>{mine.map((p) => (
                         <tr key={p.serial_id}>
-                          <td className="code"><Link href={`/inventory/phones/${p.serial_id}`} style={{ color: "var(--link)" }}>{p.serial_no}</Link></td>
+                          <td className="code"><Link href={`/imei/${p.serial_id}`} style={{ color: "var(--link)" }}>{p.serial_no}</Link></td>
                           <td className="code">{p.item_code}</td>
                           <td className="r">{money(p.original)}</td>
                           <td className="r">{money(p.amount)}</td>

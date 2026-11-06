@@ -259,11 +259,11 @@ function Overview({ d, label, onTab }: { d: ImeiDrawerData; label: (s: string) =
 
       <h4 className="imei-h">Quick actions</h4>
       <div className="imei-actions">
-        <Link href={`/inventory/phones/${u.id}`} className="imei-act"><ExternalLink size={14} /> Full record</Link>
+        <Link href={`/imei/${u.id}`} className="imei-act"><ExternalLink size={14} /> Full record</Link>
         <button type="button" className="imei-act" onClick={() => onTab("prices")}><Tag size={14} /> View pricing</button>
         <button type="button" className="imei-act" onClick={() => onTab("activity")}><Layers size={14} /> View movements</button>
         {d.canHold && (u.status === "IN_STOCK" || u.holdKind) && (
-          <Link href={`/inventory/phones/${u.id}#hold`} className="imei-act"><Lock size={14} /> {u.holdKind ? "Release" : "Reserve"}</Link>
+          <Link href={`/imei/${u.id}#hold`} className="imei-act"><Lock size={14} /> {u.holdKind ? "Release" : "Reserve"}</Link>
         )}
       </div>
     </>

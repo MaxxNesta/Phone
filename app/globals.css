@@ -9276,3 +9276,85 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .ag-kpis { margin-bottom: var(--s3); }
 /* A carriage sheet read back after posting: the badge says it is done, in the house blue. */
 .cbp-badge-done { color: var(--chart-1); border-color: color-mix(in srgb, var(--chart-1) 35%, var(--line)); background: color-mix(in srgb, var(--chart-1) 8%, transparent); }
+
+/* ------ IMEI 360° (app/imei/[id]) ------ */
+
+/* The phone: its picture, what it is, and its dates — no money on this page. */
+.ij-hero {
+  display: grid; grid-template-columns: 132px minmax(0, 1fr) minmax(220px, 300px);
+  gap: var(--s4); align-items: center; padding: var(--s4); margin-bottom: var(--s3);
+}
+.ij-photo {
+  width: 132px; height: 132px; border-radius: 18px; background: var(--ground);
+  display: grid; place-items: center; color: var(--muted); overflow: hidden;
+}
+.ij-photo img { width: 100%; height: 100%; object-fit: contain; }
+.ij-what h2 { margin: 0 0 var(--s2); font-size: var(--t-lg); font-weight: 650; }
+.ij-ids { display: grid; gap: 4px; margin: 0 0 var(--s2); }
+.ij-ids > div { display: flex; gap: 8px; font-size: var(--t-sm); }
+.ij-ids dt { color: var(--muted); min-width: 7.5rem; }
+.ij-ids dd { margin: 0; }
+.ij-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ij-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  background: var(--ground); border: 1px solid var(--line); font-size: var(--t-sm); color: var(--ink);
+}
+.ij-facts { margin: 0; display: grid; gap: 10px; padding-left: var(--s4); border-left: 1px solid var(--line); }
+.ij-facts > div { display: flex; justify-content: space-between; gap: 12px; font-size: var(--t-sm); }
+.ij-facts dt { color: var(--muted); }
+.ij-facts dd { margin: 0; text-align: right; font-weight: 500; }
+
+/* Supplier → … → customer, read left to right; a step not reached yet stays, faded. */
+.ij-flow {
+  display: flex; flex-direction: row; align-items: stretch; gap: 0; padding: var(--s3); margin-bottom: var(--s3);
+  overflow-x: auto;
+}
+.ij-step-wrap { display: flex; align-items: center; flex: 1 1 0; min-width: 0; }
+.ij-arrow { flex: none; margin: 0 8px; color: var(--muted); }
+.ij-step {
+  flex: 1; min-width: 132px; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+}
+.ij-step .ij-icon {
+  flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--line-soft); color: var(--ink);
+}
+.ij-step-text { display: flex; flex-direction: column; min-width: 0; }
+.ij-step-text small { color: var(--muted); font-size: 0.72rem; }
+.ij-step-text strong { font-size: var(--t-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ij-step-text a { color: var(--link); text-decoration: none; }
+.ij-step-text a:hover strong { text-decoration: underline; }
+.ij-here { border-color: color-mix(in srgb, var(--chart-1) 45%, var(--line)); background: color-mix(in srgb, var(--chart-1) 7%, var(--surface)); }
+.ij-here .ij-icon { background: color-mix(in srgb, var(--chart-1) 14%, transparent); color: var(--chart-1); }
+.ij-pending { border-style: dashed; opacity: 0.55; }
+
+.ij-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); margin-bottom: var(--s3); }
+.ij-grid > .card { margin: 0; }
+.ij-qty { font-variant-numeric: tabular-nums; font-weight: 600; }
+.ij-qty.in { color: var(--chart-1); }
+.ij-qty.out { color: var(--bad); }
+.ij-voided td { color: var(--muted); text-decoration: line-through; }
+
+@media (max-width: 1100px) {
+  .ij-hero { grid-template-columns: 96px minmax(0, 1fr); }
+  .ij-photo { width: 96px; height: 96px; }
+  .ij-facts { grid-column: 1 / -1; padding-left: 0; border-left: 0; border-top: 1px solid var(--line); padding-top: var(--s3); }
+  .ij-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .ij-flow { flex-direction: column; }
+  .ij-step-wrap { flex-direction: column; align-items: stretch; }
+  .ij-arrow { transform: rotate(90deg); align-self: center; margin: 4px 0; }
+}
+/* Long document numbers stay inside their step; the full number is in the title. */
+.ij-arrow { margin: 0 6px; }
+.ij-step { min-width: 0; gap: 8px; padding: 10px; }
+.ij-step .ij-icon { width: 30px; height: 30px; }
+.ij-step-text small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ij-step-text a, .ij-step-text strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ij-step-text strong { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+/* Steps take the room their contents need; a document number is wider than "China". */
+.ij-step-wrap { flex: 1 1 auto; }
+.ij-step { padding: 9px 10px; }
+.ij-step-text strong { font-size: 0.78rem; letter-spacing: -0.01em; }
+@media (max-width: 1280px) { .ij-step .ij-icon { display: none; } }

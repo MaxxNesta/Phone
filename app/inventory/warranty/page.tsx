@@ -58,7 +58,7 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
               const st = r.warranty_state ? STATE[r.warranty_state] : null;
               return (
                 <tr key={r.serial_id}>
-                  <td className="m"><Link href={`/inventory/phones/${r.serial_id}`}>{r.imei}</Link></td>
+                  <td className="m"><Link href={`/imei/${r.serial_id}`}>{r.imei}</Link></td>
                   <td>{r.item_name}</td>
                   <td>{r.customer_name ?? "—"}</td>
                   <td>{r.out_document_id ? <Link href={`/documents/${r.out_document_id}`}>{r.out_doc_no}</Link> : "—"}</td>

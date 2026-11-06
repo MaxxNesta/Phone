@@ -35,7 +35,7 @@ export async function setSerialHold(fd: FormData) {
              values (${user.companyId}, ${serialId}, ${kind === "RELEASE" ? "RELEASE" : "HOLD"},
                      ${kind === "RELEASE" ? note : `${kind.toLowerCase()}${note ? ": " + note : ""}`}, ${user.id})`;
   });
-  revalidatePath(`/inventory/phones/${serialId}`);
+  revalidatePath(`/imei/${serialId}`);
 }
 
 const monthsOf = (fd: FormData, k: string) => {

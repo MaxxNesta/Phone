@@ -1824,7 +1824,42 @@
       "b90": "91–180 d",
       "b180": "180 d +"
     },
-    "addItemsSub": "Search, scan a barcode, or browse the catalogue"
+    "addItemsSub": "Search, scan a barcode, or browse the catalogue",
+    "journey": {
+      "title": "IMEI 360°",
+      "sub": "A connected view of this phone, from supplier to customer.",
+      "crumb": "IMEI",
+      "imei": "Serial / IMEI",
+      "flow": "Where this phone came from and went",
+      "supplier": "Supplier",
+      "purchaseInvoice": "Purchase invoice",
+      "goodsReceipt": "Goods receipt",
+      "keptAt": "Kept at",
+      "nowAt": "Now at",
+      "salesInvoice": "Sales invoice",
+      "customer": "Customer",
+      "notYet": "Not yet",
+      "received": "Received",
+      "sold": "Sold",
+      "movements": "Movement history",
+      "linked": "Linked documents",
+      "date": "Date",
+      "document": "Document",
+      "movement": "Movement",
+      "qty": "Qty",
+      "type": "Type",
+      "party": "Party",
+      "doc": {
+        "PURCHASE_INVOICE": "Purchase invoice",
+        "GOODS_RECEIPT": "Goods receipt",
+        "SALES_INVOICE": "Sales invoice",
+        "DELIVERY": "Delivery",
+        "SALES_RETURN": "Customer return",
+        "PURCHASE_RETURN": "Supplier return",
+        "STOCK_TRANSFER": "Stock transfer",
+        "STOCK_ADJUSTMENT": "Stock adjustment"
+      }
+    }
   },
   "picker": {
     "changeItem": "Change item",

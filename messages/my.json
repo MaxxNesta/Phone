@@ -1824,7 +1824,42 @@
       "b90": "၉၁–၁၈၀ ရက်",
       "b180": "၁၈၀ ရက်+"
     },
-    "addItemsSub": "ရှာပါ၊ barcode စကင်ဖတ်ပါ သို့မဟုတ် catalogue ကို ကြည့်ပါ"
+    "addItemsSub": "ရှာပါ၊ barcode စကင်ဖတ်ပါ သို့မဟုတ် catalogue ကို ကြည့်ပါ",
+    "journey": {
+      "title": "IMEI 360°",
+      "sub": "ဤဖုန်းကို ပေးသွင်းသူမှ ဝယ်ယူသူထိ ချိတ်ဆက်ကြည့်ရှုခြင်း",
+      "crumb": "IMEI",
+      "imei": "Serial / IMEI",
+      "flow": "ဤဖုန်း ဘယ်ကလာပြီး ဘယ်ရောက်သွားသည်",
+      "supplier": "ပေးသွင်းသူ",
+      "purchaseInvoice": "Purchase invoice",
+      "goodsReceipt": "Goods receipt",
+      "keptAt": "သိမ်းဆည်းခဲ့သည့်နေရာ",
+      "nowAt": "လက်ရှိနေရာ",
+      "salesInvoice": "Sales invoice",
+      "customer": "ဝယ်ယူသူ",
+      "notYet": "မရှိသေး",
+      "received": "လက်ခံသည့်ရက်",
+      "sold": "ရောင်းသည့်ရက်",
+      "movements": "လှုပ်ရှားမှုမှတ်တမ်း",
+      "linked": "ချိတ်ဆက်စာရွက်စာတမ်းများ",
+      "date": "ရက်စွဲ",
+      "document": "စာရွက်စာတမ်း",
+      "movement": "လှုပ်ရှားမှု",
+      "qty": "အရေအတွက်",
+      "type": "အမျိုးအစား",
+      "party": "ကုန်သည်",
+      "doc": {
+        "PURCHASE_INVOICE": "Purchase invoice",
+        "GOODS_RECEIPT": "Goods receipt",
+        "SALES_INVOICE": "Sales invoice",
+        "DELIVERY": "Delivery",
+        "SALES_RETURN": "Customer return",
+        "PURCHASE_RETURN": "Supplier return",
+        "STOCK_TRANSFER": "Stock transfer",
+        "STOCK_ADJUSTMENT": "Stock adjustment"
+      }
+    }
   },
   "picker": {
     "changeItem": "ပစ္စည်း ပြောင်းရန်",

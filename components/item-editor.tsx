@@ -273,7 +273,7 @@ export function ItemEditor({ item, action, tracking }: {
                   {item.serials.length === 0
                     ? <p className="ie-empty"><Smartphone size={16} aria-hidden="true" /> No IMEI records for this variant yet. They appear when stock is received.</p>
                     : <ul>{item.serials.map((s) => (
-                        <li key={s.id}><Link href={`/inventory/phones/${s.id}`} className="mono">{s.imei}</Link>
+                        <li key={s.id}><Link href={`/imei/${s.id}`} className="mono">{s.imei}</Link>
                           <span>{s.where ?? "—"}</span><span>{s.status === "IN_STOCK" ? "On shelf" : s.status.replace(/_/g, " ").toLowerCase()}</span></li>))}
                       </ul>}
                 </div>

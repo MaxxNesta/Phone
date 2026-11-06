@@ -1634,7 +1634,7 @@ export default async function DocumentPage({
           <div className="card-head"><h2>IMEIs</h2><span className="page-sub">{docSerials.length} handset{docSerials.length === 1 ? "" : "s"}</span></div>
           <div className="card-body imei-chips">
             {(docSerials as any[]).map((s) => (
-              <Link key={s.serial_id} href={`/inventory/phones/${s.serial_id}`} className="chip m"
+              <Link key={s.serial_id} href={`/imei/${s.serial_id}`} className="chip m"
                 title={`${s.item_code}${s.imei2 ? ` · IMEI 2 ${s.imei2}` : ""}`}>
                 {s.imei}
               </Link>

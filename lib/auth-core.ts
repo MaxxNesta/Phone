@@ -203,6 +203,8 @@ export function permissionForDocument(docType: string): Permission {
 }
 
 export function permissionForPath(path: string): Permission | null {
+  // A product's photo is shown wherever its phone is: on the IMEI page anyone may open.
+  if (/^\/items\/[^/]+\/photo$/.test(path)) return null;
   for (const [prefix, p] of PATH_PERMISSIONS) {
     if (path === prefix || path.startsWith(prefix + "/")) return p;
   }

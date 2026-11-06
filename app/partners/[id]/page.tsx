@@ -71,7 +71,7 @@ export default async function Partner({ params, searchParams }: {
             <tbody>
               {pgUnits.rows.map((r, i) => (
                 <tr key={i}>
-                  <td className="m"><Link href={`/inventory/phones/${r.serial_id}`}>{r.imei}</Link></td>
+                  <td className="m"><Link href={`/imei/${r.serial_id}`}>{r.imei}</Link></td>
                   <td>{r.item_name}</td>
                   <td>{EVENTS.has(r.event) ? t(`event.${r.event}`) : r.event}</td>
                   <td><Link href={`/documents/${r.document_id}`}>{r.doc_no ?? "—"}</Link></td>

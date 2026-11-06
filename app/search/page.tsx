@@ -38,7 +38,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   ]);
 
   const exactUnit = units.find((u: any) => u.imei === q);
-  if (exactUnit) redirect(`/inventory/phones/${exactUnit.serial_id}`);
+  if (exactUnit) redirect(`/imei/${exactUnit.serial_id}`);
   const exactDoc = docs.find((d: any) => d.doc_no.toLowerCase() === q.toLowerCase());
   if (exactDoc) redirect(`/documents/${exactDoc.id}`);
 
@@ -52,7 +52,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           <table><tbody>
             {units.map((u: any) => (
               <tr key={u.serial_id}>
-                <td className="m"><Link href={`/inventory/phones/${u.serial_id}`}>{u.imei}</Link></td>
+                <td className="m"><Link href={`/imei/${u.serial_id}`}>{u.imei}</Link></td>
                 <td>{u.item_name}</td><td>{u.status.replace(/_/g, " ").toLowerCase()}</td><td>{u.customer_name ?? ""}</td>
               </tr>
             ))}
