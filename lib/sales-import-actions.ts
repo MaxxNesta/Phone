@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "./auth";
+import { begin, end } from "./heavy";
 import { assertMyBranch } from "./branch-scope";
 import { xlsxToRows } from "./read-spreadsheet";
 import { parseCsv } from "./import-items";
@@ -22,6 +23,7 @@ const namedIn = (src: Awaited<ReturnType<typeof read>>) => ({
 /** The report read and checked against what is in stock, with what a reviewer may map to. Writes nothing. */
 export async function previewSalesImport(content: string, format: SourceFormat) {
   const u = await requirePermission("sales.post");
+  await begin("preview.sales", { companyId: u.companyId, who: u.id });
   const source = await read(content, format);
   if (source.length === 0) throw new Error("No invoices were found. Each invoice starts with a Docid row — is this the sales invoice report?");
   const master = await getSalesImportMaster(u.companyId, namedIn(source));
@@ -34,6 +36,7 @@ export async function previewSalesImport(content: string, format: SourceFormat) 
 /** What one invoice would post, from the engine itself, rolled back — read again from the file on the server. */
 export async function previewSalesInvoicePosting(content: string, format: SourceFormat, row: number, mapping: Mapping): Promise<PostingPreview> {
   const u = await requirePermission("sales.post");
+  await begin("preview.sales", { companyId: u.companyId, who: u.id });
   const source = await read(content, format);
   const master = await getSalesImportMaster(u.companyId, namedIn(source));
   const p = planSalesImport(source, master, mapping).find((x) => x.row === row);
@@ -48,7 +51,9 @@ export async function runSalesImport(input: {
   content: string; format: SourceFormat; filename: string; mapping: Mapping; skip: number[]; only?: number[];
 }): Promise<PurchaseImportResult> {
   const u = await requirePermission("sales.post");
+  let run = 0;
   try {
+    run = await begin("import.sales", { companyId: u.companyId, who: u.id });
     const source = await read(input.content, input.format);
     const master = await getSalesImportMaster(u.companyId, namedIn(source));
     const plan = planSalesImport(source, master, input.mapping);
@@ -69,5 +74,7 @@ export async function runSalesImport(input: {
     return { ok: true, results, skipped };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (run) await end(run);
   }
 }

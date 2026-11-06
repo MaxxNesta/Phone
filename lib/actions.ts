@@ -15,6 +15,7 @@ import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLine
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can } from "./auth";
+import { begin as beginHeavy, end as endHeavy } from "./heavy";
 import { courierBill } from "./courier-payables";
 import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
@@ -5307,9 +5308,11 @@ export async function previewBankStatement(
 }
 
 export async function importBankStatement(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("accounting.post");
+  const u = await requirePermission("accounting.post");
+  let run = 0;
   let statementId: string;
   try {
+    run = await beginHeavy("import.bank", { companyId: u.companyId, who: u.id });
     const co = await companyId();
     const accountId = str(fd, "account_id");
     const content = str(fd, "file");
@@ -5360,6 +5363,8 @@ export async function importBankStatement(_prev: unknown, fd: FormData): Promise
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (run) await endHeavy(run);
   }
   revalidatePath("/finance/bank-reconciliation");
   redirectWithToast(`/finance/bank-reconciliation/${statementId}`, "Statement imported");
@@ -7258,7 +7263,8 @@ async function readUpload(content: string, format: UploadFormat): Promise<string
 export async function previewItemImport(
   content: string, filename: string, format: UploadFormat = "csv"
 ) {
-  await requirePermission("items.manage");
+  const u = await requirePermission("items.manage");
+  await beginHeavy("preview.items", { companyId: u.companyId, who: u.id });
   const co = await companyId();
   const master = (await getImportMasterData(co)) as unknown as MasterData;
   const plan = planImport(await readUpload(content, format), master);
@@ -7268,9 +7274,11 @@ export async function previewItemImport(
 export async function runItemImport(
   _prev: unknown, fd: FormData
 ): Promise<ActionResult> {
-  await requirePermission("items.manage");
+  const u = await requirePermission("items.manage");
+  let run = 0;
   let done: { ref: string; itemsCreated: number; itemsMatched: number };
   try {
+    run = await beginHeavy("import.items", { companyId: u.companyId, who: u.id });
     const co = await companyId();
     const content = str(fd, "csv");
     const filename = str(fd, "filename") || "import.csv";
@@ -7301,6 +7309,8 @@ export async function runItemImport(
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (run) await endHeavy(run);
   }
 
   revalidatePath("/items");
@@ -7331,7 +7341,8 @@ export async function itemImportTemplate(): Promise<{ base64: string }> {
 export async function previewVoucherImport(
   content: string, filename: string, format: UploadFormat, kind: VoucherKind
 ) {
-  await requirePermission("accounting.post");
+  const u = await requirePermission("accounting.post");
+  await beginHeavy("preview.vouchers", { companyId: u.companyId, who: u.id });
   const co = await companyId();
   const master = (await getVoucherImportMasterData(co)) as unknown as VoucherMasterData;
   const rows = format === "xlsx" ? await xlsxToRows(content) : parseCsv(content);
@@ -7346,10 +7357,12 @@ export async function voucherImportTemplate(kind: VoucherKind): Promise<{ base64
 }
 
 export async function runVoucherImport(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("accounting.post");
+  const u = await requirePermission("accounting.post");
+  let run = 0;
   let done: { ref: string; posted: number; total: number };
   let kind: VoucherKind = "cash";
   try {
+    run = await beginHeavy("import.vouchers", { companyId: u.companyId, who: u.id });
     const co = await companyId();
     const content = str(fd, "csv");
     const filename = str(fd, "filename") || "receipts.xlsx";
@@ -7387,6 +7400,8 @@ export async function runVoucherImport(_prev: unknown, fd: FormData): Promise<Ac
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (run) await endHeavy(run);
   }
 
   financeRevalidate();
@@ -8052,12 +8067,14 @@ async function itemsWithHistory(tx: typeof sql, ids: string[]): Promise<Set<stri
  * goes with them.
  */
 export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | { error: string }> {
-  await requirePermission("items.manage");
+  const u = await requirePermission("items.manage");
+  let run = 0;
   const co = await companyId();
   const wanted = [...new Set(ids)].filter((x) => UUID_RE.test(x));
   const bt = await serverT("bulkDelete");
   if (wanted.length === 0) return { error: bt("nothingChosen") };
   try {
+    run = await beginHeavy("bulk.delete-items", { companyId: u.companyId, who: u.id });
     const result = await sql.begin(async (tx) => {
       const mine = (await tx`select id::text as id, parent_item_id::text as parent from item
                               where company_id = ${co} and id in ${tx(wanted)}`) as unknown as { id: string; parent: string | null }[];
@@ -8116,6 +8133,8 @@ export async function bulkDeleteItems(ids: string[]): Promise<{ ok: string } | {
     return { ok: parts.join(" · ") };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (run) await endHeavy(run);
   }
 }
 

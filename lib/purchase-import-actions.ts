@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "./auth";
+import { begin, end } from "./heavy";
 import { assertMyBranch } from "./branch-scope";
 import { xlsxToRows } from "./read-spreadsheet";
 import { parseCsv } from "./import-items";
@@ -23,6 +24,7 @@ const namedIn = (src: Awaited<ReturnType<typeof read>>) => ({
 /** The file read and checked, with what a reviewer may map to. Writes nothing. */
 export async function previewPurchaseImport(content: string, format: SourceFormat) {
   const u = await requirePermission("purchase.post");
+  await begin("preview.purchase", { companyId: u.companyId, who: u.id });
   const source = await read(content, format);
   if (source.length === 0) throw new Error("No invoices were found. Each invoice starts with a Docid row — is this the purchase invoice report?");
   const master = await getPurchaseImportMaster(u.companyId, namedIn(source));
@@ -39,6 +41,7 @@ export async function previewPurchaseImport(content: string, format: SourceForma
  */
 export async function previewInvoicePosting(content: string, format: SourceFormat, row: number, mapping: Mapping): Promise<PostingPreview> {
   const u = await requirePermission("purchase.post");
+  await begin("preview.purchase", { companyId: u.companyId, who: u.id });
   const source = await read(content, format);
   const master = await getPurchaseImportMaster(u.companyId, namedIn(source));
   const p = planPurchaseImport(source, master, mapping).find((x) => x.row === row);
@@ -59,7 +62,9 @@ export async function runPurchaseImport(input: {
   content: string; format: SourceFormat; filename: string; mapping: Mapping; skip: number[]; only?: number[];
 }): Promise<PurchaseImportResult> {
   const u = await requirePermission("purchase.post");
+  let run = 0;
   try {
+    run = await begin("import.purchase", { companyId: u.companyId, who: u.id });
     const source = await read(input.content, input.format);
     const master = await getPurchaseImportMaster(u.companyId, namedIn(source));
     const plan = planPurchaseImport(source, master, input.mapping);
@@ -81,5 +86,7 @@ export async function runPurchaseImport(input: {
     return { ok: true, results, skipped };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    if (run) await end(run);
   }
 }

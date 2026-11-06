@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { userForToken, permissionForPath, can, SESSION_COOKIE, authRequired } from "@/lib/auth-core";
+import { begin, heavyKindFor, TooBusy } from "@/lib/heavy";
 
 // Every request is signed in or sent to /login, and every page is checked
 // against the role's permissions here, on the server, before it renders.
@@ -35,6 +36,28 @@ function contentSecurityPolicy(nonce: string) {
   ].join("; ");
 }
 
+/**
+ * A big report or a download, counted against its limit before it runs a
+ * single query (lib/heavy.ts). Prefetches are not loads, and only reading
+ * counts: a report's own form posts are actions with limits of their own.
+ * Refused, a page shows why in place and a download answers 429.
+ */
+async function overLimit(req: NextRequest, user: { id: string; companyId: string } | null, headers: Headers) {
+  const kind = req.method === "GET" && !req.headers.get("next-router-prefetch") ? heavyKindFor(req.nextUrl.pathname) : null;
+  if (!kind) return null;
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  try {
+    await begin(kind, { companyId: user?.companyId ?? null, who: user?.id ?? `ip:${ip}` });
+    return null;
+  } catch (e) {
+    if (!(e instanceof TooBusy)) throw e;
+    if (kind.startsWith("export.")) return new NextResponse(e.message, { status: 429, headers: { "Retry-After": "60" } });
+    const to = new URL("/busy", req.url);
+    to.searchParams.set("m", e.message);
+    return NextResponse.rewrite(to, { request: { headers } });
+  }
+}
+
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
   // The layout needs the path to know which shell to draw; headers are the
@@ -51,6 +74,8 @@ export async function middleware(req: NextRequest) {
   // Sign-in switched off: no login page, everyone acts as the owner.
   if (!authRequired()) {
     if (path === "/login") return withCsp(NextResponse.redirect(new URL("/", req.url)));
+    const busy = await overLimit(req, null, headers);
+    if (busy) return withCsp(busy);
     return withCsp(NextResponse.next({ request: { headers } }));
   }
   if (PUBLIC.some((p) => path === p || path.startsWith(p + "/"))) {
@@ -73,6 +98,8 @@ export async function middleware(req: NextRequest) {
     return withCsp(NextResponse.redirect(to));
   }
 
+  const busy = await overLimit(req, user, headers);
+  if (busy) return withCsp(busy);
   return withCsp(NextResponse.next({ request: { headers } }));
 }
 
