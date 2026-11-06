@@ -6,6 +6,7 @@ import { ChevronUp, ChevronDown, X, Plus, Pencil } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 export type Option = {
   id: string; code: string; name: string; sort_order: number; used: number;
@@ -46,16 +47,22 @@ export function AttributeCard({
 
   const [addRes, addAction, adding] =
     useActionState<ActionResult | null, FormData>(addOption as never, null);
+  useNotice(addRes);
   const [rmRes, rmAction, rmPending] =
     useActionState<ActionResult | null, FormData>(removeOption as never, null);
+  useNotice(rmRes, { ok: c("noticeDeleted"), errors: false });
   const [mvRes, mvAction] =
     useActionState<ActionResult | null, FormData>(moveOption as never, null);
+  useNotice(mvRes);
   const [upRes, upAction] =
     useActionState<ActionResult | null, FormData>(update as never, null);
+  useNotice(upRes);
   const [delRes, delAction, delPending] =
     useActionState<ActionResult | null, FormData>(remove as never, null);
+  useNotice(delRes, { ok: c("noticeDeleted"), errors: false });
   const [edRes, edAction] =
     useActionState<ActionResult | null, FormData>(updateOption as never, null);
+  useNotice(edRes);
 
   useEffect(() => {
     const done = [addRes, rmRes, mvRes, upRes, delRes, edRes].some((r) => r && "ok" in r);

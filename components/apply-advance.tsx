@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Wallet, X } from "lucide-react";
 import { money } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 export type OpenAdvance = {
   paymentId: string;
@@ -42,6 +43,7 @@ export function ApplyAdvance({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
 

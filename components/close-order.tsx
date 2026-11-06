@@ -6,6 +6,7 @@ import Link from "next/link";
 import { CircleSlash, RotateCcw, XCircle, X, AlertCircle } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { Portal } from "@/components/portal";
+import { useNotice } from "@/components/toast";
 
 type Linked = {
   id: string; doc_type: string; doc_no: string;
@@ -71,6 +72,7 @@ export function CloseOrder({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
 

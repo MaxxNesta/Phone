@@ -5,6 +5,8 @@ import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { ACCOUNT_TYPE_LABEL } from "./account-form";
 import { accountTypeLabel } from "@/lib/format";
+import { useNotice } from "@/components/toast";
+import { useTranslations } from "next-intl";
 
 export type CoaAccount = {
   id: string; code: string; name: string; name_my: string | null;
@@ -63,18 +65,23 @@ export function AccountRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [deactState, deactFormAction] = useActionState<ActionResult | null, FormData>(
     deactivateAction as never,
     null
   );
+  useNotice(deactState);
   const [actState, actFormAction] = useActionState<ActionResult | null, FormData>(
     activateAction as never,
     null
   );
+  useNotice(actState);
   const [delState, delFormAction, delPending] = useActionState<ActionResult | null, FormData>(
     deleteAction as never,
     null
   );
+  const c = useTranslations("common");
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
   // The posting engine resolves these by role; retiring one breaks posting.
   const locked = account.system_roles.length > 0 || account.rule_roles.length > 0;
@@ -265,15 +272,6 @@ export function AccountRow({
           )}
         </span>
 
-        {actState && "error" in actState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{actState.error}</div>
-        )}
-        {deactState && "error" in deactState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{deactState.error}</div>
-        )}
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

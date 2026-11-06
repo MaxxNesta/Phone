@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 /** Wraps a server action so validation errors render above the fields. */
 export function SimpleForm({
@@ -19,6 +20,7 @@ export function SimpleForm({
     action as never,
     null
   );
+  useNotice(state);
 
   return (
     <form action={formAction} className="form">

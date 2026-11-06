@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 const DAYS = [
   { n: 1, label: "Mon" }, { n: 2, label: "Tue" }, { n: 3, label: "Wed" },
@@ -67,17 +68,23 @@ export function RoutePlan({
 }) {
   const [addState, addFormAction, adding] =
     useActionState<ActionResult | null, FormData>(addAction as never, null);
+  useNotice(addState);
   const [removeState, removeFormAction] =
     useActionState<ActionResult | null, FormData>(removeAction as never, null);
+  useNotice(removeState);
   const [reorderState, reorderFormAction, reordering] =
     useActionState<ActionResult | null, FormData>(reorderAction as never, null);
+  useNotice(reorderState);
   const [genState, genFormAction, generating] =
     useActionState<ActionResult | null, FormData>(generateAction as never, null);
+  useNotice(genState);
 
   const [updateState, updateFormAction, saving] =
     useActionState<ActionResult | null, FormData>(updateAction as never, null);
+  useNotice(updateState);
   const [activeState, activeFormAction] =
     useActionState<ActionResult | null, FormData>(setActiveAction as never, null);
+  useNotice(activeState);
 
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState(false);

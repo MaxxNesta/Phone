@@ -4,6 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
+import { useNotice } from "@/components/toast";
 
 type AgreementLine = {
   lineId: string; itemId: string; itemCode: string; itemName: string;
@@ -42,6 +43,7 @@ export function ConsignmentReceiveForm({
   // One key per form: a double click or a retried request posts once.
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [agreementId, setAgreementId] = useState("");
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
   const [docDate, setDocDate] = useState(today);

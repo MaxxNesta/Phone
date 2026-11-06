@@ -4,6 +4,7 @@ import { useActionState, useState, useTransition } from "react";
 import { previewVoucherImport, voucherImportTemplate } from "@/lib/actions";
 import type { ActionResult } from "@/lib/actions";
 import { FileDrop, type Upload } from "./file-drop";
+import { useNotice } from "@/components/toast";
 
 type Issue = { row: number; column?: string; message: string };
 type Row = {
@@ -22,6 +23,7 @@ export function VoucherImport({ kind, action }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
   const [state, formAction, posting] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [file, setFile] = useState<Upload | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);

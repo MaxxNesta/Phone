@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Lock } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 export type AssetFormValue = {
   id?: string; code: string; name: string; category_id: string; branch_id: string;
@@ -36,6 +37,7 @@ export function AssetForm({ action, value, categories, branches, pinned, company
   companyConvention: string;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [v, setV] = useState(value);
   const set = (k: keyof AssetFormValue) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setV({ ...v, [k]: e.target.value });

@@ -217,7 +217,11 @@
     "to": "To",
     "allItems": "All items",
     "cantDelete": "Can't delete",
-    "ok": "OK"
+    "ok": "OK",
+    "noticeSaved": "Saved",
+    "noticeError": "That didn't work",
+    "noticeWarning": "Please wait a moment",
+    "noticeDeleted": "Deleted"
   },
   "products": {
     "title": "Products",

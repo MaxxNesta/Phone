@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Row = {
   id: string; item_code: string; item_name: string; uom_code: string;
@@ -47,6 +48,7 @@ export function ReconcileStock({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null
   );
+  useNotice(state);
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) =>

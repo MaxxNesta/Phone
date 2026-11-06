@@ -9,6 +9,7 @@ import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source";
 import { PartnerPicker } from "./partner-picker";
 import { LineRemove } from "./line-remove";
+import { useNotice } from "@/components/toast";
 
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Uom = { id: string; code: string; name: string };
@@ -78,6 +79,7 @@ export function DeliveryForm({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());

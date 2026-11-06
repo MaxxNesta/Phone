@@ -10,6 +10,7 @@ import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { useTranslations } from "next-intl";
 import { LineRemove } from "./line-remove";
+import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -56,6 +57,7 @@ export function StockTransferForm({
     action as never,
     null
   );
+  useNotice(state);
 
   const [items, setItems] = useState<Item[]>(initialItems);
   const addItem = (i: Item) => setItems((xs) => [...xs, i]);

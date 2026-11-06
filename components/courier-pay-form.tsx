@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import { DocRefs } from "./doc-refs";
 import { Building2, CalendarDays, Hash, StickyNote, User, Wallet } from "lucide-react";
+import { useNotice } from "@/components/toast";
 
 type Charge = { id: string; partnerId: string; lcId: string; lcNo: string; date: string; type: string; receipts: { id: string; no: string }[]; open: number; owed: number };
 type Opt = { id: string; label: string };
@@ -18,6 +19,7 @@ export function CourierPayForm({ action, couriers, charges, branches, accounts, 
   initialChargeId?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
+  useNotice(state);
   const [partnerId, setPartnerId] = useState(couriers.some((c) => c.id === initialPartnerId) ? initialPartnerId! : couriers[0]?.id ?? "");
   const mine = useMemo(() => charges.filter((c) => c.partnerId === partnerId), [charges, partnerId]);
   // Every open charge ticked at its full open amount: the usual payment is "settle what we owe".

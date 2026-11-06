@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { categoryCodeTakenBy } from "@/lib/item-code-actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Option = { id: string; name: string; code: string; depth: number };
 
@@ -51,6 +52,7 @@ export function Restructure({
     action as never,
     null
   );
+  useNotice(state);
 
   if (!open) {
     return (

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { RotateCcw } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { AGING_DEFAULTS, PACE_DEFAULTS, bucketRanges, type AgingRules, type PaceRules } from "@/lib/aging-rules";
+import { useNotice } from "@/components/toast";
 
 type T = [number, number, number];
 const rising = (t: number[]) => t.every((n) => Number.isInteger(n) && n > 0) && t[0] < t[1] && t[1] < t[2];
@@ -21,6 +22,7 @@ export function AgingSettingsForm({ action, rules, pace, groups }: {
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state, { ok: "Settings saved. Inventory Aging now uses them." });
   const [t, setT] = useState<number[]>([...rules.thresholds]);
   const [labels, setLabels] = useState<string[]>([...rules.labels]);
   const [p, setP] = useState({ ...pace });
@@ -38,7 +40,6 @@ export function AgingSettingsForm({ action, rules, pace, groups }: {
     <form action={formAction} className="ags">
       <input type="hidden" name="settings" value={payload} />
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
-      {state && "ok" in state && <div className="ags-saved" role="status">Settings saved. Inventory Aging now uses them.</div>}
 
       <section className="ie-card">
         <div className="ie-head">

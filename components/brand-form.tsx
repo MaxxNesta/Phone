@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 /**
  * The second "yes" before a brand other than Apple exists. The shop sells
@@ -52,6 +53,7 @@ export function AddBrandForm({
     action as never,
     null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState(false);
   const [confirmed, setConfirmed] = useState(false);

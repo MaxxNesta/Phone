@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type ReorderPoint = {
   id: string; item_code: string; item_name: string; location_code: string; min_qty: string | number;
@@ -25,10 +26,12 @@ export function ReorderPointRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [delState, delFormAction, delPending] = useActionState<ActionResult | null, FormData>(
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
 
   if (editing) {
@@ -39,9 +42,6 @@ export function ReorderPointRow({
         <td className="code">{point.location_code}</td>
         <td colSpan={2}>
           <form action={formAction} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            {state && "error" in state && (
-              <span className="hint" style={{ color: "var(--bad)" }}>{state.error}</span>
-            )}
             <input type="hidden" name="id" value={point.id} />
             <input
               name="min_qty" type="number" min="0" step="any" required autoFocus
@@ -77,9 +77,6 @@ export function ReorderPointRow({
             <input type="hidden" name="id" value={point.id} />
           </ConfirmDelete>
         </span>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

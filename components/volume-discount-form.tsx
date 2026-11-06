@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Item = { id: string; code: string; name: string };
 type Group = { id: string; name: string };
@@ -16,6 +17,7 @@ export function VolumeDiscountForm({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const [basis, setBasis] = useState<"QUANTITY" | "INVOICE_TOTAL">("QUANTITY");
 

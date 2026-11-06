@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 /**
  * Turning a supplier's list into a draft purchase order.
@@ -32,6 +33,7 @@ export function ReplenishOrderButton({
   const t = useTranslations("inventory");
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
 
   const count = lines.length;
 

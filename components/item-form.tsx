@@ -13,6 +13,7 @@ import { Sparkles, PenLine, Smartphone, Barcode, Boxes, Plus, Check, ScanLine } 
 import { HelpHint } from "./help-hint";
 import { itemCodeTakenBy } from "@/lib/item-code-actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Node = {
   id: string; code: string; segment: string; name: string;
@@ -81,6 +82,7 @@ export function ItemForm({
     action as never,
     null
   );
+  useNotice(state);
 
   const [tracksBatch, setTracksBatch] = useState(false);
   const [tracksExpiry, setTracksExpiry] = useState(false);

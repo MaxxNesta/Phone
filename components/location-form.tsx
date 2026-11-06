@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Location = { id: string; code: string; name: string; depth: number; is_stock_location: boolean };
 type Kind = "office" | "warehouse";
@@ -22,6 +23,7 @@ export function AddLocationForm({
     action as never,
     null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("warehouse");
   const [parentId, setParentId] = useState("");

@@ -21,6 +21,7 @@ import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { posSearchAction, posUnitsAction } from "@/lib/pos-actions";
 import { DocHeading } from "./doc-heading";
 import { LineRemove } from "./line-remove";
+import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -209,6 +210,7 @@ export function SalesVoucher({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());
@@ -916,6 +918,7 @@ export function SalesVoucher({
   const [draftResult, draftFormAction, savingDraft] =
     useActionState<ActionResult | null, FormData>(
       (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useNotice(draftResult);
 
   useEffect(() => {
     if (!draftResult || !("ok" in draftResult)) return;

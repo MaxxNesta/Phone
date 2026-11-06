@@ -7,6 +7,7 @@ import { ConfirmDelete } from "./confirm-delete";
 import { RowMenu } from "./row-menu";
 import { PartnerEditForm, type Partner } from "./partner-edit-form";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 // lib/db.ts opens a real Postgres connection at import time — never import
 // it into a client component. Same formatting as money() there, kept local.
@@ -50,6 +51,7 @@ export function PartnerRow({
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
 
   if (editing) {
@@ -168,9 +170,6 @@ export function PartnerRow({
             <input type="hidden" name="id" value={partner.id} />
           </ConfirmDelete>
         </RowMenu>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

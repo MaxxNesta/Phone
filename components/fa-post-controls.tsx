@@ -2,8 +2,9 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { Play, CheckCircle2 } from "lucide-react";
+import { Play } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 export type BranchPosting = {
   branchId: string; branch: string; amount: string; assets: number;
@@ -24,14 +25,14 @@ export function FaPostControls({ month, branches, prepare, post, discard, mode, 
   discard: (fd: FormData) => Promise<void>;
 }) {
   const [pState, prepareAction, preparing] = useActionState<ActionResult | null, FormData>(prepare as never, null);
+  useNotice(pState);
   const [qState, postAction, posting] = useActionState<ActionResult | null, FormData>(post as never, null);
+  useNotice(qState, { ok: qState && "ok" in qState ? `${qState.draftId}. The ledger, the calendar and the asset schedules now show it.` : undefined });
   if (branches.length === 0) return null;
   const err = (pState && "error" in pState && pState.error) || (qState && "error" in qState && qState.error);
-  const done = qState && "ok" in qState ? qState.draftId : null;
   return (
     <div className="fap">
       {err && <div className="alert" role="alert">{err}</div>}
-      {done && <p className="fa-ok" role="status"><CheckCircle2 size={14} aria-hidden="true" /> {done}. The ledger, the calendar and the asset schedules now show it.</p>}
       {mode === "MANUAL" && <p className="fa-muted">Posting is set to Manual. Post the journal yourself and link it in Journal Reconciliation.</p>}
       {branches.map((b) => (
         <div key={b.branchId} className="fap-row">

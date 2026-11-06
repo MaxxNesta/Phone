@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 export type PriceLevel = {
   id: string; code: string; name: string; sort_order: number;
@@ -26,6 +27,7 @@ export function AddPriceLevelForm({
     action as never,
     null
   );
+  useNotice(state);
   const c = useTranslations("common");
   const f = useTranslations("itemForm");
   const pt = useTranslations("partners");
@@ -93,10 +95,12 @@ export function PriceLevelRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [delState, delFormAction, delPending] = useActionState<ActionResult | null, FormData>(
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
   const inUse = (level.prices ?? 0) > 0 || (level.partners ?? 0) > 0;
 
@@ -171,9 +175,6 @@ export function PriceLevelRow({
             <input type="hidden" name="id" value={level.id} />
           </ConfirmDelete>
         </span>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

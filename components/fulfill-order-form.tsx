@@ -7,6 +7,7 @@ import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { Fragment, useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
+import { useNotice } from "@/components/toast";
 
 type Line = {
   lineId: string;
@@ -81,6 +82,7 @@ export function FulfillOrderForm({
     action as never,
     null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());
@@ -107,6 +109,7 @@ export function FulfillOrderForm({
   const [draftId, setDraftId] = useState(draft?.id ?? "");
   const [draftResult, draftAction, savingDraft] = useActionState<ActionResult | null, FormData>(
     (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useNotice(draftResult);
   useEffect(() => {
     if (draftResult && "ok" in draftResult && draftResult.draftId) setDraftId(draftResult.draftId);
   }, [draftResult]);

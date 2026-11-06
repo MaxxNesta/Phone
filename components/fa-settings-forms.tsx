@@ -2,10 +2,11 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Acct = { id: string; code: string; name: string };
 const Result = ({ s, ok }: { s: ActionResult | null; ok: string }) =>
-  s ? ("error" in s ? <div className="alert" role="alert">{s.error}</div> : <p className="fa-ok" role="status">{ok}</p>) : null;
+  s && "error" in s ? <div className="alert" role="alert">{s.error}</div> : null;
 
 const MODES = [
   ["REVIEW", "Review & post", "Each month is prepared as a draft; someone allowed to post checks the journal and posts it. A popup says when a month is ready."],
@@ -19,6 +20,7 @@ export function FaSettingsForm({ action, value, revenue, expense }: {
   revenue: Acct[]; expense: Acct[];
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [mode, setMode] = useState(value.posting_mode);
   return (
     <form action={formAction} className="fas-form">
@@ -61,6 +63,7 @@ export function FaCategoryForm({ action, value, assets, expenses, used }: {
   assets: Acct[]; expenses: Acct[]; used: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state, { ok: "Category saved." });
   const pick = (name: string, list: Acct[], v: string) => (
     <select name={name} defaultValue={v} required disabled={used} title={used ? "Journals already carry this category's assets" : undefined}>
       <option value="">Choose…</option>{list.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}

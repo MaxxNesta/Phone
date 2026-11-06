@@ -6,6 +6,7 @@ import { PartnerPicker } from "./partner-picker";
 import { CurrencyRate, type FxOption } from "./currency-rate";
 import type { Channel } from "@/lib/payment-channels";
 import { ChannelPicker } from "./channel-picker";
+import { useNotice } from "@/components/toast";
 
 type Partner = { id: string; code: string; name: string; currency?: string | null };
 type CashAccount = { id: string; code: string; name: string };
@@ -64,6 +65,7 @@ export function SettlementForm({
     action as never,
     null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());

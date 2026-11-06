@@ -4,6 +4,7 @@ import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import type { Plan, PlanLimits } from "@/lib/plans";
+import { useNotice } from "@/components/toast";
 
 const ORDER: Plan[] = ["STARTER", "BUSINESS", "ENTERPRISE"];
 
@@ -37,6 +38,7 @@ export function PlanSwitcher({
   const [state, formAction, working] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
 
   const router = useRouter();
   useEffect(() => {

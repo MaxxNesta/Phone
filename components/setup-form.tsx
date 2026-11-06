@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -19,6 +20,7 @@ export function SetupForm({
     action as never,
     null
   );
+  useNotice(state);
 
   // Myanmar's financial year has moved more than once, so this is asked
   // rather than assumed. April is the current convention.

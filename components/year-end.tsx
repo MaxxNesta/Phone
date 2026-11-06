@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 // `+ 0` so a negated zero prints "0" rather than "-0".
 const money = (v: string | number | null | undefined) =>
@@ -38,8 +39,10 @@ export function YearEnd({
 }) {
   const [closeState, closeFormAction, closing] =
     useActionState<ActionResult | null, FormData>(closeAction as never, null);
+  useNotice(closeState);
   const [reopenState, reopenFormAction] =
     useActionState<ActionResult | null, FormData>(reopenAction as never, null);
+  useNotice(reopenState);
 
   const [confirming, setConfirming] = useState<string | null>(null);
   const [reopening, setReopening] = useState<string | null>(null);

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { clearItemPrice, type ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Level = {
   levelId: string; levelName: string;
@@ -43,10 +44,12 @@ export function PriceRow({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
 
   const [clearState, clearAction, clearing] = useActionState<ActionResult | null, FormData>(
     clearItemPrice as never, null,
   );
+  useNotice(clearState);
   const editingLevel = row.levels.find((l) => l.levelId === editing);
 
   return (

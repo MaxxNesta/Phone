@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Invoice = {
   id: string; doc_no: string; doc_date: string;
@@ -36,6 +37,7 @@ export function NoteForm({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [amount, setAmount] = useState("");
   const [taxCodeId, setTaxCodeId] = useState("");

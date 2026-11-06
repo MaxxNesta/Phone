@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { Plus, X } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Asset = { id: string; code: string; name: string; expected: Record<string, string> };
 type Row = { assetId: string; kind: "DEPRECIATION" | "CORRECTION" | "ACQUISITION" | "OPENING"; month: string; amount: string };
@@ -25,6 +26,7 @@ export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMon
   assets: Asset[];
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state, { ok: "Linked. Nothing was posted; the register now counts this journal." });
   const kind: Row["kind"] = role === "ASSET" ? "ACQUISITION" : credit ? "DEPRECIATION" : "CORRECTION";
   const blank = (): Row => ({ assetId: "", kind, month: defaultMonth, amount: "" });
   const [rows, setRows] = useState<Row[]>(suggested?.length
@@ -41,7 +43,6 @@ export function FaLinkForm({ action, lineId, role, credit, remaining, defaultMon
       <input type="hidden" name="line_id" value={lineId} />
       <input type="hidden" name="allocations" value={JSON.stringify(rows.filter((r) => r.assetId && r.amount))} />
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
-      {state && "ok" in state && <p className="fa-ok" role="status">Linked. Nothing was posted; the register now counts this journal.</p>}
       {suggested?.length ? <p className="far-sug">Suggested from the schedule: {suggested.length === 1 ? "one asset" : `${suggested.length} assets`} whose depreciation for {suggested[0].month} adds up to this line. Check it, then Link.</p> : null}
       {rows.map((r, i) => {
         const exp = r.kind === "DEPRECIATION" || r.kind === "CORRECTION" ? byId.get(r.assetId)?.expected[r.month] : undefined;

@@ -9,6 +9,7 @@ import type { ActionResult } from "@/lib/actions";
 import { RelatedDocumentsPanel } from "./related-documents";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import { TrackMode } from "./track-mode";
+import { useNotice } from "@/components/toast";
 
 type BillLine = {
   lineId: string;
@@ -82,6 +83,7 @@ export function ReceiveAgainstBill({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [locationId, setLocationId] = useState(bill.locationId ?? locations[0]?.id ?? "");
   const [docDate, setDocDate] = useState(today);

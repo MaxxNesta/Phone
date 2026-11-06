@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Account = {
   id: string; code: string; name: string; account_type: string;
@@ -27,6 +28,7 @@ export function AddAccountForm({
     action as never,
     null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState("EXPENSE");
 

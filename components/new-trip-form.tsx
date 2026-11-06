@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 const money = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -34,6 +35,7 @@ export function NewTripForm({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [picked, setPicked] = useState<string[]>([]);
 
   const toggle = (id: string) =>

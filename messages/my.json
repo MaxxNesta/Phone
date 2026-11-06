@@ -217,7 +217,11 @@
     "to": "အထိ",
     "allItems": "ပစ္စည်း အားလုံး",
     "cantDelete": "ဖျက်၍ မရပါ",
-    "ok": "အိုကေ"
+    "ok": "အိုကေ",
+    "noticeSaved": "သိမ်းပြီးပါပြီ",
+    "noticeError": "မအောင်မြင်ပါ",
+    "noticeWarning": "ခဏစောင့်ပါ",
+    "noticeDeleted": "ဖျက်ပြီးပါပြီ"
   },
   "products": {
     "title": "ကုန်ပစ္စည်းများ",

@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Rate = { rate: string | number; validFrom: string; documents: number };
 
@@ -36,9 +37,11 @@ export function TaxCodeRow({
   const [editState, editAction, editing] = useActionState<ActionResult | null, FormData>(
     updateAction as never, null,
   );
+  useNotice(editState);
   const [rateState, rateAction, savingRate] = useActionState<ActionResult | null, FormData>(
     addRateAction as never, null,
   );
+  useNotice(rateState);
 
   const future = taxCode.rates.filter((r) => r.validFrom > today);
 

@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { reorderChoices } from "@/lib/stock-detail";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 /** A model and the variants on its shelves; a plain item has none. */
 type Model = { id: string; name: string; category: string; variants: { id: string; parts: { a: string; o: string }[] }[] };
@@ -30,6 +31,7 @@ export function AddReorderPointForm({
     action as never,
     null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDialogElement>(null);
   // The catalogue to choose from, fetched the first time the form opens.

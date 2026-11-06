@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { HelpHint } from "./help-hint";
 import { saveRate } from "@/lib/currency-actions";
+import { notify } from "./toast";
 
 export type FxOption = { code: string; symbol: string | null; rate: number | null };
 
@@ -32,13 +33,13 @@ export function CurrencyRate({ options, base, currency, rate, onChange, locked, 
 }) {
   const foreign = currency && currency !== base;
   const onFile = options.find((o) => o.code === currency)?.rate ?? null;
-  const [saved, setSaved] = useState<string | null>(null);
   const saveIt = async () => {
     const fd = new FormData();
     fd.set("from_currency", currency); fd.set("rate", rate);
     fd.set("valid_from", date || new Date().toISOString().slice(0, 10));
     const r = await saveRate(null as never, fd);
-    setSaved(r && "ok" in r ? `Saved: ${r.ok}` : (r as { error?: string })?.error ?? "Not saved");
+    if (r && "ok" in r) notify("success", `Saved: ${r.ok}`);
+    else notify("error", (r as { error?: string })?.error ?? "Not saved");
   };
   return (
     <>
@@ -90,9 +91,8 @@ export function CurrencyRate({ options, base, currency, rate, onChange, locked, 
         ) : Number(rate) !== onFile ? (
           <span className="hint">
             <button type="button" className="linkish" onClick={saveIt}>Save {Number(rate).toLocaleString("en-US")} as the {currency} rate</button>
-            {saved && <span style={{ display: "block" }}>{saved}</span>}
           </span>
-        ) : saved ? <span className="hint">{saved}</span> : null)}
+) : null)}
       </div>
     </>
   );

@@ -7,6 +7,7 @@ import type { Channel } from "@/lib/payment-channels";
 import type { MoneyPreview } from "@/lib/refund";
 import { RefundFields, type RefundState } from "./refund-fields";
 import { MoneyPreviewDialog } from "./money-preview";
+import { useNotice } from "@/components/toast";
 
 type Ret = { id: string; doc_no: string; date: string; customer: string; location_id: string | null;
              total: number; refundable: number; invoice_no: string | null };
@@ -17,6 +18,7 @@ export function RefundForm({ action, returns, channels, today, initialReturnId }
   returns: Ret[]; channels: Record<string, Channel[]>; today: string; initialReturnId?: string;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [returnId, setReturnId] = useState(
     returns.find((r) => r.id === initialReturnId)?.id ?? returns[0]?.id ?? "");

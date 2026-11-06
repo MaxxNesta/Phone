@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
 import { Link2 } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 export type FulfilmentLine = {
   lineId: string;
@@ -61,6 +62,7 @@ export function LinkToOrder({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
 
   /**

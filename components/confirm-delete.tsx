@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Ban, Info, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 /**
  * Replaces window.confirm() for destructive row actions.
@@ -133,7 +134,9 @@ export function DeleteButton({ action, ...rest }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult | void>;
 } & Omit<Parameters<typeof ConfirmDelete>[0], "action" | "pending" | "error">) {
   const router = useRouter();
+  const t = useTranslations("common");
   const [state, run, pending] = useActionState<ActionResult | void | null, FormData>(action as never, null);
+  useNotice(state, { ok: t("noticeDeleted"), errors: false });
   useEffect(() => { if (state && "ok" in state) router.refresh(); }, [state, router]);
   return <ConfirmDelete action={run} pending={pending} error={state && "error" in state ? state.error : null} {...rest} />;
 }

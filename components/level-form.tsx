@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { categoryCodeTakenBy } from "@/lib/item-code-actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Uom = { id: string; code: string; name: string };
 type ParentOption = { id: string; code: string; name: string };
@@ -38,6 +39,7 @@ export function AddCategoryForm({
     action as never,
     null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const [segment, setSegment] = useState("");
   const [chosenParentId, setChosenParentId] = useState(categories?.[0]?.id ?? "");

@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { saveUser } from "@/lib/auth-actions";
 import { ROLES, ROLE_LABEL } from "@/lib/roles";
+import { useNotice } from "@/components/toast";
 
 /** Roles that may work across every branch. Kept with ALL_BRANCH_ROLES in auth-core. */
 const ACROSS_BRANCHES = ["ADMIN", "MANAGER"];
@@ -12,13 +13,13 @@ export function UserForm({ user, branches = [] }: {
   branches?: { id: string; code: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState(saveUser, null);
+  useNotice(state);
   const [role, setRole] = useState(user?.role ?? "CASHIER");
   const across = ACROSS_BRANCHES.includes(role);
   const k = user?.id ?? "new";
   return (
     <form action={action} className="form" style={{ maxWidth: 420 }}>
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
-      {state && "ok" in state && <div className="alert ok" role="status">{state.ok}</div>}
       {user && <input type="hidden" name="id" value={user.id} />}
       <div className="field">
         <label htmlFor={`un-${k}`}>Name</label>

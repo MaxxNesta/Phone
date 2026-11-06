@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Unit = {
   id: string; code: string; name: string; name_my: string | null;
@@ -32,6 +33,7 @@ export function UnitRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [, deactFormAction] = useActionState<ActionResult | null, FormData>(
     deactivateAction as never,
     null
@@ -44,6 +46,7 @@ export function UnitRow({
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
   const inUse = (unit.items ?? 0) > 0;
 
@@ -125,9 +128,6 @@ export function UnitRow({
             <input type="hidden" name="id" value={unit.id} />
           </ConfirmDelete>
         </span>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

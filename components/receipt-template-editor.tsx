@@ -15,6 +15,7 @@ import { money, shortDate } from "@/lib/format";
 import { HelpHint } from "./help-hint";
 import { ReceiptSlip } from "./receipt-slip";
 import { ReceiptPrintHost } from "./receipt-print";
+import { useNotice } from "@/components/toast";
 
 export type TemplateRow = {
   id: string; name: string; paper: Paper; branchId: string | null; branchName: string | null;
@@ -525,6 +526,7 @@ function CompanyDetails({ company }: { company: Company }) {
   const [res, setRes] = useState<Result>(null);
   const [pending, start] = useTransition();
   const [logoState, upload, uploading] = useActionState(uploadCompanyLogo, null);
+  useNotice(logoState);
   useEffect(() => { if (logoState?.ok) router.refresh(); }, [logoState, router]);
 
   return (

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Lock, AlertCircle } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
+import { useNotice } from "@/components/toast";
 
 type InvoiceLine = {
   lineId: string;
@@ -76,6 +77,7 @@ export function DeliverAgainstInvoice({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [docDate, setDocDate] = useState(today);
   /* The invoice this delivery answers, written in for you.

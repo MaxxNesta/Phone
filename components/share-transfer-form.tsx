@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { ArrowRightLeft, CalendarDays, Hash, Landmark, PlusCircle, ShoppingBag, StickyNote, User } from "lucide-react";
 import { ConfirmDelete } from "./confirm-delete";
+import { useNotice } from "@/components/toast";
 
 type Result = { error?: string } | null;
 type Holder = { id: string; code: string; name: string; folio_no: string | null; is_active: boolean };
@@ -30,6 +31,7 @@ export function ShareTransferForm({ action, holders, holdings, nextIssueNo, equi
   equityAccounts: Account[]; assetAccounts: Account[]; today: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
+  useNotice(state);
   const [type, setType] = useState<"ISSUE" | "TRANSFER" | "PURCHASE">("ISSUE");
   const [shareType, setShareType] = useState<"EQUITY" | "PREFERENCE">("EQUITY");
   const [fromId, setFromId] = useState("");
@@ -172,6 +174,7 @@ export function ShareTransferForm({ action, holders, holdings, nextIssueNo, equi
 /** A new owner. It holds nothing until an Issue gives it shares. */
 export function ShareholderForm({ action }: { action: (prev: Result, fd: FormData) => Promise<Result> }) {
   const [state, formAction, pending] = useActionState(action, null);
+  useNotice(state);
   return (
     <form action={formAction} className="form wide docsheet">
       {state?.error && <div className="alert">{state.error}</div>}
@@ -197,6 +200,7 @@ export function ShareholderForm({ action }: { action: (prev: Result, fd: FormDat
 /** Cancel, asked first; a refusal (a later transfer depends on it) shows in the dialog. */
 export function CancelTransfer({ id, no, action }: { id: string; no: string; action: (prev: Result, fd: FormData) => Promise<Result> }) {
   const [state, formAction, pending] = useActionState(action, null);
+  useNotice(state);
   return (
     <ConfirmDelete action={formAction} pending={pending} error={state?.error ?? null}
       title={`Cancel ${no}?`} detail="The shares go back, and any journal entry is reversed. Allowed only if no later transfer depends on it."

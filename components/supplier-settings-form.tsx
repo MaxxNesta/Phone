@@ -6,6 +6,7 @@ import type { ActionResult } from "@/lib/actions";
 import type { Thresholds, Targets, MetricId } from "@/lib/supplier-metrics";
 import { shortDate } from "@/lib/format";
 import { HelpHint } from "./help-hint";
+import { useNotice } from "@/components/toast";
 
 type MetricRow = { id: MetricId; name: string; unit: string; supported: boolean };
 
@@ -57,15 +58,13 @@ export function SupplierSettingsForm({
   const router = useRouter();
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
 
   useEffect(() => { if (state && "ok" in state) router.refresh(); }, [state, router]);
 
   return (
     <form action={formAction}>
       {state && "error" in state && <div className="alert">{state.error}</div>}
-      {state && "ok" in state && (
-        <div className="page-sub" style={{ color: "var(--ok)" }}>Saved.</div>
-      )}
 
       <section className="grid2">
         <div className="card">

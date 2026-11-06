@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 export function AddUnitForm({
   action,
@@ -17,6 +18,7 @@ export function AddUnitForm({
     action as never,
     null
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
 
   if (!open) {

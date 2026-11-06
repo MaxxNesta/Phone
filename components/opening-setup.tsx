@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Boxes, Building2, CalendarDays, Landmark, TriangleAlert, Users, Wallet } from "lucide-react";
 import { money } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Item = { id: string; code: string; name: string; is_stocked?: boolean; tracks_serial?: boolean };
 type Named = { id: string; code: string; name: string };
@@ -96,6 +97,7 @@ export function OpeningSetup({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
 
   const [cutover, setCutover] = useState(today);
   const [stock, setStock] = useState<StockRow[]>([

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
 import { MIN_RADAR_AXES, MAX_RADAR_AXES, type MetricId } from "@/lib/supplier-metrics";
+import { useNotice } from "@/components/toast";
 
 /**
  * Which three to six axes the radar is drawn from.
@@ -36,6 +37,7 @@ export function RadarAxisPicker({
   const [saving, setSaving] = useState(false);
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(saveAction as never, null);
+  useNotice(state);
 
   useEffect(() => {
     if (state && "ok" in state) { setSaving(false); router.refresh(); }

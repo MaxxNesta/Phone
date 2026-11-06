@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 const money = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -50,12 +51,16 @@ export function TripStops({
 }) {
   const [reorderState, reorderFormAction, reordering] =
     useActionState<ActionResult | null, FormData>(reorderAction as never, null);
+  useNotice(reorderState);
   const [answerState, answerFormAction] =
     useActionState<ActionResult | null, FormData>(answerAction as never, null);
+  useNotice(answerState);
   const [removeState, removeFormAction] =
     useActionState<ActionResult | null, FormData>(removeAction as never, null);
+  useNotice(removeState);
   const [addState, addFormAction, adding] =
     useActionState<ActionResult | null, FormData>(addAction as never, null);
+  useNotice(addState);
 
   const [failing, setFailing] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);

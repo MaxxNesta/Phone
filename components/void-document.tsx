@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { Lock, FileX, Undo2 } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Blocker = { reason: string; docNo?: string; docId?: string };
 
@@ -70,6 +71,7 @@ export function VoidDocument({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null
   );
+  useNotice(state);
 
   /** One void per opening of this panel — see postOnce. */
   const [attemptKey] = useState(() => crypto.randomUUID());

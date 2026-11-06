@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 const money = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -63,14 +64,19 @@ export function BankReconcile({
 }) {
   const [matchState, matchFormAction] =
     useActionState<ActionResult | null, FormData>(matchAction as never, null);
+  useNotice(matchState);
   const [unmatchState, unmatchFormAction] =
     useActionState<ActionResult | null, FormData>(unmatchAction as never, null);
+  useNotice(unmatchState);
   const [ignoreState, ignoreFormAction] =
     useActionState<ActionResult | null, FormData>(ignoreAction as never, null);
+  useNotice(ignoreState);
   const [autoState, autoFormAction, autoRunning] =
     useActionState<ActionResult | null, FormData>(autoMatchAction as never, null);
+  useNotice(autoState);
   const [statusState, statusFormAction, closing] =
     useActionState<ActionResult | null, FormData>(statusAction as never, null);
+  useNotice(statusState);
 
   const [selected, setSelected] = useState<string | null>(null);
   const [ignoring, setIgnoring] = useState<string | null>(null);

@@ -8,6 +8,7 @@ import type { ActionResult } from "@/lib/actions";
 import { optionLabel } from "@/lib/item-code";
 import { PackSizes } from "./pack-sizes";
 import { ItemPhotoField } from "./item-photo-field";
+import { useNotice } from "@/components/toast";
 
 export type EditorItem = {
   id: string; code: string; name: string; nameCustom: boolean; barcode: string;
@@ -53,6 +54,7 @@ export function ItemEditor({ item, action, tracking }: {
 }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const isVariant = !!item.parentId;
   const isModel = item.isModel;
   /** Holds the product's own settings: a model, or an item with no variants. */
@@ -329,7 +331,7 @@ export function ItemEditor({ item, action, tracking }: {
           <ArrowLeft size={15} aria-hidden="true" /> Back to products
         </Link>
         <span className="ie-bar-note" aria-live="polite">
-          {saved && !dirty ? "Saved" : dirty ? "Unsaved changes" : ""}
+          {dirty ? "Unsaved changes" : ""}
         </span>
         <button type="button" className="ie-btn" disabled={!dirty} onClick={() => { setF(start()); setSaved(false); setTouched(false); setResetKey((k) => k + 1); }}>Cancel</button>
         <button type="submit" className="ie-btn primary" disabled={pending || !dirty || !valid}>

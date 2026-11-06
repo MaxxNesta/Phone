@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Link2, Truck } from "lucide-react";
 import Link from "next/link";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 export type OrderLine = {
   orderLineId: string;
@@ -51,6 +52,7 @@ export function LinkFulfilment({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
   const [open, setOpen] = useState(false);
 
   const forItem = useMemo(() => {

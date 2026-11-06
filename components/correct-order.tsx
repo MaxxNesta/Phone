@@ -6,6 +6,7 @@ import { Pencil, TriangleAlert, ArrowRight } from "lucide-react";
 import { money, qty } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
 import { Portal } from "@/components/portal";
+import { useNotice } from "@/components/toast";
 
 export type CorrectableLine = {
   /**
@@ -95,8 +96,10 @@ export function CorrectOrder({
 }) {
   const [previewState, previewAction, previewing] =
     useActionState<PreviewState | null, FormData>(preview as never, null);
+  useNotice(previewState);
   const [confirmState, confirmAction, confirming] =
     useActionState<ConfirmState | null, FormData>(confirm as never, null);
+  useNotice(confirmState);
 
   /**
    * One correction per opening of this dialog. A resent confirmation — the

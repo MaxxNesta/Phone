@@ -3,9 +3,11 @@
 import { useActionState, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { signIn, createFirstAdmin } from "@/lib/auth-actions";
+import { useNotice } from "@/components/toast";
 
 export function LoginForm({ firstRun, next }: { firstRun: boolean; next: string }) {
   const [state, action, pending] = useActionState(firstRun ? createFirstAdmin : signIn, null);
+  useNotice(state);
   // Typing a password on a phone keyboard blind is where most failed sign-ins
   // come from; showing it is the person's choice and never the default.
   const [reveal, setReveal] = useState(false);

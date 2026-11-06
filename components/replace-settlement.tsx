@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { RotateCcw } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 /**
  * The way back from a voided consignment settlement.
@@ -23,6 +24,7 @@ export function ReplaceSettlement({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
 
   return (
     <form action={formAction} className="alert" style={{ marginBottom: "1rem" }}>

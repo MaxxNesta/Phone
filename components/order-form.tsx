@@ -13,6 +13,7 @@ import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./curren
 import { PartnerPicker } from "./partner-picker";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { LineRemove } from "./line-remove";
+import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -85,6 +86,7 @@ export function OrderForm({
     action as never,
     null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());
@@ -133,6 +135,7 @@ export function OrderForm({
   const [draftResult, draftFormAction, savingDraft] =
     useActionState<ActionResult | null, FormData>(
       (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useNotice(draftResult);
 
   useEffect(() => {
     if (!draftResult || !("ok" in draftResult)) return;

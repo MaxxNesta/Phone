@@ -14,6 +14,7 @@ import { previewSalesReturn } from "@/lib/actions";
 import type { Channel } from "@/lib/payment-channels";
 import type { MoneyPreview } from "@/lib/refund";
 import { LineRemove } from "./line-remove";
+import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -82,6 +83,7 @@ export function ReturnForm({
     action as never,
     null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());

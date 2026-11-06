@@ -7,6 +7,7 @@ import type { ActionResult } from "@/lib/actions";
 import { RowMenu } from "./row-menu";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Category = {
   id: string; code: string; name: string; name_my: string | null;
@@ -39,12 +40,15 @@ export function PartnerCategoryRow({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never, null,
   );
+  useNotice(state);
   const [activeState, activeFormAction] = useActionState<ActionResult | null, FormData>(
     setActiveAction as never, null,
   );
+  useNotice(activeState);
   const [delState, delFormAction, delPending] = useActionState<ActionResult | null, FormData>(
     deleteAction as never, null,
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
   const router = useRouter();
   useEffect(() => {

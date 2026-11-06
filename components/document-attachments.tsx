@@ -6,6 +6,7 @@ import { Paperclip, Trash2, FileText, Image as ImageIcon } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { shortDate } from "@/lib/format";
 import { ConfirmDelete } from "./confirm-delete";
+import { useNotice } from "@/components/toast";
 
 export type Attachment = {
   id: string;
@@ -53,8 +54,10 @@ export function DocumentAttachments({
 
   const [upResult, uploadAction, uploading] =
     useActionState<ActionResult | null, FormData>(upload as never, null);
+  useNotice(upResult);
   const [delResult, deleteAction, deleting] =
     useActionState<ActionResult | null, FormData>(remove as never, null);
+  useNotice(delResult);
 
   // revalidatePath refreshes the server data, but this component is already
   // on screen and keeps its own — the same refresh every other form here

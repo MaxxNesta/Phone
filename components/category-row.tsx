@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Category = {
   id: string; code: string; name: string; name_my: string | null;
@@ -44,6 +45,7 @@ export function CategoryRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [, deactFormAction] = useActionState<ActionResult | null, FormData>(
     deactivateAction as never,
     null
@@ -56,6 +58,7 @@ export function CategoryRow({
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
 
   if (editing) {
@@ -140,9 +143,6 @@ export function CategoryRow({
             <input type="hidden" name="return_to" value={returnTo} />
           </ConfirmDelete>
         </span>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

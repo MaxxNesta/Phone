@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 type Account = { id: string; code: string; name: string };
 type Branch = { id: string; code: string; name: string };
@@ -29,6 +30,7 @@ export function TransferForm({
     action as never,
     null
   );
+  useNotice(state);
 
   const [fromId, setFromId] = useState(accounts[0]?.id ?? "");
   const [toId, setToId] = useState(accounts[1]?.id ?? "");

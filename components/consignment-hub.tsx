@@ -6,6 +6,7 @@ import { money, qty } from "@/lib/format";
 import { createItemInline, type ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type AgreementLine = {
   lineId: string; itemId: string; itemCode: string; itemName: string;
@@ -46,8 +47,10 @@ export function ConsignmentHub({
     method === "PERCENTAGE" ? t("cons.basisPercent", { n: Number(value) }) : t("cons.basisFixed", { amount: money(value) });
   const [agState, agAction] = useActionState<ActionResult | null, FormData>(
     createAgreementAction as never, null);
+  useNotice(agState);
   const [lineState, lineAction] = useActionState<ActionResult | null, FormData>(
     addLineAction as never, null);
+  useNotice(lineState);
   const [newAgreementOpen, setNewAgreementOpen] = useState(false);
   const [newAgreementPartner, setNewAgreementPartner] = useState("");
 
@@ -202,7 +205,6 @@ export function ConsignmentHub({
               <input name="memo" type="text" placeholder={t("cons.standardTerms")} style={{ width: "100%" }} />
             </div>
             <button type="submit" className="erp-btn erp-btn-primary">{t("cons.createAgreement")}</button>
-            {agState && "error" in agState && <span style={{ color: "var(--bad)" }}>{agState.error}</span>}
           </form>
         )}
 
@@ -257,7 +259,6 @@ export function ConsignmentHub({
                            max={method === "PERCENTAGE" ? 100 : undefined} required style={{ width: 110 }} />
                   </div>
                   <button type="submit" className="erp-btn erp-btn-primary">{t("cons.add")}</button>
-                  {lineState && "error" in lineState && <span style={{ color: "var(--bad)" }}>{lineState.error}</span>}
                 </form>
               )}
 

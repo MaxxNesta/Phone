@@ -6,6 +6,7 @@ import { groupAccountsBySection } from "@/lib/format";
 import { ACCOUNT_TYPE_LABEL } from "./account-form";
 import { CheckCircle2, CircleAlert, Eye, Plus, X } from "lucide-react";
 import { PrintableDocument } from "@/components/printable-document";
+import { useNotice } from "@/components/toast";
 
 type Account = {
   id: string; code: string; name: string; parent_id: string | null;
@@ -70,6 +71,7 @@ export function VoucherForm({
     action as never,
     null
   );
+  useNotice(state);
 
   const simple = kind !== "journal";
 

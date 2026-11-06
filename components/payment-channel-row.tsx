@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { DeleteButton } from "./confirm-delete";
+import { useNotice } from "@/components/toast";
 
 export type ChannelRow = {
   id: string; code: string; name: string; kind: string; is_active: boolean;
@@ -87,6 +88,7 @@ export function NewChannelForm({ action, accounts }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>; accounts: Opt[];
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState(0);
   useEffect(() => { if (state && "ok" in state) { setOpen(false); setKey((k) => k + 1); } }, [state]);
@@ -111,6 +113,7 @@ export function PaymentChannelRow({ c, accounts, branches, update, setActive, re
 }) {
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(update as never, null);
+  useNotice(state);
   useEffect(() => { if (state && "ok" in state) setEditing(false); }, [state]);
   const overrides = Object.keys(c.branch_accounts).length;
 

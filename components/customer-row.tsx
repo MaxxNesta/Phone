@@ -7,6 +7,7 @@ import { ConfirmDelete } from "./confirm-delete";
 import { RowMenu } from "./row-menu";
 import type { Partner } from "./partner-edit-form";
 import { creditState, useCustomerPanel } from "./customer-panel";
+import { useNotice } from "@/components/toast";
 
 const money = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -29,6 +30,7 @@ export function CustomerRow({ partner, deactivateAction, activateAction, deleteA
   const [, deactFormAction] = useActionState<ActionResult | null, FormData>(deactivateAction as never, null);
   const [, actFormAction] = useActionState<ActionResult | null, FormData>(activateAction as never, null);
   const [delState, delFormAction, delPending] = useActionState<ActionResult | null, FormData>(deleteAction as never, null);
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
   const cs = creditState(partner);
   const dash = <span className="muted">—</span>;
   const terms = Number(partner.payment_terms_days) === 0 ? t("noCreditAllowed") : t("days", { n: partner.payment_terms_days });
@@ -103,9 +105,6 @@ export function CustomerRow({ partner, deactivateAction, activateAction, deleteA
             <input type="hidden" name="id" value={partner.id} />
           </ConfirmDelete>
         </RowMenu>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

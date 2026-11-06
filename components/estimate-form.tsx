@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 /** A new life or residual from a month on; what is posted stays as it was. */
 export function EstimateForm({ action, assetId, from, life, residual }: {
@@ -9,11 +10,11 @@ export function EstimateForm({ action, assetId, from, life, residual }: {
   assetId: string; from: string; life: number; residual: string;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state, { ok: "Saved. The schedule from that month uses the new estimate." });
   return (
     <form action={formAction} className="fa-estimate">
       <input type="hidden" name="id" value={assetId} />
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
-      {state && "ok" in state && <p className="fa-ok" role="status">Saved. The schedule from that month uses the new estimate.</p>}
       <div className="ie-grid4">
         <label className="ie-field"><span>From month</span><input type="month" name="effective_month" min={from} defaultValue={from} required /></label>
         <label className="ie-field"><span>Useful life, total (months)</span>

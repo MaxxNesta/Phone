@@ -20,6 +20,7 @@ import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./curren
 import type { GrirCollisionLine } from "@/lib/queries";
 import { LineRemove } from "./line-remove";
 import { Flagged } from "./cell-flag";
+import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -144,6 +145,7 @@ export function ReceiptForm({
     action as never,
     null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());
@@ -177,6 +179,7 @@ export function ReceiptForm({
   const [draftId, setDraftId] = useState(draft?.id ?? "");
   const [draftResult, draftAction, savingDraft] = useActionState<ActionResult | null, FormData>(
     (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useNotice(draftResult);
   useEffect(() => {
     if (draftResult && "ok" in draftResult && draftResult.draftId) setDraftId(draftResult.draftId);
   }, [draftResult]);

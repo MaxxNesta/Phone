@@ -5,6 +5,7 @@ import { previewItemImport, itemImportTemplate, createMissingMasterData } from "
 import { FileDrop, type Upload } from "./file-drop";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Issue = { row: number; column?: string; message: string };
 type Registrable = {
@@ -41,6 +42,7 @@ export function ItemImport({ action }: {
   const t = useTranslations("itemImport");
   const c = useTranslations("common");
   const [state, formAction, posting] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [csv, setCsv] = useState("");
   const [format, setFormat] = useState<"csv" | "xlsx">("csv");
   const [filename, setFilename] = useState("");

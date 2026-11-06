@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 /**
  * Adding a way products vary.
@@ -20,6 +21,7 @@ export function AddAttributeForm({
   const f = useTranslations("itemForm");
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
 
   return (
     <section className="card">

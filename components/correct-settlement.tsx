@@ -6,6 +6,7 @@ import { Pencil, TriangleAlert } from "lucide-react";
 import { money } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
 import { Portal } from "@/components/portal";
+import { useNotice } from "@/components/toast";
 
 export type CorrectableInvoice = {
   document_id: string;
@@ -62,6 +63,7 @@ export function CorrectSettlement({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
 
   const [amounts, setAmounts] = useState<Record<string, string>>(() => {
     const seed: Record<string, string> = {};

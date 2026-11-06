@@ -40,7 +40,7 @@ function contentSecurityPolicy(nonce: string) {
  * A big report or a download, counted against its limit before it runs a
  * single query (lib/heavy.ts). Prefetches are not loads, and only reading
  * counts: a report's own form posts are actions with limits of their own.
- * Refused, a page shows why in place and a download answers 429.
+ * Refused, a page or a download shows why in place, with a way back.
  */
 async function overLimit(req: NextRequest, user: { id: string; companyId: string } | null, headers: Headers) {
   const kind = req.method === "GET" && !req.headers.get("next-router-prefetch") ? heavyKindFor(req.nextUrl.pathname) : null;
@@ -51,7 +51,6 @@ async function overLimit(req: NextRequest, user: { id: string; companyId: string
     return null;
   } catch (e) {
     if (!(e instanceof TooBusy)) throw e;
-    if (kind.startsWith("export.")) return new NextResponse(e.message, { status: 429, headers: { "Retry-After": "60" } });
     const to = new URL("/busy", req.url);
     to.searchParams.set("m", e.message);
     return NextResponse.rewrite(to, { request: { headers } });

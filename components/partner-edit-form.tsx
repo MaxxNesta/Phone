@@ -6,6 +6,7 @@ import type { ActionResult } from "@/lib/actions";
 import { REGION_GROUPS } from "@/lib/regions";
 import { useTranslations } from "next-intl";
 import { CreditFields } from "./credit-fields";
+import { useNotice } from "@/components/toast";
 
 export type Partner = {
   id: string; code: string; name: string; name_my: string | null; company_name: string | null;
@@ -49,6 +50,7 @@ export function PartnerEditForm({
     updateAction as never,
     null
   );
+  useNotice(state);
 
   return (
     <form action={formAction} className="form" style={{ padding: "0.5rem 0" }}>

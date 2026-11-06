@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { groupAccountsBySection } from "@/lib/format";
 import { ACCOUNT_TYPE_LABEL } from "./account-form";
+import { useNotice } from "@/components/toast";
 
 type Account = {
   id: string; code: string; name: string; parent_id?: string | null;
@@ -46,6 +47,7 @@ export function OpeningForm({
     action as never,
     null
   );
+  useNotice(state);
 
   const [rows, setRows] = useState<Row[]>([
     { key: 1, accountId: "", debit: "", credit: "" },

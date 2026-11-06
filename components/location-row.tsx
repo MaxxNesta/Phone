@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Location = {
   id: string; code: string; name: string; name_my: string | null;
@@ -47,6 +48,7 @@ export function LocationRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [, deactFormAction] = useActionState<ActionResult | null, FormData>(
     deactivateAction as never,
     null
@@ -59,6 +61,7 @@ export function LocationRow({
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
   const [kind, setKind] = useState<Kind>(location.is_stock_location ? "warehouse" : "office");
   const [parentId, setParentId] = useState(location.parent_id ?? "");
@@ -187,9 +190,6 @@ export function LocationRow({
             <input type="hidden" name="id" value={location.id} />
           </ConfirmDelete>
         </span>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

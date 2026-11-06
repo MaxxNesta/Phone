@@ -6,6 +6,7 @@ import { Pencil, TriangleAlert } from "lucide-react";
 import { money } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
 import { Portal } from "@/components/portal";
+import { useNotice } from "@/components/toast";
 
 export type VoucherAccount = { id: string; code: string; name: string };
 export type CorrectableVoucherLine = {
@@ -50,6 +51,7 @@ export function CorrectVoucher({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     action as never, null,
   );
+  useNotice(state);
 
   const [rows, setRows] = useState<Row[]>(() =>
     lines.map((l, i) => ({

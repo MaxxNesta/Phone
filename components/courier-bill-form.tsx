@@ -4,6 +4,7 @@ import { useActionState, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eye, FileText, Hash, Layers, Package, Smartphone, StickyNote, Wallet, X } from "lucide-react";
 import type { PreviewShare } from "@/lib/courier-payables";
+import { useNotice } from "@/components/toast";
 
 type Opt = { id: string; label: string };
 type Receipt = { id: string; no: string; date: string; supplier: string | null; warehouse: string | null; units: number; landed: number };
@@ -23,6 +24,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
   paidFrom?: Opt[];
 }) {
   const [state, formAction, pending] = useActionState(action, null);
+  useNotice(state);
   const formRef = useRef<HTMLFormElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [previewing, startPreview] = useTransition();

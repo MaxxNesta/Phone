@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { Plus, Trash2, Link2 } from "lucide-react";
 import { saveLandedCostAction, landedCostStepAction } from "@/lib/landed-cost-actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { useNotice } from "@/components/toast";
 
 type Method = "VALUE" | "EQUAL" | "MANUAL";
 const METHODS: [Method, string][] = [
@@ -53,6 +54,7 @@ export function LandedCostEditor(props: {
   clearingId: string;
 }) {
   const [state, save, saving] = useActionState(saveLandedCostAction, null);
+  useNotice(state);
   const [header, setHeader] = useState(props.header);
   const [chosen, setChosen] = useState<string[]>(props.chosen);
   const [charges, setCharges] = useState<EditorCharge[]>(props.charges);
@@ -342,7 +344,6 @@ export function LandedCostEditor(props: {
       </section>
 
       {state?.error && <div className="alert" role="alert">{state.error}</div>}
-      {state?.ok && <div className="flash ok" role="status">{state.ok}</div>}
       <div className="lc-actions">
         <button type="submit" className="btn" disabled={saving}>{saving ? "Saving…" : "Save draft"}</button>
       </div>
@@ -356,6 +357,8 @@ export function LandedCostStep({ id, step, label, prominent, confirm, children }
   label: string; prominent?: boolean; confirm?: string; children?: React.ReactNode;
 }) {
   const [state, act, pending] = useActionState(landedCostStepAction, null);
+  // A step asked in the dialog shows its refusal there; only its success pops.
+  useNotice(state, { errors: !confirm });
   // A step that needs a second look asks in the app's own dialog; anything
   // the step needs (the reason to reverse) is asked for there too.
   if (confirm) return (
@@ -368,8 +371,6 @@ export function LandedCostStep({ id, step, label, prominent, confirm, children }
         <input type="hidden" name="step" value={step} />
         {children && <div className="field" style={{ width: "100%", textAlign: "left" }}>{children}</div>}
       </ConfirmDelete>
-      {state?.error && <span className="lc-step-msg bad" role="alert">{state.error}</span>}
-      {state?.ok && <span className="lc-step-msg ok" role="status">{state.ok}</span>}
     </div>
   );
   return (
@@ -380,8 +381,6 @@ export function LandedCostStep({ id, step, label, prominent, confirm, children }
       <button type="submit" className={prominent ? "btn" : "btn ghost"} disabled={pending}>
         {pending ? "Working…" : label}
       </button>
-      {state?.error && <span className="lc-step-msg bad" role="alert">{state.error}</span>}
-      {state?.ok && <span className="lc-step-msg ok" role="status">{state.ok}</span>}
     </form>
   );
 }
@@ -392,13 +391,12 @@ export function LcForm({ action, submitLabel, children, className }: {
   submitLabel: string; children: React.ReactNode; className?: string;
 }) {
   const [state, act, pending] = useActionState(action, null);
+  useNotice(state);
   return (
     <form action={act} className={`form ${className ?? ""}`}>
       {children}
       <div className="actions">
         <button type="submit" className="btn" disabled={pending}>{pending ? "Saving…" : submitLabel}</button>
-        {state?.error && <span className="lc-step-msg bad" role="alert">{state.error}</span>}
-        {state?.ok && <span className="lc-step-msg ok" role="status">{state.ok}</span>}
       </div>
     </form>
   );

@@ -21,6 +21,7 @@ import { ChannelPicker } from "./channel-picker";
 import type { Channel } from "@/lib/payment-channels";
 import { LineRemove } from "./line-remove";
 import { Flagged, DocNote } from "./cell-flag";
+import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -154,6 +155,7 @@ export function InvoiceForm({
     action as never,
     null
   );
+  useNotice(state);
 
   /** See the hidden field below. */
   const [attemptKey] = useState(() => crypto.randomUUID());
@@ -608,6 +610,7 @@ export function InvoiceForm({
   const [draftResult, draftFormAction, savingDraft] =
     useActionState<ActionResult | null, FormData>(
       (saveDraft ?? (async () => ({ ok: true } as ActionResult))) as never, null);
+  useNotice(draftResult);
 
   useEffect(() => {
     if (!draftResult || !("ok" in draftResult)) return;

@@ -2,16 +2,17 @@
 
 import { useActionState } from "react";
 import { saveCurrency, saveRate } from "@/lib/currency-actions";
+import { useNotice } from "@/components/toast";
 
 export function CurrencyForm({ currency }: {
   currency?: { code: string; name: string; symbol: string | null; decimal_places: number };
 }) {
   const [state, action, pending] = useActionState(saveCurrency, null);
+  useNotice(state);
   const k = currency?.code ?? "new";
   return (
     <form action={action} className="fx-form">
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
-      {state && "ok" in state && <div className="alert ok" role="status">{state.ok}</div>}
       <div className="field">
         <label htmlFor={`cc-${k}`}>Code</label>
         <input id={`cc-${k}`} name="code" required maxLength={3} defaultValue={currency?.code}
@@ -37,10 +38,10 @@ export function CurrencyForm({ currency }: {
 
 export function RateForm({ currencies, base, today }: { currencies: string[]; base: string; today: string }) {
   const [state, action, pending] = useActionState(saveRate, null);
+  useNotice(state);
   return (
     <form action={action} className="fx-form">
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
-      {state && "ok" in state && <div className="alert ok" role="status">{state.ok}</div>}
       <div className="field">
         <label htmlFor="rf-cur">1 unit of</label>
         <select id="rf-cur" name="from_currency" defaultValue={currencies.includes("CNY") ? "CNY" : currencies[0]}>

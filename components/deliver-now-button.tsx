@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 /** A one-click delivery against a pending invoice, with the error actually visible on failure. */
 export function DeliverNowButton({
@@ -15,6 +16,7 @@ export function DeliverNowButton({
     action as never,
     null
   );
+  useNotice(state);
   const [dismissed, setDismissed] = useState(false);
 
   return (

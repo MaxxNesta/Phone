@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import { RowMenu } from "./row-menu";
+import { useNotice } from "@/components/toast";
 
 export type FleetField = {
   name: string;
@@ -40,9 +41,11 @@ export function FleetRow({
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
     updateAction as never, null,
   );
+  useNotice(state);
   const [activeState, activeFormAction] = useActionState<ActionResult | null, FormData>(
     setActiveAction as never, null,
   );
+  useNotice(activeState);
 
   // The row stays on screen after saving, so revalidatePath alone would
   // leave the old values under a form that has already closed.

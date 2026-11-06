@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Brand = { id: string; code: string; name: string; name_my: string | null; is_active: boolean; items?: number };
 
@@ -28,6 +29,7 @@ export function BrandRow({
     updateAction as never,
     null
   );
+  useNotice(state);
   const [, deactFormAction] = useActionState<ActionResult | null, FormData>(
     deactivateAction as never,
     null
@@ -40,6 +42,7 @@ export function BrandRow({
     deleteAction as never,
     null
   );
+  useNotice(delState, { ok: c("noticeDeleted"), errors: false });
 
 
   if (editing) {
@@ -112,9 +115,6 @@ export function BrandRow({
             <input type="hidden" name="id" value={brand.id} />
           </ConfirmDelete>
         </span>
-        {delState && "error" in delState && (
-          <div className="hint" style={{ color: "var(--bad)" }}>{delState.error}</div>
-        )}
       </td>
     </tr>
   );

@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
 import { useTranslations } from "next-intl";
+import { useNotice } from "@/components/toast";
 
 type Supplier = { id: string; code: string; name: string; lead_time_days: number | null };
 type Item = { id: string; code: string; name: string };
@@ -28,6 +29,7 @@ export function SupplierItemForm({
   const router = useRouter();
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const c = useTranslations("common");
   const pu = useTranslations("purchasing");
   const [supplierId, setSupplierId] = useState("");
@@ -110,6 +112,7 @@ export function SupplierItemRow({
   const router = useRouter();
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(remove as never, null);
+  useNotice(state);
   useEffect(() => { if (state && "ok" in state) router.refresh(); }, [state, router]);
 
   /*

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { setTripStatus } from "@/lib/actions";
 import type { ActionResult } from "@/lib/actions";
+import { useNotice } from "@/components/toast";
 
 /**
  * Where the trip is in its journey, and the one move available from here.
@@ -28,6 +29,7 @@ export function TripStatus({
   const [state, formAction, working] = useActionState<ActionResult | null, FormData>(
     setTripStatus as never, null,
   );
+  useNotice(state);
 
   // Same reason as the stop list: the page stays put, so the new status has
   // to be fetched rather than waited for.

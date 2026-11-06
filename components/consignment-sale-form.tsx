@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { money, qty as fmtQty } from "@/lib/format";
 import type { ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
+import { useNotice } from "@/components/toast";
 
 type Batch = {
   item_id: string; item_code: string; item_name: string;
@@ -33,6 +34,7 @@ export function ConsignmentSaleForm({
   // One key per form: a double click or a retried request posts once.
   const [attemptKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [partnerId, setPartnerId] = useState("");
   const [locationId, setLocationId] = useState(
     locations.find((l) => allBatches.some((b) => b.location_id === l.id))?.id ?? locations[0]?.id ?? ""

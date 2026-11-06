@@ -6,6 +6,7 @@ import type { ActionResult } from "@/lib/actions";
 import { shortDate } from "@/lib/format";
 import { resolveCommitments } from "@/lib/supplier-commitments";
 import { HelpHint } from "./help-hint";
+import { useNotice } from "@/components/toast";
 
 export type ConfirmationLine = {
   order_line_id: string;
@@ -48,6 +49,7 @@ export function SupplierConfirmations({
   const router = useRouter();
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {

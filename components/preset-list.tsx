@@ -8,6 +8,7 @@ import { METRICS, type MetricId } from "@/lib/supplier-metrics";
 import { shortDate } from "@/lib/format";
 import { HelpHint } from "./help-hint";
 import { ConfirmDelete } from "./confirm-delete";
+import { useNotice } from "@/components/toast";
 
 /**
  * Saved radar layouts, managed away from the chart that uses them.
@@ -27,6 +28,7 @@ export function PresetList({
   const router = useRouter();
   const [state, formAction, pending] =
     useActionState<ActionResult | null, FormData>(action as never, null);
+  useNotice(state);
 
   useEffect(() => { if (state && "ok" in state) router.refresh(); }, [state, router]);
 

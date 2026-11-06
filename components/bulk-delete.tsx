@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { bulkDeleteItems } from "@/lib/actions";
 import { useTranslations } from "next-intl";
+import { notify } from "./toast";
 
 /** Ticks or clears every row checkbox on the page. */
 export function PickPage() {
@@ -30,7 +31,6 @@ export function BulkDelete({ shown, filtered }: {
   const c = useTranslations("common");
   const [picked, setPicked] = useState<string[]>([]);
   const [ask, setAsk] = useState<string[] | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
   const [busy, start] = useTransition();
   const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
@@ -53,7 +53,7 @@ export function BulkDelete({ shown, filtered }: {
     start(async () => {
       const r = await bulkDeleteItems(ids);
       setAsk(null);
-      setMsg("ok" in r ? r.ok : r.error);
+      if ("ok" in r) notify("success", r.ok); else notify("error", r.error);
       document.querySelectorAll<HTMLInputElement>("input.bulk-pick").forEach((b) => { b.checked = false; });
       setPicked([]);
       router.refresh();
@@ -62,7 +62,6 @@ export function BulkDelete({ shown, filtered }: {
 
   return (
     <span className="actions">
-      {msg && <span className="page-sub">{msg}</span>}
       {picked.length > 0 && (
         <button type="button" className="danger" onClick={() => setAsk(picked)}>
           <Trash2 size={14} aria-hidden="true" /> {t("deleteSelected", { n: picked.length })}
