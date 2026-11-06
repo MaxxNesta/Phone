@@ -20,6 +20,7 @@ import { headers } from "next/headers";
 import { currentUser, can, authRequired, type Permission } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { DatePickerFix } from "@/components/date-picker-fix";
+import { Analytics } from "@vercel/analytics/next";
 
 // One face for the whole product, chosen for the thing an ERP does most:
 // show a column of numbers.
@@ -107,7 +108,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   if (bare) {
     return (
       <html lang={locale} className={`${geist.variable} ${notoMyanmar.variable}`}>
-        <body><NextIntlClientProvider locale={locale} messages={messages}><main className="bare">{children}</main><Toast /></NextIntlClientProvider></body>
+        <body><NextIntlClientProvider locale={locale} messages={messages}><main className="bare">{children}</main><Toast /></NextIntlClientProvider><Analytics /></body>
       </html>
     );
   }
@@ -389,6 +390,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </div>
         <Toast />
         </NextIntlClientProvider>
+        <Analytics />
       </body>
     </html>
   );
