@@ -108,15 +108,15 @@ export default async function InventoryAging({ searchParams }: { searchParams: P
         )}
       </div>
 
+      <div className="kpis kpis-tiled kpis-compact ag-kpis">
+        {kpi(<Clock size={16} aria-hidden="true" />, `Stock over ${rules.thresholds[2]} days`, n0(oldUnits), "units",
+          `Units in ${labels[3]}: received more than ${rules.thresholds[2]} days ago.`)}
+        {seeCost && kpi(<Layers size={16} aria-hidden="true" />, "Aged stock value", money(agedValue), "MMK",
+          `${labels[2]} and ${labels[3]} together, at cost.`)}
+        {kpi(<CalendarDays size={16} aria-hidden="true" />, "Average stock age", n0(avgAge), "days",
+          "Days since each unit on hand was received, averaged over units.")}
+      </div>
       <div className="ag-top">
-        <div className="kpis kpis-tiled kpis-compact ag-kpis">
-          {kpi(<Clock size={16} aria-hidden="true" />, `Stock over ${rules.thresholds[2]} days`, n0(oldUnits), "units",
-            `Units in ${labels[3]}: received more than ${rules.thresholds[2]} days ago.`)}
-          {seeCost && kpi(<Layers size={16} aria-hidden="true" />, "Aged stock value", money(agedValue), "MMK",
-            `${labels[2]} and ${labels[3]} together, at cost.`)}
-          {kpi(<CalendarDays size={16} aria-hidden="true" />, "Average stock age", n0(avgAge), "days",
-            "Days since each unit on hand was received, averaged over units.")}
-        </div>
         <section className="card ag-dist">
           <div className="ag-dist-head"><h2>Aging distribution</h2><span className="page-sub">By {seeCost ? "stock value" : "units"}</span></div>
           <Bar parts={total4} />

@@ -9271,3 +9271,6 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .fr-part td:first-child { padding-left: 2.75rem; color: var(--ink-soft, var(--muted)); }
 .fr-total td { font-weight: 600; border-top: 1px solid var(--line); }
 .fr-grand td { border-top: 2px solid var(--ink); }
+/* Inventory aging: the KPI cards are a low row of their own, like every dashboard's; the distribution runs full width beneath. */
+.ag-top { grid-template-columns: minmax(0, 1fr); }
+.ag-kpis { margin-bottom: var(--s3); }
