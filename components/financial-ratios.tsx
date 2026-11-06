@@ -115,12 +115,18 @@ function RatioTile({ k, icon, now, before }: { k: RatioKey; icon: React.ReactNod
     now={now.ratios[k]} before={before.ratios[k]} prevText={fmt(r.kind, before.ratios[k])} kind={r.kind} lowerIsBetter={r.lowerIsBetter} />;
 }
 
+/** Short axis figures, so the axis keeps one width whatever the amounts: 1.2M, 350K. */
+const compact = (v: number) => {
+  const a = Math.abs(v);
+  return a >= 1e9 ? `${+(v / 1e9).toFixed(1)}B` : a >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : a >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${+v.toFixed(2)}`;
+};
+
 const COLOURS = ["var(--chart-1)", "var(--ink)", "var(--muted)", "var(--chart-3)"];
 
 function Trend({ title, sub, data, keys, kind }: {
   title: string; sub: string; data: Point[]; keys: (RatioKey | "workingCapital")[]; kind: Kind | "money";
 }) {
-  const tick = (v: number) => (kind === "money" ? money(v) : kind === "pct" ? `${v}%` : `${v}`);
+  const tick = (v: number) => (kind === "pct" ? `${compact(v)}%` : compact(v));
   const name = (k: string) => (k === "workingCapital" ? "Working capital" : RATIO[k as RatioKey].label);
   return (
     <div className="dash-card dash-card-pad">
@@ -128,10 +134,10 @@ function Trend({ title, sub, data, keys, kind }: {
         <div><h2>{title}</h2><span className="dash-sub">{sub}</span></div>
       </div>
       <ResponsiveContainer width="100%" height={250}>
-        <LineChart data={data} margin={{ top: 8, right: 12, left: kind === "money" ? 24 : -12, bottom: 0 }}>
+        <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--line-soft)" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted)" />
-          <YAxis tick={{ fontSize: 11 }} stroke="var(--muted)" tickFormatter={tick} />
+          <YAxis width={56} tick={{ fontSize: 11 }} stroke="var(--muted)" tickFormatter={tick} />
           <ReferenceLine y={0} stroke="var(--line)" />
           <Tooltip formatter={(v, n) => [kind === "money" ? money(Number(v)) : fmt(kind as Kind, Number(v)), name(String(n))]}
                    contentStyle={{ borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12 }} />
@@ -141,8 +147,9 @@ function Trend({ title, sub, data, keys, kind }: {
           ))}
         </LineChart>
       </ResponsiveContainer>
-      {keys.length > 1 && (
-        <div className="chart-legend">
+      {/* Always there, so every chart is the same height with one line or four. */}
+      {(
+        <div className="chart-legend fr-legend">
           {keys.map((k, i) => (
             <span key={k}><span className="chart-legend-swatch" style={{ borderColor: COLOURS[i], background: COLOURS[i] }} />{name(k)}</span>
           ))}
@@ -275,7 +282,6 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
           <span className="page-sub">As of {asOf}</span>
           <span>{money(c.currentAssets)} − {money(c.currentLiabilities)} = <strong>{money(c.workingCapital)} {currency}</strong></span>
         </div></div>
-        <div className="dash-split">
           <Trend title="Working capital monthly trend" sub={`${currency}, at each month end`} data={trend} keys={["workingCapital"]} kind="money" />
           <div className="card">
             <div className="card-head"><h2>Current assets and liabilities</h2></div>
@@ -296,7 +302,6 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
               </table>
             </div>
           </div>
-        </div>
         <div className="card"><div className="card-body fr-equation">
           <span><RefreshCw size={15} aria-hidden="true" /> <strong>Cash conversion cycle</strong></span>
           <strong style={{ fontSize: "var(--t-lg)" }}>{days(cc.ccc)}</strong>
@@ -338,7 +343,6 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
         <RatioTile k="interestCover" icon={<ShieldCheck size={16} />} now={c} before={p} />
         <RatioTile k="liabilitiesToEquity" icon={<Gauge size={16} />} now={c} before={p} />
       </div>
-      <div className="dash-split">
         <Trend title="Leverage and coverage trend" sub={sub} data={trend}
                keys={["interestCover", "liabilitiesToEquity", "debtToEquity", "financialLeverage"]} kind="x" />
         <Figures title="Key figures" rows={[
@@ -346,7 +350,6 @@ export function FinancialRatios({ tab, current: c, previous: p, trend, cycle, cu
           ["Total equity", c.equity, p.equity, true], ["Debt (loans under 23)", c.debt, p.debt],
           ["Interest expense", c.interest, p.interest], ["Operating profit", c.operatingProfit, p.operatingProfit],
         ]} />
-      </div>
       <RatioTable keys={["debtToEquity", "debtToAssets", "liabilitiesToEquity", "interestCover", "financialLeverage", "operatingLeverage"]}
                   now={c} before={p} currency={currency} />
     </>

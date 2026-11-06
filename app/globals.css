@@ -9201,3 +9201,5 @@ td > .hint { white-space: normal; max-width: 32rem; }
   display: inline-flex; align-items: center; gap: 0.35rem;
   padding: 0.12rem 0.55rem; font-size: var(--t-xs); color: var(--ink);
 }
+/* One line of legend's room on every ratio chart, used or not. */
+.fr-legend { min-height: 1.6rem; }
