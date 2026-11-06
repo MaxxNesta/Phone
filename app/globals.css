@@ -9274,3 +9274,5 @@ td > .hint { white-space: normal; max-width: 32rem; }
 /* Inventory aging: the KPI cards are a low row of their own, like every dashboard's; the distribution runs full width beneath. */
 .ag-top { grid-template-columns: minmax(0, 1fr); }
 .ag-kpis { margin-bottom: var(--s3); }
+/* A carriage sheet read back after posting: the badge says it is done, in the house blue. */
+.cbp-badge-done { color: var(--chart-1); border-color: color-mix(in srgb, var(--chart-1) 35%, var(--line)); background: color-mix(in srgb, var(--chart-1) 8%, transparent); }

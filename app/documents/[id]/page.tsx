@@ -3,6 +3,8 @@ import { FaDocLinks } from "@/components/fa-doc-links";
 import { LcDocLinks } from "@/components/lc-doc-links";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
 import { receiptLandedSummary } from "@/lib/landed-cost-queries";
+import { appliedCarriage, receiptsOfBill } from "@/lib/courier-payables";
+import { AppliedCarriage } from "@/components/applied-carriage";
 import { seenLocations } from "@/lib/branch-scope";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { uploadAttachment, deleteAttachment } from "@/lib/actions";
@@ -261,6 +263,10 @@ export default async function DocumentPage({
     select count(*)::int as others from landed_cost_type
      where company_id = ${user.companyId} and is_active and code <> 'CARRIAGE'` : [{ others: 0 }];
   const isPi = doc.doc_type === "PURCHASE_INVOICE" && doc.status === "POSTED";
+  // The carriage on these goods, read back in Record carriage inward's own sheet —
+  // a charge entered with the document and one recorded later read alike.
+  const applied = (isGr || isPi) && can(user, "cost.view")
+    ? await appliedCarriage(user.companyId, isGr ? [doc.id] : await receiptsOfBill(doc.id)) : [];
   // The sales mirror: a delivery moves the goods and a sales invoice bills
   // them, exactly as a receipt and a purchase invoice do. Same two questions,
   // so the same panel answers them in the sales vocabulary.
@@ -1100,6 +1106,14 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
+          {isPi && applied.length > 0 && (
+            <div className="lc-gr">
+              <dl>
+                <div><dt>Carriage inward on these goods</dt><dd>{money(applied.reduce((t, c) => t + c.total, 0))}</dd></div>
+              </dl>
+              <span className="lc-gr-actions"><AppliedCarriage charges={applied} /></span>
+            </div>
+          )}
           {landed && (
             <div className="lc-gr">
               <dl>
@@ -1108,6 +1122,7 @@ export default async function DocumentPage({
                 <div><dt>Final inventory value</dt><dd><strong>{money(landed.final)}</strong></dd></div>
               </dl>
               <span className="lc-gr-actions">
+                <AppliedCarriage charges={applied} />
                 {landed.count > 0 && (
                   <Link href={`/purchases/landed-costs?gr=${doc.id}`} className="btn ghost tiny">{others > 0 ? "Landed costs" : "Carriage inward"} ({landed.count})</Link>
                 )}

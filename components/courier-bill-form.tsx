@@ -2,7 +2,7 @@
 
 import { useActionState, useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Eye, FileText, Hash, Layers, Package, Smartphone, StickyNote, Wallet, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Eye, FileText, Hash, Layers, Package, Smartphone, StickyNote, Wallet, X } from "lucide-react";
 import type { PreviewShare } from "@/lib/courier-payables";
 import { useNotice } from "@/components/toast";
 import { SpreadField, SPREAD, postedSpread, type Spread } from "./spread-field";
@@ -212,11 +212,16 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
  * phone it lands on, grouped by goods receipt. Built from the same
  * calculation the posting runs, so what it shows is what Record and spread
  * writes — not an estimate of it.
+ *
+ * Once posted, the same sheet shows what was applied (`applied`): a charge
+ * entered on the receipt or bill and one recorded later read alike.
  */
-function CarriagePreview({ shares, title, costLabel, details, note, posting, onBack, onRecord }: {
+export function CarriagePreview({ shares, title, costLabel, details, note, posting = false, onBack, onRecord, applied }: {
   shares: PreviewShare[]; title: string; costLabel: string;
   details: { icon: typeof Hash; label: string; value: string }[]; note: string;
-  posting: boolean; onBack: () => void; onRecord: () => void;
+  posting?: boolean; onBack: () => void; onRecord?: () => void;
+  /** Posted: the landed cost it was posted as. */
+  applied?: { docNo: string };
 }) {
   const groups = [...shares.reduce((m, s) => m.set(s.receiptNo, [...(m.get(s.receiptNo) ?? []), s]), new Map<string, PreviewShare[]>())];
   const [open, setOpen] = useState<Set<string>>(() => new Set(groups.slice(0, 1).map(([no]) => no)));
@@ -235,10 +240,14 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
       <header className="cbp-head">
         <div>
           <h2 id="cbp-title">{title}</h2>
-          <p className="page-sub">Check where the cost lands before it is posted. Nothing has been recorded yet.</p>
+          <p className="page-sub">{applied
+            ? <>Posted as {applied.docNo}. Each item&rsquo;s cost before, its share, and its cost now.</>
+            : "Check where the cost lands before it is posted. Nothing has been recorded yet."}</p>
         </div>
-        <span className="cbp-badge"><Eye size={14} aria-hidden="true" /> Preview only · not posted</span>
-        <button type="button" className="cbp-x" onClick={onBack} aria-label="Close preview"><X size={18} aria-hidden="true" /></button>
+        {applied
+          ? <span className="cbp-badge cbp-badge-done"><CheckCircle2 size={14} aria-hidden="true" /> Applied · posted</span>
+          : <span className="cbp-badge"><Eye size={14} aria-hidden="true" /> Preview only · not posted</span>}
+        <button type="button" className="cbp-x" onClick={onBack} aria-label="Close"><X size={18} aria-hidden="true" /></button>
       </header>
 
       <div className="cbp-scroll">
@@ -268,7 +277,7 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
 
         <section className="cbp-card">
           <div className="cbp-groups-head">
-            <div><h3>By goods receipt</h3><p className="page-sub">Each phone or line&rsquo;s cost now, its share, and its cost after posting.</p></div>
+            <div><h3>By goods receipt</h3><p className="page-sub">{applied ? "Each phone or line\u2019s cost before, its share, and its cost now." : <>Each phone or line&rsquo;s cost now, its share, and its cost after posting.</>}</p></div>
             {groups.length > 1 && (
               <button type="button" className="ghost tiny" onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map(([no]) => no)))}>
                 <ChevronDown size={14} aria-hidden="true" style={{ transform: allOpen ? "rotate(180deg)" : undefined }} />
@@ -292,7 +301,7 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
                 {isOpen && (
                   <div className="tablewrap">
                     <table>
-                      <thead><tr><th className="tight">#</th><th>IMEI / line</th><th>Product</th><th className="r">Cost now</th><th className="r">{costLabel}</th><th className="r">Cost after</th></tr></thead>
+                      <thead><tr><th className="tight">#</th><th>IMEI / line</th><th>Product</th><th className="r">{applied ? "Cost before" : "Cost now"}</th><th className="r">{costLabel}</th><th className="r">{applied ? "Cost now" : "Cost after"}</th></tr></thead>
                       <tbody>
                         {list.map((x, i) => (
                           <tr key={x.serial}>
@@ -315,11 +324,13 @@ function CarriagePreview({ shares, title, costLabel, details, note, posting, onB
       </div>
 
       <footer className="cbp-foot">
-        <button type="button" className="ghost" onClick={onBack}><ChevronLeft size={16} aria-hidden="true" /> Back to edit</button>
+        {applied ? <span /> : <button type="button" className="ghost" onClick={onBack}><ChevronLeft size={16} aria-hidden="true" /> Back to edit</button>}
         <span className="cbp-total"><span className="page-sub">Total {costLabel.toLowerCase()} spread</span><strong>{fmt(total)} MMK</strong></span>
-        <button type="button" onClick={onRecord} disabled={posting}>
-          <FileText size={16} aria-hidden="true" /> {posting ? "Posting…" : "Record and spread"}
-        </button>
+        {applied
+          ? <button type="button" onClick={onBack}>Close</button>
+          : <button type="button" onClick={onRecord} disabled={posting}>
+              <FileText size={16} aria-hidden="true" /> {posting ? "Posting…" : "Record and spread"}
+            </button>}
       </footer>
     </div>
   );

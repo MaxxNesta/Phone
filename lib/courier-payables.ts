@@ -288,3 +288,66 @@ export async function courierBill(tx: TransactionSql, input: CourierBillInput) {
   await L.postLandedCost({ ...actor, id: lc.id }, tx);
   return lc;
 }
+
+/** A posted courier charge on goods already in: what it was, how it was paid, and every item's share. */
+export type AppliedCarriage = {
+  id: string; docNo: string; date: string; total: number; costType: string; method: string;
+  courier: string | null; paidFrom: string | null; reference: string | null; note: string | null;
+  shares: PreviewShare[];
+};
+
+/**
+ * What carriage and other landed costs were applied to these receipts — the
+ * same view Record carriage inward previews, read back once posted. A charge
+ * entered on the receipt or bill itself and one recorded later read alike:
+ * both are a landed cost on the receipt. For a bill, pass the receipts it bills.
+ */
+export async function appliedCarriage(companyId: string, receiptIds: string[], db: typeof sql | TransactionSql = sql): Promise<AppliedCarriage[]> {
+  if (receiptIds.length === 0) return [];
+  const heads = await db`
+    select lc.id, lc.doc_no as "docNo", to_char(lc.doc_date, 'YYYY-MM-DD') as date,
+           sum(c.base_amount)::float as total, min(t.name) as "costType", min(c.method) as method,
+           min(bp.name) as courier, min(c.reference) as reference, min(c.description) as note,
+           -- Paid on the spot: the cash or bank account the voucher took it from; owed otherwise.
+           (select min(a.name) from journal_line src
+              join journal_line jl on jl.journal_entry_id = src.journal_entry_id and jl.base_amount < 0
+              join account a on a.id = jl.account_id and (a.is_cash_account or a.is_bank_account)
+             where src.id = any(array_agg(c.source_journal_line_id))) as "paidFrom"
+      from document lc
+      join landed_cost_charge c on c.landed_cost_id = lc.id and c.is_active
+      join landed_cost_type t on t.id = c.cost_type_id
+      left join business_partner bp on bp.id = c.partner_id
+     where lc.company_id = ${companyId} and lc.status = 'POSTED' and lc.reverses_document_id is null
+       and lc.id in (select landed_cost_id from landed_cost_receipt where receipt_id = any(${receiptIds}))
+     group by lc.id, lc.doc_no, lc.doc_date
+     order by lc.doc_date, lc.doc_no`;
+  if (heads.length === 0) return [];
+  const shares = await db`
+    select a.landed_cost_id as lc, r.doc_no as "receiptNo",
+           coalesce(s.serial_no, 'Line ' || dl.line_no || ' · ' || (a.qty::float)::text || ' units') as serial, i.name as item,
+           (a.original_cost * a.qty)::float as before, sum(a.amount)::float as amount, a.qty::float as qty
+      from landed_cost_allocation a
+      left join stock_serial s on s.id = a.serial_id
+      left join document_line dl on dl.id = a.receipt_line_id
+      join document r on r.id = a.receipt_id
+      join item i on i.id = a.item_id
+     where a.landed_cost_id = any(${heads.map((h) => h.id)})
+     group by a.landed_cost_id, r.doc_no, s.serial_no, dl.line_no, i.name, a.original_cost, a.qty
+     order by r.doc_no, i.name, s.serial_no nulls last, dl.line_no`;
+  return heads.map((h) => ({
+    ...(h as unknown as Omit<AppliedCarriage, "shares">),
+    shares: shares.filter((x) => x.lc === h.id).map(({ lc: _lc, ...x }) => x) as unknown as PreviewShare[],
+  }));
+}
+
+/** The receipts a purchase bill covers: the one it brought in with it, and those its lines were billed from. */
+export async function receiptsOfBill(billId: string, db: typeof sql | TransactionSql = sql): Promise<string[]> {
+  return (await db`
+    select id from document
+     where doc_type = 'GOODS_RECEIPT' and status = 'POSTED' and lifecycle_owner_id = ${billId}
+    union
+    select src.document_id as id
+      from document_line bl join document_line src on src.id = bl.source_line_id
+      join document r on r.id = src.document_id and r.doc_type = 'GOODS_RECEIPT' and r.status = 'POSTED'
+     where bl.document_id = ${billId}`).map((r) => r.id as string);
+}
