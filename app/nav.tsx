@@ -10,6 +10,7 @@ export function NavLink({
   exact,
   sub,
   clearParams,
+  match,
   children,
 }: {
   href: string;
@@ -24,6 +25,8 @@ export function NavLink({
    * "Suppliers"); the filtered siblings match on their own query already.
    */
   clearParams?: string[];
+  /** Lit anywhere under this path: one entry for a page whose own tabs are its navigation. */
+  match?: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -34,7 +37,8 @@ export function NavLink({
   // A link carrying a query is a filtered view of its own page, so the query
   // has to match too — otherwise Partners, Customers and Suppliers all light
   // up at once, and none of them tells you where you are.
-  const pathMatches = path === "/" || exact || sub ? pathname === path : pathname.startsWith(path);
+  const pathMatches = match ? pathname.startsWith(match)
+    : path === "/" || exact || sub ? pathname === path : pathname.startsWith(path);
 
   let active = pathMatches;
   if (pathMatches) {

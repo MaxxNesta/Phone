@@ -256,12 +256,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {/* Who owns the company: its own group, not a corner of the ledger. */}
             {may("accounting.view") && (
-              <NavGroup label={n("equity")} icon={<PieChart size={15} />} match={["/equity"]}>
-                <NavLink href="/equity/shareholders">{n("shareholders")}</NavLink>
-                <NavLink href="/equity/transfers">{n("shareTransfers")}</NavLink>
-                <NavLink href="/equity/balance">{n("shareBalance")}</NavLink>
-                <NavLink href="/equity/ledger">{n("shareLedger")}</NavLink>
-              </NavGroup>
+              // One entry: the page's four tabs are its navigation.
+              <NavLink href="/equity/shareholders" match="/equity"><PieChart size={15} /> <span className="navlink-text">{n("equity")}</span></NavLink>
             )}
 
             {/* The asset subledger: it feeds the ledger above, through its journals. */}
