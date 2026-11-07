@@ -8,6 +8,13 @@ import { FA_COLUMNS, readRegister, type Category, type FaImportRow } from "@/lib
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const money = (n: number | null) => (n === null ? "—" : n.toLocaleString("en-US", { maximumFractionDigits: 0 }));
 const sum = (xs: (number | null)[]) => xs.reduce<number>((s, x) => s + (x ?? 0), 0);
+/** A, B … Z, AA, AB: the letters Excel puts over its columns. */
+const colName = (i: number): string => (i < 26 ? "" : colName(Math.floor(i / 26) - 1)) + String.fromCharCode(65 + (i % 26));
+/** The guide sheet: every column the register has, the twelve months spelt out as Excel shows them. */
+const YEAR = new Date().getFullYear();
+const GUIDE = FA_COLUMNS.flatMap((c) => (c.header.startsWith("Jan ")
+  ? MON.map((m) => ({ ...c, header: `${m} ${YEAR}`, field: "Compared", example: c.example }))
+  : [c]));
 
 /**
  * The asset register pasted from Excel, read and checked. Preview only: it
@@ -19,18 +26,27 @@ export function FaImport({ categories }: { categories: Category[] }) {
   const [open, setOpen] = useState<number | null>(null);
   // Names changed by hand, by Excel line; the rest keep their suggestion.
   const [names, setNames] = useState<Record<number, string>>({});
-  const read = useMemo(() => (text ? readRegister(parseTsv(text), categories) : null), [text, categories]);
+  // The month the file's NBV is as of: worked out from the file unless chosen here.
+  const [nbvMonth, setNbvMonth] = useState<number | null>(null);
+  const read = useMemo(() => (text ? readRegister(parseTsv(text), categories, nbvMonth) : null), [text, categories, nbvMonth]);
   const count = (s: FaImportRow["status"]) => read?.rows.filter((r) => r.status === s).length ?? 0;
 
   return (
     <div className="fai">
-      <details className="ie-card fai-cols" open={!text}>
-        <summary><h3>Columns to match</h3><span className="ie-note">Columns are found by their header, in any order. Copy from the header row down, across to “NBV”.</span></summary>
-        <table className="fai-map">
-          <thead><tr><th>Column</th><th>Header in file</th><th>MTK field</th><th>Use</th><th>Example</th></tr></thead>
-          <tbody>{FA_COLUMNS.map((c) => <tr key={c.col + c.field}><td className="mono">{c.col}</td><td>{c.header}</td><td className="fai-field">{c.field}</td><td>{c.use}</td><td className="fai-ex">{c.example || "—"}</td></tr>)}</tbody>
-        </table>
-      </details>
+      <section className="ie-card fai-guide">
+        <h3>Columns to match</h3>
+        <p className="ie-note">Lay the sheet out like this and copy from the header row down. Columns are found by their header, so their order can change. The Asset schedule report exports this same layout. Hover a header for what it is used for.</p>
+        <div className="fai-xl-wrap">
+          <table className="fai-xl">
+            <thead><tr><th />{GUIDE.map((c, i) => <th key={i}>{colName(i)}</th>)}</tr></thead>
+            <tbody>
+              <tr className="fai-xl-head"><th>1</th>{GUIDE.map((c, i) => <td key={i} title={c.use}>{c.header}</td>)}</tr>
+              <tr><th>2</th>{GUIDE.map((c, i) => <td key={i} className={/^[d,.]+$/.test(c.example) ? "r" : undefined}>{c.example}</td>)}</tr>
+              <tr className="fai-xl-field"><th>MTK</th>{GUIDE.map((c, i) => <td key={i}>{c.field === "—" ? "checked only" : c.field}</td>)}</tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {!text ? (
         <label className="pimp-paste">
@@ -54,7 +70,13 @@ export function FaImport({ categories }: { categories: Category[] }) {
               <span><AlertCircle size={15} className="pimp-si warn" aria-hidden="true" /> {count("review")} to review</span>
               <span><X size={15} className="pimp-si bad" aria-hidden="true" /> {count("blocked")} cannot be read</span>
             </span>
-            <button type="button" className="ghost tiny" onClick={() => { setText(""); setOpen(null); setNames({}); }}>Clear</button>
+            <label className="fai-asof">NBV (source) as of
+              <select value={read.nbvMonth ?? ""} onChange={(e) => setNbvMonth(e.target.value === "" ? null : Number(e.target.value))}>
+                {read.nbvMonth === null && <option value="">Last month with a figure</option>}
+                {MON.map((m, k) => <option key={m} value={k}>{m} {read.year}{read.inferred?.month === k ? ` · fits ${read.inferred.matches} row${read.inferred.matches === 1 ? "" : "s"}` : ""}</option>)}
+              </select>
+            </label>
+            <button type="button" className="ghost tiny" onClick={() => { setText(""); setOpen(null); setNames({}); setNbvMonth(null); }}>Clear</button>
           </div>
           {read.wrongHeaders.length > 0 && (
             <div className="alert">The header row (line {read.headerLine}) is not laid out as expected: {read.wrongHeaders.slice(0, 4).join("; ")}
@@ -65,11 +87,12 @@ export function FaImport({ categories }: { categories: Category[] }) {
               <thead><tr>
                 <th /><th>No</th><th>Name</th><th>Category › Subcategory</th><th className="r">Life</th><th>Start · date</th>
                 <th className="r">Qty</th><th className="r">Cost</th><th className="r">Op. accum</th>
-                <th className="r">{read.year} depreciation</th><th className="r">NBV Dec {read.year}</th>
+                <th className="r">{read.year} depreciation</th><th className="r">NBV {read.nbvMonth !== null ? `${MON[read.nbvMonth]} ${read.year}` : "(source)"}</th>
               </tr></thead>
               <tbody>
                 {read.rows.map((r) => {
-                  const fileDep = sum(r.excel), mtkDep = sum(r.mtk);
+                  // Only the months the file has filled in: a blank month is not yet recorded.
+                  const fileDep = sum(r.excel), mtkDep = sum(r.mtk.map((v, k) => (r.excel[k] === null ? 0 : v)));
                   const isOpen = open === r.line;
                   return (
                     <Fragment key={r.line}>

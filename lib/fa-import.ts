@@ -11,21 +11,32 @@ import { schedule, toUnits, fromUnits, addMonths, type Month } from "./fa-engine
  */
 
 export const FA_COLUMNS: { col: string; header: string; field: string; use: string; example: string }[] = [
-  { col: "A", header: "No", field: "—", use: "Source row number, for reference. MTK gives each asset its own code.", example: "12" },
-  { col: "New", header: "Name", field: "Name", use: "The asset's name. Without this column it is suggested from the start of Description, and can be changed before import.", example: "Office Table Small 92-IR-Table A3-19" },
-  { col: "B", header: "Description", field: "Notes", use: "The full original description, unchanged: supplier, quantity, remarks, Burmese text.", example: "Office Table Small 92-IR-Table A3-19 (ကိုအောင်) 2 pcs" },
-  { col: "C", header: "Types", field: "Category", use: "The chart's title account.", example: "Machinery" },
-  { col: "D", header: "Software", field: "Subcategory", use: "Despite the header. Each subcategory has its own accounts.", example: "Generator & Solar" },
-  { col: "E", header: "Depreciation Rate", field: "Useful life", use: "In months: 24 means 24 months, not 24%.", example: "24" },
-  { col: "F", header: "Mohths", field: "First month", use: "The month depreciation starts, in full.", example: "Jan 2026" },
-  { col: "G", header: "Date", field: "Acquired on", use: "Reviewed and mapped to the purchase date.", example: "12/1/2026" },
-  { col: "H", header: "Qty", field: "—", use: "Number of items the row stands for; checked against cost.", example: "2" },
-  { col: "I", header: "Price", field: "—", use: "Unit price; qty × price is checked against cost.", example: "450,000" },
-  { col: "J", header: "Cost", field: "Cost", use: "Total cost the depreciation schedule uses.", example: "900,000" },
-  { col: "K", header: "Disopsal", field: "—", use: "Disposal value; reviewed before it becomes a disposal.", example: "" },
-  { col: "L", header: "Op; Accu", field: "Opening accumulated", use: "Depreciation before the year. Blank is confirmed, never assumed zero.", example: "120,000" },
-  { col: "M–X", header: "Jan–Dec", field: "—", use: "The file's monthly depreciation, compared with MTK's schedule.", example: "37,500" },
-  { col: "Y", header: "NBV", field: "—", use: "The file's book value, compared at the end of the year.", example: "450,000" },
+  { col: "A", header: "No", field: "—", use: "Source row number, for reference. MTK gives each asset its own code.", example: "1" },
+  { col: "B", header: "Asset name (review)", field: "Name", use: "The asset's name, checked before import. Without this column it is suggested from the description.", example: "Office Table Small 92-IR-Table A3-19" },
+  { col: "C", header: "Notes / original description", field: "Notes", use: "The full original description, unchanged: supplier, quantity, remarks, Burmese text.", example: "Office Table Small 92-IR-Table A3-19 (3လုံး)*(180000-5%dis)Sweety Home 28/12/25" },
+  { col: "D", header: "Category (Types)", field: "Category", use: "The chart's title account; matched by its words, in any case.", example: "FURNITURES AND FITTINGS" },
+  { col: "E", header: "Subcategory", field: "Subcategory", use: "Each subcategory has its own accounts.", example: "Table , Chair & Locker" },
+  { col: "F", header: "Useful life (months)", field: "Useful life", use: "In months: 24 means 24 months, not 24%.", example: "36" },
+  { col: "G", header: "Depreciation start", field: "First month", use: "The month depreciation starts, in full.", example: "Jan'2026" },
+  { col: "H", header: "Asset date", field: "Acquired on", use: "The purchase date. A Buddhist-era year is read as the calendar year: 2569 is 2026.", example: "28 Dec 2568" },
+  { col: "I", header: "Quantity", field: "—", use: "Number of items the row stands for.", example: "3" },
+  { col: "J", header: "Unit price", field: "—", use: "Quantity × unit price is checked against the total cost.", example: "170,991.67" },
+  { col: "K", header: "Total cost", field: "Cost", use: "The cost the depreciation schedule uses.", example: "512,975.00" },
+  { col: "L", header: "Disposal (source)", field: "—", use: "Disposal value; reviewed before it becomes a disposal.", example: "" },
+  { col: "M", header: "Opening accumulated depreciation", field: "Opening accumulated", use: "Depreciation before the year. Blank is confirmed, never assumed zero.", example: "" },
+  { col: "N–Y", header: "Jan 2026 … Dec 2026", field: "—", use: "The file's monthly depreciation, compared with MTK's schedule. A blank month is not compared.", example: "14,249.31" },
+  { col: "Z", header: "NBV (source)", field: "—", use: "The file's book value, compared at its last month with a figure.", example: "413,229.86" },
+];
+
+/**
+ * The register's headers, exactly and in order, for a year: what the Asset
+ * schedule shows and exports, and what Import reads. One list, so the two
+ * cannot drift apart.
+ */
+export const registerHeaders = (year: number) => [
+  "No", "Asset name (review)", "Notes / original description", "Category (Types)", "Subcategory", "Useful life (months)",
+  "Depreciation start", "Asset date", "Quantity", "Unit price", "Total cost", "Disposal (source)", "Opening accumulated depreciation",
+  ...["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((m) => `${m} ${year}`), "NBV (source)",
 ];
 
 /**
@@ -51,16 +62,17 @@ const FIELDS = {
   no: ["no", "no.", "sr", "sr no"],
   name: ["name", "asset name"],
   description: ["description", "notes", "notes / original description", "original description"],
+  // "Asset name (review)", "Category (Types)": the words before the bracket, or the one inside it, name the field.
   types: ["types", "type", "category"],
   software: ["software", "subcategory", "sub category", "sub-category"],
   life: ["depreciation rate", "useful life", "life", "life (months)"],
-  start: ["mohths", "months", "month", "start month", "first month"],
-  date: ["date", "purchase date", "acquired on"],
+  start: ["mohths", "months", "month", "start month", "first month", "depreciation start"],
+  date: ["date", "purchase date", "acquired on", "asset date"],
   qty: ["qty", "quantity"],
   price: ["price", "unit price"],
   cost: ["cost", "total cost"],
   disposal: ["disopsal", "disposal"],
-  opening: ["op; accu", "op;accu", "op accu", "op. accu", "opening accumulated", "opening accu"],
+  opening: ["op; accu", "op;accu", "op accu", "op. accu", "opening accumulated", "opening accu", "opening accumulated depreciation"],
   nbv: ["nbv", "net book value"],
 } as const;
 type Field = keyof typeof FIELDS;
@@ -95,7 +107,10 @@ export function num(v: string | undefined): number | null {
 export function parseMonth(v: string): Month | null {
   const s = v.trim().toLowerCase();
   let m = /^([a-z]{3})[a-z]*[\s\-/.']*(\d{2}|\d{4})$/.exec(s);
-  if (m && MONTHS.includes(m[1])) return `${m[2].length === 2 ? "20" + m[2] : m[2]}-${String(MONTHS.indexOf(m[1]) + 1).padStart(2, "0")}`;
+  if (m && MONTHS.includes(m[1])) {
+    const y = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+    return `${y > 2400 ? y - 543 : y}-${String(MONTHS.indexOf(m[1]) + 1).padStart(2, "0")}`;
+  }
   m = /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(s);
   if (m) return `${m[1]}-${m[2].padStart(2, "0")}`;
   const d = parseDate(v);
@@ -106,7 +121,8 @@ export function parseMonth(v: string): Month | null {
 export function parseDate(v: string): { date: string | null; unsure: boolean } {
   const s = v.trim();
   if (!s) return { date: null, unsure: false };
-  const iso = (y: number, mo: number, d: number) => {
+  const iso = (yr: number, mo: number, d: number) => {
+    const y = yr > 2400 ? yr - 543 : yr;
     const t = new Date(Date.UTC(y, mo - 1, d));
     return t.getUTCMonth() === mo - 1 && t.getUTCDate() === d ? t.toISOString().slice(0, 10) : null;
   };
@@ -131,11 +147,13 @@ export function parseDate(v: string): { date: string | null; unsure: boolean } {
   return { date: null, unsure: false };
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/\s*&\s*/g, " & ").trim();
+const norm = (s: string) => s.toLowerCase().replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/\s*&\s*/g, " & ").replace(/\s*,\s*/g, ", ").trim();
 /** The file's category against the chart's: "Office Equipment" is under "Furniture and Office Equipment". */
 const sameHeading = (file: string, chart: string) => {
-  const f = norm(file).replace(/ and /g, " & "), c = norm(chart).replace(/ and /g, " & ");
-  return f === c || c.includes(f) || f.includes(c);
+  // By words, singular: "FURNITURES AND FITTINGS" shares "furniture" with "Furniture and Office Equipment".
+  const words = (s: string) => new Set(norm(s).split(/[^a-z\u1000-\u109f]+/).filter((w) => w.length > 2 && w !== "and").map((w) => w.replace(/s$/, "")));
+  const c = words(chart);
+  return [...words(file)].some((w) => c.has(w));
 };
 const units = (n: number) => toUnits(n.toFixed(4));
 const kyat = (u: bigint) => Number(fromUnits(u));
@@ -143,7 +161,12 @@ const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 
 
 /** Where the header row is, which column holds each field, the year its months belong to, and what is missing. */
 export function findHeader(rows: string[][]) {
-  const fieldOf = (cell: string) => (Object.keys(FIELDS) as Field[]).find((f) => (FIELDS[f] as readonly string[]).includes(norm(cell)));
+  const fieldOf = (cell: string) => {
+    const c = norm(cell), outside = c.replace(/\s*\(.*\)\s*/g, " ").trim(), inside = /\(([^)]*)\)/.exec(c)?.[1].trim() ?? "";
+    // "Useful life (months)" and "NBV (source)": a bracket only adds a note to the name before it.
+    return (Object.keys(FIELDS) as Field[]).find((f) => [c, outside].some((x) => (FIELDS[f] as readonly string[]).includes(x)))
+      ?? (Object.keys(FIELDS) as Field[]).find((f) => f !== "start" && (FIELDS[f] as readonly string[]).includes(inside));
+  };
   const at = rows.findIndex((r) => { const fs = r.map(fieldOf); return fs.includes("cost") && (fs.includes("description") || fs.includes("name")); });
   if (at < 0) return null;
   const head = rows[at];
@@ -160,7 +183,24 @@ export function findHeader(rows: string[][]) {
   return { at, col, months, wrong, year: fromHead ? Number(fromHead.slice(0, 4)) : null };
 }
 
-export function readRegister(rows: string[][], categories: Category[]) {
+/**
+ * The month the file's NBV is as of: where cost less opening less the months
+ * to date comes to the NBV, for most rows. Index 0–11, or null when no month
+ * fits. The sheet's NBV is often struck at a month before its last figures.
+ */
+function inferNbvMonth(rows: { cost: number | null; opening: number | null; excel: (number | null)[]; nbv: number | null }[]) {
+  const votes = Array(12).fill(0);
+  for (const r of rows) {
+    if (r.cost === null || r.nbv === null) continue;
+    let left = r.cost - (r.opening ?? 0);
+    r.excel.forEach((v, k) => { left -= v ?? 0; if (Math.abs(left - r.nbv!) <= 1) votes[k]++; });
+  }
+  const best = votes.indexOf(Math.max(...votes));
+  return votes[best] > 0 ? { month: best, matches: votes[best] } : null;
+}
+
+/** nbvMonth: the month (0–11) the file's NBV is as of; by default the one that fits most rows. */
+export function readRegister(rows: string[][], categories: Category[], nbvMonth?: number | null) {
   const h = findHeader(rows);
   if (!h) return null;
   const at = (r: string[], f: Field) => (h.col[f] === undefined ? "" : (r[h.col[f]!] ?? "").trim());
@@ -173,6 +213,9 @@ export function readRegister(rows: string[][], categories: Category[]) {
   const first = `${year}-01` as Month, before = addMonths(first, -1);
   const byName = new Map(categories.map((c) => [norm(c.name), c]));
 
+  const inferred = inferNbvMonth(body.map(({ r }) => ({ cost: num(at(r, "cost")), opening: num(at(r, "opening")),
+    excel: h.months.map((i) => (i < 0 ? null : num(r[i]))), nbv: num(at(r, "nbv")) })));
+  const asOf = nbvMonth ?? inferred?.month ?? null;
   const out: FaImportRow[] = body.map(({ r, line }) => {
     const issues: Issue[] = [];
     const block = (text: string) => issues.push({ level: "blocked", text });
@@ -215,7 +258,7 @@ export function readRegister(rows: string[][], categories: Category[]) {
 
     const excel = h.months.map((i) => (i < 0 ? null : num(r[i])));
     const nbv = num(at(r, "nbv"));
-    let mtk: number[] = Array(12).fill(0), mtkNbv: number | null = null;
+    let mtk: number[] = Array(12).fill(0), mtkNbv: number | null = null, nbvAt: Month | null = null, tolerance = 1;
     if (life && start && cost && cost > 0) {
       // The file's opening figure covers everything before its year, as one carried amount.
       const carried = start < first && opening ? opening : 0;
@@ -224,15 +267,22 @@ export function readRegister(rows: string[][], categories: Category[]) {
         carried ? { posted: new Map([[before, units(carried)]]), openingThrough: before } : {},
       );
       mtk = Array.from({ length: 12 }, (_, k) => kyat(rows.find((x) => x.month === addMonths(first, k))?.amount ?? 0n));
-      const last = [...rows].reverse().find((x) => x.month <= addMonths(first, 11));
+      // The file's NBV is as of its last month with a figure; MTK's is taken at the same month.
+      const lastK = asOf ?? excel.reduce<number>((k0, v, k) => (v !== null ? k : k0), 11);
+      nbvAt = addMonths(first, lastK);
+      const last = [...rows].reverse().find((x) => x.month <= nbvAt!);
       mtkNbv = last ? kyat(last.closing) : cost;
-      const off = excel.map((v, k) => [k, (v ?? 0) - mtk[k]] as const).filter(([, dlt]) => Math.abs(dlt) > 1);
+      // MTK posts whole kyat, the file carries the decimals: a kyat a month either way is rounding.
+      tolerance = Math.max(1, lastK + 1);
+      const off = excel.flatMap((v, k) => (v === null ? [] : [[k, v - mtk[k]] as const])).filter(([, dlt]) => Math.abs(dlt) > 1);
       if (off.length) review(`${off.length === 1 ? MONTHS[off[0][0]][0].toUpperCase() + MONTHS[off[0][0]].slice(1) : `${off.length} months`} differ from MTK's schedule (${off.slice(0, 3).map(([k, dlt]) => `${MONTHS[k][0].toUpperCase() + MONTHS[k].slice(1)} ${dlt > 0 ? "+" : ""}${fmt(dlt)}`).join(", ")}).`);
-      if (nbv !== null && Math.abs(nbv - mtkNbv) > 1) review(`NBV ${fmt(nbv)} in the file, ${fmt(mtkNbv)} by MTK at Dec ${year}.`);
+      if (nbv !== null && Math.abs(nbv - mtkNbv) > tolerance) review(`NBV ${fmt(nbv)} in the file, ${fmt(mtkNbv)} by MTK at ${nbvAt}.`);
     }
     const status: Severity = issues.some((i) => i.level === "blocked") ? "blocked" : issues.length ? "review" : "ok";
     return { line, no: at(r, "no"), description, name, group, categoryText, category, life, start, startText,
       date: d.date, dateText, qty, price, cost, disposal, opening, openingBlank, excel, mtk, nbv, mtkNbv, issues, status };
   });
-  return { headerLine: h.at + 1, wrongHeaders: h.wrong, year, rows: out };
+  return { headerLine: h.at + 1, wrongHeaders: h.wrong, year, rows: out,
+    /** The NBV's month as used, and what the file itself suggested. */
+    nbvMonth: asOf, inferred };
 }

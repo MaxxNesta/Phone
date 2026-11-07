@@ -1,7 +1,8 @@
 // The asset register paste reader (lib/fa-import.ts). Pure: no database.
 //   npx tsx scripts/test-fa-import.mjs
 
-const { readRegister, parseMonth, parseDate, num, suggestName } = await import("../lib/fa-import.ts");
+const { readRegister, parseMonth, parseDate, num, suggestName, FA_COLUMNS } = await import("../lib/fa-import.ts");
+const { parseTsv } = await import("../lib/import-purchase-invoices.ts");
 
 let bad = 0;
 const check = (label, ok, detail = "") => { if (!ok) bad++; console.log(`  ${ok ? "ok  " : "FAIL"}  ${label}${detail ? "  " + detail : ""}`); };
@@ -66,6 +67,50 @@ check("shifted columns still read: cost, opening, months, NBV", t.cost === 48000
 check("no header complaints", withName.wrongHeaders.length === 0, withName.wrongHeaders.join("; "));
 const noTypes = readRegister([["No", "Description", "Cost"], ["1", "x", "10"]], cats);
 check("a missing column is reported by name", noTypes.wrongHeaders.some((w) => /Types/.test(w)), noTypes.wrongHeaders.join("; "));
+
+// Rows from the shop's own register, as Excel copies them (a cell with a line break comes quoted).
+const realCats = [
+  { id: "g", name: "Generator & Solar", group: "Machinery" },
+  { id: "t", name: "Table, Chair & Locker", group: "Furniture and Office Equipment" },
+];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const realHead = ["No", "Asset name (review)", "Notes / original description", "Category (Types)", "Subcategory", "Useful life (months)",
+  "Depreciation start", "Asset date", "Quantity", "Unit price", "Total cost", "Disposal (source)", "Opening accumulated depreciation",
+  ...MON.map((m) => `${m} 2026`), "NBV (source)"];
+const nine = (v) => [...Array(9).fill(v), " ", " ", " "];
+const tsv = [
+  realHead,
+  ["1", "Growatt SPG 6000ES Plus Wifi Inverter", "Growatt SPG 6000ES Plus Wifi Inverter", "MACHINERY", "Generator & Solar", "24", "Jan'2026", "11 Jan 2569", "1", "1,420,000.00", "1,420,000.00", " ", " ", ...nine("59,166.67"), "1,005,833.33"],
+  ["4", "Office Table Small 92-IR-Table A3-19", '"\nOffice Table Small 92-IR-Table A3-19 (3လုံး)*(180000-5%dis)Sweety Home 28/12/25- Ygn Office\n"', "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "28 Dec 2568", "3", "170,991.67", "512,975.00", " ", " ", ...nine("14,249.31"), "413,229.86"],
+  ["11", "File Cabinet", "File Cabinet ပွင့်ဦး", "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "07 Jan 2569", "1", "1,148,000.00", "865,000.00", " ", " ", ...nine("24,027.78"), "696,805.56"],
+].map((r) => r.join("\t")).join("\n");
+const real = readRegister(parseTsv(tsv), realCats);
+check("real headers all found", real.wrongHeaders.length === 0, real.wrongHeaders.join("; "));
+check("the NBV is worked out as of July", real.nbvMonth === 6 && real.inferred.matches === 3, JSON.stringify(real.inferred));
+const [g, tb, fc] = real.rows;
+check("Buddhist-era date: 11 Jan 2569 is 2026-01-11", g.date === "2026-01-11", g.date);
+check("Jan'2026 is the start month", g.start === "2026-01");
+check("MACHINERY matches the chart, months and NBV agree", g.status === "ok", JSON.stringify(g.issues));
+check("FURNITURES AND FITTINGS under Furniture and Office Equipment; “Table , Chair” matches", tb.status === "ok" && tb.category?.id === "t", JSON.stringify(tb.issues));
+check("the multi-line description is kept whole", tb.description.includes("Sweety Home"));
+check("28 Dec 2568 is 2025-12-28", tb.date === "2025-12-28", tb.date);
+check("qty × price that is not the cost is flagged", fc.status === "review" && fc.issues.some((i) => /Qty × price/.test(i.text)), JSON.stringify(fc.issues));
+const asSep = readRegister(parseTsv(tsv), realCats, 8);
+check("choosing September instead shows the NBV gap", asSep.rows[0].issues.some((i) => /NBV/.test(i.text)));
+// An older sheet headed "Subcategory (Software)" still reads.
+const oldHead = readRegister(parseTsv([realHead.map((h) => (h === "Subcategory" ? "Subcategory (Software)" : h)).join(String.fromCharCode(9)), ...tsv.split(String.fromCharCode(10)).slice(1)].join(String.fromCharCode(10))), realCats);
+check("the old Subcategory (Software) header still reads", oldHead.wrongHeaders.length === 0 && oldHead.rows[0].category?.id === "g");
+// What the Asset schedule exports reads straight back in: same headers, nothing missing.
+const { registerHeaders } = await import("../lib/fa-import.ts");
+check("the schedule's headers are the register's", JSON.stringify(registerHeaders(2026)) === JSON.stringify(realHead));
+const back = readRegister([registerHeaders(2026),
+  ["1", "Growatt SPG 6000ES Plus Wifi Inverter", "Growatt SPG 6000ES Plus Wifi Inverter", "Machinery", "Generator & Solar", "24", "Jan 2026", "11 Jan 2026", "", "", "1420000", "", "0",
+    ...Array(12).fill("59167"), "0"]], realCats);
+check("an exported row reads back with no header complaints", back.wrongHeaders.length === 0 && back.rows[0].category?.id === "g", back.wrongHeaders.join("; "));
+// The columns-to-match list names exactly the register's headers, in its order.
+check("Columns to match lists the register's exact headers",
+  JSON.stringify(FA_COLUMNS.map((c) => c.header)) === JSON.stringify([...realHead.slice(0, 13), "Jan 2026 … Dec 2026", "NBV (source)"]),
+  FA_COLUMNS.map((c) => c.header).join(" | "));
 
 console.log(bad ? `\n${bad} FAILED` : "\nfa-import: all good");
 process.exit(bad ? 1 : 0);
