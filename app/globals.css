@@ -9389,3 +9389,13 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .fai-months { width: auto; font-size: 0.8rem; }
 .fai-months th, .fai-months td { padding: 3px 8px; }
 .fai-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+
+/* Settings › Categories: a chart heading opening onto its subcategories. */
+.fas-group { border: 1px solid var(--line); border-radius: 12px; padding: 0 var(--s2) var(--s1); }
+.fas-group + .fas-group, .fas-group + .fas-row { margin-top: var(--s2); }
+.fas-group > summary { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2); padding: var(--s2) 4px; cursor: pointer; list-style: none; }
+.fas-group > summary::-webkit-details-marker { display: none; }
+.fas-group > summary strong::before { content: "›"; display: inline-block; width: 1em; color: var(--muted); transition: transform 0.15s; }
+.fas-group[open] > summary strong::before { transform: rotate(90deg); }
+.fas-group > summary span { color: var(--muted); font-size: var(--t-sm); }
+.fas-group > .fas-row + .fas-row { margin-top: 6px; }

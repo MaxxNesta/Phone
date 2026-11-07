@@ -8,7 +8,7 @@ const check = (label, ok, detail = "") => { if (!ok) bad++; console.log(`  ${ok 
 
 const cats = [
   { id: "g", name: "Generator & Solar", group: "Machinery" },
-  { id: "c", name: "Computer & Printer", group: "Office equipment" },
+  { id: "c", name: "Computer & Printer", group: "Furniture and Office Equipment" },
 ];
 const head = ["No", "Description", "Types", "Software", "Depreciation Rate", "Mohths", "Date", "Qty", "Price", "Cost", "Disopsal", "Op; Accu",
   "Jan-26", "Feb-26", "Mar-26", "Apr-26", "May-26", "Jun-26", "Jul-26", "Aug-26", "Sep-26", "Oct-26", "Nov-26", "Dec-26", "NBV"];

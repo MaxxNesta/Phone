@@ -19,16 +19,20 @@ export default async function FaSettings() {
   const [[s], cats, accts] = await Promise.all([
     sql`select posting_mode, start_convention, gain_account_id, loss_account_id from fa_setting where company_id = ${co}`,
     sql`select c.*, a.code as a_code, x.code as x_code, e.code as e_code,
+               (select h.name from account h where h.id = a.parent_id) as heading,
                exists (select 1 from fa_depreciation d join fixed_asset f on f.id = d.asset_id where f.category_id = c.id and d.journal_line_id is not null)
             or exists (select 1 from fa_journal_link k join fixed_asset f on f.id = k.asset_id where f.category_id = c.id) as used,
                (select count(*)::int from fixed_asset f where f.category_id = c.id) as assets
           from fa_category c join account a on a.id = c.asset_account_id join account x on x.id = c.accum_account_id
           join account e on e.id = c.expense_account_id
-         where c.company_id = ${co} order by c.asset_class, c.code`,
+         where c.company_id = ${co} order by a.code`,
     sql`select id, code, name, account_type from account
          where company_id = ${co} and is_postable and is_active and not is_cash_account and not is_bank_account and not is_control
            and account_type in ('ASSET', 'EXPENSE', 'REVENUE') order by code`,
   ]);
+  // Subcategories under their chart heading, in chart order.
+  const groups = new Map<string, any[]>();
+  for (const c of cats as any[]) groups.set(c.heading ?? "Other", [...(groups.get(c.heading ?? "Other") ?? []), c]);
   const list = (t: string) => (accts as any[]).filter((a) => a.account_type === t);
   const setting = s ?? { posting_mode: "REVIEW", start_convention: "SAME_MONTH", gain_account_id: null, loss_account_id: null };
 
@@ -47,24 +51,32 @@ export default async function FaSettings() {
 
         <section className="ie-card">
           <h3>Categories and their accounts</h3>
-          <p className="ie-note" style={{ marginTop: 0 }}>Each category posts depreciation as a debit to its expense account and a credit to its accumulated-depreciation account; its assets sit on the asset account.</p>
+          <p className="ie-note" style={{ marginTop: 0 }}>A category is a title in the chart of accounts; each subcategory under it has its own accounts. Depreciation is a debit to the subcategory&apos;s expense account and a credit to its accumulated-depreciation account; its assets sit on the asset account.</p>
           <div className="fas-cats">
-            {(cats as any[]).map((c) => (
+            {[...groups].map(([heading, subs]) => (
+              <details key={heading} className="fas-group" open>
+                <summary>
+                  <strong>{heading}</strong>
+                  <span>{subs.length} subcategor{subs.length === 1 ? "y" : "ies"} · {subs.reduce((n, c) => n + c.assets, 0)} asset{subs.reduce((n, c) => n + c.assets, 0) === 1 ? "" : "s"}</span>
+                </summary>
+            {subs.map((c) => (
               <details key={c.id} className="fas-row">
                 <summary>
-                  <strong>{c.name}{c.report_group && <span className="subline">{c.report_group}</span>}</strong>
+                  <strong>{c.name}</strong>
                   <span className="mono">{c.a_code} · {c.x_code} · {c.e_code}</span>
                   <span>{c.asset_class === "INTANGIBLE" ? "Amortised" : "Depreciated"} · {c.assets} asset{c.assets === 1 ? "" : "s"}{c.is_active ? "" : " · inactive"}</span>
                 </summary>
                 {canEdit && <FaCategoryForm action={saveFaCategory} used={c.used} assets={list("ASSET")} expenses={list("EXPENSE")}
                   value={{ id: c.id, code: c.code, name: c.name, asset_class: c.asset_class, asset_account_id: c.asset_account_id,
                            accum_account_id: c.accum_account_id, expense_account_id: c.expense_account_id,
-                           default_life_months: c.default_life_months, is_active: c.is_active, report_group: c.report_group }} />}
+                           default_life_months: c.default_life_months, is_active: c.is_active }} />}
+              </details>
+            ))}
               </details>
             ))}
             {canEdit && (
               <details className="fas-row">
-                <summary><strong>Add a category</strong><span /><span>For a class of asset the chart already has accounts for</span></summary>
+                <summary><strong>Add a subcategory</strong><span /><span>Its category is the title above the asset account you choose</span></summary>
                 <FaCategoryForm action={saveFaCategory} used={false} assets={list("ASSET")} expenses={list("EXPENSE")}
                   value={{ code: "", name: "", asset_class: "TANGIBLE", asset_account_id: "", accum_account_id: "", expense_account_id: "", default_life_months: null, is_active: true }} />
               </details>

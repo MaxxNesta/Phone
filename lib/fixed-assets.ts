@@ -15,20 +15,24 @@ export const FA_STATUS_LABEL: Record<FaStatus, string> = {
 export type FaCategory = {
   id: string; code: string; name: string; asset_class: "TANGIBLE" | "INTANGIBLE";
   asset_account: string; accum_account: string; expense_account: string;
-  default_life_months: number | null; is_active: boolean; report_group: string | null;
+  default_life_months: number | null; is_active: boolean;
+  /** The chart's title above the asset account: Machinery over Generator & Solar. */
+  heading: string;
 };
 
 export async function faCategories(co: string): Promise<FaCategory[]> {
   return (await sql`
-    select c.id, c.code, c.name, c.asset_class, c.default_life_months, c.is_active, c.report_group,
+    select c.id, c.code, c.name, c.asset_class, c.default_life_months, c.is_active,
+           coalesce(h.name, a.name) as heading,
            a.code || ' · ' || a.name as asset_account, x.code || ' · ' || x.name as accum_account,
            e.code || ' · ' || e.name as expense_account
       from fa_category c
       join account a on a.id = c.asset_account_id
+      left join account h on h.id = a.parent_id
       join account x on x.id = c.accum_account_id
       join account e on e.id = c.expense_account_id
      where c.company_id = ${co}
-     order by c.asset_class, c.code`) as unknown as FaCategory[];
+     order by c.asset_class, a.code`) as unknown as FaCategory[];
 }
 
 /** Top-level locations, the branches an asset can belong to. */
@@ -41,6 +45,8 @@ export async function faBranches(co: string) {
 export type AssetRow = {
   id: string; code: string; name: string; status: FaStatus;
   category_id: string; category: string; asset_class: string;
+  /** The chart's title above the category's asset account. */
+  heading: string;
   branch_id: string; branch: string; site: string | null;
   /** Where depreciation posts when it is not the assigned branch. */
   posting_branch_id: string | null; posting_branch: string | null; serial_no: string | null;
@@ -57,6 +63,7 @@ export type AssetRow = {
 export async function assetList(co: string, branches: string[] | null, id?: string): Promise<AssetRow[]> {
   return (await sql`
     select f.id, f.code, f.name, f.status, f.category_id, c.name as category, c.asset_class,
+           (select coalesce(h.name, a.name) from account a left join account h on h.id = a.parent_id where a.id = c.asset_account_id) as heading,
            f.branch_id, b.name as branch, f.posting_branch_id, pb.name as posting_branch, f.site, f.serial_no, f.supplier_id, f.notes,
            to_char(f.acquisition_date, 'YYYY-MM-DD') as acquisition_date,
            to_char(f.in_service_date, 'YYYY-MM-DD') as in_service_date,

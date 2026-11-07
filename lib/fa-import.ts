@@ -13,8 +13,8 @@ import { schedule, toUnits, fromUnits, addMonths, type Month } from "./fa-engine
 export const FA_COLUMNS: { col: string; header: string; field: string }[] = [
   { col: "A", header: "No", field: "Source row number, for reference. MTK gives each asset its own ID." },
   { col: "B", header: "Description", field: "Asset description, kept in full: Burmese, dates, supplier names and notes." },
-  { col: "C", header: "Types", field: "Report group, such as Machinery or Office equipment." },
-  { col: "D", header: "Software", field: "Category, despite the header: Generator & Solar, Computer & Printer…" },
+  { col: "C", header: "Types", field: "Category: the chart's title account, such as Machinery or Furniture and Office Equipment." },
+  { col: "D", header: "Software", field: "Subcategory, despite the header: Generator & Solar, Computer & Printer… Each has its own accounts." },
   { col: "E", header: "Depreciation Rate", field: "Useful life in months: 24 means 24 months, not 24%." },
   { col: "F", header: "Mohths", field: "Depreciation start month, such as Jan 2026." },
   { col: "G", header: "Date", field: "Asset date in the file; reviewed and mapped to the purchase date." },
@@ -92,6 +92,11 @@ export function parseDate(v: string): { date: string | null; unsure: boolean } {
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/\s*&\s*/g, " & ").trim();
+/** The file's category against the chart's: "Office Equipment" is under "Furniture and Office Equipment". */
+const sameHeading = (file: string, chart: string) => {
+  const f = norm(file).replace(/ and /g, " & "), c = norm(chart).replace(/ and /g, " & ");
+  return f === c || c.includes(f) || f.includes(c);
+};
 const units = (n: number) => toUnits(n.toFixed(4));
 const kyat = (u: bigint) => Number(fromUnits(u));
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -131,9 +136,9 @@ export function readRegister(rows: string[][], categories: Category[]) {
     const description = (r[1] ?? "").trim(), group = (r[2] ?? "").trim(), categoryText = (r[3] ?? "").trim();
     const category = byName.get(norm(categoryText)) ?? null;
     if (!description) block("No description.");
-    if (!categoryText) block("No category in column D.");
-    else if (!category) block(`No category named “${categoryText}”. Add it in Fixed Asset Settings.`);
-    else if (group && category.group && norm(group) !== norm(category.group)) review(`Column C says “${group}”; MTK files ${category.name} under ${category.group}.`);
+    if (!categoryText) block("No subcategory in column D.");
+    else if (!category) block(`No subcategory named “${categoryText}”. Add it in Fixed Asset Settings.`);
+    else if (group && category.group && !sameHeading(group, category.group)) review(`Column C says “${group}”; the chart files ${category.name} under ${category.group}.`);
 
     const lifeRaw = num(r[4]);
     const life = lifeRaw !== null && Number.isInteger(lifeRaw) && lifeRaw > 0 && lifeRaw <= 1200 ? lifeRaw : null;

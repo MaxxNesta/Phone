@@ -61,7 +61,7 @@ export function FaImport({ categories }: { categories: Category[] }) {
           <div className="tablewrap">
             <table className="fai-rows">
               <thead><tr>
-                <th /><th>No</th><th>Description</th><th>Category</th><th className="r">Life</th><th>Start</th><th>Date</th>
+                <th /><th>No</th><th>Description</th><th>Category › Subcategory</th><th className="r">Life</th><th>Start</th><th>Date</th>
                 <th className="r">Qty</th><th className="r">Cost</th><th className="r">Op. accum</th>
                 <th className="r">{read.year} depreciation</th><th className="r">NBV Dec {read.year}</th>
               </tr></thead>
@@ -81,7 +81,7 @@ export function FaImport({ categories }: { categories: Category[] }) {
                             {isOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
                           </button>{r.description || "—"}
                         </td>
-                        <td>{r.category ? <><div>{r.category.name}</div><div className="fai-sub">{r.category.group ?? r.group}</div></> : <span className="fai-bad">{r.categoryText || "—"}</span>}</td>
+                        <td>{r.category ? <><div className="fai-sub">{r.category.group ?? r.group}</div><div>{r.category.name}</div></> : <span className="fai-bad">{r.categoryText || "—"}</span>}</td>
                         <td className="r">{r.life ?? "—"}</td>
                         <td className="nowrap">{r.start ?? r.startText}</td>
                         <td className="nowrap">{r.date ?? (r.dateText || "—")}</td>

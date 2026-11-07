@@ -30,7 +30,8 @@ export function AssetForm({ action, value, categories, branches, pinned, company
   companyName: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   value: AssetFormValue;
-  categories: { id: string; name: string; asset_class: string; default_life_months: number | null; accounts: string }[];
+  /** Subcategories, each under its chart heading (the category): Machinery › Generator & Solar. */
+  categories: { id: string; name: string; heading: string; asset_class: string; default_life_months: number | null; accounts: string }[];
   branches: { id: string; name: string }[];
   /** Posted depreciation exists: cost, dates, life, residual, category and branch are locked. */
   pinned: boolean;
@@ -44,6 +45,8 @@ export function AssetForm({ action, value, categories, branches, pinned, company
   const set = (k: keyof AssetFormValue) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setV({ ...v, [k]: e.target.value });
   const cat = categories.find((c) => c.id === v.category_id);
+  const headings = [...new Set(categories.map((c) => c.heading))];
+  const [group, setGroup] = useState(cat?.heading ?? (headings.length === 1 ? headings[0] : ""));
   const months = Number(v.useful_life_months);
   const isDraft = !value.id || value.status === "DRAFT";
   const lock = pinned ? { disabled: true, title: "Locked: depreciation for this asset is on the ledger" } : {};
@@ -79,23 +82,32 @@ export function AssetForm({ action, value, categories, branches, pinned, company
           </div>
           <div className="ie-grid3" style={{ marginTop: "var(--s2)" }}>
             <label className="ie-field"><span>Category</span>
+              <select value={group} onChange={(e) => {
+                setGroup(e.target.value);
+                // A subcategory belongs to one category: changing the category clears it unless it still fits.
+                if (cat && cat.heading !== e.target.value) setV({ ...v, category_id: "" });
+              }} required {...lock}>
+                <option value="">Choose…</option>
+                {headings.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select></label>
+            <label className="ie-field"><span>Subcategory</span>
               <select name="category_id" value={v.category_id} onChange={(e) => {
                 const c = categories.find((x) => x.id === e.target.value);
                 setV({ ...v, category_id: e.target.value,
                        useful_life_months: v.useful_life_months || (c?.default_life_months ? String(c.default_life_months) : "") });
-              }} required {...lock}>
-                <option value="">Choose…</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}{c.asset_class === "INTANGIBLE" ? " (amortised)" : ""}</option>)}
+              }} required disabled={!group || pinned} title={lock.title}>
+                <option value="">{group ? "Choose…" : "Choose a category first"}</option>
+                {categories.filter((c) => c.heading === group).map((c) => <option key={c.id} value={c.id}>{c.name}{c.asset_class === "INTANGIBLE" ? " (amortised)" : ""}</option>)}
               </select></label>
             <label className="ie-field"><span>Used at (assigned branch)</span>
               <select name="branch_id" value={v.branch_id} onChange={set("branch_id")} required {...lock}>
                 <option value="">Choose…</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select></label>
-            <label className="ie-field"><span>Location in branch</span>
-              <input name="site" value={v.site} onChange={set("site")} placeholder="e.g. Back office" /></label>
           </div>
           <div className="ie-grid3" style={{ marginTop: "var(--s2)" }}>
+            <label className="ie-field"><span>Location in branch</span>
+              <input name="site" value={v.site} onChange={set("site")} placeholder="e.g. Back office" /></label>
             <div className="ie-field"><span>Owned by</span><output className="ie-ro">{companyName}</output></div>
             <label className="ie-field"><span>Depreciation posts to</span>
               <select name="posting_branch_id" value={v.posting_branch_id} onChange={set("posting_branch_id")} {...lock}>

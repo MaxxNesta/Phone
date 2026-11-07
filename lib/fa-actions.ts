@@ -433,8 +433,7 @@ export async function saveFaCategory(_prev: unknown, fd: FormData): Promise<Acti
   try {
     const v = { code: str(fd, "code").toUpperCase(), name: str(fd, "name"), asset_class: str(fd, "asset_class") || "TANGIBLE",
       asset: str(fd, "asset_account_id"), accum: str(fd, "accum_account_id"), expense: str(fd, "expense_account_id"),
-      life: str(fd, "default_life_months") ? Number(str(fd, "default_life_months")) : null, active: fd.get("is_active") === "on",
-      group: str(fd, "report_group") || null };
+      life: str(fd, "default_life_months") ? Number(str(fd, "default_life_months")) : null, active: fd.get("is_active") === "on" };
     if (!v.code || !v.name) return { error: "Give the category a code and a name." };
     if (!["TANGIBLE", "INTANGIBLE"].includes(v.asset_class)) return { error: "Choose tangible or intangible." };
     if (v.life !== null && (!Number.isInteger(v.life) || v.life < 1 || v.life > 1200)) return { error: "Default life is 1 to 1200 months." };
@@ -450,8 +449,8 @@ export async function saveFaCategory(_prev: unknown, fd: FormData): Promise<Acti
     }
     await sql.begin(async (tx) => {
       if (!id) {
-        await tx`insert into fa_category (company_id, code, name, asset_class, asset_account_id, accum_account_id, expense_account_id, default_life_months, is_active, report_group)
-                 values (${co}, ${v.code}, ${v.name}, ${v.asset_class}, ${v.asset}, ${v.accum}, ${v.expense}, ${v.life}, ${v.active}, ${v.group})`;
+        await tx`insert into fa_category (company_id, code, name, asset_class, asset_account_id, accum_account_id, expense_account_id, default_life_months, is_active)
+                 values (${co}, ${v.code}, ${v.name}, ${v.asset_class}, ${v.asset}, ${v.accum}, ${v.expense}, ${v.life}, ${v.active})`;
         return;
       }
       const [old] = await tx`
@@ -463,7 +462,7 @@ export async function saveFaCategory(_prev: unknown, fd: FormData): Promise<Acti
       const moved = old.asset_account_id !== v.asset || old.accum_account_id !== v.accum || old.expense_account_id !== v.expense;
       if (moved && old.used) throw new Error("Journals already carry this category's assets, so its accounts stay as they are. Make a new category for new assets.");
       await tx`update fa_category set code = ${v.code}, name = ${v.name}, asset_class = ${v.asset_class}, asset_account_id = ${v.asset},
-                 accum_account_id = ${v.accum}, expense_account_id = ${v.expense}, default_life_months = ${v.life}, is_active = ${v.active}, report_group = ${v.group}
+                 accum_account_id = ${v.accum}, expense_account_id = ${v.expense}, default_life_months = ${v.life}, is_active = ${v.active}
                where id = ${id}`;
     });
   } catch (e) {
