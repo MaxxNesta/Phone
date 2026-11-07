@@ -1,7 +1,7 @@
 // The asset register paste reader (lib/fa-import.ts). Pure: no database.
 //   npx tsx scripts/test-fa-import.mjs
 
-const { readRegister, parseMonth, parseDate, num } = await import("../lib/fa-import.ts");
+const { readRegister, parseMonth, parseDate, num, suggestName } = await import("../lib/fa-import.ts");
 
 let bad = 0;
 const check = (label, ok, detail = "") => { if (!ok) bad++; console.log(`  ${ok ? "ok  " : "FAIL"}  ${label}${detail ? "  " + detail : ""}`); };
@@ -37,7 +37,7 @@ check("1 date day-first", a.date === "2026-01-12", a.date);
 check("2 group case-insensitive, opening carried", b.status === "ok" && b.mtk[0] === 10000 && b.mtkNbv === 240000, JSON.stringify(b.issues) + " " + b.mtk[0] + " " + b.mtkNbv);
 check("3 blocked: no such category", c.status === "blocked" && c.issues.some((i) => /Spaceship/.test(i.text)));
 check("3 blocked: 24% is not months", c.issues.some((i) => /whole number of months/.test(i.text)));
-check("3 review: disposal value asks", c.issues.some((i) => /Column K/.test(i.text)));
+check("3 review: disposal value asks", c.issues.some((i) => /Disopsal has/.test(i.text)));
 
 // Month and number forms Excel copies.
 check("months", ["Jan 2026", "Jan-26", "January 2026", "2026-01", "1/1/2026"].every((s) => parseMonth(s) === "2026-01"));
@@ -47,6 +47,25 @@ check("numbers", num("1,250,000") === 1250000 && num("(500)") === -500 && num("-
 // A blank opening on an asset started before the year asks to confirm zero.
 const blank = readRegister([head, ["4", "Old PC", "Office equipment", "Computer & Printer", "36", "Jun 2025", "", "1", "360000", "360000", "", "", ...m12("10000"), "0"]], cats);
 check("blank opening before the year is reviewed", blank.rows[0].issues.some((i) => /confirm it is zero/.test(i.text)));
+
+// The name is the start of a description that mixes name and notes.
+check("name stops at Burmese text", suggestName("Growatt Inverter ဝယ်ယူ 12/1/2026 (Ko Aung)") === "Growatt Inverter");
+check("name stops at a bracket", suggestName("Office Table Small 92-IR-Table A3-19 (Ko Aung) 2 pcs") === "Office Table Small 92-IR-Table A3-19");
+check("a plain name is kept whole", suggestName("HP LaserJet printer") === "HP LaserJet printer");
+check("the row keeps the full description as notes", a.description.includes("Ko Aung") && a.name === "Growatt Inverter");
+
+// A Name column added after No shifts every other column; headers still find them.
+const withName = readRegister([
+  ["No", "Name", ...head.slice(1)],
+  ["9", "Office Table Small 92-IR-Table A3-19", "Office Table Small 92-IR-Table A3-19 (ကိုအောင်) 2 pcs", "Furniture", "Computer & Printer", "48", "Jan 2025", "15-Jan-25", "2", "240,000", "480,000", "", "120,000", ...m12("10,000"), "240,000"],
+], cats);
+const t = withName.rows[0];
+check("the Name column is the name", t.name === "Office Table Small 92-IR-Table A3-19", t.name);
+check("Description stays whole as notes", t.description.includes("2 pcs"));
+check("shifted columns still read: cost, opening, months, NBV", t.cost === 480000 && t.opening === 120000 && t.mtk[0] === 10000 && t.nbv === 240000, JSON.stringify(t.issues));
+check("no header complaints", withName.wrongHeaders.length === 0, withName.wrongHeaders.join("; "));
+const noTypes = readRegister([["No", "Description", "Cost"], ["1", "x", "10"]], cats);
+check("a missing column is reported by name", noTypes.wrongHeaders.some((w) => /Types/.test(w)), noTypes.wrongHeaders.join("; "));
 
 console.log(bad ? `\n${bad} FAILED` : "\nfa-import: all good");
 process.exit(bad ? 1 : 0);

@@ -9374,7 +9374,7 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .fai-rows { font-size: var(--t-sm); }
 .fai-row { cursor: pointer; }
 .fai-row:hover td { background: var(--line-soft); }
-.fai-desc { min-width: 16rem; max-width: 26rem; }
+.fai-desc { min-width: 12rem; max-width: 17rem; }
 .fai-toggle { display: inline-flex; padding: 0; margin-right: 4px; border: 0; background: none; color: var(--muted); vertical-align: -2px; cursor: pointer; }
 .fai-bad { color: var(--bad); }
 .fai-sub { color: var(--muted); font-size: 0.75rem; }
@@ -9399,3 +9399,10 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .fas-group[open] > summary strong::before { transform: rotate(90deg); }
 .fas-group > summary span { color: var(--muted); font-size: var(--t-sm); }
 .fas-group > .fas-row + .fas-row { margin-top: 6px; }
+.fai-field { font-weight: 600; white-space: nowrap; }
+.fai-ex { color: var(--muted); }
+.fai-rows input.fai-name { width: calc(100% - 20px); min-height: 0; height: auto; padding: 2px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; font: inherit; font-size: var(--t-sm); color: var(--ink); box-shadow: none; }
+.fai-rows input.fai-name:hover, .fai-rows input.fai-name:focus { border-color: var(--line); background: var(--surface); }
+.fai-notes { margin-left: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16rem; }
+.fai-fullnotes { flex-basis: 100%; }
+.fai-fullnotes dd { white-space: pre-wrap; }

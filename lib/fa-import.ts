@@ -10,31 +10,71 @@ import { schedule, toUnits, fromUnits, addMonths, type Month } from "./fa-engine
  * is found by its "Description" and checked label by label.
  */
 
-export const FA_COLUMNS: { col: string; header: string; field: string }[] = [
-  { col: "A", header: "No", field: "Source row number, for reference. MTK gives each asset its own ID." },
-  { col: "B", header: "Description", field: "Asset description, kept in full: Burmese, dates, supplier names and notes." },
-  { col: "C", header: "Types", field: "Category: the chart's title account, such as Machinery or Furniture and Office Equipment." },
-  { col: "D", header: "Software", field: "Subcategory, despite the header: Generator & Solar, Computer & Printer… Each has its own accounts." },
-  { col: "E", header: "Depreciation Rate", field: "Useful life in months: 24 means 24 months, not 24%." },
-  { col: "F", header: "Mohths", field: "Depreciation start month, such as Jan 2026." },
-  { col: "G", header: "Date", field: "Asset date in the file; reviewed and mapped to the purchase date." },
-  { col: "H", header: "Qty", field: "Number of items the row stands for." },
-  { col: "I", header: "Price", field: "Unit price, for review." },
-  { col: "J", header: "Cost", field: "Total cost the depreciation schedule uses." },
-  { col: "K", header: "Disopsal", field: "Disposal value in the file; reviewed before it becomes a disposal." },
-  { col: "L", header: "Op; Accu", field: "Opening accumulated depreciation. Blank is confirmed, never assumed zero." },
-  { col: "M–X", header: "Jan–Dec", field: "The file's monthly depreciation, compared with MTK's schedule." },
-  { col: "Y", header: "NBV", field: "The file's book value, compared at the end of the year." },
+export const FA_COLUMNS: { col: string; header: string; field: string; use: string; example: string }[] = [
+  { col: "A", header: "No", field: "—", use: "Source row number, for reference. MTK gives each asset its own code.", example: "12" },
+  { col: "New", header: "Name", field: "Name", use: "The asset's name. Without this column it is suggested from the start of Description, and can be changed before import.", example: "Office Table Small 92-IR-Table A3-19" },
+  { col: "B", header: "Description", field: "Notes", use: "The full original description, unchanged: supplier, quantity, remarks, Burmese text.", example: "Office Table Small 92-IR-Table A3-19 (ကိုအောင်) 2 pcs" },
+  { col: "C", header: "Types", field: "Category", use: "The chart's title account.", example: "Machinery" },
+  { col: "D", header: "Software", field: "Subcategory", use: "Despite the header. Each subcategory has its own accounts.", example: "Generator & Solar" },
+  { col: "E", header: "Depreciation Rate", field: "Useful life", use: "In months: 24 means 24 months, not 24%.", example: "24" },
+  { col: "F", header: "Mohths", field: "First month", use: "The month depreciation starts, in full.", example: "Jan 2026" },
+  { col: "G", header: "Date", field: "Acquired on", use: "Reviewed and mapped to the purchase date.", example: "12/1/2026" },
+  { col: "H", header: "Qty", field: "—", use: "Number of items the row stands for; checked against cost.", example: "2" },
+  { col: "I", header: "Price", field: "—", use: "Unit price; qty × price is checked against cost.", example: "450,000" },
+  { col: "J", header: "Cost", field: "Cost", use: "Total cost the depreciation schedule uses.", example: "900,000" },
+  { col: "K", header: "Disopsal", field: "—", use: "Disposal value; reviewed before it becomes a disposal.", example: "" },
+  { col: "L", header: "Op; Accu", field: "Opening accumulated", use: "Depreciation before the year. Blank is confirmed, never assumed zero.", example: "120,000" },
+  { col: "M–X", header: "Jan–Dec", field: "—", use: "The file's monthly depreciation, compared with MTK's schedule.", example: "37,500" },
+  { col: "Y", header: "NBV", field: "—", use: "The file's book value, compared at the end of the year.", example: "450,000" },
 ];
 
+/**
+ * A name from a description that mixes the name with notes: its first line,
+ * up to the first Burmese text, bracket or date, which is where the shop's
+ * sheets start the supplier and remarks. Only a suggestion; the full text is
+ * kept as the notes.
+ */
+export function suggestName(description: string): string {
+  const first = description.split(/\r?\n/)[0].trim();
+  const cut = first.split(/[\u1000-\u109F(（]|\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b/)[0].replace(/[\s,;:–—-]+$/, "").trim();
+  const name = cut.length >= 3 ? cut : first;
+  return name.length > 120 ? name.slice(0, 120).trimEnd() + "…" : name;
+}
+
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
-const HEADERS = ["no", "description", "types", "software", "depreciation rate", "mohths", "date", "qty", "price", "cost", "disopsal", "op; accu"];
+/**
+ * Each field and the header labels that name it. Columns are found by their
+ * header, not their letter, so a Name column added anywhere is read, and a
+ * file without one still is (the name is suggested from the description).
+ */
+const FIELDS = {
+  no: ["no", "no.", "sr", "sr no"],
+  name: ["name", "asset name"],
+  description: ["description", "notes", "notes / original description", "original description"],
+  types: ["types", "type", "category"],
+  software: ["software", "subcategory", "sub category", "sub-category"],
+  life: ["depreciation rate", "useful life", "life", "life (months)"],
+  start: ["mohths", "months", "month", "start month", "first month"],
+  date: ["date", "purchase date", "acquired on"],
+  qty: ["qty", "quantity"],
+  price: ["price", "unit price"],
+  cost: ["cost", "total cost"],
+  disposal: ["disopsal", "disposal"],
+  opening: ["op; accu", "op;accu", "op accu", "op. accu", "opening accumulated", "opening accu"],
+  nbv: ["nbv", "net book value"],
+} as const;
+type Field = keyof typeof FIELDS;
+const NEEDED: Field[] = ["description", "types", "software", "life", "start", "cost"];
+const LABEL: Record<Field, string> = { no: "No", name: "Name", description: "Description", types: "Types", software: "Software",
+  life: "Depreciation Rate", start: "Mohths", date: "Date", qty: "Qty", price: "Price", cost: "Cost", disposal: "Disopsal", opening: "Op; Accu", nbv: "NBV" };
 
 export type Category = { id: string; name: string; group: string | null };
 export type Severity = "ok" | "review" | "blocked";
 export type Issue = { level: "review" | "blocked"; text: string };
 export type FaImportRow = {
-  line: number; no: string; description: string; group: string; categoryText: string;
+  line: number; no: string; description: string;
+  /** Suggested from the description; the description itself is kept as notes. */
+  name: string; group: string; categoryText: string;
   category: Category | null; life: number | null; start: Month | null; startText: string;
   date: string | null; dateText: string; qty: number | null; price: number | null; cost: number | null;
   disposal: number | null; opening: number | null; openingBlank: boolean;
@@ -101,30 +141,34 @@ const units = (n: number) => toUnits(n.toFixed(4));
 const kyat = (u: bigint) => Number(fromUnits(u));
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
-/** Where the header row is, the year its months belong to, and any label that is not where it should be. */
+/** Where the header row is, which column holds each field, the year its months belong to, and what is missing. */
 export function findHeader(rows: string[][]) {
-  const at = rows.findIndex((r) => norm(r[1] ?? "") === "description");
+  const fieldOf = (cell: string) => (Object.keys(FIELDS) as Field[]).find((f) => (FIELDS[f] as readonly string[]).includes(norm(cell)));
+  const at = rows.findIndex((r) => { const fs = r.map(fieldOf); return fs.includes("cost") && (fs.includes("description") || fs.includes("name")); });
   if (at < 0) return null;
   const head = rows[at];
-  const wrong = HEADERS.flatMap((h, i) => norm(head[i] ?? "") === h ? [] : [`${"ABCDEFGHIJKL"[i]} reads “${(head[i] ?? "").trim() || "blank"}”, expected “${h}”`]);
-  for (let k = 0; k < 12; k++) {
-    const cell = norm(head[12 + k] ?? "");
-    if (!cell.startsWith(MONTHS[k])) wrong.push(`${"MNOPQRSTUVWX"[k]} reads “${(head[12 + k] ?? "").trim() || "blank"}”, expected ${MONTHS[k]}`);
-  }
-  if (norm(head[24] ?? "") !== "nbv") wrong.push(`Y reads “${(head[24] ?? "").trim() || "blank"}”, expected NBV`);
+  const col = {} as Partial<Record<Field, number>>;
+  head.forEach((c, i) => { const f = fieldOf(c); if (f && col[f] === undefined) col[f] = i; });
+  // The twelve months: the first header after the fixed columns that starts with each month's name.
+  const months = MONTHS.map((m) => head.findIndex((c) => norm(c).startsWith(m) && !fieldOf(c)));
+  const wrong = [
+    ...NEEDED.filter((f) => col[f] === undefined && !(f === "description" && col.name !== undefined)).map((f) => `no “${LABEL[f]}” column`),
+    ...months.flatMap((i, k) => (i < 0 ? [`no ${MONTHS[k][0].toUpperCase() + MONTHS[k].slice(1)} column`] : [])),
+  ];
   // The year: from a month header that carries one ("Jan-26"), else the commonest start year.
-  const fromHead = head.slice(12, 24).map((c) => parseMonth(c)).find(Boolean);
-  return { at, wrong, year: fromHead ? Number(fromHead.slice(0, 4)) : null };
+  const fromHead = months.map((i) => (i >= 0 ? parseMonth(head[i]) : null)).find(Boolean);
+  return { at, col, months, wrong, year: fromHead ? Number(fromHead.slice(0, 4)) : null };
 }
 
 export function readRegister(rows: string[][], categories: Category[]) {
   const h = findHeader(rows);
   if (!h) return null;
+  const at = (r: string[], f: Field) => (h.col[f] === undefined ? "" : (r[h.col[f]!] ?? "").trim());
   const body = rows.slice(h.at + 1).map((r, i) => ({ r, line: h.at + 2 + i }))
-    .filter(({ r }) => (r[1] ?? "").trim() || num(r[9]) !== null)
+    .filter(({ r }) => at(r, "description") || at(r, "name") || num(at(r, "cost")) !== null)
     // A total line is not an asset.
-    .filter(({ r }) => !/^(grand\s*)?total/i.test((r[0] || r[1] || "").trim()));
-  const starts = body.map(({ r }) => parseMonth(r[5] ?? "")).filter(Boolean) as Month[];
+    .filter(({ r }) => !/^(grand\s*)?total/i.test(at(r, "no") || at(r, "name") || at(r, "description")));
+  const starts = body.map(({ r }) => parseMonth(at(r, "start"))).filter(Boolean) as Month[];
   const year = h.year ?? (starts.length ? Number(starts.sort()[Math.floor(starts.length / 2)].slice(0, 4)) : new Date().getFullYear());
   const first = `${year}-01` as Month, before = addMonths(first, -1);
   const byName = new Map(categories.map((c) => [norm(c.name), c]));
@@ -133,20 +177,22 @@ export function readRegister(rows: string[][], categories: Category[]) {
     const issues: Issue[] = [];
     const block = (text: string) => issues.push({ level: "blocked", text });
     const review = (text: string) => issues.push({ level: "review", text });
-    const description = (r[1] ?? "").trim(), group = (r[2] ?? "").trim(), categoryText = (r[3] ?? "").trim();
+    const description = at(r, "description"), group = at(r, "types"), categoryText = at(r, "software");
+    // A Name column wins; without one the name is suggested from the description.
+    const name = at(r, "name") || suggestName(description);
     const category = byName.get(norm(categoryText)) ?? null;
-    if (!description) block("No description.");
-    if (!categoryText) block("No subcategory in column D.");
+    if (!name) block("No name or description.");
+    if (!categoryText) block("No subcategory (the “Software” column).");
     else if (!category) block(`No subcategory named “${categoryText}”. Add it in Fixed Asset Settings.`);
-    else if (group && category.group && !sameHeading(group, category.group)) review(`Column C says “${group}”; the chart files ${category.name} under ${category.group}.`);
+    else if (group && category.group && !sameHeading(group, category.group)) review(`Types says “${group}”; the chart files ${category.name} under ${category.group}.`);
 
-    const lifeRaw = num(r[4]);
+    const lifeText = at(r, "life"), lifeRaw = num(lifeText);
     const life = lifeRaw !== null && Number.isInteger(lifeRaw) && lifeRaw > 0 && lifeRaw <= 1200 ? lifeRaw : null;
-    if (life === null) block(!(r[4] ?? "").trim() ? "No useful life in column E." : `Useful life “${(r[4] ?? "").trim()}” is not a whole number of months.`);
-    const startText = (r[5] ?? "").trim(), start = parseMonth(startText);
-    if (!start) block(startText ? `Start month “${startText}” is not a month.` : "No start month in column F.");
-    const dateText = (r[6] ?? "").trim(), d = parseDate(dateText);
-    // Day/month unclear: the start month in column F settles it when one reading agrees.
+    if (life === null) block(!lifeText ? "No useful life." : `Useful life “${lifeText}” is not a whole number of months.`);
+    const startText = at(r, "start"), start = parseMonth(startText);
+    if (!start) block(startText ? `Start month “${startText}” is not a month.` : "No start month.");
+    const dateText = at(r, "date"), d = parseDate(dateText);
+    // Day/month unclear: the start month settles it when one reading agrees.
     if (d.unsure && d.date && start) {
       const [y, mo, dd] = d.date.split("-");
       const swapped = `${y}-${dd}-${mo}`;
@@ -155,20 +201,20 @@ export function readRegister(rows: string[][], categories: Category[]) {
     }
     if (dateText && !d.date) review(`Date “${dateText}” is not a date.`);
     else if (d.unsure) review(`Date ${dateText} could be day/month or month/day; read as ${d.date}.`);
-    else if (!dateText) review("No date in column G; the purchase date will be asked for.");
+    else if (!dateText) review("No date; the purchase date will be asked for.");
 
-    const qty = num(r[7]), price = num(r[8]), cost = num(r[9]);
-    if (cost === null || cost <= 0) block("No cost in column J.");
+    const qty = num(at(r, "qty")), price = num(at(r, "price")), cost = num(at(r, "cost"));
+    if (cost === null || cost <= 0) block("No cost.");
     else if (qty !== null && price !== null && Math.abs(qty * price - cost) > 1) review(`Qty × price is ${fmt(qty * price)}, cost is ${fmt(cost)}.`);
-    const disposal = num(r[10]);
-    if (disposal) review(`Column K has ${fmt(disposal)} as disposal; confirm what it means before it becomes a disposal.`);
-    const openingBlank = !(r[11] ?? "").trim();
-    const opening = num(r[11]);
+    const disposal = num(at(r, "disposal"));
+    if (disposal) review(`Disopsal has ${fmt(disposal)}; confirm what it means before it becomes a disposal.`);
+    const openingBlank = !at(r, "opening");
+    const opening = num(at(r, "opening"));
     if (openingBlank && start && start < first) review(`Opening accumulated is blank but depreciation began ${start}; confirm it is zero.`);
     if (opening && start && start >= first) review(`Opening accumulated is ${fmt(opening)} but depreciation starts in ${year}; it is not used.`);
 
-    const excel = Array.from({ length: 12 }, (_, k) => num(r[12 + k]));
-    const nbv = num(r[24]);
+    const excel = h.months.map((i) => (i < 0 ? null : num(r[i])));
+    const nbv = num(at(r, "nbv"));
     let mtk: number[] = Array(12).fill(0), mtkNbv: number | null = null;
     if (life && start && cost && cost > 0) {
       // The file's opening figure covers everything before its year, as one carried amount.
@@ -185,7 +231,7 @@ export function readRegister(rows: string[][], categories: Category[]) {
       if (nbv !== null && Math.abs(nbv - mtkNbv) > 1) review(`NBV ${fmt(nbv)} in the file, ${fmt(mtkNbv)} by MTK at Dec ${year}.`);
     }
     const status: Severity = issues.some((i) => i.level === "blocked") ? "blocked" : issues.length ? "review" : "ok";
-    return { line, no: (r[0] ?? "").trim(), description, group, categoryText, category, life, start, startText,
+    return { line, no: at(r, "no"), description, name, group, categoryText, category, life, start, startText,
       date: d.date, dateText, qty, price, cost, disposal, opening, openingBlank, excel, mtk, nbv, mtkNbv, issues, status };
   });
   return { headerLine: h.at + 1, wrongHeaders: h.wrong, year, rows: out };
