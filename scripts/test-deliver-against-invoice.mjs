@@ -268,7 +268,8 @@ try {
 
     // 30 came in at 400 and were costed at 400. The other 20 had nothing
     // behind them, so their cost is provisional.
-    const provisional = await cogsOf(dlv.id);
+    // Booked by the invoice ahead of the goods and settled by the delivery (0178).
+    const provisional = (await cogsOf(inv.id)) + (await cogsOf(dlv.id));
     check("  a cost of sale was booked for all 50", provisional > 0, `${provisional}`);
 
     // The missing receipt arrives, and at a different price than was guessed.
