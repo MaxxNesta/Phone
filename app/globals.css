@@ -7841,7 +7841,7 @@ button.dt-cols-go:disabled { opacity: 0.45; cursor: not-allowed; }
 .fa-pinned { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 var(--s3); padding: 0.65rem 0.85rem; border-radius: 10px;
   background: color-mix(in srgb, var(--fa-lav) 9%, transparent); color: var(--ink-soft); font-size: var(--t-sm); }
 .fa-pinned svg { flex: none; margin-top: 2px; color: var(--fa-lav); }
-.fa-form { max-width: 980px; padding-bottom: var(--s3); }
+.fa-form { padding-bottom: var(--s3); }
 .fa-status-card { max-width: 980px; margin-top: var(--s3); }
 .fa-status-actions { display: flex; gap: var(--s2); flex-wrap: wrap; }
 button.ie-btn.fa-warn { color: var(--fa-red); }
