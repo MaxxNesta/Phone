@@ -120,8 +120,12 @@ try {
     const gl = await balance("14303");
     const view = await viewTotal();
     const report = r2((await getShippedNotInvoiced(co.id, null)).total);
-    check(`    reconciles — 1090 = view = report`,
-      gl === view && view === report, `${gl} / ${view} / ${report}`);
+    // Less what deliver-later invoices booked ahead of their goods (0178).
+    const [ah] = await sql`select coalesce(sum(value_ahead), 0) as v
+      from v_invoice_cost_booked_ahead where company_id = ${co.id}`;
+    const ahead = r2(ah.v);
+    check(`    reconciles — 1090 = view − booked ahead, view = report`,
+      gl === r2(view - ahead) && view === report, `${gl} / ${view} − ${ahead} / ${report}`);
     return gl;
   };
 
@@ -293,8 +297,8 @@ try {
   const pending = await P.postSalesInvoice({ ...base, docDate: DAY, dueDate: DAY,
     paymentType: "CREDIT", toDeliver: true,
     lines: [{ itemId: item.id, qty: 5, unitPrice: 300 }] });
-  check("the bill alone costs nothing — no goods have moved",
-    (await balance("51108")) === cogs7 && (await balance("14303")) === held7,
+  check("the bill books the cost with the sale, ahead of the goods (0178)",
+    r2((await balance("51108")) - cogs7) === 500 && r2((await balance("14303")) - held7) === -500,
     `5000 ${await balance("51108")} / 1090 ${await balance("14303")}`);
   await reconcile();
 

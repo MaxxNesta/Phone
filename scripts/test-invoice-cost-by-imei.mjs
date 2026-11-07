@@ -168,7 +168,10 @@ try {
         paymentType: "CREDIT", toDeliver: true, lines: [{ itemId: it.id, qty: 1, unitPrice: 2_500_000 }] }, tx);
       const dv = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
         sourceDocumentId: si.id, lines: [{ itemId: it.id, qty: 1, serials: [sn[1]] }] }, tx);
-      check("cost of sales is B's 2,150,000", near(await gl(dv.id, it.cogs), B), fmt(await gl(dv.id, it.cogs)));
+      // The invoice books the oldest phone's cost ahead (0178); the delivery
+      // of B adds the difference, so the two together are B's cost.
+      const both = (await gl(si.id, it.cogs)) + (await gl(dv.id, it.cogs));
+      check("cost of sales is B's 2,150,000", near(both, B), fmt(both));
       check("nothing waits in the holding account", near(await unclaimed(dv.id), 0));
     });
 

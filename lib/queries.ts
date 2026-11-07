@@ -7407,14 +7407,24 @@ export async function getInventoryCogsReconciliation(
 
   const [releasedRow] = heldId
     ? ((await sql`
-        select coalesce(sum(al.qty * al.unit_cost), 0) as value
-          from sales_cost_allocation al
-          join document pd on pd.id = al.posted_by_document_id
-         where al.company_id = ${companyId}
-           and pd.posting_date between ${from}::date and ${to}::date
-           ${branchId ? sql`and (pd.location_id = ${branchId} or exists (
+        -- Claims, plus what invoices booked ahead of their goods and less what
+        -- deliveries released of it (0178): all of it left 1090 for cost of sales.
+        select (select coalesce(sum(al.qty * al.unit_cost), 0)
+                  from sales_cost_allocation al
+                  join document pd on pd.id = al.posted_by_document_id
+                 where al.company_id = ${companyId}
+                   and pd.posting_date between ${from}::date and ${to}::date
+                   ${branchId ? sql`and (pd.location_id = ${branchId} or exists (
                select 1 from location l where l.id = pd.location_id
-                and l.parent_id = ${branchId}))` : sql``}`) as unknown as
+                and l.parent_id = ${branchId}))` : sql``})
+             + (select coalesce(sum(b.amount), 0)
+                  from sales_cost_booked b
+                  join document pd on pd.id = b.document_id
+                 where b.company_id = ${companyId}
+                   and pd.posting_date between ${from}::date and ${to}::date
+                   ${branchId ? sql`and (pd.location_id = ${branchId} or exists (
+               select 1 from location l where l.id = pd.location_id
+                and l.parent_id = ${branchId}))` : sql``}) as value`) as unknown as
         Array<{ value: string }>)
     : [{ value: "0" }];
 
@@ -7436,9 +7446,10 @@ export async function getInventoryCogsReconciliation(
            and jl.account_id = ${cogsId}
            and je.entry_date between ${from}::date and ${to}::date
            and exists (
-             select 1 from sales_cost_allocation a
-              where a.posted_by_document_id = (
-                select d.id from document d where d.journal_entry_id = je.id))
+             select 1 from document d
+              where d.journal_entry_id = je.id
+                and (exists (select 1 from sales_cost_allocation a where a.posted_by_document_id = d.id)
+                     or exists (select 1 from sales_cost_booked b where b.document_id = d.id)))
            ${branchFilter(branchId)}`) as unknown as Array<{ value: string }>)
     : [{ value: "0" }];
 

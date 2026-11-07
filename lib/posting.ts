@@ -3370,9 +3370,15 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
            this delivery's share of what it still holds — all of it on the
            load that finishes the line — so only the difference between that
            estimate and what the goods actually cost reaches cost of sales. */
+        /* By what this delivery sent for the line, not what it could claim:
+           units sent with no stock behind them took their provisional cost
+           straight to cost of sales above, and their estimate must go too. */
         const [took] = await tx`
-          select coalesce(sum(qty), 0) as q from sales_cost_allocation
-           where invoice_line_id = ${l.id} and posted_by_document_id = ${doc.id}`;
+          select coalesce(
+                   nullif(sum(base_qty) filter (where source_line_id = ${l.id}), 0),
+                   least(${need}::numeric, coalesce(sum(base_qty) filter (where item_id = ${l.item_id}), 0))
+                 ) as q
+            from document_line where document_id = ${doc.id}`;
         const [open] = await tx`
           select coalesce(sum(qty_ahead), 0) as q, coalesce(sum(value_ahead), 0) as v
             from v_invoice_cost_booked_ahead where invoice_line_id = ${l.id}`;
