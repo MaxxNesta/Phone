@@ -18,7 +18,7 @@ export default async function NewAsset() {
   return (
     <div className="ie">
       <Breadcrumbs trail={[{ label: "Fixed Assets" }, { label: "Asset Register", href: "/fixed-assets/register" }, { label: "Add asset" }]} />
-      <AssetForm action={saveAsset} companyName={(await sql`select name from company where id = ${co}`)[0].name} pinned={false} companyConvention={setting?.start_convention ?? "NEXT_MONTH"}
+      <AssetForm action={saveAsset} companyName={(await sql`select name from company where id = ${co}`)[0].name} pinned={false} companyConvention={setting?.start_convention ?? "SAME_MONTH"}
         categories={categories.filter((c) => c.is_active).map((c) => ({ ...c, accounts: `${c.asset_account} · ${c.accum_account} · ${c.expense_account}` }))}
         branches={branches}
         value={{ code, name: "", category_id: "", branch_id: branches.length === 1 ? branches[0].id : "", site: "", serial_no: "",

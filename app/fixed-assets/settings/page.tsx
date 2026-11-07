@@ -30,7 +30,7 @@ export default async function FaSettings() {
            and account_type in ('ASSET', 'EXPENSE', 'REVENUE') order by code`,
   ]);
   const list = (t: string) => (accts as any[]).filter((a) => a.account_type === t);
-  const setting = s ?? { posting_mode: "REVIEW", start_convention: "NEXT_MONTH", gain_account_id: null, loss_account_id: null };
+  const setting = s ?? { posting_mode: "REVIEW", start_convention: "SAME_MONTH", gain_account_id: null, loss_account_id: null };
 
   return (
     <div className="ie">

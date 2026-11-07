@@ -28,7 +28,7 @@ async function loadOne(tx: TransactionSql, co: string, assetId: string, disposed
          from fa_depreciation where asset_id = ${assetId} and journal_line_id is not null group by 1`,
   ]);
   const engine = { cost: toUnits(a.cost), residual: toUnits(a.residual), lifeMonths: a.useful_life_months, inService: a.in_service,
-    convention: (a.start_convention ?? a.company_convention ?? "NEXT_MONTH") as Convention, disposedOn };
+    convention: (a.start_convention ?? a.company_convention ?? "SAME_MONTH") as Convention, disposedOn };
   const rows = schedule(engine, {
     estimates: (estimates as any[]).map((e) => ({ from: e.m, lifeMonths: e.useful_life_months, residual: toUnits(e.residual) })),
     posted: new Map((posted as any[]).map((p) => [p.m, toUnits(p.amount)])),

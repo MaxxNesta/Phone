@@ -37,8 +37,8 @@ export function FaSettingsForm({ action, value, revenue, expense }: {
       <div className="ie-grid3">
         <label className="ie-field"><span>First month of depreciation</span>
           <select name="start_convention" defaultValue={value.start_convention}>
-            <option value="NEXT_MONTH">The month after it goes into service</option>
             <option value="SAME_MONTH">The month it goes into service, in full</option>
+            <option value="NEXT_MONTH">The month after it goes into service</option>
             <option value="DAILY">That month, by the days left in it</option>
           </select></label>
         <label className="ie-field"><span>Gain on disposal</span>

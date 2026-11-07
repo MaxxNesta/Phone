@@ -21,7 +21,7 @@ export type LoadedAsset = {
 
 export async function loadSchedules(co: string, f: { branches?: string[] | null; assetId?: string; categoryId?: string } = {}): Promise<LoadedAsset[]> {
   const [setting] = await sql`select start_convention from fa_setting where company_id = ${co}`;
-  const fallback = (setting?.start_convention ?? "NEXT_MONTH") as Convention;
+  const fallback = (setting?.start_convention ?? "SAME_MONTH") as Convention;
   const assets = await sql`
     select f.id, f.code, f.name, f.status, f.branch_id, b.name as branch,
            coalesce(f.posting_branch_id, f.branch_id) as post_branch_id, coalesce(pb.name, b.name) as post_branch, f.category_id, c.name as category, c.asset_class,

@@ -37,7 +37,7 @@ type Planned = { assetId: string; code: string; amount: bigint; opening: bigint;
 /** What the branch should depreciate for the month, from the same engine every screen uses. */
 async function planned(tx: TransactionSql, co: string, branchId: string, month: Month): Promise<Planned[]> {
   const [setting] = await tx`select start_convention from fa_setting where company_id = ${co}`;
-  const fallback = (setting?.start_convention ?? "NEXT_MONTH") as Convention;
+  const fallback = (setting?.start_convention ?? "SAME_MONTH") as Convention;
   const assets = await tx`
     select f.id, f.code, f.acquisition_cost::text as cost, f.residual_value::text as residual, f.useful_life_months,
            f.start_convention, to_char(f.in_service_date, 'YYYY-MM-DD') as in_service, to_char(f.disposed_on, 'YYYY-MM-DD') as disposed_on,

@@ -31,7 +31,7 @@ export default async function EditAsset({ params }: { params: Promise<{ id: stri
   return (
     <div className="ie">
       <Breadcrumbs trail={[{ label: "Fixed Assets" }, { label: "Asset Register", href: "/fixed-assets/register" }, { label: a.code }]} />
-      <AssetForm action={saveAsset} companyName={(await sql`select name from company where id = ${co}`)[0].name} pinned={a.posted_months > 0} companyConvention={setting?.start_convention ?? "NEXT_MONTH"}
+      <AssetForm action={saveAsset} companyName={(await sql`select name from company where id = ${co}`)[0].name} pinned={a.posted_months > 0} companyConvention={setting?.start_convention ?? "SAME_MONTH"}
         categories={categories.filter((c) => c.is_active || c.id === a.category_id)
           .map((c) => ({ ...c, accounts: `${c.asset_account} · ${c.accum_account} · ${c.expense_account}` }))}
         branches={branches}
