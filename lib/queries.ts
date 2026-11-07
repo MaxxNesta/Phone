@@ -7455,13 +7455,21 @@ export async function getInventoryCogsReconciliation(
 
   const [unclaimed] = heldId
     ? ((await sql`
-        select coalesce(sum(value_unclaimed), 0) as value
-          from v_delivery_cost_unclaimed
-         where company_id = ${companyId}
-           and posting_date <= ${to}::date
-           ${branchId ? sql`and (location_id = ${branchId} or exists (
+        -- Less what invoices booked ahead of goods not yet sent (0178): 1090 holds both.
+        select (select coalesce(sum(value_unclaimed), 0)
+                  from v_delivery_cost_unclaimed
+                 where company_id = ${companyId}
+                   and posting_date <= ${to}::date
+                   ${branchId ? sql`and (location_id = ${branchId} or exists (
                select 1 from location l where l.id = location_id
-                and l.parent_id = ${branchId}))` : sql``}`) as unknown as
+                and l.parent_id = ${branchId}))` : sql``})
+             - (select coalesce(sum(value_ahead), 0)
+                  from v_invoice_cost_booked_ahead
+                 where company_id = ${companyId}
+                   and posting_date <= ${to}::date
+                   ${branchId ? sql`and (location_id = ${branchId} or exists (
+               select 1 from location l where l.id = location_id
+                and l.parent_id = ${branchId}))` : sql``}) as value`) as unknown as
         Array<{ value: string }>)
     : [{ value: "0" }];
 
@@ -8081,13 +8089,15 @@ export async function getShippedNotInvoicedBalance(companyId: string) {
   const [row] = (await sql`
     select a.id, a.code, a.name,
            coalesce((select sum(jl.base_amount) from journal_line jl
-                      where jl.account_id = a.id), 0) as balance
+                      where jl.account_id = a.id), 0) as balance,
+           coalesce((select sum(v.value_ahead) from v_invoice_cost_booked_ahead v
+                      where v.company_id = a.company_id), 0) as ahead
       from account a
       join system_account s on s.account_id = a.id and s.role = 'SHIPPED_NOT_INVOICED'
      where a.company_id = ${companyId}`) as unknown as
-    Array<{ id: string; code: string; name: string; balance: string }>;
+    Array<{ id: string; code: string; name: string; balance: string; ahead: string }>;
   if (!row) return null;
-  return { ...row, balance: Number(row.balance) };
+  return { ...row, balance: Number(row.balance), ahead: Number(row.ahead) };
 }
 
 

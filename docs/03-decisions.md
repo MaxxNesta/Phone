@@ -326,6 +326,19 @@ long before any of this and one by the scenario matrix:
 5. The reconciliation compared releases against all of cost of sales, which
    also receives corrections, returns and negative-stock cost.
 
+**Closed 2026-11-07: invoice before goods.** The gap noted under *What it
+does not fix* is closed without deferring revenue. A deliver-later invoice
+books Dr cost of sales / Cr 1090 at the FIFO cost the shelf would give now
+(`sales_cost_booked`, migration 0178), so 1090 runs into credit for goods
+invoiced and not delivered. Each delivery against it releases its share; the
+load that finishes a line releases the rest, and any gap between estimate
+and actual cost goes to cost of sales on that delivery. A void of the
+undelivered invoice reverses its entry and its booking drops out with it.
+The holding account now reconciles as delivered-unclaimed less
+invoiced-ahead; `scripts/check-delivery-entries.mjs` proves all four orders
+across a month end. Whether a retail shop sees orders and deliveries at all
+is a developer switch, `ORDERS_AND_DELIVERIES` in `lib/features.ts`.
+
 **Direction chosen 2026-10-03.** Cost moves to the sales invoice.
 Before building it, measure: the reporting-basis toggle on Sales → Sales
 report sizes this exactly, because the gap between *Accounting period* and

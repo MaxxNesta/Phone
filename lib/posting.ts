@@ -3366,17 +3366,38 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
         if (need <= 0) continue;
         const { cost } = await claimDeliveredCost(
           tx, companyId, [doc.id], l.id, l.item_id, need, doc.id);
-        if (cost === 0) continue;
+        /* The invoice may already have booked this cost ahead (0178). Release
+           this delivery's share of what it still holds — all of it on the
+           load that finishes the line — so only the difference between that
+           estimate and what the goods actually cost reaches cost of sales. */
+        const [took] = await tx`
+          select coalesce(sum(qty), 0) as q from sales_cost_allocation
+           where invoice_line_id = ${l.id} and posted_by_document_id = ${doc.id}`;
+        const [open] = await tx`
+          select coalesce(sum(qty_ahead), 0) as q, coalesce(sum(value_ahead), 0) as v
+            from v_invoice_cost_booked_ahead where invoice_line_id = ${l.id}`;
+        const sent = Number(took.q), openQty = Number(open.q), openValue = Number(open.v);
+        let release = 0;
+        if (sent > 0 && openQty > 0) {
+          const q = Math.min(sent, openQty);
+          release = q >= openQty ? round4(openValue) : round4(openValue * q / openQty);
+          await tx`
+            insert into sales_cost_booked (company_id, invoice_line_id, document_id, qty, amount)
+            values (${companyId}, ${l.id}, ${doc.id}, ${-q}, ${-release})`;
+        }
+        const toCogs = round4(cost - release);
+        if (toCogs === 0) continue;
         const cogs = await tx`
           select fn_resolve_account_for_item(${companyId}, 'COGS', ${l.item_id}) as a`;
         const acct = cogs[0].a as string;
-        costByAccount.set(acct, round4((costByAccount.get(acct) ?? 0) + cost));
-        claimed = round4(claimed + cost);
+        costByAccount.set(acct, round4((costByAccount.get(acct) ?? 0) + toCogs));
+        claimed = round4(claimed + toCogs);
+      }
+      // Per account, since an estimate above the actual makes a line a credit.
+      for (const [accountId, amount] of costByAccount) {
+        if (amount !== 0) journal.push({ accountId, amount, locationId });
       }
       if (claimed !== 0) {
-        for (const [accountId, amount] of costByAccount) {
-          if (amount !== 0) journal.push({ accountId, amount, locationId });
-        }
         const heldAcct = await tx`
           select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`;
         journal.push({ accountId: heldAcct[0].a as string, amount: -claimed, locationId });
@@ -4388,6 +4409,43 @@ async function _postSalesInvoice(
       const heldAcct = await tx`
         select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`;
       journal.push({ accountId: heldAcct[0].a as string, amount: -held, locationId });
+    }
+  }
+
+  /* Deliver later: the goods have not left, but their cost is recognised
+     with the sale, here, so the two never land in different months.
+     Booked at the FIFO cost the shelf would give them now — an estimate,
+     nothing leaves and no layer is drawn — as Dr cost of sales / Cr 1090.
+     1090 runs into credit for it: goods invoiced and not delivered, the
+     mirror of goods delivered and not invoiced. Each delivery against this
+     invoice releases its share and puts any difference from the actual
+     cost into cost of sales (migration 0178). */
+  if (input.toDeliver && !input.issueStock) {
+    const costByAccount = new Map<string, number>();
+    let booked = 0;
+    for (const b of billedLines) {
+      const [c] = await tx`
+        select coalesce(sum(qty), 0) as q from sales_cost_allocation where invoice_line_id = ${b.lineId}`;
+      const ahead = round4(b.qty - Number(c.q));
+      if (ahead <= 0) continue;
+      const plan = await planFifoConsumption(tx, companyId, b.itemId, locationId, ahead, true);
+      if (plan.totalCost === 0) continue;
+      await tx`
+        insert into sales_cost_booked (company_id, invoice_line_id, document_id, qty, amount)
+        values (${companyId}, ${b.lineId}, ${doc.id}, ${ahead}, ${plan.totalCost})`;
+      const cogs = await tx`
+        select fn_resolve_account_for_item(${companyId}, 'COGS', ${b.itemId}) as a`;
+      const acct = cogs[0].a as string;
+      costByAccount.set(acct, round4((costByAccount.get(acct) ?? 0) + plan.totalCost));
+      booked = round4(booked + plan.totalCost);
+    }
+    if (booked !== 0) {
+      for (const [accountId, amount] of costByAccount) {
+        if (amount !== 0) journal.push({ accountId, amount, locationId });
+      }
+      const heldAcct = await tx`
+        select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`;
+      journal.push({ accountId: heldAcct[0].a as string, amount: -booked, locationId });
     }
   }
 

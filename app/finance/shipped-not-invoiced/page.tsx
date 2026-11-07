@@ -50,7 +50,9 @@ export default async function ShippedNotInvoiced({
      page says which of the two situations it is in rather than asserting the
      one that was true when it was written. */
   const held = account?.balance ?? 0;
-  const gap = Math.round((held - report.total) * 10000) / 10000;
+  // Invoices raised ahead of their goods credit the same account (0178).
+  const ahead = account?.ahead ?? 0;
+  const gap = Math.round((held - report.total + ahead) * 10000) / 10000;
 
   const band = SHIPPED_BANDS.find((b) => b.bucket === p.band)?.bucket ?? null;
   const shown = band ? report.rows.filter((r) => r.bucket === band) : report.rows;
@@ -224,6 +226,7 @@ export default async function ShippedNotInvoiced({
                 {account?.code ?? "The holding account"} holds <strong style={{ color: "var(--ink)" }}>{money(String(held))}</strong>,
                 and this report accounts for{" "}
                 <strong style={{ color: "var(--ink)" }}>{money(String(report.total))}</strong>
+                {ahead !== 0 && <>{" "}less <strong style={{ color: "var(--ink)" }}>{money(String(ahead))}</strong> booked by invoices whose goods have not left yet</>}
                 {gap === 0 ? (
                   <> — they agree.</>
                 ) : (
