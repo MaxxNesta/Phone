@@ -1079,7 +1079,7 @@ export function SalesVoucher({
           are typed — and worded as the situation rather than the mechanism.
           Somebody billing a sale knows whether the goods have gone; they do
           not necessarily know what a delivery document is. */}
-      {!retail && (
+      {(
       <div className="card receive-mode doc-info">
         <div className="card-body">
           <div className="receive-row">
@@ -1210,6 +1210,7 @@ export function SalesVoucher({
           )}
 
           {fulfilMode === "later" && <input type="hidden" name="to_deliver" value="on" />}
+          <input type="hidden" name="fulfil" value={fulfilMode} />
 
           {/* Only where it is a warning. Under "already gone" the customer's
               waiting deliveries are the point, not a mistake. */}
@@ -1703,7 +1704,6 @@ export function SalesVoucher({
                   a fee of 0. */}
               {(() => {
                 // A counter sale carries nothing anywhere, so there is no charge to ask about.
-                if (retail) return null;
                 const noCharge = fulfilMode === "counter" || fulfilMode === "match";
                 return (
               <div className="field">

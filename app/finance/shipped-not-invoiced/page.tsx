@@ -126,7 +126,7 @@ export default async function ShippedNotInvoiced({
         <td className="r">{qty(r.qty)}</td>
         <td className="r"><strong>{money(String(r.value))}</strong></td>
         <td className="r">
-          <Link href={`/sales/new?delivery=${r.deliveryId}`}>Invoice</Link>
+          <Link href={`/sales/new?delivery_id=${r.deliveryId}`}>Invoice</Link>
         </td>
       </tr>
     ),

@@ -150,8 +150,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {may("sales.view") && (
               <NavGroup label={n("salesHistory")} icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
-                {wholesale && <NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
-                {wholesale && <NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
+                {<NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
+                {<NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
                 {wholesale && <NavLink href="/sales/consignment">{n("consignmentSale")}</NavLink>}
                 <NavLink href="/sales/returns" exact>{n("customerReturns")}</NavLink>
                 <NavLink href="/sales/credit-notes" exact>{n("creditNotes")}</NavLink>
@@ -247,7 +247,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/finance/inventory-cogs" sub>{n("inventoryCogs")}</NavLink>
                 </NavSubGroup>
                 <NavLink href="/finance/aging">{n("arApAging")}</NavLink>
-                {wholesale && <NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
+                {<NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
               </NavGroup>
             )}
 
