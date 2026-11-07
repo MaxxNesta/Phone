@@ -52,14 +52,14 @@ export default async function FaSettings() {
             {(cats as any[]).map((c) => (
               <details key={c.id} className="fas-row">
                 <summary>
-                  <strong>{c.name}</strong>
+                  <strong>{c.name}{c.report_group && <span className="subline">{c.report_group}</span>}</strong>
                   <span className="mono">{c.a_code} · {c.x_code} · {c.e_code}</span>
                   <span>{c.asset_class === "INTANGIBLE" ? "Amortised" : "Depreciated"} · {c.assets} asset{c.assets === 1 ? "" : "s"}{c.is_active ? "" : " · inactive"}</span>
                 </summary>
                 {canEdit && <FaCategoryForm action={saveFaCategory} used={c.used} assets={list("ASSET")} expenses={list("EXPENSE")}
                   value={{ id: c.id, code: c.code, name: c.name, asset_class: c.asset_class, asset_account_id: c.asset_account_id,
                            accum_account_id: c.accum_account_id, expense_account_id: c.expense_account_id,
-                           default_life_months: c.default_life_months, is_active: c.is_active }} />}
+                           default_life_months: c.default_life_months, is_active: c.is_active, report_group: c.report_group }} />}
               </details>
             ))}
             {canEdit && (

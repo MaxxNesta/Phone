@@ -15,12 +15,12 @@ export const FA_STATUS_LABEL: Record<FaStatus, string> = {
 export type FaCategory = {
   id: string; code: string; name: string; asset_class: "TANGIBLE" | "INTANGIBLE";
   asset_account: string; accum_account: string; expense_account: string;
-  default_life_months: number | null; is_active: boolean;
+  default_life_months: number | null; is_active: boolean; report_group: string | null;
 };
 
 export async function faCategories(co: string): Promise<FaCategory[]> {
   return (await sql`
-    select c.id, c.code, c.name, c.asset_class, c.default_life_months, c.is_active,
+    select c.id, c.code, c.name, c.asset_class, c.default_life_months, c.is_active, c.report_group,
            a.code || ' · ' || a.name as asset_account, x.code || ' · ' || x.name as accum_account,
            e.code || ' · ' || e.name as expense_account
       from fa_category c

@@ -59,7 +59,7 @@ export function FaSettingsForm({ action, value, revenue, expense }: {
 export function FaCategoryForm({ action, value, assets, expenses, used }: {
   action: (p: unknown, fd: FormData) => Promise<ActionResult>;
   value: { id?: string; code: string; name: string; asset_class: string; asset_account_id: string; accum_account_id: string;
-           expense_account_id: string; default_life_months: number | null; is_active: boolean };
+           expense_account_id: string; default_life_months: number | null; is_active: boolean; report_group?: string | null };
   assets: Acct[]; expenses: Acct[]; used: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
@@ -81,6 +81,7 @@ export function FaCategoryForm({ action, value, assets, expenses, used }: {
       <div className="ie-grid4">
         <label className="ie-field"><span>Code</span><input name="code" defaultValue={value.code} className="mono" required /></label>
         <label className="ie-field"><span>Name</span><input name="name" defaultValue={value.name} required /></label>
+        <label className="ie-field"><span>Report group</span><input name="report_group" defaultValue={value.report_group ?? ""} placeholder="Machinery, Office equipment…" /></label>
         <label className="ie-field"><span>Class</span>
           <select name="asset_class" defaultValue={value.asset_class}><option value="TANGIBLE">Tangible: depreciated</option><option value="INTANGIBLE">Intangible: amortised</option></select></label>
         <label className="ie-field"><span>Default life (months)</span><input type="number" name="default_life_months" min={1} max={1200} defaultValue={value.default_life_months ?? ""} /></label>
