@@ -25,7 +25,7 @@ const CONVENTION: Record<string, string> = {
  * on the ledger the figures it was worked out from are shown locked, with the
  * way each one is changed instead.
  */
-export function AssetForm({ action, value, categories, branches, pinned, companyConvention, companyName }: {
+export function AssetForm({ action, value, categories, branches, pinned, companyConvention, companyName, heading = true }: {
   /** The legal entity that owns it. */
   companyName: string;
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -35,6 +35,8 @@ export function AssetForm({ action, value, categories, branches, pinned, company
   /** Posted depreciation exists: cost, dates, life, residual, category and branch are locked. */
   pinned: boolean;
   companyConvention: string;
+  /** Off where the page above already has its own title (the empty Asset Register). */
+  heading?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   useNotice(state);
@@ -54,10 +56,10 @@ export function AssetForm({ action, value, categories, branches, pinned, company
                    "residual_value", "useful_life_months", "start_convention", "posting_branch_id"] as const)
         .map((k) => <input key={k} type="hidden" name={k} value={v[k]} />)}
 
-      <header className="ie-title">
+      {heading && <header className="ie-title">
         <h1>{value.id ? "Edit asset" : "Add asset"}</h1>
         <p>{value.id ? `${value.code} · ${value.name}` : "A fixed asset of the shop: equipment, furniture, a vehicle, software."}</p>
-      </header>
+      </header>}
       {state && "error" in state && <div className="alert" role="alert">{state.error}</div>}
       {pinned && (
         <p className="fa-pinned"><Lock size={14} aria-hidden="true" /> Depreciation for this asset is on the ledger. Cost, dates, useful life,
@@ -142,7 +144,7 @@ export function AssetForm({ action, value, categories, branches, pinned, company
       </div>
 
       <footer className="ie-bar">
-        <Link className="ie-btn" href="/fixed-assets/register"><ArrowLeft size={15} aria-hidden="true" /> Back to register</Link>
+        {heading && <Link className="ie-btn" href="/fixed-assets/register"><ArrowLeft size={15} aria-hidden="true" /> Back to register</Link>}
         <span className="ie-bar-note" />
         <button type="submit" name="intent" value="save" className="ie-btn" disabled={pending}>
           {isDraft ? "Save as draft" : "Save"}</button>

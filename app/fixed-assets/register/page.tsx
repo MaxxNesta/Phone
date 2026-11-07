@@ -7,6 +7,7 @@ import { seenLocations } from "@/lib/branch-scope";
 import { assetList, faCategories, faBranches, FA_STATUS, FA_STATUS_LABEL } from "@/lib/fixed-assets";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { NewAssetForm } from "@/components/new-asset-form";
 
 export const metadata = { title: "Asset Register" };
 
@@ -72,10 +73,12 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
         </div>
         {canEdit && <div className="fa-head-actions">
           <Link className="ie-btn" href="/fixed-assets/import"><Upload size={15} aria-hidden="true" /> Import</Link>
-          <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>
+          {rows.length > 0 && <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>}
         </div>}
       </div>
 
+      {/* Empty: the first asset is added right here, not one click away. */}
+      {rows.length === 0 && canEdit ? <NewAssetForm co={co} heading={false} /> : (
       <section className="card">
         {rows.length === 0 ? (
           <div className="fa-empty">
@@ -119,6 +122,7 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
           />
         )}
       </section>
+      )}
     </div>
   );
 }
