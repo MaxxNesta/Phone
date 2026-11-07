@@ -9358,3 +9358,34 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .ij-step { padding: 9px 10px; }
 .ij-step-text strong { font-size: 0.78rem; letter-spacing: -0.01em; }
 @media (max-width: 1280px) { .ij-step .ij-icon { display: none; } }
+
+/* Asset import (components/fa-import.tsx): paste, read, compare with MTK. */
+.fa-head-actions { display: flex; gap: var(--s2); }
+.fai { display: flex; flex-direction: column; gap: var(--s3); }
+.fai-cols > summary { display: flex; align-items: baseline; gap: var(--s2); cursor: pointer; list-style: none; }
+.fai-cols > summary h3 { margin: 0; }
+.fai-map { width: 100%; margin-top: var(--s2); font-size: var(--t-sm); border-collapse: collapse; }
+.fai-map th, .fai-map td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+.fai-map th { color: var(--muted); font-weight: 550; }
+.fai-map td:first-child { width: 4.5rem; color: var(--muted); }
+.fai-map td:nth-child(2) { width: 11rem; font-weight: 550; }
+.fai-counts { display: inline-flex; gap: var(--s2); margin-left: auto; font-size: var(--t-sm); color: var(--muted); }
+.fai-counts > span { display: inline-flex; align-items: center; gap: 4px; }
+.fai-rows { font-size: var(--t-sm); }
+.fai-row { cursor: pointer; }
+.fai-row:hover td { background: var(--line-soft); }
+.fai-desc { min-width: 16rem; max-width: 26rem; }
+.fai-toggle { display: inline-flex; padding: 0; margin-right: 4px; border: 0; background: none; color: var(--muted); vertical-align: -2px; cursor: pointer; }
+.fai-bad { color: var(--bad); }
+.fai-sub { color: var(--muted); font-size: 0.75rem; }
+.fai-muted { color: var(--muted); font-style: italic; }
+.fai-diff { color: var(--warn); font-weight: 650; }
+.fai-detail > td { background: var(--line-soft); padding: var(--s2) var(--s3); }
+.fai-issues { margin: 0 0 var(--s2); padding-left: 1.1rem; }
+.fai-issues li.blocked { color: var(--bad); }
+.fai-facts { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0 0 var(--s2); }
+.fai-facts dt { color: var(--muted); font-size: 0.75rem; }
+.fai-facts dd { margin: 0; }
+.fai-months { width: auto; font-size: 0.8rem; }
+.fai-months th, .fai-months td { padding: 3px 8px; }
+.fai-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }

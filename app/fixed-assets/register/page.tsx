@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { HelpHint } from "@/components/help-hint";
 import { canPostFa } from "@/lib/fa-access";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { assetList, faCategories, faBranches, FA_STATUS, FA_STATUS_LABEL } from "@/lib/fixed-assets";
@@ -70,7 +70,10 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
         <div>
           <h1>Asset Register <HelpHint label="About Asset Register">Every asset, its cost, depreciation to date and net book value.</HelpHint></h1>
         </div>
-        {canEdit && <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>}
+        {canEdit && <div className="fa-head-actions">
+          <Link className="ie-btn" href="/fixed-assets/import"><Upload size={15} aria-hidden="true" /> Import</Link>
+          <Link className="ie-btn primary" href="/fixed-assets/new"><Plus size={15} aria-hidden="true" /> Add asset</Link>
+        </div>}
       </div>
 
       <section className="card">
