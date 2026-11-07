@@ -1,4 +1,5 @@
 "use server";
+import { ordersAndDeliveriesOn } from "./features";
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
@@ -2077,8 +2078,15 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // still go through the delivery, which is the only path that settles them.
     const [mode] = await sql`select retail_mode from company where id = ${co}`;
     // Only a take-now sale: "we deliver now" records its delivery like any shop.
-    const retail = Boolean(mode?.retail_mode) && (str(fd, "fulfil") || "counter") === "counter"
+    // With orders and deliveries switched off (lib/features.ts) every retail
+    // sale is take-now and deliver-later is refused.
+    const deliveriesOn = ordersAndDeliveriesOn(mode);
+    const fulfil = deliveriesOn ? (str(fd, "fulfil") || "counter") : "counter";
+    const retail = Boolean(mode?.retail_mode) && fulfil === "counter"
       && !lines.some((l) => l.source === "CONSIGNMENT");
+    if (!deliveriesOn && toDeliver) {
+      return { error: "This shop sells at the counter: the invoice hands the goods over, so there is no deliver-later." };
+    }
     const userId = (await requireUser()).id;
     const result = await postOnce(co, attemptKey(fd), async (tx) => {
       const posted = await (deliveryId

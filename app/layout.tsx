@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Sans_Myanmar, Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
+import { ordersAndDeliveriesOn } from "@/lib/features";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import "flag-icons/css/flag-icons.min.css";
 import "./globals.css";
@@ -104,6 +105,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const roleT = await getTranslations("roles");
   // Distribution screens (orders, deliveries, routes) only in the trading flow.
   const wholesale = company ? !company.retail_mode : false;
+  // Developer switch, lib/features.ts.
+  const deliveries = ordersAndDeliveriesOn(company);
 
   if (bare) {
     return (
@@ -150,8 +153,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {may("sales.view") && (
               <NavGroup label={n("salesHistory")} icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
-                {<NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
-                {<NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
+                {deliveries && <NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
+                {deliveries && <NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
                 {wholesale && <NavLink href="/sales/consignment">{n("consignmentSale")}</NavLink>}
                 <NavLink href="/sales/returns" exact>{n("customerReturns")}</NavLink>
                 <NavLink href="/sales/credit-notes" exact>{n("creditNotes")}</NavLink>
@@ -247,7 +250,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/finance/inventory-cogs" sub>{n("inventoryCogs")}</NavLink>
                 </NavSubGroup>
                 <NavLink href="/finance/aging">{n("arApAging")}</NavLink>
-                {<NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
+                {deliveries && <NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
               </NavGroup>
             )}
 

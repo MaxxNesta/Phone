@@ -1,4 +1,5 @@
 import { getFormData, createSalesInvoice, saveInvoiceDraft } from "@/lib/actions";
+import { ordersAndDeliveriesOn } from "@/lib/features";
 import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocumentDraft } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
@@ -89,6 +90,7 @@ export default async function NewSalesInvoice({
           ),
         }}
         retail={Boolean((co as { retail_mode?: boolean }).retail_mode)}
+        fulfilment={ordersAndDeliveriesOn(co as { retail_mode?: boolean })}
         initialOrderId={orderId ?? null}
         action={createSalesInvoice}
         saveDraft={saveInvoiceDraft}
