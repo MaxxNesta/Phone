@@ -13,6 +13,11 @@ export type LoadedAsset = {
   /** Where its depreciation posts: the assigned branch unless the asset says otherwise. */
   postBranchId: string; postBranch: string;
   categoryId: string; category: string; assetClass: string;
+  /** The chart title over the category: Machinery over Generator & Solar. */
+  heading: string;
+  acquired: string;
+  /** Set apart from where it is used, so a transfer does not move its postings. */
+  postsElsewhere: boolean;
   accumAccountId: string; expenseAccountId: string;
   inService: string | null; disposedOn: string | null;
   engine: EngineAsset;
@@ -26,6 +31,8 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
     select f.id, f.code, f.name, f.status, f.branch_id, b.name as branch,
            coalesce(f.posting_branch_id, f.branch_id) as post_branch_id, coalesce(pb.name, b.name) as post_branch, f.category_id, c.name as category, c.asset_class,
            c.accum_account_id, c.expense_account_id,
+           (select coalesce(h.name, ac.name) from account ac left join account h on h.id = ac.parent_id where ac.id = c.asset_account_id) as heading,
+           to_char(f.acquisition_date, 'YYYY-MM-DD') as acquired, f.posting_branch_id is not null as posts_elsewhere,
            to_char(f.in_service_date, 'YYYY-MM-DD') as in_service, to_char(f.disposed_on, 'YYYY-MM-DD') as disposed_on,
            f.acquisition_cost::text as cost, f.residual_value::text as residual, f.useful_life_months, f.start_convention
       from fixed_asset f join fa_category c on c.id = f.category_id join location b on b.id = f.branch_id
@@ -66,6 +73,7 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
       id: a.id, code: a.code, name: a.name, status: a.status, branchId: a.branch_id, branch: a.branch,
       postBranchId: a.post_branch_id, postBranch: a.post_branch,
       categoryId: a.category_id, category: a.category, assetClass: a.asset_class,
+      heading: a.heading, acquired: a.acquired, postsElsewhere: a.posts_elsewhere,
       accumAccountId: a.accum_account_id, expenseAccountId: a.expense_account_id,
       inService: a.in_service, disposedOn: a.disposed_on, engine,
       rows: schedule(engine, { estimates: estBy.get(a.id), posted: postedBy.get(a.id), openingThrough: openingBy.get(a.id) }),

@@ -9406,3 +9406,58 @@ td > .hint { white-space: normal; max-width: 32rem; }
 .fai-notes { margin-left: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16rem; }
 .fai-fullnotes { flex-basis: 100%; }
 .fai-fullnotes dd { white-space: pre-wrap; }
+
+/* Fixed asset reports by year (components/fa-year-report.tsx). */
+.fay-year { display: inline-flex; align-items: center; gap: 10px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.fay-year a { display: inline-flex; color: var(--muted); }
+.fay-year a:hover { color: var(--ink); }
+.fay-bar { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); }
+.fay-bar .ie-note { flex: 1; margin: 0; }
+.fay-wrap { max-width: 100%; overflow-x: auto; }
+.fay { font-size: var(--t-sm); border-collapse: separate; border-spacing: 0; white-space: nowrap; }
+.fay th, .fay td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+.fay thead th { background: var(--line-soft); font-weight: 600; text-align: left; }
+.fay thead th.r { text-align: right; }
+.fay .fay-month { text-align: center; border-left: 1px solid var(--line); }
+.fay .fay-m { border-left: 1px solid var(--line); }
+.fay .fay-sub-h { font-weight: 500; color: var(--muted); font-size: 0.75rem; }
+.fay .fay-first { position: sticky; left: 0; z-index: 1; background: var(--surface); text-align: left; min-width: 15rem; border-right: 1px solid var(--line); }
+.fay thead .fay-first { background: var(--line-soft); z-index: 2; }
+.fay-sched .fay-no { position: sticky; left: 0; z-index: 1; background: var(--surface); width: 2.5rem; color: var(--muted); }
+.fay-sched thead .fay-no { background: var(--line-soft); z-index: 2; }
+.fay-sched .fay-first { left: 2.5rem; }
+.fay-group > *, .fay-group .fay-first { background: color-mix(in srgb, var(--line-soft) 55%, var(--surface)); }
+.fay-subrow .fay-first { padding-left: 2.2rem; font-weight: 500; }
+.fay-subrow .fay-first a, .fay-sched .fay-first a { color: var(--link); text-decoration: none; }
+.fay-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; vertical-align: middle; }
+.fay-toggle svg { color: var(--muted); }
+.fay-count { display: block; color: var(--muted); font-size: 0.75rem; font-weight: 400; text-decoration: none; }
+a.fay-count { color: var(--link); margin-left: 21px; }
+.fay-total th, .fay-total td, .fay-total .fay-first { background: var(--line-soft); font-weight: 700; border-top: 1px solid var(--line); }
+.fay-notes { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; }
+.fay-none { color: var(--muted); }
+.fay-due { color: var(--warn); font-weight: 600; }
+.fay-planned { color: var(--muted); font-style: italic; }
+.fay-legend { display: inline-flex; gap: var(--s3); font-size: var(--t-sm); color: var(--muted); }
+.fay-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.fay-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.fay-dot.posted { background: var(--ink); }
+.fay-dot.due { background: var(--warn); }
+.fay-dot.planned { background: var(--line); border: 1px solid var(--muted); }
+.fay-open > * { background: var(--line-soft); }
+.fay-detail > td { background: var(--line-soft); white-space: normal; }
+.fay-detail dl { display: inline-flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin: 0 var(--s4) 0 0; vertical-align: middle; }
+.fay-detail dt { color: var(--muted); font-size: 0.75rem; }
+.fay-detail dd { margin: 0; }
+.fay-links { display: inline-flex; gap: var(--s3); vertical-align: middle; }
+.fay-links a { color: var(--link); text-decoration: none; }
+.fai-asof { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-sm); color: var(--muted); }
+.fai-asof select { padding: 3px 8px; font-size: var(--t-sm); }
+/* Import: the guide drawn as the Excel sheet it describes. */
+.fai-xl-wrap { overflow-x: auto; margin-top: var(--s2); border: 1px solid var(--line); border-radius: 10px; }
+.fai-xl { border-collapse: collapse; font-size: 0.78rem; white-space: nowrap; }
+.fai-xl th, .fai-xl td { border: 1px solid var(--line-soft); padding: 5px 10px; }
+.fai-xl thead th { background: var(--line-soft); color: var(--muted); font-weight: 500; text-align: center; min-width: 5.5rem; }
+.fai-xl tbody th { background: var(--line-soft); color: var(--muted); font-weight: 500; text-align: center; width: 2.6rem; }
+.fai-xl-head td { font-weight: 650; background: color-mix(in srgb, var(--line-soft) 45%, var(--surface)); cursor: help; }
+.fai-xl-field td { color: var(--muted); font-style: italic; }

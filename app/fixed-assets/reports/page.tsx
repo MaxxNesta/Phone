@@ -3,8 +3,11 @@ import { HelpHint } from "@/components/help-hint";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations, seenBranches } from "@/lib/branch-scope";
 import { faBranches, faCategories, FA_STATUS, FA_STATUS_LABEL, assetList } from "@/lib/fixed-assets";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { faYear } from "@/lib/fa-year";
+import { CategorySummary, AssetSchedule } from "@/components/fa-year-report";
 import {
-  registerReport, monthlyReport, accumulatedReport, acquisitionsReport, disposalsReport, reconciliationReport, type ReportFilters,
+  registerReport, accumulatedReport, acquisitionsReport, disposalsReport, reconciliationReport, type ReportFilters,
 } from "@/lib/fa-reports";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { AutoApply } from "@/components/auto-apply";
@@ -15,17 +18,18 @@ export const metadata = { title: "Fixed Asset Reports" };
 type SP = Record<string, string | undefined>;
 const money = (s: string | null | undefined) => (s == null || s === "" ? "—" : Number(s).toLocaleString("en-US", { maximumFractionDigits: 0 }));
 const REPORTS = [
-  ["register", "Asset Register"], ["monthly", "Monthly Depreciation"], ["accumulated", "Accumulated Depreciation"],
+  ["summary", "Category summary"], ["schedule", "Asset schedule"],
+  ["register", "Asset Register"], ["accumulated", "Accumulated Depreciation"],
   ["nbv", "Net Book Value"], ["acquisitions", "Acquisitions"], ["disposals", "Disposals"], ["reconciliation", "Reconciliation"],
 ] as const;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Seven reports on one page, one set of filters, each exported from its own table. */
+/** The fixed-asset reports on one page: two by year and month, six by date range or as of a date. */
 export default async function FaReports({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const user = await requirePermission("accounting.view");
   const co = user.companyId;
-  const report = REPORTS.some(([k]) => k === sp.report) ? sp.report! : "register";
+  const report = REPORTS.some(([k]) => k === sp.report) ? sp.report! : "summary";
   const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
   const seen = await seenLocations();
   const [branches, categories, assets] = await Promise.all([faBranches(co).then(seenBranches), faCategories(co), assetList(co, seen)]);
@@ -40,6 +44,64 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
   const href = (patch: SP) => { const q = new URLSearchParams(); for (const [k, v] of Object.entries({ ...sp, ...patch })) if (v) q.set(k, v); return `/fixed-assets/reports?${q}`; };
   const assetLink = (id: string, code: string) => <Link href={`/fixed-assets/${id}`} style={{ color: "var(--link)" }}>{code}</Link>;
   const docLink = (id: string | null, no: string | null) => (id ? <Link href={`/documents/${id}`} className="fa-jlink">{no}</Link> : no ?? "—");
+  const tabs = (
+    <nav className="fac-tabs far-reports" aria-label="Report">
+      {REPORTS.map(([k, l]) => <Link key={k} href={href({ report: k === "summary" ? undefined : k })} aria-current={report === k ? "page" : undefined}>{l}</Link>)}
+    </nav>
+  );
+
+  // ---- by year: the category summary and the asset schedule ----
+  if (report === "summary" || report === "schedule") {
+    const year = /^\d{4}$/.test(sp.year ?? "") ? Number(sp.year) : Number(today.slice(0, 4));
+    const heading = sp.category?.startsWith("h:") ? sp.category.slice(2) : undefined;
+    const data = await faYear(co, year, { branches: seen, branchId: f.branchId, categoryId: heading ? undefined : f.categoryId, heading });
+    const headings = [...new Set(categories.map((c) => c.heading))];
+    const link: Record<string, string> = {};
+    for (const g of data.groups) {
+      link[`h:${g.id}`] = href({ report: "schedule", category: `h:${g.id}` });
+      for (const c of g.subs) link[c.id] = href({ report: "schedule", category: c.id });
+    }
+    return (
+      <div className="fa">
+        <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Reports" }]} />
+        <div className="fa-head"><div>
+          <h1>Fixed Asset Reports <HelpHint label="About these reports">Read from the same schedule as the calendar and each asset&apos;s page. Posted is what the ledger carries; due is a month that has ended without being posted; planned has not ended yet. With a branch chosen, each month counts where the asset was then, so a transfer moves only the months after it.</HelpHint></h1>
+          <p className="page-sub">Monthly additions, depreciation and closing net book value, by category and by asset.</p>
+        </div></div>
+        {tabs}
+        <form method="get" className="fac-bar">
+          <input type="hidden" name="report" value={report} />
+          <input type="hidden" name="year" value={year} />
+          <span className="fay-year">
+            <Link href={href({ year: String(year - 1) })} aria-label="Previous year"><ChevronLeft size={16} /></Link>
+            <strong>{year}</strong>
+            <Link href={href({ year: String(year + 1) })} aria-label="Next year"><ChevronRight size={16} /></Link>
+          </span>
+          {branches.length > 1 && (
+            <select name="branch" defaultValue={sp.branch ?? ""} aria-label="Branch" className={`dt-filter${sp.branch ? " dt-filter-on" : ""}`}>
+              <option value="">All branches</option>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>)}
+          <select name="category" defaultValue={sp.category ?? ""} aria-label="Category" className={`dt-filter${sp.category ? " dt-filter-on" : ""}`}>
+            <option value="">All categories</option>
+            {headings.map((h) => (
+              <optgroup key={h} label={h}>
+                <option value={`h:${h}`}>All {h}</option>
+                {categories.filter((c) => c.heading === h).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <AutoApply />
+        </form>
+        <section className="card">
+          {data.schedule.length === 0
+            ? <div className="fa-empty"><strong>Nothing in {year}</strong><span>No asset in service matches these filters.</span></div>
+            : report === "summary"
+              ? <CategorySummary year={year} groups={data.groups} total={data.total} link={link} />
+              : <AssetSchedule year={year} assets={data.schedule} />}
+        </section>
+      </div>
+    );
+  }
 
   let columns: Column[] = [];
   let rows: DataRow[] = [];
@@ -80,23 +142,6 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
       const t = [...by.values()].reduce((s, e) => ({ cost: s.cost + e.cost, accum: s.accum + e.accum }), { cost: 0, accum: 0 });
       totals = { span: "Company total", cells: { cost: money(String(t.cost)), accum: money(String(t.accum)), nbv: money(String(t.cost - t.accum)) } };
     }
-  } else if (report === "monthly") {
-    const data = await monthlyReport(co, f);
-    note = `${f.from.slice(0, 7)} to ${f.to.slice(0, 7)}: each asset's month, posted with its journal, or as planned.`;
-    columns = [{ key: "month", label: "Month", sortable: true }, { key: "code", label: "Code", sortable: true }, { key: "name", label: "Asset" },
-      { key: "branch", label: "Posting branch", sortable: true }, { key: "category", label: "Category" }, { key: "amount", label: "Depreciation", sortable: true, align: "r" },
-      { key: "closing", label: "NBV after", align: "r" }, { key: "state", label: "State" }, { key: "journal", label: "Journal" }];
-    rows = data.map((r) => ({ key: `${r.id}|${r.month}`, searchText: `${r.code} ${r.name} ${r.month}`, facet: { state: r.state },
-      sort: { month: r.month, code: r.code, branch: r.branch, amount: Number(r.amount) },
-      csv: { month: r.month, code: r.code, name: r.name, branch: r.branch, category: r.category, amount: r.amount, closing: r.closing, state: r.state === "POSTED" ? "Posted" : "Planned",
-             journal: r.journals.map((j) => j.docNo).join(" ") },
-      node: <tr key={`${r.id}|${r.month}`}><td className="nowrap">{r.month}</td><td>{assetLink(r.id, r.code)}</td><td>{r.name}</td><td>{r.branch}</td><td>{r.category}</td>
-        <td className="r">{money(r.amount)}</td><td className="r">{money(r.closing)}</td>
-        <td><span className={`fa-pill ${r.state === "POSTED" ? "posted" : "planned"}`}>{r.state === "POSTED" ? "Posted" : "Planned"}</span></td>
-        <td>{r.journals.length ? r.journals.map((j) => <span key={j.docNo}>{docLink(j.docId, j.docNo)}</span>) : "—"}</td></tr> }));
-    const posted = data.filter((r) => r.state === "POSTED").reduce((s, r) => s + Number(r.amount), 0);
-    const all = data.reduce((s, r) => s + Number(r.amount), 0);
-    totals = { span: `Total · posted ${money(String(posted))}`, cells: { amount: money(String(all)) } };
   } else if (report === "accumulated") {
     const data = await accumulatedReport(co, f);
     note = `Posted depreciation: before ${f.from}, during ${f.from} to ${f.to}, written off by disposal, and at ${f.to}.`;
@@ -148,9 +193,7 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
     <div className="fa">
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Reports" }]} />
       <div className="fa-head"><div><h1>Fixed Asset Reports <HelpHint label="About Fixed Asset Reports">{note}</HelpHint></h1></div></div>
-      <nav className="fac-tabs far-reports" aria-label="Report">
-        {REPORTS.map(([k, l]) => <Link key={k} href={href({ report: k === "register" ? undefined : k })} aria-current={report === k ? "page" : undefined}>{l}</Link>)}
-      </nav>
+      {tabs}
       <form method="get" className="fac-bar">
         {sp.report && <input type="hidden" name="report" value={sp.report} />}
         {report !== "register" && report !== "nbv" && report !== "reconciliation" && (
@@ -167,7 +210,7 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
           <select name="asset" defaultValue={sp.asset ?? ""} aria-label="Asset" className={`dt-filter${sp.asset ? " dt-filter-on" : ""}`}>
             <option value="">All assets</option>{assets.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
           </select>)}
-        {(report === "register" || report === "accumulated" || report === "monthly") && (
+        {(report === "register" || report === "accumulated") && (
           <select name="status" defaultValue={sp.status ?? ""} aria-label="Status" className={`dt-filter${sp.status ? " dt-filter-on" : ""}`}>
             <option value="">All statuses</option>{FA_STATUS.filter((s) => s !== "DRAFT").map((s) => <option key={s} value={s}>{FA_STATUS_LABEL[s]}</option>)}
           </select>)}
@@ -177,8 +220,7 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
         {rows.length === 0 ? <div className="fa-empty"><strong>Nothing to report</strong><span>No asset matches these filters.</span></div> : (
           <DataTable key={report} rows={rows} columns={columns} storageKey={`fa-rep-${report}`} csvFilename={`fixed-assets-${report}-${f.to}.csv`}
             searchPlaceholder="Search…" footerCells={totals ? { span: totals.span, cells: totals.cells } : undefined}
-            filters={report === "monthly" ? [{ key: "state", allLabel: "Posted and planned", label: "State", options: [{ value: "POSTED", label: "Posted" }, { value: "PLANNED", label: "Planned" }] }]
-              : report === "reconciliation" ? [{ key: "diff", allLabel: "All lines", label: "Ties", options: [{ value: "differs", label: "Differences only" }, { value: "tie", label: "Ties" }] }] : undefined} />
+            filters={report === "reconciliation" ? [{ key: "diff", allLabel: "All lines", label: "Ties", options: [{ value: "differs", label: "Differences only" }, { value: "tie", label: "Ties" }] }] : undefined} />
         )}
       </section>
     </div>
