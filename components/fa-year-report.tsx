@@ -5,6 +5,7 @@ import { Fragment, useState } from "react";
 import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { MonthCell, ScheduleAsset, SummaryGroup, SummaryRow } from "@/lib/fa-year";
 import { registerHeaders } from "@/lib/fa-import";
+import { HelpHint } from "@/components/help-hint";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const money = (v: number) => Math.round(v).toLocaleString("en-US");
@@ -49,7 +50,7 @@ export function CategorySummary({ year, groups, total, link }: {
           <button type="button" role="radio" aria-checked={!planned} className={`seg${planned ? "" : " on"}`} onClick={() => setPlanned(false)}>Posted</button>
           <button type="button" role="radio" aria-checked={planned} className={`seg${planned ? " on" : ""}`} onClick={() => setPlanned(true)}>Planned</button>
         </div>
-        <span className="ie-note">{planned ? "The whole schedule: posted, due and planned months." : "Only what the ledger carries."} Scroll sideways for later months.</span>
+        <span className="ie-note"><HelpHint label="Posted and planned">Posted is only what the ledger carries. Planned is the whole schedule: posted, due and planned months. Scroll sideways for later months.</HelpHint></span>
         <ExportButton onExport={exportCsv} />
       </div>
       <div className="tablewrap fay-wrap">
@@ -111,7 +112,7 @@ export function AssetSchedule({ year, assets }: { year: number; assets: Schedule
           <span><i className="fay-dot due" /> Due, not posted</span>
           <span><i className="fay-dot planned" /> Planned</span>
         </span>
-        <span className="ie-note">Laid out like the Excel register: Export pastes straight back into Import. Scroll sideways for the months.</span>
+        <span className="ie-note"><HelpHint label="About the schedule">Laid out like the Excel register, so Export pastes straight back into Import. Due is a month that has ended without being posted. Scroll sideways for the months.</HelpHint></span>
         <ExportButton onExport={exportCsv} />
       </div>
       <div className="tablewrap fay-wrap">
@@ -130,7 +131,7 @@ export function AssetSchedule({ year, assets }: { year: number; assets: Schedule
                     <button type="button" className="fay-toggle" aria-expanded={open === a.id} aria-label={`Details of ${a.name}`} onClick={() => setOpen(open === a.id ? null : a.id)}>
                       {open === a.id ? <ChevronDown size={15} aria-hidden="true" /> : <ChevronRight size={15} aria-hidden="true" />}
                     </button>
-                    <Link href={`/fixed-assets/${a.id}`}>{a.name}</Link><span className="fay-count">{a.code}</span>
+                    <Link href={`/fixed-assets/${a.id}`} title={a.name}>{a.name}</Link><span className="fay-count">{a.code}</span>
                   </th>
                   <td className="fay-notes" title={a.notes}>{a.notes || "—"}</td>
                   <td className="nowrap">{a.heading}</td>

@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { AlertCircle, ChevronDown, ChevronRight, CircleCheck, ClipboardPaste, X } from "lucide-react";
 import { parseTsv } from "@/lib/import-purchase-invoices";
+import { HelpHint } from "@/components/help-hint";
 import { FA_COLUMNS, readRegister, type Category, type FaImportRow } from "@/lib/fa-import";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -34,14 +35,13 @@ export function FaImport({ categories }: { categories: Category[] }) {
   return (
     <div className="fai">
       <section className="ie-card fai-guide">
-        <h3>Columns to match</h3>
-        <p className="ie-note">Lay the sheet out like this and copy from the header row down. Columns are found by their header, so their order can change. The Asset schedule report exports this same layout. Hover a header for what it is used for.</p>
+        <h3>Columns to match <HelpHint label="About the columns">Lay the sheet out like this and copy from the header row down. Columns are found by their header, so their order can change. The Asset schedule report exports this same layout. Hover a header for what it is used for; the bottom row is the MTK field it fills.</HelpHint></h3>
         <div className="fai-xl-wrap">
           <table className="fai-xl">
             <thead><tr><th />{GUIDE.map((c, i) => <th key={i}>{colName(i)}</th>)}</tr></thead>
             <tbody>
               <tr className="fai-xl-head"><th>1</th>{GUIDE.map((c, i) => <td key={i} title={c.use}>{c.header}</td>)}</tr>
-              <tr><th>2</th>{GUIDE.map((c, i) => <td key={i} className={/^[d,.]+$/.test(c.example) ? "r" : undefined}>{c.example}</td>)}</tr>
+              <tr><th>2</th>{GUIDE.map((c, i) => <td key={i} title={c.example} className={/^[d,.]+$/.test(c.example) ? "r" : undefined}>{c.example}</td>)}</tr>
               <tr className="fai-xl-field"><th>MTK</th>{GUIDE.map((c, i) => <td key={i}>{c.field === "—" ? "checked only" : c.field}</td>)}</tr>
             </tbody>
           </table>
@@ -144,7 +144,7 @@ export function FaImport({ categories }: { categories: Category[] }) {
             </table>
           </div>
           <div className="pimp-pasted-foot fai-foot">
-            <span className="ie-note">Saving comes next: how each asset was paid for (cash, bank or on credit) is decided first. Nothing is saved or posted from this screen.</span>
+            <span className="ie-note">Preview only <HelpHint label="Why nothing is saved">Saving comes next: how each asset was paid for (cash, bank or on credit) is decided first. Nothing is saved or posted from this screen.</HelpHint></span>
             <button type="button" className="ie-btn primary" disabled>Import {read.rows.length - count("blocked")} assets</button>
           </div>
         </section>

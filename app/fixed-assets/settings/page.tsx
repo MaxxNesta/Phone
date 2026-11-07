@@ -50,8 +50,7 @@ export default async function FaSettings() {
         </section>
 
         <section className="ie-card">
-          <h3>Categories and their accounts</h3>
-          <p className="ie-note" style={{ marginTop: 0 }}>A category is a title in the chart of accounts; each subcategory under it has its own accounts. Depreciation is a debit to the subcategory&apos;s expense account and a credit to its accumulated-depreciation account; its assets sit on the asset account.</p>
+          <h3>Categories and their accounts <HelpHint label="About categories">A category is a title in the chart of accounts; each subcategory under it has its own accounts. Depreciation is a debit to the subcategory&apos;s expense account and a credit to its accumulated-depreciation account; its assets sit on the asset account.</HelpHint></h3>
           <div className="fas-cats">
             {[...groups].map(([heading, subs]) => (
               <details key={heading} className="fas-group" open>

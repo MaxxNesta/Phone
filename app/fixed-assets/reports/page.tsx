@@ -66,7 +66,6 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
         <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Reports" }]} />
         <div className="fa-head"><div>
           <h1>Fixed Asset Reports <HelpHint label="About these reports">Read from the same schedule as the calendar and each asset&apos;s page. Posted is what the ledger carries; due is a month that has ended without being posted; planned has not ended yet. With a branch chosen, each month counts where the asset was then, so a transfer moves only the months after it.</HelpHint></h1>
-          <p className="page-sub">Monthly additions, depreciation and closing net book value, by category and by asset.</p>
         </div></div>
         {tabs}
         <form method="get" className="fac-bar">

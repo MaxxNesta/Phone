@@ -14,7 +14,6 @@ export default async function ImportAssets() {
       <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Asset Register", href: "/fixed-assets/register" }, { label: "Import" }]} />
       <header className="ie-title">
         <h1>Import assets <HelpHint label="About importing assets">The asset register pasted from Excel. Each row is read, matched to a category, and its months compared with MTK&apos;s own schedule. A preview for now: nothing is saved or posted.</HelpHint></h1>
-        <p>Paste the register to see what each row becomes and where the file and MTK disagree.</p>
       </header>
       <FaImport categories={cats.filter((c) => c.is_active).map((c) => ({ id: c.id, name: c.name, group: c.heading }))} />
     </div>
