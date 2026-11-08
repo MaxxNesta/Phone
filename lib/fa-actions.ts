@@ -586,32 +586,36 @@ export async function importAssets(input: { drafts: DraftRow[]; subMap: Record<s
       const skipped = rows.filter((r) => !r.include || r.status === "attention")
         .map((r) => ({ line: r.line, name: r.name, reason: !r.include ? "Left out" : r.issues.filter((i) => i.level === "attention").map((i) => i.text).join(" ") }));
       const take = rows.filter((r) => r.include && r.status !== "attention");
-      for (const r of take) await assertFaBranch(user, r.branchId!, null);
+      // One permission check for every branch the batch touches, not one per row.
+      await assertFaBranch(user, ...new Set(take.map((r) => r.branchId)));
       const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
       const imported: { line: number; code: string; id: string; name: string }[] = [];
-      await sql.begin(async (tx) => {
+      if (take.length) await sql.begin(async (tx) => {
+        // The next codes, read once under the transaction; then every asset and every event in one statement each.
         const [mx] = await tx`select coalesce(max(substring(code from '^FA-(\\d+)$')::int), 0) as n from fixed_asset where company_id = ${co}`;
-        let n = Number(mx.n);
-        for (const r of take) {
-          const code = `FA-${String(++n).padStart(4, "0")}`;
-          const inService = r.inService ?? r.acquired!;
-          const [a] = await tx`
-            insert into fixed_asset (company_id, code, name, category_id, branch_id, notes, acquisition_date, in_service_date,
-                                     acquisition_cost, residual_value, useful_life_months, status, created_by,
-                                     quantity, depreciation_start, opening_accumulated, opening_through, source_ref)
-            values (${co}, ${code}, ${r.name.slice(0, 200)}, ${r.category!.id}, ${r.branchId}, ${r.notes || null}, ${r.acquired}, ${inService},
-                    ${r.cost!.toFixed(4)}, ${r.residual.toFixed(4)}, ${r.life}, 'ACTIVE', ${user.id},
-                    ${(r.qty ?? 1).toFixed(4)}, ${r.start ? r.start + "-01" : null},
-                    ${r.opening ? r.opening.toFixed(4) : null}, ${r.opening && r.openingThrough ? r.openingThrough + "-01" : null},
-                    ${`Import ${today} · row ${r.no || r.line}`})
-            returning id`;
-          await tx`insert into fa_event (company_id, asset_id, event_type, event_date, to_branch_id, created_by, detail)
-                   values (${co}, ${a.id}, 'CREATED', ${r.acquired}, ${r.branchId}, ${user.id},
-                           ${tx.json({ cost: r.cost, life: r.life, imported: true, row: r.no || r.line })})`;
-          await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by)
-                   values (${co}, ${a.id}, 'ACTIVATED', ${inService}, ${user.id})`;
-          imported.push({ line: r.line, code, id: a.id, name: r.name });
-        }
+        const first = Number(mx.n);
+        const assets = take.map((r, i) => ({
+          company_id: co, code: `FA-${String(first + i + 1).padStart(4, "0")}`, name: r.name.slice(0, 200), category_id: r.category!.id,
+          branch_id: r.branchId, notes: r.notes || null, acquisition_date: r.acquired, in_service_date: r.inService ?? r.acquired,
+          acquisition_cost: r.cost!.toFixed(4), residual_value: r.residual.toFixed(4), useful_life_months: r.life, status: "ACTIVE",
+          created_by: user.id, quantity: (r.qty ?? 1).toFixed(4), depreciation_start: r.start ? r.start + "-01" : null,
+          opening_accumulated: r.opening ? r.opening.toFixed(4) : null,
+          opening_through: r.opening && r.openingThrough ? r.openingThrough + "-01" : null,
+          source_ref: `Import ${today} · row ${r.no || r.line}`,
+        }));
+        const made = await tx`insert into fixed_asset ${tx(assets)} returning id, code`;
+        const idOf = new Map((made as any[]).map((m) => [m.code as string, m.id as string]));
+        const events = take.flatMap((r, i) => {
+          const id = idOf.get(assets[i].code)!;
+          return [
+            { company_id: co, asset_id: id, event_type: "CREATED", event_date: r.acquired, to_branch_id: r.branchId, created_by: user.id,
+              detail: tx.json({ cost: r.cost, life: r.life, imported: true, row: r.no || r.line }) },
+            { company_id: co, asset_id: id, event_type: "ACTIVATED", event_date: assets[i].in_service_date, to_branch_id: null, created_by: user.id,
+              detail: tx.json({ imported: true }) },
+          ];
+        });
+        await tx`insert into fa_event ${tx(events)}`;
+        take.forEach((r, i) => imported.push({ line: r.line, code: assets[i].code, id: idOf.get(assets[i].code)!, name: r.name }));
       });
       revalidatePath("/fixed-assets", "layout");
       return { ok: true as const, imported, skipped };
