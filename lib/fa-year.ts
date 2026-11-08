@@ -28,7 +28,7 @@ export type ScheduleAsset = {
   id: string; code: string; name: string; notes: string; heading: string; category: string; branch: string; acquired: string;
   /** Depreciation before the year: the file's "Op; Accu". */
   opening: number;
-  cost: number; residual: number; life: number; inService: string | null; start: Month | null; disposedOn: string | null;
+  cost: number; quantity: number; residual: number; life: number; inService: string | null; start: Month | null; disposedOn: string | null;
   months: ({ amount: number; state: DepState } | null)[];
   /** Net book value at the end of the year (or its last month in view), with planned months. */
   closing: number;
@@ -77,7 +77,8 @@ export async function faYear(co: string, year: number, f: YearFilters) {
   const schedule: ScheduleAsset[] = [];
   for (const a of all) {
     const cost = n(a.engine.cost);
-    let accPosted = 0, accAll = 0;
+    // An opening figure not yet backed by a journal counts in the plan, not in what is posted.
+    let accPosted = 0, accAll = n(a.carried);
     // Depreciation before the year counts towards its opening net book value.
     for (const r of a.rows) if (r.month < months[0]) { accAll += n(r.amount); if (r.state === "POSTED") accPosted += n(r.amount); }
     const opening = accAll;
@@ -110,7 +111,7 @@ export async function faYear(co: string, year: number, f: YearFilters) {
     schedule.push({
       id: a.id, code: a.code, name: a.name, notes: noteOf.get(a.id) ?? "", heading: a.heading, category: a.category, acquired: a.acquired, opening,
       branch: branchName.get(branchAt(a, months[11])) ?? a.postBranch,
-      cost, residual: n(a.engine.residual), life: a.engine.lifeMonths, inService: a.inService, start, disposedOn: a.disposedOn,
+      cost, quantity: a.quantity, residual: n(a.engine.residual), life: a.engine.lifeMonths, inService: a.inService, start, disposedOn: a.disposedOn,
       months: sched, closing: closing ?? 0,
     });
   }

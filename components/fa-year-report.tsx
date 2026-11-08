@@ -100,7 +100,7 @@ export function AssetSchedule({ year, assets }: { year: number; assets: Schedule
   // The same columns, in the same order, as the register the import reads, so an export pastes back in.
   const exportCsv = () => download(`fixed-assets-schedule-${year}.csv`, [
     heads,
-    ...assets.map((a, i) => [i + 1, a.name, a.notes, a.heading, a.category, a.life, startText(a.start), dateText(a.acquired), "", "", a.cost, "",
+    ...assets.map((a, i) => [i + 1, a.name, a.notes, a.heading, a.category, a.life, startText(a.start), dateText(a.acquired), a.quantity, Math.round(a.cost / a.quantity * 100) / 100, a.cost, "",
       a.opening, ...a.months.map((c) => c?.amount ?? 0), a.closing]),
   ]);
   const total = (pick: (a: ScheduleAsset) => number) => money(assets.reduce((t, a) => t + pick(a), 0));
@@ -139,8 +139,8 @@ export function AssetSchedule({ year, assets }: { year: number; assets: Schedule
                   <td className="r">{a.life}</td>
                   <td className="nowrap">{startText(a.start) || "—"}</td>
                   <td className="nowrap">{dateText(a.acquired)}</td>
-                  <td className="r fay-none">—</td>
-                  <td className="r fay-none">—</td>
+                  <td className="r">{a.quantity}</td>
+                  <td className="r">{money(a.cost / a.quantity)}</td>
                   <td className="r">{money(a.cost)}</td>
                   <td className="r">{a.disposedOn ? <span title={`Disposed of ${a.disposedOn}`}>{a.disposedOn}</span> : <span className="fay-none">—</span>}</td>
                   <td className="r">{money(a.opening)}</td>

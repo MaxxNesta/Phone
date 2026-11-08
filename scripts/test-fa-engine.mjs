@@ -173,4 +173,35 @@ t("month arithmetic across years", () => {
   assert.equal(E.monthsBetween("2026-11", "2027-02"), 3);
 });
 
+t("an explicit start month overrides the convention", () => {
+  // Bought 28 Dec 2025, the register starts it in January.
+  const a = { cost: K(512_975), residual: 0n, lifeMonths: 36, inService: "2025-12-28", convention: "SAME_MONTH", startMonth: "2026-01" };
+  const rows = E.schedule(a);
+  assert.equal(rows[0].month, "2026-01");
+  assert.equal(rows.length, 36);
+  assert.equal(rows[0].amount, K(14_249));
+  lands(rows, a);
+});
+
+t("an opening figure is carried, not shown, and the rest of the life absorbs it", () => {
+  // 3,600,000 over 36 months from Jan 2025; 12 months (1,200,000) carried to Dec 2025.
+  const a = { cost: K(3_600_000), residual: 0n, lifeMonths: 36, inService: "2025-01-05", convention: "SAME_MONTH",
+              opening: { through: "2025-12", amount: K(1_200_000) } };
+  const rows = E.schedule(a);
+  assert.equal(rows[0].month, "2026-01");
+  assert.equal(rows[0].opening, K(2_400_000));
+  assert.equal(rows.length, 24);
+  for (const r of rows) assert.equal(r.state, "PLANNED");
+  assert.equal(E.sum(rows.map((r) => r.amount)), K(2_400_000));
+  assert.equal(rows.at(-1).closing, 0n);
+});
+
+t("a linked opening journal takes over from the opening figure", () => {
+  const a = { cost: K(3_600_000), residual: 0n, lifeMonths: 36, inService: "2025-01-05", convention: "SAME_MONTH",
+              opening: { through: "2025-12", amount: K(1_200_000) } };
+  const rows = E.schedule(a, { posted: new Map([["2025-12", K(1_300_000)]]), openingThrough: "2025-12" });
+  const jan = rows.find((r) => r.month === "2026-01");
+  assert.equal(jan.opening, K(2_300_000));
+});
+
 console.log(`\nfa-engine: ${passed} passed`);

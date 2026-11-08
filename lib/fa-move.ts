@@ -16,6 +16,8 @@ const asNumber = (u: bigint) => Number(fromUnits(u));
 async function loadOne(tx: TransactionSql, co: string, assetId: string, disposedOn: string | null) {
   const [a] = await tx`
     select f.*, f.acquisition_cost::text as cost, f.residual_value::text as residual,
+           to_char(f.depreciation_start, 'YYYY-MM') as start_month, f.opening_accumulated::text as opening_amount,
+           to_char(f.opening_through, 'YYYY-MM') as opening_through, f.quantity::float as quantity,
            to_char(f.in_service_date, 'YYYY-MM-DD') as in_service, to_char(f.acquisition_date, 'YYYY-MM-DD') as acquired, c.asset_account_id, c.accum_account_id, c.name as category,
            (select start_convention from fa_setting where company_id = f.company_id) as company_convention
       from fixed_asset f join fa_category c on c.id = f.category_id
@@ -28,7 +30,9 @@ async function loadOne(tx: TransactionSql, co: string, assetId: string, disposed
          from fa_depreciation where asset_id = ${assetId} and journal_line_id is not null group by 1`,
   ]);
   const engine = { cost: toUnits(a.cost), residual: toUnits(a.residual), lifeMonths: a.useful_life_months, inService: a.in_service,
-    convention: (a.start_convention ?? a.company_convention ?? "SAME_MONTH") as Convention, disposedOn };
+    convention: (a.start_convention ?? a.company_convention ?? "SAME_MONTH") as Convention, disposedOn,
+    startMonth: a.start_month ?? null,
+        opening: a.opening_through ? { through: a.opening_through, amount: toUnits(a.opening_amount) } : null };
   const rows = schedule(engine, {
     estimates: (estimates as any[]).map((e) => ({ from: e.m, lifeMonths: e.useful_life_months, residual: toUnits(e.residual) })),
     posted: new Map((posted as any[]).map((p) => [p.m, toUnits(p.amount)])),

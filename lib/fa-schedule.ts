@@ -16,6 +16,9 @@ export type LoadedAsset = {
   /** The chart title over the category: Machinery over Generator & Solar. */
   heading: string;
   acquired: string;
+  quantity: number;
+  /** Depreciation carried in as an opening figure with no journal behind it yet. */
+  carried: bigint;
   /** Set apart from where it is used, so a transfer does not move its postings. */
   postsElsewhere: boolean;
   accumAccountId: string; expenseAccountId: string;
@@ -34,7 +37,9 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
            (select coalesce(h.name, ac.name) from account ac left join account h on h.id = ac.parent_id where ac.id = c.asset_account_id) as heading,
            to_char(f.acquisition_date, 'YYYY-MM-DD') as acquired, f.posting_branch_id is not null as posts_elsewhere,
            to_char(f.in_service_date, 'YYYY-MM-DD') as in_service, to_char(f.disposed_on, 'YYYY-MM-DD') as disposed_on,
-           f.acquisition_cost::text as cost, f.residual_value::text as residual, f.useful_life_months, f.start_convention
+           f.acquisition_cost::text as cost, f.residual_value::text as residual, f.useful_life_months, f.start_convention,
+           to_char(f.depreciation_start, 'YYYY-MM') as start_month, f.opening_accumulated::text as opening_amount,
+           to_char(f.opening_through, 'YYYY-MM') as opening_through, f.quantity::float as quantity
       from fixed_asset f join fa_category c on c.id = f.category_id join location b on b.id = f.branch_id
       left join location pb on pb.id = f.posting_branch_id
      where f.company_id = ${co} and f.status <> 'DRAFT'
@@ -68,12 +73,15 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
     const engine: EngineAsset = {
       cost: toUnits(a.cost), residual: toUnits(a.residual), lifeMonths: a.useful_life_months,
       inService: a.in_service, convention: (a.start_convention ?? fallback) as Convention, disposedOn: a.disposed_on,
+      startMonth: a.start_month ?? null,
+        opening: a.opening_through ? { through: a.opening_through, amount: toUnits(a.opening_amount) } : null,
     };
     return {
       id: a.id, code: a.code, name: a.name, status: a.status, branchId: a.branch_id, branch: a.branch,
       postBranchId: a.post_branch_id, postBranch: a.post_branch,
       categoryId: a.category_id, category: a.category, assetClass: a.asset_class,
-      heading: a.heading, acquired: a.acquired, postsElsewhere: a.posts_elsewhere,
+      heading: a.heading, acquired: a.acquired, postsElsewhere: a.posts_elsewhere, quantity: a.quantity,
+      carried: a.opening_through && !openingBy.get(a.id) ? toUnits(a.opening_amount) : 0n,
       accumAccountId: a.accum_account_id, expenseAccountId: a.expense_account_id,
       inService: a.in_service, disposedOn: a.disposed_on, engine,
       rows: schedule(engine, { estimates: estBy.get(a.id), posted: postedBy.get(a.id), openingThrough: openingBy.get(a.id) }),

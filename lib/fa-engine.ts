@@ -37,6 +37,14 @@ export type EngineAsset = {
   convention: Convention;
   /** "YYYY-MM-DD": no depreciation after it (see disposalCutoff). */
   disposedOn?: string | null;
+  /** An explicit first month, set on the asset: it overrides the convention. */
+  startMonth?: Month | null;
+  /**
+   * Depreciation before MTK, as one figure through the end of a month: a
+   * calculation input, never posted. Ignored once a linked opening journal
+   * (openingThrough) carries it.
+   */
+  opening?: { through: Month; amount: bigint } | null;
 };
 
 /** A new life (total, from in service) and residual, from a month onwards. */
@@ -77,6 +85,7 @@ const divRound = (a: bigint, b: bigint) => (a * 2n + b) / (2n * b);
 /** The first month that depreciates, and its share of a full month as days/daysInMonth. */
 export function firstMonth(a: EngineAsset): { month: Month; days: number; of: number } | null {
   if (!a.inService) return null;
+  if (a.startMonth) return { month: a.startMonth, days: 1, of: 1 };
   const m = monthOf(a.inService);
   if (a.convention === "NEXT_MONTH") return { month: addMonths(m, 1), days: 1, of: 1 };
   if (a.convention === "SAME_MONTH") return { month: m, days: 1, of: 1 };
@@ -141,7 +150,9 @@ export function schedule(a: EngineAsset, opts: {
   };
 
   const rows: ScheduleRow[] = [];
-  let nbv = a.cost;
+  // An opening figure with no journal behind it yet: carried into the net book value, the months it covers not shown.
+  const carried = !opts.openingThrough && a.opening && a.opening.amount > 0n ? a.opening : null;
+  let nbv = a.cost - (carried ? carried.amount : 0n);
   // Months to walk: the plan under each estimate, the disposal cutoff, and
   // anything the ledger has posted that falls later still.
   const lastPlanned = (life: number) => weights(start, life).at(-1)![0];
@@ -150,7 +161,8 @@ export function schedule(a: EngineAsset, opts: {
   for (const m of posted.keys()) if (m > end) end = m;
   if (cut && cut.month < end) end = cut.month;
   const firstPosted = [...posted.keys()].sort()[0];
-  const from = firstPosted && firstPosted < start.month ? firstPosted : start.month;
+  const from0 = firstPosted && firstPosted < start.month ? firstPosted : start.month;
+  const from = carried && addMonths(carried.through, 1) > from0 ? addMonths(carried.through, 1) : from0;
 
   for (let m = from; m <= end; m = addMonths(m, 1)) {
     const { life, residual } = at(m);

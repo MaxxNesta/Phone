@@ -41,6 +41,8 @@ async function planned(tx: TransactionSql, co: string, branchId: string, month: 
   const assets = await tx`
     select f.id, f.code, f.acquisition_cost::text as cost, f.residual_value::text as residual, f.useful_life_months,
            f.start_convention, to_char(f.in_service_date, 'YYYY-MM-DD') as in_service, to_char(f.disposed_on, 'YYYY-MM-DD') as disposed_on,
+           to_char(f.depreciation_start, 'YYYY-MM') as start_month, f.opening_accumulated::text as opening_amount,
+           to_char(f.opening_through, 'YYYY-MM') as opening_through, f.quantity::float as quantity,
            c.expense_account_id, c.accum_account_id
       from fixed_asset f join fa_category c on c.id = f.category_id
      where f.company_id = ${co} and coalesce(f.posting_branch_id, f.branch_id) = ${branchId} and f.status = 'ACTIVE'
@@ -58,7 +60,9 @@ async function planned(tx: TransactionSql, co: string, branchId: string, month: 
   for (const a of assets as any[]) {
     const rows = schedule(
       { cost: toUnits(a.cost), residual: toUnits(a.residual), lifeMonths: a.useful_life_months, inService: a.in_service,
-        convention: (a.start_convention ?? fallback) as Convention, disposedOn: a.disposed_on },
+        convention: (a.start_convention ?? fallback) as Convention, disposedOn: a.disposed_on,
+        startMonth: a.start_month ?? null,
+        opening: a.opening_through ? { through: a.opening_through, amount: toUnits(a.opening_amount) } : null },
       { estimates: (estimates as any[]).filter((e) => e.asset_id === a.id)
           .map((e) => ({ from: e.m, lifeMonths: e.useful_life_months, residual: toUnits(e.residual) })),
         posted: new Map((posted as any[]).filter((p) => p.asset_id === a.id).map((p) => [p.m, toUnits(p.amount)])),
