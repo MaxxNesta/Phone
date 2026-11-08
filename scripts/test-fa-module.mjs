@@ -84,6 +84,8 @@ const linkManual = async (docId, assetId, month, amount) => {
             values (${co.id}, ${assetId}, ${month + "-01"}, 'HISTORICAL', ${amount}, ${l.id}, true)`;
 };
 
+// The company's own settings, put back afterwards: other suites and real use read them.
+const [before] = await sql`select posting_mode, start_convention from fa_setting where company_id = ${co.id}`;
 try {
   await cleanup();
   await sql`update fa_setting set posting_mode = 'REVIEW', start_convention = 'NEXT_MONTH' where company_id = ${co.id}`;
@@ -256,6 +258,7 @@ try {
   console.log(`\nfa-module: ${passed} passed`);
 } finally {
   await cleanup().catch((e) => console.error("cleanup:", e.message));
+  if (before) await sql`update fa_setting set posting_mode = ${before.posting_mode}, start_convention = ${before.start_convention} where company_id = ${co.id}`.catch(() => {});
   await releaseTestLock(sql).catch(() => {});
   await sql.end();
 }

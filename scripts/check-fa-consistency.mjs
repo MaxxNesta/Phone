@@ -45,8 +45,8 @@ try {
     ["CHK-2", "Growatt Inverter", "Generator & Solar", "2026-01-29", 1420000, 24],
     ["CHK-3", "EV Cycle", "Cycle & EV Cycle", "2026-01-10", 6550000, 120],
   ]) {
-    const [a] = await sql`insert into fixed_asset (company_id, code, name, category_id, branch_id, acquisition_date, in_service_date, acquisition_cost, useful_life_months, status)
-      values (${co.id}, ${code}, ${name}, ${await cat(c)}, ${br.id}, ${d}, ${d}, ${cost}, ${life}, 'ACTIVE') returning id`;
+    const [a] = await sql`insert into fixed_asset (company_id, code, name, category_id, branch_id, acquisition_date, in_service_date, acquisition_cost, useful_life_months, status, start_convention)
+      values (${co.id}, ${code}, ${name}, ${await cat(c)}, ${br.id}, ${d}, ${d}, ${cost}, ${life}, 'ACTIVE', 'SAME_MONTH') returning id`;
     made.push(a.id);
   }
   // Their purchase, on the ledger as a real one would be: Dr each asset account, Cr opening balance equity.
