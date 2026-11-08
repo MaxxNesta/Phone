@@ -53,6 +53,7 @@ export type AssetRow = {
   acquisition_date: string; in_service_date: string | null;
   acquisition_cost: string; residual_value: string; useful_life_months: number; method: string;
   start_convention: string | null;
+  quantity: string; depreciation_start: string | null; opening_accumulated: string | null; opening_through: string | null; source_ref: string | null;
   /** What the ledger carries for it: runs, linked history and corrections. */
   accumulated: string; nbv: string;
   acquisition_journal_id: string | null; acquisition_journal_no: string | null;
@@ -68,6 +69,8 @@ export async function assetList(co: string, branches: string[] | null, id?: stri
            to_char(f.acquisition_date, 'YYYY-MM-DD') as acquisition_date,
            to_char(f.in_service_date, 'YYYY-MM-DD') as in_service_date,
            f.acquisition_cost::text, f.residual_value::text, f.useful_life_months, f.method, f.start_convention,
+           f.quantity::text, to_char(f.depreciation_start, 'YYYY-MM') as depreciation_start, f.opening_accumulated::text,
+           to_char(f.opening_through, 'YYYY-MM') as opening_through, f.source_ref,
            coalesce(d.total, 0)::text as accumulated,
            (f.acquisition_cost - coalesce(d.total, 0))::text as nbv,
            coalesce(d.months, 0)::int as posted_months,

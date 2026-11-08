@@ -11,6 +11,12 @@ export type AssetFormValue = {
   site: string; serial_no: string; notes: string;
   acquisition_date: string; in_service_date: string;
   acquisition_cost: string; residual_value: string; useful_life_months: string; start_convention: string;
+  /** How many the record stands for; the cost is the group's. */
+  quantity: string;
+  /** "YYYY-MM": an explicit first month, or "" for the first-month rule. */
+  depreciation_start: string;
+  /** Depreciation before MTK and the month it runs to ("YYYY-MM"); both or neither. */
+  opening_accumulated: string; opening_through: string;
   /** "" = posts at the assigned branch. */
   posting_branch_id: string;
   status: string;
@@ -56,7 +62,8 @@ export function AssetForm({ action, value, categories, branches, pinned, company
       {value.id && <input type="hidden" name="id" value={value.id} />}
       {/* A disabled field is not sent; the pinned values go as they are. */}
       {pinned && (["category_id", "branch_id", "acquisition_date", "in_service_date", "acquisition_cost",
-                   "residual_value", "useful_life_months", "start_convention", "posting_branch_id"] as const)
+                   "residual_value", "useful_life_months", "start_convention", "posting_branch_id",
+                   "depreciation_start", "opening_accumulated", "opening_through"] as const)
         .map((k) => <input key={k} type="hidden" name={k} value={v[k]} />)}
 
       {heading && <header className="ie-title">
@@ -146,6 +153,18 @@ export function AssetForm({ action, value, categories, branches, pinned, company
                   <option key={k} value={k} title={k === "" ? CONVENTION[companyConvention] : undefined}>{l}</option>))}
               </select></label>
           </div>
+          <div className="ie-grid4" style={{ marginTop: "var(--s2)" }}>
+            <label className="ie-field"><span>Quantity</span>
+              <input name="quantity" value={v.quantity} onChange={set("quantity")} inputMode="decimal" required /></label>
+            <label className="ie-field"><span>Depreciation start <small className="fa-muted">(optional)</small></span>
+              <input type="month" name="depreciation_start" value={v.depreciation_start} onChange={set("depreciation_start")} {...lock} /></label>
+            <label className="ie-field"><span>Opening accumulated <small className="fa-muted">(optional)</small></span>
+              <span className="ie-money"><i>MMK</i>
+                <input name="opening_accumulated" value={v.opening_accumulated} onChange={set("opening_accumulated")} inputMode="decimal" {...lock} /></span></label>
+            <label className="ie-field"><span>Opening accumulated through</span>
+              <input type="month" name="opening_through" value={v.opening_through} onChange={set("opening_through")} {...lock} /></label>
+          </div>
+          <p className="ie-note">An explicit depreciation start replaces the first-month rule. An opening figure is depreciation before MTK, through the end of its month: it shortens what is left to depreciate and is not posted.</p>
         </section>
 
         <section className="ie-card">

@@ -39,7 +39,9 @@ export default async function EditAsset({ params }: { params: Promise<{ id: stri
                  site: a.site ?? "", serial_no: a.serial_no ?? "", notes: a.notes ?? "",
                  acquisition_date: a.acquisition_date, in_service_date: a.in_service_date ?? "",
                  acquisition_cost: trimDecimal(a.acquisition_cost), residual_value: trimDecimal(a.residual_value),
-                 useful_life_months: String(a.useful_life_months), start_convention: a.start_convention ?? "", posting_branch_id: a.posting_branch_id ?? "", status: a.status }} />
+                 useful_life_months: String(a.useful_life_months), start_convention: a.start_convention ?? "", posting_branch_id: a.posting_branch_id ?? "", status: a.status,
+                 quantity: trimDecimal(a.quantity), depreciation_start: a.depreciation_start ?? "",
+                 opening_accumulated: a.opening_accumulated ? trimDecimal(a.opening_accumulated) : "", opening_through: a.opening_through ?? "" }} />
       <section className="ie-card fa-status-card">
         <h3>Status: {FA_STATUS_LABEL[a.status]}</h3>
         <div className="fa-status-actions">

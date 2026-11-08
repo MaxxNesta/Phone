@@ -17,6 +17,7 @@ export async function NewAssetForm({ co, heading = true }: { co: string; heading
       branches={branches}
       value={{ code, name: "", category_id: "", branch_id: branches.length === 1 ? branches[0].id : "", site: "", serial_no: "",
                notes: "", acquisition_date: "", in_service_date: "", acquisition_cost: "", residual_value: "0",
-               useful_life_months: "", start_convention: "", posting_branch_id: "", status: "DRAFT" }} />
+               useful_life_months: "", start_convention: "", posting_branch_id: "", status: "DRAFT",
+               quantity: "1", depreciation_start: "", opening_accumulated: "", opening_through: "" }} />
   );
 }

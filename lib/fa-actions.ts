@@ -6,6 +6,9 @@ import { sql } from "./db";
 import { requirePermission } from "./auth";
 import { requireFaPoster, assertFaBranch, isCompanyLevel } from "./fa-access";
 import type { ActionResult } from "./actions";
+import { heavy } from "./heavy";
+import { reviewRows, type DraftRow } from "./fa-import";
+import type { Convention } from "./fa-engine";
 
 const MONEY = /^\d{1,14}(\.\d{1,4})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -15,12 +18,35 @@ const units = (v: string) => { const [i, f = ""] = v.split("."); return BigInt(i
 
 /** What an asset's posted history pins: these change only by correction or change of estimate. */
 const PINNED = ["category_id", "acquisition_date", "in_service_date", "acquisition_cost", "residual_value",
-                "useful_life_months", "start_convention", "branch_id", "posting_branch_id"] as const;
+                "useful_life_months", "start_convention", "branch_id", "posting_branch_id",
+                "depreciation_start", "opening_accumulated", "opening_through"] as const;
 const PINNED_LABEL: Record<(typeof PINNED)[number], string> = {
   category_id: "category", acquisition_date: "acquisition date", in_service_date: "in-service date",
   acquisition_cost: "cost", residual_value: "residual value", useful_life_months: "useful life",
   start_convention: "start convention", branch_id: "branch", posting_branch_id: "depreciation posting branch",
+  depreciation_start: "depreciation start", opening_accumulated: "opening accumulated", opening_through: "opening month",
 };
+const MONTH = /^\d{4}-\d{2}$/;
+
+/**
+ * The checks an asset's history-bearing fields must pass, for the form and the
+ * import alike. Returns what is wrong, or null.
+ */
+function checkHistory(v: { quantity: string; acquisition_cost: string; residual_value: string; depreciation_start: string | null;
+  opening_accumulated: string | null; opening_through: string | null; in_service_date: string | null }) {
+  if (!MONEY.test(v.quantity) || units(v.quantity) === 0n) return "Quantity is a number above zero.";
+  if (v.depreciation_start && !MONTH.test(v.depreciation_start)) return "Depreciation start is a month.";
+  if (!!v.opening_accumulated !== !!v.opening_through) return "An opening figure needs both its amount and the month it runs to.";
+  if (v.opening_accumulated && !MONEY.test(v.opening_accumulated)) return "Enter the opening accumulated as an amount.";
+  if (v.opening_through && !MONTH.test(v.opening_through)) return "The opening month is a month.";
+  if (v.opening_accumulated && units(v.opening_accumulated) > units(v.acquisition_cost) - units(v.residual_value)) {
+    return "Opening accumulated cannot be more than cost less residual value.";
+  }
+  if (v.opening_through && v.depreciation_start && v.opening_through < v.depreciation_start.slice(0, 7)) {
+    return "The opening figure runs to a month before depreciation starts.";
+  }
+  return null;
+}
 
 /**
  * Creates or edits an asset. A draft can be changed freely. Once a month of
@@ -46,6 +72,10 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
       useful_life_months: Number(str(fd, "useful_life_months")),
       start_convention: str(fd, "start_convention") || null,
       posting_branch_id: str(fd, "posting_branch_id") || null,
+      quantity: str(fd, "quantity").replace(/,/g, "") || "1",
+      depreciation_start: str(fd, "depreciation_start") || null,
+      opening_accumulated: str(fd, "opening_accumulated").replace(/,/g, "") || null,
+      opening_through: str(fd, "opening_through") || null,
     };
     // The assigned branch is the default; naming it again is no exception.
     if (v.posting_branch_id === v.branch_id) v.posting_branch_id = null;
@@ -62,6 +92,8 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
     }
     if (v.start_convention && !["NEXT_MONTH", "SAME_MONTH", "DAILY"].includes(v.start_convention)) return { error: "Choose a start convention." };
     if (intent === "activate" && !v.in_service_date) return { error: "An asset goes active on the day it goes into service; enter that date." };
+    const history = checkHistory(v);
+    if (history) return { error: history };
 
     const [cat] = await sql`select id, is_active from fa_category where id = ${v.category_id} and company_id = ${co}`;
     if (!cat) return { error: "Choose a category." };
@@ -81,10 +113,13 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
         const [a] = await tx`
           insert into fixed_asset (company_id, code, name, category_id, branch_id, posting_branch_id, site, serial_no, notes,
                                    acquisition_date, in_service_date, acquisition_cost, residual_value,
-                                   useful_life_months, start_convention, status, created_by)
+                                   useful_life_months, start_convention, status, created_by,
+                                   quantity, depreciation_start, opening_accumulated, opening_through)
           values (${co}, ${v.code}, ${v.name}, ${v.category_id}, ${v.branch_id}, ${v.posting_branch_id}, ${v.site}, ${v.serial_no}, ${v.notes},
                   ${v.acquisition_date}, ${v.in_service_date}, ${v.acquisition_cost}, ${v.residual_value},
-                  ${v.useful_life_months}, ${v.start_convention}, ${intent === "activate" ? "ACTIVE" : "DRAFT"}, ${user.id})
+                  ${v.useful_life_months}, ${v.start_convention}, ${intent === "activate" ? "ACTIVE" : "DRAFT"}, ${user.id},
+                  ${v.quantity}, ${v.depreciation_start ? v.depreciation_start + "-01" : null}, ${v.opening_accumulated},
+                  ${v.opening_through ? v.opening_through + "-01" : null})
           returning id`;
         savedId = a.id;
         await tx`insert into fa_event (company_id, asset_id, event_type, event_date, to_branch_id, created_by, detail)
@@ -96,6 +131,7 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
       }
       const [old] = await tx`
         select f.*, to_char(f.acquisition_date, 'YYYY-MM-DD') as acq, to_char(f.in_service_date, 'YYYY-MM-DD') as svc,
+               to_char(f.depreciation_start, 'YYYY-MM') as dstart, f.opening_accumulated::text as oacc, to_char(f.opening_through, 'YYYY-MM') as othru,
                f.acquisition_cost::text as cost, f.residual_value::text as resid,
                exists (select 1 from fa_depreciation d where d.asset_id = f.id and d.journal_line_id is not null) as posted
           from fixed_asset f where f.id = ${id} and f.company_id = ${co} for update`;
@@ -106,9 +142,10 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
         category_id: old.category_id, acquisition_date: old.acq, in_service_date: old.svc,
         acquisition_cost: old.cost, residual_value: old.resid, useful_life_months: old.useful_life_months,
         start_convention: old.start_convention, branch_id: old.branch_id, posting_branch_id: old.posting_branch_id,
+        depreciation_start: old.dstart, opening_accumulated: old.oacc, opening_through: old.othru,
       };
-      const same = (k: (typeof PINNED)[number]) => k === "acquisition_cost" || k === "residual_value"
-        ? units(String(before[k])) === units(String(v[k])) : String(before[k] ?? "") === String(v[k] ?? "");
+      const same = (k: (typeof PINNED)[number]) => k === "acquisition_cost" || k === "residual_value" || k === "opening_accumulated"
+        ? units(String(before[k] ?? "0")) === units(String(v[k] ?? "0")) : String(before[k] ?? "") === String(v[k] ?? "");
       const changed = PINNED.filter((k) => !same(k));
       const plain = (["code", "name", "site", "serial_no", "notes"] as const)
         .filter((k) => String(old[k] ?? "") !== String(v[k] ?? ""));
@@ -124,6 +161,8 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
                acquisition_date = ${v.acquisition_date}, in_service_date = ${v.in_service_date},
                acquisition_cost = ${v.acquisition_cost}, residual_value = ${v.residual_value},
                useful_life_months = ${v.useful_life_months}, start_convention = ${v.start_convention},
+               quantity = ${v.quantity}, depreciation_start = ${v.depreciation_start ? v.depreciation_start + "-01" : null},
+               opening_accumulated = ${v.opening_accumulated}, opening_through = ${v.opening_through ? v.opening_through + "-01" : null},
                status = ${status}, updated_at = now()
          where id = ${id}`;
       await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
@@ -515,4 +554,69 @@ export async function disposeAssetAction(_prev: unknown, fd: FormData): Promise<
   }
   revalidatePath("/fixed-assets", "layout");
   redirect(`/fixed-assets/${assetId}?toast=${encodeURIComponent(`Disposed · ${docNo}`)}`);
+}
+
+// ------------------------------------------------------------- import --
+
+export type FaImportResult =
+  | { ok: true; imported: { line: number; code: string; id: string; name: string }[]; skipped: { line: number; name: string; reason: string }[] }
+  | { ok: false; error: string };
+
+/**
+ * The pasted register, saved as real assets. The review the page showed runs
+ * again here against the database, and only rows that are included and need
+ * nothing more are saved. Each becomes an active asset whose schedule comes
+ * from the engine; no purchase, payment or depreciation journal is posted.
+ */
+export async function importAssets(input: { drafts: DraftRow[]; subMap: Record<string, string>; branchId: string | null; year: number }): Promise<FaImportResult> {
+  const user = await requireFaPoster();
+  const co = user.companyId;
+  try {
+    return await heavy("import.assets", { id: user.id, companyId: co }, async () => {
+      const [cats, branches, existing, [setting]] = await Promise.all([
+        sql`select c.id, c.name, (select h.name from account a join account h on h.id = a.parent_id where a.id = c.asset_account_id) as "group"
+               from fa_category c where c.company_id = ${co} and c.is_active`,
+        sql`select id, name from location where company_id = ${co} and parent_id is null and is_active`,
+        sql`select code, name, acquisition_cost::float as cost, to_char(acquisition_date, 'YYYY-MM-DD') as acquired from fixed_asset where company_id = ${co}`,
+        sql`select start_convention from fa_setting where company_id = ${co}`,
+      ]);
+      const drafts = (input.drafts ?? []).slice(0, 2000);
+      const rows = reviewRows(drafts, { categories: cats as never, branches: branches as never, existing: existing as never, subMap: input.subMap ?? {},
+        branchId: input.branchId, convention: (setting?.start_convention ?? "SAME_MONTH") as Convention, year: input.year, nbvMonth: null });
+      const skipped = rows.filter((r) => !r.include || r.status === "attention")
+        .map((r) => ({ line: r.line, name: r.name, reason: !r.include ? "Left out" : r.issues.filter((i) => i.level === "attention").map((i) => i.text).join(" ") }));
+      const take = rows.filter((r) => r.include && r.status !== "attention");
+      for (const r of take) await assertFaBranch(user, r.branchId!, null);
+      const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+      const imported: { line: number; code: string; id: string; name: string }[] = [];
+      await sql.begin(async (tx) => {
+        const [mx] = await tx`select coalesce(max(substring(code from '^FA-(\\d+)$')::int), 0) as n from fixed_asset where company_id = ${co}`;
+        let n = Number(mx.n);
+        for (const r of take) {
+          const code = `FA-${String(++n).padStart(4, "0")}`;
+          const inService = r.inService ?? r.acquired!;
+          const [a] = await tx`
+            insert into fixed_asset (company_id, code, name, category_id, branch_id, notes, acquisition_date, in_service_date,
+                                     acquisition_cost, residual_value, useful_life_months, status, created_by,
+                                     quantity, depreciation_start, opening_accumulated, opening_through, source_ref)
+            values (${co}, ${code}, ${r.name.slice(0, 200)}, ${r.category!.id}, ${r.branchId}, ${r.notes || null}, ${r.acquired}, ${inService},
+                    ${r.cost!.toFixed(4)}, ${r.residual.toFixed(4)}, ${r.life}, 'ACTIVE', ${user.id},
+                    ${(r.qty ?? 1).toFixed(4)}, ${r.start ? r.start + "-01" : null},
+                    ${r.opening ? r.opening.toFixed(4) : null}, ${r.opening && r.openingThrough ? r.openingThrough + "-01" : null},
+                    ${`Import ${today} · row ${r.no || r.line}`})
+            returning id`;
+          await tx`insert into fa_event (company_id, asset_id, event_type, event_date, to_branch_id, created_by, detail)
+                   values (${co}, ${a.id}, 'CREATED', ${r.acquired}, ${r.branchId}, ${user.id},
+                           ${tx.json({ cost: r.cost, life: r.life, imported: true, row: r.no || r.line })})`;
+          await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by)
+                   values (${co}, ${a.id}, 'ACTIVATED', ${inService}, ${user.id})`;
+          imported.push({ line: r.line, code, id: a.id, name: r.name });
+        }
+      });
+      revalidatePath("/fixed-assets", "layout");
+      return { ok: true as const, imported, skipped };
+    });
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
