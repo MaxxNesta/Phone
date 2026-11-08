@@ -1,116 +1,102 @@
-// The asset register paste reader (lib/fa-import.ts). Pure: no database.
+// The asset register paste: read, reviewed, ready to import (lib/fa-import.ts). Pure: no database.
 //   npx tsx scripts/test-fa-import.mjs
 
-const { readRegister, parseMonth, parseDate, num, suggestName, FA_COLUMNS } = await import("../lib/fa-import.ts");
+const { readRegister, parseRegister, reviewRows, unknownSubcategories, subKey, parseMonth, parseDate, num, suggestName, registerHeaders, FA_COLUMNS } =
+  await import("../lib/fa-import.ts");
 const { parseTsv } = await import("../lib/import-purchase-invoices.ts");
 
 let bad = 0;
 const check = (label, ok, detail = "") => { if (!ok) bad++; console.log(`  ${ok ? "ok  " : "FAIL"}  ${label}${detail ? "  " + detail : ""}`); };
 
 const cats = [
-  { id: "g", name: "Generator & Solar", group: "Machinery" },
-  { id: "c", name: "Computer & Printer", group: "Furniture and Office Equipment" },
+  { id: "gen", name: "Generator & Solar", group: "Machinery" },
+  { id: "tab", name: "Table, Chair & Locker", group: "Furniture and Office Equipment" },
+  { id: "save", name: "Save/မီးခံသေတ္တာ", group: "Furniture and Office Equipment" },
+  { id: "pc", name: "Computer & Printer", group: "Furniture and Office Equipment" },
+  { id: "ev", name: "Cycle & EV Cycle", group: "Vehicles" },
 ];
-const head = ["No", "Description", "Types", "Software", "Depreciation Rate", "Mohths", "Date", "Qty", "Price", "Cost", "Disopsal", "Op; Accu",
-  "Jan-26", "Feb-26", "Mar-26", "Apr-26", "May-26", "Jun-26", "Jul-26", "Aug-26", "Sep-26", "Oct-26", "Nov-26", "Dec-26", "NBV"];
-const m12 = (v) => Array(12).fill(String(v));
-const rows = [
-  ["Fixed asset register 2026"],
-  head,
-  // 1,200,000 over 24 months from Jan 2026: 50,000 a month, NBV 600,000.
-  ["1", "Growatt Inverter ဝယ်ယူ 12/1/2026 (Ko Aung)", "Machinery", "Generator & Solar", "24", "Jan 2026", "12/1/2026", "1", "1,200,000", "1,200,000", "", "", ...m12("50,000"), "600,000"],
-  // Started 2025, 240,000 carried, 10,000 a month on 480,000 / 48.
-  ["2", "HP printer", "Office Equipment", "Computer & Printer", "48", "Jan 2025", "15-Jan-25", "2", "240,000", "480,000", "", "120,000", ...m12("10,000"), "240,000"],
-  // Unknown category, life as a rate, Excel's March is off.
-  ["3", "Mystery", "Vehicles", "Spaceship", "24%", "Mar-26", "", "1", "100", "100", "50", "", ...m12("1")],
-  ["", "Total", "", "", "", "", "", "", "", "1,780,100"],
-];
-const r = readRegister(rows, cats);
-check("header found on line 2", r && r.headerLine === 2, String(r?.headerLine));
-check("header labels all match", r.wrongHeaders.length === 0, r.wrongHeaders.join("; "));
-check("year from the month headers", r.year === 2026, String(r.year));
-check("three assets, total line skipped", r.rows.length === 3, String(r.rows.length));
-
-const [a, b, c] = r.rows;
-check("1 matches: 50,000 a month, NBV 600,000", a.status === "ok" && a.mtk.every((v) => v === 50000) && a.mtkNbv === 600000, JSON.stringify(a.issues));
-check("1 keeps its full Burmese description", a.description.includes("ဝယ်ယူ"));
-check("1 date day-first", a.date === "2026-01-12", a.date);
-check("2 group case-insensitive, opening carried", b.status === "ok" && b.mtk[0] === 10000 && b.mtkNbv === 240000, JSON.stringify(b.issues) + " " + b.mtk[0] + " " + b.mtkNbv);
-check("3 blocked: no such category", c.status === "blocked" && c.issues.some((i) => /Spaceship/.test(i.text)));
-check("3 blocked: 24% is not months", c.issues.some((i) => /whole number of months/.test(i.text)));
-check("3 review: disposal value asks", c.issues.some((i) => /Disopsal has/.test(i.text)));
-
-// Month and number forms Excel copies.
-check("months", ["Jan 2026", "Jan-26", "January 2026", "2026-01", "1/1/2026"].every((s) => parseMonth(s) === "2026-01"));
-check("ambiguous date is flagged", parseDate("3/4/2026").unsure === true && parseDate("13/4/2026").unsure === false);
-check("numbers", num("1,250,000") === 1250000 && num("(500)") === -500 && num("-") === null && num("") === null);
-
-// A blank opening on an asset started before the year asks to confirm zero.
-const blank = readRegister([head, ["4", "Old PC", "Office equipment", "Computer & Printer", "36", "Jun 2025", "", "1", "360000", "360000", "", "", ...m12("10000"), "0"]], cats);
-check("blank opening before the year is reviewed", blank.rows[0].issues.some((i) => /confirm it is zero/.test(i.text)));
-
-// The name is the start of a description that mixes name and notes.
-check("name stops at Burmese text", suggestName("Growatt Inverter ဝယ်ယူ 12/1/2026 (Ko Aung)") === "Growatt Inverter");
-check("name stops at a bracket", suggestName("Office Table Small 92-IR-Table A3-19 (Ko Aung) 2 pcs") === "Office Table Small 92-IR-Table A3-19");
-check("a plain name is kept whole", suggestName("HP LaserJet printer") === "HP LaserJet printer");
-check("the row keeps the full description as notes", a.description.includes("Ko Aung") && a.name === "Growatt Inverter");
-
-// A Name column added after No shifts every other column; headers still find them.
-const withName = readRegister([
-  ["No", "Name", ...head.slice(1)],
-  ["9", "Office Table Small 92-IR-Table A3-19", "Office Table Small 92-IR-Table A3-19 (ကိုအောင်) 2 pcs", "Furniture", "Computer & Printer", "48", "Jan 2025", "15-Jan-25", "2", "240,000", "480,000", "", "120,000", ...m12("10,000"), "240,000"],
-], cats);
-const t = withName.rows[0];
-check("the Name column is the name", t.name === "Office Table Small 92-IR-Table A3-19", t.name);
-check("Description stays whole as notes", t.description.includes("2 pcs"));
-check("shifted columns still read: cost, opening, months, NBV", t.cost === 480000 && t.opening === 120000 && t.mtk[0] === 10000 && t.nbv === 240000, JSON.stringify(t.issues));
-check("no header complaints", withName.wrongHeaders.length === 0, withName.wrongHeaders.join("; "));
-const noTypes = readRegister([["No", "Description", "Cost"], ["1", "x", "10"]], cats);
-check("a missing column is reported by name", noTypes.wrongHeaders.some((w) => /Types/.test(w)), noTypes.wrongHeaders.join("; "));
-
-// Rows from the shop's own register, as Excel copies them (a cell with a line break comes quoted).
-const realCats = [
-  { id: "g", name: "Generator & Solar", group: "Machinery" },
-  { id: "t", name: "Table, Chair & Locker", group: "Furniture and Office Equipment" },
-];
+const branches = [{ id: "main", name: "Main Store" }, { id: "mdy", name: "Mandalay" }];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const realHead = ["No", "Asset name (review)", "Notes / original description", "Category (Types)", "Subcategory", "Useful life (months)",
-  "Depreciation start", "Asset date", "Quantity", "Unit price", "Total cost", "Disposal (source)", "Opening accumulated depreciation",
-  ...MON.map((m) => `${m} 2026`), "NBV (source)"];
-const nine = (v) => [...Array(9).fill(v), " ", " ", " "];
-const tsv = [
-  realHead,
-  ["1", "Growatt SPG 6000ES Plus Wifi Inverter", "Growatt SPG 6000ES Plus Wifi Inverter", "MACHINERY", "Generator & Solar", "24", "Jan'2026", "11 Jan 2569", "1", "1,420,000.00", "1,420,000.00", " ", " ", ...nine("59,166.67"), "1,005,833.33"],
-  ["4", "Office Table Small 92-IR-Table A3-19", '"\nOffice Table Small 92-IR-Table A3-19 (3လုံး)*(180000-5%dis)Sweety Home 28/12/25- Ygn Office\n"', "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "28 Dec 2568", "3", "170,991.67", "512,975.00", " ", " ", ...nine("14,249.31"), "413,229.86"],
-  ["11", "File Cabinet", "File Cabinet ပွင့်ဦး", "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "07 Jan 2569", "1", "1,148,000.00", "865,000.00", " ", " ", ...nine("24,027.78"), "696,805.56"],
+const head = registerHeaders(2026);
+const nine = (v) => [...Array(9).fill(v), "", "", ""];
+const later = (from, v) => MON.map((_, k) => (k >= from && k < 9 ? v : ""));
+
+// Rows from the shop's own register, as Excel copies them (Buddhist-era dates, decimals, a quoted multi-line cell).
+const rows = [
+  head,
+  ["1", "Growatt SPG 6000ES Plus Wifi Inverter", "Growatt SPG 6000ES Plus Wifi Inverter", "MACHINERY", "Generator & Solar", "24", "Jan'2026", "11 Jan 2569", "1", "1,420,000.00", "1,420,000.00", "", "", ...nine("59,166.67"), "1,005,833.33"],
+  ["4", "Office Table Small 92-IR-Table A3-19", '"\nOffice Table Small 92-IR-Table A3-19 (3လုံး)*(180000-5%dis)Sweety Home 28/12/25- Ygn Office\n"', "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "28 Dec 2568", "3", "170,991.67", "512,975.00", "", "", ...nine("14,249.31"), "413,229.86"],
+  ["8", "Meeting Table 21-ML-MT-002", "Meeting Table 21-ML-MT-002 Sweety Home", "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "28 Dec 2568", "1", "564,300.00", "564,300.00", "", "", ...nine("15,675.00"), "454,575.00"],
+  ["11", "File Cabinet", "File Cabinet ပွင့်ဦး", "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "07 Jan 2569", "1", "1,148,000.00", "865,000.00", "", "", ...nine("24,027.78"), "696,805.56"],
+  ["14", "Meeting Table 21-ML-MT-002", "Meeting Table 21-ML-MT-002 Sweety Home", "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Jan'2026", "28 Dec 2568", "1", "564,300.00", "564,300.00", "", "", ...nine("15,675.00"), "454,575.00"],
+  ["15", "Office Table Big-8 (4' × 2')", "Office Table Big-8", "FURNITURES AND FITTINGS", "Table , Chair & Locker", "36", "Apr'2026", "01 Apr 2569", "3", "200,000.00", "600,000.00", "", "", ...later(3, "16,666.67"), "533,333.33"],
+  ["17", "SB.T-1700(MNZ) မီးခံသေတ္တာ", "SB.T-1700(MNZ) မီးခံသေတ္တာ", "OFFICE EQUIPMENT", "Save Box", "120", "Jan'2026", "07 Dec 2568", "1", "7,500,250.00", "7,500,250.00", "", "", ...nine("62,502.08"), "7,062,735.42"],
+  ["43", "MDY-85W 85783 EV Cycle", "MDY-85W 85783 EV Cycle", "VEHICLES", "Vehicles", "120", "Jan'2026", "19 Jan 2569", "1", "6,550,000.00", "6,550,000.00", "", "", ...nine("54,583.33"), "6,167,916.67"],
 ].map((r) => r.join("\t")).join("\n");
-const real = readRegister(parseTsv(tsv), realCats);
-check("real headers all found", real.wrongHeaders.length === 0, real.wrongHeaders.join("; "));
-check("the NBV is worked out as of July", real.nbvMonth === 6 && real.inferred.matches === 3, JSON.stringify(real.inferred));
-const [g, tb, fc] = real.rows;
-check("Buddhist-era date: 11 Jan 2569 is 2026-01-11", g.date === "2026-01-11", g.date);
-check("Jan'2026 is the start month", g.start === "2026-01");
-check("MACHINERY matches the chart, months and NBV agree", g.status === "ok", JSON.stringify(g.issues));
-check("FURNITURES AND FITTINGS under Furniture and Office Equipment; “Table , Chair” matches", tb.status === "ok" && tb.category?.id === "t", JSON.stringify(tb.issues));
-check("the multi-line description is kept whole", tb.description.includes("Sweety Home"));
-check("28 Dec 2568 is 2025-12-28", tb.date === "2025-12-28", tb.date);
-check("qty × price that is not the cost is flagged", fc.status === "review" && fc.issues.some((i) => /Qty × price/.test(i.text)), JSON.stringify(fc.issues));
-const asSep = readRegister(parseTsv(tsv), realCats, 8);
-check("choosing September instead shows the NBV gap", asSep.rows[0].issues.some((i) => /NBV/.test(i.text)));
-// An older sheet headed "Subcategory (Software)" still reads.
-const oldHead = readRegister(parseTsv([realHead.map((h) => (h === "Subcategory" ? "Subcategory (Software)" : h)).join(String.fromCharCode(9)), ...tsv.split(String.fromCharCode(10)).slice(1)].join(String.fromCharCode(10))), realCats);
-check("the old Subcategory (Software) header still reads", oldHead.wrongHeaders.length === 0 && oldHead.rows[0].category?.id === "g");
-// What the Asset schedule exports reads straight back in: same headers, nothing missing.
-const { registerHeaders } = await import("../lib/fa-import.ts");
-check("the schedule's headers are the register's", JSON.stringify(registerHeaders(2026)) === JSON.stringify(realHead));
-const back = readRegister([registerHeaders(2026),
-  ["1", "Growatt SPG 6000ES Plus Wifi Inverter", "Growatt SPG 6000ES Plus Wifi Inverter", "Machinery", "Generator & Solar", "24", "Jan 2026", "11 Jan 2026", "", "", "1420000", "", "0",
-    ...Array(12).fill("59167"), "0"]], realCats);
-check("an exported row reads back with no header complaints", back.wrongHeaders.length === 0 && back.rows[0].category?.id === "g", back.wrongHeaders.join("; "));
-// The columns-to-match list names exactly the register's headers, in its order.
-check("Columns to match lists the register's exact headers",
-  JSON.stringify(FA_COLUMNS.map((c) => c.header)) === JSON.stringify([...realHead.slice(0, 13), "Jan 2026 … Dec 2026", "NBV (source)"]),
-  FA_COLUMNS.map((c) => c.header).join(" | "));
+
+const p = parseRegister(parseTsv(rows));
+check("header found, no missing columns", p && p.wrongHeaders.length === 0, p?.wrongHeaders.join("; "));
+check("eight rows read", p.drafts.length === 8, String(p.drafts.length));
+check("the file's NBV is as of July", p.inferred?.month === 6, JSON.stringify(p.inferred));
+
+const unknown = unknownSubcategories(p.drafts, cats);
+check("Save Box and Vehicles are subcategories to map", JSON.stringify(unknown.map((u) => u.text)) === JSON.stringify(["Save Box", "Vehicles"]), unknown.map((u) => u.text).join(", "));
+
+const ctx = { categories: cats, branches, existing: [], subMap: {}, branchId: "main", convention: "SAME_MONTH", year: 2026, nbvMonth: 6 };
+let r = reviewRows(p.drafts, ctx);
+const by = (no) => r.find((x) => x.no === no);
+check("unmapped subcategory needs attention", by("17").status === "attention" && by("43").status === "attention");
+r = reviewRows(p.drafts, { ...ctx, subMap: { [subKey("Save Box")]: "save", [subKey("Vehicles")]: "ev" } });
+check("mapped once, every row follows", by("17").category?.id === "save" && by("43").category?.id === "ev");
+
+const g = by("1");
+check("Growatt is ready: 11 Jan 2569 is 2026-01-11", g.status === "ready" && g.acquired === "2026-01-11", JSON.stringify(g.issues));
+// The engine spreads what is left over the months left, so a month is 59,166 or 59,167, never the file's 59,166.67.
+check("engine's months, not the file's", g.monthly === 59167 && g.mtk.every((v) => v === 59167 || v === 59166), JSON.stringify(g.mtk));
+const tb = by("4");
+check("28 Dec 2568 is 2025-12-28", tb.acquired === "2025-12-28", tb.acquired);
+check("explicit Jan start against the same-month rule is reviewed, and kept", tb.start === "2026-01" && tb.issues.some((i) => /first-month rule would start it Dec 2025/.test(i.text)), JSON.stringify(tb.issues));
+check("FURNITURES AND FITTINGS sits under Furniture and Office Equipment; “Table , Chair” matches", tb.category?.id === "tab" && !tb.issues.some((i) => /chart files/.test(i.text)));
+check("the whole multi-line description is kept as notes", tb.notes.includes("Sweety Home 28/12/25- Ygn Office"));
+check("quantity is kept for a group", tb.qty === 3);
+const fc = by("11");
+check("quantity × unit price that is not the cost: the total cost is used", fc.status === "review" && fc.issues.some((i) => /total cost 865,000 is used/.test(i.text)));
+check("the second Meeting Table is a possible duplicate", /line/.test(by("14").duplicateOf ?? ""), by("14").duplicateOf);
+check("the first Meeting Table is not", by("8").duplicateOf === null);
+const apr = by("15");
+check("an April start depreciates from April", apr.mtk[2] === 0 && apr.mtk[3] === 16667, JSON.stringify(apr.mtk));
+const sb = by("17");
+check("Save Box: OFFICE EQUIPMENT is within the chart's Furniture and Office Equipment", !sb.issues.some((i) => /chart files/.test(i.text)), JSON.stringify(sb.issues));
+
+// Duplicates of what is already registered.
+r = reviewRows(p.drafts, { ...ctx, existing: [{ code: "FA-0007", name: "Growatt SPG 6000ES Plus Wifi Inverter", cost: 1420000, acquired: "2026-01-11" }] });
+check("an asset already registered is a possible duplicate", r.find((x) => x.no === "1").duplicateOf === "FA-0007");
+
+// No branch, a bad life, a bad date.
+const broken = parseRegister(parseTsv([head.slice(0, 13).join("\t"), ["9", "X", "x", "MACHINERY", "Generator & Solar", "24%", "Jan'2026", "31 Feb 2569", "1", "1", "100", "", ""].join("\t")].join("\n")));
+const br = reviewRows(broken.drafts, { ...ctx, branchId: null })[0];
+check("24% is not months, 31 Feb is not a date, no branch: needs attention",
+  br.status === "attention" && br.issues.some((i) => /whole number of months/.test(i.text)) && br.issues.some((i) => /not a date/.test(i.text)) && br.issues.some((i) => /branch/.test(i.text)),
+  JSON.stringify(br.issues));
+
+// An opening figure runs to the month before the start unless the sheet says otherwise.
+const old = parseRegister(parseTsv([head.slice(0, 13).join("\t"), ["1", "Old PC", "Old PC", "Furniture", "Computer & Printer", "36", "Jan'2025", "05 Jan 2568", "1", "", "3,600,000", "", "1,200,000"].join("\t")].join("\n")));
+const op = reviewRows(old.drafts, ctx)[0];
+check("opening 1,200,000 runs to Dec 2024; MTK continues from there", op.openingThrough === "2024-12" && op.monthly === 66667, `${op.openingThrough} ${op.monthly}`);
+const blank = parseRegister(parseTsv([head.slice(0, 13).join("\t"), ["1", "Old PC", "Old PC", "Furniture", "Computer & Printer", "36", "Jun'2025", "05 Jun 2568", "1", "", "3,600,000", "", ""].join("\t")].join("\n")));
+check("a blank opening on an asset started before the year asks to confirm zero", reviewRows(blank.drafts, ctx)[0].issues.some((i) => /confirm it is zero/.test(i.text)));
+
+// Months and NBV are optional: a sheet without them reads.
+const lean = parseRegister(parseTsv([head.slice(0, 13).join("\t"), ["1", "Growatt", "Growatt", "MACHINERY", "Generator & Solar", "24", "Jan'2026", "11 Jan 2569", "1", "1,420,000", "1,420,000", "", ""].join("\t")].join("\n")));
+check("without months or NBV, nothing is missing", lean.wrongHeaders.length === 0 && !lean.hasMonths && reviewRows(lean.drafts, ctx)[0].status === "ready", JSON.stringify(reviewRows(lean.drafts, ctx)[0].issues));
+
+// Small parsers.
+check("months", ["Jan 2026", "Jan'2026", "Jan-26", "January 2569", "2026-01", "1/1/2026"].every((s) => parseMonth(s) === "2026-01"));
+check("ambiguous dates are flagged", parseDate("3/4/2026").unsure === true && parseDate("13/4/2026").unsure === false);
+check("numbers", num("1,250,000") === 1250000 && num("(500)") === -500 && num("-") === null && num("") === null);
+check("a name is suggested from a description", suggestName("Growatt Inverter ဝယ်ယူ 12/1/2026 (Ko Aung)") === "Growatt Inverter");
+check("old headers still read (Subcategory (Software))", readRegister(parseTsv(rows.replace("\tSubcategory\t", "\tSubcategory (Software)\t")), cats).wrongHeaders.length === 0);
+check("the guide lists the schedule's columns without months and NBV", JSON.stringify(FA_COLUMNS.map((c) => c.header)) === JSON.stringify(head.slice(0, 13)));
 
 console.log(bad ? `\n${bad} FAILED` : "\nfa-import: all good");
 process.exit(bad ? 1 : 0);

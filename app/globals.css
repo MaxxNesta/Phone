@@ -9473,3 +9473,32 @@ a.fay-count { color: var(--link); margin-left: 21px; }
 table.fay.fay-sched tbody tr > td.fay-no, table.fay.fay-sched tbody tr > th.fay-first { background-color: var(--surface); z-index: 3; }
 table.fay.fay-sched tbody tr:nth-child(2n) > td.fay-no, table.fay.fay-sched tbody tr:nth-child(2n) > th.fay-first { background-color: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
 table.fay tbody tr:nth-child(2n) > th.fay-first { background-color: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+/* Asset import, review step (components/fa-import.tsx). */
+.fai-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 18rem)); gap: var(--s2); }
+.fai-mapping { margin-top: var(--s3); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--warn) 6%, var(--surface)); }
+.fai-map-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--s2); margin-top: var(--s2); }
+.fai-summary { margin: var(--s3) 0 var(--s2); font-size: 1rem; }
+.fai-s-review { color: var(--warn); font-weight: 600; }
+.fai-s-attention { color: var(--bad); font-weight: 600; }
+.fai-rows th, .fai-rows td { vertical-align: top; }
+.fai-check { width: 2rem; }
+.fai-out td { opacity: 0.5; }
+.fai-toggle strong { font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16rem; display: inline-block; vertical-align: bottom; }
+.fai-pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+.fai-pill.ready { background: color-mix(in srgb, var(--link) 12%, transparent); color: var(--link); }
+.fai-pill.review { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.fai-pill.attention { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
+.fai-info { display: flex; align-items: center; gap: 8px; margin: var(--s3) 0 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: var(--t-sm); }
+.fai-review .fai-foot { margin-top: var(--s3); }
+.fai-edit { margin-top: var(--s2); }
+.fai-editor { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--s2); margin-top: var(--s2); padding: var(--s2); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.fai-editor .fai-wide { grid-column: span 2; }
+.fai-done { align-self: end; justify-self: start; }
+.fai-modal { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--s3); background: rgb(0 0 0 / 0.28); }
+.fai-done-card { width: min(36rem, 100%); max-height: 85vh; overflow: auto; text-align: center; }
+.fai-left { text-align: left; margin: var(--s2) 0; padding: var(--s2); border-radius: 10px; background: color-mix(in srgb, var(--warn) 8%, transparent); font-size: var(--t-sm); }
+.fai-left strong { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); }
+.fai-left ul { margin: 6px 0 0; padding-left: 1.1rem; }
+.fai-done-card .actions { justify-content: center; }
+.fai-review .fai-rows th, .fai-review .fai-rows td { padding: 8px 9px; }
+.fai-review .fai-toggle strong { max-width: 13rem; }
