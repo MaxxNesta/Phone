@@ -99,14 +99,15 @@ export default async function AssetPage({ params }: { params: Promise<{ id: stri
                 <thead><tr><th>Month</th><th className="r">Opening NBV</th><th className="r">Depreciation</th><th className="r">Closing NBV</th><th>State</th><th>Journal</th></tr></thead>
                 <tbody>{rows.map((r) => {
                   const js = byMonth.get(r.month) ?? [];
-                  const state = r.state === "POSTED" ? "posted" : r.month < now ? "due" : r.month === now ? "ready" : "planned";
+                  // The calendar's words: not posted and the month has come is ready to post.
+                  const state = r.state === "POSTED" ? "posted" : r.month <= now ? "ready" : "planned";
                   return (
                     <tr key={r.month} className={r.month === now ? "fa-now" : undefined}>
                       <td className="nowrap">{monthLong(r.month)}</td>
                       <td className="r">{kyat(r.opening)}</td>
                       <td className="r"><strong>{kyat(r.amount)}</strong></td>
                       <td className="r">{kyat(r.closing)}</td>
-                      <td><span className={`fa-pill ${state}`}>{{ posted: "Posted", due: "Not posted", ready: "Ready to post", planned: "Planned" }[state]}</span></td>
+                      <td><span className={`fa-pill ${state}`}>{{ posted: "Posted", ready: "Ready to post", planned: "Planned" }[state]}</span></td>
                       <td>{js.length ? js.map((j) => (
                         <span key={j.doc_id + j.source} className="fa-jsrc">
                           <Link href={`/documents/${j.doc_id}`} className="fa-jlink">{j.doc_no}</Link>

@@ -9,8 +9,8 @@ import { firstMonth, fromUnits, type Month } from "./fa-engine";
  *
  * Every month of depreciation is one of three:
  *   POSTED   on the ledger (a run, linked history, an opening balance)
- *   DUE      the month is over and nothing is posted yet
- *   PLANNED  the month has not ended
+ *   DUE      ready to post: the month has come and nothing is posted (the calendar's word)
+ *   PLANNED  a month still to come
  *
  * A branch filter reads each month at the branch the asset posted to then:
  * a transfer moves the months after it, never the ones before.
@@ -87,7 +87,7 @@ export async function faYear(co: string, year: number, f: YearFilters) {
     for (const m of months) {
       const r = a.rows.find((x) => x.month === m);
       const amount = r ? n(r.amount) : 0;
-      const state: DepState = r?.state === "POSTED" ? "POSTED" : m < now ? "DUE" : "PLANNED";
+      const state: DepState = r?.state === "POSTED" ? "POSTED" : m <= now ? "DUE" : "PLANNED";
       accAll += amount; if (state === "POSTED") accPosted += amount;
       const end = lastDay(m);
       const held = a.acquired <= end && !(a.disposedOn && a.disposedOn <= end);

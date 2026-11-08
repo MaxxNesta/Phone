@@ -65,7 +65,7 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
       <div className="fa">
         <Breadcrumbs trail={[{ label: "Fixed Assets", href: "/fixed-assets" }, { label: "Reports" }]} />
         <div className="fa-head"><div>
-          <h1>Fixed Asset Reports <HelpHint label="About these reports">Read from the same schedule as the calendar and each asset&apos;s page. Posted is what the ledger carries; due is a month that has ended without being posted; planned has not ended yet. With a branch chosen, each month counts where the asset was then, so a transfer moves only the months after it.</HelpHint></h1>
+          <h1>Fixed Asset Reports <HelpHint label="About these reports">Read from the same schedule as the calendar and each asset&apos;s page. Posted is what the ledger carries; ready to post is a month that has come without being posted, as in the calendar; planned is still to come. With a branch chosen, each month counts where the asset was then, so a transfer moves only the months after it.</HelpHint></h1>
         </div></div>
         {tabs}
         <form method="get" className="fac-bar">

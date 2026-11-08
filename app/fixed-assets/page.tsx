@@ -128,7 +128,7 @@ export default async function FixedAssetsOverview() {
               <thead><tr><th>Category</th><th className="r">Assets</th><th className="r">Cost</th><th className="r">Accum.</th><th className="r">NBV</th></tr></thead>
               <tbody>{o.categories.map((c) => (
                 <tr key={c.name}>
-                  <td>{c.name}{c.assetClass === "INTANGIBLE" && <span className="subline">Amortised</span>}</td>
+                  <td>{c.name}{c.assetClass === "INTANGIBLE" && <span className="fa-muted"> · Amortised</span>}</td>
                   <td className="r">{c.n}</td><td className="r">{kyat(c.cost)}</td>
                   <td className="r">{kyat(c.accumulated)}</td><td className="r"><strong>{kyat(c.cost - c.accumulated)}</strong></td>
                 </tr>))}

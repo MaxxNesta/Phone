@@ -47,7 +47,7 @@ export default async function AssetRegister({ searchParams }: { searchParams: Pr
         <td className="code"><Link href={`/fixed-assets/${r.id}`}>{r.code}</Link></td>
         <td className="wrap"><strong className="fa-name">{r.name}</strong>
           {r.serial_no && <span className="subline">S/N {r.serial_no}</span>}</td>
-        <td>{r.category}{r.asset_class === "INTANGIBLE" && <span className="subline">Amortised</span>}</td>
+        <td>{r.category}{r.asset_class === "INTANGIBLE" && <span className="fa-muted"> · Amortised</span>}</td>
         {multiBranch && <td>{r.branch}</td>}
         <td>{r.site ?? "—"}</td>
         <td className="nowrap">{r.acquisition_date}</td>

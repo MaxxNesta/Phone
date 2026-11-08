@@ -9468,3 +9468,8 @@ a.fay-count { color: var(--link); margin-left: 21px; }
 .fai-xl-head td { max-width: none; }
 .fai-guide h3 { margin-bottom: 0; }
 .fai-guide .fai-xl-wrap { margin-top: var(--s2); }
+.fay-sched tbody tr > td.fay-no, .fay-sched tbody tr > th.fay-first, .fay-sched tfoot tr > .fay-no, .fay-sched tfoot tr > .fay-first { background-color: var(--surface); z-index: 3; }
+.fay-sched tbody tr.fay-open > td.fay-no, .fay-sched tbody tr.fay-open > th.fay-first, .fay-sched tfoot tr > .fay-no, .fay-sched tfoot tr > .fay-first { background-color: var(--line-soft); }
+table.fay.fay-sched tbody tr > td.fay-no, table.fay.fay-sched tbody tr > th.fay-first { background-color: var(--surface); z-index: 3; }
+table.fay.fay-sched tbody tr:nth-child(2n) > td.fay-no, table.fay.fay-sched tbody tr:nth-child(2n) > th.fay-first { background-color: color-mix(in srgb, var(--ink) 4%, var(--surface)); }
+table.fay tbody tr:nth-child(2n) > th.fay-first { background-color: color-mix(in srgb, var(--ink) 4%, var(--surface)); }

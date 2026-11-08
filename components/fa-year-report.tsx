@@ -50,7 +50,7 @@ export function CategorySummary({ year, groups, total, link }: {
           <button type="button" role="radio" aria-checked={!planned} className={`seg${planned ? "" : " on"}`} onClick={() => setPlanned(false)}>Posted</button>
           <button type="button" role="radio" aria-checked={planned} className={`seg${planned ? " on" : ""}`} onClick={() => setPlanned(true)}>Planned</button>
         </div>
-        <span className="ie-note"><HelpHint label="Posted and planned">Posted is only what the ledger carries. Planned is the whole schedule: posted, due and planned months. Scroll sideways for later months.</HelpHint></span>
+        <span className="ie-note"><HelpHint label="Posted and planned">Posted is only what the ledger carries. Planned is the whole schedule: posted, ready to post and planned months. Scroll sideways for later months.</HelpHint></span>
         <ExportButton onExport={exportCsv} />
       </div>
       <div className="tablewrap fay-wrap">
@@ -90,7 +90,7 @@ export function CategorySummary({ year, groups, total, link }: {
 
 // ----------------------------------------------------------- schedule --
 
-const STATE_LABEL = { POSTED: "Posted", DUE: "Due, not posted", PLANNED: "Planned" } as const;
+const STATE_LABEL = { POSTED: "Posted", DUE: "Ready to post", PLANNED: "Planned" } as const;
 
 export function AssetSchedule({ year, assets }: { year: number; assets: ScheduleAsset[] }) {
   const [open, setOpen] = useState<string | null>(null);
@@ -109,10 +109,10 @@ export function AssetSchedule({ year, assets }: { year: number; assets: Schedule
       <div className="fay-bar">
         <span className="fay-legend">
           <span><i className="fay-dot posted" /> Posted</span>
-          <span><i className="fay-dot due" /> Due, not posted</span>
+          <span><i className="fay-dot due" /> Ready to post</span>
           <span><i className="fay-dot planned" /> Planned</span>
         </span>
-        <span className="ie-note"><HelpHint label="About the schedule">Laid out like the Excel register, so Export pastes straight back into Import. Due is a month that has ended without being posted. Scroll sideways for the months.</HelpHint></span>
+        <span className="ie-note" />
         <ExportButton onExport={exportCsv} />
       </div>
       <div className="tablewrap fay-wrap">
