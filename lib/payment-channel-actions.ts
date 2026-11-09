@@ -22,19 +22,21 @@ async function audit(db: Sql, co: string, channelId: string | null, userId: stri
 
 /**
  * A wallet's own account, made when a shop first maps one: a bank account
- * filed beside Cash at Bank, coded in the 1011-1019 block next to it. An
- * account of that name already in the chart is reused rather than doubled.
+ * filed under the bank accounts' own heading with the next code after them
+ * (13212 → 13213). An account of that name already in the chart is reused
+ * rather than doubled.
  */
 async function walletAccount(db: Sql, co: string, name: string): Promise<string> {
   const [have] = await db`
     select id from account where company_id = ${co} and lower(name) = lower(${name}) and is_cash_account and is_postable`;
   if (have) return have.id as string;
   const [bank] = await db`
-    select parent_id from account where company_id = ${co} and is_bank_account order by code limit 1`;
+    select parent_id from account where company_id = ${co} and is_bank_account and is_postable order by code limit 1`;
   const [free] = await db`
-    select c::text as code from generate_series(1011, 1019) c
-     where not exists (select 1 from account where company_id = ${co} and code = c::text) limit 1`;
-  if (!free) throw new Error("No free account code between 1011 and 1019. Add the account in the chart of accounts, then choose it here.");
+    select (max(code::bigint) + 1)::text as code from account
+     where company_id = ${co} and parent_id is not distinct from ${bank?.parent_id ?? null} and code ~ '^[0-9]+$'
+       and is_bank_account`;
+  if (!free?.code) throw new Error("No bank account in the chart to file the wallet beside. Add the account in the chart of accounts, then choose it here.");
   const [made] = await db`
     insert into account (company_id, parent_id, code, name, account_type, is_cash_account, is_bank_account)
     values (${co}, ${bank?.parent_id ?? null}, ${free.code}, ${name}, 'ASSET', true, true) returning id`;
