@@ -74,12 +74,16 @@ export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
  * from the rule above: hiding a module nobody bought is reasonable, hiding
  * accounts is not.
  */
-export type Feature = "supplier_performance";
+export type Feature = "supplier_performance" | "dashboard_advanced";
 
 const FEATURES: Record<Feature, Plan[]> = {
   // Business and Enterprise. A Starter shop buys from a handful of people
   // it already knows; scoring them is a growing company's problem.
   supplier_performance: ["BUSINESS", "ENTERPRISE"],
+  // The main dashboard's accounting health (trial balance checks) and its
+  // region, customer-type and supplier-type breakdowns. Starter keeps the
+  // rest of the dashboard (decided 2026-11-09).
+  dashboard_advanced: ["BUSINESS", "ENTERPRISE"],
 };
 
 export function planIncludes(plan: Plan, feature: Feature): boolean {

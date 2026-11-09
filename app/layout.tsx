@@ -18,7 +18,7 @@ import {
   Smartphone, FileText, Search, PieChart,
 } from "lucide-react";
 import { headers } from "next/headers";
-import { currentUser, can, authRequired, type Permission } from "@/lib/auth";
+import { currentUser, can, authRequired, seesMainDashboard, type Permission } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { DatePickerFix } from "@/components/date-picker-fix";
 import { Analytics } from "@vercel/analytics/next";
@@ -146,7 +146,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             <SidebarCollapse />
 
-            <NavLink href="/" exact><LayoutDashboard size={15} /> <span className="navlink-text">{n("dashboard")}</span></NavLink>
+            {seesMainDashboard(user) && <NavLink href="/" exact><LayoutDashboard size={15} /> <span className="navlink-text">{n("dashboard")}</span></NavLink>}
 
             {may("pos.sell") && <NavLink href="/pos"><ScanLine size={15} /> <span className="navlink-text">{n("counterSale")}</span></NavLink>}
 

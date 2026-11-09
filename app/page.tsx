@@ -1,7 +1,10 @@
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, AlertTriangle, Check } from "lucide-react";
-import { currentUser, can } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { currentUser, can, seesMainDashboard, homeFor } from "@/lib/auth";
+import { getCompany } from "@/lib/queries";
+import { planIncludes } from "@/lib/plans";
 import { retailDashboard } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
@@ -65,6 +68,14 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       : t(`period.${p.key}`);
   const sp = await searchParams;
   const { denied } = sp;
+  // The whole-business view is the owner's and manager's; everyone else
+  // starts on the overview of their own work, carrying any refusal with them.
+  if (!seesMainDashboard(user)) redirect(`${homeFor(user)}${denied ? `?denied=${encodeURIComponent(denied)}` : ""}`);
+  // Starter keeps the dashboard but not the accounting checks or the
+  // region and customer/supplier-type breakdowns (lib/plans.ts).
+  const company = await getCompany();
+  const advanced = !company || planIncludes(company.plan, "dashboard_advanced");
+  const none = Promise.resolve([] as never);
   // One window per donut, as on the business overview: each card's period
   // picker edits its own key in the URL and leaves the others alone.
   const period = { cat: resolvePeriod(sp.cat), reg: resolvePeriod(sp.reg),
@@ -81,13 +92,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const [d, cats, regionRows, branchRows, payRows, custRows, suppRows, recentDocs, health] = await Promise.all([
     seenLocations().then((locs) => retailDashboard(co, locs)),
     getTopCategories(co, period.cat.from, period.cat.to),
-    getRevenueByRegion(co, period.reg.from, period.reg.to),
+    advanced ? getRevenueByRegion(co, period.reg.from, period.reg.to) : none,
     seenLocations().then((locs) => getRevenueByBranch(co, period.branch.from, period.branch.to, locs)),
     seenLocations().then((locs) => getReceiptsByAccount(co, period.pay.from, period.pay.to, locs)),
-    getRevenueByCustomerCategory(co, period.cust.from, period.cust.to),
-    getSpendBySupplierCategory(co, period.supp.from, period.supp.to),
+    advanced ? getRevenueByCustomerCategory(co, period.cust.from, period.cust.to) : none,
+    advanced ? getSpendBySupplierCategory(co, period.supp.from, period.supp.to) : none,
     seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs)),
-    getHealth(co),
+    advanced ? getHealth(co) : null,
   ]);
   const categories = cats as unknown as Share[];
   const regions = regionRows as unknown as Share[];
@@ -106,7 +117,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
   // The ledger checking itself: each line is a query that finds breaks, so
   // "fine" here means the query found none, not that nobody looked.
-  const checks = [
+  const checks = !health ? [] : [
     { label: "Trial balance", ok: health.trialBalance === 0,
       value: health.trialBalance === 0 ? "Balanced" : `Off by MMK ${money(health.trialBalance)}` },
     { label: "Journal integrity", ok: health.unbalanced === 0,
@@ -280,7 +291,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: "var(--s3)" }}>
+      {health && <div className="card" style={{ marginBottom: "var(--s3)" }}>
         <div className="card-head">
           <span><h2>Accounting health</h2><span className="page-sub" style={{ display: "block" }}>Automated checks between operational ledgers and the general ledger</span></span>
           <span className={`pill ${healthy ? "ok" : "overdue"}`}>
@@ -303,7 +314,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             ))}
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="card">
         <div className="card-head">
