@@ -21,6 +21,7 @@ import { ExpiryBands } from "@/components/expiry-bands";
 import { AddReorderPointForm } from "@/components/reorder-point-form";
 import { ReorderPointRow } from "@/components/reorder-point-row";
 import { getTranslations } from "next-intl/server";
+import { currentUser, can } from "@/lib/auth";
 
 type Row = {
   id: string; code: string; name: string; name_my: string | null;
@@ -50,6 +51,8 @@ export default async function Stock({
   const showZeros = zeros === "1";
   const company = await getCompany();
   if (!company) return <div className="empty">{c("noCompany")}</div>;
+  // Cost and value only for those who may see cost: left out of the data, not just the columns.
+  const seeCost = can(await currentUser(), "cost.view");
 
   const [items, reserved, incoming, lowStock, reorderPoints, locations, stockByLocation, consigned,
          batches, expiryBands, variantStock] = await Promise.all([
@@ -185,7 +188,7 @@ export default async function Stock({
 
   const stocked = sellable.map((i) => {
     const onHand = onHandOf(i.id, Number(i.qty_on_hand));
-    const valueOnHand = valueOf(i.id, Number(i.value_on_hand));
+    const valueOnHand = seeCost ? valueOf(i.id, Number(i.value_on_hand)) : 0;
     const reservedQty = reservedOf(i.id);
     const incomingQty = incomingOf(i.id);
     const consignedQty = consignedOf(i.id);
@@ -288,10 +291,10 @@ export default async function Stock({
       itemGroupId: i.item_group_id, category, uomCode: i.uom_code,
       barcode: i.barcode, brandName: i.brand_name,
       onHand: i.onHand, consignedQty: i.consignedQty, reservedQty: i.reservedQty, available: i.available,
-      incomingQty: i.incomingQty, projected: i.projected, valueOnHand: i.valueOnHand,
-      lastCost: i.last_purchase_price, lastCostDocNo: i.last_purchase_doc_no,
-      lastCostDocId: i.last_purchase_document_id,
-      lastCostDate: i.last_purchase_date ? shortDate(i.last_purchase_date) : null,
+      incomingQty: i.incomingQty, projected: i.projected, valueOnHand: i.valueOnHand, showCost: seeCost,
+      lastCost: seeCost ? i.last_purchase_price : null, lastCostDocNo: seeCost ? i.last_purchase_doc_no : null,
+      lastCostDocId: seeCost ? i.last_purchase_document_id : null,
+      lastCostDate: seeCost && i.last_purchase_date ? shortDate(i.last_purchase_date) : null,
       consignors, warehouses: warehousesOf(i.id), variant, photoSrc: photoSrcOf(i),
       tracksBatch: !!i.tracks_batch, tracksExpiry: !!i.tracks_batch && !!i.tracks_expiry,
       tracksSerial: !!i.tracks_serial || i.identity === "OPTIONAL", status: i.status,
@@ -364,7 +367,7 @@ export default async function Stock({
       </div>
 
       <div className="kpis kpis-tiled kpis-compact">
-        {kpi(<Boxes size={16} aria-hidden="true" />, "var(--link)", t("stk.stockValue"), money(totalValue),
+        {seeCost && kpi(<Boxes size={16} aria-hidden="true" />, "var(--link)", t("stk.stockValue"), money(totalValue),
           t("stk.itemsInStock", { n: visible.filter((i) => i.onHand !== 0).length }))}
         {kpi(<AlertTriangle size={16} aria-hidden="true" />, "var(--warn)", t("stk.lowStock"), lowStock.length,
           t("stk.lowPairs", { n: lowStock.length }), lowStock.length > 0)}
@@ -416,13 +419,13 @@ export default async function Stock({
                 : []),
               { key: "reservedQty", label: t("stk.reserved"), sortable: true, align: "r" },
               { key: "available", label: t("stk.colAvailable"), sortable: true, align: "r" },
-              { key: "avg_cost", label: "Avg. cost", sortable: true, align: "r" },
-              { key: "value_on_hand", label: t("stk.colValue"), sortable: true, align: "r" },
+              ...(seeCost ? [{ key: "avg_cost", label: "Avg. cost", sortable: true, align: "r" as const },
+                { key: "value_on_hand", label: t("stk.colValue"), sortable: true, align: "r" as const }] : []),
               { key: "status", label: c("status"), sortable: true },
             ]}
             footerCells={{
               span: <>{t("stk.totalValue")}{!allLocations ? t("stk.atThisWarehouse") : ""}</>,
-              cells: { onHand: qty(totalOnHand), value_on_hand: money(totalValue) },
+              cells: { onHand: qty(totalOnHand), ...(seeCost ? { value_on_hand: money(totalValue) } : {}) },
             }}
           />
         </div>
@@ -437,6 +440,7 @@ export default async function Stock({
         <VariantStock
           rows={showZeros ? variantStock : variantStock.filter((r) => Number(r.qty_on_hand) !== 0)}
           groupBy={group}
+          showValue={seeCost}
           basePath="/items/stock"
           keep={{ location: allLocations ? undefined : selectedLocationId,
                   zeros: showZeros ? "1" : undefined, view: "grouped" }}

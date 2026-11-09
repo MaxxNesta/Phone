@@ -15,7 +15,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse } from "./queries";
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
-import { requirePermission, requireUser, can } from "./auth";
+import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
 import { courierBill } from "./courier-payables";
 import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
@@ -5021,6 +5021,14 @@ const ATTACHMENT_TYPES: Record<string, string[]> = {
 /** Matches next.config's bodySizeLimit with room for the rest of the form. */
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
+/** A document's files follow the document: its type's permission and the reader's branches, as on its page. */
+async function mayTouchDocument(doc: Record<string, unknown>) {
+  const user = await requireUser();
+  if (!can(user, permissionForDocument(String(doc.doc_type)))) return false;
+  const seen = await seenLocations();
+  return !seen || (typeof doc.location_id === "string" && seen.includes(doc.location_id));
+}
+
 export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requireUser();
   try {
@@ -5053,8 +5061,8 @@ export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<Ac
     // reaches the bucket: an upload against a bad id would otherwise leave an
     // object with no row to find it by.
     const [doc] = await sql`
-      select id from document where id = ${documentId} and company_id = ${co}`;
-    if (!doc) return { error: "That document does not exist" };
+      select id, doc_type, location_id from document where id = ${documentId} and company_id = ${co}`;
+    if (!doc || !(await mayTouchDocument(doc))) return { error: "That document does not exist" };
 
     const key = newKey("attach", file.name);
     const body = Buffer.from(await file.arrayBuffer());
@@ -5092,6 +5100,11 @@ export async function deleteAttachment(_prev: unknown, fd: FormData): Promise<Ac
     const id = str(fd, "attachment_id");
     if (!id) return { error: "Which file?" };
 
+    // Only on a document this person may open, at a branch they may see.
+    const [doc] = await sql`
+      select d.id, d.doc_type, d.location_id from document_attachment a join document d on d.id = a.document_id
+       where a.id = ${id} and a.company_id = ${co}`;
+    if (!doc || !(await mayTouchDocument(doc))) return { error: "That file is already gone" };
     const [row] = await sql`
       delete from document_attachment
        where id = ${id} and company_id = ${co}

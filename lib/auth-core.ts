@@ -72,6 +72,20 @@ export function can(user: Pick<SessionUser, "role"> | null | undefined, p: Permi
   return Boolean(user && ROLE_PERMISSIONS[user.role]?.includes(p));
 }
 
+/** The whole-business dashboard is the owner's and manager's; everyone else starts on their own overview. */
+export function seesMainDashboard(user: Pick<SessionUser, "role"> | null | undefined) {
+  return Boolean(user && (user.role === "ADMIN" || user.role === "MANAGER"));
+}
+
+/** Where a person lands: the main dashboard, or the first overview their role may open. */
+export function homeFor(user: Pick<SessionUser, "role">): string {
+  if (seesMainDashboard(user)) return "/";
+  if (can(user, "sales.view")) return "/sales";
+  if (can(user, "purchase.view")) return "/purchases";
+  if (can(user, "pos.sell")) return "/pos";
+  return "/inventory";
+}
+
 // ------------------------------------------------------------ passwords --
 
 export function hashPassword(password: string): string {
@@ -153,6 +167,10 @@ export async function ownerUser(): Promise<SessionUser | null> {
 // only a signed-in user.
 
 export const PATH_PERMISSIONS: Array<[string, Permission]> = [
+  // The old whole-business overview: balances, aging, ledger health.
+  ["/overview", "accounting.view"],
+  // Voids and amendments across every branch and document type.
+  ["/documents/history", "accounting.view"],
   ["/settings/users", "users.manage"],
   ["/settings/receipt-templates", "receipts.manage"],
   // Rates are kept by whoever buys stock; the page itself refuses edits to
@@ -173,6 +191,8 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   // not purchasing, is what opens it.
   ["/purchases/landed-costs", "cost.view"],
   ["/purchases", "purchase.view"],
+  // Revenue against cost of sales and margin, and stock value by age.
+  ["/inventory/intelligence", "cost.view"],
   ["/inventory", "inventory.view"],
   ["/warehouses", "inventory.view"],
   ["/items", "inventory.view"],
@@ -200,6 +220,11 @@ const DOCUMENT_PERMISSIONS: Record<string, Permission> = {
 
 export function permissionForDocument(docType: string): Permission {
   return DOCUMENT_PERMISSIONS[docType] ?? "accounting.view";
+}
+
+/** Whether this person may see a document of this type at all (lists, search, attachments). */
+export function canSeeDocument(user: Pick<SessionUser, "role"> | null | undefined, docType: string) {
+  return can(user, permissionForDocument(docType));
 }
 
 export function permissionForPath(path: string): Permission | null {

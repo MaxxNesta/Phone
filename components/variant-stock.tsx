@@ -36,9 +36,11 @@ const qty = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 
 const money = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 export async function VariantStock({
-  rows, groupBy, basePath, keep = {},
+  rows, groupBy, basePath, keep = {}, showValue = true,
 }: {
   rows: VariantStockRow[];
+  /** Off for a role without cost.view. */
+  showValue?: boolean;
   /** The attribute being folded on, from the query string. */
   groupBy?: string;
   basePath: string;
@@ -181,7 +183,7 @@ export async function VariantStock({
                       <th className="r">
                         {unit ? t("var.onHandUnit", { unit }) : t("onHand")}
                       </th>
-                      <th className="r">{t("stk.colValue")}</th>
+                      {showValue && <th className="r">{t("stk.colValue")}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -242,7 +244,7 @@ export async function VariantStock({
                           <td className="r" style={{ color: total === 0 ? "var(--muted)" : undefined }}>
                             {qty(total)}
                           </td>
-                          <td className="r">{money(value)}</td>
+                          {showValue && <td className="r">{money(value)}</td>}
                         </tr>
                       );
                     })}

@@ -1,3 +1,4 @@
+import { requireUser, canSeeDocument } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { getCompany, getDocuments } from "@/lib/queries";
@@ -29,7 +30,10 @@ export default async function DocumentsPage({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const docs = (await getDocuments(company.id, type || undefined, openOnly, undefined, await seenLocations())) as any[];
+  // Only the document types this person may open: a cashier lists sales, not purchases or vouchers.
+  const user = await requireUser();
+  const docs = ((await getDocuments(company.id, type || undefined, openOnly, undefined, await seenLocations())) as any[])
+    .filter((d) => canSeeDocument(user, d.doc_type));
 
   const rows: DocRow[] = docs.map((d) => ({
     id: d.id,

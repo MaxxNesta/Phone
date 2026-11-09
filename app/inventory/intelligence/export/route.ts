@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { NextRequest } from "next/server";
 import {
@@ -50,6 +51,8 @@ const variantOf = (v: unknown) =>
     : "";
 
 export async function GET(req: NextRequest) {
+  // Cost, cost of sales and margin: the same gate as the page, here as well.
+  await requirePermission("cost.view");
   const company = await getCompany();
   if (!company) return new Response("No company", { status: 404 });
 

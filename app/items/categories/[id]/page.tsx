@@ -24,6 +24,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
   const c = await getTranslations("common");
   const dtl = await getTranslations("itemDetail");
   if (!co) return <div className="empty">{c("noCompany")}</div>;
+  const seeCost = can(await currentUser(), "cost.view");
 
   const nodes = await allCategories(co.id);
   const here = nodes.find((n) => n.id === id);
@@ -186,7 +187,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
                   <tr>
                     <th>{c("code")}</th><th>{c("name")}</th><th>{c("unit")}</th>
                     <th className="r">{t("onHand")}</th><th className="r">{t("salePrice")}</th>
-                    <th className="r">{t("stockValue")}</th>
+                    {seeCost && <th className="r">{t("stockValue")}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -203,7 +204,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
                       <td className="code">{i.uom_code}</td>
                       <td className="r">{qty(i.on_hand)}</td>
                       <td className="r">{i.sale_price ? money(i.sale_price) : "—"}</td>
-                      <td className="r">{money(i.value_on_hand)}</td>
+                      {seeCost && <td className="r">{money(i.value_on_hand)}</td>}
                     </tr>
                   ))}
                 </tbody>

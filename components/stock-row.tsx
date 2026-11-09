@@ -32,6 +32,8 @@ export type StockRowItem = {
   barcode: string | null; brandName: string | null;
   onHand: number; consignedQty: number; reservedQty: number; available: number;
   incomingQty: number; projected: number; valueOnHand: number;
+  /** Off for a role without cost.view: the server sends no cost or value, and none is drawn. */
+  showCost: boolean;
   lastCost: string | null; lastCostDocNo: string | null; lastCostDocId: string | null; lastCostDate: string | null;
   /** Empty when this item carries no consigned stock. */
   consignors: string[];
@@ -104,8 +106,8 @@ export function StockRow({ item, columnCount, showConsigned }:
           {item.reservedQty > 0 ? qty(item.reservedQty) : DASH}
         </td>
         <td className="r" style={{ fontWeight: 600 }}>{qty(item.available)}</td>
-        <td className="r">{avg === null ? DASH : money(avg)}</td>
-        <td className="r">{money(item.valueOnHand)}</td>
+        {item.showCost && <td className="r">{avg === null ? DASH : money(avg)}</td>}
+        {item.showCost && <td className="r">{money(item.valueOnHand)}</td>}
         <td><StockStatus s={item.status} /></td>
       </tr>
 
@@ -153,11 +155,11 @@ function Details({ item, parts, avg }: { item: StockRowItem; parts: VariantPart[
           {item.consignors.length > 0 && <div><dt>Consignor</dt><dd>{item.consignors.join(", ")}</dd></div>}
         </dl>
       </section>
-      <section>
+      {item.showCost && <section>
         <h3>Cost information (MMK)</h3>
         <CostInfo item={item} avg={avg} />
         {item.consignors.length > 0 && <p className="hint">Consigned units are not the shop&apos;s stock and carry no value here.</p>}
-      </section>
+      </section>}
       {item.tracksBatch && (
         <section className="wide">
           <h3>Batches on hand

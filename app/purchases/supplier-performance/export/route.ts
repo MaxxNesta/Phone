@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import {
   getCompany, getSupplierSpend, getSupplierCommitmentData, getSupplierFulfilment,
@@ -36,6 +37,7 @@ const csv = (rows: unknown[][]) =>
   rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
 
 export async function GET(req: NextRequest) {
+  await requirePermission("purchase.view");
   const company = await getCompany();
   if (!company) return new Response("No company", { status: 404 });
 

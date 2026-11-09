@@ -2,7 +2,7 @@ import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sql } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireUser, can, canSeeDocument } from "@/lib/auth";
 import { money, shortDate } from "@/lib/format";
 
 export const metadata = { title: "Search" };
@@ -20,7 +20,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   // Phones and documents of other branches stay out of a search by someone who sees only their own.
   const locs = await seenLocations();
-  const [units, docs, partners, imported] = await Promise.all([
+  const [units, allDocs, partners, oldPurchases] = await Promise.all([
     sql`select serial_id, imei, item_name, status, customer_name from v_stock_serial
          where company_id = ${co} and (imei = ${q} or imei2 = ${q} or device_serial = ${q}
                or imei ilike ${like}) ${locs ? sql`and location_id = any(${locs})` : sql``} limit 20`,
@@ -37,6 +37,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
          order by h.doc_date desc limit 20`,
   ]);
 
+  // Only document types this person may open, and old purchases only for those who may see purchases.
+  const docs = allDocs.filter((d) => canSeeDocument(user, d.doc_type as string));
+  const imported = can(user, "purchase.view") ? oldPurchases : ([] as unknown as typeof oldPurchases);
   const exactUnit = units.find((u: any) => u.imei === q);
   if (exactUnit) redirect(`/imei/${exactUnit.serial_id}`);
   const exactDoc = docs.find((d: any) => d.doc_no.toLowerCase() === q.toLowerCase());
