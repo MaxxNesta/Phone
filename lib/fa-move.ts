@@ -51,8 +51,8 @@ async function openPeriod(tx: TransactionSql, co: string, date: string) {
 
 // ------------------------------------------------------------- transfer --
 
-export async function transferAsset(co: string, userId: string, input: { assetId: string; toBranchId: string; date: string; note: string | null }) {
-  return sql.begin(async (tx) => {
+export async function transferAsset(co: string, userId: string, input: { assetId: string; toBranchId: string; date: string; note: string | null }, outer?: TransactionSql) {
+  const run = async (tx: TransactionSql) => {
     const { a, accumulated, lastPosted } = await loadOne(tx, co, input.assetId, null);
     if (!["ACTIVE", "INACTIVE", "FULLY_DEPRECIATED"].includes(a.status)) throw new Error("Only an asset in service can be transferred.");
     if (a.branch_id === input.toBranchId) throw new Error("It is already at that branch.");
@@ -94,7 +94,8 @@ export async function transferAsset(co: string, userId: string, input: { assetId
              values (${co}, ${a.id}, 'TRANSFERRED', ${input.date}, ${a.branch_id}, ${input.toBranchId}, ${userId},
                      ${tx.json({ note: input.note, voucher: voucher?.docNo ?? null, cost: fromUnits(cost), accumulated: fromUnits(accumulated) })})`;
     return { docNo: voucher?.docNo ?? null };
-  });
+  };
+  return outer ? run(outer) : sql.begin(run);
 }
 
 // ------------------------------------------------------------- disposal --
@@ -144,8 +145,8 @@ export async function disposalPreview(co: string, input: { assetId: string; date
   return sql.begin(run);
 }
 
-export async function disposeAsset(co: string, userId: string, input: { assetId: string; date: string; reason: string; proceeds: string; proceedsAccountId: string | null }) {
-  return sql.begin(async (tx) => {
+export async function disposeAsset(co: string, userId: string, input: { assetId: string; date: string; reason: string; proceeds: string; proceedsAccountId: string | null }, outer?: TransactionSql) {
+  const run = async (tx: TransactionSql) => {
     const p = await disposalPreview(co, input, tx);
     if (p.blockers.length) throw new Error(p.blockers[0]);
     await openPeriod(tx, co, input.date);
@@ -170,6 +171,7 @@ export async function disposeAsset(co: string, userId: string, input: { assetId:
              values (${co}, ${input.assetId}, 'DISPOSED', ${input.date}, ${userId},
                      ${tx.json({ reason: input.reason, proceeds: p.proceeds, nbv: p.nbv, gain: p.gain, voucher: voucher.docNo })})`;
     return { docNo: voucher.docNo };
-  });
+  };
+  return outer ? run(outer) : sql.begin(run);
 }
 

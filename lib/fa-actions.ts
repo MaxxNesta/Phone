@@ -7,6 +7,7 @@ import { requirePermission } from "./auth";
 import { requireFaPoster, assertFaBranch, isCompanyLevel } from "./fa-access";
 import type { ActionResult } from "./actions";
 import { heavy } from "./heavy";
+import { syncUnits } from "./fa-units-db";
 import { reviewRows, type DraftRow } from "./fa-import";
 import type { Convention } from "./fa-engine";
 
@@ -127,6 +128,7 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
                          ${tx.json({ cost: v.acquisition_cost, life: v.useful_life_months })})`;
         if (intent === "activate") await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by)
                  values (${co}, ${a.id}, 'ACTIVATED', ${v.in_service_date}, ${user.id})`;
+        await syncUnits(tx, co, [a.id]);
         return;
       }
       const [old] = await tx`
@@ -172,6 +174,8 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
                          ...plain.map((k) => ({ field: k, from: String(old[k] ?? ""), to: String(v[k] ?? "") }))] })})`;
       if (status !== old.status) await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by)
                values (${co}, ${id}, 'ACTIVATED', ${v.in_service_date}, ${user.id})`;
+      // Units follow a new code, cost or quantity until depreciation or a split pins them.
+      await syncUnits(tx, co, [id]);
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
@@ -526,7 +530,13 @@ export async function transferAssetAction(_prev: unknown, fd: FormData): Promise
     const date = str(fd, "date");
     if (!DATE.test(date)) return { error: "Enter the date it moves." };
     const { transferAsset } = await import("./fa-move");
-    ({ docNo } = await transferAsset(user.companyId, user.id, { assetId, toBranchId: str(fd, "to_branch_id"), date, note: str(fd, "note") || null }));
+    const { splitUnits } = await import("./fa-split");
+    // Some of a group's units: split them off and move that part, in one transaction.
+    const units = fd.getAll("unit").map(String).filter(Boolean);
+    ({ docNo } = await sql.begin(async (tx) => {
+      const target = units.length ? await splitUnits(tx, user.companyId, user.id, assetId, units) : assetId;
+      return transferAsset(user.companyId, user.id, { assetId: target, toBranchId: str(fd, "to_branch_id"), date, note: str(fd, "note") || null }, tx);
+    }));
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -548,7 +558,12 @@ export async function disposeAssetAction(_prev: unknown, fd: FormData): Promise<
     if (!reason) return { error: "Say why it is disposed of." };
     if (!MONEY.test(proceeds)) return { error: "Enter the proceeds as an amount, or 0." };
     const { disposeAsset } = await import("./fa-move");
-    ({ docNo } = await disposeAsset(user.companyId, user.id, { assetId, date, reason, proceeds, proceedsAccountId: str(fd, "proceeds_account_id") || null }));
+    const { splitUnits } = await import("./fa-split");
+    const units = fd.getAll("unit").map(String).filter(Boolean);
+    ({ docNo } = await sql.begin(async (tx) => {
+      const target = units.length ? await splitUnits(tx, user.companyId, user.id, assetId, units) : assetId;
+      return disposeAsset(user.companyId, user.id, { assetId: target, date, reason, proceeds, proceedsAccountId: str(fd, "proceeds_account_id") || null }, tx);
+    }));
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -615,6 +630,7 @@ export async function importAssets(input: { drafts: DraftRow[]; subMap: Record<s
           ];
         });
         await tx`insert into fa_event ${tx(events)}`;
+        await syncUnits(tx, co, [...idOf.values()]);
         take.forEach((r, i) => imported.push({ line: r.line, code: assets[i].code, id: idOf.get(assets[i].code)!, name: r.name }));
       });
       revalidatePath("/fixed-assets", "layout");
