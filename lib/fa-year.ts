@@ -1,6 +1,7 @@
 import { sql } from "./db";
 import { loadSchedules, thisMonth, type LoadedAsset } from "./fa-schedule";
-import { firstMonth, fromUnits, type Month } from "./fa-engine";
+import { firstMonth, fromUnits, toUnits, type Month } from "./fa-engine";
+import { unitSchedule } from "./fa-units";
 
 /**
  * A year of fixed assets, month by month: the Category summary and the Asset
@@ -32,6 +33,8 @@ export type ScheduleAsset = {
   months: ({ amount: number; state: DepState } | null)[];
   /** Net book value at the end of the year (or its last month in view), with planned months. */
   closing: number;
+  /** A group's units, each with its share of the cost, the months and the closing value. */
+  units: { id: string; code: string; cost: number; months: (number | null)[]; closing: number }[];
 };
 
 export type YearFilters = { branches: string[] | null; branchId?: string; categoryId?: string; heading?: string };
@@ -56,10 +59,13 @@ export async function faYear(co: string, year: number, f: YearFilters) {
   const moves = ids.length ? (await sql`
     select asset_id, to_char(event_date, 'YYYY-MM-DD') as date, from_branch_id, to_branch_id
       from fa_event where asset_id = any(${ids}) and event_type = 'TRANSFERRED' order by event_date, created_at`) as any[] : [];
-  const [names, notes] = await Promise.all([
+  const [names, notes, unitRows] = await Promise.all([
     sql`select id, name from location where company_id = ${co} and parent_id is null`,
     ids.length ? sql`select id, coalesce(notes, '') as notes from fixed_asset where id = any(${ids})` : Promise.resolve([]),
+    ids.length ? sql`select id, asset_id, code, cost::text from fa_unit where asset_id = any(${ids}) order by asset_id, seq` : Promise.resolve([]),
   ]);
+  const unitsBy = new Map<string, any[]>();
+  for (const u of unitRows as any[]) unitsBy.set(u.asset_id, [...(unitsBy.get(u.asset_id) ?? []), u]);
   const noteOf = new Map((notes as any[]).map((x) => [x.id as string, x.notes as string]));
   const branchName = new Map((names as any[]).map((b) => [b.id as string, b.name as string]));
 
@@ -113,6 +119,18 @@ export async function faYear(co: string, year: number, f: YearFilters) {
       branch: branchName.get(branchAt(a, months[11])) ?? a.postBranch,
       cost, quantity: a.quantity, residual: n(a.engine.residual), life: a.engine.lifeMonths, inService: a.inService, start, disposedOn: a.disposedOn,
       months: sched, closing: closing ?? 0,
+      units: (() => {
+        // Each unit's share of every month, by running total, so the units add up to the group (lib/fa-units.ts).
+        const us = unitsBy.get(a.id) ?? [];
+        if (us.length < 2) return [];
+        const costs = us.map((u) => toUnits(u.cost));
+        return us.map((u, i) => {
+          const rows = unitSchedule(a.rows, costs, i, a.engine.cost);
+          const ms = months.map((m, k) => (sched[k] ? n(rows.find((r) => r.month === m)?.amount ?? 0n) : null));
+          const last = [...rows].reverse().find((r) => r.month <= months[11]);
+          return { id: u.id, code: u.code, cost: n(costs[i]), months: ms, closing: last ? n(last.closing) : n(costs[i]) };
+        });
+      })(),
     });
   }
 

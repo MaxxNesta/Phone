@@ -9,6 +9,8 @@ import { HelpHint } from "@/components/help-hint";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const money = (v: number) => Math.round(v).toLocaleString("en-US");
+/** A unit's share, to the cent. */
+const money2 = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
 
 /** A CSV of what is on screen, downloaded from the browser. */
 function download(name: string, rows: (string | number)[][]) {
@@ -147,6 +149,29 @@ export function AssetSchedule({ year, assets }: { year: number; assets: Schedule
                   {a.months.map((c, k) => <td key={k} className={`r fay-${c?.state.toLowerCase() ?? "none"}`} title={c ? STATE_LABEL[c.state] : undefined}>{c ? money(c.amount) : "—"}</td>)}
                   <td className="r"><strong>{money(a.closing)}</strong></td>
                 </tr>
+                {open === a.id && a.units.map((u) => (
+                  // A unit: its own code and page, its share of every figure; the rows add up to the group above.
+                  <tr key={u.id} className="fay-unit">
+                    <td className="fay-no" />
+                    <th className="fay-first"><Link href={`/fixed-assets/${a.id}/units/${u.id}`} title={`${a.name} · ${u.code}`}>{u.code}</Link><span className="fay-count">Unit of {a.code}</span></th>
+                    <td className="fay-none">—</td><td /><td /><td /><td /><td />
+                    <td className="r">1</td>
+                    <td className="r">{money2(u.cost)}</td>
+                    <td className="r">{money2(u.cost)}</td>
+                    <td /><td />
+                    {u.months.map((v, k) => <td key={k} className={`r fay-${a.months[k]?.state.toLowerCase() ?? "none"}`}>{v === null ? "—" : money2(v)}</td>)}
+                    <td className="r">{money2(u.closing)}</td>
+                  </tr>
+                ))}
+                {open === a.id && a.units.length > 0 && (
+                  <tr className="fay-unit fay-unit-total">
+                    <td className="fay-no" /><th className="fay-first">{a.units.length} units</th><td colSpan={6} />
+                    <td className="r">{a.units.length}</td><td />
+                    <td className="r">{money2(a.units.reduce((t, u) => t + u.cost, 0))}</td><td /><td />
+                    {a.months.map((_, k) => <td key={k} className="r">{a.months[k] ? money2(a.units.reduce((t, u) => t + (u.months[k] ?? 0), 0)) : "—"}</td>)}
+                    <td className="r">{money2(a.units.reduce((t, u) => t + u.closing, 0))}</td>
+                  </tr>
+                )}
                 {open === a.id && (
                   <tr className="fay-detail"><td /><td colSpan={25}>
                     <dl>
