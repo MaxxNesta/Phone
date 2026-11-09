@@ -9502,3 +9502,41 @@ table.fay tbody tr:nth-child(2n) > th.fay-first { background-color: color-mix(in
 .fai-done-card .actions { justify-content: center; }
 .fai-review .fai-rows th, .fai-review .fai-rows td { padding: 8px 9px; }
 .fai-review .fai-toggle strong { max-width: 13rem; }
+/* Depreciation Calendar: a long asset name wraps to two lines, then ends in "…" (full name on hover). */
+.fac-asset { min-width: 0; max-width: 16rem; }
+.fac-asset strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: normal; line-height: 1.3; }
+.fac-asset small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Asset and unit page (components/asset-detail.tsx). */
+.fad .fa-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fad-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: color-mix(in srgb, var(--link) 10%, transparent); color: var(--link); }
+.fad-badge.posted { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+.fad-sub { margin: -4px 0 var(--s2); font-size: var(--t-sm); }
+.fad-units td, .fad-units th { font-size: var(--t-sm); }
+.fad-units tfoot th { text-align: left; font-weight: 600; }
+.fad-this td { background: color-mix(in srgb, var(--link) 6%, transparent); }
+.fad-facts { display: grid; grid-template-columns: auto 1fr; gap: 8px var(--s3); margin: 0; font-size: var(--t-sm); }
+.fad-facts > div { display: contents; }
+.fad-facts dt { color: var(--muted); }
+.fad-facts dd { margin: 0; overflow-wrap: anywhere; }
+.fad-notes summary { list-style: none; cursor: pointer; }
+.fad-notes summary::-webkit-details-marker { display: none; }
+.fad-notes[open] .fad-notes-short { display: none; }
+.fad-more { display: block; margin-top: 4px; color: var(--link); font-size: var(--t-sm); }
+.fad-notes[open] .fad-more { display: none; }
+.fad-notes p, .fad-notes-text, .fad-notes-short { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--t-sm); }
+
+/* Unit picker on transfer and disposal (components/fa-unit-picker.tsx). */
+.fau-sub { margin-top: -6px; }
+.fau-table tbody tr { cursor: pointer; }
+.fau-table tr.fau-on td { background: color-mix(in srgb, var(--link) 7%, transparent); }
+.fau-check { width: 2.4rem; }
+.fau-foot { display: flex; justify-content: space-between; align-items: center; margin-top: var(--s2); font-size: var(--t-sm); }
+.fau-all { padding: 0; border: 0; background: none; color: var(--link); text-decoration: underline; cursor: pointer; font: inherit; }
+.fam-units { margin: var(--s2) 0; padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--link) 7%, transparent); font-size: var(--t-sm); }
+
+/* Asset schedule: a group's units under it. */
+.fay-unit td, .fay-unit th { background: color-mix(in srgb, var(--line-soft) 40%, var(--surface)); font-size: 0.78rem; }
+table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; background-color: color-mix(in srgb, var(--line-soft) 40%, var(--surface)); }
+.fay-unit th.fay-first a { color: var(--link); font-weight: 500; }
+.fay-unit-total td, .fay-unit-total th { font-weight: 650; border-top: 1px solid var(--line); }
