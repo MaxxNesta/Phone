@@ -152,6 +152,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {may("sales.view") && (
               <NavGroup label={n("salesHistory")} icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}>
+                <NavLink href="/sales" exact>{n("salesOverview")}</NavLink>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
                 {deliveries && <NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
                 {deliveries && <NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
@@ -193,6 +194,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {may("purchase.view") && (
               <NavGroup label={n("purchases")} icon={<Package size={15} />} match={["/purchases", "/payables"]}>
+                <NavLink href="/purchases" exact>{n("purchasesOverview")}</NavLink>
                 <NavLink href="/purchases/orders" exact>{n("purchaseOrders")}</NavLink>
                 <NavLink href="/purchases/receive" exact>{n("goodsReceipts")}</NavLink>
                 <NavLink href="/purchases/received-not-invoiced">{n("receivedNotInvoiced")}</NavLink>

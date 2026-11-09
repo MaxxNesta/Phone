@@ -9553,3 +9553,10 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 }
 .pos3-cart .paychannels .paymode[aria-pressed="true"] { font-weight: 600; }
 @media (pointer: coarse) { .pos3-cart .paychannels .paymode { min-height: 44px; } }
+
+/* Sales and Purchases overviews */
+.ov-sub { margin: 0 0 var(--s2); }
+.ov-total { font-weight: 600; border-top: 1px solid var(--line); }
+.ov-table .ov-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Five or six cards sit three to a row; four share one. */
+@media (min-width: 900px) { .ov-kpis:has(> .kpi:nth-child(5)) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
