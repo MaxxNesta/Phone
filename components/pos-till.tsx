@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
-  ScanLine, Smartphone, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingCart, SlidersHorizontal,
-  Store, Banknote, QrCode, CreditCard, HandCoins, TriangleAlert, Landmark, CircleEllipsis,
+  ScanLine, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingCart, SlidersHorizontal,
+  Store, TriangleAlert,
 } from "lucide-react";
 import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
 import type { ReceiptView } from "@/lib/receipt";
@@ -15,7 +15,7 @@ import type { SellableItem, ScannedUnit } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { priceLines, type VolumeBand } from "@/lib/discount";
 import { postedAmount, tender, splitTender, fmtCents, exactText, quickAmounts } from "@/lib/pos-cash";
-import type { Channel, ChannelKind } from "@/lib/payment-channels";
+import type { Channel } from "@/lib/payment-channels";
 import {
   computeFacets, filterItems, reconcile, emptySelection, clearFilters, cardState, variantLine, SHELF_LIMIT,
   type Selection,
@@ -24,9 +24,6 @@ import { useTranslations } from "next-intl";
 
 type Loc = { id: string; name: string; branch: string | null };
 type Opt = { id: string; name: string; code?: string };
-const KIND_ICON: Record<ChannelKind, typeof Banknote> = {
-  CASH: Banknote, BANK: Landmark, WALLET: Smartphone, QR: QrCode, CARD: CreditCard, OTHER: CircleEllipsis,
-};
 type Tax = { id: string; code: string; name: string; rate: number };
 /** One channel for the whole sale, several (split), or nothing now (on account). */
 type Mode = "PAY" | "CREDIT" | "SPLIT";
@@ -81,12 +78,12 @@ export function PosTill(props: {
   const [mode, setMode] = useState<Mode>("PAY");
   const [channelId, setChannelId] = useState("");
   const [reference, setReference] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
   const [received, setReceived] = useState("");
   const [split, setSplit] = useState<SplitRow[]>([]);
-  // The channels this location's branch takes; cash first, the default.
-  // Bank transfers are booked on the invoice, receipt and payment forms, where
-  // the bank account can be chosen; the till keeps to what is taken at the counter.
-  const channels = (props.channels[locationId] ?? []).filter((c) => c.kind !== "BANK");
+  // The channels this location's branch takes; cash first, the default. Bank
+  // asks which bank account, defaulting to the method's own.
+  const channels = props.channels[locationId] ?? [];
   const usable = channels.filter((c) => c.accountId);
   const cashChannel = usable.find((c) => c.kind === "CASH");
   const channel = usable.find((c) => c.id === channelId) ?? cashChannel ?? usable[0];
@@ -308,7 +305,8 @@ export function PosTill(props: {
     // The sale's own total, whatever cash was handed over: change is not booked.
     const total = postedAmount(totals.total);
     switch (mode) {
-      case "PAY": return channel ? [{ channelId: channel.id, amount: total, reference: reference.trim() || null }] : [];
+      case "PAY": return channel ? [{ channelId: channel.id, amount: total, reference: reference.trim() || null,
+        accountId: channel.kind === "BANK" ? bankAccount || channel.accountId : null }] : [];
       case "CREDIT": return [];
       // Cash posts only what is still due; the rest of it is change.
       case "SPLIT": return split
@@ -770,22 +768,22 @@ export function PosTill(props: {
           </dl>
 
           {mode !== "SPLIT" && (
-            <div className="paymodes paychannels" role="group" aria-label={tr("paymentMethod")}>
-              {channels.map((c) => {
-                const Icon = KIND_ICON[c.kind];
-                return (
+            <div className="pos-paywith">
+              <span className="pos-paywith-label">{tr("paymentMethod")}</span>
+              <div className="paymodes paychannels" role="group" aria-label={tr("paymentMethod")}>
+                {channels.map((c) => (
                   <button type="button" key={c.id} className="paymode" data-kind={c.kind}
                     aria-pressed={mode === "PAY" && channel?.id === c.id}
                     disabled={!c.accountId} title={c.accountId ? c.name : tr("tender.channelUnmapped", { name: c.name })}
-                    onClick={() => { setMode("PAY"); setChannelId(c.id); setReference(""); }}>
-                    <Icon size={16} aria-hidden="true" /> <span>{c.name}</span>
+                    onClick={() => { setMode("PAY"); setChannelId(c.id); setReference(""); setBankAccount(""); }}>
+                    {c.name}
                   </button>
-                );
-              })}
-              <button type="button" className="paymode" data-kind="CREDIT" aria-pressed={mode === "CREDIT"}
-                onClick={() => setMode("CREDIT")}>
-                <HandCoins size={16} aria-hidden="true" /> <span>{tr("mode.CREDIT")}</span>
-              </button>
+                ))}
+                <button type="button" className="paymode" data-kind="CREDIT" aria-pressed={mode === "CREDIT"}
+                  onClick={() => setMode("CREDIT")}>
+                  {tr("mode.CREDIT")}
+                </button>
+              </div>
             </div>
           )}
           {payingCash && (
@@ -808,6 +806,12 @@ export function PosTill(props: {
           )}
           {mode === "PAY" && channel && channel.kind !== "CASH" && (
             <div className="pos3-cash">
+              {channel.kind === "BANK" && (channel.accounts?.length ?? 0) > 1 && <>
+                <label htmlFor="pos-bank">{tr("tender.bankAccount")}</label>
+                <select id="pos-bank" value={bankAccount || channel.accountId || ""} onChange={(e) => setBankAccount(e.target.value)}>
+                  {channel.accounts!.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+                </select>
+              </>}
               <label htmlFor="pos-ref">
                 {tr("tender.reference")}{channel.requiresReference ? "" : ` (${tr("tender.optional")})`}
               </label>

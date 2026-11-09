@@ -9540,3 +9540,16 @@ table.fay tbody tr:nth-child(2n) > th.fay-first { background-color: color-mix(in
 table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; background-color: color-mix(in srgb, var(--line-soft) 40%, var(--surface)); }
 .fay-unit th.fay-first a { color: var(--link); font-weight: 500; }
 .fay-unit-total td, .fay-unit-total th { font-weight: 650; border-top: 1px solid var(--line); }
+
+/* Till payment methods: words only, each row filled evenly however many
+   methods the shop has set up (Cash, Bank, MMQR, then any wallet it adds). */
+.pos-paywith { display: grid; gap: 6px; }
+.pos-paywith-label { font-size: 0.8125rem; font-weight: 600; color: var(--ink-soft); }
+.pos3-cart .paychannels { display: flex; flex-wrap: wrap; gap: 2px; }
+.pos3-cart .paychannels .paymode {
+  flex: 1 1 calc(33.333% - 2px); min-width: 0; min-height: 40px; padding: 0 8px;
+  justify-content: center; font-size: 0.875rem; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pos3-cart .paychannels .paymode[aria-pressed="true"] { font-weight: 600; }
+@media (pointer: coarse) { .pos3-cart .paychannels .paymode { min-height: 44px; } }

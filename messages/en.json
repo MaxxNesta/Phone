@@ -1134,6 +1134,7 @@
       "referenceHint": "From the customer's {name} screen",
       "payTo": "Pay to {name} · {number}",
       "method": "Payment method",
+      "bankAccount": "Bank account",
       "removeRow": "Remove payment",
       "paid": "Paid",
       "remaining": "Remaining"

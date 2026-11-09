@@ -1134,6 +1134,7 @@
       "referenceHint": "ဖောက်သည်၏ {name} မျက်နှာပြင်မှ",
       "payTo": "{name} · {number} သို့ ပေးချေရန်",
       "method": "ငွေပေးချေမှုနည်းလမ်း",
+      "bankAccount": "Bank account",
       "removeRow": "ငွေပေးချေမှု ဖယ်ရန်",
       "paid": "ပေးပြီး",
       "remaining": "ကျန်ငွေ"

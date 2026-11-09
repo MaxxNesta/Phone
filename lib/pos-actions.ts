@@ -52,7 +52,7 @@ export type PosSale = {
     focReasonId?: string | null;
   }>;
   /** One per payment: how it was paid, how much, and the wallet's transaction id. */
-  payments: Array<{ channelId: string; amount: number; reference?: string | null }>;
+  payments: Array<{ channelId: string; amount: number; reference?: string | null; accountId?: string | null }>;
   /** A key the till generated for this attempt, so a double click posts once. */
   attempt: string;
 };
