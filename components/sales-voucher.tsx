@@ -935,31 +935,33 @@ export function SalesVoucher({
   });
 
   return (
+    <>
+      {/* The heading, drawn here rather than by the page so the price level
+        this invoice is priced at can sit beside its status. */}
+    {heading && (
+      <DocHeading {...heading} badges={<>
+          {activeLevel && priceLevels.length > 1 ? (
+              <select className="levelpick" value={activeLevelId ?? ""} aria-label="Price level for this invoice"
+                title={levelOverride ? "Changed for this invoice — the customer's own level is the default"
+                  : "The customer's price level"}
+                onChange={(e) => chooseLevel(e.target.value)}>
+                {priceLevels.map((l) => (
+                  <option key={l.id} value={l.id}>{l.name}{l.id === customerLevelId ? " (default)" : ""}</option>
+                ))}
+              </select>
+            ) : activeLevel && (
+              <span className="pill ok" title="Prices suggested at this level">
+                {activeLevel.name}
+              </span>
+            )}
+      </>}>{heading.help}</DocHeading>
+    )}
     <form action={formAction} className="form wide docsheet waved">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
-      {/* The heading, drawn here rather than by the page so the price level
-          this invoice is priced at can sit beside its status. */}
-      {heading && (
-        <DocHeading {...heading} badges={<>
-            {activeLevel && priceLevels.length > 1 ? (
-                <select className="levelpick" value={activeLevelId ?? ""} aria-label="Price level for this invoice"
-                  title={levelOverride ? "Changed for this invoice — the customer's own level is the default"
-                    : "The customer's price level"}
-                  onChange={(e) => chooseLevel(e.target.value)}>
-                  {priceLevels.map((l) => (
-                    <option key={l.id} value={l.id}>{l.name}{l.id === customerLevelId ? " (default)" : ""}</option>
-                  ))}
-                </select>
-              ) : activeLevel && (
-                <span className="pill ok" title="Prices suggested at this level">
-                  {activeLevel.name}
-                </span>
-              )}
-        </>}>{heading.help}</DocHeading>
-      )}
+
 
       {/* What the editor holds, for a draft to put back. Separate from the
           `lines` field below, which is the posting payload and has already
@@ -2083,5 +2085,6 @@ export function SalesVoucher({
         </span>
       </div>
     </form>
+    </>
   );
 }

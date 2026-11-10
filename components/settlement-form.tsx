@@ -236,9 +236,27 @@ export function SettlementForm({
   const cashWord = isPay ? "Pay" : "Receive";
 
   return (
-    <form action={formAction} className="form wide docsheet waved stl-form">
+    <>
       <DocHeading back={{ href: isPay ? "/payables" : "/receivables", label: isPay ? "Back to payables" : "Back to receivables" }}
-        trail={[]} title={isPay ? "Pay a supplier" : "Receive from a customer"}>{help}</DocHeading>
+      trail={[]} title={isPay ? "Pay a supplier" : "Receive from a customer"}>{help}</DocHeading>
+    {/* Two different transactions, so a choice made first: settling bills
+        relieves what is owed; an advance is held on account until there is
+        a bill for it. Outside the form — the form posts the hidden purpose. */}
+    <fieldset className="purpose stl-purpose">
+      <legend>{isPay ? "Payment purpose" : "Receipt purpose"}</legend>
+      {([
+        ["settle", isPay ? "Pay existing bills" : "Settle existing invoices"],
+        ["advance", isPay ? "Advance to supplier" : "Customer advance"],
+      ] as const).map(([value, label]) => (
+        <label key={value} className={purpose === value ? "on" : undefined}>
+          <input type="radio" name="purpose_choice" value={value}
+            checked={purpose === value} onChange={() => setPurpose(value)} />
+          {label}
+        </label>
+      ))}
+    </fieldset>
+    <form action={formAction} className="form wide docsheet stl-form">
+
 
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
@@ -252,20 +270,8 @@ export function SettlementForm({
       <input type="hidden" name="purpose" value={purpose} />
 
       <div className="card doc-meta doc-info">
-        <div className="card-head stl-details-head">
+        <div className="card-head">
           <h2>{isPay ? "Payment details" : "Receipt details"}</h2>
-          {/* Two different transactions, so a choice, not a blank amount
-              field: settling bills relieves what is owed; an advance is held
-              on account until there is a bill for it. */}
-          <div className="segmented" role="radiogroup" aria-label={isPay ? "Payment purpose" : "Receipt purpose"}>
-            {([
-              ["settle", isPay ? "Pay bills" : "Settle invoices"],
-              ["advance", isPay ? "Advance — no bill yet" : "Advance — no invoice yet"],
-            ] as const).map(([value, label]) => (
-              <button key={value} type="button" role="radio" aria-checked={purpose === value}
-                className={`seg${purpose === value ? " on" : ""}`} onClick={() => setPurpose(value)}>{label}</button>
-            ))}
-          </div>
         </div>
         <div className="card-body">
           <div className="doc-fields">
@@ -549,5 +555,6 @@ export function SettlementForm({
         </dl>
       </div>
     </form>
+    </>
   );
 }

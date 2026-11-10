@@ -411,6 +411,18 @@ export function ReceiptForm({
   const postRef = useRef<HTMLButtonElement>(null);
 
   return (
+    <>
+      {/* The document's own heading: what it is and where it stands. Its two
+        commands sit in the bar at the foot, as on every purchase document. */}
+    <DocHeading
+      back={order
+        ? { href: `/documents/${order.id}`, label: `Back to ${order.docNo}` }
+        : { href: "/purchases/receive", label: "Back to goods receipts" }}
+      trail={[
+        { label: "Goods receipts", href: "/purchases/receive" },
+        ...(order ? [{ label: order.docNo, href: `/documents/${order.id}` }] : []),
+      ]}
+      title="Goods receipt" status={draftId ? "Draft" : "New"} />
     <form action={formAction} className="form wide gr docsheet waved">
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
@@ -428,17 +440,7 @@ export function ReceiptForm({
         </>
       )}
 
-      {/* The document's own heading: what it is and where it stands. Its two
-          commands sit in the bar at the foot, as on every purchase document. */}
-      <DocHeading
-        back={order
-          ? { href: `/documents/${order.id}`, label: `Back to ${order.docNo}` }
-          : { href: "/purchases/receive", label: "Back to goods receipts" }}
-        trail={[
-          { label: "Goods receipts", href: "/purchases/receive" },
-          ...(order ? [{ label: order.docNo, href: `/documents/${order.id}` }] : []),
-        ]}
-        title="Goods receipt" status={draftId ? "Draft" : "New"} />
+
 
       {state && "error" in state && <div className="alert">{state.error}</div>}
       {draftResult && "error" in draftResult && <div className="alert">{draftResult.error}</div>}
@@ -942,5 +944,6 @@ export function ReceiptForm({
         )}
       </div>
     </form>
+    </>
   );
 }
