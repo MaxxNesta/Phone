@@ -1,4 +1,5 @@
 import { BranchScope } from "@/components/branch-scope";
+import { PartnerTabs } from "@/components/partner-tabs";
 import { seenLocations, scopedBranch } from "@/lib/branch-scope";
 import { periodFromParams } from "@/lib/date-range";
 import { UrlDateFilter } from "@/components/date-filter";
@@ -115,11 +116,7 @@ export default async function Receivables({
           behind it.
         </HelpHint>
       </div>
-      <div className="vtabs pay-tabs" role="tablist" aria-label="Receivables">
-        <Link href="/receivables" role="tab" aria-selected className="on">Customers</Link>
-        <Link href="/receivables/ledger" role="tab" aria-selected={false}>Customer ledger</Link>
-        <Link href="/receivables/advances" role="tab" aria-selected={false}>Advances</Link>
-      </div>
+      <PartnerTabs side="CUSTOMER" active="list" />
 
       <div className="kpis">
         <div className="kpi">

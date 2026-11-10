@@ -1,8 +1,8 @@
 import { BranchScope } from "@/components/branch-scope";
+import { PartnerTabs } from "@/components/partner-tabs";
 import { seenLocations } from "@/lib/branch-scope";
 import { getCompany, getAdvanceLedger, openBillsByPartner } from "@/lib/queries";
 import { AdvanceSummary } from "@/components/advance-summary";
-import Link from "next/link";
 import { AdvanceLedger } from "@/components/advance-ledger";
 import { HelpHint } from "@/components/help-hint";
 
@@ -33,11 +33,7 @@ export default async function CustomerAdvances({
           liability until it is applied, never a receivable.
         </HelpHint>
       </div>
-      <div className="vtabs pay-tabs" role="tablist" aria-label="Receivables">
-        <Link href="/receivables" role="tab" aria-selected={false}>Customers</Link>
-        <Link href="/receivables/ledger" role="tab" aria-selected={false}>Customer ledger</Link>
-        <Link href="/receivables/advances" role="tab" aria-selected className="on">Advances</Link>
-      </div>
+      <PartnerTabs side="CUSTOMER" active="advances" />
 
       <AdvanceSummary side="CUSTOMER" advances={advances} bills={bills} />
       <h2 className="adv-sum-sub">Every advance</h2>

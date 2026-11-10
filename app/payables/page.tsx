@@ -1,4 +1,5 @@
 import { BranchScope } from "@/components/branch-scope";
+import { PartnerTabs } from "@/components/partner-tabs";
 import { seenLocations, scopedBranch } from "@/lib/branch-scope";
 import { periodFromParams } from "@/lib/date-range";
 import { UrlDateFilter } from "@/components/date-filter";
@@ -55,12 +56,7 @@ export default async function Payables({
             : "What you owe each supplier, rolled up from their open bills — not a balance kept on the supplier, so it can never drift from the invoices behind it."}
         </HelpHint>
       </div>
-      <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
-        <Link href="/payables" role="tab" aria-selected={!couriers} className={!couriers ? "on" : undefined}>Suppliers</Link>
-        <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>{section}</Link>
-        <Link href="/payables/ledger" role="tab" aria-selected={false}>Supplier ledger</Link>
-        <Link href="/payables/advances" role="tab" aria-selected={false}>Advances</Link>
-      </div>
+      <PartnerTabs side="SUPPLIER" active={couriers ? "couriers" : "list"} section={section} />
     </>
   );
   if (couriers) return <>{head}<CouriersView companyId={company.id} section={section} /></>;

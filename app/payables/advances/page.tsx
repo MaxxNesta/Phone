@@ -1,8 +1,8 @@
 import { BranchScope } from "@/components/branch-scope";
+import { PartnerTabs } from "@/components/partner-tabs";
 import { seenLocations } from "@/lib/branch-scope";
 import { getCompany, getAdvanceLedger, openBillsByPartner } from "@/lib/queries";
 import { AdvanceSummary } from "@/components/advance-summary";
-import Link from "next/link";
 import { AdvanceLedger } from "@/components/advance-ledger";
 import { HelpHint } from "@/components/help-hint";
 
@@ -33,11 +33,7 @@ export default async function SupplierAdvances({
           asset until it is applied, never a payable.
         </HelpHint>
       </div>
-      <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
-        <Link href="/payables" role="tab" aria-selected={false}>Suppliers</Link>
-        <Link href="/payables/ledger" role="tab" aria-selected={false}>Supplier ledger</Link>
-        <Link href="/payables/advances" role="tab" aria-selected className="on">Advances</Link>
-      </div>
+      <PartnerTabs side="SUPPLIER" active="advances" />
 
       <AdvanceSummary side="SUPPLIER" advances={advances} bills={bills} />
       <h2 className="adv-sum-sub">Every advance</h2>

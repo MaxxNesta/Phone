@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PartnerTabs } from "@/components/partner-tabs";
 import { getCompany, getBranches } from "@/lib/queries";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
@@ -37,10 +37,7 @@ export default async function SupplierLedgerPage({ searchParams }: { searchParam
           is applied to arrives.
         </HelpHint>
       </div>
-      <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
-        <Link href="/payables" role="tab" aria-selected={false}>Suppliers</Link>
-        <Link href="/payables/ledger" role="tab" aria-selected className="on">Supplier ledger</Link>
-      </div>
+      <PartnerTabs side="SUPPLIER" active="ledger" />
       <PartnerLedgerView side="SUPPLIER" branches={branches} ledger={ledger} partners={suppliers as never} sp={{ ...sp, partner, branch: branch ?? "" }} base="/payables/ledger" />
     </>
   );

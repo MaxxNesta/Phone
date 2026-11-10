@@ -97,8 +97,13 @@ export async function listShareholders(companyId: string) {
                to_char(s.created_at, 'YYYY-MM-DD') as created,
                s.equity_account_id, a.code as account_code, a.name as account_name,
                s.no_of_shares::float as no_of_shares, s.share_price::float as share_price,
-               coalesce((select -sum(l.base_amount) from journal_line l where l.account_id = s.equity_account_id), 0)::float as capital
+               coalesce(c.capital, 0)::float as capital
           from shareholder s left join account a on a.id = s.equity_account_id
+          -- One pass over the capital accounts' lines, on the company's account index.
+          left join (select l.account_id, -sum(l.base_amount) as capital from journal_line l
+                      where l.company_id = ${companyId}
+                        and l.account_id in (select equity_account_id from shareholder where company_id = ${companyId} and equity_account_id is not null)
+                      group by l.account_id) c on c.account_id = s.equity_account_id
          where s.company_id = ${companyId} order by s.code`,
     movements(sql, companyId),
     // What each holder's shares came in at, less what went out, at the transfers' own rates.
@@ -263,7 +268,7 @@ export async function capitalLedger(companyId: string, f: { holder?: string; fro
            (-l.base_amount)::float as amount
       from shareholder s
       join account a on a.id = s.equity_account_id
-      join journal_line l on l.account_id = s.equity_account_id
+      join journal_line l on l.company_id = s.company_id and l.account_id = s.equity_account_id
       join journal_entry je on je.id = l.journal_entry_id
       left join document d on d.id = je.source_id
      where s.company_id = ${companyId}

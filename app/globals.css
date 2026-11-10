@@ -9625,3 +9625,60 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .bal-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
 .adv-sum { margin-bottom: 16px; }
 .adv-sum-sub { font-size: var(--t-md); font-weight: 600; margin: 4px 0 10px; }
+
+/* ================================================== switches, firmed up ====
+   Two kinds, one look each, everywhere.
+
+   Section tabs move between related pages (Suppliers · Carriage inward ·
+   Supplier ledger · Advances; the Equity views): plain labels on a rule, the
+   current page in ink with a 2px bar under it. Nothing floats.
+
+   Filters and view toggles narrow what one page shows (All · Current ·
+   Overdue; Purchases · Sales; Unapplied · Fully applied): one bordered
+   control, divided, the chosen segment solid ink. Readable at a glance,
+   no grey-on-grey. */
+.vtabs.pay-tabs, .seg.sh-tabs {
+  display: flex; align-self: stretch; width: 100%; gap: 2px; padding: 0; margin: 0 0 18px;
+  background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  overflow-x: auto; scrollbar-width: none;
+}
+.vtabs.pay-tabs > a, .seg.sh-tabs > a {
+  position: relative; display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px;
+  border: 0; border-radius: 0; background: none; box-shadow: none; white-space: nowrap;
+  color: color-mix(in srgb, var(--ink) 62%, transparent); font-size: 0.9rem; font-weight: 500; text-decoration: none;
+}
+.seg.sh-tabs > a + a { border-left: 0; }
+.vtabs.pay-tabs > a::after, .seg.sh-tabs > a::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px 2px 0 0; background: transparent;
+}
+.vtabs.pay-tabs > a:hover:not(.on), .seg.sh-tabs > a:hover:not([data-active]) { color: var(--ink); background: none; }
+.vtabs.pay-tabs > a:hover:not(.on)::after, .seg.sh-tabs > a:hover:not([data-active])::after { background: var(--line); }
+.vtabs.pay-tabs > a.on, .seg.sh-tabs > a[data-active] { color: var(--ink); font-weight: 650; background: none; box-shadow: none; }
+.vtabs.pay-tabs > a.on::after, .seg.sh-tabs > a[data-active]::after { background: var(--ink); }
+.vtabs.pay-tabs > a:focus-visible, .seg.sh-tabs > a:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; border-radius: 6px; }
+
+.flow:not(:has(.flow-arrow)), .scopetabs, .segmented {
+  display: inline-flex; flex-wrap: nowrap; gap: 0; padding: 0; width: fit-content; max-width: 100%;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; scrollbar-width: none;
+}
+.flow:not(:has(.flow-arrow)) > .flow-node, .scopetabs > .scopetab, .segmented > .seg {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 0 14px; margin: 0;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; white-space: nowrap;
+  color: color-mix(in srgb, var(--ink) 72%, transparent); font-size: 0.86rem; font-weight: 500; text-decoration: none;
+}
+.flow:not(:has(.flow-arrow)) > .flow-node + .flow-node, .scopetabs > .scopetab + .scopetab, .segmented > .seg + .seg {
+  border-left: 1px solid var(--line);
+}
+.flow:not(:has(.flow-arrow)) > .flow-node:hover:not(.here),
+.scopetabs > .scopetab:hover:not([data-active="true"]),
+.segmented > .seg:hover:not(.on):not(:disabled) { background: var(--line-soft); color: var(--ink); }
+.flow:not(:has(.flow-arrow)) > .flow-node.here,
+.scopetabs > .scopetab[data-active="true"],
+.segmented > .seg.on, .segmented > .seg[aria-selected="true"] {
+  background: var(--ink); color: var(--surface); font-weight: 600; box-shadow: none; border-color: var(--ink);
+}
+.segmented > .seg.on svg, .segmented > .seg[aria-selected="true"] svg { color: var(--surface); }
+.scopetabs > .scopetab[data-active="true"] .scopetab-n { background: color-mix(in srgb, var(--surface) 22%, transparent); color: inherit; }
+.flow:not(:has(.flow-arrow)) > .flow-node:focus-visible, .scopetabs > .scopetab:focus-visible, .segmented > .seg:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: -2px;
+}

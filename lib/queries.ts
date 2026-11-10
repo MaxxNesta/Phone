@@ -375,28 +375,43 @@ export async function getDueWithin(
  * Lists below take `locs`: the locations the reader may see (seenLocations), or
  * null for every one. Someone limited to their own branch sees its documents only.
  */
+/**
+ * Per invoice, how much of what is paid came from an advance already on
+ * account: the allocations an advance application made, while it stands.
+ * One grouped pass for the company, to join against.
+ */
+export const advAppliedByInvoice = (companyId: string) => sql`(
+  select pa.invoice_id, sum(pa.amount) as adv
+    from payment_allocation pa
+    join document app on app.id = pa.applied_by_document_id
+   where pa.company_id = ${companyId} and app.status = 'POSTED'
+   group by pa.invoice_id)`;
+
 export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE",
                                      locs: string[] | null = null) {
   return sql`
-    select document_id, doc_no, posting_date, due_date,
-           partner_id, partner_code, partner_name,
-           gross_total, paid, outstanding, 'POSTED' as doc_status,
-           payment_status, days_overdue,
+    select v.document_id, v.doc_no, v.posting_date, v.due_date,
+           v.partner_id, v.partner_code, v.partner_name,
+           v.gross_total, v.paid, v.outstanding, 'POSTED' as doc_status,
+           v.payment_status, v.days_overdue,
            -- Which channel made the sale. The till stamps its own reference
            -- (POS:<attempt>, how it recognises a resent sale), so the channel
            -- is read from that rather than stored twice.
-           (select case when d.reference like 'POS:%' then 'POS' else 'INVOICE' end
-              from document d where d.id = v_invoice_status.document_id) as channel,
-           (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
-             where dl.document_id = v_invoice_status.document_id and dl.item_id is not null) as item_qty,
-           (select d.source_ref from document d where d.id = v_invoice_status.document_id) as source_ref,
-           -- Of what is paid, the part an advance already on account settled.
-           (select coalesce(sum(pa.amount), 0) from payment_allocation pa
-              join document app on app.id = pa.applied_by_document_id
-             where pa.invoice_id = v_invoice_status.document_id and app.status = 'POSTED')::float as adv_applied
-      from v_invoice_status
-     where company_id = ${companyId} and doc_type = ${docType}
-       ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
+           case when d.reference like 'POS:%' then 'POS' else 'INVOICE' end as channel,
+           coalesce(q.item_qty, 0)::float as item_qty,
+           d.source_ref,
+           coalesce(a.adv, 0)::float as adv_applied
+      -- Joined once each, not looked up per row: a busy till makes this list
+      -- thousands of invoices long, and four lookups a row added up.
+      from v_invoice_status v
+      join document d on d.id = v.document_id
+      left join (select dl.document_id, sum(dl.entered_qty) as item_qty
+                   from document_line dl join document x on x.id = dl.document_id
+                  where x.company_id = ${companyId} and x.doc_type = ${docType} and dl.item_id is not null
+                  group by dl.document_id) q on q.document_id = v.document_id
+      left join ${advAppliedByInvoice(companyId)} a on a.invoice_id = v.document_id
+     where v.company_id = ${companyId} and v.doc_type = ${docType}
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
 
      union all
 
@@ -8281,11 +8296,9 @@ export async function openBillsByPartner(companyId: string, docType: "SALES_INVO
     select s.partner_id, s.document_id as id, s.doc_no, to_char(s.posting_date, 'YYYY-MM-DD') as date,
            to_char(s.due_date, 'YYYY-MM-DD') as due, s.gross_total::float as total,
            s.outstanding::float as outstanding, s.days_overdue as late,
-           s.paid::float as paid_all,
-           (select coalesce(sum(pa.amount), 0) from payment_allocation pa
-              join document app on app.id = pa.applied_by_document_id
-             where pa.invoice_id = s.document_id and app.status = 'POSTED')::float as adv
+           s.paid::float as paid_all, coalesce(a.adv, 0)::float as adv
       from v_invoice_status s
+      left join ${advAppliedByInvoice(companyId)} a on a.invoice_id = s.document_id
      where s.company_id = ${companyId} and s.doc_type = ${docType} and s.outstanding <> 0
        ${locs ? sql`and s.document_id in (select id from document where location_id = any(${locs}))` : sql``}
      order by s.posting_date, s.doc_no`;

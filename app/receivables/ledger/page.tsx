@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PartnerTabs } from "@/components/partner-tabs";
 import { getCompany, getBranches } from "@/lib/queries";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
@@ -38,10 +38,7 @@ export default async function CustomerLedgerPage({ searchParams }: { searchParam
           Money taken before the invoice is a customer advance (Sale Advance): it shows on the day it was received.
         </HelpHint>
       </div>
-      <div className="vtabs pay-tabs" role="tablist" aria-label="Receivables">
-        <Link href="/receivables" role="tab" aria-selected={false}>Customers</Link>
-        <Link href="/receivables/ledger" role="tab" aria-selected className="on">Customer ledger</Link>
-      </div>
+      <PartnerTabs side="CUSTOMER" active="ledger" />
       <PartnerLedgerView side="CUSTOMER" branches={branches} ledger={ledger} partners={customers as never}
         townships={towns.map((t) => t.township as string)} sp={{ ...sp, branch: branch ?? "" }} base="/receivables/ledger" />
     </>

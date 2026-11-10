@@ -12,7 +12,7 @@ import { parseCsv, planImport, type MasterData } from "./import-items";
 import { xlsxToRows, type UploadFormat } from "./read-spreadsheet";
 import { planVoucherImport, voucherColumns, type VoucherMasterData, type VoucherKind }
   from "./import-vouchers";
-import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse } from "./queries";
+import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse, advAppliedByInvoice } from "./queries";
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
@@ -2924,6 +2924,9 @@ async function settle(
          where company_id = ${co} and partner_id = ${input.partnerId} and currency = ${cur}
            and doc_type = ${kind === "pay" ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT"}
          order by doc_date, doc_no`) as unknown as { payment_id: string; left: number }[];
+      // ponytail: one application document per bill, each a few round trips
+      // inside this transaction — fine for the dozens of bills a payment
+      // settles; batch into one multi-invoice application if it ever is hundreds.
       for (const use of advanceUse) {
         let need = use.amount;
         const from: { paymentId: string; amount: number }[] = [];
@@ -3011,11 +3014,10 @@ export async function getSettlementData(kind: "pay" | "receive") {
                 coalesce(o.exchange_rate, 1)::float as exchange_rate,
                 coalesce(o.fc_outstanding, s.outstanding)::float as fc_outstanding,
                 -- Of what is paid, how much came from an advance applied to it.
-                (select coalesce(sum(pa.amount), 0) from payment_allocation pa
-                   join document app on app.id = pa.applied_by_document_id
-                  where pa.invoice_id = s.document_id and app.status = 'POSTED')::float as adv_applied
+                coalesce(adv.adv, 0)::float as adv_applied
            from v_invoice_status s
            left join v_open_item o on o.document_id = s.document_id
+           left join ${advAppliedByInvoice(co)} adv on adv.invoice_id = s.document_id
           where s.company_id = ${co} and s.doc_type = ${docType} and s.outstanding <> 0
             ${locs ? sql`and s.document_id in (select id from document where location_id = any(${locs}))` : sql``}
           order by s.due_date nulls last, s.posting_date`,
