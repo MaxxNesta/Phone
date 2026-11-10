@@ -49,7 +49,8 @@ const run = (name) => new Promise((resolve) => {
   // permission the inherited suites ask for by this variable.
   const child = spawn("npx", ["tsx", `scripts/${name}.mjs`], {
     shell: process.platform === "win32",
-    env: { ...process.env, ALLOW_DESTRUCTIVE_TESTS: "1" },
+    // The suites run as the owner: sign-in off, which outside production stays possible after launch.
+    env: { ...process.env, ALLOW_DESTRUCTIVE_TESTS: "1", AUTH_DISABLED: "true" },
   });
   let out = "", last = Date.now();
   const take = (b) => { out += b; last = Date.now(); };

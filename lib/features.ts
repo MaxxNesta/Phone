@@ -19,3 +19,19 @@ export const ORDERS_AND_DELIVERIES = false;
 export function ordersAndDeliveriesOn(company: { retail_mode?: boolean | null } | null | undefined) {
   return !company?.retail_mode || ORDERS_AND_DELIVERIES;
 }
+
+/**
+ * Sign-in, as a developer switch (2026-11-10). Off while the owner tests:
+ * everyone acts as the owner, an administrator. Turn it on when the owner
+ * says "ready" — change the constant and redeploy.
+ *
+ * Once on, it fails closed: a missing or mistyped environment variable can no
+ * longer switch sign-in off in production. Only a run outside production
+ * (local, test suites) may switch it off, and only on purpose, with
+ * AUTH_DISABLED=true. AUTH_REQUIRED=true still turns it on while this is off,
+ * for testing the signed-in app (scripts/check-http-roles.mjs).
+ *
+ * Before turning it on: the owner sets their own password in Settings → Users
+ * while sign-in is still off, so the first sign-in is theirs.
+ */
+export const SIGN_IN_REQUIRED = false;

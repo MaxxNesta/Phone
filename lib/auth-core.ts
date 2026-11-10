@@ -10,6 +10,7 @@ import { sql } from "./db";
 // navigation hiding things is a courtesy on top.
 
 import { ROLES, ROLE_LABEL, type Role } from "./roles";
+import { SIGN_IN_REQUIRED } from "./features";
 export { ROLES, ROLE_LABEL, type Role };
 
 export type Permission =
@@ -122,12 +123,22 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
 }
 
 /**
- * Whether anyone has to sign in. Off unless AUTH_REQUIRED=true: a single shop
- * where everyone is trusted runs without logins, and every request acts as
- * the owner. Turning it on brings back sign-in, roles and the per-role checks
- * unchanged — nothing below needs to know which mode it is in.
+ * Whether anyone has to sign in: the developer switch SIGN_IN_REQUIRED in
+ * lib/features.ts. Off, every request acts as the owner. On, it fails closed:
+ * only a run outside production may switch it off, and only with
+ * AUTH_DISABLED=true. AUTH_REQUIRED=true turns it on regardless, for testing.
+ * Nothing below needs to know which mode it is in.
  */
-export const authRequired = () => process.env.AUTH_REQUIRED === "true";
+export function authRequired(): boolean {
+  return signInRule(SIGN_IN_REQUIRED, process.env);
+}
+
+/** The rule itself, apart from the switch and the process, so it can be tested in every combination. */
+export function signInRule(switchOn: boolean, env: Record<string, string | undefined>): boolean {
+  if (env.AUTH_REQUIRED === "true") return true;
+  if (!switchOn) return false;
+  return !(env.AUTH_DISABLED === "true" && env.VERCEL_ENV !== "production");
+}
 
 /**
  * The owner, for when sign-in is off: an administrator row in app_user,
