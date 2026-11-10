@@ -7,6 +7,7 @@ import { receiptView, type ReceiptView } from "./receipt";
 import type { InvoiceLine } from "./posting";
 import { posSearch, unitsOnShelf, stripCost } from "./phone";
 import { serverT } from "./i18n-server";
+import { priceProblem } from "./price-guard";
 import { postTillSale } from "./pos-sale";
 
 // The till. Every action checks pos.sell on the server; cost leaves the
@@ -78,12 +79,9 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
       }));
     if (lines.length === 0) return { ok: false, error: tr("noLines") };
 
-    if (!can(user, "discount.unlimited")) {
-      const over = lines.find((l) => (l.discountPct ?? 0) > DISCOUNT_CEILING_PCT);
-      if (over) {
-        return { ok: false, error: tr("discountNeedsManager", { pct: DISCOUNT_CEILING_PCT }) };
-      }
-    }
+    // Discount, typed price and free goods, checked against the price list on the server.
+    const problem = await priceProblem(user, co, lines, sale.partnerId);
+    if (problem) return { ok: false, error: tr(problem.key, problem.values) };
 
     const result = await postTillSale({
       companyId: co, userId: user.id, locationId: sale.locationId,

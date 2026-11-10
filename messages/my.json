@@ -1140,7 +1140,10 @@
       "removeRow": "ငွေပေးချေမှု ဖယ်ရန်",
       "paid": "ပေးပြီး",
       "remaining": "ကျန်ငွေ"
-    }
+    },
+    "priceNeedsManager": "{name}: မန်နေဂျာ မပါဘဲ အနိမ့်ဆုံးဈေး {floor} MMK (စာရင်းဈေးမှ {pct}% လျှော့)။",
+    "freeNeedsManager": "အခမဲ့ပေးခြင်းအတွက် မန်နေဂျာ လိုသည်။",
+    "belowCostNeedsManager": "{name}: ကုန်ကျစရိတ်ထက် နိမ့်သောဈေးအတွက် မန်နေဂျာ လိုသည်။"
   },
   "dashboard": {
     "title": "ဒက်ရှ်ဘုတ်",

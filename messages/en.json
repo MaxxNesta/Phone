@@ -1140,7 +1140,10 @@
       "removeRow": "Remove payment",
       "paid": "Paid",
       "remaining": "Remaining"
-    }
+    },
+    "priceNeedsManager": "{name}: the lowest price without a manager is {floor} MMK ({pct}% off the list price).",
+    "freeNeedsManager": "Giving goods free of charge needs a manager.",
+    "belowCostNeedsManager": "{name}: a price below its cost needs a manager."
   },
   "dashboard": {
     "title": "Dashboard",

@@ -45,6 +45,7 @@ import {
 } from "./posting";
 import { postOnce, alreadyPosted } from "./idempotency";
 import { serverT } from "./i18n-server";
+import { priceProblem } from "./price-guard";
 import { resolveTenders, stampReceipt } from "./payment-channels";
 import { postReturnWithRefund, refundReturn, dryRun, type RefundSpec, type MoneyPreview } from "./refund";
 /**
@@ -1990,7 +1991,7 @@ function parseLines(fd: FormData): InvoiceLine[] {
 }
 
 export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("sales.post");
+  const seller = await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Sales invoice posted";
 
@@ -1999,6 +2000,9 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     const lines = parseLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    // The till's rule: discount, typed price and free goods, against the price list.
+    const problem = await priceProblem(seller, co, lines, str(fd, "partner_id") || null);
+    if (problem) return { error: (await serverT("pos"))(problem.key, problem.values) };
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
