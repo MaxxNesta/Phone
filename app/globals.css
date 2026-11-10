@@ -2482,15 +2482,33 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
 .stl-note { margin: 0; padding: 8px 14px 12px; font-size: var(--t-xs); color: var(--muted); }
 .stl-switch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-sm); cursor: pointer; }
 .stl-switch input { width: 16px; height: 16px; accent-color: var(--chart-1); }
-.stl-summary {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; margin: 0 0 12px;
-  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--line);
+.stl-details-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.stl-form .doc-fields .field > label { display: inline-flex; align-items: center; gap: 6px; }
+.stl-step {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 50%;
+  background: var(--ink); color: var(--surface); font-size: 0.72rem; font-weight: 700; vertical-align: 2px;
 }
-.stl-summary > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; background: var(--surface, var(--bg)); }
-.stl-summary span { font-size: var(--t-xs); color: var(--muted); }
-.stl-summary strong { font-size: var(--t-xl); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-.stl-summary small { font-size: var(--t-xs); color: var(--muted); overflow-wrap: anywhere; }
-.stl-summary .stl-cash strong { color: var(--chart-1); }
+.stl-tag {
+  margin-left: 10px; padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--chart-1) 45%, transparent); border-radius: 999px;
+  color: var(--chart-1); font-size: 0.72rem; font-weight: 600; vertical-align: 2px; white-space: nowrap;
+}
+.stl-adv { border-left: 3px solid var(--chart-1); }
+.stl-adv .card-head h2, .stl-bills .card-head h2 { display: flex; align-items: center; flex-wrap: wrap; }
+.stl-adv td.code a { color: var(--link); text-decoration: none; }
+.stl-adv td.code a:hover { text-decoration: underline; }
+.stl-commit { gap: 10px; }
+.stl-commit > button[type="submit"] { min-width: 150px; }
+.stl-sum { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 22px; margin: 0 0 0 auto; }
+.stl-sum > div { display: flex; align-items: baseline; gap: 8px; }
+.stl-sum dt { font-size: var(--t-xs); color: var(--muted); }
+.stl-sum dd { margin: 0; font-size: var(--t-lg); font-weight: 650; font-variant-numeric: tabular-nums; }
+.stl-sum dd small { font-size: var(--t-xs); font-weight: 500; color: var(--muted); }
+.stl-sum .stl-sum-cash dd { color: var(--chart-1); }
+.stl-sum-empty dt { font-size: var(--t-sm); }
+.stl-adv-body { display: grid; gap: 6px; justify-items: start; }
+.stl-adv-label { font-size: var(--t-sm); font-weight: 600; }
+.stl-adv-body .amountbox { width: min(360px, 100%); }
+.stl-adv-body .hint { margin: 2px 0 0; }
 .amountbox { display: flex; align-items: stretch; }
 .amountbox input { flex: 1 1 auto; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .amountbox-unit {

@@ -1,5 +1,4 @@
 import { BranchScope } from "@/components/branch-scope";
-import { PartnerTabs } from "@/components/partner-tabs";
 import { seenLocations } from "@/lib/branch-scope";
 import { getCompany, getAdvanceLedger, openBillsByPartner } from "@/lib/queries";
 import { AdvanceSummary } from "@/components/advance-summary";
@@ -33,7 +32,6 @@ export default async function SupplierAdvances({
           asset until it is applied, never a payable.
         </HelpHint>
       </div>
-      <PartnerTabs side="SUPPLIER" active="advances" />
 
       <AdvanceSummary side="SUPPLIER" advances={advances} bills={bills} />
       <h2 className="adv-sum-sub">Every advance</h2>

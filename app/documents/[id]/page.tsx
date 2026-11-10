@@ -276,6 +276,15 @@ export default async function DocumentPage({
   // so the same panel answers them in the sales vocabulary.
   const isDel = doc.doc_type === "DELIVERY" && doc.status === "POSTED";
   const isSi = doc.doc_type === "SALES_INVOICE" && doc.status === "POSTED";
+  // Cash or credit is a question only an invoice answers. A receipt, a
+  // payment or a voucher moved real money, so it says where: the cash or
+  // bank account on its journal, or the channel it came through.
+  const MONEY_DOCS = ["CASH_VOUCHER", "BANK_VOUCHER", "CUSTOMER_RECEIPT", "SUPPLIER_PAYMENT", "CUSTOMER_REFUND", "CASH_TRANSFER"];
+  const isInvoiceDoc = doc.doc_type === "SALES_INVOICE" || doc.doc_type === "PURCHASE_INVOICE";
+  const moneyAccounts = MONEY_DOCS.includes(doc.doc_type) && doc.journal_entry_id
+    ? ((await sql`select distinct a.code, a.name from journal_line jl join account a on a.id = jl.account_id
+                   where jl.journal_entry_id = ${doc.journal_entry_id} and a.is_cash_account order by a.code`) as unknown as { code: string; name: string }[])
+    : [];
   /** True on the document that moves goods, false on the one that bills. */
   const movesGoods = isGr || isDel;
   const goodsWord = isGr || isPi ? "received" : "delivered";
@@ -1512,10 +1521,15 @@ export default async function DocumentPage({
               <div><dt>Posting</dt><dd>{shortDate(doc.posting_date)}</dd></div>
               <div><dt>Currency</dt><dd className="m">{doc.currency} @ {Number(doc.exchange_rate)}</dd></div>
               <div><dt>Due</dt><dd>{doc.due_date ? shortDate(doc.due_date) : "—"}</dd></div>
-              {doc.payment_type
-                ? <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? doc.payment_type}</span>
-                    {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
-                : <div><dt>Payment</dt><dd>—</dd></div>}
+              {isInvoiceDoc && doc.payment_type ? (
+                <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : "Credit")}</span>
+                  {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
+              ) : moneyAccounts.length > 0 || doc.payment_channel_name ? (
+                <div><dt>{doc.doc_type === "CASH_TRANSFER" ? "Accounts" : "Paid through"}</dt><dd>
+                  {doc.payment_channel_name && <span className="pill">{doc.payment_channel_name}</span>}
+                  {moneyAccounts.length > 0 && <span className="m"> {moneyAccounts.map((m) => `${m.code} · ${m.name}`).join(" → ")}</span>}
+                  {doc.payment_reference && <span className="m"> · {doc.payment_reference}</span>}</dd></div>
+              ) : null}
               {doc.salesman_name && (
                 <div><dt>Salesman</dt><dd>{doc.salesman_code} · {doc.salesman_name}</dd></div>
               )}

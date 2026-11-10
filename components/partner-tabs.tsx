@@ -2,12 +2,13 @@ import Link from "next/link";
 import { getCompany } from "@/lib/queries";
 import { costSection } from "@/lib/courier-payables";
 
-type Tab = "list" | "couriers" | "ledger" | "advances";
+type Tab = "list" | "couriers" | "ledger";
 
 /**
  * The pages about who owes what, one set of tabs on each of them: the same
- * tabs in the same order wherever you stand, so moving between the list,
- * the ledger and the advances never loses one.
+ * tabs in the same order wherever you stand. Advances are not owed — money
+ * paid or taken ahead is an asset or a liability of its own — so they have
+ * their own menu entry, not a tab here.
  */
 export async function PartnerTabs({ side, active, section }: {
   side: "SUPPLIER" | "CUSTOMER"; active: Tab;
@@ -20,12 +21,10 @@ export async function PartnerTabs({ side, active, section }: {
         ["list", "/payables", "Suppliers"],
         ["couriers", "/payables?view=couriers", section ?? await costSectionOf()],
         ["ledger", "/payables/ledger", "Supplier ledger"],
-        ["advances", "/payables/advances", "Advances"],
       ]
     : [
         ["list", "/receivables", "Customers"],
         ["ledger", "/receivables/ledger", "Customer ledger"],
-        ["advances", "/receivables/advances", "Advances"],
       ];
   return (
     <nav className="vtabs pay-tabs" aria-label={pay ? "Payables" : "Receivables"}>

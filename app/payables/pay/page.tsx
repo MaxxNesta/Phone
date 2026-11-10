@@ -44,18 +44,6 @@ export default async function PaySupplier({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Payables", href: "/payables" },
-        { label: "Pay a supplier" },
-      ]} />
-      <div className="page-head">
-        <h1>Pay a supplier</h1>
-        <HelpHint>
-          Choose a supplier to see their open bills, then apply what you are paying against each one.{" "}
-          <Link href="/payables" style={{ color: "var(--link)" }}>See everything outstanding</Link>
-        </HelpHint>
-      </div>
-
       <SettlementForm
         kind="pay"
         action={createSupplierPayment}
@@ -70,6 +58,10 @@ export default async function PaySupplier({
         initialAll={all === "1"}
         initialUseAdvance={advance === "1"}
         advances={advances as never}
+        help={<HelpHint>
+          Choose a supplier to see their open bills, then apply what you are paying against each one.{" "}
+          <Link href="/payables" style={{ color: "var(--link)" }}>See everything outstanding</Link>
+        </HelpHint>}
         fx={fx}
       />
     </>

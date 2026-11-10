@@ -7,6 +7,9 @@ import { CurrencyRate, type FxOption } from "./currency-rate";
 import type { Channel } from "@/lib/payment-channels";
 import { ChannelPicker } from "./channel-picker";
 import { useNotice } from "@/components/toast";
+import Link from "next/link";
+import { CalendarDays, Hash, MapPin, StickyNote, User } from "lucide-react";
+import { DocHeading } from "./doc-heading";
 
 type Partner = { id: string; code: string; name: string; currency?: string | null };
 type CashAccount = { id: string; code: string; name: string };
@@ -72,10 +75,13 @@ export function SettlementForm({
   initialInvoiceId,
   initialAll,
   initialUseAdvance,
+  help,
   advances = [],
   fx,
   channels,
 }: {
+  /** The page's help, beside the title. */
+  help?: React.ReactNode;
   /** Arriving from "Pay all" on the payables list: every bill ticked. */
   initialAll?: boolean;
   /** Arriving from "Use advance": the advance spread over the oldest bills, no new money. */
@@ -230,7 +236,10 @@ export function SettlementForm({
   const cashWord = isPay ? "Pay" : "Receive";
 
   return (
-    <form action={formAction} className="form wide docsheet">
+    <form action={formAction} className="form wide docsheet waved stl-form">
+      <DocHeading back={{ href: isPay ? "/payables" : "/receivables", label: isPay ? "Back to payables" : "Back to receivables" }}
+        trail={[]} title={isPay ? "Pay a supplier" : "Receive from a customer"}>{help}</DocHeading>
+
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
@@ -242,41 +251,29 @@ export function SettlementForm({
       <input type="hidden" name="advance_use" value={purpose === "settle" ? advPayload : "[]"} />
       <input type="hidden" name="purpose" value={purpose} />
 
-      {/* Both halves of this screen describe money moving one way. On the
-          customer side it comes in, so "Pay existing invoices" had the
-          company paying its own customer — every other label here already
-          reads the direction from isPay. */}
-      <fieldset className="purpose">
-        <legend>{isPay ? "Payment purpose" : "Receipt purpose"}</legend>
-        {([
-          ["settle", isPay ? "Pay existing bills" : "Settle existing invoices"],
-          ["advance", isPay ? "Advance to supplier" : "Customer advance"],
-        ] as const).map(([value, label]) => (
-          <label key={value} className={purpose === value ? "on" : undefined}>
-            <input
-              type="radio" name="purpose_choice" value={value}
-              checked={purpose === value}
-              onChange={() => setPurpose(value)}
-            />
-            {label}
-          </label>
-        ))}
-      </fieldset>
-
-      <div className="card">
-        <div className="card-head">
-          <h2>{isPay ? "Supplier and account" : "Customer and account"}</h2>
+      <div className="card doc-meta doc-info">
+        <div className="card-head stl-details-head">
+          <h2>{isPay ? "Payment details" : "Receipt details"}</h2>
+          {/* Two different transactions, so a choice, not a blank amount
+              field: settling bills relieves what is owed; an advance is held
+              on account until there is a bill for it. */}
+          <div className="segmented" role="radiogroup" aria-label={isPay ? "Payment purpose" : "Receipt purpose"}>
+            {([
+              ["settle", isPay ? "Pay bills" : "Settle invoices"],
+              ["advance", isPay ? "Advance — no bill yet" : "Advance — no invoice yet"],
+            ] as const).map(([value, label]) => (
+              <button key={value} type="button" role="radio" aria-checked={purpose === value}
+                className={`seg${purpose === value ? " on" : ""}`} onClick={() => setPurpose(value)}>{label}</button>
+            ))}
+          </div>
         </div>
         <div className="card-body">
-          <div className="row">
+          <div className="doc-fields">
             <div className="field">
-              <label htmlFor="partner_id">{isPay ? "Supplier" : "Customer"}</label>
+              <label htmlFor="partner_id"><User size={13} aria-hidden="true" />{isPay ? "Supplier" : "Customer"}</label>
               {/* Amounts belong to one partner's bills, so changing partner
                   clears them — but the invoice this screen was opened for is
-                  filled in again where it belongs to the new one. It used to
-                  be wiped unconditionally, so arriving from an invoice and
-                  then choosing its supplier by hand lost the figure the screen
-                  had just said was filled in for you. */}
+                  filled in again where it belongs to the new one. */}
               <PartnerPicker
                 partners={partners as never}
                 value={partnerId}
@@ -291,7 +288,7 @@ export function SettlementForm({
 
             {usable.length > 0 && (!isPay || currency === base) ? (
               <ChannelPicker channels={channels ?? []} direction={isPay ? "out" : "in"}
-                label={isPay ? "Paid by" : "Payment method"}
+                label={isPay ? "Paid by" : "Received by"}
                 disabled={purpose === "settle" && applied <= 0 && advUsed > 0} />
             ) : (
               <div className="field">
@@ -308,12 +305,10 @@ export function SettlementForm({
             {branches.length > 1 && (
               <div className="field">
                 <label htmlFor="location_id">
-                  Branch{purpose === "advance" && <span aria-hidden="true"> *</span>}
+                  <MapPin size={13} aria-hidden="true" />Branch
                 </label>
                 {/* An advance settles nothing, so there are no invoices for the
-                    cash side to follow. Asked for rather than guessed: money in
-                    no branch at all reappears as an unexplained difference the
-                    first time anyone reads the branch reports. */}
+                    cash side to follow. Asked for rather than guessed. */}
                 <select
                   id="location_id" name="location_id" defaultValue=""
                   required={purpose === "advance"}
@@ -325,14 +320,11 @@ export function SettlementForm({
                     <option key={b.id} value={b.id}>{b.code} · {b.name}</option>
                   ))}
                 </select>
-                {purpose === "advance" && (
-                  <span className="hint">Required for an advance: there is no invoice branch to follow.</span>
-                )}
               </div>
             )}
 
             <div className="field">
-              <label htmlFor="doc_date">Date</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Date</label>
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />
             </div>
 
@@ -342,53 +334,46 @@ export function SettlementForm({
             )}
 
             <div className="field">
-              <label htmlFor="reference">Reference</label>
+              <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Reference</label>
               <input id="reference" name="reference" type="text"
                 placeholder={isPay ? "Cheque or transfer no." : "Their receipt no."} />
+            </div>
+
+            <div className="field span-rest">
+              <label htmlFor="memo"><StickyNote size={13} aria-hidden="true" />Note</label>
+              <input id="memo" name="memo" type="text" maxLength={300} placeholder="Optional — English or Myanmar" />
             </div>
           </div>
         </div>
       </div>
 
       {purpose === "advance" ? (
-        <div className="card">
+        <section className="card stl-adv">
           <div className="card-head">
-            <h2>{isPay ? "Advance to supplier" : "Customer advance"}</h2>
+            <h2>{isPay ? "Advance to supplier" : "Customer advance"}<span className="stl-tag">No {isPay ? "bill" : "invoice"} yet</span></h2>
           </div>
-          <div className="card-body">
-            <div className="row">
-              <div className="field">
-                <label htmlFor="advance">Amount {isPay ? "paid" : "received"}</label>
-                <div className="amountbox stl-amountbox">
-                  <Amount value={advance} onChange={setAdvance} label={`Amount ${isPay ? "paid" : "received"}`} />
-                  <input type="hidden" name="advance" value={advance} />
-                  <span className="amountbox-unit">{unit}</span>
-                </div>
-              </div>
-              <div className="field advance-note">
-                <strong>No invoice required</strong>
-                <span className="hint">
-                  {isPay
-                    ? "This money stays available against a future bill from them."
-                    : "This money stays available for a future invoice."}
-                </span>
-              </div>
+          <div className="card-body stl-adv-body">
+            <label htmlFor="stl-advance" className="stl-adv-label">Amount {isPay ? "paid" : "received"}</label>
+            <div className="amountbox stl-amountbox">
+              <Amount id="stl-advance" value={advance} onChange={setAdvance} label={`Amount ${isPay ? "paid" : "received"}`} />
+              <input type="hidden" name="advance" value={advance} />
+              <span className="amountbox-unit">{unit}</span>
             </div>
-
-            <p className="advance-after">
-              After posting: <strong>
-                {isPay ? "Advance paid" : "Available advance"} +{fmt(Number(advance) || 0)} {unit}
-              </strong>
-              {" · "}Allocated to invoices 0 {unit}
+            <p className="hint">
+              Held on account and listed under {isPay ? "Supplier" : "Customer"} advances; it settles the next {isPay ? "bill" : "invoice"} from this screen.
             </p>
           </div>
-        </div>
+        </section>
       ) : (
       <>
       {partnerId && pool.length > 0 && (
-        <div className="card stl-adv">
+        <section className="card stl-adv" aria-label="Advance on account">
           <div className="card-head">
-            <h2>{isPay ? "Advance paid to this supplier" : "Advance from this customer"}</h2>
+            <h2>
+              <span className="stl-step">1</span>
+              Advance on account
+              <span className="stl-tag">No money moves</span>
+            </h2>
             <span className="actions">
               <span className="page-sub">{fmt(poolTotal)} {unit} on account</span>
               <label className="stl-switch">
@@ -409,7 +394,9 @@ export function SettlementForm({
               <tbody>
                 {drawn.map((a) => (
                   <tr key={a.payment_id}>
-                    <td className="code">{a.doc_no}</td>
+                    <td className="code">
+                      <Link href={`/documents/${a.payment_id}`} target="_blank" rel="noopener" title="Open in a new tab">{a.doc_no}</Link>
+                    </td>
                     <td className="code">{day(a.doc_date)}</td>
                     <td className="r">{fmt(a.available)}</td>
                     <td className="r">{a.use > 0 ? <strong className="stl-adv-use">{fmt(a.use)}</strong> : "—"}</td>
@@ -422,13 +409,13 @@ export function SettlementForm({
               )}
             </table>
           </div>
-          <p className="stl-note">Used oldest advance first. No new money moves for the part an advance covers.</p>
-        </div>
+          <p className="stl-note">{isPay ? "Paid to this supplier earlier" : "Received from this customer earlier"}, used oldest first against the ticked {isPay ? "bills" : "invoices"} below.</p>
+        </section>
       )}
 
-      <div className="card">
+      <section className="card stl-bills">
         <div className="card-head stl-head">
-          <h2>{isPay ? "Bills to pay" : "Invoices to settle"}{open.length > 0 && <span className="page-sub"> · {open.length} open · {fmt(owed)} {unit} owed</span>}</h2>
+          <h2>{pool.length > 0 && <span className="stl-step">2</span>}{isPay ? "Bills to pay" : "Invoices to settle"}{open.length > 0 && <span className="page-sub"> · {open.length} open · {fmt(owed)} {unit} owed</span>}</h2>
           {open.length > 0 && (
             <span className="actions stl-quick">
               <label htmlFor="stl-spread" className="page-sub">{cashWord} amount</label>
@@ -528,17 +515,7 @@ export function SettlementForm({
             </table>
           </div>
         )}
-      </div>
-
-      {settling.length > 0 && (
-        <div className="stl-summary" aria-live="polite">
-          <div><span>{isPay ? "Bills" : "Invoices"}</span><strong>{settling.length}</strong>
-            <small>{settling.slice(0, 4).map((i) => i.doc_no).join(", ")}{settling.length > 4 ? ` +${settling.length - 4}` : ""}</small></div>
-          <div><span>Settled</span><strong>{fmt(applied + advUsed)}</strong><small>{unit}</small></div>
-          {pool.length > 0 && <div><span>From advance</span><strong>{fmt(advUsed)}</strong><small>{fmt(poolTotal - advUsed)} left on account</small></div>}
-          <div className="stl-cash"><span>{isPay ? "Paid now" : "Received now"}</span><strong>{fmt(applied)}</strong><small>{applied > 0 ? (isPay ? "leaves the till or bank" : "comes into the till or bank") : "no money moves"}</small></div>
-        </div>
-      )}
+      </section>
       </>
       )}
 
@@ -549,34 +526,27 @@ export function SettlementForm({
         </div>
       )}
 
-      <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
-      </div>
-
-      <div className="actions">
-        <button
-          type="submit"
-          disabled={pending || (purpose === "advance" ? !(Number(advance) > 0) : !settleOk)}
-        >
-          {pending ? "Posting…"
-            : purpose === "advance"
-              ? Number(advance) > 0
-                ? `${isPay ? "Pay" : "Receive"} ${fmt(Number(advance))} ${unit} on account`
-                : `Post ${isPay ? "payment" : "receipt"}`
-            : !settleOk ? `${isPay ? "Tick the bills to pay" : "Tick the invoices to settle"}`
-            : [applied > 0 && `${cashWord} ${fmt(applied)} ${unit}`, advUsed > 0 && `${applied > 0 ? "use" : "Use"} ${fmt(advUsed)} advance`]
-                .filter(Boolean).join(" and ")
-              + ` · ${settling.length} ${isPay ? "bill" : "invoice"}${settling.length === 1 ? "" : "s"}`}
+      {/* The document's commands at the foot and kept in view, as on every
+          invoice: the button says what it is; the figures beside it say
+          how much and from where. */}
+      <div className="actions form-commit stl-commit">
+        <button type="submit" disabled={pending || (purpose === "advance" ? !(Number(advance) > 0) : !settleOk)}>
+          {pending ? "Posting…" : isPay ? "Post payment" : "Post receipt"}
         </button>
-        <span className="page-sub">
-          {purpose === "advance"
-            ? `Records money ${isPay ? "paid" : "received"} on account. No invoice is `
-              + "settled and no stock moves; it waits until there is a bill to put it against."
-            : advUsed > 0 && applied <= 0
-              ? "Only the advance already on account is used: no money moves, the bills come down by what it covers."
-              : "The invoices are not edited — this records a document allocated against them."}
-        </span>
+        <Link href={isPay ? "/payables" : "/receivables"} className="btn ghost">Cancel</Link>
+        <dl className="stl-sum" aria-live="polite">
+          {purpose === "advance" ? (
+            <div><dt>{isPay ? "Advance paid" : "Advance received"}</dt><dd>{fmt(Number(advance) || 0)} <small>{unit}</small></dd></div>
+          ) : settling.length === 0 ? (
+            <div className="stl-sum-empty"><dt>{isPay ? "Tick the bills to pay" : "Tick the invoices to settle"}</dt><dd /></div>
+          ) : (
+            <>
+              <div><dt>{isPay ? "Bills" : "Invoices"}</dt><dd title={settling.map((i) => i.doc_no).join(", ")}>{settling.length}</dd></div>
+              {advUsed > 0 && <div><dt>From advance</dt><dd>{fmt(advUsed)}</dd></div>}
+              <div className="stl-sum-cash"><dt>{isPay ? "Paid now" : "Received now"}</dt><dd>{fmt(applied)} <small>{unit}</small></dd></div>
+            </>
+          )}
+        </dl>
       </div>
     </form>
   );

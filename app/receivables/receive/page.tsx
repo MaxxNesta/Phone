@@ -45,18 +45,6 @@ export default async function ReceiveFromCustomer({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Receivables", href: "/receivables" },
-        { label: "Receive from a customer" },
-      ]} />
-      <div className="page-head">
-        <h1>Receive from a customer</h1>
-        <HelpHint>
-          Choose a customer to see their open invoices, then apply what they have paid against each one.{" "}
-          <Link href="/receivables" style={{ color: "var(--link)" }}>See everything outstanding</Link>
-        </HelpHint>
-      </div>
-
       <SettlementForm
         kind="receive"
         action={createCustomerReceipt}
@@ -71,6 +59,10 @@ export default async function ReceiveFromCustomer({
         initialAll={all === "1"}
         initialUseAdvance={advance === "1"}
         advances={advances as never}
+        help={<HelpHint>
+          Choose a customer to see their open invoices, then apply what they have paid against each one.{" "}
+          <Link href="/receivables" style={{ color: "var(--link)" }}>See everything outstanding</Link>
+        </HelpHint>}
       />
     </>
   );
