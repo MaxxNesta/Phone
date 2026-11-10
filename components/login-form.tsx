@@ -24,6 +24,13 @@ export function LoginForm({ firstRun, next }: { firstRun: boolean; next: string 
       <input type="hidden" name="next" value={next} />
       {firstRun && (
         <div className="field">
+          <label htmlFor="setup_code">Setup code</label>
+          <input id="setup_code" name="setup_code" required autoComplete="off" spellCheck={false} />
+          <span className="hint">The SETUP_TOKEN set for this deployment. Without it, nobody can claim the first account.</span>
+        </div>
+      )}
+      {firstRun && (
+        <div className="field">
           <label htmlFor="name">Your name</label>
           <input id="name" name="name" required autoComplete="name" />
         </div>

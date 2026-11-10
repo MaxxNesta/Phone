@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers, cookies } from "next/headers";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { savedLocale } from "./locale";
 import { LOCALE_COOKIE } from "@/i18n/config";
 import { sql } from "./db";
@@ -72,13 +73,22 @@ export async function signOut() {
  * The first administrator, on a database with a company and nobody who can
  * sign in. Refused the moment anyone can — after that, people are added by
  * an administrator from Settings → Users.
+ *
+ * Not open to whoever arrives first: it needs the one-time setup code set as
+ * SETUP_TOKEN on the deployment, compared in constant time. With no
+ * SETUP_TOKEN it is refused outright — the owner instead sets their password
+ * in Settings → Users while sign-in is still off. The check and the insert
+ * run under one lock, so two people racing cannot both become the first.
  */
 export async function createFirstAdmin(_prev: Result, fd: FormData): Promise<Result> {
-  const [co] = await sql`select id from company order by created_at limit 1`;
-  if (!co) return { error: "Set up the company first." };
-  const [any] = await sql`select 1 as yes from app_user where password_hash is not null limit 1`;
-  if (any) return { error: "An administrator already exists. Sign in instead." };
-
+  const expected = process.env.SETUP_TOKEN ?? "";
+  const given = String(fd.get("setup_code") ?? "");
+  const digest = (v: string) => createHash("sha256").update(v).digest();
+  if (!expected || !timingSafeEqual(digest(expected), digest(given))) {
+    return { error: expected
+      ? "That setup code is not right."
+      : "The first account cannot be created here on this deployment. Set your password in Settings → Users while sign-in is off." };
+  }
   const name = str(fd, "name");
   const email = str(fd, "email").toLowerCase();
   if (!name || !email.includes("@")) return { error: "Enter a name and an email address." };
@@ -86,13 +96,22 @@ export async function createFirstAdmin(_prev: Result, fd: FormData): Promise<Res
   try { hash = hashPassword(String(fd.get("password") ?? "")); }
   catch (e) { return { error: (e as Error).message }; }
 
-  const [u] = await sql`
-    insert into app_user (company_id, name, initials, email, password_hash, role)
-    values (${co.id}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, 'ADMIN')
-    on conflict (company_id, name) do update
-      set email = excluded.email, password_hash = excluded.password_hash, role = 'ADMIN'
-    returning id`;
-  await createSession(u.id);
+  const made: { id: string } | { error: string } = await sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext('first-admin'))`;
+    const [co] = await tx`select id from company order by created_at limit 1`;
+    if (!co) return { error: "Set up the company first." };
+    const [any] = await tx`select 1 as yes from app_user where password_hash is not null limit 1`;
+    if (any) return { error: "An administrator already exists. Sign in instead." };
+    const [u] = await tx`
+      insert into app_user (company_id, name, initials, email, password_hash, role)
+      values (${co.id}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, 'ADMIN')
+      on conflict (company_id, name) do update
+        set email = excluded.email, password_hash = excluded.password_hash, role = 'ADMIN', is_active = true
+      returning id`;
+    return { id: u.id as string };
+  });
+  if ("error" in made) return { error: made.error };
+  await createSession(made.id);
   redirect("/");
 }
 
