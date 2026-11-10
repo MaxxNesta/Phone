@@ -3,8 +3,13 @@
 // sign-in on. DEV only. Makes five throwaway users, one throwaway branch and
 // their sessions, and removes them all at the end.
 //
-//   AUTH_REQUIRED=true npm run dev                        (one terminal)
+//   npx next build && AUTH_REQUIRED=true npx next start -p 3000      (one terminal)
 //   BASE=http://localhost:3000 node --env-file=.env scripts/check-http-roles.mjs
+//
+// Against a production build, not `next dev`: in development React attaches
+// every awaited server value to the page for its DevTools, so a filtered list
+// still carries the unfiltered rows and the content checks fail falsely.
+// DUMP=<dir> saves the body of each failed page there.
 //
 // Not a test-*.mjs: the regression runner has no server with sign-in on.
 
@@ -17,10 +22,15 @@ const [co] = await sql`select id, name from company order by created_at limit 1`
 if (!/\bDEV\b/.test(co.name)) throw new Error("DEV only");
 
 const main = (await sql`select id from location where company_id = ${co.id} and parent_id is null and is_active order by code limit 1`)[0].id;
-const [b2] = await sql`insert into location (company_id, code, name) values (${co.id}, 'ZZSEC', 'ZZ security test branch') returning id`;
 const sales = (await sql`select id, doc_no from document where company_id = ${co.id} and doc_type = 'SALES_INVOICE' and status = 'POSTED' order by posted_at desc limit 1`)[0];
 const purch = (await sql`select id, doc_no from document where company_id = ${co.id} and doc_type = 'PURCHASE_INVOICE' and status = 'POSTED' order by posted_at desc limit 1`)[0];
 if (!sales || !purch) throw new Error("Needs one posted sales invoice and one posted purchase invoice on DEV");
+// What an interrupted run left behind.
+const old = (await sql`select id from app_user where company_id = ${co.id} and name like 'ZZSEC %'`).map((r) => r.id);
+await sql`delete from user_session where user_id = any(${old})`;
+await sql`delete from app_user where id = any(${old})`;
+await sql`delete from location where company_id = ${co.id} and code = 'ZZSEC'`;
+const [b2] = await sql`insert into location (company_id, code, name) values (${co.id}, 'ZZSEC', 'ZZ security test branch') returning id`;
 
 const people = {
   admin: ["ADMIN", null], salesperson: ["SALESPERSON", main], inventory: ["INVENTORY", main],
@@ -57,12 +67,19 @@ async function check(who, path, expect, what) {
   else if (expect === "blocked") ok = r.status !== 200;
   else if (expect.startsWith("to:")) ok = r.status >= 300 && r.status < 400 && r.to.includes(expect.slice(3));
   ok ? pass++ : fail++;
+  // On a failed content check, show where the unwanted text sits, so the cause is visible.
+  if (!ok && process.env.DUMP) (await import("node:fs")).writeFileSync(process.env.DUMP + "/" + (who ?? "anon") + path.replace(/[^a-z0-9]+/gi, "_") + ".html", `status ${r.status} needle ${expect.needle}
+` + r.body);
+  if (!ok && typeof expect === "function" && expect.needle && r.body.includes(expect.needle)) {
+    const i = r.body.indexOf(expect.needle);
+    rows.push("      …" + r.body.slice(Math.max(0, i - 240), i + 60).replace(/\s+/g, " ") + "…");
+  }
   rows.push(`${ok ? "PASS" : "FAIL"}  ${(who ?? "anonymous").padEnd(12)} ${path.padEnd(52)} ${what}  [${r.status}${r.to ? " → " + r.to.replace(BASE, "") : ""}]`);
 }
 // Every page carries the whole translation bundle, so a label's words are in
 // the HTML whether or not its card is drawn: checks look for the rendered card.
 const has = (s) => (b) => b.includes(s);
-const lacks = (s) => (b) => !b.includes(s);
+const lacks = (s) => Object.assign((b) => !b.includes(s), { needle: s });
 
 try {
   const S = `/documents/${sales.id}`, P = `/documents/${purch.id}`;
