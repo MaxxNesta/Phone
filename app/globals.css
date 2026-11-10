@@ -6059,6 +6059,21 @@ button.danger-solid:hover { opacity: 0.9; }
 .ph-cur { font-weight: 700; font-size: var(--t-sm); }
 .ph-base { font-weight: 600; }
 .ph-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; flex-wrap: wrap; }
+/* Price history as a dashboard: tiles, one product's timeline, the movers. */
+.ph-kpis { margin: 0 0 12px; }
+.ph-timeline, .ph-kpis + .card, .ph-timeline + .card { margin-bottom: 12px; }
+.ph-tl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ph-tl-head h2 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ph-pick { display: flex; gap: 8px; align-items: center; }
+.ph-pick select { max-width: min(380px, 100%); }
+.ph-legend { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: var(--t-xs); color: var(--muted); }
+.ph-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--chart-1); opacity: .55; }
+.ph-bar { width: 14px; height: 2px; margin-left: 8px; background: var(--chart-1); box-shadow: 0 0 0 4px color-mix(in srgb, var(--chart-1) 12%, transparent); }
+.ph-up { color: var(--chart-1); font-weight: 600; white-space: nowrap; }
+.ph-down { color: var(--chart-2); font-weight: 600; white-space: nowrap; }
+.ph-flat { color: var(--muted); white-space: nowrap; }
+.ph-spark { display: block; }
+.ph-table tr[data-active] td { background: color-mix(in srgb, var(--chart-1) 6%, transparent); }
 
 /* The invoice's price level: a pill that opens, the customer's level marked default. */
 .levelpick { min-height: 0; height: auto; width: auto; padding: 3px 26px 3px 10px; border-radius: 999px;

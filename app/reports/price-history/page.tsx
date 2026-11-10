@@ -7,6 +7,34 @@ import { money, shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { AutoApply } from "@/components/auto-apply";
+import { PriceTimeline } from "@/components/price-timeline";
+import { productTrends, timeline, bucketOf, trendKey, type ProductTrend } from "@/lib/price-trends";
+
+const pct = (c: number) => `${(Math.abs(c) * 100).toFixed(Math.abs(c) < 0.001 ? 2 : 1)}%`;
+/** Flat only when the price did not move by a whole kyat. */
+const flat = (t: ProductTrend) => Math.abs(t.last - t.first) < 0.5;
+
+/** Up, down or flat, said in words and an arrow as well as colour. */
+function Change({ t }: { t: ProductTrend }) {
+  const c = t.spark.length > 1 ? t.change : null;
+  if (c === null) return <span className="page-sub">—</span>;
+  if (flat(t)) return <span className="ph-flat">No change</span>;
+  return c > 0
+    ? <span className="ph-up"><span aria-hidden="true">▲</span> {pct(c)}<span className="sr-only"> up</span></span>
+    : <span className="ph-down"><span aria-hidden="true">▼</span> {pct(c)}<span className="sr-only"> down</span></span>;
+}
+
+/** A day-by-day line small enough for a table cell; one day is a dot. */
+function Spark({ v }: { v: number[] }) {
+  const w = 96, h = 24, lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1;
+  const pts = v.map((y, i) => `${v.length === 1 ? w / 2 : (i / (v.length - 1)) * w},${h - 3 - ((y - lo) / span) * (h - 6)}`);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" className="ph-spark">
+      {v.length > 1 ? <polyline points={pts.join(" ")} fill="none" stroke="var(--chart-1)" strokeWidth={1.5} strokeLinejoin="round" />
+        : <circle cx={w / 2} cy={h / 2} r={2} fill="var(--chart-1)" />}
+    </svg>
+  );
+}
 
 export const metadata = { title: "Price history" };
 
@@ -44,6 +72,21 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
     sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`,
   ]);
   const pg = paginate(rows, sp.page, 25);
+
+  // The dashboard reads the same lines as the table below it.
+  const trends = productTrends(rows);
+  const moving = trends.filter((t) => t.spark.length > 1 && t.change !== null);
+  const up = moving.filter((t) => !flat(t) && t.change! > 0).length;
+  const down = moving.filter((t) => !flat(t) && t.change! < 0).length;
+  const movers = [...moving].sort((a, b) => Math.abs(b.change!) - Math.abs(a.change!) || b.lines - a.lines).slice(0, 10);
+  const byLines = [...trends].sort((a, b) => b.lines - a.lines || a.item.localeCompare(b.item));
+  const focus: ProductTrend | undefined = trends.find((t) => t.key === sp.item) ?? byLines[0];
+  // Grouping follows the product's own span, not the filter's: two days of
+  // sales inside a year-long filter are two days, not one month.
+  const focusLines = focus ? rows.filter((r) => trendKey(r) === focus.key) : [];
+  const dates = focusLines.map((r) => r.date).sort();
+  const size = bucketOf(dates[0] ?? range.from, dates[dates.length - 1] ?? range.to);
+  const tl = focus ? timeline(focusLines, size) : null;
   const keep = (over: Search) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...sp, page: undefined, ...over })) if (v) q.set(k, v);
@@ -119,7 +162,71 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
         Net unit price after line discounts, before tax. Converted at each document&rsquo;s own saved exchange rate — a later rate change does not alter history.
       </p>
 
+      {trends.length > 0 && (
+        <>
+          <div className="kpis ph-kpis">
+            <div className="kpi"><div className="kpi-label">Lines</div><div className="kpi-value">{rows.length.toLocaleString("en-US")}</div></div>
+            <div className="kpi"><div className="kpi-label">Products</div><div className="kpi-value">{trends.length.toLocaleString("en-US")}</div></div>
+            <div className="kpi"><div className="kpi-label">Price went up</div><div className="kpi-value">{up}</div><div className="kpi-note">products, first day to last</div></div>
+            <div className="kpi"><div className="kpi-label">Price went down</div><div className="kpi-value">{down}</div><div className="kpi-note">products, first day to last</div></div>
+          </div>
+
+          {focus && tl && (
+            <section className="card ph-timeline">
+              <div className="card-head ph-tl-head">
+                <div>
+                  <h2>{focus.item} <span className="ph-sku">{focus.code} · per {focus.uom}</span></h2>
+                  <p className="page-sub">
+                    {money(focus.first)} → {money(focus.last)} MMK · <Change t={focus} /> · low {money(focus.low)} · high {money(focus.high)} · {focus.lines} line{focus.lines === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <form method="get" className="ph-pick">
+                  {Object.entries({ ...sp, item: undefined, page: undefined }).map(([k, v]) => v ? <input key={k} type="hidden" name={k} value={v} /> : null)}
+                  <label htmlFor="ph-item" className="sr-only">Product</label>
+                  <select id="ph-item" name="item" defaultValue={focus.key}>
+                    {byLines.map((t) => <option key={t.key} value={t.key}>{t.item} · {t.uom} ({t.lines})</option>)}
+                  </select>
+                  <AutoApply />
+                  <button type="submit" className="btn ghost" data-apply>Show</button>
+                </form>
+              </div>
+              <div className="card-body">
+                <PriceTimeline points={tl.points} buckets={tl.buckets}
+                  label={`${focus.item}: unit price from ${money(focus.first)} to ${money(focus.last)} MMK, ${focus.lines} lines`} />
+                <p className="ph-legend"><span className="ph-dot" aria-hidden="true" /> each line <span className="ph-bar" aria-hidden="true" /> {size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} average, shaded low to high</p>
+              </div>
+            </section>
+          )}
+
+          {movers.length > 0 && (
+            <section className="card">
+              <div className="card-head"><h2>Biggest price changes</h2><span className="page-sub">First day against last day in the period</span></div>
+              <div className="tablewrap">
+                <table className="ph-table">
+                  <thead><tr><th>Product / SKU</th><th>Unit</th><th className="r">Lines</th><th className="r">First (MMK)</th><th className="r">Last (MMK)</th><th className="r">Change</th><th className="r">Low – high</th><th>Trend</th></tr></thead>
+                  <tbody>
+                    {movers.map((t) => (
+                      <tr key={t.key} data-active={t.key === focus?.key || undefined}>
+                        <td className="wrapcell"><Link scroll={false} href={keep({ item: t.key })} className="ph-prod">{t.item}</Link><div className="ph-sku">{t.code}</div></td>
+                        <td>{t.uom}</td>
+                        <td className="r">{t.lines}</td>
+                        <td className="r">{money(t.first)}</td>
+                        <td className="r ph-base">{money(t.last)}</td>
+                        <td className="r"><Change t={t} /></td>
+                        <td className="r">{money(t.low)} – {money(t.high)}</td>
+                        <td><Spark v={t.spark} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
       <div className="card">
+        <div className="card-head"><h2>Lines</h2></div>
         <div className="tablewrap">
           <table className="ph-table">
             <thead>
