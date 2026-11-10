@@ -1,3 +1,4 @@
+import { hidesPay } from "@/lib/hr";
 import { getAttachment, getCompany, getDocument } from "@/lib/queries";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
@@ -33,7 +34,7 @@ export async function GET(
   const doc = await getDocument(id);
   const seen = await seenLocations();
   if (!doc || !can(user, permissionForDocument(doc.doc_type as string))
-      || (seen && !seen.includes(doc.location_id as string))) {
+      || (seen && !seen.includes(doc.location_id as string)) || await hidesPay(user, id)) {
     return new Response("Not found", { status: 404 });
   }
 

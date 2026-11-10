@@ -155,6 +155,24 @@ try {
                            where x.payslip_id = ${slipA} and jl.account_id = ${payA}`;
     ok(pay.a === 260000, "payment: Dr Salary Payable, A's net pay");
 
+    // Privacy (migration 0187): a general description, and one person's pay restricted.
+    const [aPay] = await tx`select d.id, d.memo from hr_salary_payment x join document d on d.id = x.document_id where x.payslip_id = ${slipA}`;
+    ok(/^Salary payment · PRL-\d+$/.test(aPay.memo) && !aPay.memo.includes("ZZT"), "voucher says only 'Salary payment' and the run");
+    const restricted = async (id) => (await tx`select fn_hr_restricted(${id}::uuid) as r`)[0].r;
+    ok(await restricted(aPay.id), "a payment for one employee is restricted");
+    ok(!(await restricted(posted.documentId)), "a run of two posts an unrestricted journal");
+    ok(!(await restricted(adv.documentId)), "an advance is not salary");
+    // Void both payments the usual way, then pay the two together.
+    const { voidDocument } = await import("../lib/posting.ts");
+    await voidDocument({ documentId: aPay.id, reason: "test" }, tx);
+    const [rev] = await tx`select reversed_by_document_id as id from document where id = ${aPay.id}`;
+    ok(rev.id && await restricted(rev.id), "the reversal of a restricted payment is restricted too");
+    await voidDocument({ documentId: rest.documentId, reason: "test" }, tx);
+    ok((await state()) === "POSTED", "voided payments stop counting");
+    const both = await hr.payRun(tx, { co: co.id, runId: made.id, slipIds: null, date: today, moneyAccountId: cash.id });
+    ok(both.staff === 2 && !(await restricted(both.documentId)), "a batch of two is not restricted");
+    ok(!(await hr.hidesPay({ role: "ADMIN" }, aPay.id)), "payroll users see it");
+
     throw new Rollback();
   });
 } catch (e) {

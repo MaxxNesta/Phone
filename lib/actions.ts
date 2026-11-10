@@ -16,6 +16,7 @@ import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLine
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, type Plan } from "./plans";
 import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
+import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
 import { courierBill } from "./courier-payables";
 import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
@@ -5029,6 +5030,7 @@ const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 async function mayTouchDocument(doc: Record<string, unknown>) {
   const user = await requireUser();
   if (!can(user, permissionForDocument(String(doc.doc_type)))) return false;
+  if (typeof doc.id === "string" && await hidesPay(user, doc.id)) return false;
   const seen = await seenLocations();
   return !seen || (typeof doc.location_id === "string" && seen.includes(doc.location_id));
 }

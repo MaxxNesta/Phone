@@ -264,8 +264,13 @@ export async function payRunAction(_prev: unknown, fd: FormData): Promise<Action
   let msg = "";
   try {
     const date = str(fd, "date"), money = str(fd, "money_account_id");
-    const picked = fd.getAll("slip_id").map(String).filter(Boolean);
-    if (picked.length) await requirePermission("hr.salary.view");
+    // A batch unless individual payment was chosen; choosing employees is a payroll user's call.
+    const individual = str(fd, "mode") === "individual";
+    const picked = individual ? fd.getAll("slip_id").map(String).filter(Boolean) : [];
+    if (individual) {
+      await requirePermission("hr.salary.view");
+      if (!picked.length) return { error: "Tick the employees to pay separately, or untick the option to pay the batch." };
+    }
     if (!DATE.test(date)) return { error: "Enter the payment date." };
     if (!money) return { error: "Choose the till or bank account paid from." };
     await runBranch(co, id);

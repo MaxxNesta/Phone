@@ -1,3 +1,5 @@
+import { hidesPay } from "@/lib/hr";
+import { requireUser } from "@/lib/auth";
 import Link from "next/link";
 import { ArrowLeft, FileText, BookOpen } from "lucide-react";
 import { notFound } from "next/navigation";
@@ -40,6 +42,8 @@ export default async function JournalEntryDetail({
   const found = await getJournalEntry(company.id, entryId);
   if (!found) notFound();
   const { entry, lines } = found as any;
+  // A journal entry is a voucher's detail: one employee's pay stays with payroll.
+  if (entry.document_id && await hidesPay(await requireUser(), entry.document_id)) notFound();
 
   // Everything except the entry id itself goes back into the ledger link, so
   // the period, account and document filters survive the round trip.

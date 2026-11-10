@@ -321,17 +321,35 @@ export function PostRunForm({ action, runId }: { action: Action; runId: string }
   );
 }
 
-/** Pays the run. Ticked payslips (the checkboxes in the table, form="hr-pay") or, with none ticked, all that is unpaid. */
-export function PayForm({ action, runId, money, today, due }: { action: Action; runId: string; money: Opt[]; today: string; due: string }) {
-  const { onSubmit, pending, alert } = useForm(action);
+/**
+ * Pays the run. A batch by default: everything unpaid, one voucher whose
+ * total and "Salary payment" are all the books show. Paying chosen employees
+ * separately (the table's checkboxes, form="hr-pay") is for payroll users
+ * only and warns first: such a voucher's amount is that person's net pay.
+ */
+export function PayForm({ action, runId, money, today, due, canSplit }: {
+  action: Action; runId: string; money: Opt[]; today: string; due: string; canSplit: boolean;
+}) {
+  const [split, setSplit] = useState(false);
+  const { onSubmit, pending, alert } = useForm(action, undefined, split
+    ? "Pay the ticked employees separately? A payment for one employee shows their net salary as the voucher amount in the cash or bank book. Its details are restricted to payroll users."
+    : undefined);
   return (
     <form id="hr-pay" onSubmit={onSubmit} className="fas-form">
-      <Key /><input type="hidden" name="run_id" value={runId} />
+      <Key /><input type="hidden" name="run_id" value={runId} /><input type="hidden" name="mode" value={split ? "individual" : "batch"} />
       {alert}
       <label className="ie-field"><span>Payment date</span><input type="date" name="date" defaultValue={today} required /></label>
       <label className="ie-field"><span>Paid from</span><Pick name="money_account_id" list={money} required /></label>
-      <p className="ie-note">Pays the payslips ticked in the table, in full, or with none ticked everything unpaid ({due} MMK), as one voucher.</p>
-      <div><button className="ie-btn primary" disabled={pending}>{pending ? "Posting…" : "Record payment"}</button></div>
+      {canSplit && (
+        <label className="ie-field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <input type="checkbox" checked={split} onChange={(e) => setSplit(e.target.checked)} />
+          <span>Pay the employees ticked in the table separately</span>
+        </label>
+      )}
+      {split
+        ? <div className="alert" role="note">An individual payment&apos;s amount may reveal the employee&apos;s net salary to anyone who reads the cash or bank book. Its voucher and journal open only for payroll users.</div>
+        : <p className="ie-note">Pays everything unpaid ({due} MMK) as one batch voucher. The cash or bank book shows only &ldquo;Salary payment&rdquo; and the batch total.</p>}
+      <div><button className="ie-btn primary" disabled={pending}>{pending ? "Posting…" : split ? "Pay ticked employees" : "Pay batch"}</button></div>
     </form>
   );
 }

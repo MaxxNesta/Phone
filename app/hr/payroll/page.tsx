@@ -18,24 +18,27 @@ export default async function Payroll() {
   const user = await requireUser();
   if (!["hr.salary.view", "hr.payroll.accounting", "hr.payroll.prepare"].some((p) => can(user, p as never))) notFound();
   const co = user.companyId;
+  // A run of one is that person's pay: its figures only for those who may see salaries.
+  const masked = (r: { staff: number }) => r.staff === 1 && !can(user, "hr.salary.view");
   const [rows, branches] = await Promise.all([runList(co, await seenLocations()), faBranches(co).then(seenBranches)]);
   const multiBranch = branches.length > 1;
   const states = rows.map((r) => runState(r));
   const live = rows.filter((_, i) => ["POSTED", "PARTIAL", "PAID"].includes(states[i]));
   const unpaid = live.reduce((t, r) => t + Number(r.net) - Number(r.paid), 0);
-  const latest = live[0];
+  const latest = live.find((r) => !masked(r));
 
+  const m = masked;
   const data: DataRow[] = rows.map((r, i) => {
     const s = states[i];
     return {
       key: r.id,
       searchText: [r.run_no, r.branch, r.doc_no, r.notes, r.period_start, r.period_end].filter(Boolean).join(" ").toLowerCase(),
       facet: { status: s, branch: r.branch_id, kind: r.kind },
-      sort: { no: r.run_no, period: r.period_start, posting: r.posting_date, branch: r.branch, staff: r.staff, gross: Number(r.gross),
-              deductions: Number(r.deductions), net: Number(r.net), paid: Number(r.paid), status: s },
+      sort: { no: r.run_no, period: r.period_start, posting: r.posting_date, branch: r.branch, staff: r.staff, gross: m(r) ? 0 : Number(r.gross),
+              deductions: m(r) ? 0 : Number(r.deductions), net: m(r) ? 0 : Number(r.net), paid: m(r) ? 0 : Number(r.paid), status: s },
       csv: { no: r.run_no, kind: r.kind === "REGULAR" ? "Regular" : "Supplementary", period: `${r.period_start} to ${r.period_end}`,
-             posting: r.posting_date, branch: r.branch, staff: r.staff, gross: r.gross, deductions: r.deductions, net: r.net, paid: r.paid,
-             journal: r.doc_no ?? "", status: RUN_STATE_LABEL[s] },
+             posting: r.posting_date, branch: r.branch, staff: r.staff, gross: m(r) ? "" : r.gross, deductions: m(r) ? "" : r.deductions,
+             net: m(r) ? "" : r.net, paid: m(r) ? "" : r.paid, journal: r.doc_no ?? "", status: RUN_STATE_LABEL[s] },
       node: (
         <tr key={r.id}>
           <td className="code"><Link href={`/hr/payroll/${r.id}`}>{r.run_no}</Link></td>
@@ -44,10 +47,11 @@ export default async function Payroll() {
           <td className="nowrap">{r.posting_date}</td>
           {multiBranch && <td>{r.branch}</td>}
           <td className="r">{r.staff}</td>
+          {m(r) ? <td className="r fa-muted" colSpan={4}>Restricted: one employee&apos;s pay</td> : <>
           <td className="r">{kyat(r.gross)}</td>
           <td className="r">{kyat(r.deductions)}</td>
           <td className="r"><strong>{kyat(r.net)}</strong></td>
-          <td className="r">{kyat(r.paid)}</td>
+          <td className="r">{kyat(r.paid)}</td></>}
           <td>{r.doc_no ?? "—"}</td>
           <td><span className={RUN_STATE_CLASS[s]}>{RUN_STATE_LABEL[s]}</span></td>
         </tr>

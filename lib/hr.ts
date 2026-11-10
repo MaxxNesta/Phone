@@ -2,6 +2,7 @@ import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { postJournalVoucher, postCashVoucher, postBankVoucher } from "./posting";
 import { toUnits, fromUnits } from "./fa-engine";
+import { can, type SessionUser } from "./auth-core";
 import { slipTotals, suggestRecovery, runJournal, KIND_LABEL, KINDS, type Kind, type Line } from "./hr-calc";
 
 /**
@@ -458,7 +459,9 @@ export async function payRun(tx: TransactionSql, p: { co: string; runId: string;
   if (!s.payable_account_id) throw new Error("Set the Salary Payable account first");
   const doc = await postMoneyVoucher(tx, p.co, p.moneyAccountId, {
     companyId: p.co, docDate: p.date, locationId: r.branch_id, reference: r.run_no,
-    memo: `Salaries ${r.run_no} · ${due.length} staff`,
+    // A general description: the cash book and the ledger say what kind of
+    // payment it was and its total, never who it was for.
+    memo: `Salary payment · ${r.run_no}`,
     lines: [{ accountId: s.payable_account_id, amount: num(total) }, { accountId: p.moneyAccountId, amount: -num(total) }],
   });
   await tx`insert into hr_salary_payment ${tx(due.map((d) => ({ company_id: p.co, payslip_id: d.id, document_id: doc.id, amount: d.due })))}`;
@@ -477,10 +480,11 @@ export async function runJournalLines(documentId: string) {
 /** Salary payments against a run, voucher by voucher. */
 export async function runPayments(runId: string) {
   return (await sql`
-    select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as date, d.status, count(*)::int as staff, sum(x.amount)::text as amount
+    select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as date, d.status, count(*)::int as staff, sum(x.amount)::text as amount,
+           count(*) = 1 as individual
       from hr_salary_payment x join hr_payslip s on s.id = x.payslip_id join document d on d.id = x.document_id
      where s.run_id = ${runId}
-     group by d.id order by d.doc_date, d.doc_no`) as unknown as { id: string; doc_no: string; date: string; status: string; staff: number; amount: string }[];
+     group by d.id order by d.doc_date, d.doc_no`) as unknown as { id: string; doc_no: string; date: string; status: string; staff: number; amount: string; individual: boolean }[];
 }
 
 /** What a voucher is in HR & Payroll, for its document page: no amounts, just the way back. */
@@ -494,4 +498,16 @@ export async function hrLinksFor(documentId: string) {
     union all
     select distinct 'Salary payment', r.run_no, '/hr/payroll/' || r.id from hr_salary_payment x join hr_payslip s on s.id = x.payslip_id
       join hr_payroll_run r on r.id = s.run_id where x.document_id = ${documentId}`) as unknown as { what: string; ref: string; href: string }[];
+}
+
+/**
+ * Whether this voucher's details must stay hidden from this person: its
+ * amount is one employee's pay (migration 0187) and they may not see
+ * salaries. Every way into a document asks this: its page, print,
+ * attachments and journal entry.
+ */
+export async function hidesPay(user: Pick<SessionUser, "role">, documentId: string) {
+  if (can(user, "hr.salary.view")) return false;
+  const [r] = await sql`select fn_hr_restricted(${documentId}::uuid) as hidden`;
+  return Boolean(r?.hidden);
 }

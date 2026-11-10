@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { FaDocLinks } from "@/components/fa-doc-links";
 import { HrDocLinks } from "@/components/hr-doc-links";
+import { hidesPay } from "@/lib/hr";
 import { LcDocLinks } from "@/components/lc-doc-links";
 import { requireUser, can, permissionForDocument } from "@/lib/auth";
 import { receiptLandedSummary } from "@/lib/landed-cost-queries";
@@ -162,6 +163,8 @@ export default async function DocumentPage({
   // Another branch's document, for someone who sees only their own.
   const seen = await seenLocations();
   if (seen && !seen.includes(doc.location_id)) notFound();
+  // One employee's pay: only for those who may see salaries.
+  if (await hidesPay(user, doc.id)) notFound();
   // A landed cost has its own page, with its charges and each phone's share.
   if (doc.doc_type === "LANDED_COST") redirect(`/purchases/landed-costs/${doc.id}`);
   // The posting carries cost of sales on every sale and the cost of stock on

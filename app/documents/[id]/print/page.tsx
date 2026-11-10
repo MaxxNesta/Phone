@@ -1,3 +1,4 @@
+import { hidesPay } from "@/lib/hr";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -71,6 +72,7 @@ export default async function DocumentPrint({
       || !can(user, permissionForDocument((doc as any).doc_type))) notFound();
   const seen = await seenLocations();
   if (seen && !seen.includes((doc as any).location_id)) notFound();
+  if (await hidesPay(user, id)) notFound();
 
   const d = doc as any;
   const [lines, journal] = await Promise.all([
