@@ -1,3 +1,4 @@
+import { AutoSubmit } from "@/components/auto-submit";
 import { BranchScope } from "@/components/branch-scope";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
@@ -21,14 +22,13 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
   const from = sp.from || today.slice(0, 8) + "01";
   const to = sp.to || today;
   const by = (sp.by && sp.by in SALES_DIMENSIONS ? sp.by : "model") as SalesDimension;
-  const phonesOnly = sp.scope !== "all";
   const seeCost = can(user, "cost.view");
 
-  const raw = await phoneSales(user.companyId, from, to, by, phonesOnly, await seenLocations());
+  const raw = await phoneSales(user.companyId, from, to, by, false, await seenLocations());
   const rows = stripCost(raw as Record<string, any>[], seeCost);
   const sum = (k: string) => raw.reduce((s, r: any) => s + Number(r[k] ?? 0), 0);
   const revenue = sum("revenue"), cost = sum("cost"), units = sum("units");
-  const href = (b: string) => `/reports/phone-sales?${new URLSearchParams({ from, to, by: b, scope: sp.scope ?? "" })}`;
+  const href = (b: string) => `/reports/phone-sales?${new URLSearchParams({ from, to, by: b })}`;
 
   const pg = paginate(rows, sp.page);
   return (
@@ -46,15 +46,8 @@ export default async function PhoneSalesReport({ searchParams }: { searchParams:
         <div className="card-body filter-row">
           <div className="field"><label htmlFor="rf">From</label><input id="rf" type="date" name="from" defaultValue={from} /></div>
           <div className="field"><label htmlFor="rt">To</label><input id="rt" type="date" name="to" defaultValue={to} /></div>
-          <div className="field">
-            <label htmlFor="rs">Products</label>
-            <select id="rs" name="scope" defaultValue={sp.scope ?? ""}>
-              <option value="">Phones only</option>
-              <option value="all">Phones and accessories</option>
-            </select>
-          </div>
           <input type="hidden" name="by" value={by} />
-          <button className="btn">Show</button>
+          <AutoSubmit />
         </div>
       </form>
 

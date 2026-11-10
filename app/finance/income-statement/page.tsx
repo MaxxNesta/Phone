@@ -142,10 +142,11 @@ export default async function IncomeStatement({
           </div>
           <div className="card-body">
             <span className="hint">
-              Opening plus additions less closing comes to everything that
-              left the shelf, not to cost of sales &mdash; a giveaway or a
-              write-off satisfies that calculation and belongs to neither
-              revenue nor cost of goods sold.
+              Opening stock + stock bought &minus; closing stock = stock that
+              left the shelf. A sale&rsquo;s stock passes through Goods Shipped
+              Not Invoiced and becomes cost of goods sold when the invoice
+              posts. Stock that left any other way &mdash; a giveaway, a
+              write-off &mdash; is shown separately: it is not cost of goods sold.
             </span>{" "}
             <Link className="subline" href={{
               pathname: "/finance/inventory-cogs",

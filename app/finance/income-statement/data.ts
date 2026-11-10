@@ -70,7 +70,8 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
       .map((m) => ({
         label: m.code ? `${m.code} · ${m.name}` : m.source_type.toLowerCase().replace(/_/g, " "),
         value: Math.round(num(m.out_of_stock) * 10000) / 10000,
-        isCogs: m.account_id != null && m.account_id === recon.cogsId,
+        // A sale's stock reaches cost of sales by way of Goods Shipped Not Invoiced (0178).
+        isCogs: m.account_id != null && (m.account_id === recon.cogsId || m.account_id === recon.heldId),
       }))
       .sort((a, b) => b.value - a.value);
     const sold = releases.filter((x) => x.isCogs).reduce((t, x) => t + x.value, 0);

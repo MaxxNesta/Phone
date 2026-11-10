@@ -68,7 +68,9 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
       key: `${m.account_id ?? "x"}-${m.source_type}-out`,
       label: nameOf(m), detail: prettyType(m.source_type),
       value: r4(n(m.out_of_stock)),
-      isCogs: m.account_id != null && m.account_id === recon.cogsId,
+      // Sold: straight to cost of sales, or (every sale since 0178) by way of
+      // Goods Shipped Not Invoiced, which the invoice moves on to cost of sales.
+      isCogs: m.account_id != null && (m.account_id === recon.cogsId || m.account_id === recon.heldId),
     }))
     .sort((a, b) => b.value - a.value);
 
