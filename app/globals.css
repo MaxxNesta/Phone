@@ -2456,6 +2456,41 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
   background: var(--line-soft);
   font-size: var(--t-sm);
 }
+/* Settling bills: wide money boxes, a tick per bill, the advance drawn first,
+   and one summary of what will post. */
+.stl-amt {
+  width: 100%; min-width: 168px; max-width: 220px; text-align: right;
+  font-variant-numeric: tabular-nums; font-size: var(--t-md); padding: 8px 12px;
+}
+.stl-amt.bad { border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 14%, transparent); }
+.stl-amountbox .stl-amt { max-width: none; min-width: 220px; }
+.stl-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.stl-table th, .stl-table td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+.stl-table thead th { font-size: var(--t-sm); font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); text-align: left; }
+.stl-table .r { text-align: right; }
+.stl-table tfoot td { font-weight: 600; border-bottom: 0; }
+.stl-table tbody tr.on td { background: color-mix(in srgb, var(--chart-1) 5%, transparent); }
+.stl-check { width: 36px; }
+.stl-check input { width: 18px; height: 18px; accent-color: var(--chart-1); cursor: pointer; }
+.stl-hint { font-size: var(--t-2xs); }
+.stl-done { color: var(--chart-1); font-weight: 600; }
+.stl-head { flex-wrap: wrap; gap: 10px; }
+.stl-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.stl-quick .stl-amt { min-width: 150px; max-width: 180px; }
+.stl-adv { border-color: color-mix(in srgb, var(--chart-1) 30%, var(--line)); }
+.stl-adv-use { color: var(--chart-1); }
+.stl-note { margin: 0; padding: 8px 14px 12px; font-size: var(--t-xs); color: var(--muted); }
+.stl-switch { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-sm); cursor: pointer; }
+.stl-switch input { width: 16px; height: 16px; accent-color: var(--chart-1); }
+.stl-summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1px; margin: 0 0 12px;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--line);
+}
+.stl-summary > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; background: var(--surface, var(--bg)); }
+.stl-summary span { font-size: var(--t-xs); color: var(--muted); }
+.stl-summary strong { font-size: var(--t-xl); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.stl-summary small { font-size: var(--t-xs); color: var(--muted); overflow-wrap: anywhere; }
+.stl-summary .stl-cash strong { color: var(--chart-1); }
 .amountbox { display: flex; align-items: stretch; }
 .amountbox input { flex: 1 1 auto; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .amountbox-unit {
@@ -9575,3 +9610,18 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .ov-table .ov-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Five or six cards sit three to a row; four share one. */
 @media (min-width: 900px) { .ov-kpis:has(> .kpi:nth-child(5)) { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Payables / Receivables: a partner row opens to its open bills. */
+.bal-chev { width: 36px; padding-right: 0 !important; }
+.bal-row.open td { background: color-mix(in srgb, var(--chart-1) 4%, transparent); }
+.bal-detail > td { padding: 0 12px 14px !important; background: color-mix(in srgb, var(--chart-1) 4%, transparent); }
+.bal-box { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow-x: auto; }
+.bal-bills { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: var(--t-sm); }
+.bal-bills th, .bal-bills td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); text-align: left; white-space: nowrap; }
+.bal-bills thead th { color: var(--muted); font-weight: 600; font-size: var(--t-xs); }
+.bal-bills .r { text-align: right; }
+.bal-late { margin-left: 6px; }
+.bal-adv { color: var(--chart-1); }
+.bal-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+.adv-sum { margin-bottom: 16px; }
+.adv-sum-sub { font-size: var(--t-md); font-weight: 600; margin: 4px 0 10px; }

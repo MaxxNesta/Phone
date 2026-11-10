@@ -2813,8 +2813,8 @@ export async function createGoodsReceipt(_prev: unknown, fd: FormData): Promise<
 
 // ------------------------------------------------------------- settlement --
 
-function parseAllocations(fd: FormData): Allocation[] {
-  const raw = String(fd.get("allocations") ?? "[]");
+function parseAllocations(fd: FormData, field = "allocations"): Allocation[] {
+  const raw = String(fd.get(field) ?? "[]");
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -2851,9 +2851,12 @@ async function settle(
   // bills or sitting on account, and the engine refuses anything that tries
   // to be both.
   const advance = str(fd, "purpose") === "advance" ? num(fd, "advance") : 0;
+  // Advance already on account, put against bills in the same act: per bill,
+  // how much. Which advance it comes from is decided below, oldest first.
+  const advanceUse = advance > 0 ? [] : parseAllocations(fd, "advance_use");
   await assertMyBranch(str(fd, "location_id"));
 
-  if (advance <= 0 && allocations.length === 0) {
+  if (advance <= 0 && allocations.length === 0 && advanceUse.length === 0) {
     return { error: "Enter an amount against at least one invoice, or record it as an advance" };
   }
   if (advance > 0 && !str(fd, "location_id")) {
@@ -2868,7 +2871,9 @@ async function settle(
   // channel's account at the branch taking or paying it. A payment in a
   // foreign currency still names its account directly (its own yuan account).
   const foreign = Boolean(fxFields(fd).currency && fxFields(fd).currency !== "MMK");
-  const channelId = foreign ? "" : str(fd, "payment_channel_id");
+  // Only advances and no new money: nothing leaves the till, so no account is asked for.
+  const cashMoves = advance > 0 || allocations.length > 0;
+  const channelId = foreign || !cashMoves ? "" : str(fd, "payment_channel_id");
   let channelRef: string | null = null;
   if (channelId) {
     let where = str(fd, "location_id") || null;
@@ -2885,7 +2890,7 @@ async function settle(
     fd.set("cash_account_id", r.tenders[0].channel.accountId as string);
     channelRef = r.tenders[0].reference;
   }
-  if (!str(fd, "cash_account_id")) {
+  if (cashMoves && !str(fd, "cash_account_id")) {
     return { error: "Choose which cash or bank account to use" };
   }
 
@@ -2906,6 +2911,35 @@ async function settle(
   };
 
   const result = await postOnce(co, attemptKey(fd), async (tx) => {
+    // Advances first, oldest advance against the bills in the order given,
+    // then the new money for whatever is left. One transaction: a payment
+    // that fails takes the applications back with it.
+    let firstApplied: { id: string; docNo: string } | null = null;
+    if (advanceUse.length > 0) {
+      const ids = advanceUse.map((u) => u.invoiceId);
+      const [{ cur }] = await tx`select coalesce(max(currency), 'MMK') as cur from document where id = any(${ids}) and company_id = ${co}`;
+      const pool = (await tx`
+        select payment_id, (case when currency = 'MMK' then available else fc_available end)::float as left
+          from v_partner_advance
+         where company_id = ${co} and partner_id = ${input.partnerId} and currency = ${cur}
+           and doc_type = ${kind === "pay" ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT"}
+         order by doc_date, doc_no`) as unknown as { payment_id: string; left: number }[];
+      for (const use of advanceUse) {
+        let need = use.amount;
+        const from: { paymentId: string; amount: number }[] = [];
+        for (const a of pool) {
+          if (need <= 0.00005) break;
+          const take = Math.min(a.left, need);
+          if (take <= 0.00005) continue;
+          from.push({ paymentId: a.payment_id, amount: Math.round(take * 10000) / 10000 });
+          a.left -= take; need -= take;
+        }
+        if (need > 0.005) throw new Error("There is not that much advance left on account. Reload the page and try again.");
+        const applied = await applyAdvance({ companyId: co, invoiceId: use.invoiceId, allocations: from, docDate: input.docDate }, tx);
+        firstApplied ??= applied;
+      }
+    }
+    if (!cashMoves) return firstApplied!;
     const posted = kind === "pay" ? await postSupplierPayment(input, tx) : await postCustomerReceipt(input, tx);
     if (channelId) await stampReceipt(tx as never, posted.id, channelId, channelRef, (await requireUser()).id);
     return posted;
@@ -2975,7 +3009,11 @@ export async function getSettlementData(kind: "pay" | "receive") {
                 -- rate it is carried at, and what is left in that currency.
                 coalesce(o.currency, 'MMK') as currency,
                 coalesce(o.exchange_rate, 1)::float as exchange_rate,
-                coalesce(o.fc_outstanding, s.outstanding)::float as fc_outstanding
+                coalesce(o.fc_outstanding, s.outstanding)::float as fc_outstanding,
+                -- Of what is paid, how much came from an advance applied to it.
+                (select coalesce(sum(pa.amount), 0) from payment_allocation pa
+                   join document app on app.id = pa.applied_by_document_id
+                  where pa.invoice_id = s.document_id and app.status = 'POSTED')::float as adv_applied
            from v_invoice_status s
            left join v_open_item o on o.document_id = s.document_id
           where s.company_id = ${co} and s.doc_type = ${docType} and s.outstanding <> 0
@@ -2984,8 +3022,17 @@ export async function getSettlementData(kind: "pay" | "receive") {
     sql`select id, code, name from account
          where company_id = ${co} and is_cash_account and is_active order by code`,
   ]);
+  // Money already paid or taken on account, oldest first: the pay screen
+  // offers it against the bills before any new money moves.
+  const advances = await sql`
+    select payment_id, partner_id, doc_no, to_char(doc_date, 'YYYY-MM-DD') as doc_date, currency,
+           (case when currency = 'MMK' then available else fc_available end)::float as available
+      from v_partner_advance
+     where company_id = ${co} and doc_type = ${kind === "pay" ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT"}
+       ${locs ? sql`and location_id = any(${locs})` : sql``}
+     order by doc_date, doc_no`;
 
-  return { partners, invoices, cashAccounts, role, fx: await fxOptions(co) };
+  return { partners, invoices, cashAccounts, role, advances, fx: await fxOptions(co) };
 }
 
 // ------------------------------------------------------ finance vouchers --

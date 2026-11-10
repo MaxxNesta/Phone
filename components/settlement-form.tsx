@@ -18,13 +18,40 @@ type Invoice = {
   payment_status: string; days_overdue: number | null;
   /** The bill's own currency, its carrying rate, and what is left in it. */
   currency?: string; exchange_rate?: number; fc_outstanding?: number;
+  /** Of what is paid, the part an advance applied (kyat). */
+  adv_applied?: number;
 };
+/** Money already on account with this partner, not yet against any bill. */
+export type OpenAdvance = { payment_id: string; partner_id: string; doc_no: string; doc_date: string; currency: string; available: number };
 
 /** What a bill still owes in the currency it is owed in. */
 const out = (i: Invoice) =>
   i.currency && i.currency !== "MMK" ? Number(i.fc_outstanding) : Number(i.outstanding);
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const val = (v: string | undefined) => Number(v) || 0;
+
+/**
+ * A money box wide enough for a nine-digit kyat figure, with thousands
+ * separators while it is not being typed in. Stores the plain number.
+ */
+function Amount({ value, onChange, label, invalid, placeholder, id }: {
+  value: string; onChange: (v: string) => void; label: string; invalid?: boolean; placeholder?: string; id?: string;
+}) {
+  const [focus, setFocus] = useState(false);
+  const shown = focus || value === "" || isNaN(Number(value)) ? value
+    : Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return (
+    <input
+      id={id} type="text" inputMode="decimal" className={`stl-amt${invalid ? " bad" : ""}`} aria-label={label}
+      aria-invalid={invalid || undefined} placeholder={placeholder ?? "0"} value={shown}
+      onFocus={(e) => { setFocus(true); requestAnimationFrame(() => e.target.select()); }}
+      onBlur={() => setFocus(false)}
+      onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
+    />
+  );
+}
 const day = (d: string | null) =>
   d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
@@ -43,9 +70,17 @@ export function SettlementForm({
   today,
   initialPartnerId,
   initialInvoiceId,
+  initialAll,
+  initialUseAdvance,
+  advances = [],
   fx,
   channels,
 }: {
+  /** Arriving from "Pay all" on the payables list: every bill ticked. */
+  initialAll?: boolean;
+  /** Arriving from "Use advance": the advance spread over the oldest bills, no new money. */
+  initialUseAdvance?: boolean;
+  advances?: OpenAdvance[];
   /** How the money moved. Replaces the account picker when given (kyat payments). */
   channels?: Channel[];
   /** Currencies and latest rates: a bill owed in yuan is paid in yuan. */
@@ -73,19 +108,6 @@ export function SettlementForm({
   const [partnerId, setPartnerId] = useState(initialPartnerId ?? "");
   const usable = (channels ?? []).filter((c) => c.accountId);
 
-  /** What the invoice this screen was opened for still owes, if any. */
-  const prefill = (forPartner: string): Record<string, string> => {
-    if (!initialInvoiceId) return {};
-    const inv = invoices.find((i) => i.document_id === initialInvoiceId);
-    // Only where it belongs to the partner being settled with. An amount
-    // against somebody else's invoice is not a starting point, it is a
-    // mistake waiting to be posted.
-    if (!inv || (forPartner && inv.partner_id !== forPartner)) return {};
-    return { [inv.document_id]: String(out(inv)) };
-  };
-
-  const [amounts, setAmounts] = useState<Record<string, string>>(
-    () => prefill(initialPartnerId ?? ""));
   const isPay = kind === "pay";
   const base = fx?.base ?? "MMK";
   /** The currency this payment is in — the bills it settles are owed in it. */
@@ -114,24 +136,75 @@ export function SettlementForm({
 
   // Only the bills owed in this payment's currency: a yuan payment cannot
   // settle a kyat bill, and the engine refuses it.
-  const open = useMemo(
-    () => invoices.filter((i) => i.partner_id === partnerId
-      && (!isPay || (i.currency ?? base) === currency)),
-    [invoices, partnerId, currency, isPay, base]
-  );
+  const openFor = (pid: string, cur: string) => invoices.filter((i) => i.partner_id === pid
+    && (!isPay || (i.currency ?? base) === cur));
+  const poolFor = (pid: string, cur: string) => advances.filter((a) => a.partner_id === pid
+    && a.currency === (isPay ? cur : base));
+  const open = useMemo(() => openFor(partnerId, currency), [invoices, partnerId, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pool = useMemo(() => poolFor(partnerId, currency), [advances, partnerId, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+  const poolTotal = pool.reduce((t, a) => t + a.available, 0);
+
+  /**
+   * Per bill, two figures: how much of the advance already on account goes
+   * against it, and how much new money. Ticking a bill settles it in full,
+   * advance first; either figure can then be changed by hand.
+   */
+  type Split = { cash: Record<string, string>; adv: Record<string, string> };
+  const [useAdv, setUseAdv] = useState(true);
+  const fillRows = (rows: Invoice[], poolLeft: number, withAdv: boolean, cashCap = Infinity): Split => {
+    const next: Split = { cash: {}, adv: {} };
+    let left = poolLeft, cap = cashCap;
+    for (const i of rows) {
+      const a = withAdv ? r2(Math.min(left, out(i))) : 0;
+      const c = r2(Math.max(0, Math.min(cap, out(i) - a)));
+      left -= a; cap -= c;
+      if (a > 0) next.adv[i.document_id] = String(a);
+      if (c > 0) next.cash[i.document_id] = String(c);
+    }
+    return next;
+  };
+  /** What the screen opens with: the bill it was opened for, every bill, or the advance alone. */
+  const initial = (pid: string, cur: string): Split => {
+    const rows = openFor(pid, cur), left = poolFor(pid, cur).reduce((t, a) => t + a.available, 0);
+    if (initialAll) return fillRows(rows, left, true);
+    if (initialUseAdvance) return fillRows(rows, left, true, 0);
+    // Only where it belongs to the partner being settled with. An amount
+    // against somebody else's invoice is not a starting point, it is a
+    // mistake waiting to be posted.
+    const inv = rows.find((i) => i.document_id === initialInvoiceId);
+    return inv ? fillRows([inv], left, true) : { cash: {}, adv: {} };
+  };
+  const [split, setSplit] = useState<Split>(() => initial(initialPartnerId ?? "", currency));
+  const amounts = split.cash;
+  const setAmounts = (cash: Record<string, string>) => setSplit({ cash, adv: {} });
 
   const owed = open.reduce((s, i) => s + out(i), 0);
-  const applied = open.reduce((s, i) => s + (Number(amounts[i.document_id]) || 0), 0);
+  const applied = open.reduce((s, i) => s + val(amounts[i.document_id]), 0);
+  const advUsed = open.reduce((s, i) => s + val(split.adv[i.document_id]), 0);
+  const advOver = advUsed > poolTotal + 0.005;
+  const takenBy = (i: Invoice) => val(amounts[i.document_id]) + val(split.adv[i.document_id]);
 
-  // Every invoice this receipt will touch. The one arrived from is filled in
-  // before anyone has looked at the screen, so a receipt meant for a
-  // different invoice quietly carries it along — the total on the button was
-  // right and nobody read it, because nothing said a second invoice was in.
-  const settling = open.filter((i) => (Number(amounts[i.document_id]) || 0) > 0);
+  // Every invoice this will touch, named in the summary: one filled in before
+  // anyone looked at the screen must not ride along unread.
+  const settling = open.filter((i) => takenBy(i) > 0);
+  const overApplied = open.filter((i) => takenBy(i) > out(i) + 0.005);
 
-  const overApplied = open.filter(
-    (i) => (Number(amounts[i.document_id]) || 0) > out(i) + 0.005
-  );
+  const toggle = (i: Invoice) => {
+    if (takenBy(i) > 0) {
+      const cash = { ...split.cash }, adv = { ...split.adv };
+      delete cash[i.document_id]; delete adv[i.document_id];
+      setSplit({ cash, adv });
+      return;
+    }
+    const f = fillRows([i], Math.max(0, poolTotal - advUsed), useAdv);
+    setSplit({ cash: { ...split.cash, ...f.cash }, adv: { ...split.adv, ...f.adv } });
+  };
+  const [spread, setSpread] = useState("");
+  /** The amount being paid now, put against the oldest bills first, after the advance. */
+  const spreadOldest = () => setSplit(fillRows(open, useAdv ? poolTotal : 0, useAdv, spread === "" ? Infinity : val(spread)));
+  // The advance documents, drawn oldest first: what each gives and keeps.
+  let draw = advUsed;
+  const drawn = pool.map((a) => { const use = Math.max(0, Math.min(a.available, draw)); draw -= use; return { ...a, use, after: a.available - use }; });
 
   // Kyat leaving the till at today's rate, against kyat the bills are carried
   // at: the difference is booked as exchange gain or loss when this posts.
@@ -140,17 +213,21 @@ export function SettlementForm({
     ? open.reduce((s, i) => s + (Number(amounts[i.document_id]) || 0) * (i.exchange_rate ?? 1), 0)
     : applied;
 
-  function payAll() {
-    const next: Record<string, string> = {};
-    for (const i of open) next[i.document_id] = String(out(i));
-    setAmounts(next);
-  }
+  function payAll() { setSplit(fillRows(open, useAdv ? poolTotal : 0, useAdv)); }
+  const allTicked = open.length > 0 && open.every((i) => takenBy(i) >= out(i) - 0.005);
 
   const payload = JSON.stringify(
     open
-      .map((i) => ({ invoiceId: i.document_id, amount: Number(amounts[i.document_id]) || 0 }))
+      .map((i) => ({ invoiceId: i.document_id, amount: val(amounts[i.document_id]) }))
       .filter((a) => a.amount > 0)
   );
+  const advPayload = JSON.stringify(
+    open
+      .map((i) => ({ invoiceId: i.document_id, amount: val(split.adv[i.document_id]) }))
+      .filter((a) => a.amount > 0)
+  );
+  const settleOk = applied + advUsed > 0 && overApplied.length === 0 && !advOver;
+  const cashWord = isPay ? "Pay" : "Receive";
 
   return (
     <form action={formAction} className="form wide docsheet">
@@ -162,6 +239,7 @@ export function SettlementForm({
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
       <input type="hidden" name="allocations" value={payload} />
+      <input type="hidden" name="advance_use" value={purpose === "settle" ? advPayload : "[]"} />
       <input type="hidden" name="purpose" value={purpose} />
 
       {/* Both halves of this screen describe money moving one way. On the
@@ -204,15 +282,17 @@ export function SettlementForm({
                 value={partnerId}
                 placeholder={isPay ? "Type a supplier…" : "Type a customer…"}
                 onPick={(id) => {
-                  setPartnerId(id); setAmounts(prefill(id));
-                  if (isPay) { const c = currencyOf(id); setCurrency(c); setRate(c !== base ? latest(c) : ""); }
+                  const c = isPay ? currencyOf(id) : currency;
+                  setPartnerId(id); setSplit(initial(id, c)); setSpread("");
+                  if (isPay) { setCurrency(c); setRate(c !== base ? latest(c) : ""); }
                 }}
               />
             </div>
 
             {usable.length > 0 && (!isPay || currency === base) ? (
               <ChannelPicker channels={channels ?? []} direction={isPay ? "out" : "in"}
-                label={isPay ? "Paid by" : "Payment method"} />
+                label={isPay ? "Paid by" : "Payment method"}
+                disabled={purpose === "settle" && applied <= 0 && advUsed > 0} />
             ) : (
               <div className="field">
                 <label htmlFor="cash_account_id">{isPay ? "Paid from" : "Received into"}</label>
@@ -258,7 +338,7 @@ export function SettlementForm({
 
             {isPay && fx && (
               <CurrencyRate options={fx.options} base={base} currency={currency} rate={rate}
-                onChange={(c, r) => { setCurrency(c); setRate(r); setAmounts({}); }} />
+                onChange={(c, r) => { setCurrency(c); setRate(r); setSplit({ cash: {}, adv: {} }); }} />
             )}
 
             <div className="field">
@@ -279,11 +359,9 @@ export function SettlementForm({
             <div className="row">
               <div className="field">
                 <label htmlFor="advance">Amount {isPay ? "paid" : "received"}</label>
-                <div className="amountbox">
-                  <input
-                    id="advance" name="advance" type="number" min="0" step="any" required
-                    value={advance} onChange={(e) => setAdvance(e.target.value)}
-                  />
+                <div className="amountbox stl-amountbox">
+                  <Amount value={advance} onChange={setAdvance} label={`Amount ${isPay ? "paid" : "received"}`} />
+                  <input type="hidden" name="advance" value={advance} />
                   <span className="amountbox-unit">{unit}</span>
                 </div>
               </div>
@@ -306,93 +384,139 @@ export function SettlementForm({
           </div>
         </div>
       ) : (
+      <>
+      {partnerId && pool.length > 0 && (
+        <div className="card stl-adv">
+          <div className="card-head">
+            <h2>{isPay ? "Advance paid to this supplier" : "Advance from this customer"}</h2>
+            <span className="actions">
+              <span className="page-sub">{fmt(poolTotal)} {unit} on account</span>
+              <label className="stl-switch">
+                <input type="checkbox" checked={useAdv} onChange={(e) => {
+                  const on = e.target.checked; setUseAdv(on);
+                  // Re-settle the ticked bills the new way, so the totals stay true.
+                  const ticked = open.filter((i) => takenBy(i) > 0);
+                  const f = fillRows(ticked, on ? poolTotal : 0, on);
+                  setSplit(f);
+                }} />
+                Use it first
+              </label>
+            </span>
+          </div>
+          <div className="tablewrap">
+            <table className="stl-table">
+              <thead><tr><th>Advance</th><th>{isPay ? "Paid" : "Received"} on</th><th className="r">On account</th><th className="r">Using now</th><th className="r">Left after</th></tr></thead>
+              <tbody>
+                {drawn.map((a) => (
+                  <tr key={a.payment_id}>
+                    <td className="code">{a.doc_no}</td>
+                    <td className="code">{day(a.doc_date)}</td>
+                    <td className="r">{fmt(a.available)}</td>
+                    <td className="r">{a.use > 0 ? <strong className="stl-adv-use">{fmt(a.use)}</strong> : "—"}</td>
+                    <td className="r">{fmt(a.after)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {pool.length > 1 && (
+                <tfoot><tr><td colSpan={2}>Total</td><td className="r">{fmt(poolTotal)}</td><td className="r">{fmt(advUsed)}</td><td className="r">{fmt(poolTotal - advUsed)}</td></tr></tfoot>
+              )}
+            </table>
+          </div>
+          <p className="stl-note">Used oldest advance first. No new money moves for the part an advance covers.</p>
+        </div>
+      )}
+
       <div className="card">
-        <div className="card-head">
-          <h2>{isPay ? "Bills outstanding" : "Invoices outstanding"}</h2>
-          <span className="actions">
-            {open.length > 0 && (
-              <>
-                <span className="page-sub">{fmt(owed)} owed</span>
-                <button type="button" className="ghost tiny" onClick={payAll}>
-                  {isPay ? "Pay all" : "Receive all"}
-                </button>
-              </>
-            )}
-          </span>
+        <div className="card-head stl-head">
+          <h2>{isPay ? "Bills to pay" : "Invoices to settle"}{open.length > 0 && <span className="page-sub"> · {open.length} open · {fmt(owed)} {unit} owed</span>}</h2>
+          {open.length > 0 && (
+            <span className="actions stl-quick">
+              <label htmlFor="stl-spread" className="page-sub">{cashWord} amount</label>
+              <Amount id="stl-spread" value={spread} onChange={setSpread} label={`${cashWord} amount, spread oldest first`} placeholder="Full amount" />
+              <button type="button" className="ghost tiny" onClick={spreadOldest}>Spread oldest first</button>
+              <button type="button" className="tiny" onClick={payAll} disabled={allTicked}>{isPay ? "Pay all" : "Receive all"}</button>
+              {settling.length > 0 && <button type="button" className="ghost tiny" onClick={() => setSplit({ cash: {}, adv: {} })}>Clear</button>}
+            </span>
+          )}
         </div>
 
         {!partnerId ? (
           <div className="empty">Choose a {isPay ? "supplier" : "customer"} to see what is outstanding.</div>
         ) : open.length === 0 ? (
-          <div className="empty">Nothing outstanding — everything is settled.</div>
+          <div className="empty">Nothing outstanding — everything is settled.{pool.length > 0 && " The advance stays on account for the next bill."}</div>
         ) : (
           <div className="tablewrap">
-            <table>
+            <table className="stl-table">
               <thead>
                 <tr>
-                  <th>Invoice</th><th>Posted</th><th>Due</th><th>Status</th>
-                  <th className="r">Total</th><th className="r">Already {isPay ? "paid" : "received"}</th>
-                  <th className="r">Outstanding</th><th className="r">Apply now</th>
+                  <th className="stl-check">
+                    <input type="checkbox" aria-label={isPay ? "Pay all bills" : "Settle all invoices"} checked={allTicked}
+                      onChange={() => (allTicked ? setSplit({ cash: {}, adv: {} }) : payAll())} />
+                  </th>
+                  <th>{isPay ? "Bill" : "Invoice"}</th><th>Due</th>
+                  <th className="r">Outstanding</th>
+                  {pool.length > 0 && <th className="r">From advance</th>}
+                  <th className="r">{cashWord} now</th>
+                  <th className="r">Left after</th>
                 </tr>
               </thead>
               <tbody>
                 {open.map((i) => {
-                  const over = (Number(amounts[i.document_id]) || 0) > out(i) + 0.005;
+                  const taken = takenBy(i);
+                  const over = taken > out(i) + 0.005;
                   const late = i.days_overdue !== null && i.days_overdue > 0;
+                  const rate = foreign ? (i.exchange_rate ?? 1) : 1;
+                  const paidBefore = Number(i.paid) / rate, advBefore = Number(i.adv_applied ?? 0) / rate;
                   return (
-                    <tr key={i.document_id}>
-                      <td className="code">
-                        {i.doc_no}
-                        {/* Only where something actually was. The label used
-                            to key off which invoice this screen was opened
-                            for, so it kept saying "filled in for you" over an
-                            empty box — which is the screen telling somebody
-                            their own eyes are wrong. */}
-                        {i.document_id === initialInvoiceId
-                          && (Number(amounts[i.document_id]) || 0) > 0 && (
-                          <div className="hint" style={{ fontSize: "var(--t-2xs)" }}>
-                            filled in for you
-                          </div>
-                        )}
+                    <tr key={i.document_id} className={taken > 0 ? "on" : undefined}>
+                      <td className="stl-check">
+                        <input type="checkbox" checked={taken > 0} onChange={() => toggle(i)} aria-label={`Settle ${i.doc_no} in full`} />
                       </td>
-                      <td className="code">{day(i.posting_date)}</td>
-                      <td className="code">{day(i.due_date)}</td>
                       <td>
-                        <span className={`pill ${late ? "overdue" : i.payment_status === "PARTIALLY_PAID" ? "warn" : "ok"}`}>
-                          {late ? `${i.days_overdue}d late`
-                            : i.payment_status === "PARTIALLY_PAID" ? "Part paid" : "Open"}
-                        </span>
+                        <span className="code">{i.doc_no}</span>
+                        <div className="subline">{day(i.posting_date)} · total {fmt(Number(i.gross_total) / rate)}
+                          {paidBefore - advBefore > 0.005 && <> · paid {fmt(paidBefore - advBefore)}</>}
+                          {advBefore > 0.005 && <> · advance {fmt(advBefore)}</>}
+                        </div>
+                        {i.document_id === initialInvoiceId && taken > 0 && <div className="hint stl-hint">filled in for you</div>}
                       </td>
-                      <td className="r">{fmt(foreign ? Number(i.gross_total) / (i.exchange_rate ?? 1) : Number(i.gross_total))}</td>
-                      <td className="r">{fmt(foreign ? Number(i.paid) / (i.exchange_rate ?? 1) : Number(i.paid))}</td>
+                      <td>
+                        <span className="code">{day(i.due_date)}</span>
+                        <div><span className={`pill ${late ? "overdue" : i.payment_status === "PARTIALLY_PAID" ? "warn" : "ok"}`}>
+                          {late ? `${i.days_overdue}d late` : i.payment_status === "PARTIALLY_PAID" ? "Part paid" : "Open"}
+                        </span></div>
+                      </td>
                       <td className="r">
-                        {foreign ? Number(out(i)).toLocaleString("en-US", { maximumFractionDigits: 2 }) : fmt(out(i))}
+                        <strong>{foreign ? out(i).toLocaleString("en-US", { maximumFractionDigits: 2 }) : fmt(out(i))}</strong>
                         {foreign && <div className="subline">at {(i.exchange_rate ?? 1).toLocaleString("en-US")}</div>}
                       </td>
-                      <td className="narrow">
-                        <input
-                          type="number" min="0" step="any"
-                          aria-label={`Amount for ${i.doc_no}`}
-                          style={over ? { borderColor: "var(--bad)" } : undefined}
-                          value={amounts[i.document_id] ?? ""}
-                          onChange={(e) =>
-                            setAmounts({ ...amounts, [i.document_id]: e.target.value })
-                          }
-                        />
+                      {pool.length > 0 && (
+                        <td className="r">
+                          <Amount value={split.adv[i.document_id] ?? ""} placeholder="—" label={`Advance for ${i.doc_no}`} invalid={over || advOver}
+                            onChange={(v) => setSplit({ ...split, adv: { ...split.adv, [i.document_id]: v } })} />
+                        </td>
+                      )}
+                      <td className="r">
+                        <Amount value={amounts[i.document_id] ?? ""} label={`${cashWord} now for ${i.doc_no}`} invalid={over}
+                          onChange={(v) => setSplit({ ...split, cash: { ...split.cash, [i.document_id]: v } })} />
                       </td>
+                      <td className="r">{taken > 0 ? (out(i) - taken > 0.005 ? fmt(out(i) - taken) : <span className="stl-done">Settled</span>) : <span className="page-sub">{fmt(out(i))}</span>}</td>
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6}>Total {isPay ? "paid" : "received"}</td>
-                  <td className="r">{fmt(owed - applied)} {unit} left</td>
-                  <td className="r">{fmt(applied)} {unit}</td>
+                  <td />
+                  <td colSpan={2}>Total</td>
+                  <td className="r">{fmt(owed)}</td>
+                  {pool.length > 0 && <td className="r">{fmt(advUsed)}</td>}
+                  <td className="r">{fmt(applied)}</td>
+                  <td className="r">{fmt(owed - applied - advUsed)}</td>
                 </tr>
                 {foreign && applied > 0 && (
                   <tr>
-                    <td colSpan={8} className="r">
+                    <td colSpan={pool.length > 0 ? 7 : 6} className="r">
                       {base} paid {fmt(kyatPaid)} · carried at {fmt(kyatCarried)} ·{" "}
                       <strong className={kyatCarried - kyatPaid >= 0 ? "ok-qty" : "low"}>
                         exchange {kyatCarried - kyatPaid >= 0 ? "gain" : "loss"} {fmt(Math.abs(kyatCarried - kyatPaid))} {base}
@@ -405,12 +529,23 @@ export function SettlementForm({
           </div>
         )}
       </div>
+
+      {settling.length > 0 && (
+        <div className="stl-summary" aria-live="polite">
+          <div><span>{isPay ? "Bills" : "Invoices"}</span><strong>{settling.length}</strong>
+            <small>{settling.slice(0, 4).map((i) => i.doc_no).join(", ")}{settling.length > 4 ? ` +${settling.length - 4}` : ""}</small></div>
+          <div><span>Settled</span><strong>{fmt(applied + advUsed)}</strong><small>{unit}</small></div>
+          {pool.length > 0 && <div><span>From advance</span><strong>{fmt(advUsed)}</strong><small>{fmt(poolTotal - advUsed)} left on account</small></div>}
+          <div className="stl-cash"><span>{isPay ? "Paid now" : "Received now"}</span><strong>{fmt(applied)}</strong><small>{applied > 0 ? (isPay ? "leaves the till or bank" : "comes into the till or bank") : "no money moves"}</small></div>
+        </div>
+      )}
+      </>
       )}
 
-      {purpose === "settle" && overApplied.length > 0 && (
+      {purpose === "settle" && (overApplied.length > 0 || advOver) && (
         <div className="alert">
-          More than the outstanding amount applied to{" "}
-          {overApplied.map((i) => i.doc_no).join(", ")}.
+          {overApplied.length > 0 && <>More than what is outstanding is put against {overApplied.map((i) => i.doc_no).join(", ")}. </>}
+          {advOver && <>That is more advance than is on account ({fmt(poolTotal)} {unit}).</>}
         </div>
       )}
 
@@ -419,48 +554,28 @@ export function SettlementForm({
         <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
       </div>
 
-      {/* What is about to be settled, named. One invoice needs no list; two or
-          more is exactly the case where an amount nobody typed rides along
-          on the total. */}
-      {purpose === "settle" && settling.length > 1 && (
-        <div className="alert" style={{ marginBottom: "0.75rem" }}>
-          <strong>
-            This one {isPay ? "payment" : "receipt"} settles {settling.length} invoices.
-          </strong>
-          <ul style={{ margin: "0.35rem 0 0 1.1rem" }}>
-            {settling.map((i) => (
-              <li key={i.document_id}>
-                {i.doc_no} — {fmt(Number(amounts[i.document_id]) || 0)}
-                {i.document_id === initialInvoiceId && " (filled in for you)"}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="actions">
         <button
           type="submit"
-          disabled={pending
-            || (purpose === "advance"
-              ? !(Number(advance) > 0)
-              : applied <= 0 || overApplied.length > 0)}
+          disabled={pending || (purpose === "advance" ? !(Number(advance) > 0) : !settleOk)}
         >
           {pending ? "Posting…"
             : purpose === "advance"
               ? Number(advance) > 0
-                ? `Post ${isPay ? "payment" : "receipt"} of ${fmt(Number(advance))} on account`
+                ? `${isPay ? "Pay" : "Receive"} ${fmt(Number(advance))} ${unit} on account`
                 : `Post ${isPay ? "payment" : "receipt"}`
-            : applied > 0
-              ? `Post ${isPay ? "payment" : "receipt"} of ${fmt(applied)}`
-                + (settling.length > 1 ? ` across ${settling.length} invoices` : "")
-              : `Post ${isPay ? "payment" : "receipt"}`}
+            : !settleOk ? `${isPay ? "Tick the bills to pay" : "Tick the invoices to settle"}`
+            : [applied > 0 && `${cashWord} ${fmt(applied)} ${unit}`, advUsed > 0 && `${applied > 0 ? "use" : "Use"} ${fmt(advUsed)} advance`]
+                .filter(Boolean).join(" and ")
+              + ` · ${settling.length} ${isPay ? "bill" : "invoice"}${settling.length === 1 ? "" : "s"}`}
         </button>
         <span className="page-sub">
           {purpose === "advance"
             ? `Records money ${isPay ? "paid" : "received"} on account. No invoice is `
               + "settled and no stock moves; it waits until there is a bill to put it against."
-            : "The invoices are not edited — this records a document allocated against them."}
+            : advUsed > 0 && applied <= 0
+              ? "Only the advance already on account is used: no money moves, the bills come down by what it covers."
+              : "The invoices are not edited — this records a document allocated against them."}
         </span>
       </div>
     </form>

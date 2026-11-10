@@ -4,7 +4,8 @@ import { periodFromParams } from "@/lib/date-range";
 import { UrlDateFilter } from "@/components/date-filter";
 import Link from "next/link";
 import { money, moneyOrTrace, sql } from "@/lib/db";
-import { getCompany, getPartnerBalances } from "@/lib/queries";
+import { getCompany, getPartnerBalances, openBillsByPartner } from "@/lib/queries";
+import { BalanceRow } from "@/components/balance-row";
 import { unbilledReceipts, unbilledBySupplier } from "@/lib/unbilled";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
@@ -58,18 +59,23 @@ export default async function Payables({
         <Link href="/payables" role="tab" aria-selected={!couriers} className={!couriers ? "on" : undefined}>Suppliers</Link>
         <Link href="/payables?view=couriers" role="tab" aria-selected={couriers} className={couriers ? "on" : undefined}>{section}</Link>
         <Link href="/payables/ledger" role="tab" aria-selected={false}>Supplier ledger</Link>
+        <Link href="/payables/advances" role="tab" aria-selected={false}>Advances</Link>
       </div>
     </>
   );
   if (couriers) return <>{head}<CouriersView companyId={company.id} section={section} /></>;
 
-  const [billed, unbilledRows, advances] = await Promise.all([
+  const [billed, unbilledRows, advances, bills] = await Promise.all([
     getPartnerBalances(company.id, "PURCHASE_INVOICE", await seenLocations(), period) as Promise<any[]>,
     seenLocations().then((locs) => unbilledReceipts(company.id, locs))
       .then((rows) => period ? rows.filter((r) => r.docDate >= period.from && r.docDate < period.to) : rows),
     // Only the branch someone is limited to; everything for everyone else.
     scopedBranch(null).then((b) => getAdvanceBalances(company.id, "SUPPLIER", b)),
+    seenLocations().then((locs) => openBillsByPartner(company.id, "PURCHASE_INVOICE", locs)),
   ]);
+  // In a chosen period, only the bills posted in it, as the totals beside them.
+  const billsOf = (id: string) => (bills.get(id) ?? []).filter((b) => !period || (b.date >= period.from && b.date < period.to));
+  const advAppliedOf = (id: string) => billsOf(id).reduce((t, b) => t + b.adv, 0);
   // Paid ahead and not yet set against a bill: shown beside what is owed, and a
   // supplier with only an advance still gets a row — its balance is below zero.
   const advanceOf = (id: string) => advances.get(id) ?? 0;
@@ -119,11 +125,12 @@ export default async function Payables({
       outstanding: Number(s.outstanding),
       overdue: Number(s.overdue ?? 0),
       unbilled: unbilledOf(s.partner_id),
+      adv_applied: advAppliedOf(s.partner_id),
       advance: advanceOf(s.partner_id),
       balance: Number(s.outstanding) - advanceOf(s.partner_id),
     },
     node: (
-      <tr className="link">
+      <BalanceRow cols={10} bills={billsOf(s.partner_id)} partnerId={s.partner_id} advance={advanceOf(s.partner_id)} kind="pay">
         <td className="wrap">
           <strong>{s.partner_name}</strong>
           <div className="m" style={{ color: "var(--muted)" }}>{s.partner_code}</div>
@@ -136,14 +143,15 @@ export default async function Payables({
         <td className="r" style={{ color: unbilledOf(s.partner_id) > 0 ? "var(--warn)" : undefined }}>
           {unbilledOf(s.partner_id) > 0 ? money(unbilledOf(s.partner_id)) : "—"}
         </td>
-        <td className="r">{advanceOf(s.partner_id) ? money(advanceOf(s.partner_id)) : "—"}</td>
+        <td className="r">{advAppliedOf(s.partner_id) > 0.005 ? money(advAppliedOf(s.partner_id)) : "—"}</td>
+        <td className="r">{advanceOf(s.partner_id) ? <strong className="bal-adv">{money(advanceOf(s.partner_id))}</strong> : "—"}</td>
         <td className="r" style={{ color: Number(s.outstanding) - advanceOf(s.partner_id) < 0 ? "var(--bad)" : undefined }}>
           {money(Number(s.outstanding) - advanceOf(s.partner_id))}
         </td>
         <td className="tight">
           <Link href={`/payables/ledger?partner=${s.partner_id}`} className="btn ghost tiny">Ledger</Link>
         </td>
-      </tr>
+      </BalanceRow>
     ),
   }));
 
@@ -166,6 +174,11 @@ export default async function Payables({
           <span className="kpi-label">Due Soon</span>
           <span className="kpi-value">{money(totalDueSoon)}</span>
           <span className="kpi-note">within 7 days</span>
+        </div>
+        <div className="kpi">
+          <span className="kpi-label">Advance on account</span>
+          <span className="kpi-value">{money(totalAdvance)}</span>
+          <span className="kpi-note"><Link href="/payables/advances">paid ahead, not yet on a bill</Link></span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Received, not billed</span>
@@ -202,21 +215,25 @@ export default async function Payables({
             searchPlaceholder="Search suppliers…"
             defaultSort={{ key: "outstanding", dir: "desc" }}
             columns={[
+              { key: "expand", label: "" },
               { key: "partner_name", label: "Supplier", sortable: true },
               { key: "open_invoices", label: "Invoices", sortable: true, align: "r" },
               { key: "outstanding", label: "Outstanding", sortable: true, align: "r" },
               { key: "overdue", label: "Overdue", sortable: true, align: "r" },
               { key: "unbilled", label: "Received, not billed", sortable: true, align: "r" },
-              { key: "advance", label: "Advance", sortable: true, align: "r" },
+              { key: "adv_applied", label: "Adv. applied", sortable: true, align: "r" },
+              { key: "advance", label: "Advance left", sortable: true, align: "r" },
               { key: "balance", label: "Balance", sortable: true, align: "r" },
               { key: "actions", label: "" },
             ]}
             footer={
               <tr>
+                <td />
                 <td colSpan={2}>Total outstanding</td>
                 <td className="r">{moneyOrTrace(totalPayable)}</td>
                 <td className="r">{moneyOrTrace(totalOverdue)}</td>
                 <td className="r">{money(totalUnbilled)}</td>
+                <td className="r">{money(all.reduce((t, r) => t + advAppliedOf(r.partner_id), 0))}</td>
                 <td className="r">{money(totalAdvance)}</td>
                 <td className="r">{moneyOrTrace(totalPayable - totalAdvance)}</td>
                 <td />

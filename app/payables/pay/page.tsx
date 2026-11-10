@@ -10,10 +10,10 @@ import { HelpHint } from "@/components/help-hint";
 export default async function PaySupplier({
   searchParams,
 }: {
-  searchParams: Promise<{ partner?: string; invoice?: string }>;
+  searchParams: Promise<{ partner?: string; invoice?: string; all?: string; advance?: string }>;
 }) {
-  const { partner, invoice } = await searchParams;
-  const { partners, invoices, cashAccounts, fx } = await getSettlementData("pay");
+  const { partner, invoice, all, advance } = await searchParams;
+  const { partners, invoices, cashAccounts, advances, fx } = await getSettlementData("pay");
   const company = await getCompany();
   // A receipt or payment is written at the person's own branch.
   const branches = company ? await onlyMyLocations((await getBranches(company.id)) as unknown as { id: string }[]) : [];
@@ -67,6 +67,9 @@ export default async function PaySupplier({
         today={today}
         initialPartnerId={partner}
         initialInvoiceId={invoice}
+        initialAll={all === "1"}
+        initialUseAdvance={advance === "1"}
+        advances={advances as never}
         fx={fx}
       />
     </>

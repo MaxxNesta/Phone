@@ -1,6 +1,8 @@
 import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
-import { getCompany, getAdvanceLedger } from "@/lib/queries";
+import { getCompany, getAdvanceLedger, openBillsByPartner } from "@/lib/queries";
+import { AdvanceSummary } from "@/components/advance-summary";
+import Link from "next/link";
 import { AdvanceLedger } from "@/components/advance-ledger";
 import { HelpHint } from "@/components/help-hint";
 
@@ -13,7 +15,11 @@ export default async function SupplierAdvances({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const advances = await getAdvanceLedger(company.id, "SUPPLIER", await seenLocations());
+  const locs = await seenLocations();
+  const [advances, bills] = await Promise.all([
+    getAdvanceLedger(company.id, "SUPPLIER", locs),
+    openBillsByPartner(company.id, "PURCHASE_INVOICE", locs),
+  ]);
 
   return (
     <>
@@ -27,7 +33,14 @@ export default async function SupplierAdvances({
           asset until it is applied, never a payable.
         </HelpHint>
       </div>
+      <div className="vtabs pay-tabs" role="tablist" aria-label="Payables">
+        <Link href="/payables" role="tab" aria-selected={false}>Suppliers</Link>
+        <Link href="/payables/ledger" role="tab" aria-selected={false}>Supplier ledger</Link>
+        <Link href="/payables/advances" role="tab" aria-selected className="on">Advances</Link>
+      </div>
 
+      <AdvanceSummary side="SUPPLIER" advances={advances} bills={bills} />
+      <h2 className="adv-sum-sub">Every advance</h2>
       <AdvanceLedger side="SUPPLIER" advances={advances} />
     </>
   );

@@ -89,7 +89,10 @@ export default async function PurchaseInvoices({
   const totalOverdue = posted
     .filter((r) => r.display === "OVERDUE")
     .reduce((s, r) => s + Number(r.outstanding), 0);
-  const totalPaid = posted.reduce((s, r) => s + Number(r.paid), 0);
+  // Paid is new money; an advance put against a bill is shown on its own.
+  const advOf = (r: any) => Number(r.adv_applied ?? 0);
+  const totalAdv = posted.reduce((s, r) => s + advOf(r), 0);
+  const totalPaid = posted.reduce((s, r) => s + Number(r.paid), 0) - totalAdv;
 
   const supplierName = supplier ? forSupplier[0]?.partner_name : null;
 
@@ -105,7 +108,8 @@ export default async function PurchaseInvoices({
       due_date: toTime(i.due_date),
       partner_name: i.partner_name ?? "",
       gross_total: Number(i.gross_total),
-      paid: Number(i.paid),
+      paid: Number(i.paid) - advOf(i),
+      adv_applied: advOf(i),
       outstanding: Number(i.outstanding),
       display: LABEL[i.display as ListStatus],
     },
@@ -140,7 +144,8 @@ export default async function PurchaseInvoices({
         </td>
         <td className="r narrow">{i.draft_id ? "—" : Number(i.item_qty ?? 0).toLocaleString("en-US")}</td>
         <td className="r">{money(i.gross_total)}</td>
-        <td className="r">{i.imported ? "—" : money(i.paid)}</td>
+        <td className="r">{i.imported ? "—" : money(Number(i.paid) - advOf(i))}</td>
+        <td className="r">{advOf(i) > 0.005 ? <span className="bal-adv">{money(advOf(i))}</span> : "—"}</td>
         <td className="r">{i.imported ? "—" : money(i.outstanding)}</td>
         <td>
           <span className={`pill ${PILL[i.display as ListStatus]}`}>
@@ -198,6 +203,7 @@ export default async function PurchaseInvoices({
         <div className="kpi">
           <span className="kpi-label">Paid</span>
           <span className="kpi-value">{money(totalPaid)}</span>
+          {totalAdv > 0.005 && <span className="kpi-note">+ {money(totalAdv)} from advances</span>}
         </div>
       </div>
 
@@ -237,6 +243,7 @@ export default async function PurchaseInvoices({
               { key: "item_qty", label: "Items", sortable: true, align: "r" },
               { key: "gross_total", label: "Total", sortable: true, align: "r" },
               { key: "paid", label: "Paid", sortable: true, align: "r" },
+              { key: "adv_applied", label: "Adv. applied", sortable: true, align: "r" },
               { key: "outstanding", label: "Balance", sortable: true, align: "r" },
               { key: "display", label: "Status", sortable: true },
               { key: "actions", label: "" },

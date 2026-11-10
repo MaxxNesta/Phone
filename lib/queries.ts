@@ -389,7 +389,11 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
               from document d where d.id = v_invoice_status.document_id) as channel,
            (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
              where dl.document_id = v_invoice_status.document_id and dl.item_id is not null) as item_qty,
-           (select d.source_ref from document d where d.id = v_invoice_status.document_id) as source_ref
+           (select d.source_ref from document d where d.id = v_invoice_status.document_id) as source_ref,
+           -- Of what is paid, the part an advance already on account settled.
+           (select coalesce(sum(pa.amount), 0) from payment_allocation pa
+              join document app on app.id = pa.applied_by_document_id
+             where pa.invoice_id = v_invoice_status.document_id and app.status = 'POSTED')::float as adv_applied
       from v_invoice_status
      where company_id = ${companyId} and doc_type = ${docType}
        ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
@@ -403,7 +407,7 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
             'INVOICE' as channel,
             (select coalesce(sum(dl.entered_qty), 0)::float from document_line dl
               where dl.document_id = d.id and dl.item_id is not null) as item_qty,
-            d.source_ref
+            d.source_ref, 0::float as adv_applied
        from document d
        join business_partner p on p.id = d.partner_id
       -- Drafts only. This half used to admit anything not POSTED, which in
@@ -8258,4 +8262,39 @@ export async function getRefundableReturns(companyId: string, locs: string[] | n
       join business_partner p on p.id = r.partner_id
       left join document i on i.id = r.invoice_id
      order by r.posting_date desc, r.doc_no desc`;
+}
+
+/** One open invoice for the payables and receivables lists, paid split into money and advance. */
+export type OpenBill = {
+  id: string; doc_no: string; date: string; due: string | null; total: number;
+  paid: number; adv: number; outstanding: number; late: number | null;
+};
+
+/**
+ * Every open invoice per partner, oldest first: what the expanded row on
+ * Payables and Receivables lists. Paid is new money; adv is the part an
+ * advance already on account settled.
+ */
+export async function openBillsByPartner(companyId: string, docType: "SALES_INVOICE" | "PURCHASE_INVOICE",
+                                         locs: string[] | null = null) {
+  const rows = await sql`
+    select s.partner_id, s.document_id as id, s.doc_no, to_char(s.posting_date, 'YYYY-MM-DD') as date,
+           to_char(s.due_date, 'YYYY-MM-DD') as due, s.gross_total::float as total,
+           s.outstanding::float as outstanding, s.days_overdue as late,
+           s.paid::float as paid_all,
+           (select coalesce(sum(pa.amount), 0) from payment_allocation pa
+              join document app on app.id = pa.applied_by_document_id
+             where pa.invoice_id = s.document_id and app.status = 'POSTED')::float as adv
+      from v_invoice_status s
+     where s.company_id = ${companyId} and s.doc_type = ${docType} and s.outstanding <> 0
+       ${locs ? sql`and s.document_id in (select id from document where location_id = any(${locs}))` : sql``}
+     order by s.posting_date, s.doc_no`;
+  const out = new Map<string, OpenBill[]>();
+  for (const r of rows as any[]) {
+    const list = out.get(r.partner_id) ?? [];
+    list.push({ id: r.id, doc_no: r.doc_no, date: r.date, due: r.due, total: r.total,
+      paid: r.paid_all - r.adv, adv: r.adv, outstanding: r.outstanding, late: r.late });
+    out.set(r.partner_id, list);
+  }
+  return out;
 }

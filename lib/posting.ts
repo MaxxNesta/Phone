@@ -8140,12 +8140,14 @@ export async function applyAdvance(input: {
   allocations: { paymentId: string; amount: number }[];
   docDate: string;
   memo?: string | null;
-}) {
+}, outer?: TransactionSql) {
   const lines = input.allocations.filter((a) => a.amount > 0);
   if (lines.length === 0) throw new Error("Choose an advance to apply");
   lines.forEach((a, i) => assertFinite(a.amount, `Advance ${i + 1}: amount`));
 
-  return sql.begin(async (tx) => {
+  // Inside a caller's transaction when given one: the pay screen applies
+  // advances and posts the cash for the rest as one act, all or nothing.
+  return inTransaction(outer, async (tx) => {
     const { companyId, docDate } = input;
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
