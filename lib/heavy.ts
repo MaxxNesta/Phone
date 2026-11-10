@@ -14,7 +14,7 @@ import { sql } from "./db";
  * migration 0177).
  */
 
-type Family = "import" | "preview" | "bulk" | "export" | "report";
+type Family = "import" | "preview" | "bulk" | "export" | "report" | "post";
 
 export const LIMITS: Record<Family, { perMinute: number; oneAtATime?: boolean; timeoutSec?: number }> = {
   import: { perMinute: 6, oneAtATime: true, timeoutSec: 900 },
@@ -22,10 +22,14 @@ export const LIMITS: Record<Family, { perMinute: number; oneAtATime?: boolean; t
   preview: { perMinute: 30 },
   export: { perMinute: 10 },
   report: { perMinute: 40 },
+  // One invoice of an invoice import. The screen posts them one request each,
+  // so counting each as a whole import refused the seventh invoice in a minute.
+  post: { perMinute: 120, oneAtATime: true, timeoutSec: 300 },
 };
 
 const WORDS: Record<Family, string> = {
   import: "imports", bulk: "bulk changes", preview: "previews", export: "exports", report: "loads of this report",
+  post: "invoice postings",
 };
 
 export class TooBusy extends Error {}

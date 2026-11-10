@@ -64,7 +64,7 @@ export async function runPurchaseImport(input: {
   const u = await requirePermission("purchase.post");
   let run = 0;
   try {
-    run = await begin("import.purchase", { companyId: u.companyId, who: u.id });
+    run = await begin("post.import-purchase", { companyId: u.companyId, who: u.id });
     const source = await read(input.content, input.format);
     const master = await getPurchaseImportMaster(u.companyId, namedIn(source));
     const plan = planPurchaseImport(source, master, input.mapping);

@@ -5311,6 +5311,38 @@ export async function reopenYear(_prev: unknown, fd: FormData): Promise<ActionRe
   return { ok: true };
 }
 
+/**
+ * Opens the fiscal year just before the earliest, or just after the latest,
+ * with its twelve monthly periods. Setup makes only the year it starts in, so
+ * history from before it (an import of last year's invoices) had nowhere to
+ * post: "No fiscal year covers 2026-01-01". Administrators only.
+ */
+export async function openFiscalYear(fd: FormData) {
+  await requirePermission("settings.manage");
+  const co = await companyId();
+  const before = str(fd, "side") === "before";
+  const code = await sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtextextended(${`fiscal-year:${co}`}, 0))`;
+    const [edge] = await tx`
+      select to_char(${before ? tx`min(start_date) - interval '12 months'` : tx`max(end_date) + 1`}, 'YYYY-MM-DD') as start
+        from fiscal_year where company_id = ${co}`;
+    if (!edge?.start) throw new Error("Set up the company first");
+    const [y] = await tx`
+      insert into fiscal_year (company_id, code, start_date, end_date)
+      values (${co}, to_char(${edge.start}::date, 'YYYY') || '-' || to_char(${edge.start}::date + interval '1 year', 'YY'),
+              ${edge.start}::date, (${edge.start}::date + interval '1 year' - interval '1 day')::date)
+      returning id, code`;
+    await tx`
+      insert into fiscal_period (company_id, fiscal_year_id, period_no, start_date, end_date, status)
+      select ${co}, ${y.id}, g, (${edge.start}::date + make_interval(months => g - 1))::date,
+             (${edge.start}::date + make_interval(months => g) - interval '1 day')::date, 'OPEN'
+        from generate_series(1, 12) g`;
+    return y.code as string;
+  });
+  revalidatePath("/finance/year-end");
+  redirectWithToast("/finance/year-end", `Fiscal year ${code} opened`);
+}
+
 // ------------------------------------------------------ bank reconciliation --
 //
 // None of this posts, and none of it writes to journal_line. A match is its

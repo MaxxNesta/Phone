@@ -1,5 +1,7 @@
 import { getCompany, getYearEndPositions } from "@/lib/queries";
-import { closeFiscalYear, reopenYear } from "@/lib/actions";
+import { closeFiscalYear, reopenYear, openFiscalYear } from "@/lib/actions";
+import { sql } from "@/lib/db";
+import { requireUser, can } from "@/lib/auth";
 import { YearEnd } from "@/components/year-end";
 import { HelpHint } from "@/components/help-hint";
 
@@ -9,6 +11,13 @@ export default async function YearEndPage() {
 
   const years = (await getYearEndPositions(company.id)) as unknown as
     Parameters<typeof YearEnd>[0]["years"];
+  // The years either side, for an administrator to open: history before the
+  // first year (an import of last year's invoices) needs one to post into.
+  const admin = can(await requireUser(), "settings.manage");
+  const [edge] = admin ? await sql`
+    select to_char(min(start_date) - interval '1 year', 'YYYY') || '-' || to_char(min(start_date), 'YY') as before,
+           to_char(max(end_date) + 1, 'YYYY') || '-' || to_char(max(end_date) + interval '1 year', 'YY') as after
+      from fiscal_year where company_id = ${company.id}` : [];
 
   return (
     <>
@@ -31,6 +40,13 @@ export default async function YearEndPage() {
           voids it rather than editing anything.
         </HelpHint>
       </div>
+
+      {edge?.before && (
+        <form action={openFiscalYear} className="actions" style={{ marginBottom: "var(--s3)" }}>
+          <button name="side" value="before" className="ie-btn">Open {edge.before}</button>
+          <button name="side" value="after" className="ie-btn">Open {edge.after}</button>
+        </form>
+      )}
 
       {years.length === 0 ? (
         <div className="empty">No fiscal years are set up.</div>

@@ -53,7 +53,7 @@ export async function runSalesImport(input: {
   const u = await requirePermission("sales.post");
   let run = 0;
   try {
-    run = await begin("import.sales", { companyId: u.companyId, who: u.id });
+    run = await begin("post.import-sales", { companyId: u.companyId, who: u.id });
     const source = await read(input.content, input.format);
     const master = await getSalesImportMaster(u.companyId, namedIn(source));
     const plan = planSalesImport(source, master, input.mapping);
