@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { NextRequest } from "next/server";
@@ -38,8 +39,7 @@ const cell = (v: unknown) => {
     return String(Number(Number(v).toFixed(4)));
   }
   if (typeof v === "number") return String(Number(v.toFixed(4)));
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return csvCell(v);
 };
 const csv = (rows: unknown[][]) =>
   rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";

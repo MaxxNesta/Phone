@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { requirePermission } from "@/lib/auth";
 import { NextRequest } from "next/server";
 import {
@@ -30,8 +31,7 @@ const asDate = (v: string | null) =>
 const cell = (v: unknown) => {
   if (v === null || v === undefined) return "";
   if (typeof v === "number") return String(Number(v.toFixed(4)));
-  const s = String(v);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return csvCell(v);
 };
 const csv = (rows: unknown[][]) =>
   rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";

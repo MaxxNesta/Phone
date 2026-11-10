@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { requirePermission, can } from "@/lib/auth";
 import { productList, EXPORT_COLUMNS } from "@/lib/products";
 
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
     }
     return "";
   };
-  const quote = (v: unknown) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const quote = csvCell;
   const lines = [cols.map((c) => quote(c.label)).join(","), ...list.map((r) => cols.map((c) => quote(value(r, c.key))).join(","))];
   return new Response("﻿" + lines.join("\n") + "\n", {
     headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="products.csv"` },

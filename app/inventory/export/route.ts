@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
@@ -30,10 +31,7 @@ export async function GET(req: Request) {
   });
   const shown = sp.all === "1" || sp.status === "OUT" ? rows : rows.filter((r: any) => Number(r.qty) > 0 || Number(r.reserved) > 0);
 
-  const quote = (v: unknown) => {
-    const s = v === null || v === undefined ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
+  const quote = csvCell;
   const head = ["Product", "Variant", "Codes", "Category", "Brand", "On hand", "Reserved", "Available",
     ...(seeCost ? ["Avg FIFO cost (MMK)", "Stock value (MMK)"] : []), "Status"];
   const lines = shown.map((r: any) => [r.model, r.variant ?? "", (r.codes ?? []).join(" "), r.category, r.brand ?? "", r.qty, r.reserved, r.available,
