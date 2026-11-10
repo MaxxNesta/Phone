@@ -34,7 +34,19 @@ export type Permission =
   | "reports.view"
   | "settings.manage"
   | "receipts.manage"     // receipt templates: admins all; managers their own branch's
-  | "users.manage";
+  | "users.manage"
+  // HR & Payroll (migration 0186). Salaries are kept from everyone who is
+  // not given them, accountants included: the ledger carries payroll per
+  // account and branch, never per person.
+  | "hr.employees.view"
+  | "hr.employees.edit"
+  | "hr.salary.view"       // salary settings, payslips, bank details
+  | "hr.salary.edit"
+  | "hr.advances"          // view and record salary advances
+  | "hr.payroll.prepare"
+  | "hr.payroll.post"      // post or reverse a payroll run
+  | "hr.payroll.pay"       // record salary payments
+  | "hr.payroll.accounting"; // a run's totals and journal, without per-person figures
 
 const ALL: Permission[] = [
   "pos.sell", "sales.view", "sales.post", "sales.return", "documents.void",
@@ -42,16 +54,24 @@ const ALL: Permission[] = [
   "inventory.view", "inventory.manage", "partners.manage", "items.manage", "brands.manage", "items.duplicates",
   "accounting.view", "accounting.post", "reports.view", "settings.manage", "users.manage",
   "receipts.manage",
+  "hr.employees.view", "hr.employees.edit", "hr.salary.view", "hr.salary.edit", "hr.advances",
+  "hr.payroll.prepare", "hr.payroll.post", "hr.payroll.pay", "hr.payroll.accounting",
 ];
+
+/** Pay is the owner's to see: a manager keeps the staff list and advances, not salaries or payroll. */
+const HR_OWNER_ONLY: Permission[] = ["hr.salary.view", "hr.salary.edit", "hr.payroll.prepare",
+  "hr.payroll.post", "hr.payroll.pay", "hr.payroll.accounting"];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ADMIN: ALL,
-  MANAGER: ALL.filter((p) => p !== "users.manage" && p !== "settings.manage"),
+  MANAGER: ALL.filter((p) => p !== "users.manage" && p !== "settings.manage" && !HR_OWNER_ONLY.includes(p)),
   CASHIER: ["pos.sell", "sales.view", "sales.post", "inventory.view", "partners.manage"],
   SALESPERSON: ["pos.sell", "sales.view", "inventory.view", "partners.manage"],
   INVENTORY: ["inventory.view", "inventory.manage", "purchase.view", "items.manage"],
   ACCOUNTANT: ["sales.view", "purchase.view", "inventory.view", "cost.view",
-    "accounting.view", "accounting.post", "reports.view", "partners.manage"],
+    "accounting.view", "accounting.post", "reports.view", "partners.manage",
+    // A run's totals and journal, and paying it as a batch; no one's salary.
+    "hr.payroll.accounting", "hr.payroll.pay"],
 };
 
 /** The largest line discount a role may give without discount.unlimited. */
@@ -209,6 +229,12 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/items", "inventory.view"],
   ["/products", "items.manage"],
   ["/logistics", "settings.manage"],
+  // HR & Payroll. Payroll runs open with salaries or with payroll accounting;
+  // the pages check which, and show per-person figures only with salaries.
+  ["/hr/settings", "settings.manage"],
+  ["/hr/employees", "hr.employees.view"],
+  ["/hr/advances", "hr.advances"],
+  ["/hr/payslips", "hr.salary.view"],
 ];
 
 /**

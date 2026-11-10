@@ -15,7 +15,7 @@ import { SidebarCollapse } from "@/components/sidebar-collapse";
 import { Toast } from "@/components/toast";
 import {
   LayoutDashboard, ShoppingCart, Package, BookOpen, Landmark, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
-  Smartphone, FileText, Search, PieChart,
+  Smartphone, FileText, Search, PieChart, Briefcase,
 } from "lucide-react";
 import { headers } from "next/headers";
 import { currentUser, can, authRequired, seesMainDashboard, type Permission } from "@/lib/auth";
@@ -272,6 +272,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/fixed-assets/reconcile">{n("faReconcile")}</NavLink>
                 <NavLink href="/fixed-assets/reports">{n("faReports")}</NavLink>
                 <NavLink href="/fixed-assets/settings">{n("faSettings")}</NavLink>
+              </NavGroup>
+            )}
+
+            {(may("hr.employees.view") || may("hr.advances") || may("hr.salary.view") || may("hr.payroll.accounting")) && (
+              <NavGroup label={n("hrPayroll")} icon={<Briefcase size={15} />} match={["/hr"]}>
+                {may("hr.employees.view") && <NavLink href="/hr/employees">{n("employees")}</NavLink>}
+                {may("hr.advances") && <NavLink href="/hr/advances">{n("salaryAdvances")}</NavLink>}
+                {(may("hr.salary.view") || may("hr.payroll.accounting") || may("hr.payroll.prepare")) && <NavLink href="/hr/payroll">{n("payroll")}</NavLink>}
+                {may("hr.salary.view") && <NavLink href="/hr/payslips">{n("payslips")}</NavLink>}
+                {may("settings.manage") && <NavLink href="/hr/settings">{n("hrSettings")}</NavLink>}
               </NavGroup>
             )}
 

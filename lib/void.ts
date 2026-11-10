@@ -139,6 +139,23 @@ export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> 
     }
   }
 
+  // ---- HR & Payroll (migration 0186) ---------------------------------------
+  // An advance already recovered or repaid, or a payroll already paid, has
+  // money resting on it: void those first.
+  const hr = await db`
+    select a.advance_no as ref, 'advance' as what from v_hr_advance a
+     where a.document_id = ${documentId} and a.recovered + a.repaid > 0
+    union all
+    select r.run_no, 'payroll' from hr_payroll_run r
+     where r.document_id = ${documentId}
+       and exists (select 1 from hr_salary_payment x join hr_payslip s on s.id = x.payslip_id
+                     join document xd on xd.id = x.document_id and xd.status = 'POSTED' where s.run_id = r.id)`;
+  for (const h of hr) {
+    blockers.push({ reason: h.what === "advance"
+      ? `Advance ${h.ref} has been recovered or repaid in part. Void those payrolls or repayments first.`
+      : `Salaries on payroll ${h.ref} have been paid. Void the salary payments first.` });
+  }
+
   // ---- what has been built on top of it -----------------------------------
   // Anything naming this document as its source is downstream of it, and
   // undoing this one underneath it would leave that one explaining nothing.

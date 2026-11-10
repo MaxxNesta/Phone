@@ -7237,6 +7237,9 @@ export async function voidDocumentAction(_prev: unknown, fd: FormData): Promise<
     const [owned] = await sql`
       select id from document where id = ${docId} and company_id = ${co}`;
     if (!owned) return { error: "That document no longer exists" };
+    // Reversing a payroll is a payroll permission, not only a void one.
+    const [payroll] = await sql`select 1 from hr_payroll_run where document_id = ${docId}`;
+    if (payroll) await requirePermission("hr.payroll.post");
 
     // A void is a posting: it writes a reversal document, a journal entry and,
     // for a receipt, the stock coming back off the shelf. A resent

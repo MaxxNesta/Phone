@@ -126,7 +126,13 @@
     "shareLedger": "Share ledger",
     "equity": "Equity",
     "salesOverview": "အရောင်း အကျဉ်းချုပ်",
-    "purchasesOverview": "အဝယ် အကျဉ်းချုပ်"
+    "purchasesOverview": "အဝယ် အကျဉ်းချုပ်",
+    "hrPayroll": "HR & Payroll",
+    "employees": "Employees",
+    "salaryAdvances": "Salary Advances",
+    "payroll": "Payroll",
+    "payslips": "Payslips",
+    "hrSettings": "Settings"
   },
   "shell": {
     "appName": "မြန်မာ ERP",

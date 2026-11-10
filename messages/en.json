@@ -126,7 +126,13 @@
     "shareLedger": "Share ledger",
     "equity": "Equity",
     "salesOverview": "Sales overview",
-    "purchasesOverview": "Purchases overview"
+    "purchasesOverview": "Purchases overview",
+    "hrPayroll": "HR & Payroll",
+    "employees": "Employees",
+    "salaryAdvances": "Salary Advances",
+    "payroll": "Payroll",
+    "payslips": "Payslips",
+    "hrSettings": "Settings"
   },
   "shell": {
     "appName": "Myanmar ERP",
