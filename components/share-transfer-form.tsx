@@ -172,26 +172,48 @@ export function ShareTransferForm({ action, holders, holdings, nextIssueNo, equi
 }
 
 /** A new owner. It holds nothing until an Issue gives it shares. */
-export function ShareholderForm({ action }: { action: (prev: Result, fd: FormData) => Promise<Result> }) {
+type HolderValues = { id: string; name: string; is_company: boolean; phone: string | null; email: string | null; address: string | null; notes: string | null;
+  equity_account_id: string | null; no_of_shares: number | null; share_price: number | null };
+
+/** Add or edit a shareholder. Shares and price are as agreed, typed in by hand; blank until known. Posts nothing. */
+export function ShareholderForm({ action, equityAccounts, initial }: {
+  action: (prev: Result, fd: FormData) => Promise<Result>; equityAccounts: Account[]; initial?: HolderValues;
+}) {
   const [state, formAction, pending] = useActionState(action, null);
   useNotice(state);
+  const v = initial;
   return (
     <form action={formAction} className="form wide docsheet">
       {state?.error && <div className="alert">{state.error}</div>}
+      {v && <input type="hidden" name="id" value={v.id} />}
       <section className="card">
         <div className="card-head"><h2>Shareholder</h2></div>
         <div className="card-body"><div className="row">
-          <div className="field span-2"><label htmlFor="name">Name</label><input id="name" name="name" type="text" required placeholder="Person or organisation" /></div>
-          <div className="field"><label className="check"><input type="checkbox" name="is_company" /> Is a company</label></div>
-          <div className="field"><label htmlFor="phone">Phone</label><input id="phone" name="phone" type="tel" /></div>
-          <div className="field"><label htmlFor="email">Email</label><input id="email" name="email" type="email" spellCheck={false} /></div>
-          <div className="field span-2"><label htmlFor="address">Address</label><input id="address" name="address" type="text" /></div>
-          <div className="field span-2"><label htmlFor="notes">Notes</label><input id="notes" name="notes" type="text" /></div>
+          <div className="field span-2"><label htmlFor="name">Name</label><input id="name" name="name" type="text" required placeholder="Person or organisation" defaultValue={v?.name} /></div>
+          <div className="field"><label className="check"><input type="checkbox" name="is_company" defaultChecked={v?.is_company} /> Is a company</label></div>
+          <div className="field"><label htmlFor="phone">Phone</label><input id="phone" name="phone" type="tel" defaultValue={v?.phone ?? ""} /></div>
+          <div className="field"><label htmlFor="email">Email</label><input id="email" name="email" type="email" spellCheck={false} defaultValue={v?.email ?? ""} /></div>
+          <div className="field span-2"><label htmlFor="address">Address</label><input id="address" name="address" type="text" defaultValue={v?.address ?? ""} /></div>
+          <div className="field span-2"><label htmlFor="notes">Notes</label><input id="notes" name="notes" type="text" defaultValue={v?.notes ?? ""} /></div>
+        </div></div>
+      </section>
+      <section className="card">
+        <div className="card-head"><h2>Capital</h2></div>
+        <div className="card-body"><div className="row">
+          <div className="field span-2"><label htmlFor="equity_account_id"><Landmark size={13} aria-hidden="true" /> Capital account</label>
+            <select id="equity_account_id" name="equity_account_id" defaultValue={v?.equity_account_id ?? ""}>
+              <option value="">None</option>
+              {equityAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} {a.name}</option>)}
+            </select></div>
+          <div className="field"><label htmlFor="no_of_shares"><Hash size={13} aria-hidden="true" /> Number of shares</label>
+            <input id="no_of_shares" name="no_of_shares" inputMode="numeric" placeholder="Not set" defaultValue={v?.no_of_shares ?? ""} /></div>
+          <div className="field"><label htmlFor="share_price">Price per share</label>
+            <input id="share_price" name="share_price" inputMode="decimal" placeholder="Not set" defaultValue={v?.share_price ?? ""} /></div>
         </div></div>
       </section>
       <div className="actions form-commit">
-        <button type="submit" disabled={pending}>{pending ? "Saving…" : "Add shareholder"}</button>
-        <span className="page-sub">Adding a shareholder gives it no shares and posts nothing. Issue shares to give it a balance.</span>
+        <button type="submit" disabled={pending}>{pending ? "Saving…" : v ? "Save" : "Add shareholder"}</button>
+        <span className="page-sub">Saving posts nothing. Capital is the balance of the capital account; record money in with a cash or bank receipt to it.</span>
       </div>
     </form>
   );

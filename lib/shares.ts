@@ -92,9 +92,14 @@ async function movements(db: typeof sql | TransactionSql, companyId: string, exc
 
 export async function listShareholders(companyId: string) {
   const [people, moves, amounts] = await Promise.all([
-    sql`select id, code, name, is_company, folio_no, phone, email, address, notes, is_active,
-               to_char(created_at, 'YYYY-MM-DD') as created
-          from shareholder where company_id = ${companyId} order by code`,
+    // Capital is the credit balance of the shareholder's own equity account (0188).
+    sql`select s.id, s.code, s.name, s.is_company, s.folio_no, s.phone, s.email, s.address, s.notes, s.is_active,
+               to_char(s.created_at, 'YYYY-MM-DD') as created,
+               s.equity_account_id, a.code as account_code, a.name as account_name,
+               s.no_of_shares::float as no_of_shares, s.share_price::float as share_price,
+               coalesce((select -sum(l.base_amount) from journal_line l where l.account_id = s.equity_account_id), 0)::float as capital
+          from shareholder s left join account a on a.id = s.equity_account_id
+         where s.company_id = ${companyId} order by s.code`,
     movements(sql, companyId),
     // What each holder's shares came in at, less what went out, at the transfers' own rates.
     sql`select h, sum(v)::float as value from (
@@ -245,17 +250,95 @@ export async function cancelShareTransfer(companyId: string, id: string, date: s
   });
 }
 
-export async function createShareholder(companyId: string, s: { name: string; isCompany: boolean; phone?: string | null; email?: string | null; address?: string | null; notes?: string | null }) {
+/**
+ * Every ledger line on the shareholders' capital accounts, oldest first, with
+ * the document that wrote it (a voucher's page when there is one, else the
+ * journal entry). One shareholder, or all of them.
+ */
+export async function capitalLedger(companyId: string, f: { holder?: string; from?: string; to?: string } = {}) {
+  return (await sql`
+    select l.id, to_char(je.entry_date, 'YYYY-MM-DD') as date, je.id as entry_id, je.entry_no,
+           d.id as doc_id, d.doc_no, d.reference, coalesce(d.memo, je.memo) as memo,
+           s.id as holder_id, s.name as holder, a.code as account_code,
+           (-l.base_amount)::float as amount
+      from shareholder s
+      join account a on a.id = s.equity_account_id
+      join journal_line l on l.account_id = s.equity_account_id
+      join journal_entry je on je.id = l.journal_entry_id
+      left join document d on d.id = je.source_id
+     where s.company_id = ${companyId}
+       ${f.holder ? sql`and s.id = ${f.holder}` : sql``}
+       ${f.to ? sql`and je.entry_date <= ${f.to}::date` : sql``}
+     order by je.entry_date, je.entry_no, l.id`) as unknown as {
+      id: string; date: string; entry_id: string; entry_no: string; doc_id: string | null; doc_no: string | null;
+      reference: string | null; memo: string | null; holder_id: string; holder: string; account_code: string; amount: number }[];
+}
+
+export type ShareholderInput = {
+  name: string; isCompany: boolean; phone?: string | null; email?: string | null; address?: string | null; notes?: string | null;
+  equityAccountId?: string | null; noOfShares?: number | null; sharePrice?: number | null;
+};
+
+function cleanHolder(s: ShareholderInput) {
   const name = s.name.trim();
   if (!name) throw new Error("Enter the shareholder's name.");
+  for (const [v, label] of [[s.noOfShares, "Number of shares"], [s.sharePrice, "Price per share"]] as const) {
+    if (v != null && !(Number.isFinite(v) && v >= 0)) throw new Error(`${label} must be zero or more.`);
+  }
+  if (s.noOfShares != null && !Number.isInteger(s.noOfShares)) throw new Error("Number of shares must be a whole number.");
+  return { ...s, name };
+}
+
+async function assertEquityAccount(tx: TransactionSql, companyId: string, id: string | null | undefined) {
+  if (!id) return;
+  const [a] = await tx`select 1 from account where id = ${id} and company_id = ${companyId} and account_type = 'EQUITY' and is_postable`;
+  if (!a) throw new Error("Choose a postable equity account.");
+}
+
+const takenMsg = (e: unknown) =>
+  e instanceof Error && /shareholder_equity_account/.test(e.message) ? new Error("Another shareholder already uses that equity account.") : e;
+
+export async function createShareholder(companyId: string, input: ShareholderInput) {
+  const s = cleanHolder(input);
   return inTransaction(undefined, async (tx) => {
     const [{ k }] = await tx`
       select (select count(*)::int + 1 from shareholder where company_id = ${companyId}) as k
         from company where id = ${companyId} for update`;
+    await assertEquityAccount(tx, companyId, s.equityAccountId);
     const [row] = await tx`
-      insert into shareholder (company_id, code, name, is_company, phone, email, address, notes)
-      values (${companyId}, ${`SH-${String(k).padStart(4, "0")}`}, ${name}, ${s.isCompany}, ${s.phone || null}, ${s.email || null}, ${s.address || null}, ${s.notes || null})
-      returning id, code`;
+      insert into shareholder (company_id, code, name, is_company, phone, email, address, notes, equity_account_id, no_of_shares, share_price)
+      values (${companyId}, ${`SH-${String(k).padStart(4, "0")}`}, ${s.name}, ${s.isCompany}, ${s.phone || null}, ${s.email || null}, ${s.address || null}, ${s.notes || null},
+              ${s.equityAccountId || null}, ${s.noOfShares ?? null}, ${s.sharePrice ?? null})
+      returning id, code`.catch((e) => { throw takenMsg(e); });
     return row as { id: string; code: string };
   });
+}
+
+/** Details only: posts nothing, and leaves share transfers and folio as they are. */
+export async function updateShareholder(companyId: string, id: string, input: ShareholderInput) {
+  const s = cleanHolder(input);
+  return inTransaction(undefined, async (tx) => {
+    await assertEquityAccount(tx, companyId, s.equityAccountId);
+    const [row] = await tx`
+      update shareholder set name = ${s.name}, is_company = ${s.isCompany}, phone = ${s.phone || null}, email = ${s.email || null},
+             address = ${s.address || null}, notes = ${s.notes || null}, equity_account_id = ${s.equityAccountId || null},
+             no_of_shares = ${s.noOfShares ?? null}, share_price = ${s.sharePrice ?? null}
+       where id = ${id} and company_id = ${companyId}
+      returning code`.catch((e) => { throw takenMsg(e); });
+    if (!row) throw new Error("That shareholder was not found.");
+    return row as { code: string };
+  });
+}
+
+export async function getShareholder(companyId: string, id: string) {
+  const [row] = await sql`
+    select id, code, name, is_company, phone, email, address, notes, equity_account_id,
+           no_of_shares::float as no_of_shares, share_price::float as share_price
+      from shareholder where id = ${id} and company_id = ${companyId}`;
+  return row ?? null;
+}
+
+/** Postable equity accounts, for the shareholder form's capital account. */
+export async function equityAccounts(companyId: string) {
+  return (await sql`select id, code, name from account where company_id = ${companyId} and account_type = 'EQUITY' and is_postable and is_active order by code`) as unknown as { id: string; code: string; name: string }[];
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "./auth";
-import { createShareholder, postShareTransfer, cancelShareTransfer, type ShareType, type TransferType } from "./shares";
+import { createShareholder, updateShareholder, postShareTransfer, cancelShareTransfer, type ShareType, type TransferType, type ShareholderInput } from "./shares";
 
 type Result = { error?: string } | null;
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -13,15 +13,31 @@ export async function createShareholderAction(_prev: Result, fd: FormData): Prom
   const u = await requirePermission("accounting.post");
   let code: string;
   try {
-    code = (await createShareholder(u.companyId, {
-      name: str(fd, "name"), isCompany: fd.get("is_company") !== null,
-      phone: str(fd, "phone"), email: str(fd, "email"), address: str(fd, "address"), notes: str(fd, "notes"),
-    })).code;
+    code = (await createShareholder(u.companyId, holderFrom(fd))).code;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
   revalidatePath(PATH, "layout");
   redirect(`${PATH}/shareholders?toast=${encodeURIComponent(`Shareholder ${code} added. Issue shares to give it a balance.`)}`);
+}
+
+const num = (fd: FormData, k: string) => (str(fd, k).replace(/,/g, "") === "" ? null : Number(str(fd, k).replace(/,/g, "")));
+const holderFrom = (fd: FormData): ShareholderInput => ({
+  name: str(fd, "name"), isCompany: fd.get("is_company") !== null,
+  phone: str(fd, "phone"), email: str(fd, "email"), address: str(fd, "address"), notes: str(fd, "notes"),
+  equityAccountId: str(fd, "equity_account_id") || null, noOfShares: num(fd, "no_of_shares"), sharePrice: num(fd, "share_price"),
+});
+
+export async function updateShareholderAction(_prev: Result, fd: FormData): Promise<Result> {
+  const u = await requirePermission("accounting.post");
+  let code: string;
+  try {
+    code = (await updateShareholder(u.companyId, str(fd, "id"), holderFrom(fd))).code;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath(PATH, "layout");
+  redirect(`${PATH}/shareholders?toast=${encodeURIComponent(`Shareholder ${code} saved`)}`);
 }
 
 export async function postShareTransferAction(_prev: Result, fd: FormData): Promise<Result> {
