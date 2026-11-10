@@ -33,5 +33,13 @@ export function ordersAndDeliveriesOn(company: { retail_mode?: boolean | null } 
  *
  * Before turning it on: the owner sets their own password in Settings → Users
  * while sign-in is still off, so the first sign-in is theirs.
+ *
+ * STATUS (2026-11-10): sign-in is TESTED and works; it is OFF ON PURPOSE so
+ * the owner can test without accounts. Not forgotten, not broken.
+ *   tested   scripts/check-http-roles.mjs, 53 checks against a production
+ *            build with sign-in on: every role, branch and cost restriction,
+ *            refused document URLs and exports; scripts/test-sign-in-rule.mjs
+ *            (fails closed in every combination); scripts/test-price-guard.mjs.
+ *   turn on  when the owner says "ready": set this to true and redeploy.
  */
 export const SIGN_IN_REQUIRED = false;
