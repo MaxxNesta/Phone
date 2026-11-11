@@ -1157,6 +1157,8 @@
     "title": "Dashboard",
     "denied": "Your role cannot open that page ({page}). Ask a manager.",
     "todaysSales": "Today's Sales",
+    "today": "Today",
+    "earlierDays": "Earlier days",
     "noSalesYesterday": "No sales yesterday",
     "vsYesterday": "{pct}% vs yesterday",
     "grossProfit": "Gross Profit",
