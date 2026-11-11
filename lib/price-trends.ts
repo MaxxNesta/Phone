@@ -91,3 +91,39 @@ export function timeline(lines: TrendLine[], size: "day" | "week" | "month") {
   });
   return { points, buckets };
 }
+
+export type PriceChange = {
+  key: string; item: string; code: string; uom: string; date: string;
+  /** The price before (that product's previous day with a line) and on this day. */
+  prev: number; next: number; change: number; pct: number | null; prevDate: string;
+  /** The documents that set the new price. */
+  docs: { id: string; no: string }[];
+};
+
+/**
+ * The days a product's price actually moved: its quantity-weighted price that
+ * day against its price the previous day it was bought or sold. A day at the
+ * same price is not a change, and neither is the first day in the period — it
+ * has nothing earlier in the period to differ from.
+ * ponytail: "previous" looks only inside the filtered period; read the last
+ * price before it if a change on the period's first day needs catching.
+ */
+export function priceChanges(rows: (TrendLine & { doc_id: string })[]): PriceChange[] {
+  const groups = new Map<string, (TrendLine & { doc_id: string })[]>();
+  for (const r of rows) {
+    const k = trendKey(r);
+    (groups.get(k) ?? groups.set(k, []).get(k)!).push(r);
+  }
+  const out: PriceChange[] = [];
+  for (const [key, ls] of groups) {
+    const days = byDay(ls);
+    for (let i = 1; i < days.length; i++) {
+      const prev = days[i - 1].avg, next = days[i].avg;
+      if (Math.abs(next - prev) < 0.5) continue;
+      const docs = [...new Map(ls.filter((l) => l.date === days[i].date).map((l) => [l.doc_id, { id: l.doc_id, no: l.doc_no }])).values()];
+      out.push({ key, item: ls[0].item, code: ls[0].code, uom: ls[0].uom, date: days[i].date, prevDate: days[i - 1].date,
+        prev, next, change: next - prev, pct: prev > 0 ? (next - prev) / prev : null, docs });
+    }
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || Math.abs(b.change) - Math.abs(a.change));
+}

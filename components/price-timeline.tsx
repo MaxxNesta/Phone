@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ResponsiveContainer, ComposedChart, Scatter, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ComposedChart, Scatter, Line, XAxis, YAxis, CartesianGrid, Tooltip,
 } from "recharts";
 
 export type TimelinePoint = { t: number; price: number; qty: number; doc: string; partner: string };
@@ -12,10 +12,10 @@ const kyat = (v: number) => Math.round(v).toLocaleString("en-US");
 
 
 /**
- * One product's prices over time: every posted line as a dot, the
- * quantity-weighted average per period as the line through them, and the
- * period's low–high as a faint band. The dots keep the truth visible — an
- * average alone would hide one sale at half price.
+ * One product's prices over time: every posted line as a dot, and the
+ * price (quantity-weighted per day, week or month) as a step that holds
+ * until it changes. The dots keep the truth visible: an average alone would
+ * hide one sale at half price.
  */
 export function PriceTimeline({ points, buckets, label }: {
   points: TimelinePoint[]; buckets: TimelineBucket[]; label: string;
@@ -38,8 +38,9 @@ export function PriceTimeline({ points, buckets, label }: {
             axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 11 }}
           />
           <Tooltip content={<Tip />} cursor={{ stroke: "var(--line)" }} />
-          <Area dataKey="band" connectNulls stroke="none" fill="var(--chart-1)" fillOpacity={0.1} isAnimationActive={false} activeDot={false} />
-          <Line dataKey="avg" connectNulls name="Average" stroke="var(--chart-1)" strokeWidth={2} dot={false} isAnimationActive={false} />
+          {/* A step, not a slope: a price holds until the next purchase or
+              sale changes it. A sloped line would invent prices in between. */}
+          <Line dataKey="avg" type="stepAfter" connectNulls name="Price" stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 3.5, fill: "var(--surface)", stroke: "var(--chart-1)", strokeWidth: 2 }} isAnimationActive={false} />
           <Scatter dataKey="price" name="Line" fill="var(--chart-1)" fillOpacity={0.5} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
@@ -60,8 +61,8 @@ function Tip({ active, payload }: any) {
         </>
       ) : (
         <>
-          <div className="m"><strong>{kyat(p.avg!)} MMK</strong> average</div>
-          <div style={{ color: "var(--muted)" }}>{kyat(p.band![0])} – {kyat(p.band![1])} · {p.lines} line{p.lines === 1 ? "" : "s"}</div>
+          <div className="m"><strong>{kyat(p.avg!)} MMK</strong> price</div>
+          <div style={{ color: "var(--muted)" }}>{p.lines} line{p.lines === 1 ? "" : "s"}{p.band![0] !== p.band![1] && <> · from {kyat(p.band![0])} to {kyat(p.band![1])}</>}</div>
         </>
       )}
     </div>

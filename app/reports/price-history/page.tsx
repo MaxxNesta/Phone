@@ -9,7 +9,7 @@ import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { AutoApply } from "@/components/auto-apply";
 import { PriceTimeline } from "@/components/price-timeline";
-import { productTrends, timeline, bucketOf, trendKey, type ProductTrend } from "@/lib/price-trends";
+import { productTrends, timeline, bucketOf, trendKey, priceChanges, type ProductTrend } from "@/lib/price-trends";
 
 const pct = (c: number) => `${(Math.abs(c) * 100).toFixed(Math.abs(c) < 0.001 ? 2 : 1)}%`;
 /** Flat only when the price did not move by a whole kyat. */
@@ -77,7 +77,11 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
     sql`select code from currency order by code`,
     sql`select id, name from location where company_id = ${co} and is_stock_location and is_active order by code`,
   ]);
+  // What the report is about: the days a price moved, not every line posted.
+  const changes = priceChanges(rows);
+  const showAll = sp.view === "all";
   const pg = paginate(rows, sp.page, 25);
+  const pgc = paginate(changes, sp.page, 25);
 
   // The dashboard reads the same lines as the table below it.
   const trends = productTrends(rows);
@@ -125,7 +129,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
         {variance && sp.only && <input type="hidden" name="only" value={sp.only} />}
         <div className="field ph-q">
           <label htmlFor="ph-q">Product</label>
-          <input id="ph-q" name="q" defaultValue={sp.q ?? ""} placeholder="Search product name, SKU, item code or barcode…" />
+          <input id="ph-q" name="q" data-live defaultValue={sp.q ?? ""} placeholder="Search product name, SKU, item code or barcode…" />
         </div>
         <div className="field">
           <label htmlFor="ph-partner">{partnerLabel}</label>
@@ -177,7 +181,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
       {!variance && trends.length > 0 && (
         <>
           <div className="kpis ph-kpis">
-            <div className="kpi"><div className="kpi-label">Lines</div><div className="kpi-value">{rows.length.toLocaleString("en-US")}</div></div>
+            <div className="kpi"><div className="kpi-label">Price changes</div><div className="kpi-value">{changes.length.toLocaleString("en-US")}</div><div className="kpi-note">from {rows.length.toLocaleString("en-US")} posted lines</div></div>
             <div className="kpi"><div className="kpi-label">Products</div><div className="kpi-value">{trends.length.toLocaleString("en-US")}</div></div>
             <div className="kpi"><div className="kpi-label">Price went up</div><div className="kpi-value">{up}</div><div className="kpi-note">products, first day to last</div></div>
             <div className="kpi"><div className="kpi-label">Price went down</div><div className="kpi-value">{down}</div><div className="kpi-note">products, first day to last</div></div>
@@ -205,7 +209,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
               <div className="card-body">
                 <PriceTimeline points={tl.points} buckets={tl.buckets}
                   label={`${focus.item}: unit price from ${money(focus.first)} to ${money(focus.last)} MMK, ${focus.lines} lines`} />
-                <p className="ph-legend"><span className="ph-dot" aria-hidden="true" /> each line <span className="ph-bar" aria-hidden="true" /> {size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} average, shaded low to high</p>
+                <p className="ph-legend"><span className="ph-dot" aria-hidden="true" /> each {side === "sale" ? "sale" : "purchase"} <span className="ph-bar" aria-hidden="true" /> price ({size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} average), held until it changes</p>
               </div>
             </section>
           )}
@@ -239,7 +243,48 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
 
       {!variance && (
       <div className="card">
-        <div className="card-head"><h2>Lines</h2></div>
+        <div className="card-head">
+          <h2>{showAll ? "All lines" : "Price changes"}</h2>
+          <div className="scopetabs" role="tablist" aria-label="Show">
+            <Link scroll={false} className="scopetab" data-active={!showAll} href={keep({ view: undefined })}>Price changes <span className="scopetab-n">{changes.length}</span></Link>
+            <Link scroll={false} className="scopetab" data-active={showAll} href={keep({ view: "all" })}>All lines <span className="scopetab-n">{rows.length}</span></Link>
+          </div>
+        </div>
+        {!showAll ? (
+          <>
+            <div className="tablewrap">
+              <table className="ph-table">
+                <thead>
+                  <tr>
+                    <th>Date</th><th>Product / SKU</th><th className="r">Previous price</th><th className="r">New price</th>
+                    <th className="r">Change</th><th>{side === "sale" ? "Sales invoices" : side === "receipt" ? "Goods receipts" : "Purchase invoices"}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pgc.rows.map((c) => (
+                    <tr key={`${c.key}-${c.date}`}>
+                      <td>{shortDate(c.date)}</td>
+                      <td className="wrapcell"><Link scroll={false} href={keep({ item: c.key, view: undefined })} className="ph-prod">{c.item}</Link><div className="ph-sku">{c.code} · per {c.uom}</div></td>
+                      <td className="r">{money(c.prev)}<div className="ph-sku">{shortDate(c.prevDate)}</div></td>
+                      <td className="r ph-base">{money(c.next)}</td>
+                      <td className="r">
+                        <span className={c.change > 0 ? "ph-up" : "ph-down"}><span aria-hidden="true">{c.change > 0 ? "▲" : "▼"}</span> {money(Math.abs(c.change))}<span className="sr-only">{c.change > 0 ? " up" : " down"}</span></span>
+                        {c.pct !== null && <div className="ph-sku">{(Math.abs(c.pct) * 100).toFixed(Math.abs(c.pct) < 0.001 ? 2 : 1)}%</div>}
+                      </td>
+                      <td>{c.docs.slice(0, 3).map((d, i) => <span key={d.id}>{i > 0 && ", "}<Link href={`/documents/${d.id}`}>{d.no}</Link></span>)}{c.docs.length > 3 && <span className="ph-sku"> +{c.docs.length - 3}</span>}</td>
+                    </tr>
+                  ))}
+                  {changes.length === 0 && <tr><td colSpan={6} className="page-sub" style={{ textAlign: "center", padding: 24 }}>No price moved in these filters{rows.length > 0 ? ". Every product kept its price; All lines shows what was posted." : "."}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="ph-foot">
+              <span className="page-sub">{changes.length.toLocaleString("en-US")} price change{changes.length === 1 ? "" : "s"} · a day whose price (quantity-weighted) differs from that product&rsquo;s previous day in the period</span>
+              <Pager p={pgc} params={sp} />
+            </div>
+          </>
+        ) : (
+        <>
         <div className="tablewrap">
           <table className="ph-table">
             <thead>
@@ -271,6 +316,8 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
           <span className="page-sub">Showing {rows.length.toLocaleString("en-US")} line{rows.length === 1 ? "" : "s"}{rows.length >= 5000 ? " — the latest 5,000; narrow the dates for more" : ""}</span>
           <Pager p={pg} params={sp} />
         </div>
+        </>
+        )}
       </div>
       )}
     </>
