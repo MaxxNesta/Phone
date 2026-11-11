@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CanvasCat, CanvasLink, CanvasNode } from "@/lib/supply-chain";
 
-const W = 1000, CARD = 200, GAP = 16, MIN_H = 58, PAD_TOP = 40;
+const W = 1000, CARD = 200, GAP = 16, MIN_H = 58, MAX_H = 130, PAD_TOP = 40;
 const COL = { left: 10, mid: (W - CARD) / 2, right: W - CARD - 10 };
 const fmt = (v: number, unit: string) =>
   unit === "MMK" ? (v >= 1e9 ? `${+(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${+(v / 1e3).toFixed(0)}K` : `${Math.round(v)}`)
@@ -36,7 +36,12 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
     // The canvas grows with the number of cards, not with volume: one
     // supplier and one category make a short canvas, not two 400px slabs.
     const target = Math.min(440, Math.max(150, most * 92));
-    const scale = Math.max(...sums) > 0 ? Math.max(0, target - GAP * (most - 1)) / Math.max(...sums) : 0;
+    // No card taller than MAX_H: the scale shrinks until the busiest single
+    // card fits, and every ribbon shrinks with it, so they stay in proportion
+    // and inside their cards.
+    const biggest = Math.max(...left.map((n) => n.total), ...midTotals, ...right.map((n) => n.total), 0);
+    const fit = Math.max(...sums) > 0 ? Math.max(0, target - GAP * (most - 1)) / Math.max(...sums) : 0;
+    const scale = biggest > 0 ? Math.min(fit, MAX_H / biggest) : 0;
     const place = (items: { key: string; label: string; total: number; cat?: CanvasCat }[], x: number, size: (i: number) => number) => {
       const hs = items.map((_, i) => Math.max(MIN_H, size(i) * scale));
       return { hs, x, items };
