@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Download, Info, RotateCcw } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
-import { getPriceHistory, type PriceSide } from "@/lib/queries";
+import { getPriceHistory, getOrderInvoiceVariance, type PriceSide } from "@/lib/queries";
+import { OrderVariance } from "./variance";
 import { money, shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
@@ -57,14 +58,19 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
   // What was paid for stock is cost: shown only to those who may see cost.
   const seeCost = can(user, "cost.view");
   const side: PriceSide = sp.side === "sale" || !seeCost ? "sale" : sp.side === "receipt" ? "receipt" : "purchase";
+  // Order against invoice: purchase prices, so cost-only too.
+  const variance = seeCost && sp.side === "variance";
+  const tab = variance ? "variance" : side;
   const buying = side !== "sale";
   const range = { from: sp.from || firstOfLastMonth(), to: sp.to || new Date().toISOString().slice(0, 10) };
 
-  const [rows, partners, currencies, locations] = await Promise.all([
-    getPriceHistory(co, side, {
-      q: sp.q || undefined, partnerId: sp.partner || undefined, currency: sp.currency || undefined,
-      locationId: sp.location || undefined, from: range.from, to: range.to,
-    }),
+  const filters = {
+    q: sp.q || undefined, partnerId: sp.partner || undefined, currency: sp.currency || undefined,
+    locationId: sp.location || undefined, from: range.from, to: range.to,
+  };
+  const [rows, vrows, partners, currencies, locations] = await Promise.all([
+    variance ? Promise.resolve([]) : getPriceHistory(co, side, filters),
+    variance ? getOrderInvoiceVariance(co, filters) : Promise.resolve([]),
     buying
       ? sql`select id, name from business_partner where company_id = ${co} and is_supplier and is_active order by name`
       : sql`select id, name from business_partner where company_id = ${co} and is_customer and is_active order by name`,
@@ -92,7 +98,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
     for (const [k, v] of Object.entries({ ...sp, page: undefined, ...over })) if (v) q.set(k, v);
     return `?${q}`;
   };
-  const exportHref = `/reports/price-history/export${keep({ side })}`;
+  const exportHref = `/reports/price-history/export${keep({ side: tab })}`;
   const partnerLabel = buying ? "Supplier" : "Customer";
 
   return (
@@ -108,13 +114,15 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
       </div>
 
       <div className="scopetabs" style={{ margin: "0 0 12px" }} role="tablist" aria-label="Side">
-        {seeCost && <Link scroll={false} className="scopetab" data-active={side === "purchase"} href={keep({ side: "purchase", partner: undefined })}>Purchases</Link>}
-        {seeCost && <Link scroll={false} className="scopetab" data-active={side === "receipt"} href={keep({ side: "receipt", partner: undefined })}>Goods receipts</Link>}
-        <Link scroll={false} className="scopetab" data-active={side === "sale"} href={keep({ side: "sale", partner: undefined })}>Sales</Link>
+        {seeCost && <Link scroll={false} className="scopetab" data-active={!variance && side === "purchase"} href={keep({ side: "purchase", partner: undefined })}>Purchases</Link>}
+        {seeCost && <Link scroll={false} className="scopetab" data-active={!variance && side === "receipt"} href={keep({ side: "receipt", partner: undefined })}>Goods receipts</Link>}
+        <Link scroll={false} className="scopetab" data-active={!variance && side === "sale"} href={keep({ side: "sale", partner: undefined })}>Sales</Link>
+        {seeCost && <Link scroll={false} className="scopetab" data-active={variance} href={keep({ side: "variance", partner: undefined, item: undefined })}>Order vs invoice</Link>}
       </div>
 
       <form className="card filters ph-filters" method="get">
-        <input type="hidden" name="side" value={side} />
+        <input type="hidden" name="side" value={tab} />
+        {variance && sp.only && <input type="hidden" name="only" value={sp.only} />}
         <div className="field ph-q">
           <label htmlFor="ph-q">Product</label>
           <input id="ph-q" name="q" defaultValue={sp.q ?? ""} placeholder="Search product name, SKU, item code or barcode…" />
@@ -153,16 +161,20 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
         <div className="actions">
           <AutoApply />
           <button type="submit" className="btn ghost" data-apply>Filter</button>
-          <Link href={`?side=${side}`} className="btn ghost"><RotateCcw size={14} aria-hidden="true" /> Reset</Link>
+          <Link href={`?side=${tab}`} className="btn ghost"><RotateCcw size={14} aria-hidden="true" /> Reset</Link>
         </div>
       </form>
 
       <p className="ph-note">
         <Info size={15} aria-hidden="true" />
-        Net unit price after line discounts, before tax. Converted at each document&rsquo;s own saved exchange rate — a later rate change does not alter history.
+        {variance
+          ? <>Supplier bills against the purchase order behind them. A bill raised straight from an order is held to the order&rsquo;s price, so a difference comes from goods received first and billed later at another price.</>
+          : <>Net unit price after line discounts, before tax. Converted at each document&rsquo;s own saved exchange rate — a later rate change does not alter history.</>}
       </p>
 
-      {trends.length > 0 && (
+      {variance && <OrderVariance rows={vrows} all={sp.only === "all"} keep={keep} />}
+
+      {!variance && trends.length > 0 && (
         <>
           <div className="kpis ph-kpis">
             <div className="kpi"><div className="kpi-label">Lines</div><div className="kpi-value">{rows.length.toLocaleString("en-US")}</div></div>
@@ -225,6 +237,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
         </>
       )}
 
+      {!variance && (
       <div className="card">
         <div className="card-head"><h2>Lines</h2></div>
         <div className="tablewrap">
@@ -259,6 +272,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
           <Pager p={pg} params={sp} />
         </div>
       </div>
+      )}
     </>
   );
 }

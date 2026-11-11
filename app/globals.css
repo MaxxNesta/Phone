@@ -9711,3 +9711,5 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .stl-from { flex-basis: 100%; margin: 4px 0 0; font-size: var(--t-sm); color: var(--muted); }
 .stl-from strong { color: var(--ink); }
 .stl-table tbody tr.from td:first-child { box-shadow: inset 3px 0 0 var(--ink); }
+.ph-over { color: var(--ink); font-weight: 600; white-space: nowrap; }
+.ph-under { color: var(--muted); font-weight: 600; white-space: nowrap; }

@@ -8311,3 +8311,53 @@ export async function openBillsByPartner(companyId: string, docType: "SALES_INVO
   }
   return out;
 }
+
+/** One invoiced line that came from a purchase order: what was agreed and what was billed. */
+export type OrderVarianceRow = {
+  doc_id: string; doc_no: string; date: string; order_id: string; order_no: string; order_date: string;
+  partner: string; item: string; code: string; uom: string; qty: number; currency: string;
+  /** Per the invoice's own unit, in kyat — the order's price converted to it when the units differ. */
+  order_price: number; invoice_price: number;
+};
+
+/**
+ * Supplier invoice lines against the purchase order behind them. An invoice
+ * line names its order line directly (billed from the order) or through the
+ * goods receipt line it bills (order → receipt → invoice); both are followed.
+ * Prices are the unit price before discounts on both sides, the same figure
+ * the supplier-performance matching check compares, and per the invoice's
+ * unit: an order in cartons billed in pieces is compared per piece.
+ */
+export async function getOrderInvoiceVariance(companyId: string, f: {
+  q?: string; partnerId?: string; from: string; to: string; currency?: string; locationId?: string;
+}, db: typeof sql | TransactionSql = sql): Promise<OrderVarianceRow[]> {
+  const like = f.q ? `%${f.q.trim()}%` : null;
+  const rows = await db`
+    select d.id as doc_id, d.doc_no, d.posting_date::text as date,
+           po.id as order_id, po.doc_no as order_no, po.doc_date::text as order_date,
+           coalesce(p.name, '—') as partner, i.name as item, i.code,
+           coalesce(u.code, bu.code) as uom, coalesce(dl.entered_qty, dl.base_qty)::float as qty, d.currency,
+           (ol.unit_price / nullif(ol.conversion_factor, 0) * dl.conversion_factor)::float as order_price,
+           dl.unit_price::float as invoice_price
+      from document d
+      join document_line dl on dl.document_id = d.id
+      join item i on i.id = dl.item_id
+      join uom bu on bu.id = i.base_uom_id
+      left join uom u on u.id = dl.entered_uom_id
+      left join business_partner p on p.id = d.partner_id
+      join document_line s1 on s1.id = dl.source_line_id
+      join document s1d on s1d.id = s1.document_id
+      join document_line ol on ol.id = case when s1d.doc_type = 'PURCHASE_ORDER' then s1.id else s1.source_line_id end
+      join document po on po.id = ol.document_id and po.doc_type = 'PURCHASE_ORDER'
+     where d.company_id = ${companyId}
+       and d.doc_type = 'PURCHASE_INVOICE' and d.status = 'POSTED'
+       and dl.foc_reason_id is null
+       and d.posting_date between ${f.from}::date and ${f.to}::date
+       and (${like}::text is null or i.name ilike ${like} or i.code ilike ${like} or i.barcode = ${f.q ?? null})
+       and (${f.partnerId ?? null}::uuid is null or d.partner_id = ${f.partnerId ?? null})
+       and (${f.currency ?? null}::text is null or d.currency = ${f.currency ?? null})
+       and (${f.locationId ?? null}::uuid is null or coalesce(dl.location_id, d.location_id) = ${f.locationId ?? null})
+     order by d.posting_date desc, d.doc_no desc
+     limit 5000`;
+  return rows as unknown as OrderVarianceRow[];
+}
