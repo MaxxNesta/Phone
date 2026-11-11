@@ -9754,3 +9754,31 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .ph-share { display: block; width: 100%; max-width: 120px; margin-left: auto; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
 .ph-share > span { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
 .ph-timeline { margin-bottom: 12px; }
+
+/* Price history, product view: a report canvas in the report's own palette —
+   teal for the price, slate beside it. Only this page uses it. */
+:root { --pbi-teal: #01B8AA; --pbi-slate: #374649; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --pbi-teal: #2FD1C3; --pbi-slate: #A8B4B7; } }
+:root[data-theme="dark"] { --pbi-teal: #2FD1C3; --pbi-slate: #A8B4B7; }
+.pbi { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px 10px; margin: 0 0 12px; }
+.pbi-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.pbi-back { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line); color: var(--muted); flex: none; }
+.pbi-back:hover { color: var(--ink); border-color: var(--ink); }
+.pbi-title { display: grid; justify-items: end; gap: 2px; text-align: right; min-width: 0; }
+.pbi-title h2 { margin: 0; font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.pbi-title p { margin: 0 0 6px; font-size: 1rem; color: var(--muted); }
+.pbi-top { display: grid; grid-template-columns: minmax(260px, 0.9fr) 1.2fr 1.2fr; gap: 24px; align-items: start; }
+.pbi-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 26px 18px; margin: 8px 0 0; text-align: center; }
+.pbi-kpis dd { margin: 0; font-size: 1.85rem; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.pbi-kpis dt { margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
+.pbi-panel h3 { margin: 0 0 6px; font-size: 0.95rem; font-weight: 500; color: var(--muted); }
+.pbi-time { margin-top: 18px; }
+.pbi-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 6px; font-size: 0.75rem; color: var(--ink); }
+.pbi-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-left: 6px; }
+.pbi-legend i:first-child { margin-left: 0; }
+.pbi-legend i.dot { width: 7px; height: 7px; opacity: .6; }
+.pbi-note { margin-left: auto; color: var(--muted); }
+.pbi-empty { margin: 20px 0; font-size: 0.85rem; color: var(--muted); }
+@media (max-width: 1000px) { .pbi-top { grid-template-columns: 1fr; } .pbi-title { justify-items: start; text-align: left; } .pbi-head { flex-direction: column; } }
+.pbi .ph-up { color: var(--pbi-teal); }
+.pbi .ph-down { color: var(--pbi-slate); }

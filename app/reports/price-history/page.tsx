@@ -10,6 +10,7 @@ import { Pager } from "@/components/pager";
 import { AutoApply } from "@/components/auto-apply";
 import { PriceTimeline } from "@/components/price-timeline";
 import { PricePicker } from "@/components/price-picker";
+import { GroupBars, type GroupBar } from "@/components/price-group-bars";
 import {
   productTrends, timeline, bucketOf, trendKey, priceChanges, breakdown,
   type ProductTrend, type PriceChange, type Slice,
@@ -274,7 +275,11 @@ function Overview({ rows, trends, side, sp, keep, pick, partnerLabel }: {
   );
 }
 
-/** One product: what it went for, how that moved, and where it differed. */
+/**
+ * One product, laid out as a report page: the figures that matter in the top
+ * left, the price by group beside them, the price over time across the
+ * bottom. Teal and slate are this report's own palette.
+ */
 function ProductView({ focus, rows, side, sp, keep, pickerOptions, partnerLabel, range }: {
   focus: ProductTrend; rows: PriceRow[]; side: PriceSide; sp: Search; keep: (o: Search) => string;
   pickerOptions: { key: string; item: string; code: string; uom: string; lines: number; change: number | null }[];
@@ -286,53 +291,79 @@ function ProductView({ focus, rows, side, sp, keep, pickerOptions, partnerLabel,
   const dates = rows.map((r) => r.date).sort();
   const size = bucketOf(dates[0] ?? range.from, dates[dates.length - 1] ?? range.to);
   const tl = timeline(rows, size);
+  // The same periods priced including tax, for the second line.
+  const withTax = rows.map((r) => ({ ...r, unit_base: r.unit_base + r.unit_tax }));
+  const tlTax = timeline(withTax, size);
+  const buckets = tl.buckets.map((b) => ({ ...b, avgTax: tlTax.buckets.find((x) => x.t === b.t)?.avg }));
   const taxed = rows.some((r) => Math.abs(r.unit_tax) >= 0.005);
-  const avgTax = focus.qty ? rows.reduce((t, r) => t + (r.unit_base + r.unit_tax) * r.qty, 0) / focus.qty : 0;
+  const avgTax = focus.qty ? withTax.reduce((t, r) => t + r.unit_base * r.qty, 0) / focus.qty : 0;
   const sale = side === "sale";
-  // Each breakdown only when it says something: two or more groups to compare.
-  const parts: [string, Slice[]][] = ([
-    [sale ? "By customer group" : "By supplier group", breakdown(rows, (r) => r.pgroup)],
-    ...(sale ? [["By price level", breakdown(rows, (r) => r.level)] as [string, Slice[]]] : []),
-    ["By branch", breakdown(rows, (r) => r.branch)],
-    [`By ${partnerLabel.toLowerCase()}`, breakdown(rows, (r) => r.partner).slice(0, 8)],
+
+  /** A grouping as bars: before and including tax, side by side. */
+  const bars = (by: (r: PriceRow) => string | null | undefined): GroupBar[] => {
+    const tax = new Map(breakdown(withTax, by).map((x) => [x.label, x.avg]));
+    return breakdown(rows, by).map((x) => ({ label: x.label, avg: x.avg, avgTax: tax.get(x.label) ?? null, qty: x.qty }));
+  };
+  const left: [string, GroupBar[], string] = sale
+    ? ["Average price by customer group", bars((r) => r.pgroup), "No customer here belongs to a customer group."]
+    : ["Average price by supplier", bars((r) => r.partner), "No supplier on these lines."];
+  const right: [string, GroupBar[], string] = sale
+    ? ["Average price by price level", bars((r) => r.level), "No sale of it recorded a price level."]
+    : ["Average price by branch", bars((r) => r.branch), "No branch on these lines."];
+  // The groupings not on the board, as tables underneath — only where there
+  // are two or more to compare.
+  const more = ([
+    ...(sale ? [["By branch", breakdown(rows, (r) => r.branch)], [`By ${partnerLabel.toLowerCase()}`, breakdown(rows, (r) => r.partner).slice(0, 8)]] : []),
     ["By discount", breakdown(rows, (r) => r.disc_kind ?? "No discount")],
-  ] as [string, Slice[]][]).filter(([label, s]) => s.length > 1 || (label === "By discount" && s.some((x) => x.label !== "No discount")));
+  ] as [string, Slice[]][]).filter(([label, x]) => x.length > 1 || (label === "By discount" && x.some((y) => y.label !== "No discount")));
   const clear = keep({ item: undefined, q: sp.q && sp.q.trim().toLowerCase() === focus.code.toLowerCase() ? undefined : sp.q });
+  const big = (v: number) => (v >= 1e9 ? `${+(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${+(v / 1e6).toFixed(2)}M` : v >= 1e4 ? `${+(v / 1e3).toFixed(1)}K` : v.toLocaleString("en-US"));
 
   return (
     <>
-      <div className="ph-pv-head">
-        <Link scroll={false} href={clear} className="btn ghost ph-back"><ArrowLeft size={15} aria-hidden="true" /> All products</Link>
-        <div className="ph-pv-title">
-          <h2>{focus.item}</h2>
-          <span className="ph-sku">{focus.code} · per {focus.uom}</span>
+      <section className="pbi">
+        <header className="pbi-head">
+          <Link scroll={false} href={clear} className="pbi-back" aria-label="Back to all products" title="All products"><ArrowLeft size={18} aria-hidden="true" /></Link>
+          <div className="pbi-title">
+            <h2>{focus.item}</h2>
+            <p>Product price analysis <span className="ph-sku">· {focus.code} · per {focus.uom}</span></p>
+            <PricePicker value={focus.key} baseQuery={keep({ item: undefined })} options={pickerOptions} />
+          </div>
+        </header>
+
+        <div className="pbi-top">
+          <dl className="pbi-kpis">
+            <div><dd title={`${money(focus.avg)} MMK`}>{big(focus.avg)}</dd><dt>Average price</dt></div>
+            {taxed
+              ? <div><dd title={`${money(avgTax)} MMK`}>{big(avgTax)}</dd><dt>Average price incl tax</dt></div>
+              : <div><dd title={`${money(focus.low)} – ${money(focus.high)} MMK`}>{big(focus.high - focus.low)}</dd><dt>Price range</dt></div>}
+            <div><dd>{focus.orders.toLocaleString("en-US")}</dd><dt>{sale ? "Invoices" : "Bills"} count</dt></div>
+            <div><dd>{big(focus.qty)}</dd><dt>Quantity {sale ? "sold" : "bought"}</dt></div>
+          </dl>
+          {[left, right].map(([title, data, empty]) => (
+            <div key={title} className="pbi-panel">
+              <h3>{title}</h3>
+              <GroupBars data={data} empty={empty} />
+            </div>
+          ))}
         </div>
-        <PricePicker value={focus.key} baseQuery={keep({ item: undefined })} options={pickerOptions} />
-      </div>
 
-      <div className="kpis ph-kpis">
-        <div className="kpi"><div className="kpi-label">Average price</div><div className="kpi-value">{money(focus.avg)}</div>
-          <div className="kpi-note">{taxed ? <>incl. tax {money(avgTax)}</> : "MMK, quantity-weighted"}</div></div>
-        <div className="kpi"><div className="kpi-label">Price range</div><div className="kpi-value">{money(focus.high - focus.low)}</div>
-          <div className="kpi-note">{money(focus.low)} – {money(focus.high)}</div></div>
-        <div className="kpi"><div className="kpi-label">Price changes</div><div className="kpi-value">{changes.length}</div>
-          <div className="kpi-note">{money(focus.first)} → {money(focus.last)} · <Change t={focus} /></div></div>
-        <div className="kpi"><div className="kpi-label">{sale ? "Invoices" : "Bills"}</div><div className="kpi-value">{focus.orders}</div>
-          <div className="kpi-note">{focus.qty.toLocaleString("en-US")} {focus.uom} · {focus.lines} line{focus.lines === 1 ? "" : "s"}</div></div>
-      </div>
-
-      <section className="card ph-timeline">
-        <div className="card-head"><h2>Price over time</h2></div>
-        <div className="card-body">
-          <PriceTimeline points={tl.points} buckets={tl.buckets}
+        <div className="pbi-panel pbi-time">
+          <h3>Average price timeline</h3>
+          <p className="pbi-legend">
+            <i style={{ background: "var(--pbi-teal)" }} /> Average price
+            {taxed && <><i style={{ background: "var(--pbi-slate)" }} /> Average price incl tax</>}
+            <i className="dot" style={{ background: "var(--pbi-slate)" }} /> each {sale ? "sale" : "purchase"}
+            <span className="pbi-note">{size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} · {money(focus.first)} → {money(focus.last)} · <Change t={focus} /> · {changes.length} change{changes.length === 1 ? "" : "s"}</span>
+          </p>
+          <PriceTimeline points={tl.points} buckets={buckets}
             label={`${focus.item}: unit price from ${money(focus.first)} to ${money(focus.last)} MMK, ${focus.lines} lines`} />
-          <p className="ph-legend"><span className="ph-dot" aria-hidden="true" /> each {sale ? "sale" : "purchase"} <span className="ph-bar" aria-hidden="true" /> price ({size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} average), held until it changes</p>
         </div>
       </section>
 
-      {parts.length > 0 && (
+      {more.length > 0 && (
         <div className="ph-parts">
-          {parts.map(([label, slices]) => (
+          {more.map(([label, slices]) => (
             <section key={label} className="card ph-part">
               <div className="card-head"><h2>{label}</h2></div>
               <table className="ph-table ph-part-table">
