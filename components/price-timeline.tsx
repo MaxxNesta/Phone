@@ -42,9 +42,9 @@ export function PriceTimeline({ points, buckets, label }: {
           <Tooltip content={<Tip />} cursor={{ stroke: "var(--line)" }} />
           {/* A step, not a slope: a price holds until the next purchase or
               sale changes it. A sloped line would invent prices in between. */}
-          <Line dataKey="avg" type="stepAfter" connectNulls name="Average price" stroke="var(--pbi-line)" strokeWidth={2.25} dot={{ r: 3.5, fill: "var(--pbi-main)", stroke: "var(--pbi-line)", strokeWidth: 1.5 }} isAnimationActive={false} />
+          <Line dataKey="avg" type="stepAfter" connectNulls name="Average price" stroke="var(--pbi-line)" strokeWidth={2.25} dot={{ r: 3.5, fill: "var(--surface)", stroke: "var(--pbi-line)", strokeWidth: 2 }} isAnimationActive={false} />
           {taxed && <Line dataKey="avgTax" type="stepAfter" connectNulls name="Average price incl tax" stroke="var(--pbi-alt)" strokeWidth={2} dot={false} isAnimationActive={false} />}
-          <Scatter dataKey="price" name="Line" fill="var(--pbi-main)" stroke="var(--pbi-line)" strokeWidth={1} isAnimationActive={false} />
+          <Scatter dataKey="price" name="Line" fill="var(--pbi-alt)" fillOpacity={0.45} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </div>
