@@ -351,9 +351,9 @@ function ProductView({ focus, rows, side, sp, keep, pickerOptions, partnerLabel,
         <div className="pbi-panel pbi-time">
           <h3>Average price timeline</h3>
           <p className="pbi-legend">
-            <i style={{ background: "var(--pbi-main)" }} /> Average price
+            <i style={{ background: "var(--pbi-line)" }} /> Average price
             {taxed && <><i style={{ background: "var(--pbi-alt)" }} /> Average price incl tax</>}
-            <i className="dot" style={{ background: "var(--pbi-alt)" }} /> each {sale ? "sale" : "purchase"}
+            <i className="dot" style={{ background: "var(--pbi-main)", boxShadow: "0 0 0 1px var(--pbi-line)" }} /> each {sale ? "sale" : "purchase"}
             <span className="pbi-note">{size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} · {money(focus.first)} → {money(focus.last)} · <Change t={focus} /> · {changes.length} change{changes.length === 1 ? "" : "s"}</span>
           </p>
           <PriceTimeline points={tl.points} buckets={buckets}
