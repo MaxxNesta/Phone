@@ -112,7 +112,12 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
   const exportHref = `/reports/price-history/export${keep({ side: tab })}`;
   const partnerLabel = buying ? "Supplier" : "Customer";
   const pick = (k: string) => keep({ item: k, view: undefined, sort: undefined, products: undefined });
-  const pickerOptions = byLines.map((t) => ({ key: t.key, item: t.item, code: t.code, uom: t.uom, lines: t.lines, change: moved(t) ? t.change : null }));
+  // The product list offers every product in the period, not only what the
+  // Product search left: arriving by searching one SKU must still let you
+  // switch to another. Read again without the search only in that case.
+  const pickFrom = focus && filters.q ? productTrends(await getPriceHistory(co, side, { ...filters, q: undefined }))
+    .sort((a, b) => b.lines - a.lines || a.item.localeCompare(b.item)) : byLines;
+  const pickerOptions = pickFrom.map((t) => ({ key: t.key, item: t.item, code: t.code, uom: t.uom, lines: t.lines, change: moved(t) ? t.change : null }));
   const sel = (id: string, name: string, label: string, all: string, opts: { id: string; name: string }[]) => opts.length > 1 && (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -327,7 +332,7 @@ function ProductView({ focus, rows, side, sp, keep, pickerOptions, partnerLabel,
           <div className="pbi-title">
             <h2>{focus.item}</h2>
             <p>Product price analysis <span className="ph-sku">· {focus.code} · per {focus.uom}</span></p>
-            <PricePicker value={focus.key} baseQuery={keep({ item: undefined })} options={pickerOptions} />
+            <PricePicker value={focus.key} baseQuery={keep({ item: undefined, q: undefined })} options={pickerOptions} />
           </div>
         </header>
 

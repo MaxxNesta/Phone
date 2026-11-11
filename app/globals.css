@@ -9727,8 +9727,14 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
   border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-weight: 500;
 }
 .pp-btn:hover { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
-.pp-btn-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pp-btn-text small { margin-left: 6px; color: var(--muted); font-weight: 400; }
+.pp-btn-text { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pp-btn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pp-btn-text small { flex: none; color: var(--muted); font-weight: 400; }
+.pp-btn[aria-busy] { opacity: .65; cursor: progress; }
+.pp-chev { flex: none; transition: transform .15s ease; }
+.pp-chev.up { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .pp-chev { transition: none; } }
+.pp-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .pp-pop {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(460px, calc(100vw - 32px));
   display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
@@ -9736,13 +9742,17 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 }
 .pp-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; }
 .pp-search svg { color: var(--muted); flex: none; }
-.pp-search input { border: 0; background: transparent; min-height: 36px; width: 100%; outline: none; }
+.pp-search input { border: 0; background: transparent; min-height: 36px; width: 100%; outline: none; font-size: 16px; }
+.pp-search:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
 .pp-seg { justify-self: start; }
 .pp-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; }
 .pp-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
 .pp-list li[data-at] { background: var(--line-soft); }
 .pp-list li[aria-selected="true"] .pp-name { font-weight: 650; }
-.pp-name { display: grid; min-width: 0; }
+.pp-list li[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--blue-ink); }
+.pp-name { display: grid; min-width: 0; flex: 1 1 auto; text-align: left; }
+/* The picker sits in the right-aligned report title; its list reads left to right. */
+.pp-pop { text-align: left; justify-items: stretch; }
 .pp-name small { color: var(--muted); font-size: var(--t-xs); }
 .pp-meta { display: flex; gap: 10px; align-items: center; flex: none; font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
 .pp-empty { color: var(--muted); cursor: default !important; }
@@ -9787,3 +9797,5 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 @media (max-width: 1000px) { .pbi-top { grid-template-columns: 1fr; } .pbi-title { justify-items: start; text-align: left; } .pbi-head { flex-direction: column; } }
 .pbi .ph-up { color: var(--blue-ink); }
 .pbi .ph-down { color: var(--pbi-alt); }
+/* One focus ring on the picker's search: the box's, not the field's inside it. */
+.pp-search input, .pp-search input:focus, .pp-search input:focus-visible { border: 0; outline: none; box-shadow: none; background: transparent; }
