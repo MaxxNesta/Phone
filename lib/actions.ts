@@ -14,7 +14,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
   from "./import-vouchers";
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse, advAppliedByInvoice } from "./queries";
 import { scaffoldCompany } from "./setup";
-import { limitFor, planSwitchable, type Plan } from "./plans";
+import { limitFor, planSwitchable, planIncludes, type Plan, type Feature } from "./plans";
 import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
 import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
@@ -131,6 +131,12 @@ async function companyId(): Promise<string> {
   const [c] = await sql`select id from company order by created_at limit 1`;
   if (!c) throw new Error("No company is set up");
   return c.id;
+}
+
+/** Whether the company's package includes a feature (gating, not security: lib/plans.ts). */
+async function planHas(feature: Feature): Promise<boolean> {
+  const [c] = await sql`select plan from company order by created_at limit 1`;
+  return !!c && planIncludes(c.plan as Plan, feature);
 }
 
 /**
@@ -4772,6 +4778,11 @@ export async function deleteSupplierItem(_prev: unknown, fd: FormData): Promise<
   return { ok: true };
 }
 
+type SuggestedLine = {
+  itemId: string; qty: number; unitPrice?: number;
+  leadDays?: number; leadSource?: string;
+};
+
 export async function draftOrderFromReplenishment(
   _prev: unknown, fd: FormData,
 ): Promise<ActionResult> {
@@ -4780,14 +4791,99 @@ export async function draftOrderFromReplenishment(
   try {
     const co = await companyId();
     const supplierId = str(fd, "supplier_id") || null;
-
-    const raw = JSON.parse(str(fd, "suggestions") || "[]") as {
-      itemId: string; qty: number; unitPrice?: number;
-      leadDays?: number; leadSource?: string;
-    }[];
+    const raw = JSON.parse(str(fd, "suggestions") || "[]") as SuggestedLine[];
     const lines = raw.filter((l) => l.itemId && Number(l.qty) > 0);
     if (lines.length === 0) return { error: "Nothing on this list to order" };
+    target = `/purchases/orders/new?draft=${await draftFromSuggestions(co, supplierId, lines)}`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/purchases/orders");
+  redirect(target);
+}
 
+/**
+ * The planning workbench's "Create purchase orders": the ticked lines, one
+ * draft order per supplier (each reusing that supplier's replenishment
+ * draft, as the single-supplier button does). One supplier opens its draft;
+ * several land on the order list where the drafts wait.
+ */
+export async function draftOrdersFromPlan(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
+  let target = "";
+  try {
+    const co = await companyId();
+    if (!(await planHas("replenishment"))) return { error: "Replenishment is part of the Enterprise package" };
+    const groups = JSON.parse(str(fd, "orders") || "[]") as { supplierId: string | null; lines: SuggestedLine[] }[];
+    const ids: string[] = [];
+    for (const g of groups) {
+      const lines = (g.lines ?? []).filter((l) => l.itemId && Number(l.qty) > 0);
+      if (lines.length) ids.push(await draftFromSuggestions(co, g.supplierId || null, lines));
+    }
+    if (ids.length === 0) return { error: "Tick at least one line with a quantity to order" };
+    target = ids.length === 1 ? `/purchases/orders/new?draft=${ids[0]}` : "/purchases/orders";
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/purchases/orders");
+  redirect(target);
+}
+
+/**
+ * How one item is planned: method, min/max, a fixed safety stock (blank =
+ * worked out), and from its supplier the lead time, minimum order and pack.
+ */
+export async function savePlanning(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
+  try {
+    const co = await companyId();
+    if (!(await planHas("replenishment"))) return { error: "Replenishment is part of the Enterprise package" };
+    const itemId = str(fd, "item_id");
+    const locationId = str(fd, "location_id");
+    const supplierId = str(fd, "supplier_id") || null;
+    if (!itemId || !locationId) return { error: await m("chooseItem") };
+    await assertMyBranch(locationId);
+    const opt = (k: string) => {
+      const v = str(fd, k).trim();
+      if (v === "") return null;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0) throw new Error("Quantities and days must be zero or more");
+      return n;
+    };
+    const method = ["AUTO", "MINMAX", "MANUAL"].includes(str(fd, "method")) ? str(fd, "method") : "AUTO";
+    const min = opt("min_qty"), max = opt("max_qty"), safety = opt("safety_qty");
+    if (method === "MINMAX" && (min === null || max === null)) return { error: "Min–max needs both a minimum and a maximum" };
+    if (min !== null && max !== null && max < min) return { error: "The maximum cannot be below the minimum" };
+    const lead = opt("lead_time_days"), moq = opt("moq"), multiple = opt("order_multiple");
+    if (moq === 0 || multiple === 0) return { error: "Minimum order and pack size must be more than zero" };
+
+    await sql.begin(async (tx) => {
+      await tx`
+        insert into item_reorder (company_id, item_id, location_id, min_qty, max_qty, method, safety_qty)
+        values (${co}, ${itemId}, ${locationId}, ${min}, ${max}, ${method}, ${safety})
+        on conflict (company_id, item_id, location_id) do update
+           set min_qty = excluded.min_qty, max_qty = excluded.max_qty,
+               method = excluded.method, safety_qty = excluded.safety_qty`;
+      if (supplierId) {
+        await tx`
+          insert into supplier_item (company_id, supplier_id, item_id, lead_time_days, moq, order_multiple)
+          values (${co}, ${supplierId}, ${itemId}, ${lead}, ${moq}, ${multiple})
+          on conflict (company_id, supplier_id, item_id) do update
+             set lead_time_days = excluded.lead_time_days, moq = excluded.moq,
+                 order_multiple = excluded.order_multiple, updated_at = now()`;
+      }
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/inventory/replenishment");
+  revalidatePath("/items/stock");
+  return { ok: true };
+}
+
+/** One supplier's lines onto their replenishment draft order; returns the draft id. */
+async function draftFromSuggestions(co: string, supplierId: string | null, lines: SuggestedLine[]) {
+  {
     const today = new Date().toISOString().slice(0, 10);
     const plus = (days: number) =>
       new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
@@ -4858,14 +4954,8 @@ export async function draftOrderFromReplenishment(
       total,
       lineCount: lines.length,
     });
-    target = `/purchases/orders/new?draft=${id}`;
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
+    return id as string;
   }
-  revalidatePath("/purchases/orders");
-  // Outside the try: redirect works by throwing, and catching it here would
-  // turn a successful handoff into an error message.
-  redirect(target);
 }
 
 export async function setVariantPhoto(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -6635,26 +6725,36 @@ export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<
     const itemId = str(fd, "item_id");
     const locationId = str(fd, "location_id");
     const minQty = num(fd, "min_qty");
+    // A maximum as well makes it Min–max: below the minimum, order up to the
+    // maximum. A minimum alone is a floor under the calculated reorder point.
+    const maxRaw = str(fd, "max_qty");
+    const maxQty = maxRaw === "" ? null : Number(maxRaw);
 
     if (!itemId) return { error: await m("chooseItem") };
     if (!locationId) return { error: "Choose a location" };
     await assertMyBranch(locationId);
     if (minQty <= 0) return { error: "Reorder point must be greater than zero" };
+    if (maxQty !== null && (!Number.isFinite(maxQty) || maxQty < minQty)) {
+      return { error: "The maximum must be at least the reorder point" };
+    }
+    const method = maxQty !== null ? "MINMAX" : "AUTO";
 
-    const dup = await sql`
-      select 1 from item_reorder where company_id = ${co} and item_id = ${itemId} and location_id = ${locationId}`;
-    if (dup.length) return { error: "This item and location already has a reorder point — edit it instead" };
-
+    // One save for a new point and for changing one: the same item and
+    // warehouse always lands on the same row. Safety stock set elsewhere is kept.
     await sql`
-      insert into item_reorder (company_id, item_id, location_id, min_qty)
-      values (${co}, ${itemId}, ${locationId}, ${minQty})`;
+      insert into item_reorder (company_id, item_id, location_id, min_qty, max_qty, method)
+      values (${co}, ${itemId}, ${locationId}, ${minQty}, ${maxQty}, ${method})
+      on conflict (company_id, item_id, location_id) do update
+         set min_qty = excluded.min_qty, max_qty = excluded.max_qty,
+             method = case when item_reorder.method = 'MANUAL' and excluded.method = 'AUTO'
+                           then 'MANUAL' else excluded.method end`;
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: "This item and location already has a reorder point — edit it instead" };
     return { error: e instanceof Error ? e.message : String(e) };
   }
 
   revalidatePath("/items/stock");
-  redirectWithToast("/items/stock", "Reorder point added");
+  revalidatePath("/inventory/replenishment");
+  redirectWithToast("/items/stock", "Reorder point saved");
 }
 
 export async function updateReorderPoint(_prev: unknown, fd: FormData): Promise<ActionResult> {

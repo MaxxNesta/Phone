@@ -2211,7 +2211,7 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
   grid-template-areas: "icon label" "icon value" "icon note";
   gap: 0 0.55rem;
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: 4px;
   background: var(--surface);
   padding: 0.55rem 0.7rem;
 }
@@ -2235,13 +2235,11 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
 .docstat-note { grid-area: note; color: var(--muted); font-size: var(--t-xs); }
 
 /* One figure on the row is the one to act on. It gets the colour — on its
-   icon and its number, and a rule down the edge — and the other tiles stay
-   plain, which is what makes the marked one legible as marked. */
-.docstat { border-left: 2px solid var(--line); }
-.docstat.warn { border-left-color: var(--warn); }
+   icon and its number — and the other tiles stay plain, which is what makes
+   the marked one legible as marked. No coloured edge: on a rounded tile it
+   read as a curved stripe (owner's call, 2026-11-11). */
 .docstat.warn .docstat-icon { background: transparent; color: var(--warn); }
 .docstat.warn .docstat-value { color: var(--warn); }
-.docstat.ok { border-left-color: var(--ok); }
 .docstat.ok .docstat-icon { background: transparent; color: var(--ok); }
 
 /* The two halves of an invoice: goods still expected, money still owed. Side
@@ -9882,3 +9880,182 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .wk-legend { display: flex; gap: 14px; justify-content: flex-end; margin: 0 4px 4px; font-size: var(--t-xs); color: var(--muted); }
 .wk-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .wk-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+/* ---------------------------------------------------------- replenishment --
+   Only what the app had no piece for: KPI tiles, the segmented control, the
+   donut and bar charts, the side panel (.cpanel) and the meter bar are the
+   shared ones. */
+.rp { display: grid; gap: 12px; padding-bottom: 72px; align-content: start; }
+.rp .kpis { margin-bottom: 0; }
+.rp-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.rp-chart { padding: 14px 16px; }
+.rp-chart h3 { margin: 0 0 8px; font-size: var(--t-sm); font-weight: 600; }
+.rp-note { margin: 8px 0 0; font-size: var(--t-xs); color: var(--muted); line-height: 1.4; }
+.rp-matrix { display: grid; grid-template-columns: 18px repeat(3, 1fr); gap: 4px; }
+.rp-mh { font-size: var(--t-xs); color: var(--muted); font-weight: 600; display: grid; place-items: center; cursor: help; }
+.rp-cell { display: grid; place-items: center; min-height: 34px; padding: 0; border: 0; border-radius: 8px; background: var(--line-soft);
+  color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.rp-cell:disabled { cursor: default; color: var(--muted); }
+.rp-cell[aria-pressed="true"] { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.rp-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rp-bar .segmented .seg { display: inline-flex; align-items: center; gap: 6px; }
+.rp-n { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 600; }
+.rp-chip { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px;
+  background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--blue-ink); font-size: var(--t-xs); font-weight: 600; }
+.rp-chip button { display: grid; place-items: center; width: 18px; height: 18px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; }
+.rp-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.rp input.rp-search { width: 210px; min-height: 30px; font-size: var(--t-sm); }
+.rp-pop { position: relative; }
+.rp-pop > summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.rp-pop > summary::-webkit-details-marker { display: none; }
+.rp-popbody { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: 260px; display: grid; gap: 10px; padding: 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 36px -14px rgb(0 0 0 / .35); }
+.rp-popbody[data-align="right"] { left: auto; right: 0; }
+.rp-field { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--muted); font-weight: 600; }
+.rp-assume { color: var(--muted); }
+
+.rp table { font-size: var(--t-sm); }
+.rp td { vertical-align: middle; }
+.rp tr[data-picked] td, .rp tr[data-open] td { background: color-mix(in srgb, var(--blue) 6%, transparent); }
+.rp-ck { width: 34px; }
+.rp-ck input { width: 16px; height: 16px; min-height: 0; accent-color: var(--blue); }
+.rp-prod { all: unset; cursor: pointer; display: grid; gap: 1px; min-width: 0; max-width: 100%; }
+.rp-prod .rp-name, .rp-prod .m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-prod .rp-name { font-weight: 500; }
+.rp-prod .m { font-size: var(--t-xs); color: var(--muted); }
+.rp-prod:hover .rp-name { color: var(--link); }
+.rp-prod:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.rp-cls { display: inline-grid; place-items: center; min-width: 30px; height: 20px; padding: 0 5px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  background: var(--line-soft); color: var(--muted); }
+.rp-cls[data-c="A"] { background: color-mix(in srgb, var(--blue) 16%, transparent); color: var(--blue-ink); }
+.rp-cls[data-c="B"] { background: color-mix(in srgb, var(--blue) 8%, transparent); color: var(--ink); }
+.rp-spark { display: block; }
+.rp-run { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-runbar { position: relative; width: 56px; height: 6px; overflow: visible; }
+.rp-runbar b { position: absolute; top: -3px; width: 2px; height: 12px; border-radius: 1px; background: var(--ink); opacity: .55; }
+.rp input.rp-qty { width: 76px; min-height: 30px; height: 30px; padding: 2px 8px; font-size: var(--t-sm); font-weight: 600; }
+.rp-status { display: inline-flex; align-items: center; gap: 6px; }
+.rp-status i { width: 8px; height: 8px; border-radius: 50%; }
+
+.rp-dock { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 12px;
+  padding: 8px 8px 8px 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -16px rgb(0 0 0 / .45); font-size: var(--t-sm); max-width: calc(100vw - 32px); }
+.rp-err { color: var(--bad); font-size: var(--t-xs); }
+.rp-ok { color: var(--ok); font-size: var(--t-xs); display: inline-flex; align-items: center; gap: 4px; }
+
+.rp-proj { margin: 0; }
+.rp-proj svg { width: 100%; height: auto; display: block; }
+.rp-ax { font-size: 10px; fill: var(--muted); }
+.rp-legend-inline { justify-content: flex-start; flex-wrap: wrap; margin: 6px 0 0; }
+.rp-legend-inline i.ln { width: 16px; height: 0; border-top: 2px solid; border-radius: 0; background: none; }
+.rp-legend-inline i.ln.dash { border-top-style: dashed; }
+.rp-legend-inline i.ln.thin { border-top-width: 1.5px; }
+.rp-late { color: var(--bad); font-weight: 600; }
+.rp-warn { padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.rp-hist { display: grid; grid-template-columns: repeat(13, 1fr); gap: 4px; height: 80px; }
+.rp-hist span { display: grid; grid-template-rows: 1fr auto; height: 100%; gap: 3px; }
+.rp-hist i { align-self: flex-end; display: block; border-radius: 3px 3px 1px 1px; min-height: 2px; }
+.rp-hist small { font-size: 10px; color: var(--muted); text-align: center; height: 12px; }
+.rp-form { display: grid; gap: 10px; }
+.rp-form .field { display: grid; gap: 4px; font-size: var(--t-xs); color: var(--muted); font-weight: 600; }
+.rp-form .field input:disabled { opacity: .45; }
+.rp-form .cpanel-grid .rp-note { grid-column: 1 / -1; margin: 0; }
+.rp-formfoot { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+@media (max-width: 720px) {
+  .rp-tools { margin-left: 0; width: 100%; }
+  .rp input.rp-search { flex: 1; width: auto; }
+}
+.rp td.wrap { min-width: 180px; max-width: 260px; }
+
+/* Replenishment status colours: six hues that stay apart in both themes
+   (the theme's --warn is a red-orange too close to --bad for a chart). */
+:root { --rp-now: #D70015; --rp-soon: #E08600; --rp-soon-ink: #8A4F00; --rp-excess: var(--chart-1);
+        --rp-dead: #8E8E93; --rp-ok: #248A3D; --rp-manual: #C7C7CC; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --rp-now: #FF453A; --rp-soon: #FFB340; --rp-soon-ink: #FFC56B; --rp-dead: #98989D; --rp-ok: #30D158; --rp-manual: #48484A; } }
+:root[data-theme="dark"] {
+  --rp-now: #FF453A; --rp-soon: #FFB340; --rp-soon-ink: #FFC56B; --rp-dead: #98989D; --rp-ok: #30D158; --rp-manual: #48484A; }
+.pill.rp-soon { background: color-mix(in srgb, var(--rp-soon) 16%, transparent); color: var(--rp-soon-ink); border-color: transparent; }
+
+/* The customer panel floating over the page rather than beside it. */
+.cpanel.cpanel-float { position: fixed; top: 8px; right: 8px; bottom: 8px; height: auto; min-height: 0;
+  width: min(440px, calc(100vw - 16px)); z-index: 40; box-shadow: 0 24px 60px -20px rgb(0 0 0 / .35); }
+
+/* The ABC × XYZ nine-box, inside the "?" bubble (wider than a sentence needs). */
+.helphint-bubble:has(.abc9) { max-width: min(44rem, calc(100vw - 2rem)); width: 44rem; padding: 0.9rem 1rem; }
+.abc9 p { margin: 0 0 10px; color: var(--ink-soft); }
+.abc9 .abc9-foot { margin: 10px 0 0; font-size: var(--t-xs); color: var(--muted); }
+.abc9-grid { display: grid; grid-template-columns: 26px repeat(3, minmax(0, 1fr)); gap: 6px; }
+.abc9-h { display: grid; place-items: center; padding: 5px 4px; border-radius: 6px; background: var(--ink); color: var(--surface);
+  font-size: var(--t-sm); font-weight: 700; line-height: 1.1; text-align: center; }
+.abc9-h small { font-weight: 500; font-size: 10px; opacity: .8; }
+.abc9-row { align-self: stretch; }
+.abc9-cell { padding: 8px 10px; border-radius: 8px; font-size: var(--t-xs); line-height: 1.45; color: var(--ink); display: grid; gap: 4px; align-content: space-between; }
+.abc9-cell ul { margin: 0; padding-left: 14px; }
+.abc9-n { font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) { .abc9-cell ul { padding-left: 12px; } .helphint-bubble:has(.abc9) { width: auto; } }
+.abc9-legend { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; font-size: var(--t-xs); color: var(--ink-soft); }
+.abc9-legend li { display: flex; align-items: flex-start; gap: 8px; }
+.abc9-legend i { flex: none; width: 12px; height: 12px; margin-top: 2px; border-radius: 3px; }
+
+/* ABC × XYZ: one five-step scale for the page's grid, the popup and its
+   legend. Fills are the same in both themes, so the text colour is fixed per
+   step (white on the two dark ends) rather than following --ink. */
+[data-tone="g2"] { --box: #2F5D1E; --box-ink: #FFFFFF; }
+[data-tone="g1"] { --box: #A9D18E; --box-ink: #1D1D1F; }
+[data-tone="y"]  { --box: #FFD966; --box-ink: #1D1D1F; }
+[data-tone="o"]  { --box: #F8CBAD; --box-ink: #1D1D1F; }
+[data-tone="r2"] { --box: #C00000; --box-ink: #FFFFFF; }
+.abc9-cell[data-tone], .rp-cell[data-tone] { background: var(--box); color: var(--box-ink); }
+.abc9-legend i[data-tone] { background: var(--box); }
+/* Nothing in the box: its colour as an outline, the 0 in the page's own muted text. */
+.rp-cell[data-tone]:disabled { background: transparent; box-shadow: inset 0 0 0 1.5px var(--box); color: var(--muted); font-weight: 500; opacity: 1; }
+
+/* The collapse toggle sits on the rail's outer edge, half over the border,
+   level with the brand: where the eye expects a handle for the rail itself.
+   Fixed rather than absolute, because the rail scrolls and would clip
+   anything hung off its edge; it follows the rail's width (232 / 64). */
+@media (min-width: 821px) {
+  nav.sidebar .navcollapse-row, .navcollapse-row {
+    position: fixed; top: 30px; left: calc(232px - 13px); z-index: 60;
+    margin: 0; padding: 0; display: block;
+  }
+  body[data-nav-collapsed="true"] .navcollapse-row { left: calc(64px - 13px); }
+  nav.sidebar .navcollapse {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--rail); color: var(--rail-strong);
+    border: 1px solid var(--rail-line); box-shadow: 0 2px 6px rgb(0 0 0 / 0.12);
+  }
+  nav.sidebar .navcollapse svg { width: 14px; height: 14px; }
+  /* The rail's own layer above the page, so the half of the toggle that
+     overhangs the edge is not painted over by <main>. */
+  nav.sidebar { z-index: 30; }
+}
+@media (min-width: 821px) and (prefers-reduced-motion: no-preference) {
+  .navcollapse-row { transition: left 160ms ease; }
+}
+
+/* Stock page: every product's reorder point, scrolling inside its card. */
+.rp-points { max-height: 460px; overflow-y: auto; }
+.rp-points thead th { position: sticky; top: 0; z-index: 1; }
+.rp-edit { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.rp-edit label { display: grid; gap: 2px; font-size: var(--t-xs); color: var(--muted); font-weight: 600; }
+.rp-edit input { width: 6.5rem; min-height: 30px; }
+
+/* Replenishment: the small parts inside its cards follow the squarer cards. */
+.rp-cell { border-radius: 4px; }
+.rp-popbody { border-radius: 6px; }
+.rp-dock { border-radius: 8px; }
+.abc9-cell, .abc9-h { border-radius: 3px; }
+
+/* Cards everywhere: squarer corners, for a firmer, report-like look (owner's
+   call, 2026-11-11). One token for every card-type container, placed last so
+   it settles the several radii (12-16px) set for them above; a narrower rule
+   that deliberately squares a card off (document sheets) still wins. */
+:root { --r-card: 6px; }
+/* .pbi is the price history board, .inv-panel the Inventory summary's chart panels. */
+.card, .kpi, .stat, .dash-card, .cpanel, .pbi, .inv-panel { border-radius: var(--r-card); }
+/* The small figure panels on a document page follow the same squarer edge:
+   the goods receipt's carriage panel (.lc-gr) with the summary tiles. */
+.lc-gr { border-radius: 4px; }

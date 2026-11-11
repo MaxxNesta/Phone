@@ -140,10 +140,17 @@ export function AddReorderPointForm({
                 </select>
               </div>
             )}
-            <div className="field">
-              <label htmlFor="rp-min">{t("stk.reorderPoint")}</label>
-              <input id="rp-min" name="min_qty" type="number" min="0" step="any" required placeholder="2" />
+            <div className="sheet-row">
+              <div className="field">
+                <label htmlFor="rp-min">{t("stk.minQty")}</label>
+                <input id="rp-min" name="min_qty" type="number" min="0" step="any" required placeholder="2" />
+              </div>
+              <div className="field">
+                <label htmlFor="rp-max">{t("stk.maxQty")}</label>
+                <input id="rp-max" name="max_qty" type="number" min="0" step="any" placeholder={t("rp.maxEmpty")} />
+              </div>
             </div>
+            <p className="confirm-detail" style={{ margin: 0 }}>{t("rp.maxHint")}</p>
           </div>
 
           <div className="confirm-actions">

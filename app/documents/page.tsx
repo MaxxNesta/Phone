@@ -45,6 +45,7 @@ export default async function DocumentsPage({
     dueDate: d.due_date ? String(d.due_date) : null,
     sourceDocNo: d.source_doc_no ?? null,
     grossTotal: Number(d.gross_total),
+    composed: !!d.composed,
   }));
 
   const active = TYPES.find(([v]) => v === (type ?? ""));

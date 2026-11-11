@@ -186,7 +186,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/reports/phone-stock">{n("inventoryAging")}</NavLink>
                 <NavLink href="/inventory/warranty">{n("warrantyLookup")}</NavLink>
                 <NavLink href="/inventory/movements">{n("stockMovements")}</NavLink>
-                <NavLink href="/inventory/replenishment">{n("replenishment")}</NavLink>
+                {company && planIncludes(company.plan, "replenishment") && <NavLink href="/inventory/replenishment">{n("replenishment")}</NavLink>}
                 <NavLink href="/inventory/negative-stock">{n("negativeStock")}</NavLink>
                 {wholesale && <NavLink href="/inventory/consignment" exact>{n("consignment")}</NavLink>}
               </NavGroup>
@@ -352,7 +352,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            <NavLink href="/documents" exact><FileText size={15} /> {n("allDocuments")}</NavLink>
+            <NavLink href="/documents" exact><FileText size={15} /> <span className="navlink-text">{n("allDocuments")}</span></NavLink>
 
           </nav>
 

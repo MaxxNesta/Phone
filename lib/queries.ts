@@ -682,10 +682,16 @@ export async function getNotes(companyId: string, kind: "CREDIT_NOTE" | "DEBIT_N
 
 /** `limit` only when a caller wants the newest few — the dashboard's five. */
 export async function getDocuments(companyId: string, docType?: string, openGrirOnly?: boolean, limit?: number,
-                                   locs: string[] | null = null) {
+                                   locs: string[] | null = null,
+                                   /** Leave out the deliveries and goods receipts an invoice composed (see below). */
+                                   hideComposed = false) {
   return sql`
     select d.id, d.doc_type, d.doc_no, d.doc_date, d.posting_date, d.due_date,
            d.status, d.gross_total, d.currency, d.posted_at,
+           -- Made by the system for an invoice, not by a person: the delivery
+           -- a counter sale writes (SI…) and the goods receipt a bill received
+           -- now writes (STR…). lifecycle_owner_id (0074) is exactly that fact.
+           (d.lifecycle_owner_id is not null and d.doc_type in ('DELIVERY', 'GOODS_RECEIPT')) as composed,
            p.name  as partner_name,
            l.code  as location_code,
            src.doc_no as source_doc_no,
@@ -708,6 +714,7 @@ export async function getDocuments(companyId: string, docType?: string, openGrir
        -- A discarded landed-cost draft is not a document anyone needs to find.
        and d.status <> 'CANCELLED'
        and d.reverses_document_id is null
+       ${hideComposed ? sql`and not (d.lifecycle_owner_id is not null and d.doc_type in ('DELIVERY', 'GOODS_RECEIPT'))` : sql``}
      -- Newest first, by the date the document carries, then by when it was
      -- actually entered.
      --
@@ -3610,13 +3617,17 @@ export async function getInventoryAging(
 }
 
 export async function getConsumptionRate(companyId: string, days: number) {
+  // A counter sale moves its own stock (the retail invoice issues it), so
+  // SALES_INVOICE belongs here beside DELIVERY — without it every till sale
+  // was invisible to replenishment. The mirror that voids a document is left
+  // out with the original it undoes.
   return sql`
     select sm.item_id, sm.location_id, sum(-sm.qty) as issued
       from stock_movement sm
       join document d on d.id = sm.document_id
      where sm.company_id = ${companyId}
-       and d.doc_type in ('DELIVERY', 'SALES_RETURN')
-       and d.status = 'POSTED'
+       and d.doc_type in ('SALES_INVOICE', 'DELIVERY', 'SALES_RETURN')
+       and d.status = 'POSTED' and d.reverses_document_id is null
        and sm.movement_date >= ((now() at time zone 'Asia/Yangon')::date - ${days}::int)
      group by sm.item_id, sm.location_id
     having sum(-sm.qty) > 0`;
@@ -3733,7 +3744,8 @@ export async function getItemSupply(companyId: string) {
            lp.partner_id as supplier_id,
            bp.code as supplier_code, bp.name as supplier_name,
            bp.lead_time_days as supplier_days,
-           si.lead_time_days as item_days
+           si.lead_time_days as item_days,
+           si.moq, si.order_multiple
       from item i
       left join lateral (
             select d.partner_id
@@ -3884,6 +3896,66 @@ export async function getReservedQty(companyId: string) {
     select item_id, location_id, sum(qty) as reserved_qty
       from (select * from so_remaining union all select * from invoice_pending) x
      group by item_id, location_id`;
+}
+
+/**
+ * What went out, day by day, over the last 91 days: one row per item,
+ * location and day ago (0 = today). Replenishment sums it for the rate,
+ * buckets it into 13 weeks for the variability behind safety stock and the
+ * sparkline, and weighs it at cost for ABC. Same documents and the same
+ * void rule as getConsumptionRate; read with the (company_id,
+ * movement_date) index.
+ */
+export async function getDemandDays(companyId: string) {
+  return sql`
+    select sm.item_id, sm.location_id,
+           ((now() at time zone 'Asia/Yangon')::date - sm.movement_date)::int as ago,
+           sum(-sm.qty)::float as qty, sum(-sm.total_cost)::float as cost
+      from stock_movement sm
+      join document d on d.id = sm.document_id
+     where sm.company_id = ${companyId}
+       and sm.movement_date > (now() at time zone 'Asia/Yangon')::date - 91
+       and sm.kind is null
+       and d.doc_type in ('SALES_INVOICE', 'DELIVERY', 'SALES_RETURN')
+       and d.status = 'POSTED' and d.reverses_document_id is null
+     group by 1, 2, 3`;
+}
+
+/**
+ * Every purchase order line still bringing something, with its order's
+ * dates — what is incoming, and which of it is late. Outstanding is
+ * worked out exactly as getIncomingQty does (both ways a receipt can
+ * answer a line; closed orders expect nothing more).
+ */
+export async function getOpenPurchaseLines(companyId: string) {
+  return sql`
+    select o.id as order_id, o.doc_no, o.doc_date, o.due_date, o.partner_id,
+           bp.name as supplier, ol.item_id, ol.location_id,
+           greatest(ol.base_qty - coalesce(r.received_qty, 0)
+                                - coalesce(fl.linked_qty, 0), 0)::float as outstanding
+      from document o
+      join document_line ol on ol.document_id = o.id
+      left join business_partner bp on bp.id = o.partner_id
+      left join (
+        select dl.source_line_id, sum(dl.base_qty) as received_qty
+          from document_line dl join document dd on dd.id = dl.document_id
+         where dd.doc_type = 'GOODS_RECEIPT' and dd.status = 'POSTED'
+           and not exists (
+                 select 1 from fulfilment_link fl2
+                  where fl2.fulfilment_line_id = dl.id
+                    and fl2.order_line_id is not distinct from dl.source_line_id)
+         group by dl.source_line_id
+      ) r on r.source_line_id = ol.id
+      left join (
+            select order_line_id, sum(qty) as linked_qty
+              from fulfilment_link group by order_line_id
+      ) fl on fl.order_line_id = ol.id
+     where o.company_id = ${companyId} and o.doc_type = 'PURCHASE_ORDER' and o.status = 'POSTED'
+       and not exists (
+             select 1 from v_order_outstanding v
+              where v.order_id = o.id and v.is_closed)
+       and ol.base_qty - coalesce(r.received_qty, 0) - coalesce(fl.linked_qty, 0) > 0
+     order by o.due_date nulls last, o.doc_no`;
 }
 
 export async function getIncomingQty(companyId: string) {
@@ -4560,7 +4632,7 @@ export async function getLowStock(companyId: string) {
 /** Every configured reorder point, for the management list on the Stock page — not just the ones currently violated. */
 export async function getReorderPoints(companyId: string) {
   return sql`
-    select r.id, r.item_id, r.location_id, r.min_qty, r.max_qty,
+    select r.id, r.item_id, r.location_id, r.min_qty, r.max_qty, r.method, r.safety_qty,
            i.code as item_code, i.name as item_name,
            l.code as location_code
       from item_reorder r

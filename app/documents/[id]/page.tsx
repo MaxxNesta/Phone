@@ -1325,8 +1325,9 @@ export default async function DocumentPage({
         </div>
       )}
 
+      {/* Joined to the Document section below, like every other part of the sheet. */}
       {match && match.lines.length > 0 && (
-        <div className="card" style={{ marginBottom: "1.5rem" }}>
+        <div className="card">
           <div className="card-head">
             <h2>{movesGoods ? "Invoiced" : Goods}</h2>
             <span className={`pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : ""}`}>

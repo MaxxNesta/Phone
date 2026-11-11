@@ -265,7 +265,12 @@ export async function serialsOnDocument(documentId: string) {
       from stock_serial_event e
       join stock_serial s on s.id = e.serial_id
       join item i on i.id = s.item_id
-     where e.document_id = ${documentId}
+     -- The invoice's own, and the delivery or goods receipt composed for it
+     -- (a counter sale's delivery is where the handsets were recorded leaving).
+     where e.document_id = any(array(
+             select ${documentId}::uuid
+             union all
+             select id from document where lifecycle_owner_id = ${documentId}))
      order by s.id, e.created_at`;
 }
 

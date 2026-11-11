@@ -1,3 +1,5 @@
+import { lowStockHref } from "@/lib/plans";
+import { getCompany } from "@/lib/queries";
 import Link from "next/link";
 import { ShoppingBag, FileText, Wallet, CalendarClock, Plus } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -22,6 +24,8 @@ export default async function PurchasesOverview() {
   const d = await purchasesOverview(user.companyId, await seenLocations(), see);
   const day = (s: string, o: Intl.DateTimeFormatOptions) => new Date(`${s}T00:00:00Z`).toLocaleDateString(dateLocale, { ...o, timeZone: "UTC" });
   const p = d.payables;
+  const company = await getCompany();
+  const lowHref = company ? lowStockHref(company.plan) : "/items/stock";
 
   return (
     <>
@@ -104,7 +108,7 @@ export default async function PurchasesOverview() {
           )}
           {see.stock && (
             <div className="card">
-              <div className="card-head"><h2>{t("lowStock")}</h2><Link href="/inventory/replenishment">{t("viewAll")}</Link></div>
+              <div className="card-head"><h2>{t("lowStock")}</h2><Link href={lowHref}>{t("viewAll")}</Link></div>
               <div className="card-body">
                 <p className="page-sub ov-sub">{t("lowStockSub")}</p>
                 {d.low.length === 0 && <p className="page-sub">{t("nothingLow")}</p>}

@@ -1,3 +1,4 @@
+import { planIncludes } from "@/lib/plans";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import {
@@ -6,14 +7,12 @@ import {
 import { money } from "@/lib/db";
 import {
   getCompany, getKpis, getHealth, getAging, getDocuments, getStock, getActionItems,
-  getNegativeStock, getLowStock, getOverCreditLimit,
+  getNegativeStock, getOverCreditLimit, getLocations,
   getRevenueTrend, getTopItems, getTopCategories, getRevenueByRegion,
   getRevenueByCustomerCategory, getSpendBySupplierCategory,
   getOnboardingStatus,
-  getItems, getStockByLocation, getReservedQty, getIncomingQty,
-  getReorderPoints, getConsumptionRate, getItemSupply, getSupplierLeadTimes,
 } from "@/lib/queries";
-import { replenishment } from "@/lib/replenish";
+import { loadPlan, lowStockFromPlan } from "@/lib/replenish-data";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 import { RevenueBars, ShareDonut } from "@/components/charts";
 import { resolvePeriod, DEFAULT_PERIOD } from "@/lib/period";
@@ -65,13 +64,11 @@ export default async function Dashboard({
 
   const [kpis, health, aging, docs, stock, actionItems, revenueTrend, topItems, topCategories,
          regionRevenue, custCategoryRevenue, suppCategorySpend, onboarding,
-         negativeStock, lowStock, overLimit,
-         repItems, repStock, repReserved, repIncoming, repPoints,
-         repConsumption, repSupply, repObserved] = await Promise.all([
+         negativeStock, overLimit, plan, stockLocs] = await Promise.all([
     getKpis(company.id),
     getHealth(company.id),
     seenLocations().then((locs) => getAging(company.id, undefined, locs)),
-    seenLocations().then((locs) => getDocuments(company.id, undefined, undefined, undefined, locs)),
+    seenLocations().then((locs) => getDocuments(company.id, undefined, undefined, undefined, locs, true)),
     getStock(company.id),
     getActionItems(company.id),
     getRevenueTrend(company.id, period.rev.chartMonths, period.rev.chartAnchor),
@@ -82,32 +79,16 @@ export default async function Dashboard({
     getSpendBySupplierCategory(company.id, period.supp.from, period.supp.to),
     getOnboardingStatus(company.id),
     getNegativeStock(company.id),
-    getLowStock(company.id),
     getOverCreditLimit(company.id),
-    // Replenishment reads the same ledger the Stock page does; the
-    // arithmetic lives in lib/replenish so this card and that page
-    // cannot drift apart.
-    getItems(company.id),
-    getStockByLocation(company.id),
-    getReservedQty(company.id),
-    getIncomingQty(company.id),
-    getReorderPoints(company.id),
-    getConsumptionRate(company.id, 30),
-    getItemSupply(company.id),
-    getSupplierLeadTimes(company.id),
+    // The same loader and arithmetic as the Replenishment page, so this
+    // card and that page cannot drift apart.
+    loadPlan(company.id, { windowDays: 30, coverDays: 30, fallbackLeadDays: company.default_lead_time_days }),
+    getLocations(company.id),
   ]);
-
-  const { rows: toOrder } = replenishment({
-    items: (repItems as never as any[])
-      .filter((i) => i.is_stocked && i.variant_count === 0) as never,
-    stockByLocation: repStock as never, reserved: repReserved as never,
-    incoming: repIncoming as never, reorderPoints: repPoints as never,
-    consumption: repConsumption as never, supply: repSupply as never,
-    observed: repObserved as never,
-    windowDays: 30, coverDays: 30, here: () => true,
-    fallbackLeadDays: company.default_lead_time_days,
-  });
-  const urgentOrders = toOrder.filter((r) => r.urgency !== "ok").slice(0, 5);
+  // Below the calculated reorder point, from the same plan as the card below.
+  const oneStore = (stockLocs as unknown as { id: string; code: string; is_stock_location: boolean }[]).filter((l) => l.is_stock_location);
+  const lowStock = lowStockFromPlan(plan.rows, oneStore.length === 1 ? oneStore[0] : { id: "all", code: "All" });
+  const urgentOrders = plan.rows.filter((r) => r.urgency !== "ok").slice(0, 5);
 
   const healthy = health.unbalanced === 0 && health.inventoryBreaks === 0 && health.trialBalance === 0;
 
@@ -183,7 +164,7 @@ export default async function Dashboard({
     {
       n: (lowStock as unknown as unknown[]).length,
       label: "Out of stock or below reorder",
-      detail: "counted per item and warehouse",
+      detail: "at or under the calculated reorder point",
       href: "/items/stock",
       group: "inventory", tone: "warn",
     },
@@ -445,7 +426,7 @@ export default async function Dashboard({
       {/* Only when there is something to do about it. A card that says
           "nothing needs ordering" every day is a card people stop reading,
           and then miss the day it says otherwise. */}
-      {urgentOrders.length > 0 && (
+      {urgentOrders.length > 0 && planIncludes(company.plan, "replenishment") && (
         <div className="dash-card dash-card-pad" style={{ marginBottom: "var(--dash-gap)" }}>
           <div className="dash-section-head">
             <div>

@@ -1589,6 +1589,12 @@
       "sendRepair": "Send to repair"
     },
     "stk": {
+      "minQty": "Reorder point (min)",
+      "maxQty": "Order up to (max)",
+      "source": "Set by",
+      "nPlanned": "{n} products · {m} set by hand",
+      "noPoints": "No product has a reorder point yet — they appear once something sells or a minimum is set.",
+      "src": {"calc": "Calculated", "floor": "Floor", "minmax": "Min–max", "manual": "Manual"},
       "eyebrow": "Master data",
       "title": "Stock",
       "allWarehouses": "All warehouses",
@@ -1607,7 +1613,9 @@
       "consignedCombos": "{n, plural, one {# item/warehouse/consignor combination} other {# item/warehouse/consignor combinations}} on hand but not owned",
       "atThisWarehouse": " at this warehouse",
       "lowTitle": "Low stock",
-      "lowSub": "out of stock, or below the reorder point set on that item and warehouse",
+      "lowSub": "out of stock, or at or under its reorder point (sales over the lead time plus safety stock)",
+      "floorNote": "Calculated from sales, lead time and safety stock. Set a minimum to keep it from going lower (Floor), or a minimum and maximum to order up to a fixed level (Min–max).",
+      "floorLink": "See them in Replenishment",
       "reorderPoint": "Reorder point",
       "outOfStock": "Out of stock",
       "belowReorder": "Below reorder",
@@ -1700,6 +1708,9 @@
       "shareOf": "share of {qty} {unit}"
     },
     "rp": {
+      "set": "Set",
+      "maxEmpty": "optional",
+      "maxHint": "Minimum only: a floor under the calculated reorder point. Minimum and maximum: Min–max, so below the minimum it orders up to the maximum.",
       "new": "+ Reorder point",
       "needs": "Needs at least one stocked item and one warehouse",
       "newTitle": "New reorder point",
@@ -2207,5 +2218,198 @@
     "nothingLow": "Nothing running low.",
     "left": "{n} left",
     "sold60": "{n} sold in 60 days"
+  },
+  "plan": {
+    "title": "Replenishment",
+    "help": "Plans every product from what actually sells. Demand per day comes from the sales window; safety stock from how much weekly sales vary, at a 98/95/90% service level for A/B/C items; the reorder point is demand over the lead time plus safety stock; and an order brings stock up to cover the lead time and the cover period, rounded to the supplier’s minimum and pack. Click a product to see its projection and change how it is planned.",
+    "demandOver": "Demand measured over",
+    "coverFor": "Buy to cover",
+    "nDays": "{n} d",
+    "allWarehouses": "All warehouses",
+    "classN": "Class {c}",
+    "tab": {
+      "order": "To order",
+      "excess": "Excess",
+      "dead": "No sales",
+      "late": "Late orders",
+      "all": "All"
+    },
+    "k": {
+      "orderNow": "Must order today",
+      "orderNowNote": "Products that will run out before a new order could arrive, even if you order today: the stock left lasts fewer days than the supplier takes. They are the red rows in To order.",
+      "toBuy": "Suggested buy",
+      "toBuyNote": "{unit} · {n, plural, one {# product} other {# products}}",
+      "excess": "Excess stock",
+      "excessNote": "{n, plural, one {# product} other {# products}} over 2× target",
+      "dead": "No sales in {n} d",
+      "deadNote": "{n, plural, one {# product} other {# products}} holding stock",
+      "late": "Late PO lines",
+      "lateNote": "on {n, plural, one {# order} other {# orders}}"
+    },
+    "units": "units",
+    "clear": "Clear",
+    "search": "Search product or supplier",
+    "filter": "Filter",
+    "category": "Category",
+    "supplier": "Supplier",
+    "class": "Class",
+    "any": "Any",
+    "assume": "{w} d demand · {c} d cover",
+    "assumeNote": "These change the arithmetic, so the page recalculates.",
+    "col": {
+      "order": "Order",
+      "outstanding": "Outstanding",
+      "due": "Due",
+      "late": "Late",
+      "product": "Product",
+      "class": "Class",
+      "trend": "13 weeks",
+      "available": "Available",
+      "incoming": "Incoming",
+      "perDay": "Per day",
+      "runsOut": "Runs out in",
+      "rop": "Reorder point",
+      "suggest": "Order qty",
+      "value": "Value",
+      "orderBy": "Order by",
+      "onHand": "On hand",
+      "cover": "Cover",
+      "target": "Order up to",
+      "excess": "Excess",
+      "stockValue": "Stock value",
+      "method": "Method",
+      "safety": "Safety stock",
+      "status": "Status"
+    },
+    "empty": {
+      "late": "No purchase order is past its due date.",
+      "order": "Nothing needs ordering: every product is above its reorder point at {w} days’ demand.",
+      "excess": "Nothing is holding more than twice its target.",
+      "dead": "Everything in stock sold something in the last {w} days.",
+      "all": "No products match."
+    },
+    "pickAll": "Select all",
+    "pick": "Select {code}",
+    "qtyFor": "Quantity to order of {code}",
+    "today": "today",
+    "method": {
+      "AUTO": "Auto",
+      "MINMAX": "Min–max",
+      "MANUAL": "Manual"
+    },
+    "methodNote": {
+      "AUTO": "Reorder point and order-up-to are worked out from demand, its variability and the lead time.",
+      "MINMAX": "When stock falls below the minimum, order up to the maximum. For things that sell too rarely for a rate.",
+      "MANUAL": "Never suggested. Bought by hand."
+    },
+    "status": {
+      "now": "Order now",
+      "soon": "Order soon",
+      "ok": "Healthy",
+      "excess": "Excess",
+      "dead": "No sales",
+      "manual": "Manual"
+    },
+    "dock": {
+      "lines": "{n, plural, one {# line} other {# lines}}",
+      "suppliers": "{n, plural, one {# supplier} other {# suppliers}}",
+      "creating": "Creating…",
+      "create": "Create {n, plural, one {purchase order} other {# purchase orders}}"
+    },
+    "runTitle": "{d} days of stock; the supplier takes {l} days. The tick is the lead time.",
+    "chart": {
+      "health": "Stock health",
+      "abc": "ABC × XYZ",
+      "abcHelp": "Two ways of sorting products. ABC is by value sold at cost over the period: A is the few products making the first 80% of it, B the next 15%, C the last 5%. XYZ is by how steady weekly sales are: X sells about the same every week, Y varies, Z is erratic (some weeks nothing, then a burst). AX needs the closest watch and gets the most safety stock; CZ matters least and is hardest to predict. Click a cell to list those products.",
+      "abcNote": "A–C by value sold, X–Z by how steady weekly sales are. AX is the core; CZ is noise.",
+      "bySupplier": "To buy, by supplier",
+      "nothing": "Nothing to buy right now."
+    },
+    "xyz": {
+      "X": "Steady",
+      "Y": "Varies",
+      "Z": "Erratic"
+    },
+    "abc": {
+      "A": "Top 80% of value",
+      "B": "Next 15%",
+      "C": "Last 5%"
+    },
+    "noSupplier": "No supplier yet",
+    "nItems": "{n, plural, one {# product} other {# products}}",
+    "close": "Close",
+    "sheet": {
+      "projection": "Next 8 weeks",
+      "reserved": "Reserved",
+      "over": "over {n} d",
+      "variability": "Variability",
+      "perDaySd": "per day, 1σ",
+      "lead": "Lead time",
+      "measured": "actually {n} d over {s}",
+      "fixed": "fixed",
+      "calc": "calculated",
+      "coverN": "{n} d cover",
+      "review": "Receipts say this supplier takes {n} days, but {l} is planned. Worth updating.",
+      "history": "Last 13 weeks",
+      "openOrders": "Open purchase orders",
+      "planning": "Planning",
+      "pickWarehouse": "Choose a warehouse to change how this product is planned there.",
+      "projected": "Projected stock",
+      "withSuggested": "With the suggested {n}",
+      "stockout": "Runs out in {n} d",
+      "weekAgo": "{n} weeks ago: {q}"
+    },
+    "lead": {
+      "item": "set for this product",
+      "supplier": "supplier’s usual",
+      "default": "company default"
+    },
+    "f": {
+      "min": "Minimum",
+      "floor": "Reorder floor",
+      "max": "Maximum",
+      "safety": "Safety stock",
+      "auto": "auto · {n}",
+      "lead": "Lead time (days)",
+      "leadUsual": "usual · {n}",
+      "moq": "Minimum order",
+      "pack": "Pack size",
+      "noSupplier": "Nothing has been bought yet, so there is no supplier to set a lead time, minimum or pack for."
+    },
+    "box": {
+      "intro": "Each product sits in one box: ABC is how much it sells by value (A the top 80%, B the next 15%, C the last 5%), XYZ how steady its weekly sales are. Each box needs a different way of buying.",
+      "tone": {
+        "green": "Green: sells well and predictably. Let Auto plan it.",
+        "amber": "Yellow: value or demand is shaky. Review it regularly.",
+        "red": "Peach to red: little value and unpredictable. Stock ties up cash for little sales payoff, so rethink it: Min–max, Manual, buy only against customer orders, or stop stocking."
+      },
+      "foot": "Safety stock already follows this: A items are planned at a 98% service level, B at 95%, C at 90%, and erratic sales earn more buffer. Slow, erratic items (CZ) often suit Min–max or Manual.",
+      "speed": {
+        "A": "Fast moving",
+        "B": "Average volume",
+        "C": "Slow moving"
+      },
+      "demand": {
+        "X": "Stable demand",
+        "Y": "Fluctuating demand",
+        "Z": "Unstable demand"
+      },
+      "level": {
+        "low": "Low stock level",
+        "midHigh": "Mid–high stock level",
+        "avg": "Average stock level",
+        "high": "High stock level"
+      },
+      "risk": {
+        "low": "Low risk",
+        "mid": "Mid risk",
+        "high": "High risk"
+      }
+    },
+    "products": "products",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "save": "Save",
+    "thisWeek": "now"
   }
 }

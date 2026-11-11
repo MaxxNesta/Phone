@@ -1589,6 +1589,12 @@
       "sendRepair": "ပြုပြင်ရန် ပို့ရန်"
     },
     "stk": {
+      "minQty": "ပြန်မှာရန်အမှတ် (min)",
+      "maxQty": "ဤအထိ မှာ (max)",
+      "source": "သတ်မှတ်သူ",
+      "nPlanned": "ပစ္စည်း {n} · လက်ဖြင့် {m}",
+      "noPoints": "ပြန်မှာရန်အမှတ် မရှိသေးပါ — ရောင်းရပြီး သို့ min သတ်မှတ်ပြီးမှ ပေါ်မည်။",
+      "src": {"calc": "တွက်ချက်", "floor": "အနိမ့်ဆုံး", "minmax": "Min–max", "manual": "Manual"},
       "eyebrow": "အခြေခံအချက်အလက်",
       "title": "လက်ကျန်",
       "allWarehouses": "ဂိုဒေါင် အားလုံး",
@@ -1607,7 +1613,9 @@
       "consignedCombos": "လက်ကျန်ရှိသော်လည်း မပိုင်သော ပစ္စည်း/ဂိုဒေါင်/အပ်နှံသူ ပေါင်းစပ်မှု {n} ခု",
       "atThisWarehouse": " ဤဂိုဒေါင်တွင်",
       "lowTitle": "လက်ကျန်နည်း",
-      "lowSub": "လက်ကျန်ကုန် သို့မဟုတ် ထိုပစ္စည်းနှင့် ဂိုဒေါင်တွင် သတ်မှတ်ထားသော ပြန်မှာရန်အမှတ်အောက်",
+      "lowSub": "လက်ကျန်ကုန် သို့မဟုတ် ပြန်မှာရန်အမှတ် (lead time အတွင်း ရောင်းအား + safety stock) သို့ ရောက်/အောက်",
+      "floorNote": "ရောင်းအား၊ lead time နှင့် safety stock မှ တွက်သည်။ ထိုထက် မနိမ့်စေရန် min (Floor) သို့ ပုံသေအဆင့်အထိ မှာရန် min နှင့် max (Min–max) သတ်မှတ်နိုင်သည်။",
+      "floorLink": "Replenishment တွင် ကြည့်ရန်",
       "reorderPoint": "ပြန်မှာရန် အမှတ်",
       "outOfStock": "လက်ကျန်ကုန်",
       "belowReorder": "ပြန်မှာရန်အမှတ်အောက်",
@@ -1700,6 +1708,9 @@
       "shareOf": "{qty} {unit} ၏ အချိုး"
     },
     "rp": {
+      "set": "သတ်မှတ်",
+      "maxEmpty": "မထည့်လည်းရ",
+      "maxHint": "Min သာ — တွက်ချက်ထားသော ပြန်မှာရန်အမှတ်အောက် အနိမ့်ဆုံး။ Min နှင့် Max — Min–max၊ min အောက်ရောက်လျှင် max အထိ မှာသည်။",
       "new": "+ ပြန်မှာရန် အမှတ်",
       "needs": "လက်ကျန်ထားသော ပစ္စည်းတစ်ခုနှင့် ဂိုဒေါင်တစ်ခု အနည်းဆုံး လိုအပ်သည်",
       "newTitle": "ပြန်မှာရန် အမှတ်အသစ်",
@@ -2207,5 +2218,198 @@
     "nothingLow": "လက်ကျန်နည်းသော ပစ္စည်း မရှိပါ။",
     "left": "{n} လုံး ကျန်",
     "sold60": "ရက် ၆၀ တွင် {n} လုံး ရောင်းပြီး"
+  },
+  "plan": {
+    "title": "ပစ္စည်းဖြည့်တင်းခြင်း",
+    "help": "ရောင်းအားအမှန်ပေါ်မူတည်ပြီး ပစ္စည်းတိုင်းကို စီစဉ်ပေးသည်။ နေ့စဉ်လိုအပ်ချက်ကို ရောင်းချမှုကာလမှ၊ safety stock ကို အပတ်စဉ်ရောင်းအား အတက်အကျမှ တွက်သည်။ Reorder point = lead time အတွင်းလိုအပ်ချက် + safety stock။ ပစ္စည်းကိုနှိပ်ပြီး ခန့်မှန်းချက်ကြည့်ရန်နှင့် စီစဉ်ပုံပြောင်းရန်။",
+    "demandOver": "လိုအပ်ချက် တိုင်းသည့်ကာလ",
+    "coverFor": "ဝယ်ယူရန် ကာလ",
+    "nDays": "{n} d",
+    "allWarehouses": "ဂိုဒေါင်အားလုံး",
+    "classN": "Class {c}",
+    "tab": {
+      "order": "မှာရန်",
+      "excess": "ပိုလျှံ",
+      "dead": "မရောင်းရ",
+      "late": "နောက်ကျ PO",
+      "all": "အားလုံး"
+    },
+    "k": {
+      "orderNow": "ယနေ့ မဖြစ်မနေ မှာရန်",
+      "orderNowNote": "ယနေ့ မှာလျှင်ပင် အော်ဒါအသစ် မရောက်မီ ကုန်မည့် ပစ္စည်းများ — ကျန်လက်ကျန်သည် supplier ကြာချိန်ထက် ရက်နည်းသည်။ To order ထဲက အနီရောင် အတန်းများ။",
+      "toBuy": "ဝယ်ရန်အကြံပြု",
+      "toBuyNote": "{unit} · {n, plural, one {# product} other {# products}}",
+      "excess": "ပိုလျှံလက်ကျန်",
+      "excessNote": "{n, plural, one {# product} other {# products}} over 2× target",
+      "dead": "{n} ရက် မရောင်းရ",
+      "deadNote": "{n, plural, one {# product} other {# products}} holding stock",
+      "late": "နောက်ကျ PO လိုင်း",
+      "lateNote": "on {n, plural, one {# order} other {# orders}}"
+    },
+    "units": "ခု",
+    "clear": "ရှင်းမည်",
+    "search": "ပစ္စည်း သို့ supplier ရှာရန်",
+    "filter": "စစ်ထုတ်",
+    "category": "အမျိုးအစား",
+    "supplier": "Supplier",
+    "class": "အဆင့်",
+    "any": "အားလုံး",
+    "assume": "{w} d demand · {c} d cover",
+    "assumeNote": "ဤတန်ဖိုးများပြောင်းလျှင် စာမျက်နှာက ပြန်တွက်ပါမည်။",
+    "col": {
+      "order": "Order",
+      "outstanding": "Outstanding",
+      "due": "Due",
+      "late": "Late",
+      "product": "Product",
+      "class": "Class",
+      "trend": "13 weeks",
+      "available": "Available",
+      "incoming": "Incoming",
+      "perDay": "Per day",
+      "runsOut": "Runs out in",
+      "rop": "Reorder point",
+      "suggest": "Order qty",
+      "value": "Value",
+      "orderBy": "Order by",
+      "onHand": "On hand",
+      "cover": "Cover",
+      "target": "Order up to",
+      "excess": "Excess",
+      "stockValue": "Stock value",
+      "method": "Method",
+      "safety": "Safety stock",
+      "status": "Status"
+    },
+    "empty": {
+      "late": "ရက်လွန်နေသော PO မရှိပါ။",
+      "order": "Nothing needs ordering: every product is above its reorder point at {w} days’ demand.",
+      "excess": "Nothing is holding more than twice its target.",
+      "dead": "Everything in stock sold something in the last {w} days.",
+      "all": "ကိုက်ညီသောပစ္စည်း မရှိပါ။"
+    },
+    "pickAll": "Select all",
+    "pick": "Select {code}",
+    "qtyFor": "Quantity to order of {code}",
+    "today": "ယနေ့",
+    "method": {
+      "AUTO": "Auto",
+      "MINMAX": "Min–max",
+      "MANUAL": "Manual"
+    },
+    "methodNote": {
+      "AUTO": "Reorder point and order-up-to are worked out from demand, its variability and the lead time.",
+      "MINMAX": "When stock falls below the minimum, order up to the maximum. For things that sell too rarely for a rate.",
+      "MANUAL": "Never suggested. Bought by hand."
+    },
+    "status": {
+      "now": "ယခုမှာ",
+      "soon": "မကြာမီမှာ",
+      "ok": "ကောင်း",
+      "excess": "ပိုလျှံ",
+      "dead": "မရောင်းရ",
+      "manual": "Manual"
+    },
+    "dock": {
+      "lines": "{n, plural, one {# line} other {# lines}}",
+      "suppliers": "{n, plural, one {# supplier} other {# suppliers}}",
+      "creating": "Creating…",
+      "create": "Create {n, plural, one {purchase order} other {# purchase orders}}"
+    },
+    "runTitle": "{d} days of stock; the supplier takes {l} days. The tick is the lead time.",
+    "chart": {
+      "health": "လက်ကျန်အခြေအနေ",
+      "abc": "ABC × XYZ",
+      "abcHelp": "ပစ္စည်းများကို နည်းနှစ်မျိုးဖြင့် ခွဲသည်။ ABC = ရောင်းချသည့်တန်ဖိုး (ကုန်ကျစရိတ်) အလိုက် — A ပထမ 80%၊ B နောက် 15%၊ C နောက်ဆုံး 5%။ XYZ = အပတ်စဉ်ရောင်းအား တည်ငြိမ်မှု — X တစ်ပတ်တိုင်း အတူတူနီးပါး၊ Y အပြောင်းအလဲရှိ၊ Z မမှန် (အချို့အပတ် မရောင်း၊ ပြီးမှ အများကြီး)။ AX ကို အနီးကပ်ဆုံး ကြည့်ရမည်၊ CZ အရေးအနည်းဆုံး။ အကွက်ကိုနှိပ်၍ ထိုပစ္စည်းများကို ကြည့်ပါ။",
+      "abcNote": "A–C by value sold, X–Z by how steady weekly sales are. AX is the core; CZ is noise.",
+      "bySupplier": "Supplier အလိုက် ဝယ်ရန်",
+      "nothing": "ယခု ဝယ်ရန်မရှိပါ။"
+    },
+    "xyz": {
+      "X": "Steady",
+      "Y": "Varies",
+      "Z": "Erratic"
+    },
+    "abc": {
+      "A": "Top 80% of value",
+      "B": "Next 15%",
+      "C": "Last 5%"
+    },
+    "noSupplier": "Supplier မရှိသေး",
+    "nItems": "{n, plural, one {# product} other {# products}}",
+    "close": "ပိတ်မည်",
+    "sheet": {
+      "projection": "နောက် ၈ ပတ်",
+      "reserved": "Reserved",
+      "over": "over {n} d",
+      "variability": "Variability",
+      "perDaySd": "per day, 1σ",
+      "lead": "Lead time",
+      "measured": "actually {n} d over {s}",
+      "fixed": "fixed",
+      "calc": "calculated",
+      "coverN": "{n} d cover",
+      "review": "Receipts say this supplier takes {n} days, but {l} is planned. Worth updating.",
+      "history": "ပြီးခဲ့သော ၁၃ ပတ်",
+      "openOrders": "ဖွင့်ထားသော PO များ",
+      "planning": "စီစဉ်ပုံ",
+      "pickWarehouse": "Choose a warehouse to change how this product is planned there.",
+      "projected": "ခန့်မှန်းလက်ကျန်",
+      "withSuggested": "With the suggested {n}",
+      "stockout": "Runs out in {n} d",
+      "weekAgo": "{n} weeks ago: {q}"
+    },
+    "lead": {
+      "item": "set for this product",
+      "supplier": "supplier’s usual",
+      "default": "company default"
+    },
+    "f": {
+      "min": "Minimum",
+      "floor": "Reorder floor",
+      "max": "Maximum",
+      "safety": "Safety stock",
+      "auto": "auto · {n}",
+      "lead": "Lead time (days)",
+      "leadUsual": "usual · {n}",
+      "moq": "Minimum order",
+      "pack": "Pack size",
+      "noSupplier": "Nothing has been bought yet, so there is no supplier to set a lead time, minimum or pack for."
+    },
+    "box": {
+      "intro": "ပစ္စည်းတစ်ခုစီသည် အကွက်တစ်ကွက်ထဲ ရှိသည်။ ABC = ရောင်းတန်ဖိုး (A ထိပ်ဆုံး 80%၊ B နောက် 15%၊ C နောက်ဆုံး 5%)၊ XYZ = အပတ်စဉ်ရောင်းအား တည်ငြိမ်မှု။ အကွက်တိုင်း ဝယ်ယူပုံ မတူပါ။",
+      "tone": {
+        "green": "အစိမ်း — ကောင်းကောင်းရောင်းပြီး ခန့်မှန်းနိုင်သည်။ Auto ဖြင့် စီစဉ်ပါ။",
+        "amber": "အဝါ — တန်ဖိုး သို့ လိုအပ်ချက် မတည်ငြိမ်။ ပုံမှန် ပြန်စစ်ပါ။",
+        "red": "လိမ္မော်ဖျော့ မှ အနီ — တန်ဖိုးနည်းပြီး ခန့်မှန်းရခက်။ လက်ကျန်က ငွေကို ချိတ်ထားသည်၊ ပြန်စဉ်းစားပါ — Min–max၊ Manual၊ အော်ဒါရမှ ဝယ်ခြင်း သို့ မထားတော့ခြင်း။"
+      },
+      "foot": "Safety stock သည် ဤအတိုင်း လိုက်သည် — A ကို 98%၊ B ကို 95%၊ C ကို 90% service level ဖြင့် စီစဉ်ပြီး မမှန်သော ရောင်းအားကို buffer ပိုပေးသည်။ နှေး၍ မမှန်သော (CZ) ပစ္စည်းများအတွက် Min–max သို့ Manual သင့်တော်တတ်သည်။",
+      "speed": {
+        "A": "အရောင်းမြန်",
+        "B": "ပျမ်းမျှ ရောင်းအား",
+        "C": "အရောင်းနှေး"
+      },
+      "demand": {
+        "X": "လိုအပ်ချက် တည်ငြိမ်",
+        "Y": "လိုအပ်ချက် အတက်အကျရှိ",
+        "Z": "လိုအပ်ချက် မတည်ငြိမ်"
+      },
+      "level": {
+        "low": "လက်ကျန် နည်း",
+        "midHigh": "လက်ကျန် အလယ်–မြင့်",
+        "avg": "လက်ကျန် ပျမ်းမျှ",
+        "high": "လက်ကျန် မြင့်"
+      },
+      "risk": {
+        "low": "Risk နည်း",
+        "mid": "Risk အလယ်",
+        "high": "Risk မြင့်"
+      }
+    },
+    "products": "ပစ္စည်း",
+    "saved": "သိမ်းပြီး",
+    "saving": "သိမ်းနေသည်…",
+    "save": "သိမ်းမည်",
+    "thisWeek": "ယခု"
   }
 }

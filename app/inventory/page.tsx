@@ -1,3 +1,5 @@
+import { lowStockHref } from "@/lib/plans";
+import { getCompany } from "@/lib/queries";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Box, Layers, Wallet, AlertTriangle, Search, Download, ChevronRight, CalendarClock, Repeat, Hourglass, ArrowRight } from "lucide-react";
@@ -54,6 +56,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const sp = await searchParams;
   const co = user.companyId;
   const seeCost = can(user, "cost.view");
+  const company = await getCompany();
+  const lowHref = company ? lowStockHref(company.plan) : "/items/stock";
 
   // The warehouses this person may see, each with the branch it belongs to.
   const seen = await seenLocations();
@@ -251,7 +255,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           {kpi(<Box size={16} aria-hidden="true" />, "Total products", all.length.toLocaleString("en-US"),
             `${onHand.length.toLocaleString("en-US")} product models in stock.`)}
           {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low stock items", low.length,
-            "Models with a variant at or below its reorder level.", low.length > 0, "/inventory/replenishment")}
+            "Models with a variant at or below its reorder level.", low.length > 0, lowHref)}
         </>}
       </div>
 
@@ -391,11 +395,11 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <section className="card inv-panel inv-repl">
           <div className="inv-panel-head">
             <h2>Replenishment alerts</h2>
-            <Link href="/inventory/replenishment">{c("viewAll")}</Link>
+            <Link href={lowHref}>{c("viewAll")}</Link>
           </div>
           <div className="inv-repl-tabs">
-            <Link href="/inventory/replenishment"><span>Low stock</span><b className={low.length ? "warn" : undefined}>{low.length}</b></Link>
-            <Link href="/inventory/replenishment"><span>Out of stock</span><b className={out.length ? "bad" : undefined}>{out.length}</b></Link>
+            <Link href={lowHref}><span>Low stock</span><b className={low.length ? "warn" : undefined}>{low.length}</b></Link>
+            <Link href={lowHref}><span>Out of stock</span><b className={out.length ? "bad" : undefined}>{out.length}</b></Link>
           </div>
           <table className="inv-mini">
             <colgroup><col style={{ width: "64%" }} /><col style={{ width: "18%" }} /><col style={{ width: "18%" }} /></colgroup>
@@ -403,7 +407,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <tbody>
               {[...low, ...out].slice(0, 6).map((r) => (
                 <tr key={r.id}>
-                  <td className="clip" title={r.model}><Link href="/inventory/replenishment">{r.model}</Link></td>
+                  <td className="clip" title={r.model}><Link href={lowHref}>{r.model}</Link></td>
                   <td className="num bad">{r.qty}</td>
                   <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
                 </tr>
@@ -412,7 +416,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             </tbody>
           </table>
           {low.length + out.length > 0 && (
-            <Link href="/inventory/replenishment" className="inv-repl-note">
+            <Link href={lowHref} className="inv-repl-note">
               <AlertTriangle size={15} aria-hidden="true" />
               <span><strong>{low.length + out.length} product{low.length + out.length === 1 ? " is" : "s are"} at or below the reorder level.</strong> Review and order before they run out.</span>
               <ChevronRight size={15} aria-hidden="true" />

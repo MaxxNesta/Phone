@@ -1,14 +1,15 @@
+import { planIncludes } from "@/lib/plans";
 import { BranchScope } from "@/components/branch-scope";
 import { seenRows, seenLocations, scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Boxes, PackageCheck, TrendingDown, AlertTriangle, HandCoins } from "lucide-react";
 import { money, qty, shortDate } from "@/lib/db";
 import {
-  getCompany, getItems, getBrandsInUse, getReservedQty, getIncomingQty, getLowStock, getReorderPoints, getLocations,
+  getCompany, getItems, getBrandsInUse, getReservedQty, getIncomingQty, getReorderPoints, getLocations,
   getStockByLocation, getConsignedStockOnHand, getStockBatches, getExpiryBands,
   getVariantStock,
 } from "@/lib/queries";
-import { createReorderPoint, updateReorderPoint, deleteReorderPoint } from "@/lib/actions";
+import { createReorderPoint, deleteReorderPoint } from "@/lib/actions";
 import { type DataRow } from "@/components/data-table";
 import { StockTable, ParamSelect } from "@/components/stock-table";
 import { HelpHint } from "@/components/help-hint";
@@ -18,8 +19,9 @@ import { variantPhotos } from "@/lib/variants";
 import { VariantStock, type VariantStockRow } from "@/components/variant-stock";
 import { StockMatrix } from "@/components/stock-matrix";
 import { ExpiryBands } from "@/components/expiry-bands";
+import { loadPlan, lowStockFromPlan } from "@/lib/replenish-data";
 import { AddReorderPointForm } from "@/components/reorder-point-form";
-import { ReorderPointRow } from "@/components/reorder-point-row";
+import { ReorderPointRow, type ReorderPoint } from "@/components/reorder-point-row";
 import { getTranslations } from "next-intl/server";
 import { currentUser, can } from "@/lib/auth";
 
@@ -54,16 +56,15 @@ export default async function Stock({
   // Cost and value only for those who may see cost: left out of the data, not just the columns.
   const seeCost = can(await currentUser(), "cost.view");
 
-  const [items, reserved, incoming, lowStock, reorderPoints, locations, stockByLocation, consigned,
+  const [items, reserved, incoming, lowPlan, reorderPoints, locations, stockByLocation, consigned,
          batches, expiryBands, variantStock] = await Promise.all([
     getItems(company.id) as unknown as Promise<Row[]>,
     getReservedQty(company.id) as unknown as Promise<Array<{ item_id: string; location_id: string; reserved_qty: string }>>,
     getIncomingQty(company.id) as unknown as Promise<Array<{ item_id: string; location_id: string; incoming_qty: string }>>,
-    getLowStock(company.id).then((r) => seenRows(r as unknown as Record<string, unknown>[])) as unknown as Promise<Array<{
-      item_id: string; item_code: string; item_name: string;
-      location_id: string; location_code: string; qty_on_hand: string; min_qty: string | null;
-      reason: "below_reorder" | "out_of_stock";
-    }>>,
+    // Below the calculated reorder point (lib/replenish-data): the same plan
+    // Replenishment and the dashboard read, for the warehouse in view.
+    loadPlan(company.id, { windowDays: 30, coverDays: 30, fallbackLeadDays: company.default_lead_time_days,
+                           location: location && location !== "all" ? location : null }),
     getReorderPoints(company.id) as unknown as Promise<Array<{
       id: string; item_id: string; location_id: string; min_qty: string;
       item_code: string; item_name: string; location_code: string;
@@ -123,6 +124,30 @@ export default async function Stock({
   const mode = hasVariants && (view === "grouped" || view === "matrix") ? view : "list";
 
   const reorderableLocations = locations.filter((l) => l.is_stock_location);
+  const lowWhere = location && location !== "all"
+    ? reorderableLocations.find((l) => l.id === location) ?? { id: "all", code: "All" }
+    : reorderableLocations.length === 1 ? reorderableLocations[0] : { id: "all", code: "All" };
+  const lowStock = lowStockFromPlan(lowPlan.rows, lowWhere);
+
+  // Every product's reorder point, from the same plan as the Low stock list:
+  // calculated, or set by hand (a floor, or Min–max). Hand-set rows carry
+  // their item_reorder id so they can be edited and removed.
+  const setOf = new Map(reorderPoints
+    .filter((p) => lowWhere.id === "all" || p.location_id === lowWhere.id)
+    .map((p) => [p.item_id, p.id]));
+  const points: ReorderPoint[] = lowPlan.rows
+    .filter((r) => r.rop > 0 || setOf.has(r.id) || r.method === "MANUAL")
+    .map((r) => ({
+      id: setOf.get(r.id) ?? null, item_id: r.id,
+      // Editing needs one warehouse; with several in view and none chosen it waits for a choice.
+      location_id: lowWhere.id === "all" ? null : lowWhere.id,
+      item_code: r.code, item_name: r.name, location_code: lowWhere.code,
+      rop: r.rop, min: r.min, max: r.method === "MINMAX" ? r.max : null,
+      source: r.method === "MANUAL" ? "manual" as const : r.method === "MINMAX" ? "minmax" as const
+        : r.min !== null && r.min >= r.rop ? "floor" as const : "calc" as const,
+    }))
+    .sort((a, b) => Number(!!b.id) - Number(!!a.id) || a.item_code.localeCompare(b.item_code));
+  const setByHand = points.filter((p) => p.id).length;
 
   const selectedLocationId = location && reorderableLocations.some((l) => l.id === location) ? location : "all";
   const allLocations = selectedLocationId === "all";
@@ -500,7 +525,10 @@ export default async function Stock({
         <div className="card">
           <div className="card-head">
             <h2>{t("stk.reorderPoints")}</h2>
-            <span className="page-sub">{t("stk.nSet", { n: reorderPoints.length })}</span>
+            <span className="page-sub">{t("stk.nPlanned", { n: points.length, m: setByHand })}</span>
+            <span className="page-sub" style={{ flexBasis: "100%" }}>
+              {t("stk.floorNote")}{planIncludes(company.plan, "replenishment") && <> <Link href="/inventory/replenishment">{t("stk.floorLink")} →</Link></>}
+            </span>
             <span className="dt-spacer" />
             <AddReorderPointForm
               action={createReorderPoint}
@@ -508,18 +536,18 @@ export default async function Stock({
               count={reorderPoints.length}
             />
           </div>
-          {reorderPoints.length === 0 ? <div className="empty">No reorder points set.</div> : (
-            <div className="tablewrap">
+          {points.length === 0 ? <div className="empty">{t("stk.noPoints")}</div> : (
+            <div className="tablewrap rp-points">
               <table>
                 <thead>
                   <tr>
-                    <th>{c("code")}</th><th>{t("item")}</th><th>{c("warehouse")}</th>
-                    <th className="r">{t("stk.reorderPoint")}</th><th />
+                    <th>{c("code")}</th><th>{t("item")}</th><th>{t("stk.source")}</th>
+                    <th className="r">{t("stk.reorderPoint")}</th><th className="r">{t("stk.maxQty")}</th><th />
                   </tr>
                 </thead>
                 <tbody>
-                  {reorderPoints.map((p) => (
-                    <ReorderPointRow key={p.id} point={p} updateAction={updateReorderPoint} deleteAction={deleteReorderPoint} />
+                  {points.map((p) => (
+                    <ReorderPointRow key={p.item_id} point={p} saveAction={createReorderPoint} deleteAction={deleteReorderPoint} />
                   ))}
                 </tbody>
               </table>

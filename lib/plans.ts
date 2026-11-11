@@ -74,7 +74,7 @@ export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
  * from the rule above: hiding a module nobody bought is reasonable, hiding
  * accounts is not.
  */
-export type Feature = "supplier_performance" | "dashboard_advanced";
+export type Feature = "supplier_performance" | "dashboard_advanced" | "replenishment";
 
 const FEATURES: Record<Feature, Plan[]> = {
   // Business and Enterprise. A Starter shop buys from a handful of people
@@ -84,7 +84,17 @@ const FEATURES: Record<Feature, Plan[]> = {
   // region, customer-type and supplier-type breakdowns. Starter keeps the
   // rest of the dashboard (decided 2026-11-09).
   dashboard_advanced: ["BUSINESS", "ENTERPRISE"],
+  // The planning workbench (Inventory → Replenishment): safety stock, ABC/XYZ,
+  // the projection and bulk purchase orders. The top package only (owner's
+  // call, 2026-11-11). Low-stock alerts and reorder points stay in every
+  // package; only the screen that plans the buying is withheld.
+  replenishment: ["ENTERPRISE"],
 };
+
+/** Where a low-stock link should lead: the planner where the package has it, the Stock page otherwise. */
+export function lowStockHref(plan: Plan): string {
+  return planIncludes(plan, "replenishment") ? "/inventory/replenishment" : "/items/stock";
+}
 
 export function planIncludes(plan: Plan, feature: Feature): boolean {
   return FEATURES[feature].includes(plan);

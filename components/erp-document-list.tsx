@@ -36,6 +36,9 @@ export type DocRow = {
   dueDate: string | null;
   sourceDocNo: string | null;
   grossTotal: number;
+  /** Composed by the system for an invoice (its delivery or goods receipt).
+   *  Hidden from the plain list; a search or the type filter brings it back. */
+  composed?: boolean;
 };
 
 type SortKey = "docNo" | "docType" | "partnerName" | "postingDate" | "grossTotal";
@@ -78,7 +81,8 @@ export function ErpDocumentList({
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const matched = rows.filter((r) =>
-      inDateRange(r.postingDate, dates)
+      (!r.composed || needle || typeFilter)
+      && inDateRange(r.postingDate, dates)
       && (!needle || [r.docNo, label(r.docType), r.partnerName, r.sourceDocNo]
             .filter(Boolean).join(" ").toLowerCase().includes(needle)));
 
@@ -90,7 +94,8 @@ export function ErpDocumentList({
       if (y === null || y === undefined) return -1;
       return (x < y ? -1 : 1) * dir;
     });
-  }, [rows, q, sort, dates]);
+  }, [rows, q, sort, dates, typeFilter]);
+  const hiddenComposed = !q.trim() && !typeFilter ? rows.filter((r) => r.composed).length : 0;
 
   // The footer totals what is on screen. A search that hides half the ledger
   // and still shows the full total is a figure nobody can reconcile.
@@ -148,6 +153,13 @@ export function ErpDocumentList({
             : `${shown.length} of ${rows.length}`}
         </span>
       </div>
+
+      {hiddenComposed > 0 && (
+        <div style={{ padding: "6px 2px 8px", color: "var(--erp-fg-muted)", fontSize: "var(--erp-text-sm)" }}>
+          {hiddenComposed} {hiddenComposed === 1 ? "delivery or goods receipt" : "deliveries and goods receipts"} made automatically by invoices
+          {" "}are hidden. Search, or choose Delivery or Goods receipt, to see them.
+        </div>
+      )}
 
       <div className="erp-sheet erp-scroll" style={{ borderTop: 0, borderRadius: 0 }}>
         <table className="erp-table">

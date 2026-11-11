@@ -97,7 +97,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     seenLocations().then((locs) => getReceiptsByAccount(co, period.pay.from, period.pay.to, locs)),
     advanced ? getRevenueByCustomerCategory(co, period.cust.from, period.cust.to) : none,
     advanced ? getSpendBySupplierCategory(co, period.supp.from, period.supp.to) : none,
-    seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs)),
+    seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs, true)),
     advanced ? getHealth(co) : null,
   ]);
   const categories = cats as unknown as Share[];
