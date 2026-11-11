@@ -2508,7 +2508,8 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
 .stl-adv-label { font-size: var(--t-sm); font-weight: 600; }
 .stl-adv-body .amountbox { width: min(360px, 100%); }
 .stl-adv-body .hint { margin: 2px 0 0; }
-.stl-purpose { margin: 4px 0 14px; }
+.stl-purpose { margin: -10px 0 10px; }
+.stl-purpose legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .amountbox { display: flex; align-items: stretch; }
 .amountbox input { flex: 1 1 auto; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .amountbox-unit {
@@ -9700,3 +9701,13 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .flow:not(:has(.flow-arrow)) > .flow-node:focus-visible, .scopetabs > .scopetab:focus-visible, .segmented > .seg:focus-visible {
   outline: 2px solid var(--focus); outline-offset: -2px;
 }
+
+/* No waves: a document's details panel is a plain band with a hairline,
+   in every form that used the wave (orders, receipts, invoices). The
+   tokens are emptied once, here, so light and dark both follow. */
+:root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
+  --wave-bg: transparent; --wave-img: none; --wave-img-dark: none; --wave-line: var(--line-soft);
+}
+.stl-from { flex-basis: 100%; margin: 4px 0 0; font-size: var(--t-sm); color: var(--muted); }
+.stl-from strong { color: var(--ink); }
+.stl-table tbody tr.from td:first-child { box-shadow: inset 3px 0 0 var(--ink); }

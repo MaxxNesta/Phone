@@ -146,7 +146,14 @@ export function SettlementForm({
     && (!isPay || (i.currency ?? base) === cur));
   const poolFor = (pid: string, cur: string) => advances.filter((a) => a.partner_id === pid
     && a.currency === (isPay ? cur : base));
-  const open = useMemo(() => openFor(partnerId, currency), [invoices, partnerId, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The bill this screen was opened from leads the list, so what was just
+  // filled in is the first thing seen rather than a row below the fold.
+  const open = useMemo(() => {
+    const rows = openFor(partnerId, currency);
+    const i = rows.findIndex((r) => r.document_id === initialInvoiceId);
+    return i > 0 ? [rows[i], ...rows.slice(0, i), ...rows.slice(i + 1)] : rows;
+  }, [invoices, partnerId, currency]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fromBill = open.find((r) => r.document_id === initialInvoiceId);
   const pool = useMemo(() => poolFor(partnerId, currency), [advances, partnerId, currency]); // eslint-disable-line react-hooks/exhaustive-deps
   const poolTotal = pool.reduce((t, a) => t + a.available, 0);
 
@@ -431,6 +438,7 @@ export function SettlementForm({
               {settling.length > 0 && <button type="button" className="ghost tiny" onClick={() => setSplit({ cash: {}, adv: {} })}>Clear</button>}
             </span>
           )}
+          {fromBill && <p className="stl-from">{isPay ? "Paying" : "Receiving for"} <strong>{fromBill.doc_no}</strong>, opened from that {isPay ? "bill" : "invoice"}. Tick others to settle them in the same {isPay ? "payment" : "receipt"}.</p>}
         </div>
 
         {!partnerId ? (
@@ -461,7 +469,7 @@ export function SettlementForm({
                   const rate = foreign ? (i.exchange_rate ?? 1) : 1;
                   const paidBefore = Number(i.paid) / rate, advBefore = Number(i.adv_applied ?? 0) / rate;
                   return (
-                    <tr key={i.document_id} className={taken > 0 ? "on" : undefined}>
+                    <tr key={i.document_id} className={[taken > 0 && "on", i.document_id === initialInvoiceId && "from"].filter(Boolean).join(" ") || undefined}>
                       <td className="stl-check">
                         <input type="checkbox" checked={taken > 0} onChange={() => toggle(i)} aria-label={`Settle ${i.doc_no} in full`} />
                       </td>
@@ -490,7 +498,7 @@ export function SettlementForm({
                         </td>
                       )}
                       <td className="r">
-                        <Amount value={amounts[i.document_id] ?? ""} label={`${cashWord} now for ${i.doc_no}`} invalid={over}
+                        <Amount value={amounts[i.document_id] ?? ""} placeholder="—" label={`${cashWord} now for ${i.doc_no}`} invalid={over}
                           onChange={(v) => setSplit({ ...split, cash: { ...split.cash, [i.document_id]: v } })} />
                       </td>
                       <td className="r">{taken > 0 ? (out(i) - taken > 0.005 ? fmt(out(i) - taken) : <span className="stl-done">Settled</span>) : <span className="page-sub">{fmt(out(i))}</span>}</td>
