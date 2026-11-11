@@ -9,6 +9,7 @@ import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { AutoApply } from "@/components/auto-apply";
 import { PriceTimeline } from "@/components/price-timeline";
+import { PricePicker } from "@/components/price-picker";
 import { productTrends, timeline, bucketOf, trendKey, priceChanges, type ProductTrend } from "@/lib/price-trends";
 
 const pct = (c: number) => `${(Math.abs(c) * 100).toFixed(Math.abs(c) < 0.001 ? 2 : 1)}%`;
@@ -90,7 +91,14 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
   const down = moving.filter((t) => !flat(t) && t.change! < 0).length;
   const movers = [...moving].sort((a, b) => Math.abs(b.change!) - Math.abs(a.change!) || b.lines - a.lines).slice(0, 10);
   const byLines = [...trends].sort((a, b) => b.lines - a.lines || a.item.localeCompare(b.item));
-  const focus: ProductTrend | undefined = trends.find((t) => t.key === sp.item) ?? byLines[0];
+  // Which product the chart shows: the one picked; else what the Product
+  // search names — an exact SKU first, then a name that starts with it —
+  // else the one bought or sold most often.
+  const needle = (sp.q ?? "").trim().toLowerCase();
+  const searched = needle
+    ? byLines.find((t) => t.code.toLowerCase() === needle) ?? byLines.find((t) => t.item.toLowerCase().startsWith(needle))
+    : undefined;
+  const focus: ProductTrend | undefined = trends.find((t) => t.key === sp.item) ?? searched ?? byLines[0];
   // Grouping follows the product's own span, not the filter's: two days of
   // sales inside a year-long filter are two days, not one month.
   const focusLines = focus ? rows.filter((r) => trendKey(r) === focus.key) : [];
@@ -196,15 +204,9 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
                     {money(focus.first)} → {money(focus.last)} MMK · <Change t={focus} /> · low {money(focus.low)} · high {money(focus.high)} · {focus.lines} line{focus.lines === 1 ? "" : "s"}
                   </p>
                 </div>
-                <form method="get" className="ph-pick">
-                  {Object.entries({ ...sp, item: undefined, page: undefined }).map(([k, v]) => v ? <input key={k} type="hidden" name={k} value={v} /> : null)}
-                  <label htmlFor="ph-item" className="sr-only">Product</label>
-                  <select id="ph-item" name="item" defaultValue={focus.key}>
-                    {byLines.map((t) => <option key={t.key} value={t.key}>{t.item} · {t.uom} ({t.lines})</option>)}
-                  </select>
-                  <AutoApply />
-                  <button type="submit" className="btn ghost" data-apply>Show</button>
-                </form>
+                <PricePicker value={focus.key} baseQuery={keep({ item: undefined })}
+                  options={byLines.map((t) => ({ key: t.key, item: t.item, code: t.code, uom: t.uom, lines: t.lines,
+                    change: t.spark.length > 1 ? t.change : null }))} />
               </div>
               <div className="card-body">
                 <PriceTimeline points={tl.points} buckets={tl.buckets}

@@ -9713,3 +9713,31 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .stl-table tbody tr.from td:first-child { box-shadow: inset 3px 0 0 var(--ink); }
 .ph-over { color: var(--ink); font-weight: 600; white-space: nowrap; }
 .ph-under { color: var(--muted); font-weight: 600; white-space: nowrap; }
+
+/* Price history: the chart's product, chosen from a list you can type into. */
+.pp { position: relative; }
+.pp-btn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: min(420px, 100%); min-height: 38px; padding: 0 12px; text-align: left;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-weight: 500;
+}
+.pp-btn:hover { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+.pp-btn-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-btn-text small { margin-left: 6px; color: var(--muted); font-weight: 400; }
+.pp-pop {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(460px, calc(100vw - 32px));
+  display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.28);
+}
+.pp-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; }
+.pp-search svg { color: var(--muted); flex: none; }
+.pp-search input { border: 0; background: transparent; min-height: 36px; width: 100%; outline: none; }
+.pp-seg { justify-self: start; }
+.pp-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow: auto; }
+.pp-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.pp-list li[data-at] { background: var(--line-soft); }
+.pp-list li[aria-selected="true"] .pp-name { font-weight: 650; }
+.pp-name { display: grid; min-width: 0; }
+.pp-name small { color: var(--muted); font-size: var(--t-xs); }
+.pp-meta { display: flex; gap: 10px; align-items: center; flex: none; font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.pp-empty { color: var(--muted); cursor: default !important; }
