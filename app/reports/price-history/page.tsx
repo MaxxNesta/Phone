@@ -278,7 +278,7 @@ function Overview({ rows, trends, side, sp, keep, pick, partnerLabel }: {
 /**
  * One product, laid out as a report page: the figures that matter in the top
  * left, the price by group beside them, the price over time across the
- * bottom. Teal and slate are this report's own palette.
+ * bottom, in the app's blue with slate beside it.
  */
 function ProductView({ focus, rows, side, sp, keep, pickerOptions, partnerLabel, range }: {
   focus: ProductTrend; rows: PriceRow[]; side: PriceSide; sp: Search; keep: (o: Search) => string;
@@ -351,9 +351,9 @@ function ProductView({ focus, rows, side, sp, keep, pickerOptions, partnerLabel,
         <div className="pbi-panel pbi-time">
           <h3>Average price timeline</h3>
           <p className="pbi-legend">
-            <i style={{ background: "var(--pbi-teal)" }} /> Average price
-            {taxed && <><i style={{ background: "var(--pbi-slate)" }} /> Average price incl tax</>}
-            <i className="dot" style={{ background: "var(--pbi-slate)" }} /> each {sale ? "sale" : "purchase"}
+            <i style={{ background: "var(--pbi-main)" }} /> Average price
+            {taxed && <><i style={{ background: "var(--pbi-alt)" }} /> Average price incl tax</>}
+            <i className="dot" style={{ background: "var(--pbi-alt)" }} /> each {sale ? "sale" : "purchase"}
             <span className="pbi-note">{size === "day" ? "daily" : size === "week" ? "weekly" : "monthly"} · {money(focus.first)} → {money(focus.last)} · <Change t={focus} /> · {changes.length} change{changes.length === 1 ? "" : "s"}</span>
           </p>
           <PriceTimeline points={tl.points} buckets={buckets}

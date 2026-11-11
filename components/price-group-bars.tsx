@@ -20,7 +20,7 @@ export function GroupBars({ data, empty }: { data: GroupBar[]; empty: string }) 
   return (
     <>
       {taxed && (
-        <p className="pbi-legend"><i style={{ background: "var(--pbi-teal)" }} /> Average price incl tax <i style={{ background: "var(--pbi-slate)" }} /> Average price</p>
+        <p className="pbi-legend"><i style={{ background: "var(--pbi-main)" }} /> Average price incl tax <i style={{ background: "var(--pbi-alt)" }} /> Average price</p>
       )}
       <ResponsiveContainer width="100%" height={h}>
         <BarChart data={data} layout="vertical" margin={{ top: 4, right: 56, left: 0, bottom: 0 }} barGap={2} barCategoryGap={taxed ? "28%" : "36%"}>
@@ -30,11 +30,11 @@ export function GroupBars({ data, empty }: { data: GroupBar[]; empty: string }) 
             tick={{ fill: "var(--ink)", fontSize: 11 }} />
           <Tooltip cursor={{ fill: "var(--line-soft)" }} content={<Tip />} />
           {taxed && (
-            <Bar dataKey="avgTax" name="Average price incl tax" fill="var(--pbi-teal)" isAnimationActive={false}>
+            <Bar dataKey="avgTax" name="Average price incl tax" fill="var(--pbi-main)" isAnimationActive={false}>
               <LabelList dataKey="avgTax" position="right" formatter={(v: unknown) => short(Number(v))} style={{ fill: "var(--muted)", fontSize: 10 }} />
             </Bar>
           )}
-          <Bar dataKey="avg" name="Average price" fill={taxed ? "var(--pbi-slate)" : "var(--pbi-teal)"} isAnimationActive={false}>
+          <Bar dataKey="avg" name="Average price" fill={taxed ? "var(--pbi-alt)" : "var(--pbi-main)"} isAnimationActive={false}>
             <LabelList dataKey="avg" position="right" formatter={(v: unknown) => short(Number(v))} style={{ fill: "var(--muted)", fontSize: 10 }} />
           </Bar>
         </BarChart>

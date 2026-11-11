@@ -23,15 +23,16 @@
      also doing duty as the link and button colour, so recolouring the
      product would have recoloured every debit in the ledger with it.
      --brand is the chrome; --dr stays accounting. */
-  /* Black, like the Apple Store: primary actions and the selected place.
-     Links and focus are Apple blue, so "you can go there" never looks like
-     "this is the main thing to do". Status uses Apple's accessible system
-     colours. */
+  /* Black for primary actions and the selected place. Links, focus, info
+     and the first chart series share one blue: a flat cobalt, deeper and
+     less glassy than Apple's system blue, 6.1:1 on white. Status keeps its
+     accessible system colours. */
+  --blue:       #1F5FBF;
   --brand:      #1D1D1F;
   --brand-fg:   #FFFFFF;
   --brand-weak: color-mix(in srgb, var(--ink) 9%, transparent);
-  --link:       #0066CC;
-  --focus:      #0071E3;
+  --link:       var(--blue);
+  --focus:      var(--blue);
   --ok:        #248A3D;
   --warn:      #C93400;
   --bad:       #D70015;
@@ -40,7 +41,7 @@
      not good news or bad news, it is simply in progress, which is what the
      other three don't say. Added for the order status pills, not scoped to
      them — anywhere else that needs the same distinction can use it too. */
-  --info:      #0066CC;
+  --info:      var(--blue);
 
   /* DM Sans carries the interface, Plex Mono every figure and document
      number. The dashboard was built on DM Sans and the rest of the product on
@@ -135,13 +136,14 @@
     --brand:      #F5F5F7;
     --brand-fg:   #000000;
     --brand-weak: color-mix(in srgb, var(--ink) 16%, transparent);
-    --link:       #2997FF;
-    --focus:      #0A84FF;
+    --blue:       #6EA8FF;
+    --link:       var(--blue);
+    --focus:      var(--blue);
     --ok:        #30D158;
     --warn:      #FF9F0A;
     --bad:       #FF453A;
     --ghost:     #F5F5F7;
-    --info:      #409CFF;
+    --info:      var(--blue);
   }
 }
 
@@ -870,7 +872,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
      forced-dark extension or a browser that ignores it would put the icon
      back out of sight — and an invisible control reads as a bug, not as a
      theme. This one is drawn in our own muted grey and cannot disappear. */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231F5FBF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: center; background-size: 1rem;
 }
 input[type="date"]:hover::-webkit-calendar-picker-indicator,
@@ -878,7 +880,7 @@ input[type="time"]:hover::-webkit-calendar-picker-indicator { opacity: 1; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator,
   :root:not([data-theme="light"]) input[type="time"]::-webkit-calendar-picker-indicator {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236EA8FF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
   }
 }
 /* A date field carries a control the browser draws itself, so it cannot be
@@ -892,7 +894,7 @@ input[type="date"], input[type="time"] { min-height: 2.1rem; }
 select {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%231F5FBF' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.65rem center;
   padding-right: 2.1rem;
@@ -4908,15 +4910,15 @@ input[type="checkbox"][name]:not(td *):not(th *):disabled { opacity: 0.4; cursor
   input[type="checkbox"]::before { transition: none; }
 }
 
-/* Charts: Apple's system hues, kept apart from the black of the controls.
-   Blue leads; the rest follow in the order Swift Charts assigns them. */
+/* Charts: our blue leads; the rest are system hues, kept apart from the
+   black of the controls. */
 :root {
-  --chart-1: #0071E3; --chart-2: #FF9500; --chart-3: #5856D6;
+  --chart-1: var(--blue); --chart-2: #FF9500; --chart-3: #5856D6;
   --chart-4: #30B0C7; --chart-5: #FF2D55; --chart-6: #34C759;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --chart-1: #0A84FF; --chart-2: #FF9F0A; --chart-3: #5E5CE6;
+    --chart-1: var(--blue); --chart-2: #FF9F0A; --chart-3: #5E5CE6;
     --chart-4: #40C8E0; --chart-5: #FF375F; --chart-6: #30D158;
   }
 }
@@ -5025,7 +5027,7 @@ button.dt-step:disabled { opacity: 0.35; }
 .erp-panel { padding: 12px 16px; gap: 10px; border-bottom-color: var(--line-soft); background: var(--surface); }
 input.erp-search {
   height: 36px; min-height: 36px; padding: 0 12px 0 34px; border: 0; border-radius: 10px;
-  background: var(--line-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%230071E3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 11px center;
+  background: var(--line-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%231F5FBF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 11px center;
   font-size: 0.9375rem; box-shadow: none;
 }
 input.erp-search:focus { border: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 30%, transparent); }
@@ -5162,7 +5164,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 
 .pos3-page {
   display: flex; flex-direction: column; gap: 14px;
-  /* Apple's system blue (#0071E3 light, #0A84FF dark): the tint for choosing and adding. */
+  /* The app's blue (--blue): the tint for choosing and adding. */
   --link: var(--chart-1);
 }
 .pos3-top { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
@@ -6957,7 +6959,7 @@ input.varcode { width: 8.5rem; height: 28px; min-height: 0; padding: 0 6px; font
   background: var(--focus); color: #fff; font-size: 0.78rem; font-weight: 700;
 }
 .pf-icon { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; }
-.tone-blue   { background: color-mix(in srgb, #0A84FF 14%, transparent); color: #0A64C8; }
+.tone-blue   { background: color-mix(in srgb, var(--blue) 12%, transparent); color: var(--blue); }
 .tone-orange { background: color-mix(in srgb, #FF9F0A 16%, transparent); color: #B86E00; }
 .tone-teal   { background: color-mix(in srgb, #30B0C7 16%, transparent); color: #1B7F92; }
 .tone-violet { background: color-mix(in srgb, #8E5CF7 15%, transparent); color: #6A3FD0; }
@@ -7888,11 +7890,11 @@ button.dt-cols-go:disabled { opacity: 0.45; cursor: not-allowed; }
    muted amber for what is coming, restrained red for an exception, lavender
    for supporting information. Everything else stays grey on white. */
 :root {
-  --fa-blue: #1F5FBF; --fa-green: #2F7D5B; --fa-amber: #A86A12; --fa-red: #B42318; --fa-lav: #6B5FB5;
+  --fa-blue: var(--blue); --fa-green: #2F7D5B; --fa-amber: #A86A12; --fa-red: #B42318; --fa-lav: #6B5FB5;
 }
-:root[data-theme="dark"] { --fa-blue: #6EA8FF; --fa-green: #5FBF8F; --fa-amber: #E0A84A; --fa-red: #F07B72; --fa-lav: #A79BEA; }
+:root[data-theme="dark"] { --blue: #6EA8FF; --fa-blue: var(--blue); --fa-green: #5FBF8F; --fa-amber: #E0A84A; --fa-red: #F07B72; --fa-lav: #A79BEA; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --fa-blue: #6EA8FF; --fa-green: #5FBF8F; --fa-amber: #E0A84A; --fa-red: #F07B72; --fa-lav: #A79BEA; }
+  :root:not([data-theme="light"]) { --fa-blue: var(--blue); --fa-green: #5FBF8F; --fa-amber: #E0A84A; --fa-red: #F07B72; --fa-lav: #A79BEA; }
 }
 .fa-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); }
 .fa-head h1 { margin: 0; font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; }
@@ -8934,7 +8936,7 @@ dialog.cbp::backdrop { background: rgb(0 0 0 / 0.38); backdrop-filter: blur(3px)
   --wave-img-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 260' preserveAspectRatio='xMaxYMin slice'%3E%3Cpath d='M260 0C380 60 470 30 590 70S800 170 900 120V0Z' fill='%23FFFFFF' fill-opacity='.035'/%3E%3Cpath d='M380 0C480 40 560 20 660 55S820 120 900 80V0Z' fill='%23FFFFFF' fill-opacity='.03'/%3E%3Cpath d='M120 260C300 170 430 220 580 150S800 40 900 70' fill='none' stroke='%23FFFFFF' stroke-opacity='.06' stroke-width='1.5'/%3E%3Cpath d='M0 260C220 210 360 250 520 205S780 150 900 160V260Z' fill='%23FFFFFF' fill-opacity='.02'/%3E%3C/svg%3E");
   --wave-bg: color-mix(in srgb, var(--link) 3.5%, var(--surface));
   --wave-line: color-mix(in srgb, var(--link) 14%, var(--line));
-  --wave-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 260' preserveAspectRatio='xMaxYMin slice'%3E%3Cpath d='M260 0C380 60 470 30 590 70S800 170 900 120V0Z' fill='%230071E3' fill-opacity='.06'/%3E%3Cpath d='M380 0C480 40 560 20 660 55S820 120 900 80V0Z' fill='%230071E3' fill-opacity='.05'/%3E%3Cpath d='M120 260C300 170 430 220 580 150S800 40 900 70' fill='none' stroke='%23FFFFFF' stroke-opacity='.9' stroke-width='2'/%3E%3Cpath d='M180 260C340 190 470 235 610 175S820 80 900 105' fill='none' stroke='%230071E3' stroke-opacity='.07' stroke-width='1.5'/%3E%3Cpath d='M0 260C220 210 360 250 520 205S780 150 900 160V260Z' fill='%230071E3' fill-opacity='.025'/%3E%3C/svg%3E");
+  --wave-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 260' preserveAspectRatio='xMaxYMin slice'%3E%3Cpath d='M260 0C380 60 470 30 590 70S800 170 900 120V0Z' fill='%231F5FBF' fill-opacity='.06'/%3E%3Cpath d='M380 0C480 40 560 20 660 55S820 120 900 80V0Z' fill='%231F5FBF' fill-opacity='.05'/%3E%3Cpath d='M120 260C300 170 430 220 580 150S800 40 900 70' fill='none' stroke='%23FFFFFF' stroke-opacity='.9' stroke-width='2'/%3E%3Cpath d='M180 260C340 190 470 235 610 175S820 80 900 105' fill='none' stroke='%231F5FBF' stroke-opacity='.07' stroke-width='1.5'/%3E%3Cpath d='M0 260C220 210 360 250 520 205S780 150 900 160V260Z' fill='%231F5FBF' fill-opacity='.025'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -9755,11 +9757,11 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .ph-share > span { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
 .ph-timeline { margin-bottom: 12px; }
 
-/* Price history, product view: a report canvas in the report's own palette —
-   teal for the price, slate beside it. Only this page uses it. */
-:root { --pbi-teal: #01B8AA; --pbi-slate: #374649; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --pbi-teal: #2FD1C3; --pbi-slate: #A8B4B7; } }
-:root[data-theme="dark"] { --pbi-teal: #2FD1C3; --pbi-slate: #A8B4B7; }
+/* Price history, product view: a report canvas, flat — our blue for the
+   price, slate beside it. */
+:root { --pbi-main: var(--blue); --pbi-alt: #3F4A57; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --pbi-alt: #A8B4B7; } }
+:root[data-theme="dark"] { --pbi-alt: #A8B4B7; }
 .pbi { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px 10px; margin: 0 0 12px; }
 .pbi-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
 .pbi-back { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line); color: var(--muted); flex: none; }
@@ -9780,5 +9782,5 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .pbi-note { margin-left: auto; color: var(--muted); }
 .pbi-empty { margin: 20px 0; font-size: 0.85rem; color: var(--muted); }
 @media (max-width: 1000px) { .pbi-top { grid-template-columns: 1fr; } .pbi-title { justify-items: start; text-align: left; } .pbi-head { flex-direction: column; } }
-.pbi .ph-up { color: var(--pbi-teal); }
-.pbi .ph-down { color: var(--pbi-slate); }
+.pbi .ph-up { color: var(--pbi-main); }
+.pbi .ph-down { color: var(--pbi-alt); }
