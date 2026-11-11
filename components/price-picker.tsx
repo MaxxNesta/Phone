@@ -27,10 +27,12 @@ export function PricePicker({ options, value, baseQuery }: {
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return options.filter((o) => (!moved || (o.change !== null && Math.abs(o.change) >= 0.0005))
+    return options.filter((o) => (!moved || o.change !== null)
       && (!needle || `${o.item} ${o.code}`.toLowerCase().includes(needle)));
   }, [options, q, moved]);
-  const changed = options.filter((o) => o.change !== null && Math.abs(o.change) >= 0.0005).length;
+  // The page decides what counts as a change (a whole kyat or more) and
+  // sends null for the rest, so the two always agree.
+  const changed = options.filter((o) => o.change !== null).length;
 
   useEffect(() => { setAt(0); }, [q, moved]);
   useEffect(() => {
@@ -52,7 +54,7 @@ export function PricePicker({ options, value, baseQuery }: {
     else if (e.key === "Enter") { e.preventDefault(); if (list[at]) pick(list[at].key); }
     else if (e.key === "Escape") setOpen(false);
   };
-  const pct = (c: number | null) => c === null || Math.abs(c) < 0.0005 ? null : `${c > 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(Math.abs(c) < 0.001 ? 2 : 1)}%`;
+  const pct = (c: number | null) => c === null ? null : `${c > 0 ? "▲" : "▼"} ${(Math.abs(c) * 100).toFixed(Math.abs(c) < 0.001 ? 2 : 1)}%`;
 
   return (
     <div className="pp" ref={box}>

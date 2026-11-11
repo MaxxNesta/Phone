@@ -26,4 +26,9 @@ assert.equal(ch.length, 2);                                   // 01→02 flat, 0
 assert.equal(ch[0].date, "2026-01-06"); assert.equal(ch[0].change, -5);  // newest first
 assert.equal(ch[1].date, "2026-01-03"); assert.equal(ch[1].prev, 100); assert.equal(ch[1].next, 130);
 assert.deepEqual(ch[1].docs.map((d) => d.no), ["D2", "D3"]);
+// Product totals and breakdowns.
+assert.equal(x.qty, 5); assert.equal(x.avg, (100 + 600 + 210) / 5);      // weighted over the period
+const parts = T.breakdown([{ ...L("2026-01-01", 100, 3), grp: "A" }, { ...L("2026-01-01", 200, 1), grp: "B" }, { ...L("2026-01-02", 120, 1), grp: "A" }, { ...L("2026-01-02", 1, 9), grp: null }], (l) => l.grp);
+assert.deepEqual(parts.map((p) => [p.label, p.avg, p.qty]), [["A", 105, 4], ["B", 200, 1]]);   // ungrouped left out
+assert.equal(parts[0].share, 0.8);
 console.log("price-trends ok");

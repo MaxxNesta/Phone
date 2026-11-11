@@ -9741,3 +9741,16 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .pp-name small { color: var(--muted); font-size: var(--t-xs); }
 .pp-meta { display: flex; gap: 10px; align-items: center; flex: none; font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
 .pp-empty { color: var(--muted); cursor: default !important; }
+/* Price history: product view and the overview's sortable product table. */
+.ph-sort { color: inherit; text-decoration: none; white-space: nowrap; }
+.ph-sort:hover { color: var(--ink); text-decoration: underline; }
+.ph-pv-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; }
+.ph-pv-title { display: grid; min-width: 0; flex: 1 1 260px; }
+.ph-pv-title h2 { margin: 0; font-size: 1.15rem; font-weight: 650; }
+.ph-back { gap: 6px; }
+.ph-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin: 0 0 12px; }
+.ph-part { margin: 0; }
+.ph-part-table th:first-child { width: 40%; }
+.ph-share { display: block; width: 100%; max-width: 120px; margin-left: auto; height: 6px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
+.ph-share > span { display: block; height: 100%; background: var(--ink); border-radius: 3px; }
+.ph-timeline { margin-bottom: 12px; }

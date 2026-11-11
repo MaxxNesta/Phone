@@ -8197,6 +8197,13 @@ export type PriceRow = {
   currency: string; rate: number;
   /** Net of every discount, before tax, per entered unit — in the document's currency and in kyat. */
   unit_fc: number; unit_base: number;
+  /** Per entered unit, in kyat: tax on it, and the discounts taken off before unit_base. */
+  unit_tax: number; unit_disc: number;
+  /** Which discount, if any: Volume, Invoice or Line. */
+  disc_kind: string | null;
+  partner_id: string | null;
+  /** The product's category and brand; the partner's group; the sale's price level; the branch. */
+  category: string | null; brand: string | null; pgroup: string | null; level: string | null; branch: string | null;
 };
 export type PriceSide = "purchase" | "receipt" | "sale";
 
@@ -8209,6 +8216,7 @@ export type PriceSide = "purchase" | "receipt" | "sale";
 export async function getPriceHistory(companyId: string, side: PriceSide, f: {
   q?: string; itemId?: string; partnerId?: string; from: string; to: string;
   currency?: string; locationId?: string;
+  categoryId?: string; brandId?: string; branchId?: string;
 }): Promise<PriceRow[]> {
   const docType = side === "sale" ? "SALES_INVOICE" : side === "receipt" ? "GOODS_RECEIPT" : "PURCHASE_INVOICE";
   const like = f.q ? `%${f.q.trim()}%` : null;
@@ -8218,7 +8226,15 @@ export async function getPriceHistory(companyId: string, side: PriceSide, f: {
            coalesce(p.name, 'Walk-in') as partner, coalesce(l.name, '—') as location,
            coalesce(u.code, bu.code) as uom, coalesce(dl.entered_qty, dl.base_qty)::float as qty,
            d.currency, coalesce(d.exchange_rate, 1)::float as rate,
-           (dl.net_amount / nullif(coalesce(dl.entered_qty, dl.base_qty), 0))::float as unit_base
+           (dl.net_amount / nullif(coalesce(dl.entered_qty, dl.base_qty), 0))::float as unit_base,
+           (coalesce(dl.tax_amount, 0) / nullif(coalesce(dl.entered_qty, dl.base_qty), 0))::float as unit_tax,
+           ((coalesce(dl.discount_amount, 0) + coalesce(dl.volume_discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0))
+              / nullif(coalesce(dl.entered_qty, dl.base_qty), 0))::float as unit_disc,
+           case when coalesce(dl.volume_discount_amount, 0) <> 0 then 'Volume discount'
+                when coalesce(dl.invoice_discount_amount, 0) <> 0 then 'Invoice discount'
+                when coalesce(dl.discount_amount, 0) <> 0 then 'Line discount' end as disc_kind,
+           d.partner_id, g.name as category, b.name as brand, pc.name as pgroup, pl.name as level,
+           coalesce(br.name, l.name) as branch
       from document_line dl
       join document d on d.id = dl.document_id
       join item i on i.id = dl.item_id
@@ -8226,6 +8242,12 @@ export async function getPriceHistory(companyId: string, side: PriceSide, f: {
       left join uom u on u.id = dl.entered_uom_id
       left join business_partner p on p.id = d.partner_id
       left join location l on l.id = coalesce(dl.location_id, d.location_id)
+      -- A warehouse's branch is its parent; a branch is its own.
+      left join location br on br.id = l.parent_id
+      left join item_group g on g.id = i.item_group_id
+      left join brand b on b.id = i.brand_id
+      left join partner_category pc on pc.id = p.category_id
+      left join price_level pl on pl.id = d.price_level_id
      where d.company_id = ${companyId}
        and d.doc_type = ${docType}
        and d.status = 'POSTED'
@@ -8237,6 +8259,9 @@ export async function getPriceHistory(companyId: string, side: PriceSide, f: {
        and (${f.partnerId ?? null}::uuid is null or d.partner_id = ${f.partnerId ?? null})
        and (${f.currency ?? null}::text is null or d.currency = ${f.currency ?? null})
        and (${f.locationId ?? null}::uuid is null or coalesce(dl.location_id, d.location_id) = ${f.locationId ?? null})
+       and (${f.categoryId ?? null}::uuid is null or i.item_group_id = ${f.categoryId ?? null})
+       and (${f.brandId ?? null}::uuid is null or i.brand_id = ${f.brandId ?? null})
+       and (${f.branchId ?? null}::uuid is null or coalesce(l.parent_id, l.id) = ${f.branchId ?? null})
      order by d.posting_date desc, d.doc_no desc
      limit 5000`;
   return (rows as unknown as Omit<PriceRow, "unit_fc">[]).map((r) => ({

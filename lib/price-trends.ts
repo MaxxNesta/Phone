@@ -7,7 +7,7 @@
  * are two prices, never averaged together.
  */
 
-export type TrendLine = { date: string; item_id: string; item: string; code: string; uom: string; qty: number; unit_base: number; doc_no: string; partner: string };
+export type TrendLine = { date: string; item_id: string; item: string; code: string; uom: string; qty: number; unit_base: number; doc_no: string; partner: string; doc_id?: string };
 
 export type ProductTrend = {
   key: string; item: string; code: string; uom: string; lines: number;
@@ -16,6 +16,8 @@ export type ProductTrend = {
   change: number | null;
   /** Weighted average per day, oldest first. */
   spark: number[];
+  /** Quantity-weighted price over the period, units, and how many documents. */
+  avg: number; qty: number; orders: number;
 };
 
 export const trendKey = (r: { item_id: string; uom: string }) => `${r.item_id}:${r.uom}`;
@@ -41,11 +43,14 @@ export function productTrends(rows: TrendLine[]): ProductTrend[] {
     const days = byDay(ls);
     const first = days[0].avg, last = days[days.length - 1].avg;
     const prices = ls.map((l) => l.unit_base);
+    const qty = ls.reduce((t, l) => t + l.qty, 0);
     return {
       key, item: ls[0].item, code: ls[0].code, uom: ls[0].uom, lines: ls.length,
       first, last, low: Math.min(...prices), high: Math.max(...prices),
       change: first > 0 ? (last - first) / first : null,
       spark: days.map((d) => d.avg),
+      avg: qty > 0 ? ls.reduce((t, l) => t + l.unit_base * l.qty, 0) / qty : 0, qty,
+      orders: new Set(ls.map((l) => l.doc_id ?? l.doc_no)).size,
     };
   });
 }
@@ -126,4 +131,25 @@ export function priceChanges(rows: (TrendLine & { doc_id: string })[]): PriceCha
     }
   }
   return out.sort((a, b) => b.date.localeCompare(a.date) || Math.abs(b.change) - Math.abs(a.change));
+}
+
+export type Slice = { label: string; avg: number; qty: number; lines: number; share: number };
+
+/**
+ * One product's price by some grouping (customer group, price level, branch,
+ * customer, discount): the quantity-weighted price in each and its share of
+ * the units. Groups with no value are left out; largest share first.
+ */
+export function breakdown<T extends TrendLine>(lines: T[], by: (l: T) => string | null | undefined): Slice[] {
+  const g = new Map<string, { v: number; q: number; n: number }>();
+  for (const l of lines) {
+    const k = by(l);
+    if (!k) continue;
+    const x = g.get(k) ?? { v: 0, q: 0, n: 0 };
+    x.v += l.unit_base * l.qty; x.q += l.qty; x.n++;
+    g.set(k, x);
+  }
+  const total = [...g.values()].reduce((t, x) => t + x.q, 0);
+  return [...g.entries()].map(([label, x]) => ({ label, avg: x.q ? x.v / x.q : 0, qty: x.q, lines: x.n, share: total ? x.q / total : 0 }))
+    .sort((a, b) => b.qty - a.qty || a.label.localeCompare(b.label));
 }
