@@ -1,7 +1,7 @@
 import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
-import { money, qty, shortDate } from "@/lib/db";
+import { money, qty, shortDate, sql } from "@/lib/db";
 import {
   getCompany, getItems, getStockMovements, getStockOpeningBalance, getVariantStock,
 } from "@/lib/queries";
@@ -22,9 +22,10 @@ const asDate = (v: string | undefined) =>
 export default async function StockMovements({
   searchParams,
 }: {
-  searchParams: Promise<{ item?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ item?: string; from?: string; to?: string; category?: string }>;
 }) {
-  const { item, from: rawFrom, to: rawTo } = await searchParams;
+  const { item, from: rawFrom, to: rawTo, category: rawCategory } = await searchParams;
+  const pk = await getTranslations("picker");
   const t = await getTranslations("inventory");
   const c = await getTranslations("common");
   const n = await getTranslations("nav");
@@ -62,8 +63,12 @@ export default async function StockMovements({
   const selected = item && item !== "all" ? items.find((i) => i.id === item) ?? null : null;
   const oneItem = selected !== null;
 
+  // Narrowed to one product category: what the supply-chain canvas links here with.
+  const categories = (await sql`select id, name from item_group where company_id = ${company.id} and is_active order by name`) as unknown as { id: string; name: string }[];
+  const category = categories.find((g) => g.id === rawCategory) ?? null;
+
   const rows = (await getStockMovements(
-    company.id, selected?.id ?? null, from, to, await seenLocations(),
+    company.id, selected?.id ?? null, from, to, await seenLocations(), category?.id ?? null,
   )) as unknown as Array<{
     id: string; movement_date: string; qty: string; unit_cost: string;
     total_cost: string; batch_no: string | null; doc_no: string | null;
@@ -184,13 +189,20 @@ export default async function StockMovements({
               basePath="/inventory/movements"
               paramName="item"
               label={t("item")}
-              keep={{ from: from ?? undefined, to: to ?? undefined }}
+              keep={{ from: from ?? undefined, to: to ?? undefined, category: category?.id }}
             />
 
             {/* A plain GET form: two dates and a button, no JavaScript, and
                 what comes back is a URL somebody can keep. */}
             <form method="get" action="/inventory/movements" className="daterange">
               <input type="hidden" name="item" value={selected?.id ?? "all"} />
+              <div className="field">
+                <label htmlFor="mv-category">{pk("category")}</label>
+                <select id="mv-category" name="category" defaultValue={category?.id ?? ""}>
+                  <option value="">{pk("allCategories")}</option>
+                  {categories.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </div>
               <div className="field">
                 <label htmlFor="from">{c("from")}</label>
                 <input id="from" name="from" type="date" defaultValue={from ?? ""} />
@@ -200,7 +212,7 @@ export default async function StockMovements({
                 <input id="to" name="to" type="date" defaultValue={to ?? ""} />
               </div>
               <button type="submit" className="btn ghost">{c("apply")}</button>
-              {dated && (
+              {(dated || category) && (
                 <Link className="btn ghost"
                       href={`/inventory/movements${selected ? `?item=${selected.id}` : ""}`}>
                   {c("clear")}

@@ -25,6 +25,8 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
 }) {
   const router = useRouter();
   const [hover, setHover] = useState<string | null>(null);
+  // A clicked ribbon stays picked out until it is clicked again or the canvas is.
+  const [pinned, setPinned] = useState<string | null>(null);
 
   const layout = useMemo(() => {
     const midTotals = cats.map((c) => Math.max(c.inTotal, c.outTotal));
@@ -72,14 +74,15 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
   }, [left, cats, right, links]);
 
   const colorOf = (catId: string) => cats.find((c) => c.id === catId)?.color ?? "var(--line)";
-  const lit = (l: CanvasLink) => !hover || l.from === hover || l.to === hover;
+  const id = (l: CanvasLink) => `${l.from}|${l.to}`;
+  const lit = (l: CanvasLink) => pinned ? id(l) === pinned : !hover || l.from === hover || l.to === hover;
   const open = (catId: string) => {
     const sep = baseQuery.length > 1 ? "&" : "";
     router.replace(`${baseQuery}${sep}focus=${catId}`, { scroll: false });
   };
 
   return (
-    <svg className="sc-svg" viewBox={`0 0 ${W} ${layout.H}`} role="img"
+    <svg className="sc-svg" viewBox={`0 0 ${W} ${layout.H}`} role="img" onClick={() => setPinned(null)}
       aria-label={`Goods flow: ${left.length} suppliers into ${cats.map((c) => c.name).join(", ")}, out to ${right.length} customers`}>
       <text x={COL.left + CARD / 2} y={18} className="sc-col">SUPPLIERS</text>
       <text x={COL.mid + CARD / 2} y={18} className="sc-col">PRODUCT CATEGORIES</text>
@@ -88,12 +91,14 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
       {right.length === 0 && <text x={COL.right + CARD / 2} y={PAD_TOP + 40} className="sc-none">Nothing sold in this period</text>}
 
       {layout.ribbons.map(({ l, d }) => (
-        <path key={`${l.from}|${l.to}`} d={d} fill={colorOf(l.cat)} className="sc-ribbon" data-lit={lit(l) || undefined}
-          onMouseEnter={() => setHover(null)}>
+        <path key={id(l)} d={d} fill={colorOf(l.cat)} className="sc-ribbon" data-lit={lit(l) || undefined}
+          data-pinned={pinned === id(l) || undefined}
+          onMouseEnter={() => setHover(null)}
+          onClick={(e) => { e.stopPropagation(); setPinned(pinned === id(l) ? null : id(l)); }}>
           <title>{`${fmt(l.v, unit)} ${unit}`}</title>
         </path>
       ))}
-      {layout.ribbons.filter(({ t, l }) => t >= 14 && lit(l)).map(({ l, mid }) => (
+      {layout.ribbons.filter(({ t, l }) => (t >= 14 || pinned === id(l)) && lit(l)).map(({ l, mid }) => (
         <text key={`v${l.from}|${l.to}`} x={mid.x} y={mid.y + 4} className="sc-val">{fmt(l.v, unit)}</text>
       ))}
 
@@ -104,11 +109,12 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
         return (
           <g key={n.key} className={`sc-node${isCat ? " cat" : ""}${on ? " on" : ""}`} transform={`translate(${n.x},${n.y})`}
             onMouseEnter={() => setHover(n.key)} onMouseLeave={() => setHover(null)}
-            onClick={isCat ? () => open(n.cat!.id) : undefined} tabIndex={isCat ? 0 : undefined}
+            onClick={isCat ? (e) => { e.stopPropagation(); setPinned(null); open(n.cat!.id); } : undefined} tabIndex={isCat ? 0 : undefined}
             onKeyDown={isCat ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(n.cat!.id); } } : undefined}
             role={isCat ? "button" : undefined} aria-label={isCat ? `${n.label}: show details` : undefined}>
             <rect width={CARD} height={n.h} rx={12} className="sc-card" />
-            {isCat && <rect width={5} height={n.h} rx={2.5} fill={n.cat!.color} />}
+            {/* Inset, so the strip stays inside the card's rounded corners. */}
+            {isCat && <rect x={6} y={10} width={4} height={Math.max(8, n.h - 20)} rx={2} fill={n.cat!.color} />}
             <text x={isCat ? 18 : 14} y={isCat ? 24 : Math.min(n.h / 2 - 2, 26)} className="sc-name">{clip(n.label, isCat ? 22 : 24)}</text>
             {isCat ? (
               <>

@@ -3760,6 +3760,7 @@ export async function getStockMovements(
   from?: string | null,
   to?: string | null,
   locs: string[] | null = null,
+  categoryId: string | null = null,
 ) {
   return sql`
     select sm.id, sm.movement_date, sm.qty, sm.unit_cost, sm.total_cost,
@@ -3777,6 +3778,7 @@ export async function getStockMovements(
        and sm.kind is null
        ${locs ? sql`and sm.location_id = any(${locs})` : sql``}
        and (${itemId ?? null}::uuid is null or sm.item_id = ${itemId ?? null})
+       and (${categoryId}::uuid is null or i.item_group_id = ${categoryId})
        and (${from ?? null}::date is null or sm.movement_date >= ${from ?? null})
        and (${to ?? null}::date is null or sm.movement_date <= ${to ?? null})
      order by sm.movement_date, sm.created_at`;

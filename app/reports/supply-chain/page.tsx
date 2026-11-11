@@ -126,13 +126,18 @@ export default async function SupplyChain({ searchParams }: { searchParams: Prom
               <div><dt>Received</dt><dd>{stats.inQty.toLocaleString("en-US")} units</dd></div>
               <div><dt>Sold</dt><dd>{stats.outQty.toLocaleString("en-US")} units</dd></div>
               <div><dt>Net stock movement</dt><dd className="sc-strong">{stats.inQty - stats.outQty >= 0 ? "+" : "−"}{Math.abs(stats.inQty - stats.outQty).toLocaleString("en-US")} units</dd></div>
-              {seeCost && <div><dt>Received at cost</dt><dd>{money(stats.inValue)}</dd></div>}
               <div><dt>Sold for</dt><dd>{money(stats.outValue)}</dd></div>
+              {/* Cost and profit only for those who may see cost; everyone else sees units and sales. */}
+              {seeCost && <div><dt>Received at cost</dt><dd>{money(stats.inValue)}</dd></div>}
+              {seeCost && stats.outQty > 0 && (
+                <div><dt>Gross profit</dt><dd>{money(stats.outValue - stats.cogs)}
+                  <small>{stats.outValue > 0 ? `${(((stats.outValue - stats.cogs) / stats.outValue) * 100).toFixed(1)}% margin · ` : ""}cost of sold {money(stats.cogs)}</small></dd></div>
+              )}
               <div><dt>Suppliers</dt><dd>{stats.suppliers}{stats.topSupplier && <small>most: {stats.topSupplier}</small>}</dd></div>
               <div><dt>Customers</dt><dd>{stats.customers}{stats.topCustomer && <small>most: {stats.topCustomer}</small>}</dd></div>
             </dl>
             <div className="sc-links">
-              <Link href={`/inventory/movements?from=${range.from}&to=${range.to}`}>Stock movements <ArrowRight size={14} aria-hidden="true" /></Link>
+              <Link href={`/inventory/movements?category=${focusCat.id}&from=${range.from}&to=${range.to}`}>Stock movements <ArrowRight size={14} aria-hidden="true" /></Link>
               <Link href={`/reports/price-history?side=sale&category=${focusCat.id}&from=${range.from}&to=${range.to}`}>Price history <ArrowRight size={14} aria-hidden="true" /></Link>
             </div>
           </aside>

@@ -9848,3 +9848,5 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 @media (max-width: 1100px) { .sc-board { grid-template-columns: 1fr; } .sc-panel { position: static; } .sc-hint { margin-left: 0; } }
 @media (prefers-reduced-motion: reduce) { .sc-ribbon { transition: none; } }
 .sc-none { text-anchor: middle; font-size: 12px; fill: var(--muted); }
+.sc-ribbon { cursor: pointer; }
+.sc-ribbon[data-pinned] { opacity: .8; stroke: var(--ink); stroke-width: 1; stroke-opacity: .35; }

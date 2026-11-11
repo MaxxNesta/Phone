@@ -6,18 +6,26 @@ import { sql } from "./db";
  * units or in kyat. Voids are left out — the original goes to REVERSED and
  * the mirror that undid it carries reverses_document_id.
  */
-export type Flow = { side: "in" | "out"; partnerId: string | null; partner: string; cat: string; qty: number; value: number };
+export type Flow = { side: "in" | "out"; partnerId: string | null; partner: string; cat: string; qty: number; value: number;
+  /** Sold lines only: what the goods cost, from the stock movement that took them out. */
+  cost: number };
 
 export async function getFlows(companyId: string, f: { from: string; to: string; branchId?: string | null }): Promise<Flow[]> {
   const rows = await sql`
     select case when d.doc_type = 'GOODS_RECEIPT' then 'in' else 'out' end as side,
            d.partner_id, coalesce(p.name, 'Walk-in') as partner, i.item_group_id as cat,
-           sum(dl.base_qty)::float as qty, sum(dl.net_amount)::float as value
+           sum(dl.base_qty)::float as qty, sum(dl.net_amount)::float as value,
+           sum(case when d.doc_type = 'SALES_INVOICE' then coalesce(c.cost, 0) else 0 end)::float as cost
       from document d
       join document_line dl on dl.document_id = d.id
       join item i on i.id = dl.item_id
       left join business_partner p on p.id = d.partner_id
       left join location l on l.id = coalesce(dl.location_id, d.location_id)
+      -- The cost a sale took out, read from its own stock movement (indexed by line).
+      -- The condition sits inside, so receipt lines skip the lookup entirely
+      -- rather than run it and throw the answer away.
+      left join lateral (select -sum(sm.total_cost) as cost from stock_movement sm
+                          where d.doc_type = 'SALES_INVOICE' and sm.document_line_id = dl.id) c on true
      where d.company_id = ${companyId}
        and d.doc_type in ('GOODS_RECEIPT', 'SALES_INVOICE')
        and d.status = 'POSTED' and d.reverses_document_id is null
@@ -25,7 +33,7 @@ export async function getFlows(companyId: string, f: { from: string; to: string;
        and dl.base_qty > 0 and i.item_group_id is not null
        ${f.branchId ? sql`and coalesce(l.parent_id, l.id) = ${f.branchId}` : sql``}
      group by 1, 2, 3, 4`;
-  return (rows as any[]).map((r) => ({ side: r.side, partnerId: r.partner_id, partner: r.partner, cat: r.cat, qty: Number(r.qty), value: Number(r.value) }));
+  return (rows as any[]).map((r) => ({ side: r.side, partnerId: r.partner_id, partner: r.partner, cat: r.cat, qty: Number(r.qty), value: Number(r.value), cost: Number(r.cost) }));
 }
 
 export type CanvasNode = { key: string; label: string; total: number; href?: string };
@@ -86,6 +94,7 @@ export function categoryStats(flows: Flow[], catId: string) {
   };
   return {
     inQty: sum("in", "qty"), outQty: sum("out", "qty"), inValue: sum("in", "value"), outValue: sum("out", "value"),
+    cogs: f.filter((x) => x.side === "out").reduce((t, x) => t + x.cost, 0),
     suppliers: new Set(f.filter((x) => x.side === "in").map((x) => x.partnerId ?? "walk-in")).size,
     customers: new Set(f.filter((x) => x.side === "out").map((x) => x.partnerId ?? "walk-in")).size,
     topSupplier: top("in"), topCustomer: top("out"),
