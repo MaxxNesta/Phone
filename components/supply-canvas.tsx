@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Download, Maximize2, Minimize2 } from "lucide-react";
 import type { CanvasCat, CanvasLink, CanvasNode } from "@/lib/supply-chain";
 
 const W = 1000, CARD = 200, GAP = 16, MIN_H = 58, MAX_H = 130, PAD_TOP = 40;
@@ -19,10 +20,24 @@ type Placed = { key: string; x: number; y: number; h: number; label: string; tot
  * card lights up its flows and dims the rest; clicking a category opens its
  * figures beside the canvas.
  */
-export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery }: {
+export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery, fileName }: {
   left: CanvasNode[]; cats: CanvasCat[]; right: CanvasNode[]; links: CanvasLink[];
   unit: "units" | "MMK"; focus: string | null; baseQuery: string;
+  /** What exports are called, without extension: "supply-chain-2026-10-01-to-2026-11-11". */
+  fileName: string;
 }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const on = () => setFull(document.fullscreenElement === wrap.current);
+    document.addEventListener("fullscreenchange", on);
+    return () => document.removeEventListener("fullscreenchange", on);
+  }, []);
+  const toggleFull = () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else wrap.current?.requestFullscreen?.();
+  };
   const router = useRouter();
   const [hover, setHover] = useState<string | null>(null);
   // A clicked ribbon stays picked out until it is clicked again or the canvas is.
@@ -86,8 +101,74 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
     router.replace(`${baseQuery}${sep}focus=${catId}`, { scroll: false });
   };
 
+  const labelOf = (k: string) => k.startsWith("cat:")
+    ? cats.find((c) => `cat:${c.id}` === k)?.name ?? k
+    : [...left, ...right].find((n) => n.key === k)?.label ?? k;
+
+  /** The flows as rows a spreadsheet can take. */
+  const exportCsv = () => {
+    const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = [["Direction", "Supplier / customer", "Category", unit === "units" ? "Units" : "MMK"].map(q).join(",")];
+    for (const l of links) {
+      const inbound = l.to.startsWith("cat:");
+      rows.push([inbound ? "Received" : "Sold", labelOf(inbound ? l.from : l.to), labelOf(inbound ? l.to : l.from), Math.round(l.v * 100) / 100].map(q).join(","));
+    }
+    save(new Blob(["\uFEFF" + rows.join("\r\n")], { type: "text/csv;charset=utf-8" }), `${fileName}.csv`);
+  };
+
+  /**
+   * The canvas as a PNG at twice its size. The SVG is cloned with every
+   * element's computed colours and type written onto it, because the
+   * stylesheet and its colour tokens do not travel with a standalone image.
+   */
+  const exportPng = async () => {
+    const src = svgRef.current;
+    if (!src) return;
+    const clone = src.cloneNode(true) as SVGSVGElement;
+    const a = [src, ...src.querySelectorAll("*")] as Element[];
+    const b = [clone, ...clone.querySelectorAll("*")] as Element[];
+    const props = ["fill", "fill-opacity", "stroke", "stroke-width", "stroke-opacity", "opacity", "font-family", "font-size", "font-weight", "letter-spacing", "text-anchor", "paint-order"];
+    a.forEach((el, i) => {
+      const cs = getComputedStyle(el);
+      (b[i] as SVGElement).setAttribute("style", props.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(";"));
+    });
+    const [, , vw, vh] = (src.getAttribute("viewBox") ?? `0 0 ${W} ${layout.H}`).split(" ").map(Number);
+    clone.setAttribute("width", String(vw)); clone.setAttribute("height", String(vh));
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("width", "100%"); bg.setAttribute("height", "100%");
+    // The card's own surface (white, or dark in dark mode); white if it has none.
+    const surface = getComputedStyle(src.closest(".card") ?? document.body).backgroundColor;
+    bg.setAttribute("fill", !surface || surface === "rgba(0, 0, 0, 0)" ? "#ffffff" : surface);
+    clone.insertBefore(bg, clone.firstChild);
+    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: "image/svg+xml;charset=utf-8" }));
+    const img = new Image();
+    img.onload = () => {
+      const k = 2, c = document.createElement("canvas");
+      c.width = vw * k; c.height = vh * k;
+      const ctx = c.getContext("2d")!;
+      ctx.scale(k, k); ctx.drawImage(img, 0, 0, vw, vh);
+      URL.revokeObjectURL(url);
+      c.toBlob((blob) => blob && save(blob, `${fileName}.png`), "image/png");
+    };
+    img.src = url;
+  };
+
   return (
-    <svg className="sc-svg" viewBox={`0 0 ${W} ${layout.H}`} role="img" onClick={() => setPinned(null)}
+    <div className="sc-wrap" ref={wrap} data-full={full || undefined}>
+      <div className="sc-tools">
+        <details className="sc-export">
+          <summary className="btn ghost tiny"><Download size={14} aria-hidden="true" /> Export</summary>
+          <div className="sc-menu" role="menu">
+            <button type="button" role="menuitem" onClick={(e) => { (e.currentTarget.closest("details") as HTMLDetailsElement).open = false; exportPng(); }}>PNG image<small>the canvas as shown</small></button>
+            <button type="button" role="menuitem" onClick={(e) => { (e.currentTarget.closest("details") as HTMLDetailsElement).open = false; exportCsv(); }}>CSV data<small>every flow, for a spreadsheet</small></button>
+          </div>
+        </details>
+        <button type="button" className="btn ghost tiny" onClick={toggleFull} aria-pressed={full}>
+          {full ? <><Minimize2 size={14} aria-hidden="true" /> Exit full screen</> : <><Maximize2 size={14} aria-hidden="true" /> Expand</>}
+        </button>
+      </div>
+    <svg ref={svgRef} className="sc-svg" viewBox={`0 0 ${W} ${layout.H}`} role="img" onClick={() => setPinned(null)}
       aria-label={`Goods flow: ${left.length} suppliers into ${cats.map((c) => c.name).join(", ")}, out to ${right.length} customers`}>
       <text x={COL.left + CARD / 2} y={18} className="sc-col">SUPPLIERS</text>
       <text x={COL.mid + CARD / 2} y={18} className="sc-col">PRODUCT CATEGORIES</text>
@@ -133,5 +214,13 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery 
         );
       })}
     </svg>
+    </div>
   );
+}
+
+function save(blob: Blob, name: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

@@ -47,6 +47,8 @@ export default async function SupplyChain({ searchParams }: { searchParams: Prom
   const canvas = buildCanvas(flows, chosen, measure);
   const focusId = chosenIds.includes(sp.focus ?? "") ? sp.focus! : chosenIds[0] ?? null;
   const focusCat = canvas.cats.find((c) => c.id === focusId) ?? null;
+  // The panel can be closed; picking a category opens it again.
+  const panelOpen = sp.panel !== "off";
   const stats = focusId ? categoryStats(flows, focusId) : null;
 
   const keep = (over: Search) => {
@@ -98,7 +100,7 @@ export default async function SupplyChain({ searchParams }: { searchParams: Prom
         {canvas.cats.map((c) => (
           <span key={c.id} className="sc-chip" data-on={c.id === focusId || undefined}>
             <i style={{ background: c.color }} aria-hidden="true" />
-            <Link scroll={false} href={keep({ focus: c.id })}>{c.name}</Link>
+            <Link scroll={false} href={keep({ focus: c.id, panel: undefined })}>{c.name}</Link>
             <Link scroll={false} href={without(c.id)} className="sc-chip-x" aria-label={`Remove ${c.name}`}><X size={13} aria-hidden="true" /></Link>
           </span>
         ))}
@@ -106,20 +108,22 @@ export default async function SupplyChain({ searchParams }: { searchParams: Prom
         <span className="sc-hint"><Info size={14} aria-hidden="true" /> Ribbon width is {measure === "qty" ? "units" : "value"}. Received from goods receipts, sold from sales invoices.</span>
       </div>
 
-      <div className="sc-board">
-        <section className="card sc-canvas">
+      <div className="sc-board" data-panel={(panelOpen && !!focusCat) || undefined}>
+        <section className="card sc-canvas" data-wide={!panelOpen || undefined}>
           {chosen.length === 0 ? (
             <div className="empty">{cats.some((c) => c.units > 0) ? "Add a category to see where its goods came from and went." : "No goods were received or sold in this period."}</div>
           ) : canvas.links.length === 0 ? (
             <div className="empty">Nothing in {chosen.map((c) => c.name).join(", ")} was received or sold in this period.</div>
           ) : (
             <SupplyCanvas left={canvas.left} cats={canvas.cats} right={canvas.right} links={canvas.links} unit={unit}
-              focus={focusId} baseQuery={keep({ focus: undefined })} />
+              focus={focusId} baseQuery={keep({ focus: undefined, panel: undefined })}
+              fileName={`supply-chain-${range.from}-to-${range.to}`} />
           )}
         </section>
 
-        {focusCat && stats && (
+        {focusCat && stats && panelOpen && (
           <aside className="card sc-panel" aria-label={`${focusCat.name} details`}>
+            <Link scroll={false} href={keep({ panel: "off" })} className="sc-close" aria-label="Close details" title="Close"><X size={16} aria-hidden="true" /></Link>
             <h2><i style={{ background: focusCat.color }} aria-hidden="true" />{focusCat.name}</h2>
             <p className="page-sub">Category · {shortDate(range.from)} – {shortDate(range.to)}</p>
             <dl className="sc-dl">
@@ -155,7 +159,7 @@ export default async function SupplyChain({ searchParams }: { searchParams: Prom
                   const s = categoryStats(flows, c.id);
                   return (
                     <tr key={c.id} data-active={c.id === focusId || undefined}>
-                      <td><span className="sc-dot" style={{ background: c.color }} aria-hidden="true" /><Link scroll={false} href={keep({ focus: c.id })} className="ph-prod">{c.name}</Link></td>
+                      <td><span className="sc-dot" style={{ background: c.color }} aria-hidden="true" /><Link scroll={false} href={keep({ focus: c.id, panel: undefined })} className="ph-prod">{c.name}</Link></td>
                       <td className="r">{n(c.inTotal)}</td>
                       <td className="r">{n(c.outTotal)}</td>
                       <td className="r"><strong>{net(c.inTotal, c.outTotal)}</strong></td>
