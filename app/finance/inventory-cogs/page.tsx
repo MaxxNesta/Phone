@@ -86,7 +86,8 @@ export default async function InventoryCogs({
             <Tile label="Cost of goods sold" value={fmt(data.soldCost)}
                   sub="the part that was sold" />
             <Tile label="Left for other reasons" value={fmt(data.notSold)}
-                  sub={data.notSold === 0 ? "none" : "not cost of sales"} />
+                  sub={data.otherReasons.length === 0 ? "none — everything that left was sold"
+                    : `not cost of sales: ${data.otherReasons.map((r) => `${r.label.charAt(0).toLowerCase()}${r.label.slice(1)} ${fmt(r.value)}`).join(", ")}`} />
           </div>
 
           <section>
@@ -116,7 +117,8 @@ export default async function InventoryCogs({
                       <tr key={a.key}>
                         <td style={{ paddingLeft: "1.5rem" }}>
                           + {a.label}
-                          {a.label !== a.detail && <div className="subline">{a.detail}</div>}
+                          {a.attention && <> <span className="pill warn">check</span></>}
+                          <div className="subline">{a.detail}</div>
                         </td>
                         <td className="r">{fmt(a.value)}</td>
                       </tr>
@@ -161,7 +163,7 @@ export default async function InventoryCogs({
               <div className="tablewrap">
                 <table>
                   <thead>
-                    <tr><th>Charged to</th><th>Kind</th><th className="r">Value</th><th /></tr>
+                    <tr><th>Why it left</th><th>What it means</th><th className="r">Value</th><th /></tr>
                   </thead>
                   <tbody>
                     {data.releases.length === 0 ? (
@@ -170,9 +172,11 @@ export default async function InventoryCogs({
                       <tr key={rl.key}>
                         <td className="wrap">
                           {rl.label}
-                          {rl.isCogs && <> <span className="pill ok">cost of sales</span></>}
+                          {rl.isCogs
+                            ? <> <span className="pill ok">cost of sales</span></>
+                            : rl.attention ? <> <span className="pill warn">check</span></> : <> <span className="pill">not cost of sales</span></>}
                         </td>
-                        <td className="page-sub">{rl.detail}</td>
+                        <td className="page-sub wrap">{rl.detail}</td>
                         <td className="r">{fmt(rl.value)}</td>
                         <td>
                           <Link className="subline"
@@ -205,7 +209,7 @@ export default async function InventoryCogs({
               title="Stock ledger against the account"
               left="FIFO value of what is on the shelf" leftValue={fmt(data.fifoValue)}
               right="Inventory account" rightValue={fmt(data.closing)}
-              gap={data.fifoGap}
+              gap={data.fifoGap} why={data.why.fifo}
               note={
                 data.negativeQty !== 0
                   ? `Includes ${fmt(data.negativeValue)} of goods issued before they were received `
@@ -220,12 +224,13 @@ export default async function InventoryCogs({
               title="Cost released against cost posted"
               left={`Released from ${data.heldCode} by invoices`} leftValue={fmt(data.calculatedCogs)}
               right="Posted to cost of sales" rightValue={fmt(data.postedCogs)}
-              gap={data.cogsGap}
+              gap={data.cogsGap} why={data.why.cogs}
               note={
                 "Cost of sales is recognised by the invoice that bills the "
                 + `goods, so every credit to ${data.heldCode} is a debit to ${data.cogsCode} in the `
                 + "same entry. Returns credit cost of sales and are netted "
-                + "off the posted side."
+                + "off the posted side. Counter sales cost their goods directly "
+                + "and are in neither figure."
               }
               href={{ pathname: "/finance/general-ledger", query: q({}) }}
               hrefLabel="general ledger"
@@ -261,13 +266,13 @@ export default async function InventoryCogs({
               title="Goods shipped against the holding account"
               left="Layers consumed by deliveries" leftValue={fmt(data.shippedCost)}
               right={`Debited to ${data.heldCode}`} rightValue={fmt(data.heldIn)}
-              gap={data.shippedGap}
+              gap={data.shippedGap} why={data.why.shipped}
               note={
                 "Both are the delivery's own doing — the stock ledger says "
                 + "what left and the journal says what it cost — so they tie "
                 + "unless a delivery moved stock without posting, or posted "
-                + "without moving it. Giveaways are in neither: their cost "
-                + "goes straight to the reason's own account."
+                + "without moving it. Counter sales and giveaways are in "
+                + "neither: their cost goes straight to its own account."
               }
               href={{ pathname: "/finance/general-ledger", query: q({}) }}
               hrefLabel="general ledger"
@@ -276,7 +281,7 @@ export default async function InventoryCogs({
               title="The holding account against what is unclaimed"
               left={`Balance of ${data.heldCode}`} leftValue={fmt(data.heldClosing)}
               right="Delivered cost no invoice has claimed" rightValue={fmt(data.heldUnclaimed)}
-              gap={data.heldGap}
+              gap={data.heldGap} why={data.why.held}
               note={
                 "The same fact counted from opposite ends: what the ledger "
                 + "holds, and what the claim rows say is still unspoken for. "
@@ -303,12 +308,15 @@ function Tile({ label, value, sub }: { label: string; value: string; sub: string
 }
 
 function Check({
-  title, left, leftValue, right, rightValue, gap, note, href, hrefLabel,
+  title, left, leftValue, right, rightValue, gap, why, note, href, hrefLabel,
 }: {
   title: string; left: string; leftValue: string; right: string; rightValue: string;
   gap: number; note: string;
+  /** What accounts for the gap, and what is left unexplained. */
+  why: { items: { label: string; value: number; detail: string }[]; unexplained: number };
   href: { pathname: string; query: Record<string, string> }; hrefLabel: string;
 }) {
+  const explained = gap !== 0 && why.unexplained === 0;
   return (
     <div className="card">
       <div className="card-head">
@@ -316,7 +324,9 @@ function Check({
         <span className="page-sub">
           {gap === 0
             ? "agrees"
-            : <strong style={{ color: "var(--bad)" }}>differs by {money(String(gap))}</strong>}
+            : explained
+              ? <strong style={{ color: "var(--warn)" }}>differs by {money(String(gap))} · explained below</strong>
+              : <strong style={{ color: "var(--bad)" }}>differs by {money(String(gap))}</strong>}
         </span>
       </div>
       <div className="tablewrap">
@@ -329,7 +339,7 @@ function Check({
             <tr>
               <td><strong>Difference</strong></td>
               <td className="r">
-                <strong style={{ color: gap === 0 ? undefined : "var(--bad)" }}>
+                <strong style={{ color: gap === 0 ? undefined : explained ? "var(--warn)" : "var(--bad)" }}>
                   {money(String(gap))}
                 </strong>
               </td>
@@ -337,6 +347,26 @@ function Check({
           </tfoot>
         </table>
       </div>
+      {gap !== 0 && (
+        <div className="card-body ic-why">
+          <strong>Why it differs</strong>
+          <ul>
+            {why.items.map((w) => (
+              <li key={w.label}>
+                <span>{w.label}<small>{w.detail}</small></span>
+                <b>{money(String(w.value))}</b>
+              </li>
+            ))}
+            {why.unexplained !== 0 && (
+              <li className="ic-unexplained">
+                <span>Not explained by the stock movements
+                  <small>Something was posted to the account outside the usual documents. Open the {hrefLabel} for this period to find the entry.</small></span>
+                <b>{money(String(why.unexplained))}</b>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
       <div className="card-body">
         <span className="hint">{note}</span>
         {" "}

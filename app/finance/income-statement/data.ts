@@ -1,3 +1,4 @@
+import { stockReasons } from "@/lib/stock-reasons";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
   getCompany, getIncomeStatement, getBranches, getUnassignedBranchActivity,
@@ -47,7 +48,14 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
     branchId === UNASSIGNED_BRANCH ? "No branch"
     : branches.find((b) => b.id === branchId)?.name ?? "All branches";
 
-  const rows = (await getIncomeStatement(company.id, range.from, range.to, branchId)) as unknown as Array<{
+  // The statement, the cost-of-sales reconciliation and the chart owe each
+  // other nothing, so they are fetched together rather than one after another.
+  const [rowsRaw, recon, chartRaw] = await Promise.all([
+    getIncomeStatement(company.id, range.from, range.to, branchId),
+    getInventoryCogsReconciliation(company.id, range.from, range.to, branchId),
+    getAccountTree(company.id),
+  ]);
+  const rows = rowsRaw as unknown as Array<{
     id: string; code: string; name: string; account_type: "REVENUE" | "COGS" | "EXPENSE"; amount: string;
   }>;
 
@@ -61,28 +69,21 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
      ledger and the same period, but presented the way a reader checking
      opening + purchases - closing needs: every release of stock, including
      the ones that are not sales and therefore not in this figure. */
-  const recon = await getInventoryCogsReconciliation(
-    company.id, range.from, range.to, branchId);
   const cogsBreakdown = recon ? (() => {
     const num = (v: unknown) => Number(v ?? 0);
-    const releases = recon.movement
-      .filter((m) => num(m.out_of_stock) > 0)
-      .map((m) => ({
-        label: m.code ? `${m.code} · ${m.name}` : m.source_type.toLowerCase().replace(/_/g, " "),
-        value: Math.round(num(m.out_of_stock) * 10000) / 10000,
-        // A sale's stock reaches cost of sales by way of Goods Shipped Not Invoiced (0178).
-        isCogs: m.account_id != null && (m.account_id === recon.cogsId || m.account_id === recon.heldId),
-      }))
-      .sort((a, b) => b.value - a.value);
+    // Named by why stock moved — the same words as the full reconciliation.
+    const { additions, releases } = stockReasons(recon.movement, { cogsId: recon.cogsId, heldId: recon.heldId });
     const sold = releases.filter((x) => x.isCogs).reduce((t, x) => t + x.value, 0);
     const total = releases.reduce((t, x) => t + x.value, 0);
+    const added = additions.reduce((t, x) => t + x.value, 0);
     return {
       opening: num(recon.bal.opening), closing: num(recon.bal.closing),
+      additions, added: Math.round(added * 10000) / 10000,
       releases, sold, notSold: Math.round((total - sold) * 10000) / 10000, total,
     };
   })() : null;
 
-  const chart = (await getAccountTree(company.id)) as unknown as ChartRow[];
+  const chart = chartRaw as unknown as ChartRow[];
   const amounts = new Map(rows.map((r) => [r.id, Number(r.amount)]));
   const cogsTree = buildStatement(chart, amounts, ["COGS"]);
   const expenseTree = buildStatement(chart, amounts, ["EXPENSE"]);

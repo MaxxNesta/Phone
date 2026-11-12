@@ -10059,3 +10059,12 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 /* The small figure panels on a document page follow the same squarer edge:
    the goods receipt's carriage panel (.lc-gr) with the summary tiles. */
 .lc-gr { border-radius: 4px; }
+
+/* Inventory & cost of sales: why a check differs, item by item. */
+.ic-why { display: grid; gap: 6px; border-top: 1px solid var(--line-soft); }
+.ic-why > strong { font-size: var(--t-sm); }
+.ic-why ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ic-why li { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; font-size: var(--t-sm); }
+.ic-why li small { display: block; color: var(--muted); font-size: var(--t-xs); line-height: 1.4; }
+.ic-why li b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ic-why li.ic-unexplained b { color: var(--bad); }

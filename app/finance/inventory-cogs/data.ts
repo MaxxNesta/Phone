@@ -3,6 +3,7 @@ import {
   getCompany, getBranches, getUnassignedBranchActivity,
   getInventoryCogsReconciliation, UNASSIGNED_BRANCH,
 } from "@/lib/queries";
+import { stockReasons, explainGap, type Reason } from "@/lib/stock-reasons";
 
 export type Params = { from?: string; to?: string; branch?: string };
 
@@ -11,10 +12,8 @@ const today = () => new Date().toISOString().slice(0, 10);
 const n = (v: unknown) => Number(v ?? 0);
 const r4 = (v: number) => Math.round(v * 10000) / 10000;
 
-/** A release of stock that was not a sale, named rather than folded in. */
-export type Release = {
-  key: string; label: string; detail: string; value: number; isCogs: boolean;
-};
+/** A movement of stock, named by why it happened. */
+export type Release = Reason;
 
 export async function getInventoryCogsData({ from, to, branch }: Params) {
   const company = await getCompany();
@@ -47,32 +46,11 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
   const opening = n(recon.bal.opening);
   const closing = n(recon.bal.closing);
 
-  /* A movement with one counter-account is named by it; one with several is
-     named by the document that made it, because the journal cannot say which
-     of its lines the stock belonged to. See getInventoryCogsReconciliation. */
-  const nameOf = (m: { code: string | null; name: string | null; source_type: string }) =>
-    m.code ? `${m.code} · ${m.name}` : prettyType(m.source_type);
-
-  const additions = recon.movement
-    .filter((m) => n(m.into_stock) > 0)
-    .map((m) => ({
-      key: `${m.account_id ?? "x"}-${m.source_type}-in`,
-      label: nameOf(m), detail: prettyType(m.source_type),
-      value: r4(n(m.into_stock)), isCogs: false,
-    }))
-    .sort((a, b) => b.value - a.value);
-
-  const releases: Release[] = recon.movement
-    .filter((m) => n(m.out_of_stock) > 0)
-    .map((m) => ({
-      key: `${m.account_id ?? "x"}-${m.source_type}-out`,
-      label: nameOf(m), detail: prettyType(m.source_type),
-      value: r4(n(m.out_of_stock)),
-      // Sold: straight to cost of sales, or (every sale since 0178) by way of
-      // Goods Shipped Not Invoiced, which the invoice moves on to cost of sales.
-      isCogs: m.account_id != null && (m.account_id === recon.cogsId || m.account_id === recon.heldId),
-    }))
-    .sort((a, b) => b.value - a.value);
+  /* Every movement named by why it happened — a voided receipt, a customer
+     return, a counter sale — rather than by the account on the other side,
+     which told a reader nothing they could act on (lib/stock-reasons). */
+  const roles = { cogsId: recon.cogsId, heldId: recon.heldId };
+  const { additions, releases } = stockReasons(recon.movement, roles);
 
   const addedTotal = r4(additions.reduce((s, a) => s + a.value, 0));
   const releasedTotal = r4(releases.reduce((s, a) => s + a.value, 0));
@@ -96,7 +74,7 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
      two accounts and one. */
   const shippedCost = r4(
     recon.consumption
-      .filter((c) => c.account_id != null && c.account_id === recon.cogsId)
+      .filter((c) => c.account_id != null && c.account_id === recon.cogsId && c.doc_type === "DELIVERY")
       .reduce((s, c) => s + n(c.value), 0));
 
   const held = recon.held;
@@ -122,9 +100,37 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
   const calculatedCogs = heldOut;
   const cogsGap = r4(calculatedCogs - postedCogs);
 
+  /* Why a check disagrees, as far as the movements can say. Each list names
+     the items that account for the gap and leaves the rest as "not explained",
+     so a reader sees what to look at rather than a red number. */
+  const mv = recon.movement;
+  type Mv = (typeof mv)[number];
+  const moved = (pred: (m: Mv) => boolean, dir: "in" | "out") =>
+    r4(mv.filter(pred).reduce((t, m) => t + n(dir === "in" ? m.into_stock : m.out_of_stock), 0));
+  const manual = (m: Mv) => ["JOURNAL_VOUCHER", "CASH_VOUCHER", "BANK_VOUCHER"].includes(m.source_type);
+  const manualNet = r4(moved(manual, "in") - moved(manual, "out"));
+  // Stock drawn by deliveries that were later undone (on their own, or with the sale they were made for).
+  const voidedDeliveries = r4(recon.consumption
+    .filter((c) => c.doc_type === "DELIVERY" && c.reversed && c.account_id === recon.cogsId)
+    .reduce((t, c) => t + n(c.value), 0));
+  const why = {
+    fifo: explainGap(fifoGap, [
+      { label: "Manual journal entries to the inventory account", value: -manualNet,
+        detail: "They change the account but move no stock. Reverse them, or post the stock movement they stand for." },
+    ]),
+    shipped: explainGap(shippedGap, [
+      { label: "Deliveries since voided", value: voidedDeliveries,
+        detail: "A delivery undone (on its own, or with the sale it was made for) keeps its use of stock on record while its holding-account entry is reversed. Nothing to fix." },
+    ]),
+    held: explainGap(heldGap, []),
+    cogs: explainGap(cogsGap, []),
+  };
+  // The reasons stock left that are not cost of sales, for the headline tile.
+  const otherReasons = releases.filter((x) => !x.isCogs);
+
   return {
     company, branches, unassignedLines, branchId, branchName, range,
-    missing: false as const,
+    missing: false as const, why, otherReasons,
     opening, closing, additions, releases,
     addedTotal, releasedTotal, soldCost, notSold, formula, formulaTies,
     fifoValue, fifoGap, lots: recon.fifo.lots,
@@ -133,17 +139,4 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
     shippedCost, heldIn, heldOut, heldClosing, heldUnclaimed, heldGap, shippedGap,
     heldCode: recon.heldCode, cogsCode: recon.cogsCode,
   };
-}
-
-function prettyType(t: string) {
-  return ({
-    GOODS_RECEIPT: "Goods received",
-    PURCHASE_INVOICE: "Purchase invoice",
-    PURCHASE_RETURN: "Returned to supplier",
-    DELIVERY: "Delivered",
-    SALES_RETURN: "Returned by customer",
-    STOCK_ADJUSTMENT: "Stock adjustment",
-    STOCK_TRANSFER: "Transfer between warehouses",
-    OPENING_BALANCE: "Opening balance",
-  } as Record<string, string>)[t] ?? t.toLowerCase().replace(/_/g, " ");
 }

@@ -112,17 +112,28 @@ export default async function IncomeStatement({
                   <td>Opening inventory</td>
                   <td className="r">{money(String(cogsBreakdown.opening))}</td>
                 </tr>
+                {cogsBreakdown.additions.map((a) => (
+                  <tr key={`in-${a.key}`}>
+                    <td className="wrap" style={{ paddingLeft: "1.25rem" }}>+ {a.label}<div className="subline">{a.detail}</div></td>
+                    <td className="r">{money(String(a.value))}</td>
+                  </tr>
+                ))}
                 <tr>
-                  <td>Closing inventory</td>
+                  <td>&minus; Closing inventory</td>
                   <td className="r">{money(String(cogsBreakdown.closing))}</td>
                 </tr>
+                <tr>
+                  <td><strong>= Stock that left the shelf</strong></td>
+                  <td className="r"><strong>{money(String(cogsBreakdown.total))}</strong></td>
+                </tr>
                 {cogsBreakdown.releases.map((rl) => (
-                  <tr key={rl.label}>
-                    <td className="wrap">
+                  <tr key={`out-${rl.key}`}>
+                    <td className="wrap" style={{ paddingLeft: "1.25rem" }}>
                       {rl.label}
                       {rl.isCogs
                         ? <> <span className="pill ok">cost of sales</span></>
-                        : <> <span className="pill">not cost of sales</span></>}
+                        : rl.attention ? <> <span className="pill warn">check</span></> : <> <span className="pill">not cost of sales</span></>}
+                      <div className="subline">{rl.detail}</div>
                     </td>
                     <td className="r">{money(String(rl.value))}</td>
                   </tr>
@@ -142,11 +153,12 @@ export default async function IncomeStatement({
           </div>
           <div className="card-body">
             <span className="hint">
-              Opening stock + stock bought &minus; closing stock = stock that
-              left the shelf. A sale&rsquo;s stock passes through Goods Shipped
-              Not Invoiced and becomes cost of goods sold when the invoice
-              posts. Stock that left any other way &mdash; a giveaway, a
-              write-off &mdash; is shown separately: it is not cost of goods sold.
+              Opening stock + what came in &minus; closing stock = stock that
+              left the shelf. Only what was sold &mdash; counter sales, and
+              deliveries once billed &mdash; is cost of goods sold. Anything
+              else that left (a voided receipt, a return to a supplier, a
+              write-off, a giveaway) is listed with its reason and is not in
+              that figure; rows marked <em>check</em> are worth a look.
             </span>{" "}
             <Link className="subline" href={{
               pathname: "/finance/inventory-cogs",
