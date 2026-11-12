@@ -4,6 +4,7 @@ import { AutoApply } from "@/components/auto-apply";
 import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { HelpHint } from "@/components/help-hint";
 import { getInventoryCogsData, type Params } from "./data";
+import { StockFlow, GapBreakdown } from "@/components/stock-flow";
 
 const fmt = (v: number) => money(String(v));
 
@@ -94,113 +95,22 @@ export default async function InventoryCogs({
             <div className="card">
               <div className="card-head">
                 <div className="headwith">
-                  <h2>Opening + additions &minus; closing</h2>
-                  <HelpHint label="What this proves">
-                    The identity holds by construction: every movement through
-                    the inventory account is counted once. What it equals is
-                    everything that left the shelf &mdash; which is cost of
-                    sales only when nothing else happened.
+                  <h2>Where the stock went</h2>
+                  <HelpHint label="How to read this">
+                    Opening stock plus what came in, less what is left, is what
+                    left the shelf. Only what was sold is cost of goods sold;
+                    everything else that left is listed under Not sold with its
+                    reason. Rows marked check are worth a look. Open the ? on
+                    any row for what it means.
                   </HelpHint>
                 </div>
                 <span className="page-sub">
-                  {data.formulaTies ? "ties exactly" : "does not tie"}
+                  {data.formulaTies ? "ties exactly to the inventory account" : "does not tie — see the checks below"}
                 </span>
               </div>
-              <div className="tablewrap">
-                <table>
-                  <tbody>
-                    <tr>
-                      <td>Opening inventory</td>
-                      <td className="r">{fmt(data.opening)}</td>
-                    </tr>
-                    {data.additions.map((a) => (
-                      <tr key={a.key}>
-                        <td style={{ paddingLeft: "1.5rem" }}>
-                          + {a.label}
-                          {a.attention && <> <span className="pill warn">check</span></>}
-                          <div className="subline">{a.detail}</div>
-                        </td>
-                        <td className="r">{fmt(a.value)}</td>
-                      </tr>
-                    ))}
-                    <tr>
-                      <td><strong>Additions</strong></td>
-                      <td className="r"><strong>{fmt(data.addedTotal)}</strong></td>
-                    </tr>
-                    <tr>
-                      <td>&minus; Closing inventory</td>
-                      <td className="r">{fmt(data.closing)}</td>
-                    </tr>
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td><strong>= Cost of inventory released</strong></td>
-                      <td className="r"><strong>{fmt(data.formula)}</strong></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          </section>
-
-          <section>
-            <div className="card">
-              <div className="card-head">
-                <div className="headwith">
-                  <h2>What left the shelf, and why</h2>
-                  <HelpHint label="Why this matters">
-                    This is the line the traditional calculation cannot draw.
-                    A promotional giveaway credits inventory and debits
-                    promotion expense; a write-off debits inventory
-                    adjustment. Both are &ldquo;opening plus purchases less
-                    closing&rdquo; and neither is cost of goods sold, so
-                    counting them as such overstates it by exactly their
-                    value.
-                  </HelpHint>
-                </div>
-                <span className="page-sub">{fmt(data.releasedTotal)} in total</span>
-              </div>
-              <div className="tablewrap">
-                <table>
-                  <thead>
-                    <tr><th>Why it left</th><th>What it means</th><th className="r">Value</th><th /></tr>
-                  </thead>
-                  <tbody>
-                    {data.releases.length === 0 ? (
-                      <tr><td colSpan={4} className="empty">Nothing left the shelf in this period.</td></tr>
-                    ) : data.releases.map((rl) => (
-                      <tr key={rl.key}>
-                        <td className="wrap">
-                          {rl.label}
-                          {rl.isCogs
-                            ? <> <span className="pill ok">cost of sales</span></>
-                            : rl.attention ? <> <span className="pill warn">check</span></> : <> <span className="pill">not cost of sales</span></>}
-                        </td>
-                        <td className="page-sub wrap">{rl.detail}</td>
-                        <td className="r">{fmt(rl.value)}</td>
-                        <td>
-                          <Link className="subline"
-                                href={{ pathname: "/inventory/movements", query: q({}) }}>
-                            movements
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td colSpan={2}><strong>Cost of goods sold</strong></td>
-                      <td className="r"><strong>{fmt(data.soldCost)}</strong></td>
-                      <td />
-                    </tr>
-                    <tr>
-                      <td colSpan={2}>Left for other reasons</td>
-                      <td className="r">{fmt(data.notSold)}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+              <StockFlow opening={data.opening} closing={data.closing}
+                additions={data.additions} releases={data.releases}
+                movementsHref={`/inventory/movements?from=${range.from}&to=${range.to}`} />
             </div>
           </section>
 
@@ -348,23 +258,8 @@ function Check({
         </table>
       </div>
       {gap !== 0 && (
-        <div className="card-body ic-why">
-          <strong>Why it differs</strong>
-          <ul>
-            {why.items.map((w) => (
-              <li key={w.label}>
-                <span>{w.label}<small>{w.detail}</small></span>
-                <b>{money(String(w.value))}</b>
-              </li>
-            ))}
-            {why.unexplained !== 0 && (
-              <li className="ic-unexplained">
-                <span>Not explained by the stock movements
-                  <small>Something was posted to the account outside the usual documents. Open the {hrefLabel} for this period to find the entry.</small></span>
-                <b>{money(String(why.unexplained))}</b>
-              </li>
-            )}
-          </ul>
+        <div className="card-body">
+          <GapBreakdown gap={gap} items={why.items} unexplained={why.unexplained} where={hrefLabel} />
         </div>
       )}
       <div className="card-body">

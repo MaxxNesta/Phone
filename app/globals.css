@@ -10060,11 +10060,41 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
    the goods receipt's carriage panel (.lc-gr) with the summary tiles. */
 .lc-gr { border-radius: 4px; }
 
-/* Inventory & cost of sales: why a check differs, item by item. */
-.ic-why { display: grid; gap: 6px; border-top: 1px solid var(--line-soft); }
-.ic-why > strong { font-size: var(--t-sm); }
-.ic-why ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.ic-why li { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; font-size: var(--t-sm); }
-.ic-why li small { display: block; color: var(--muted); font-size: var(--t-xs); line-height: 1.4; }
-.ic-why li b { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ic-why li.ic-unexplained b { color: var(--bad); }
+/* Stock flow: a structured statement — group rows bold with a coloured dot,
+   reasons indented under them, sold reasons one level deeper, a share bar
+   and percentage of what left, explanations behind a "?". */
+.sf { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sf td { padding: 7px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+.sf .sf-barcol { width: 18%; } .sf .sf-pctcol { width: 64px; } .sf .sf-amtcol { width: 160px; }
+.sf .sf-amt { text-align: right; white-space: nowrap; }
+.sf .sf-pct { text-align: right; color: var(--muted); font-size: var(--t-xs); white-space: nowrap; }
+.sf .sf-neg { color: var(--muted); }
+.sf-l0 td { color: var(--ink-soft, var(--ink)); }
+.sf-g td { font-weight: 650; padding-top: 11px; }
+.sf-g td:first-child { display: flex; align-items: center; gap: 8px; }
+.sf-sub { font-weight: 400; font-size: var(--t-xs); color: var(--muted); }
+.sf-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--sf-tone); }
+.sf-l1 td:first-child { padding-left: 32px; }
+.sf-l2 td:first-child { padding-left: 50px; }
+.sf-l1 td, .sf-l2 td { font-weight: 400; font-size: var(--t-sm); }
+.sf-label { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sf-tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--rp-soon-ink, var(--warn));
+  background: color-mix(in srgb, var(--rp-soon, var(--warn)) 16%, transparent); padding: 1px 6px; border-radius: 4px; }
+.sf-total td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: 2px solid var(--line); background: var(--line-soft); }
+.sf-bar i { display: block; height: 6px; border-radius: 3px; background: var(--sf-tone); opacity: .85; min-width: 2px; }
+.sf [data-tone="in"] { --sf-tone: var(--chart-1); }
+.sf [data-tone="sold"] { --sf-tone: var(--rp-ok, var(--ok)); }
+.sf [data-tone="other"] { --sf-tone: var(--rp-soon, var(--warn)); }
+.sf [data-tone="bad"] { --sf-tone: var(--rp-now, var(--bad)); }
+.sf [data-tone="bad"] .sf-amt { color: var(--bad); }
+.sf-foot { margin: 0; padding: 8px 14px 12px; }
+.sf-gap td { padding: 6px 0; }
+.sf-gap .sf-l1 td:first-child { padding-left: 18px; }
+@media (max-width: 720px) { .sf .sf-barcol, .sf-bar { display: none; } .sf-l2 td:first-child { padding-left: 34px; } }
+
+/* No zebra inside a stock flow: shade carries level, not row parity. */
+/* !important, as for .classic-pl and .partner-ledger: the themes' zebra rules
+   carry :root prefixes in dark mode and would outrank anything else here. */
+table.sf tbody tr:nth-child(even) > td, table.sf tbody tr > td { background: transparent !important; }
+table.sf tbody tr.sf-g > td { background: color-mix(in srgb, var(--sf-tone) 8%, transparent) !important; }
+table.sf tbody tr.sf-total > td { background: var(--line-soft) !important; }

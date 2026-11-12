@@ -5,6 +5,7 @@ import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { StatementTable } from "@/components/statement-table";
 import { ClassicStatement } from "@/components/classic-statement";
 import { HelpHint } from "@/components/help-hint";
+import { StockFlow } from "@/components/stock-flow";
 import { getIncomeStatementData, type Params } from "./data";
 
 export default async function IncomeStatement({
@@ -105,61 +106,10 @@ export default async function IncomeStatement({
               {money(String(cogsBreakdown.sold))} of {money(String(cogsBreakdown.total))} released
             </span>
           </summary>
-          <div className="tablewrap">
-            <table>
-              <tbody>
-                <tr>
-                  <td>Opening inventory</td>
-                  <td className="r">{money(String(cogsBreakdown.opening))}</td>
-                </tr>
-                {cogsBreakdown.additions.map((a) => (
-                  <tr key={`in-${a.key}`}>
-                    <td className="wrap" style={{ paddingLeft: "1.25rem" }}>+ {a.label}<div className="subline">{a.detail}</div></td>
-                    <td className="r">{money(String(a.value))}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td>&minus; Closing inventory</td>
-                  <td className="r">{money(String(cogsBreakdown.closing))}</td>
-                </tr>
-                <tr>
-                  <td><strong>= Stock that left the shelf</strong></td>
-                  <td className="r"><strong>{money(String(cogsBreakdown.total))}</strong></td>
-                </tr>
-                {cogsBreakdown.releases.map((rl) => (
-                  <tr key={`out-${rl.key}`}>
-                    <td className="wrap" style={{ paddingLeft: "1.25rem" }}>
-                      {rl.label}
-                      {rl.isCogs
-                        ? <> <span className="pill ok">cost of sales</span></>
-                        : rl.attention ? <> <span className="pill warn">check</span></> : <> <span className="pill">not cost of sales</span></>}
-                      <div className="subline">{rl.detail}</div>
-                    </td>
-                    <td className="r">{money(String(rl.value))}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td><strong>Cost of goods sold</strong></td>
-                  <td className="r"><strong>{money(String(cogsBreakdown.sold))}</strong></td>
-                </tr>
-                <tr>
-                  <td>Stock released for other reasons</td>
-                  <td className="r">{money(String(cogsBreakdown.notSold))}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <StockFlow opening={cogsBreakdown.opening} closing={cogsBreakdown.closing}
+            additions={cogsBreakdown.additions} releases={cogsBreakdown.releases} />
           <div className="card-body">
-            <span className="hint">
-              Opening stock + what came in &minus; closing stock = stock that
-              left the shelf. Only what was sold &mdash; counter sales, and
-              deliveries once billed &mdash; is cost of goods sold. Anything
-              else that left (a voided receipt, a return to a supplier, a
-              write-off, a giveaway) is listed with its reason and is not in
-              that figure; rows marked <em>check</em> are worth a look.
-            </span>{" "}
+            <span className="hint">Only what was sold is cost of goods sold. Open the ? on any row for what it means.            </span>{" "}
             <Link className="subline" href={{
               pathname: "/finance/inventory-cogs",
               query: { from: range.from, to: range.to, ...(branchId ? { branch: branchId } : {}) },
