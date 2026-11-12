@@ -7279,8 +7279,11 @@ export async function getInventoryCogsReconciliation(
   const [roles] = (await sql`
     select fn_resolve_account(${companyId}, 'INVENTORY', null, null, null) as inventory,
            fn_resolve_account(${companyId}, 'COGS',      null, null, null) as cogs,
-           fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as held`) as unknown as
-    Array<{ inventory: string | null; cogs: string | null; held: string | null }>;
+           fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as held,
+           -- Optional: a chart without one simply has no carriage line.
+           (select account_id from system_account
+             where company_id = ${companyId} and role = 'CARRIAGE_INWARD') as carriage`) as unknown as
+    Array<{ inventory: string | null; cogs: string | null; held: string | null; carriage: string | null }>;
 
   if (!roles?.inventory) return null;
   const inventoryId = roles.inventory;
@@ -7631,11 +7634,27 @@ export async function getInventoryCogsReconciliation(
 
     return codes;
   })();
+  /* Carriage inward left in expense for the period: a courier's bill booked to
+     51110 and not (yet) spread onto the goods it brought (0162). Net, so what
+     was spread back onto inventory is not counted twice. */
+  const p_carriage = (async () => {
+    if (!roles.carriage) return null;
+    const [c] = (await sql`
+      select a.code, a.name,
+             (select coalesce(sum(jl.base_amount), 0)
+                from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
+               where jl.company_id = ${companyId} and jl.account_id = a.id
+                 and je.entry_date between ${from}::date and ${to}::date
+                 ${branchFilter(branchId)}) as net
+        from account a where a.id = ${roles.carriage}`) as unknown as
+      Array<{ code: string; name: string; net: string }>;
+    return c ?? null;
+  })();
   /* Every query above depends only on the roles, so they all go to the
      database at once: two round trips for the whole report instead of a
      dozen in a row, which is most of its time from far away. */
-  const [bal, movement, fifo, negative, consumption, returnedToCogs, postedCogs, heldBal, releasedRow, cogsFromSales, unclaimed, codes] = await Promise.all([
-    p_bal, p_movement, p_fifo, p_negative, p_consumption, p_returnedToCogs, p_postedCogs, p_heldBal, p_releasedRow, p_cogsFromSales, p_unclaimed, p_codes,
+  const [bal, movement, fifo, negative, consumption, returnedToCogs, postedCogs, heldBal, releasedRow, cogsFromSales, unclaimed, codes, carriage] = await Promise.all([
+    p_bal, p_movement, p_fifo, p_negative, p_consumption, p_returnedToCogs, p_postedCogs, p_heldBal, p_releasedRow, p_cogsFromSales, p_unclaimed, p_codes, p_carriage,
   ]);
   const held = heldBal
     ? {
@@ -7650,7 +7669,7 @@ export async function getInventoryCogsReconciliation(
 
   return {
     inventoryId, cogsId, heldId, bal, movement, fifo, negative, consumption,
-    postedCogs, returnedToCogs,
+    postedCogs, returnedToCogs, carriage,
     heldCode: codes?.held ?? "Shipped not invoiced", cogsCode: codes?.cogs ?? "cost of sales",
     held: held ? { ...held, unclaimed: unclaimed.value } : null,
   };

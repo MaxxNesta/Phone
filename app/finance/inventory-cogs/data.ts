@@ -131,6 +131,14 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
   return {
     company, branches, unassignedLines, branchId, branchName, range,
     missing: false as const, why, otherReasons,
+    // Carriage inward: what was spread onto the goods (already in inventory
+    // above) and what is still sitting in expense for the period.
+    landedIn: r4(additions.filter((a) => a.key === "landed").reduce((t, a) => t + a.value, 0)),
+    carriage: recon.carriage ? { code: recon.carriage.code, name: recon.carriage.name, net: r4(n(recon.carriage.net)) } : null,
+    // Cost of sales as the general ledger has it, for the reconciliation line.
+    cogsGl: r4(n(recon.postedCogs?.value)),
+    // Credits to cost of sales in the period: customer returns and voided sales.
+    cogsCredits: r4(n(recon.returnedToCogs?.value)),
     opening, closing, additions, releases,
     addedTotal, releasedTotal, soldCost, notSold, formula, formulaTies,
     fifoValue, fifoGap, lots: recon.fifo.lots,

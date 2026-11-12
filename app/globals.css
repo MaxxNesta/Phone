@@ -10071,9 +10071,9 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .sf .sf-neg { color: var(--muted); }
 .sf-l0 td { color: var(--ink-soft, var(--ink)); }
 .sf-g td { font-weight: 650; padding-top: 11px; }
-.sf-g td:first-child { display: flex; align-items: center; gap: 8px; }
+/* Kept a table cell (a flex cell loses its colspan); the dot sits inline. */
 .sf-sub { font-weight: 400; font-size: var(--t-xs); color: var(--muted); }
-.sf-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--sf-tone); }
+.sf-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--sf-tone); margin-right: 8px; vertical-align: 1px; }
 .sf-l1 td:first-child { padding-left: 32px; }
 .sf-l2 td:first-child { padding-left: 50px; }
 .sf-l1 td, .sf-l2 td { font-weight: 400; font-size: var(--t-sm); }
@@ -10098,3 +10098,12 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 table.sf tbody tr:nth-child(even) > td, table.sf tbody tr > td { background: transparent !important; }
 table.sf tbody tr.sf-g > td { background: color-mix(in srgb, var(--sf-tone) 8%, transparent) !important; }
 table.sf tbody tr.sf-total > td { background: var(--line-soft) !important; }
+/* Inventory movement: section headings, notes under a line. */
+table.sf tbody tr.sf-h > td { background: var(--line-soft) !important; font-weight: 700; font-size: var(--t-md); padding-top: 12px; }
+table.sf tbody tr.sf-h > td.sf-amt { font-weight: 500; font-size: var(--t-xs); color: var(--muted); }
+.sf-note { display: block; font-size: var(--t-xs); color: var(--muted); margin-top: 2px; font-weight: 400; }
+.sf [data-tone="bad"] .sf-note { color: var(--bad); }
+.sf-total[data-tone="sold"] td { color: var(--ink); }
+.sf-total .sf-dot { margin-right: 2px; }
+.sf-warn { color: var(--warn); font-size: var(--t-sm); }
+.ic-sub { margin: 2px 0 0; flex-basis: 100%; }

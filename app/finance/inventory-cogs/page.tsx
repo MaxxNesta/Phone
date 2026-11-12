@@ -4,7 +4,7 @@ import { AutoApply } from "@/components/auto-apply";
 import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { HelpHint } from "@/components/help-hint";
 import { getInventoryCogsData, type Params } from "./data";
-import { StockFlow, GapBreakdown } from "@/components/stock-flow";
+import { InventoryMovement, GapBreakdown } from "@/components/stock-flow";
 
 const fmt = (v: number) => money(String(v));
 
@@ -26,7 +26,11 @@ export default async function InventoryCogs({
     <>
       <div className="page-head">
         <span className="eyebrow">Accounting · Financial Reports</span>
-        <h1>Inventory &amp; cost of sales</h1>
+        <h1>Inventory movement &amp; cost of sales</h1>
+        <p className="page-sub ic-sub">
+          Inventory movements, carriage inward and general ledger reconciliation
+          · {range.from} to {range.to} · {company.base_currency}
+        </p>
         <HelpHint label="Why this report exists">
           Cost of sales here is not calculated at the period end. Stock is
           valued FIFO and the cost of each sale is recognised as the goods
@@ -95,22 +99,26 @@ export default async function InventoryCogs({
             <div className="card">
               <div className="card-head">
                 <div className="headwith">
-                  <h2>Where the stock went</h2>
+                  <h2>Cost of sales from inventory</h2>
                   <HelpHint label="How to read this">
-                    Opening stock plus what came in, less what is left, is what
-                    left the shelf. Only what was sold is cost of goods sold;
-                    everything else that left is listed under Not sold with its
-                    reason. Rows marked check are worth a look. Open the ? on
-                    any row for what it means.
+                    Opening stock plus what was added, less what is left, is
+                    what left the shelf. Take away what left without being sold
+                    and the rest is cost of sales and deliveries. Rows marked
+                    check are worth a look; open the ? on any row for what it
+                    means.
                   </HelpHint>
                 </div>
                 <span className="page-sub">
                   {data.formulaTies ? "ties exactly to the inventory account" : "does not tie — see the checks below"}
                 </span>
               </div>
-              <StockFlow opening={data.opening} closing={data.closing}
-                additions={data.additions} releases={data.releases}
-                movementsHref={`/inventory/movements?from=${range.from}&to=${range.to}`} />
+              <InventoryMovement d={{
+                opening: data.opening, closing: data.closing, additions: data.additions, releases: data.releases,
+                landedIn: data.landedIn, carriage: data.carriage, cogsGl: data.cogsGl, cogsCredits: data.cogsCredits,
+                cogsCode: data.cogsCode, heldCode: data.heldCode, heldClosing: data.heldClosing,
+                heldIn: data.heldIn, heldOut: data.heldOut,
+              }} />
+              <p className="sf-foot"><Link className="subline" href={{ pathname: "/inventory/movements", query: q({}) }}>See the stock movements behind these figures →</Link></p>
             </div>
           </section>
 

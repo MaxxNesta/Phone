@@ -5,7 +5,7 @@ import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { StatementTable } from "@/components/statement-table";
 import { ClassicStatement } from "@/components/classic-statement";
 import { HelpHint } from "@/components/help-hint";
-import { StockFlow } from "@/components/stock-flow";
+
 import { getIncomeStatementData, type Params } from "./data";
 
 export default async function IncomeStatement({
@@ -106,15 +106,30 @@ export default async function IncomeStatement({
               {money(String(cogsBreakdown.sold))} of {money(String(cogsBreakdown.total))} released
             </span>
           </summary>
-          <StockFlow opening={cogsBreakdown.opening} closing={cogsBreakdown.closing}
-            additions={cogsBreakdown.additions} releases={cogsBreakdown.releases} />
-          <div className="card-body">
-            <span className="hint">Only what was sold is cost of goods sold. Open the ? on any row for what it means.            </span>{" "}
+          {/* The overview; the full statement — every reason, carriage inward and
+              the ledger reconciliation — is the Inventory movement report. */}
+          <table className="sf">
+            <colgroup><col /><col className="sf-amtcol" /></colgroup>
+            <tbody>
+              <tr className="sf-l0"><td>Opening inventory</td><td className="sf-amt">{money(String(cogsBreakdown.opening))}</td></tr>
+              <tr className="sf-g" data-tone="in"><td><span className="sf-dot" />Inventory added</td><td className="sf-amt">{money(String(cogsBreakdown.added))}</td></tr>
+              <tr className="sf-l0"><td>Less: closing inventory</td><td className="sf-amt">({money(String(cogsBreakdown.closing))})</td></tr>
+              <tr className="sf-total"><td>Net inventory outflows</td><td className="sf-amt">{money(String(cogsBreakdown.total))}</td></tr>
+              {cogsBreakdown.notSold !== 0 && (
+                <tr className="sf-l0" data-tone="other"><td><span className="sf-label"><span className="sf-dot" />Less: left without being sold
+                  <span className="sf-sub">{cogsBreakdown.releases.filter((r) => !r.isCogs).map((r) => r.label.toLowerCase()).join(", ")}</span></span></td>
+                  <td className="sf-amt">({money(String(cogsBreakdown.notSold))})</td></tr>
+              )}
+              <tr className="sf-total" data-tone="sold"><td><span className="sf-label"><span className="sf-dot" />Cost of sales and deliveries</span></td>
+                <td className="sf-amt">{money(String(cogsBreakdown.sold))}</td></tr>
+            </tbody>
+          </table>
+          <p className="sf-foot">
             <Link className="subline" href={{
               pathname: "/finance/inventory-cogs",
               query: { from: range.from, to: range.to, ...(branchId ? { branch: branchId } : {}) },
-            }}>full reconciliation</Link>
-          </div>
+            }}>View details — every line, carriage inward and the ledger reconciliation →</Link>
+          </p>
         </details>
       )}
     </>
