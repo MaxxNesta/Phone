@@ -1,3 +1,4 @@
+import { lowStockToday } from "@/lib/replenish-data";
 import { lowStockHref } from "@/lib/plans";
 import { getCompany } from "@/lib/queries";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
@@ -57,7 +58,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const co = user.companyId;
   const seeCost = can(user, "cost.view");
   const company = await getCompany();
-  const lowHref = company ? lowStockHref(company.plan) : "/items/stock";
+  // The one full low-stock list lives on the Stock page; these are a preview of it.
+  // Only "review and order" leads to the planner, where the package has one.
+  const lowHref = "/items/stock#low-stock";
+  const orderHref = company ? lowStockHref(company.plan) : "/items/stock";
 
   // The warehouses this person may see, each with the branch it belongs to.
   const seen = await seenLocations();
@@ -142,6 +146,12 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const low = all.filter((r) => r.status === "LOW");
   const out = all.filter((r) => r.status === "OUT");
   const healthy = all.filter((r) => r.status === "HEALTHY");
+  /* The alert preview is the Stock page's own list — the same products, the
+     same reorder points — not the by-model catalogue status above. Already
+     read once this request by inventorySummary, so this costs nothing. */
+  const alert = (await lowStockToday(co)).rows;
+  const alertLow = alert.filter((r) => r.reason === "below_reorder");
+  const alertOut = alert.filter((r) => r.reason === "out_of_stock");
 
   // By top category, biggest first: value for the donut, units for the bars,
   // in the same order so a category keeps its colour across both.
@@ -254,8 +264,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </> : <>
           {kpi(<Box size={16} aria-hidden="true" />, "Total products", all.length.toLocaleString("en-US"),
             `${onHand.length.toLocaleString("en-US")} product models in stock.`)}
-          {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low stock items", low.length,
-            "Models with a variant at or below its reorder level.", low.length > 0, lowHref)}
+          {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low or out of stock", alert.length,
+            "Products at or under their reorder point — the same list as the Stock page.", alert.length > 0, lowHref)}
         </>}
       </div>
 
@@ -303,10 +313,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           </div>
         </Link>
         <div className="card inv-status-card">
-          <div className="card-head"><h2>Stock status</h2><span className="page-sub">{all.length} products</span></div>
+          <div className="card-head"><h2>Catalogue by model</h2><span className="page-sub">{all.length} models</span></div>
           <div className="card-body">
             <ShareDonut count emptyLabel="No products yet." currency=""
-              centre={{ value: String(all.length), label: "Products" }}
+              centre={{ value: String(all.length), label: "Models" }}
               colours={["var(--ok)", "#FF9F0A", "var(--bad)"]}
               data={[{ id: "in", name: "In stock", revenue: healthy.length }, { id: "low", name: "Low stock", revenue: low.length },
                      { id: "out", name: "Out of stock", revenue: out.length }]} />
@@ -394,31 +404,31 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
         <section className="card inv-panel inv-repl">
           <div className="inv-panel-head">
-            <h2>Replenishment alerts</h2>
+            <h2>Low stock</h2>
             <Link href={lowHref}>{c("viewAll")}</Link>
           </div>
           <div className="inv-repl-tabs">
-            <Link href={lowHref}><span>Low stock</span><b className={low.length ? "warn" : undefined}>{low.length}</b></Link>
-            <Link href={lowHref}><span>Out of stock</span><b className={out.length ? "bad" : undefined}>{out.length}</b></Link>
+            <Link href={lowHref}><span>Low stock</span><b className={alertLow.length ? "warn" : undefined}>{alertLow.length}</b></Link>
+            <Link href={lowHref}><span>Out of stock</span><b className={alertOut.length ? "bad" : undefined}>{alertOut.length}</b></Link>
           </div>
           <table className="inv-mini">
             <colgroup><col style={{ width: "64%" }} /><col style={{ width: "18%" }} /><col style={{ width: "18%" }} /></colgroup>
             <thead><tr><th>Product</th><th className="num">On hand</th><th className="num">Reorder</th></tr></thead>
             <tbody>
-              {[...low, ...out].slice(0, 6).map((r) => (
-                <tr key={r.id}>
-                  <td className="clip" title={r.model}><Link href={lowHref}>{r.model}</Link></td>
-                  <td className="num bad">{r.qty}</td>
-                  <td className="num">{r.min_qty ?? (r.tracks_serial ? 2 : 0)}</td>
+              {alert.slice(0, 6).map((r) => (
+                <tr key={r.item_id}>
+                  <td className="clip" title={r.item_name}><Link href={lowHref}>{r.item_name}</Link></td>
+                  <td className="num bad">{Number(r.qty_on_hand).toLocaleString("en-US")}</td>
+                  <td className="num">{r.min_qty === null ? "—" : Number(r.min_qty).toLocaleString("en-US")}</td>
                 </tr>
               ))}
-              {low.length + out.length === 0 && <tr><td colSpan={3} className="page-sub">{t("sum.nothingLow")}</td></tr>}
+              {alert.length === 0 && <tr><td colSpan={3} className="page-sub">{t("sum.nothingLow")}</td></tr>}
             </tbody>
           </table>
-          {low.length + out.length > 0 && (
-            <Link href={lowHref} className="inv-repl-note">
+          {alert.length > 0 && (
+            <Link href={orderHref} className="inv-repl-note">
               <AlertTriangle size={15} aria-hidden="true" />
-              <span><strong>{low.length + out.length} product{low.length + out.length === 1 ? " is" : "s are"} at or below the reorder level.</strong> Review and order before they run out.</span>
+              <span><strong>{alert.length} product{alert.length === 1 ? " is" : "s are"} at or under the reorder point.</strong> Review and order before they run out.</span>
               <ChevronRight size={15} aria-hidden="true" />
             </Link>
           )}

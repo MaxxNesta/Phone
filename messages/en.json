@@ -1188,6 +1188,7 @@
     "lowStock": "Low Stock",
     "lowStockSub": "Selling, nearly out",
     "nothingLow": "Nothing selling is running out.",
+    "reorderAt": "reorder at {n}",
     "left": "{n, plural, one {# unit left} other {# units left}}",
     "inventoryValue": "Inventory Value",
     "inventorySummary": "Inventory summary",

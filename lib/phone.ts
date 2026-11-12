@@ -1,3 +1,4 @@
+import { lowStockToday } from "./replenish-data";
 import { cache } from "react";
 import { sql } from "./db";
 import { getBrandsInUse } from "./queries";
@@ -452,14 +453,8 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
       sql`select count(*)::int as n from v_stock_serial
            where company_id = ${companyId} and status = 'IN_STOCK' and received_date < current_date - 90
              ${at("location_id")}`,
-      // Variants that sell and are nearly out: two or fewer left, sold in 60 days.
-      sql`select s.item_name as name, count(*) filter (where s.status = 'IN_STOCK')::int as left_,
-                 count(*) filter (where s.status = 'SOLD' and s.out_date > current_date - 60)::int as sold_60
-            from v_stock_serial s where s.company_id = ${companyId} ${at("s.location_id")}
-           group by 1
-          having count(*) filter (where s.status = 'IN_STOCK') <= 2
-             and count(*) filter (where s.status = 'SOLD' and s.out_date > current_date - 60) > 0
-           order by 2, 3 desc limit 5`,
+      // At or under the reorder point: the Stock page's list, worst first.
+      lowStockToday(companyId).then((r) => r.rows.slice(0, 5)),
       sql`select to_char(d, 'YYYY-MM-DD') as day, to_char(d, 'Dy') as label,
                  coalesce((select sum(r.revenue) from (${range(sql`current_date - 6`)}) r
                             where r.posting_date = d), 0)::float as revenue
@@ -531,8 +526,8 @@ export async function serialKpis(companyId: string) {
 /**
  * Stock per product variant across locations, for Inventory → Summary.
  * Reserved is the held handsets (reserve and repair); available is what can
- * be sold today. Low means at or under the item's reorder minimum, summed
- * over locations, or two or fewer phones of a variant that has sold.
+ * be sold today. Low means at or under its reorder point — the calculated
+ * one the Stock page lists (lib/replenish-data lowStockToday).
  */
 export async function inventorySummary(companyId: string, f: {
   q?: string; groupId?: string; locationId?: string; status?: string;
@@ -608,11 +603,15 @@ export async function inventorySummary(companyId: string, f: {
      -- ponytail: whole catalogue in one read; paginate in SQL past ~5k variants.
      limit 5000`;
   const merged = f.combine ? combinePhysical(rows as any[]) : (rows as any[]).map((r) => ({ ...r, codes: [r.code] }));
+  /* Low is the calculated reorder point — the one rule the Stock page, the
+     dashboard and Replenishment use — read once per request (lowStockToday). */
+  const { byCode } = await lowStockToday(companyId);
   const withStatus = merged.map((r: any) => {
     const available = Number(r.qty) - Number(r.reserved);
-    const low = r.min_qty != null ? Number(r.qty) <= Number(r.min_qty)
-      : r.tracks_serial ? Number(r.qty) <= 2 : Number(r.qty) <= 0;
-    return { ...r, available, status: Number(r.qty) <= 0 ? "OUT" : low ? "LOW" : "HEALTHY" };
+    const flagged = (r.codes as string[]).filter((c) => byCode.has(c));
+    const reorderAt = flagged.length ? flagged.reduce((t, c) => t + (byCode.get(c) ?? 0), 0) : null;
+    return { ...r, available, reorder_at: reorderAt,
+             status: Number(r.qty) <= 0 ? "OUT" : flagged.length ? "LOW" : "HEALTHY" };
   });
   return {
     locations,

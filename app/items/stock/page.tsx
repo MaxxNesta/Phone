@@ -488,7 +488,7 @@ export default async function Stock({
       <div className="grid2 stk-below">
         <div className="card">
           <div className="card-head">
-            <h2>{t("stk.lowTitle")}</h2>
+            <h2 id="low-stock">{t("stk.lowTitle")}</h2>
             <span className="page-sub">{t("stk.lowSub")}</span>
           </div>
           {lowStock.length === 0 ? <div className="empty">Nothing is below its reorder point.</div> : (

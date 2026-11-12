@@ -4,6 +4,8 @@ import {
 } from "./queries";
 import { seenRows } from "./branch-scope";
 import { replenishment } from "./replenish";
+import { cache } from "react";
+import { getCompany } from "./queries";
 
 type Any = Record<string, unknown>;
 
@@ -75,6 +77,22 @@ export function lowStockFromPlan(rows: Awaited<ReturnType<typeof loadPlan>>["row
     }))
     .sort((a, b) => (Number(b.min_qty ?? 0) - Number(b.qty_on_hand)) - (Number(a.min_qty ?? 0) - Number(a.qty_on_hand)));
 }
+
+/**
+ * Low stock for the whole company, read once per request: the same rule and
+ * the same rows wherever an alert is shown (Stock page, Inventory summary,
+ * dashboard), keyed by item code so merged variants can look themselves up.
+ */
+export const lowStockToday = cache(async (companyId: string) => {
+  const co = await getCompany();
+  const plan = await loadPlan(companyId, { windowDays: 30, coverDays: 30, fallbackLeadDays: co?.default_lead_time_days ?? 7 });
+  const rows = lowStockFromPlan(plan.rows, { id: "all", code: "All" });
+  return {
+    rows,
+    /** item code → its reorder point, for items at or under it (or out). */
+    byCode: new Map(rows.map((r) => [r.item_code, Number(r.min_qty ?? 0)])),
+  };
+});
 
 export type OpenLine = {
   order_id: string; doc_no: string; doc_date: string | Date; due_date: string | Date | null;

@@ -204,20 +204,23 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
 
         <div className="card">
-          <div className="card-head"><h2>{t("lowStock")}</h2><span className="page-sub">{t("lowStockSub")}</span></div>
+          <div className="card-head"><h2>{t("lowStock")}</h2><Link href="/items/stock#low-stock" className="page-sub">{t("viewAll")}</Link></div>
           <div className="card-body">
             {d.low.length === 0 && <p className="page-sub">{t("nothingLow")}</p>}
-            {d.low.slice(0, 5).map((l: any) => (
-              <div className="listrow" key={l.name}>
-                <span className="grow">
-                  <div>{l.name}</div>
-                  <div className="low" style={{ fontSize: "var(--t-sm)" }}>{t("left", { n: l.left_ })}</div>
-                </span>
-                <span style={{ width: 110 }}>
-                  <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(8, (l.left_ / 3) * 100)}%` }} /></div>
-                </span>
-              </div>
-            ))}
+            {(d.low as { item_id: string; item_name: string; qty_on_hand: string; min_qty: string | null }[]).map((l) => {
+              const left = Number(l.qty_on_hand), at = Number(l.min_qty ?? 0);
+              return (
+                <div className="listrow" key={l.item_id}>
+                  <span className="grow">
+                    <div>{l.item_name}</div>
+                    <div className="low" style={{ fontSize: "var(--t-sm)" }}>{t("left", { n: left })}{at > 0 && ` · ${t("reorderAt", { n: at })}`}</div>
+                  </span>
+                  <span style={{ width: 110 }}>
+                    <div className="bar-track"><div className="bar-fill" style={{ width: `${Math.max(8, at > 0 ? Math.min(100, (left / at) * 100) : 0)}%` }} /></div>
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
