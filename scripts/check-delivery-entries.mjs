@@ -1,5 +1,6 @@
-// Sales and cost of sales land with the invoice, whichever goes first: the
-// delivery or the invoice. Posted inside one transaction that is rolled back,
+// Sales and cost of sales land together: with the invoice when the goods went
+// first, and with the delivery when the invoice went first (0191 — billed and
+// not delivered is held in 21303 until the goods leave). Posted inside one transaction that is rolled back,
 // so it can run against DEV at any time and leaves nothing behind.
 //
 //   npx tsx --env-file=.env scripts/check-delivery-entries.mjs
@@ -8,10 +9,11 @@
 // ORDERS_AND_DELIVERIES (lib/features.ts) posts through these same paths.
 // Cases, dated across a month end (Oct 31 → Nov 2):
 //   A  delivered, then invoiced
-//   B  invoiced (deliver later), then delivered — estimate equals actual
-//   C  invoiced, cheaper stock sold meanwhile, delivered in two loads — the
-//      estimate is off and the difference lands on the last delivery
-//   D  invoiced for later, never delivered, voided — nothing left booked
+//   B  invoiced (deliver later), then delivered — the sale and its cost land
+//      in the delivery's month, the price held in 21303 until then
+//   C  invoiced, cheaper stock sold meanwhile, delivered in two loads — each
+//      load earns its share at the cost it actually went out at
+//   D  invoiced for later, never delivered, voided — nothing left held
 // and throughout, 1090 = delivered-unclaimed − invoiced-ahead.
 
 import postgres from "postgres";
@@ -60,6 +62,8 @@ try {
     const heldBal = () => one(tx`select coalesce(sum(base_amount), 0)::numeric as v from journal_line where account_id = ${held.id}`);
     const unclaimed = () => one(tx`select coalesce(sum(value_unclaimed), 0)::numeric as v from v_delivery_cost_unclaimed where company_id = ${co.id}`);
     const ahead = () => one(tx`select coalesce(sum(value_ahead), 0)::numeric as v from v_invoice_cost_booked_ahead where company_id = ${co.id}`);
+    const [bnd] = await tx`select a.id from account a where a.id = fn_system_account(${co.id}, 'BILLED_NOT_DELIVERED')`;
+    const unearned = () => one(tx`select coalesce(sum(base_amount), 0)::numeric as v from journal_line where account_id = ${bnd.id}`);
     const reconciles = async () => {
       const [h, u, a] = [await heldBal(), await unclaimed(), await ahead()];
       check(`${held.code} = delivered unclaimed − invoiced ahead`, Math.abs(h - (u - a)) < 0.0001, `${h} = ${u} − ${a}`);
@@ -109,13 +113,17 @@ try {
 
     console.log("\n=== B. Invoiced Oct 31 (deliver later), delivered Nov 2 (2 units) ===");
     await startCase();
+    const unearnedBefore = await unearned();
     const ib = await sell(OCT, 2, { toDeliver: true });
     await entry(`Invoice ${ib.docNo}`, ib.id);
-    check(`invoice books 2,000 ahead in ${held.code}`, (await ahead()) === 2000, `${await ahead()}`);
+    check("invoice holds its 3,000 as billed, not delivered", (await unearned()) === unearnedBefore - 3000, `${await unearned()}`);
+    check("and books no cost ahead", (await ahead()) === 0, `${await ahead()}`);
     await reconciles();
     const db = await deliverFor(NOV, ib, 2);
     await entry(`Delivery ${db.docNo}`, db.id);
-    await byMonth("B by month", [{ rev: 3000, cost: 2000 }, { rev: 0, cost: 0 }]);
+    // The goods left in November, so that is when the sale and its cost happened.
+    await byMonth("B by month", [{ rev: 0, cost: 0 }, { rev: 3000, cost: 2000 }]);
+    check("the delivery releases what was held", (await unearned()) === unearnedBefore, `${await unearned()}`);
     check("nothing left booked ahead", (await ahead()) === 0, `${await ahead()}`);
     await reconciles();
 
@@ -132,18 +140,19 @@ try {
     await reconciles();
     const c2 = await deliverFor(NOV, ic, 3);
     await entry(`Delivery ${c2.docNo} (3 units, the last)`, c2.id);
-    // Oct: C's sale 6,000 with its 4,000 estimate, plus the walk-in 7,500 / 5,000.
-    // Nov: only the 900 the estimate missed (3 × 300).
-    await byMonth("C by month", [{ rev: 13500, cost: 9000 }, { rev: 0, cost: 900 }]);
+    // Oct: only the walk-in, 7,500 / 5,000. Nov: C's 6,000 when its goods left,
+    // at what they actually cost — 1,000 + 3 × 1,300.
+    await byMonth("C by month", [{ rev: 7500, cost: 5000 }, { rev: 6000, cost: 4900 }]);
     check("nothing left booked ahead", (await ahead()) === 0, `${await ahead()}`);
     check(`${held.code} is empty`, (await heldBal()) === 0, `${await heldBal()}`);
 
     console.log("\n=== D. Invoiced 1 for later, never delivered, voided ===");
     const heldBefore = await heldBal();
     const iv = await sell(OCT, 1, { toDeliver: true });
-    check("booked ahead while it stands", (await ahead()) > 0, `${await ahead()}`);
+    const unearnedD = await unearned();
+    check("held as billed, not delivered, while it stands", (await unearned()) < unearnedBefore, `${await unearned()}`);
     await P.voidDocument({ documentId: iv.id, reason: "check" }, tx);
-    check("void leaves nothing booked ahead", (await ahead()) === 0, `${await ahead()}`);
+    check("void releases nothing to Sales and leaves nothing held", (await unearned()) === unearnedBefore, `${await unearned()} (was ${unearnedD})`);
     check(`void puts ${held.code} back`, (await heldBal()) === heldBefore, `${await heldBal()}`);
     await reconciles();
 

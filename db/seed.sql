@@ -255,6 +255,7 @@ from (values
     ('211', '21110', 'Accrued Expense',                     'LIABILITY'::account_type,  false,  false,  false),
     ('213', '21301', 'Sale Advance',                        'LIABILITY'::account_type,  false,  false,  false),
     ('213', '21302', 'Prereceive Customer',                 'LIABILITY'::account_type,  false,  false,  false),
+    ('213', '21303', 'Billed Not Delivered (Unearned Revenue)', 'LIABILITY'::account_type, false, false, false),
     ('213', '21307', 'Sale Cash',                           'LIABILITY'::account_type,  false,  false,  false),
     ('214', '21401', 'Consign Stock',                       'LIABILITY'::account_type,  false,  false,  false),
     ('214', '21402', 'Unpaid Sold Consign',                 'LIABILITY'::account_type,  false,  false,  false),
@@ -365,6 +366,7 @@ from (values
     ('OTHER_PAYABLE',               '21109'),
     ('CARRIAGE_INWARD',             '51110'),
     ('CUSTOMER_ADVANCE',            '21301'),
+    ('BILLED_NOT_DELIVERED',        '21303'),
     ('SUPPLIER_ADVANCE',            '15102'),
     ('OUTPUT_TAX',                  '21501'),
     ('INPUT_TAX',                   '14302')

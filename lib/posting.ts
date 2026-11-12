@@ -3408,6 +3408,46 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
           select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`;
         journal.push({ accountId: heldAcct[0].a as string, amount: -claimed, locationId });
       }
+
+      /* The sale is earned now (0191). For each line of the invoice still
+         holding a price in Billed Not Delivered, this delivery releases the
+         share it sent — all of what is left on the load that completes the
+         line — to Sales, with the discount behind it to Sales Discounts. */
+      const held = await tx`
+        select r.invoice_line_id, dl.item_id,
+               (array_agg(r.revenue_account_id))[1] as revenue_account_id,
+               sum(r.qty) as qty, sum(r.net) as net, sum(r.discount) as discount
+          from sales_revenue_deferred r
+          join document rd on rd.id = r.document_id and rd.status = 'POSTED'
+          join document_line dl on dl.id = r.invoice_line_id
+         where dl.document_id = ${billedBy.id}
+         group by r.invoice_line_id, dl.item_id
+        having sum(r.qty) > 0`;
+      if (held.length > 0) {
+        const bnd = (await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`)[0].a as string;
+        const allowed = (await tx`select fn_system_account(${companyId}, 'SALES_DISCOUNT_ALLOWED') as a`)[0].a as string;
+        for (const h of held as unknown as Array<{ invoice_line_id: string; item_id: string; revenue_account_id: string;
+                                                   qty: string; net: string; discount: string }>) {
+          const [took] = await tx`
+            select coalesce(
+                     nullif(sum(base_qty) filter (where source_line_id = ${h.invoice_line_id}), 0),
+                     coalesce(sum(base_qty) filter (where item_id = ${h.item_id}), 0)
+                   ) as q
+              from document_line where document_id = ${doc.id}`;
+          const openQty = Number(h.qty), sent = Math.min(Number(took.q), openQty);
+          if (!(sent > 0)) continue;
+          const whole = sent >= openQty;
+          const net = whole ? round4(Number(h.net)) : round4(Number(h.net) * sent / openQty);
+          const disc = whole ? round4(Number(h.discount)) : round4(Number(h.discount) * sent / openQty);
+          await tx`
+            insert into sales_revenue_deferred
+              (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
+            values (${companyId}, ${h.invoice_line_id}, ${doc.id}, ${-sent}, ${-net}, ${-disc}, ${h.revenue_account_id})`;
+          if (net !== 0) journal.push({ accountId: bnd, amount: net, locationId });
+          if (net + disc !== 0) journal.push({ accountId: h.revenue_account_id, amount: -round4(net + disc), locationId });
+          if (disc !== 0) journal.push({ accountId: allowed, amount: disc, locationId });
+        }
+      }
     }
   }
 
@@ -4328,7 +4368,22 @@ async function _postSalesInvoice(
       ? 0
       : roundMoney(discountGross * (net / chargedBeforeTaxSplit), scale);
 
-    if (net !== 0 || discount !== 0) {
+    /* Deliver later: goods billed before they leave are not yet a sale. The
+       price after discount waits in Billed Not Delivered (21303) and each
+       delivery moves its share to Sales and Sales Discounts (0191). A
+       service on the same invoice is earned now — nothing is delivered for it. */
+    const deferRevenue = !!input.toDeliver && !input.issueStock && !input.deliveryId
+      && !!item.is_stocked && !line.focReasonId;
+    if (deferRevenue && (net !== 0 || discount !== 0)) {
+      const revenue = await tx`
+        select fn_resolve_account_for_item(${companyId}, 'REVENUE', ${line.itemId}) as a`;
+      const held = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
+      journal.push({ accountId: held[0].a, amount: -round4(net) });
+      await tx`
+        insert into sales_revenue_deferred
+          (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
+        values (${companyId}, ${invLine.id}, ${doc.id}, ${baseQty}, ${round4(net)}, ${discount}, ${revenue[0].a})`;
+    } else if (net !== 0 || discount !== 0) {
       const revenue = await tx`
         select fn_resolve_account_for_item(${companyId}, 'REVENUE', ${line.itemId}) as a`;
       journal.push({ accountId: revenue[0].a, amount: -round4(net + discount) });
@@ -4418,42 +4473,9 @@ async function _postSalesInvoice(
     }
   }
 
-  /* Deliver later: the goods have not left, but their cost is recognised
-     with the sale, here, so the two never land in different months.
-     Booked at the FIFO cost the shelf would give them now — an estimate,
-     nothing leaves and no layer is drawn — as Dr cost of sales / Cr 1090.
-     1090 runs into credit for it: goods invoiced and not delivered, the
-     mirror of goods delivered and not invoiced. Each delivery against this
-     invoice releases its share and puts any difference from the actual
-     cost into cost of sales (migration 0178). */
-  if (input.toDeliver && !input.issueStock) {
-    const costByAccount = new Map<string, number>();
-    let booked = 0;
-    for (const b of billedLines) {
-      const [c] = await tx`
-        select coalesce(sum(qty), 0) as q from sales_cost_allocation where invoice_line_id = ${b.lineId}`;
-      const ahead = round4(b.qty - Number(c.q));
-      if (ahead <= 0) continue;
-      const plan = await planFifoConsumption(tx, companyId, b.itemId, locationId, ahead, true);
-      if (plan.totalCost === 0) continue;
-      await tx`
-        insert into sales_cost_booked (company_id, invoice_line_id, document_id, qty, amount)
-        values (${companyId}, ${b.lineId}, ${doc.id}, ${ahead}, ${plan.totalCost})`;
-      const cogs = await tx`
-        select fn_resolve_account_for_item(${companyId}, 'COGS', ${b.itemId}) as a`;
-      const acct = cogs[0].a as string;
-      costByAccount.set(acct, round4((costByAccount.get(acct) ?? 0) + plan.totalCost));
-      booked = round4(booked + plan.totalCost);
-    }
-    if (booked !== 0) {
-      for (const [accountId, amount] of costByAccount) {
-        if (amount !== 0) journal.push({ accountId, amount, locationId });
-      }
-      const heldAcct = await tx`
-        select fn_system_account(${companyId}, 'SHIPPED_NOT_INVOICED') as a`;
-      journal.push({ accountId: heldAcct[0].a as string, amount: -booked, locationId });
-    }
-  }
+  /* Deliver later books no cost here any more: the goods have not left, so
+     neither the sale nor its cost has happened. The delivery books the actual
+     cost and releases the price from Billed Not Delivered (0191). */
 
   const entryId = await writeJournal(
     tx, companyId, docDate, "SALES_INVOICE", doc.id, `${docNo} sales invoice`, journal, locationId
@@ -7069,10 +7091,43 @@ async function _postNote(
   const journal: JournalLine[] = [];
 
   if (isCredit) {
+    /* An invoice whose goods have not all gone still holds part of its price
+       in Billed Not Delivered (0191). That part was never a sale, so the note
+       takes it off there first — spread over the lines by what each still
+       holds, so later deliveries release correspondingly less — and only the
+       rest is given back from revenue. */
+    const held = await tx`
+      select r.invoice_line_id, (array_agg(r.revenue_account_id))[1] as revenue_account_id, sum(r.net) as net
+        from sales_revenue_deferred r
+        join document rd on rd.id = r.document_id and rd.status = 'POSTED'
+        join document_line dl on dl.id = r.invoice_line_id
+       where dl.document_id = ${input.sourceDocumentId}
+       group by r.invoice_line_id
+      having sum(r.qty) > 0 and sum(r.net) > 0`;
+    const heldNet = round4(held.reduce((t, h) => t + Number(h.net), 0));
+    const fromHeld = Math.min(amount, heldNet);
+    if (fromHeld > 0) {
+      let left = fromHeld;
+      held.forEach((h, i) => {
+        const share = i === held.length - 1 ? round4(left) : round4(fromHeld * Number(h.net) / heldNet);
+        left = round4(left - share);
+        (h as Record<string, unknown>).share = share;
+      });
+      for (const h of held) {
+        const share = Number((h as Record<string, unknown>).share);
+        if (share === 0) continue;
+        await tx`
+          insert into sales_revenue_deferred
+            (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
+          values (${companyId}, ${h.invoice_line_id}, ${doc.id}, 0, ${-share}, 0, ${h.revenue_account_id})`;
+      }
+      const bnd = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
+      journal.push({ accountId: bnd[0].a, amount: round4(fromHeld) });
+    }
     // Revenue given back, tax given back, and the customer owes less.
     const ret = await tx`
       select fn_resolve_account_for_item(${companyId}, 'SALES_RETURN', null) as a`;
-    journal.push({ accountId: ret[0].a, amount });
+    if (round4(amount - fromHeld) !== 0) journal.push({ accountId: ret[0].a, amount: round4(amount - fromHeld) });
     if (tax !== 0 && rate) {
       journal.push({ accountId: taxAccountFor(rate, "output"), amount: tax });
     }

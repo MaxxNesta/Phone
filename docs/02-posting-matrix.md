@@ -122,12 +122,47 @@ day one.
 
 MMK invoices get rounded, so rounding differences need somewhere to land.
 
+## Invoice before delivery (deliver later)
+
+The sale is earned when the goods go (migration 0191). Until then the price
+waits in **21303 Billed Not Delivered (Unearned Revenue)**; the tax is due
+when the customer is billed, so it stays on the invoice.
+
+**Sales Invoice** — 10 units @ 35,000, goods to follow:
+
+```
+Dr  Accounts Receivable         350,000     Partner.ar_control
+    Cr  Billed Not Delivered                350,000    system (BILLED_NOT_DELIVERED)
+```
+
+No cost of sales and nothing in 14303 yet: the goods have not left.
+
+**Delivery** — 4 of the 10 leave:
+
+```
+Dr  Billed Not Delivered        140,000     system
+    Cr  Sales                               140,000    ItemGroup.revenue_account
+Dr  Cost of Sales            (actual FIFO)  ItemGroup.cogs_account
+    Cr  Inventory                           ItemGroup.inventory_account
+```
+
+Each delivery releases its share by quantity (and the discount behind it, to
+Sales Discounts); the one that completes a line releases whatever is left. A
+credit note before the goods go comes off Billed Not Delivered first. Services
+on such an invoice are earned at once. Invoices posted before 0191 keep their
+old path (cost booked ahead at an estimate, settled on delivery).
+
+Money taken before any invoice is a different thing — a customer advance, in
+21301 Sale Advance.
+
 ## System accounts
 
 Set once per client during onboarding. Everything else routes through item
 group, partner, or warehouse.
 
 - GR/IR Clearing
+- Goods Shipped Not Invoiced (14303)
+- Billed Not Delivered (21303)
 - Purchase Price Variance
 - Purchase Discount Received
 - Sales Discount Allowed

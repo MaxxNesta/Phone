@@ -116,6 +116,8 @@ export const CHART = [
   // Taken from a customer before we billed them. Theirs until we do.
   ["21301", "Sale Advance",                      "LIABILITY", true],
   ["21302", "Prereceive Customer",               "LIABILITY", true],
+  // Billed and not yet delivered: the price waits here until the goods go.
+  ["21303", "Billed Not Delivered (Unearned Revenue)", "LIABILITY", true],
   ["21307", "Sale Cash",                         "LIABILITY", true],
   ["214",   "Consign Stock",                     "LIABILITY", false, { under: "21" }],
   ["21401", "Consign Stock",                     "LIABILITY", true],
@@ -300,6 +302,9 @@ export const SYSTEM = {
   // and it is not a receivable anyway. It is something owed to the customer
   // until the goods go, and something owed to us until the supplier delivers.
   CUSTOMER_ADVANCE: "21301", SUPPLIER_ADVANCE: "15102",
+  // An invoice raised before its goods leave: the sale is earned on delivery,
+  // so the price is held here until then (migration 0191).
+  BILLED_NOT_DELIVERED: "21303",
 
   // Commercial tax. Charged on a sale it is money held for the revenue
   // department, never income; paid on a purchase it is creditable against
