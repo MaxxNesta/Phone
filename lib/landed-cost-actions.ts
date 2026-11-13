@@ -1,4 +1,6 @@
 "use server";
+import { str } from "./input";
+import { todayLocal } from "@/lib/format";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -10,7 +12,6 @@ import * as L from "./landed-cost";
 
 type Result = { error?: string; ok?: string } | null;
 
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Posting a landed cost changes stock costs: purchasing and cost visibility both. */
@@ -37,7 +38,7 @@ export async function createLandedCostAction(fd: FormData) {
   await assertReceiptBranches(u.companyId, receiptIds);
   const lc = await L.createLandedCost({
     companyId: u.companyId, userId: u.id,
-    docDate: str(fd, "doc_date") || new Date().toISOString().slice(0, 10),
+    docDate: str(fd, "doc_date") || todayLocal(),
     receiptIds, templateId: str(fd, "template_id") || null,
     shipmentRef: str(fd, "shipment_ref"), carrierRef: str(fd, "carrier_ref"),
   });

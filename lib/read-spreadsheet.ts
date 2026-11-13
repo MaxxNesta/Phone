@@ -1,3 +1,4 @@
+import { checkSpreadsheet, checkRowCount } from "./upload-limits";
 import ExcelJS from "exceljs";
 
 /**
@@ -46,6 +47,7 @@ function cellText(value: unknown): string {
 
 /** allSheets: every sheet's rows one after another — a report may run over several. */
 export async function xlsxToRows(base64: string, allSheets = false): Promise<string[][]> {
+  checkSpreadsheet(base64, "xlsx");
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(Buffer.from(base64, "base64") as unknown as ArrayBuffer);
 
@@ -53,7 +55,9 @@ export async function xlsxToRows(base64: string, allSheets = false): Promise<str
 
   const rows: string[][] = [];
   let width = 0;
-  for (const sheet of allSheets ? wb.worksheets : wb.worksheets.slice(0, 1)) sheet.eachRow({ includeEmpty: false }, (row) => {
+  const sheets = allSheets ? wb.worksheets : wb.worksheets.slice(0, 1);
+  checkRowCount({ length: sheets.reduce((t, s) => t + s.actualRowCount, 0) } as unknown[]);
+  for (const sheet of sheets) sheet.eachRow({ includeEmpty: false }, (row) => {
     const cells: string[] = [];
     // includeEmpty keeps blank cells in place; without it a row with a gap
     // would shift every later value one column to the left, silently into

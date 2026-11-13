@@ -58,6 +58,9 @@ const SERIES: [type: string, prefix: string][] = [
 
 export async function scaffoldCompany(input: SetupInput) {
   return sql.begin(async (tx) => {
+    // Two first-run submissions at once would both see an empty table and
+    // both insert. The lock makes the second wait, then see the first's company.
+    await tx`select pg_advisory_xact_lock(hashtext('first-company'))`;
     const existing = await tx`select 1 from company limit 1`;
     if (existing.length) throw new Error("A company already exists in this database");
 

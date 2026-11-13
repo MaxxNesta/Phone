@@ -129,14 +129,24 @@ export const SESSION_COOKIE = "erp_session";
 
 export const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 
+/** A session ends 12 hours after sign-in, or after 2 hours with nobody using it. */
+export const SESSION_HOURS = 12;
+export const SESSION_IDLE_MINUTES = 120;
+
 /** The user a session token belongs to, if it is live. Shared with middleware. */
 export async function userForToken(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
+  const hash = tokenHash(token);
   const [u] = await sql`
-    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches
+    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches,
+           s.last_seen_at < now() - interval '5 minutes' as stale
       from user_session s join app_user u on u.id = s.user_id
-     where s.token_hash = ${tokenHash(token)} and s.expires_at > now() and u.is_active`;
+     where s.token_hash = ${hash} and s.expires_at > now()
+       and s.last_seen_at > now() - make_interval(mins => ${SESSION_IDLE_MINUTES})
+       and u.is_active`;
   if (!u) return null;
+  // Marked as used at most every five minutes, not on every request.
+  if (u.stale) await sql`update user_session set last_seen_at = now() where token_hash = ${hash}`;
   return { id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
            email: u.email, role: u.role as Role, branchId: u.branch_id ?? null,
            seesAllBranches: Boolean(u.sees_all_branches) };

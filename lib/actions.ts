@@ -1,4 +1,6 @@
 "use server";
+import { str, num } from "./input";
+import { todayLocal } from "@/lib/format";
 import { ordersAndDeliveriesOn } from "./features";
 
 import { revalidatePath } from "next/cache";
@@ -22,6 +24,7 @@ import { courierBill } from "./courier-payables";
 import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
+import { sniff, ATTACHMENT_SNIFF } from "./upload-limits";
 import { asRegion } from "./regions";
 import {
   postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postRetailSale, postPurchaseWithReceipt,
@@ -99,14 +102,7 @@ export type ActionResult =
   // caller that only asks whether "ok" is in the result is unaffected.
   | { ok: true; draftId?: string };
 
-function str(fd: FormData, key: string): string {
-  return String(fd.get(key) ?? "").trim();
-}
 
-function num(fd: FormData, key: string): number {
-  const v = Number(fd.get(key));
-  return Number.isFinite(v) ? v : 0;
-}
 
 /** Combines a date field with an optional time-of-day field into one ISO
  *  timestamp — blank time falls back to midnight, same as before either
@@ -1463,7 +1459,7 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
     const levelId = str(fd, "price_level_id");
     const uomId = str(fd, "uom_id");
     const price = num(fd, "price");
-    const from = str(fd, "valid_from") || new Date().toISOString().slice(0, 10);
+    const from = str(fd, "valid_from") || todayLocal();
 
     if (!itemId) return { error: await m("chooseItem") };
     if (!levelId) return { error: await m("choosePriceLevel") };
@@ -2717,7 +2713,7 @@ export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promi
       companyId: co,
       partnerId: invoice.partner_id,
       locationId: invoice.location_id,
-      docDate: new Date().toISOString().slice(0, 10),
+      docDate: todayLocal(),
       reference: `Against invoice`,
       sourceDocumentId: invoice.id,
       // Each line says which invoice line it answers, so the next delivery
@@ -3742,7 +3738,7 @@ export async function applyAdvanceAction(
       companyId: co,
       invoiceId,
       allocations,
-      docDate: new Date().toISOString().slice(0, 10),
+      docDate: todayLocal(),
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
@@ -3916,7 +3912,7 @@ export async function peekVoucherNo(
   await requireUser();
   const co = await companyId();
   const [row] = await sql`
-    select fn_peek_document_no(${co}, ${type}, current_date, ${direction ?? null}) as no`;
+    select fn_peek_document_no(${co}, ${type}, fn_shop_today(), ${direction ?? null}) as no`;
   return (row?.no as string) ?? "";
 }
 
@@ -4087,8 +4083,8 @@ export async function getFormData() {
                min_value, max_value, discount_pct
           from volume_discount
          where company_id = ${co} and is_active
-           and valid_from <= current_date
-           and (valid_to is null or valid_to >= current_date)
+           and valid_from <= fn_shop_today()
+           and (valid_to is null or valid_to >= fn_shop_today())
          order by basis, min_value`,
     sql`select g.id, g.code, g.name, g.name_my, g.parent_id, p.name as parent_name
            from item_group g
@@ -4106,8 +4102,8 @@ export async function getFormData() {
            left join item i on i.id = p.item_id
            left join item_group g on g.id = p.item_group_id
           where p.company_id = ${co} and p.is_active
-            and p.valid_from <= current_date
-            and (p.valid_to is null or p.valid_to >= current_date)
+            and p.valid_from <= fn_shop_today()
+            and (p.valid_to is null or p.valid_to >= fn_shop_today())
           order by p.code`,
 
     sql`select id, code, name from account
@@ -4137,7 +4133,7 @@ export async function getFormData() {
     // Asked of the database rather than assembled here: the number carries
     // the date and a daily sequence, and a second hand-written copy of that
     // format is how the two drift apart.
-    sql`select fn_peek_document_no(${co}, 'SALES_INVOICE', current_date) as no`,
+    sql`select fn_peek_document_no(${co}, 'SALES_INVOICE', fn_shop_today()) as no`,
 
     // Per item, per location — what the company-wide on_hand above can't
     // show: whether the specific warehouse making this sale actually has it.
@@ -4201,7 +4197,7 @@ export async function fxOptions(forCompany?: string) {
   const [c] = await sql`select base_currency from company where id = ${co}`;
   const options = await sql`
     select cu.code, cu.symbol,
-           fn_exchange_rate(${co}, cu.code, ${c.base_currency}, 'MARKET', current_date)::float as rate
+           fn_exchange_rate(${co}, cu.code, ${c.base_currency}, 'MARKET', fn_shop_today())::float as rate
       from currency cu order by cu.code = ${c.base_currency} desc, cu.code`;
   return { base: c.base_currency as string,
            options: options as unknown as { code: string; symbol: string | null; rate: number | null }[] };
@@ -4884,9 +4880,9 @@ export async function savePlanning(_prev: unknown, fd: FormData): Promise<Action
 /** One supplier's lines onto their replenishment draft order; returns the draft id. */
 async function draftFromSuggestions(co: string, supplierId: string | null, lines: SuggestedLine[]) {
   {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const plus = (days: number) =>
-      new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+      new Date(Date.parse(`${today}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
     /*
      * The assumptions, frozen onto the lines.
@@ -5209,8 +5205,12 @@ export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<Ac
       select id, doc_type, location_id from document where id = ${documentId} and company_id = ${co}`;
     if (!doc || !(await mayTouchDocument(doc))) return { error: "That document does not exist" };
 
-    const key = newKey("attach", file.name);
     const body = Buffer.from(await file.arrayBuffer());
+    // The type and the extension are the sender's claim; the first bytes are the file.
+    if (sniff(body) !== ATTACHMENT_SNIFF[file.type]) {
+      return { error: `${file.name} is not really a ${ext.slice(1).toUpperCase()} file. Attach the original PDF or photograph.` };
+    }
+    const key = newKey("attach", file.name);
 
     await putObject({
       bucket: "private", key, body, contentType: file.type, downloadName: file.name,
@@ -5624,6 +5624,9 @@ export async function unmatchBankLine(_prev: unknown, fd: FormData): Promise<Act
     if (!line) return { error: "That statement line no longer exists" };
 
     await sql.begin(async (tx) => {
+      // Waits for a "mark reconciled" on the same statement, which counts its
+      // unmatched lines under the same lock.
+      await tx`select id from bank_statement where id = ${line.statement_id} for update`;
       await tx`delete from bank_reconciliation_match
                 where statement_line_id = ${statementLineId} and company_id = ${co}`;
       await tx`update bank_statement_line set status = 'UNMATCHED'
@@ -5746,24 +5749,26 @@ export async function setBankStatementStatus(_prev: unknown, fd: FormData): Prom
     if (!statementId) return { error: "Choose a statement" };
     if (!["OPEN", "RECONCILED"].includes(status)) return { error: "Not a statement status" };
 
-    const [st] = await sql`
-      select s.id,
-             (select count(*) from bank_statement_line l
-               where l.statement_id = s.id and l.status = 'UNMATCHED') as unmatched
-        from bank_statement s
-       where s.id = ${statementId} and s.company_id = ${co}`;
-    if (!st) return { error: "That statement no longer exists" };
-
-    if (status === "RECONCILED" && Number(st.unmatched) > 0) {
-      return {
-        error: `${st.unmatched} line${Number(st.unmatched) === 1 ? " is" : "s are"} still `
+    // Decided and written in one transaction with the statement locked, so a
+    // line unmatched at the same moment cannot slip under a "reconciled".
+    const refused = await sql.begin(async (tx) => {
+      const [st] = await tx`
+        select s.id from bank_statement s
+         where s.id = ${statementId} and s.company_id = ${co} for update`;
+      if (!st) return "That statement no longer exists";
+      const [{ unmatched }] = await tx`
+        select count(*)::int as unmatched from bank_statement_line l
+         where l.statement_id = ${statementId} and l.status = 'UNMATCHED'`;
+      if (status === "RECONCILED" && unmatched > 0) {
+        return `${unmatched} line${unmatched === 1 ? " is" : "s are"} still `
              + `unexplained. Match each one, or set it aside with a reason, before `
-             + `calling the statement reconciled.`,
-      };
-    }
-
-    await sql`update bank_statement set status = ${status}
-               where id = ${statementId} and company_id = ${co}`;
+             + `calling the statement reconciled.`;
+      }
+      await tx`update bank_statement set status = ${status}
+                 where id = ${statementId} and company_id = ${co}`;
+      return null;
+    });
+    if (refused) return { error: refused };
     revalidatePath(`/finance/bank-reconciliation/${statementId}`);
     revalidatePath("/finance/bank-reconciliation");
   } catch (e) {
@@ -7319,7 +7324,7 @@ export async function createVolumeDiscount(_prev: unknown, fd: FormData): Promis
          min_value, max_value, discount_pct, valid_from, valid_to)
       values (${co}, ${code}, ${name}, ${basis}, ${itemId}, ${groupId},
               ${minValue}, ${maxValue}, ${pct},
-              ${str(fd, "valid_from") || new Date().toISOString().slice(0, 10)},
+              ${str(fd, "valid_from") || todayLocal()},
               ${str(fd, "valid_to") || null})`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
@@ -7383,7 +7388,7 @@ export async function reconcileNegativeStockAction(
     const done = await reconcileNegativeStock({
       companyId: co,
       negativeStockIds: ids,
-      docDate: str(fd, "doc_date") || new Date().toISOString().slice(0, 10),
+      docDate: str(fd, "doc_date") || todayLocal(),
       memo: str(fd, "memo") || null,
     });
     msg = `${done.units} unit${done.units === 1 ? "" : "s"} reconciled — ${done.documents.join(", ")}`;

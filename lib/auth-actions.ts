@@ -1,5 +1,6 @@
 "use server";
 
+import { str } from "./input";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers, cookies } from "next/headers";
@@ -15,7 +16,6 @@ import {
 
 type Result = { error: string } | { ok: string } | null;
 
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 let dummy: string | null = null;
 const DUMMY_HASH = () => (dummy ??= hashPassword("not a password anyone has"));
 const initialsOf = (name: string) =>

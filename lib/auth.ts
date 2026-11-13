@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { sql } from "./db";
 import {
-  can, userForToken, tokenHash, SESSION_COOKIE, ROLE_LABEL, authRequired, ownerUser,
+  can, userForToken, tokenHash, SESSION_COOKIE, ROLE_LABEL, authRequired, ownerUser, SESSION_HOURS, SESSION_IDLE_MINUTES,
   type Permission, type SessionUser,
 } from "./auth-core";
 
@@ -15,9 +15,10 @@ export * from "./auth-core";
 
 // ------------------------------------------------------------- sessions --
 
-const SESSION_HOURS = 12;
-
 export async function createSession(userId: string) {
+  // Ended sessions are deleted rather than left to pile up.
+  await sql`delete from user_session where expires_at < now()
+              or last_seen_at < now() - make_interval(mins => ${SESSION_IDLE_MINUTES})`;
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_HOURS * 3600_000);
   await sql`

@@ -1,11 +1,11 @@
 "use server";
 
+import { str } from "./input";
 import { revalidatePath } from "next/cache";
 import { sql } from "./db";
 import { requirePermission, requireUser, can } from "./auth";
 
 type Result = { error: string } | { ok: string } | null;
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 /**
  * A currency the company deals in. The list is shared (currency codes are

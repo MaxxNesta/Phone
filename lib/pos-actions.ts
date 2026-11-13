@@ -1,4 +1,5 @@
 "use server";
+import { isUuid, cleanStr } from "./input";
 
 import { revalidatePath } from "next/cache";
 import { requirePermission, can, DISCOUNT_CEILING_PCT } from "./auth";
@@ -67,6 +68,22 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
     // The till sells at the cashier's own branch, whatever the request names.
     await assertMyBranch(sale.locationId);
     const co = user.companyId;
+    // The sale arrives as an object, not a form: its shape is checked here,
+    // because TypeScript's types do not exist by the time it reaches the server.
+    if (!Array.isArray(sale.lines) || sale.lines.length > 300) return { ok: false, error: "Too many lines on one sale." };
+    if (!Array.isArray(sale.payments) || sale.payments.length > 10) return { ok: false, error: "Too many payments on one sale." };
+    for (const l of sale.lines) {
+      if (!isUuid(l.itemId) || !Number.isFinite(Number(l.qty)) || !Number.isFinite(Number(l.unitPrice))
+          || Number(l.unitPrice) < 0 || Math.abs(Number(l.qty)) > 100_000
+          || (l.discountPct && (Number(l.discountPct) < 0 || Number(l.discountPct) > 100))
+          || (l.serials && (!Array.isArray(l.serials) || l.serials.length > 1000))) {
+        return { ok: false, error: "A line on this sale is not valid." };
+      }
+    }
+    for (const p of sale.payments) {
+      if (!Number.isFinite(Number(p.amount)) || Number(p.amount) < 0) return { ok: false, error: "A payment on this sale is not valid." };
+    }
+    sale.memo = cleanStr(sale.memo, "memo") || null;
 
     const lines: InvoiceLine[] = sale.lines
       .filter((l) => l.itemId && l.qty > 0)

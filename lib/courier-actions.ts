@@ -1,4 +1,6 @@
 "use server";
+import { str } from "./input";
+import { todayLocal } from "@/lib/format";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -11,7 +13,6 @@ import { payCourier, courierBill, type PreviewShare } from "./courier-payables";
 
 type Result = { error?: string } | null;
 
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 /** Pay a courier against the charges ticked on the form. */
 export async function payCourierAction(_prev: Result, fd: FormData): Promise<Result> {
@@ -26,7 +27,7 @@ export async function payCourierAction(_prev: Result, fd: FormData): Promise<Res
       .filter((a) => Number.isFinite(a.amount) && a.amount > 0);
     if (!partnerId) return { error: "Choose the courier being paid." };
     done = await payCourier({
-      companyId: u.companyId, partnerId, docDate: str(fd, "doc_date") || new Date().toISOString().slice(0, 10),
+      companyId: u.companyId, partnerId, docDate: str(fd, "doc_date") || todayLocal(),
       locationId, moneyAccountId: str(fd, "money_account_id"),
       reference: str(fd, "reference") || null, memo: str(fd, "memo") || null, allocations,
     });
@@ -48,7 +49,7 @@ async function billInput(u: { id: string; companyId: string }, fd: FormData) {
   await assertMyBranch(...rows.map((r) => r.location_id as string | null));
   return {
     companyId: u.companyId, userId: u.id, partnerId: str(fd, "partner_id"), receiptIds, amount,
-    docDate: str(fd, "doc_date") || new Date().toISOString().slice(0, 10),
+    docDate: str(fd, "doc_date") || todayLocal(),
     method: (str(fd, "method") === "VALUE" ? "VALUE" : "EQUAL") as "VALUE" | "EQUAL",
     costTypeId: str(fd, "cost_type_id") || null,
     reference: str(fd, "reference") || null, notes: str(fd, "memo") || null,

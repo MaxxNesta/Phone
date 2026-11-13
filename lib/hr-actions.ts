@@ -1,5 +1,6 @@
 "use server";
 
+import { str } from "./input";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "./db";
@@ -14,7 +15,6 @@ import { KINDS, KIND_ACCOUNT, type Kind } from "./hr-calc";
 const MONEY = /^\d{1,14}(\.\d{1,4})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH = /^\d{4}-\d{2}$/;
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const opt = (fd: FormData, k: string) => str(fd, k) || null;
 const amount = (v: string) => v.replace(/,/g, "");
 const err = (e: unknown): ActionResult => ({ error: e instanceof Error ? e.message : String(e) });

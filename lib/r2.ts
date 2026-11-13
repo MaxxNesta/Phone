@@ -1,4 +1,6 @@
+import { todayLocal } from "@/lib/format";
 import { randomUUID } from "node:crypto";
+import { breaker } from "./breaker";
 import {
   S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
@@ -63,6 +65,13 @@ export function storageConfigured(): boolean {
   try { config(); return true; } catch { return false; }
 }
 
+/**
+ * Every call to the bucket goes through one breaker: three failures in a row
+ * and uploads and downloads are refused at once for 30 seconds, rather than
+ * each one waiting on a storage service that is not answering.
+ */
+const guard = breaker("File storage");
+
 let client: S3Client | null = null;
 function s3(): S3Client {
   const c = config();
@@ -98,7 +107,7 @@ export function newKey(prefix: string, filename?: string): string {
   const ext = filename?.includes(".")
     ? "." + filename.split(".").pop()!.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8)
     : "";
-  const day = new Date().toISOString().slice(0, 10);
+  const day = todayLocal();
   return `${prefix}/${day}/${randomUUID()}${ext}`;
 }
 
@@ -110,7 +119,7 @@ export async function putObject(input: {
   /** Sent back on download so a browser saves it under its own name. */
   downloadName?: string;
 }): Promise<void> {
-  await s3().send(new PutObjectCommand({
+  await guard(() => s3().send(new PutObjectCommand({
     Bucket: bucketName(input.bucket),
     Key: input.key,
     Body: input.body,
@@ -118,7 +127,7 @@ export async function putObject(input: {
     ContentDisposition: input.downloadName
       ? `attachment; filename="${input.downloadName.replace(/["\\]/g, "")}"`
       : undefined,
-  }));
+  })));
 }
 
 /** The bytes back, for the route that streams a private file to somebody
@@ -126,9 +135,9 @@ export async function putObject(input: {
 export async function getObject(bucket: Bucket, key: string): Promise<{
   body: Buffer; contentType: string | undefined;
 }> {
-  const out = await s3().send(new GetObjectCommand({
+  const out = await guard(() => s3().send(new GetObjectCommand({
     Bucket: bucketName(bucket), Key: key,
-  }));
+  })));
   const body = Buffer.from(await out.Body!.transformToByteArray());
   return { body, contentType: out.ContentType };
 }
@@ -144,7 +153,7 @@ export async function getObject(bucket: Bucket, key: string): Promise<{
  */
 export async function deleteObject(bucket: Bucket, key: string): Promise<void> {
   try {
-    await s3().send(new DeleteObjectCommand({ Bucket: bucketName(bucket), Key: key }));
+    await guard(() => s3().send(new DeleteObjectCommand({ Bucket: bucketName(bucket), Key: key })));
   } catch {
     // Orphaned object. Nothing references it and nothing can reach it.
   }

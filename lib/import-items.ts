@@ -1,3 +1,4 @@
+import { checkSpreadsheet, checkRowCount } from "./upload-limits";
 /**
  * Reading and checking an item spreadsheet.
  *
@@ -175,6 +176,7 @@ export type ImportPlan = {
  * field, which is worse than failing.
  */
 export function parseCsv(text: string): string[][] {
+  checkSpreadsheet(text, "csv");
   const rows: string[][] = [];
   let field = "";
   let row: string[] = [];
@@ -198,6 +200,7 @@ export function parseCsv(text: string): string[][] {
     field += c;
   }
   if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  checkRowCount(rows);
 
   return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
 }

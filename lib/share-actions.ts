@@ -1,4 +1,6 @@
 "use server";
+import { str } from "./input";
+import { todayLocal } from "@/lib/format";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -6,7 +8,6 @@ import { requirePermission } from "./auth";
 import { createShareholder, updateShareholder, postShareTransfer, cancelShareTransfer, type ShareType, type TransferType, type ShareholderInput } from "./shares";
 
 type Result = { error?: string } | null;
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const PATH = "/equity";
 
 export async function createShareholderAction(_prev: Result, fd: FormData): Promise<Result> {
@@ -65,7 +66,7 @@ export async function cancelShareTransferAction(_prev: Result, fd: FormData): Pr
   const u = await requirePermission("accounting.post");
   let no: string;
   try {
-    no = (await cancelShareTransfer(u.companyId, str(fd, "id"), new Date().toISOString().slice(0, 10))).no;
+    no = (await cancelShareTransfer(u.companyId, str(fd, "id"), todayLocal())).no;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }

@@ -1,4 +1,6 @@
 "use server";
+import { str } from "./input";
+import { todayLocal } from "@/lib/format";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -13,7 +15,6 @@ import type { Convention } from "./fa-engine";
 
 const MONEY = /^\d{1,14}(\.\d{1,4})?$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 /** An exact decimal as ten-thousandths, so comparing two amounts never touches a float. */
 const units = (v: string) => { const [i, f = ""] = v.split("."); return BigInt(i) * 10000n + BigInt((f + "0000").slice(0, 4)); };
 
@@ -168,7 +169,7 @@ export async function saveAsset(_prev: unknown, fd: FormData): Promise<ActionRes
                status = ${status}, updated_at = now()
          where id = ${id}`;
       await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
-               values (${co}, ${id}, 'UPDATED', current_date, ${user.id},
+               values (${co}, ${id}, 'UPDATED', fn_shop_today(), ${user.id},
                        ${tx.json({ changed: [
                          ...changed.map((k) => ({ field: k, from: String(before[k] ?? ""), to: String(v[k] ?? "") })),
                          ...plain.map((k) => ({ field: k, from: String(old[k] ?? ""), to: String(v[k] ?? "") }))] })})`;
@@ -211,7 +212,7 @@ export async function setAssetStatus(fd: FormData) {
     await tx`update fixed_asset set status = ${to}, updated_at = now() where id = ${id}`;
     await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by)
              values (${co}, ${id}, ${to === "INACTIVE" ? "DEACTIVATED" : a.status === "DRAFT" ? "ACTIVATED" : "REACTIVATED"},
-                     current_date, ${user.id})`;
+                     fn_shop_today(), ${user.id})`;
     message = to === "INACTIVE" ? "Asset made inactive" : "Asset active";
   });
   revalidatePath("/fixed-assets", "layout");
@@ -373,7 +374,7 @@ export async function unlinkAllocation(fd: FormData) {
     if (type === "DEP") await tx`delete from fa_depreciation where id = ${id}`;
     else await tx`delete from fa_journal_link where id = ${id}`;
     await tx`insert into fa_event (company_id, asset_id, event_type, event_date, created_by, detail)
-             values (${co}, ${row.asset_id}, 'HISTORY_UNLINKED', current_date, ${user.id}, ${tx.json({ link: id })})`;
+             values (${co}, ${row.asset_id}, 'HISTORY_UNLINKED', fn_shop_today(), ${user.id}, ${tx.json({ link: id })})`;
   });
   revalidatePath("/fixed-assets", "layout");
 }
@@ -603,7 +604,7 @@ export async function importAssets(input: { drafts: DraftRow[]; subMap: Record<s
       const take = rows.filter((r) => r.include && r.status !== "attention");
       // One permission check for every branch the batch touches, not one per row.
       await assertFaBranch(user, ...new Set(take.map((r) => r.branchId)));
-      const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+      const today = todayLocal();
       const imported: { line: number; code: string; id: string; name: string }[] = [];
       if (take.length) await sql.begin(async (tx) => {
         // The next codes, read once under the transaction; then every asset and every event in one statement each.

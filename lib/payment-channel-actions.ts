@@ -1,5 +1,6 @@
 "use server";
 
+import { str } from "./input";
 import { revalidatePath } from "next/cache";
 import type { Sql } from "postgres";
 import { sql } from "./db";
@@ -12,7 +13,6 @@ import type { ActionResult } from "./actions";
 
 const KINDS = ["CASH", "BANK", "WALLET", "QR", "CARD", "OTHER"];
 const PATH = "/settings/payment-methods";
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 async function audit(db: Sql, co: string, channelId: string | null, userId: string, action: string, detail: unknown) {
   await db`

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { landedOn } from "./landed-cost";
@@ -1050,7 +1051,7 @@ export async function claimNumberSeries(tx: TransactionSql, companyId: string, d
  * date. Locking a series nothing ends up drawing on costs only the wait.
  */
 async function claimVoidSeries(tx: TransactionSql, documentId: string, alsoOn: string[] = []) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const series = await tx`
     with recursive composed as (
       select id, company_id, doc_type, voucher_direction, posting_date
@@ -8993,6 +8994,8 @@ export async function importItems(input: {
   if (rows.length === 0) throw new Error("There is nothing to import");
 
   return sql.begin(async (tx) => {
+    // Two imports at once would read the same next number; the second waits.
+    await tx`select pg_advisory_xact_lock(hashtext('import_batch:' || ${companyId}))`;
     const [{ next }] = await tx`
       select coalesce(max(substring(ref from '[0-9]+$')::int), 0) + 1 as next
         from import_batch where company_id = ${companyId}`;
@@ -11206,6 +11209,8 @@ export async function importVouchers(input: {
   const docType = kind === "cash" ? "CASH_VOUCHER" : "BANK_VOUCHER";
 
   return sql.begin(async (tx) => {
+    // Two imports at once would read the same next number; the second waits.
+    await tx`select pg_advisory_xact_lock(hashtext('import_batch:' || ${companyId}))`;
     const [{ next }] = await tx`
       select coalesce(max(substring(ref from '[0-9]+$')::int), 0) + 1 as next
         from import_batch where company_id = ${companyId}`;
