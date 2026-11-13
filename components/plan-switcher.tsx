@@ -3,7 +3,7 @@
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
-import type { Plan, PlanLimits } from "@/lib/plans";
+import { PLAN_NAME, type Plan, type PlanLimits } from "@/lib/plans";
 import { useNotice } from "@/components/toast";
 
 const ORDER: Plan[] = ["STARTER", "BUSINESS", "ENTERPRISE"];
@@ -69,7 +69,7 @@ export function PlanSwitcher({
           <div className="card-head">
             <h2>Packages</h2>
             <span className="page-sub">
-              on <strong>{current.charAt(0) + current.slice(1).toLowerCase()}</strong>
+              on <strong>{PLAN_NAME[current]}</strong>
 
             </span>
           </div>
@@ -91,7 +91,7 @@ export function PlanSwitcher({
                   return (
                     <tr key={p}>
                       <td className="wrap">
-                        <strong>{p.charAt(0) + p.slice(1).toLowerCase()}</strong>
+                        <strong>{PLAN_NAME[p]}</strong>
                         {here && <span className="pill ok" style={{ marginLeft: "0.4rem" }}>current</span>}
                         <div className="subline">{BLURB[p]}</div>
                       </td>

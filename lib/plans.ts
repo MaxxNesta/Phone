@@ -27,6 +27,17 @@
 
 export type Plan = "STARTER" | "BUSINESS" | "ENTERPRISE";
 
+/**
+ * The names customers see. The stored codes stay as they are (company.plan,
+ * checked by migration 0100); only what the screen calls them changed
+ * (2026-11-13): three packages, Essential, Standard and Advanced.
+ */
+export const PLAN_NAME: Record<Plan, string> = {
+  STARTER: "Essential",
+  BUSINESS: "Standard",
+  ENTERPRISE: "Advanced",
+};
+
 export type PlanLimits = {
   /** Top-level locations — a branch is a location with no parent. */
   branches: number | null;
@@ -74,7 +85,9 @@ export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
  * from the rule above: hiding a module nobody bought is reasonable, hiding
  * accounts is not.
  */
-export type Feature = "supplier_performance" | "dashboard_advanced" | "replenishment";
+export type Feature = "supplier_performance" | "dashboard_advanced" | "replenishment"
+  | "financial_ratios" | "price_history" | "supply_chain"
+  | "inventory_aging" | "financial_statements" | "sales_report" | "ar_ap_aging";
 
 const FEATURES: Record<Feature, Plan[]> = {
   // Business and Enterprise. A Starter shop buys from a handful of people
@@ -89,6 +102,19 @@ const FEATURES: Record<Feature, Plan[]> = {
   // call, 2026-11-11). Low-stock alerts and reorder points stay in every
   // package; only the screen that plans the buying is withheld.
   replenishment: ["ENTERPRISE"],
+
+  // Advanced only (2026-11-13): the analysis screens.
+  financial_ratios: ["ENTERPRISE"],
+  price_history: ["ENTERPRISE"],
+  supply_chain: ["ENTERPRISE"],
+
+  // Standard and Advanced (2026-11-13): the detailed reports Essential does
+  // without. Essential keeps the summaries — sales overview, the inventory
+  // summary, receivables and payables — and the ledger itself.
+  inventory_aging: ["BUSINESS", "ENTERPRISE"],
+  financial_statements: ["BUSINESS", "ENTERPRISE"],
+  sales_report: ["BUSINESS", "ENTERPRISE"],
+  ar_ap_aging: ["BUSINESS", "ENTERPRISE"],
 };
 
 /** Where a low-stock link should lead: the planner where the package has it, the Stock page otherwise. */

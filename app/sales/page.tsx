@@ -7,7 +7,8 @@ import { salesOverview } from "@/lib/overviews";
 import { money } from "@/lib/format";
 import { KpiCard } from "@/components/kpi-card";
 import { SalesComboCard } from "@/components/sales-combo-card";
-import { salesLast30 } from "@/lib/queries";
+import { salesLast30, getCompany } from "@/lib/queries";
+import { planIncludes } from "@/lib/plans";
 
 export const metadata = { title: "Sales overview" };
 
@@ -20,7 +21,7 @@ export default async function SalesOverview() {
   const t = await getTranslations("overview");
   const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
   const locs = await seenLocations();
-  const [d, perf] = await Promise.all([salesOverview(user.companyId, locs), salesLast30(user.companyId, locs)]);
+  const [d, perf, company] = await Promise.all([salesOverview(user.companyId, locs), salesLast30(user.companyId, locs), getCompany()]);
   const seeCost = can(user, "cost.view");
   const { kpi } = d;
   const gp = kpi.revenue - kpi.cost;
@@ -52,7 +53,8 @@ export default async function SalesOverview() {
 
       <div className="section-grid eqrow">
         <SalesComboCard title={t("salesByDay")} rows={perf.rows} now={perf.now} before={perf.before}
-          from={perf.from} to={perf.to} showProfit={seeCost} />
+          from={perf.from} to={perf.to} showProfit={seeCost}
+          withReport={!company || planIncludes(company.plan, "sales_report")} />
         <div className="card">
           <div className="card-head"><h2>{t("takings")}</h2><span className="page-sub">{t("today")}</span></div>
           <div className="card-body">

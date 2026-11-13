@@ -16,14 +16,16 @@ export function change(now: number, before: number) {
  * and customers on one chart, each total against the thirty days before, and
  * the way into the full sales report for the same days.
  */
-export function SalesComboCard({ title, rows, now, before, from, to, showProfit }: {
+export function SalesComboCard({ title, rows, now, before, from, to, showProfit, withReport = true }: {
   title: string; rows: ComboPoint[]; now: Totals; before: Totals; from: string; to: string; showProfit: boolean;
+  /** The detailed sales report is not in every package. */
+  withReport?: boolean;
 }) {
   return (
     <div className="card">
       <div className="card-head">
         <span><h2>{title}</h2><span className="page-sub combo-sub">Last 30 days · MMK</span></span>
-        <Link href={{ pathname: "/sales/reports", query: { from, to } }} className="subline">Sales report →</Link>
+        {withReport && <Link href={{ pathname: "/sales/reports", query: { from, to } }} className="subline">Sales report →</Link>}
       </div>
       <div className="card-body">
         <ComboLegend items={[

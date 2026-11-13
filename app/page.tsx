@@ -167,7 +167,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="section-grid eqrow">
         <SalesComboCard title={t("salesPerformance")} rows={perf.rows} now={perf.now} before={perf.before}
-          from={perf.from} to={perf.to} showProfit={seeCost} />
+          from={perf.from} to={perf.to} showProfit={seeCost}
+          withReport={!company || planIncludes(company.plan, "sales_report")} />
         <div className="card">
           <div className="card-head"><h2>{t("topModels")}</h2><span className="page-sub">{t("last30")}</span></div>
           <div className="card-body">

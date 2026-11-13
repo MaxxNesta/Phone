@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TopSearch } from "@/components/top-search";
 import { Noto_Sans_Myanmar, Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
@@ -15,7 +16,7 @@ import { SidebarCollapse } from "@/components/sidebar-collapse";
 import { Toast } from "@/components/toast";
 import {
   LayoutDashboard, ShoppingCart, Package, BookOpen, Landmark, Boxes, Truck, ScanLine, Users, BarChart3, Settings,
-  Smartphone, FileText, Search, PieChart, Briefcase,
+  Smartphone, FileText, PieChart, Briefcase,
 } from "lucide-react";
 import { headers } from "next/headers";
 import { currentUser, can, authRequired, seesMainDashboard, type Permission } from "@/lib/auth";
@@ -183,7 +184,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/inventory/phones">{n("imeiTracking")}</NavLink>
                 {may("inventory.manage") && (company?.warehouses ?? 0) > 1 && <NavLink href="/inventory/transfer">{n("stockTransfers")}</NavLink>}
                 {may("inventory.manage") && <NavLink href="/inventory/adjustments">{n("stockCount")}</NavLink>}
-                <NavLink href="/reports/phone-stock">{n("inventoryAging")}</NavLink>
+                {company && planIncludes(company.plan, "inventory_aging") && <NavLink href="/reports/phone-stock">{n("inventoryAging")}</NavLink>}
                 <NavLink href="/inventory/warranty">{n("warrantyLookup")}</NavLink>
                 <NavLink href="/inventory/movements">{n("stockMovements")}</NavLink>
                 {company && planIncludes(company.plan, "replenishment") && <NavLink href="/inventory/replenishment">{n("replenishment")}</NavLink>}
@@ -243,6 +244,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/finance/general-ledger" sub>{n("generalLedger")}</NavLink>
                   <NavLink href="/ledger" sub>{n("trialBalance")}</NavLink>
                 </NavSubGroup>
+                {company && planIncludes(company.plan, "financial_statements") && (
                 <NavSubGroup label={n("financialReports")} match={[
                   "/finance/income-statement", "/finance/balance-sheet", "/finance/cash-flow",
                   "/finance/inventory-cogs",
@@ -252,7 +254,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/finance/cash-flow" sub>{n("cashFlow")}</NavLink>
                   <NavLink href="/finance/inventory-cogs" sub>{n("inventoryCogs")}</NavLink>
                 </NavSubGroup>
-                <NavLink href="/finance/aging">{n("arApAging")}</NavLink>
+                )}
+                {company && planIncludes(company.plan, "ar_ap_aging") && <NavLink href="/finance/aging">{n("arApAging")}</NavLink>}
                 {deliveries && <NavLink href="/finance/shipped-not-invoiced">{n("shippedNotInvoiced")}</NavLink>}
               </NavGroup>
             )}
@@ -289,11 +292,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {may("reports.view") && (
               <NavGroup label={n("reports")} icon={<BarChart3 size={15} />} match={["/reports", "/sales/reports"]}>
                 <NavLink href="/reports/phone-sales">{n("salesMargin")}</NavLink>
-                <NavLink href="/reports/phone-stock">{n("stockAging")}</NavLink>
-                <NavLink href="/sales/reports">{n("salesReportDetailed")}</NavLink>
-                <NavLink href="/reports/price-history">{n("priceHistory")}</NavLink>
-                <NavLink href="/reports/supply-chain">{n("supplyChain")}</NavLink>
-                {may("accounting.view") && <NavLink href="/reports/financial-ratios">{n("financialRatios")}</NavLink>}
+                {company && planIncludes(company.plan, "inventory_aging") && <NavLink href="/reports/phone-stock">{n("stockAging")}</NavLink>}
+                {company && planIncludes(company.plan, "sales_report") && <NavLink href="/sales/reports">{n("salesReportDetailed")}</NavLink>}
+                {company && planIncludes(company.plan, "price_history") && <NavLink href="/reports/price-history">{n("priceHistory")}</NavLink>}
+                {company && planIncludes(company.plan, "supply_chain") && <NavLink href="/reports/supply-chain">{n("supplyChain")}</NavLink>}
+                {may("accounting.view") && company && planIncludes(company.plan, "financial_ratios") && <NavLink href="/reports/financial-ratios">{n("financialRatios")}</NavLink>}
               </NavGroup>
             )}
 
@@ -359,10 +362,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <main className="main">
             {user && (
               <header className="topbar noprint">
-                <form action="/search" className="topsearch" role="search">
-                  <Search size={15} aria-hidden="true" />
-                  <input name="q" placeholder={sh("searchPlaceholder")} aria-label={sh("searchLabel")} />
-                </form>
+                <TopSearch placeholder={sh("searchPlaceholder")} label={sh("searchLabel")} />
                 <LanguageSwitcher />
                 <details className="usermenu">
                   <summary aria-label={`${user.name}, ${roleT(user.role)}`}>{user.initials}</summary>
