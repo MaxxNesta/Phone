@@ -10107,3 +10107,238 @@ table.sf tbody tr.sf-h > td.sf-amt { font-weight: 500; font-size: var(--t-xs); c
 .sf-total .sf-dot { margin-right: 2px; }
 .sf-warn { color: var(--warn); font-size: var(--t-sm); }
 .ic-sub { margin: 2px 0 0; flex-basis: 100%; }
+
+/* ---- Document header: number, standing, and every action in one row ---- */
+.doc-head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--s3) var(--s4); flex-wrap: wrap;
+  padding-bottom: var(--s3); margin-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.doc-head-id { min-width: 0; flex: 1 1 20rem; }
+.doc-head-line { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; margin-top: 0.2rem; }
+.doc-head-line h1 {
+  margin: 0; font-size: 1.6rem; font-weight: 700;
+  letter-spacing: var(--track-tighter); line-height: 1.15;
+}
+.doc-head-sub { margin: 0.35rem 0 0; color: var(--muted); font-size: var(--t-sm); white-space: pre-wrap; }
+.doc-head-actions { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+/* One button shape in the row, whatever component each came from. */
+.doc-head-actions > .btn, .doc-head-actions > button, .doc-head-actions .erp-hbtn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  height: 2.1rem; padding: 0 0.8rem; margin: 0;
+  border-radius: var(--r-md); font-size: var(--t-sm); font-weight: 500; white-space: nowrap;
+}
+@media print { .doc-head-actions { display: none; } }
+
+/* Void in the overflow menu: a row when allowed, a row that explains when not. */
+.erp-more-menu > .btn.ghost.danger { color: var(--bad); }
+.erp-more-menu .voidlock { margin: 0; display: flex; flex-direction: column; align-items: stretch; }
+.erp-more-menu .voidlock-why { margin: 0.25rem 0.3rem 0.3rem; max-width: 22rem; }
+
+/* ---- Goods and payment: one slim strip, not two boxes ---- */
+.halves {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
+  margin-bottom: var(--s3); overflow: hidden;
+}
+.half, .half.late, .half.done {
+  display: flex; flex-direction: row; align-items: center; gap: 0.8rem;
+  border: 0; border-radius: 0; background: none; padding: 0.75rem 0.9rem;
+}
+.half + .half { border-left: 1px solid var(--line); }
+@media (max-width: 720px) { .half + .half { border-left: 0; border-top: 1px solid var(--line); } }
+.half-icon { width: 2rem; height: 2rem; border-radius: 50%; background: var(--line-soft); }
+.half.late .half-icon { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.half.done .half-icon { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.half-main { min-width: 0; flex: 1; }
+.half-head { margin: 0; gap: 0.45rem; }
+.half-head h2 { font-size: var(--t-xs); font-weight: 500; color: var(--muted); }
+.half-head .pill { margin-left: 0; }
+.half-amount { margin: 0.1rem 0 0; font-family: inherit; font-size: var(--t-base); }
+.half-meta { display: flex; flex-wrap: wrap; gap: 0.1rem 1rem; margin: 0.15rem 0 0; font-size: var(--t-xs); }
+.half-meta > div { display: flex; gap: 0.35rem; align-items: baseline; }
+.half-meta dt { color: var(--muted); }
+.half-meta dd { margin: 0; }
+.half-actions { margin: 0; flex: none; flex-wrap: nowrap; }
+
+/* Where the document came from: a quiet note, not a filled box. */
+.origin { background: none; border: 0; border-radius: 0; padding: 0; margin-bottom: var(--s3); color: var(--ink-soft); }
+
+/* Invoice totals under the lines. */
+tfoot tr.tot-sub td { font-weight: 400; color: var(--muted); border-top: 0; }
+tfoot tr.tot-due td { font-weight: 700; border-top: 0; }
+
+/* ---- Activity: an icon per event, joined by a line ---- */
+.docfooter .timeline li, .timeline li { grid-template-columns: 1.75rem 1fr; gap: 0.65rem; padding-bottom: 1rem; }
+.timeline li:last-child { padding-bottom: 0; }
+.timeline li:not(:last-child)::before { left: 0.875rem; top: 1.9rem; bottom: 0.15rem; }
+.timeline-icon {
+  width: 1.75rem; height: 1.75rem; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+.timeline li.now .timeline-icon { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 35%, var(--line)); }
+.timeline strong { font-weight: 500; }
+.timeline-who { font-weight: 600; }
+/* Header buttons share the outline of Print; only the next step is filled. */
+.doc-head-actions > .btn:not(.primary), .doc-head-actions > button:not(.primary) {
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink);
+}
+.doc-head-actions > .btn:not(.primary):hover, .doc-head-actions > button:not(.primary):hover { background: var(--line-soft); }
+.half-actions .btn { height: 2.1rem; padding: 0 0.8rem; font-size: var(--t-sm); display: inline-flex; align-items: center; gap: 0.4rem; }
+
+/* ---- One sheet, no box in a box ----
+   The document sheet is the only frame. What sits in it are sections divided
+   by a hairline, not cards with borders of their own. */
+.erp-sheet-page .card, .erp-sheet-page .docfooter-history {
+  border: 0; border-radius: 0; background: none; box-shadow: none; margin: 0;
+  border-top: 1px solid var(--line);
+}
+.erp-sheet-page .grid2 { margin: 0; }
+.erp-sheet-page .grid2 > .card:first-child { border-top: 0; }
+.erp-sheet-page .card > .card-head, .erp-sheet-page .card > .card-body { padding-left: 0; padding-right: 0; }
+.erp-sheet-page .card > .card-head { border-bottom: 0; padding-bottom: 0.4rem; }
+.erp-sheet-page .halves { border-width: 1px 0; border-radius: 0; background: none; }
+.erp-sheet-page .half:first-child { padding-left: 0; }
+.erp-sheet-page .half:last-child { padding-right: 0; }
+.erp-sheet-page .docfooter { margin-top: 0; gap: 0 var(--s5); border-top: 1px solid var(--line); }
+.erp-sheet-page .docfooter .card, .erp-sheet-page .docfooter-history { border-top: 0; }
+.erp-sheet-page { padding-bottom: var(--s3); }
+
+/* Orders on the same flat sheet. */
+.erp-doc > .erp-sheet-page { margin: 0; }
+.erp-sheet-page .erp-card {
+  border: 0; border-radius: 0; background: none; overflow: visible;
+  border-top: 1px solid var(--line); padding: var(--s3) 0;
+}
+.erp-sheet-page .doc-head + .erp-card { border-top: 0; padding-top: 0; }
+.erp-sheet-page .erp-card-head, .erp-sheet-page .erp-card-body { padding-left: 0; padding-right: 0; }
+.erp-sheet-page .erp-card-head { padding-top: 0; }
+.erp-sheet-page .erp-card-body { padding-bottom: 0; }
+.erp-sheet-page .docfooter .card-head, .erp-sheet-page .docfooter .card-body { padding-left: 0; padding-right: 0; }
+/* The figure tiles and the carriage row: ruled, not boxed. */
+.erp-sheet-page .docstats { gap: 0; border: solid var(--line); border-width: 1px 0; margin-bottom: var(--s3); }
+.erp-sheet-page .docstat, .erp-sheet-page .docstat.warn, .erp-sheet-page .docstat.ok { border: 0; border-radius: 0; background: none; }
+.erp-sheet-page .docstat + .docstat { border-left: 1px solid var(--line); }
+.erp-sheet-page .docstat:first-child { padding-left: 0; }
+.erp-sheet-page .lc-gr { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; padding-left: 0; padding-right: 0; }
+
+/* ---- Pills: soft tint, no border. Blue is done, red is owed or late, grey is neutral ---- */
+.pill, .pill.draft, .pill.plain {
+  border: 0; padding: 0.2rem 0.65rem; border-radius: 980px; font-weight: 500;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: color-mix(in srgb, var(--ink) 72%, transparent);
+}
+.pill.posted, .pill.ok, .pill.info {
+  background: color-mix(in srgb, var(--blue) 11%, transparent); color: var(--blue-ink);
+}
+.pill.warn {
+  background: color-mix(in srgb, var(--warn) 11%, transparent);
+  color: color-mix(in srgb, var(--warn) 88%, var(--ink));
+}
+.pill.overdue, .pill.reversed {
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  color: color-mix(in srgb, var(--bad) 88%, var(--ink));
+}
+
+/* ---- Progress bars: one hatched fill everywhere ---- */
+:root { --hatch: repeating-linear-gradient(-45deg, transparent 0 3px, rgb(255 255 255 / 0.42) 3px 5px); }
+.erp-bar-fill, .sf-bar i, .fac-progress > span, .pimp-progress-track > span, .bar-fill {
+  background-image: var(--hatch);
+}
+.erp-bar { height: 10px; background: var(--line-soft); }
+.erp-bar-fill, .erp-bar-fill.full { background-color: var(--blue); }
+.sf-bar i { height: 8px; border-radius: 4px; }
+.fac-progress, .pimp-progress-track, .bar-track { height: 8px; }
+.qprog { padding-top: 0.25rem !important; padding-bottom: 0.6rem !important; }
+/* Done is blue here too, not green. */
+.half.done .half-icon { background: color-mix(in srgb, var(--blue) 11%, transparent); color: var(--blue-ink); }
+.docstat.ok .docstat-icon { color: var(--blue-ink); }
+/* One rule between sections, not two: the last field row drops its own. */
+.erp-sheet-page .kv.ruled > div:nth-last-child(-n+2) { border-bottom: 0; }
+.erp-sheet-page .grid2 > .card > .card-body { padding-top: 0.25rem; }
+
+/* ---- KPI tiles: change pill, 7-day trend, meter, and a one-time entrance ---- */
+.stat { border-radius: 16px; border-color: transparent;
+  box-shadow: 0 1px 0 rgb(0 0 0 / .03), 0 8px 24px -14px rgb(0 0 0 / .14), inset 0 0 0 1px rgb(0 0 0 / .05); }
+.stat-foot { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; grid-column: 2; }
+.stat-delta { font-size: var(--t-xs); font-weight: 600; padding: 0.12rem 0.55rem; }
+.stat-trend { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 4px; height: 34px; margin-top: 0.8rem; }
+.stat-trend i {
+  flex: 1; border-radius: 3px; transform-origin: bottom;
+  background-color: color-mix(in srgb, var(--blue) 26%, transparent); background-image: var(--hatch);
+  animation: stat-grow-y .5s cubic-bezier(.2, .8, .2, 1) both;
+}
+.stat-trend i:last-child { background-color: var(--blue); background-image: none; }
+.stat-meter { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.8rem; }
+.stat-track { height: 8px; border-radius: 980px; background: var(--line-soft); overflow: hidden; display: block; }
+.stat-track i { display: block; height: 100%; border-radius: inherit; transform-origin: left;
+  background-color: var(--blue); background-image: var(--hatch);
+  animation: stat-grow-x .7s .3s cubic-bezier(.2, .8, .2, 1) both; }
+.stats > .stat { animation: stat-in .45s cubic-bezier(.2, .8, .2, 1) both; }
+.stats > .stat:nth-child(2) { animation-delay: .07s; }
+.stats > .stat:nth-child(3) { animation-delay: .14s; }
+.stats > .stat:nth-child(4) { animation-delay: .21s; }
+.stats > .stat:nth-child(n+5) { animation-delay: .28s; }
+@keyframes stat-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes stat-grow-y { from { transform: scaleY(0); } }
+@keyframes stat-grow-x { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .stats > .stat, .stat-trend i, .stat-track i { animation: none; }
+}
+.stat { align-content: start; }
+/* Slimmer tiles: tighter padding, a smaller chip and figure, a shorter trend. */
+.stat { padding: 0.8rem 1rem; column-gap: 0.75rem; }
+.stat-icon { width: 34px; height: 34px; border-radius: 10px; }
+.stat-icon svg { width: 17px; height: 17px; }
+.stat-value { font-size: 1.35rem; line-height: 1.15; margin: 0.1rem 0 0.15rem; }
+.stat-trend { height: 22px; margin-top: 0.55rem; gap: 3px; }
+.stat-meter { margin-top: 0.55rem; gap: 0.25rem; }
+.stat-track { height: 6px; }
+/* The chart sits beside the figure, not under it, so a tile keeps its
+   original height: icon | label, figure, note | chart. */
+.stat { grid-template-columns: auto minmax(0, 1fr) auto; padding: 0.95rem 1.1rem; }
+.stat-icon { grid-row: 1 / 4; }
+.stat-label, .stat-value, .stat-foot, .stat > .stat-note { grid-column: 2; }
+.stat-trend, .stat-meter { grid-column: 3; grid-row: 1 / 4; align-self: end; margin: 0; }
+.stat-trend { width: 84px; height: 38px; gap: 3px; }
+.stat-meter { width: 96px; align-self: center; text-align: right; }
+.stat-meter .stat-note { font-size: var(--t-xs); white-space: nowrap; }
+.stat-value { font-size: 1.45rem; }
+.stat-foot { flex-wrap: nowrap; white-space: nowrap; min-width: 0; overflow: hidden; }
+/* The meter as segments, like a progress of blocks: filled ones blue, the rest grey. */
+.stat-segs { display: flex; gap: 2px; height: 22px; }
+.stat-segs i { flex: 1; border-radius: 2px; background: var(--line-soft); transform-origin: bottom;
+  animation: stat-grow-y .4s cubic-bezier(.2, .8, .2, 1) both; }
+.stat-segs i.on { background: var(--blue); }
+@media (prefers-reduced-motion: reduce) { .stat-segs i { animation: none; } }
+/* Chart beside the label and figure; the note line runs the full width under both. */
+.stat-trend, .stat-meter { grid-row: 1 / 3; align-self: center; }
+.stat-foot, .stat > .stat-note { grid-column: 2 / -1; }
+.stat-trend { width: 64px; height: 30px; }
+.stat-meter { width: 64px; }
+.stat-segs { height: 26px; }
+.stat-value { font-size: 1.4rem; }
+.stat-value small { font-size: 0.8rem; font-weight: 500; color: var(--muted); margin-left: 0.25rem; letter-spacing: 0; }
+
+/* ---- Combined sales chart: legend with totals, flat lines, soft customer bars ---- */
+.combo-legend { display: flex; flex-wrap: wrap; gap: var(--s3) 0; margin-bottom: var(--s3); }
+.combo-legend-item { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; padding-right: 2rem; }
+.combo-legend-item + .combo-legend-item { padding-left: 2rem; border-left: 1px solid var(--line); }
+.combo-legend-label { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--ink-soft); font-size: var(--t-sm); }
+.combo-legend-label i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.combo-legend-value { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.015em; font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.combo-delta { font-size: var(--t-sm); font-weight: 500; letter-spacing: 0; }
+.combo-delta.up { color: var(--blue-ink); }
+.combo-delta.down { color: var(--bad); }
+.combo-note { font-size: var(--t-sm); font-weight: 400; color: var(--muted); letter-spacing: 0; }
+.combo-tip { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem 0.65rem;
+  font-size: var(--t-xs); box-shadow: 0 8px 24px -10px rgb(0 0 0 / .2); display: flex; flex-direction: column; gap: 0.2rem; }
+.combo-tip-day { color: var(--muted); margin-bottom: 0.1rem; }
+.combo-tip i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 0.4rem; }
+.combo-tip b { font-weight: 600; margin-left: 0.3rem; font-variant-numeric: tabular-nums; }
+.combo-key { display: flex; gap: 1rem; flex-wrap: wrap; font-size: var(--t-xs); color: var(--muted); margin-top: 0.6rem; }
+.combo-key i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 0.35rem; }
+.combo-sub { display: block; margin-top: 0.1rem; }

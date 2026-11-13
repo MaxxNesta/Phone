@@ -387,7 +387,7 @@ export function CorrectOrder({
   );
 }
 
-function Dialog({
+export function Dialog({
   open, onClose, children,
 }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -403,7 +403,9 @@ function Dialog({
   return (
     <Portal>
       <dialog
-        ref={ref}
+        // Mounted already open (the void questions): the portal attaches a
+        // tick after the effect above ran, so open it as it arrives.
+        ref={(d) => { ref.current = d; if (d && open && !d.open) d.showModal(); }}
         className="confirm confirm-wide"
         onCancel={(e) => { e.preventDefault(); onClose(); }}
         onClick={(e) => { if (e.target === ref.current) onClose(); }}

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Lock, FileX, Undo2 } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
 import { useNotice } from "@/components/toast";
+import { Dialog } from "@/components/correct-order";
 
 type Blocker = { reason: string; docNo?: string; docId?: string };
 
@@ -81,13 +82,13 @@ export function VoidDocument({
 
   if (!canVoid) {
     return (
-      <div className="docactions voidlock">
+      <div className="voidlock" onClick={(e) => e.stopPropagation()}>
         {children}
         {/* The same size as the button it stands in for. A refusal rendered
             smaller than the action reads as a note about the page rather than
             as the answer to "can I undo this" — and on a purchase invoice it
             sat between two full-size buttons at two other heights. */}
-        <button type="button" className="ghost" onClick={() => setOpen(!open)}
+        <button type="button" className="btn ghost" onClick={() => setOpen(!open)}
                 aria-expanded={open}>
           <Lock size={14} aria-hidden="true" /> Cannot be voided
         </button>
@@ -114,13 +115,13 @@ export function VoidDocument({
 
   if (!open) {
     return (
-      <div className="docactions">
+      <>
         {children}
-        <button type="button" className="warn"
+        <button type="button" className="btn ghost danger"
                 onClick={() => { setArrived(null); setOpen(true); }}>
-          {returnHref ? "Cancel this receipt" : "Void this document"}
+          <FileX size={14} aria-hidden="true" /> {returnHref ? "Cancel this receipt" : "Void this document"}
         </button>
-      </div>
+      </>
     );
   }
 
@@ -143,7 +144,7 @@ export function VoidDocument({
    */
   if (restoresUnits && restoresUnits > 0 && arrived === null) {
     return (
-      <div className="card" style={{ marginTop: "0.75rem" }}>
+      <Dialog open onClose={() => setOpen(false)}>
         <div className="card-head">
           <h2>Void {docNo}</h2>
           <span className="actions">
@@ -178,13 +179,13 @@ export function VoidDocument({
             </a>
           </div>
         </div>
-      </div>
+      </Dialog>
     );
   }
 
   if (returnHref && arrived === null) {
     return (
-      <div className="card" style={{ marginTop: "0.75rem" }}>
+      <Dialog open onClose={() => setOpen(false)}>
         <div className="card-head">
           <h2>Cancel {docNo}</h2>
           <span className="actions">
@@ -216,12 +217,12 @@ export function VoidDocument({
             </a>
           </div>
         </div>
-      </div>
+      </Dialog>
     );
   }
 
   return (
-    <div className="card" style={{ marginTop: "0.75rem" }}>
+    <Dialog open onClose={() => setOpen(false)}>
       <div className="card-head">
         <h2>Void {docNo}?</h2>
         <span className="actions">
@@ -260,6 +261,6 @@ export function VoidDocument({
           </div>
         </form>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -161,32 +161,6 @@ export function ErpOrderForm({
         <ErpCopyNumber docNo={docNo} />
       </div>
 
-      <header className="erp-head">
-        <span className="erp-head-tile" aria-hidden="true">{initials}</span>
-        <div className="erp-head-id">
-          <div className="erp-head-line">
-            <h1>{docNo}</h1>
-            <span className={`pill plain ${status.toLowerCase()}`}>
-              {status.charAt(0) + status.slice(1).toLowerCase()}
-            </span>
-            {badges}
-          </div>
-          <span className="erp-head-sub">
-            {partnerName
-              ? `${partnerName}${partnerCode ? ` · ${partnerCode}` : ""}`
-              : config.typeLabel}
-          </span>
-        </div>
-        {/* The same three tools every other document header carries — star,
-            print, copy link. This page used to offer a single wide "Print"
-            button instead, so moving between an order and the receipt it
-            became changed where printing lived and lost starring and copying
-            on the way. */}
-        <div className="erp-head-tools">
-          <ErpPrintButton docId={docId} />
-          {menuActions && <ErpMore>{menuActions}</ErpMore>}
-        </div>
-      </header>
 
       {chain.length > 0 && (
         <div className="erp-pipeline" role="list" aria-label="Workflow">
@@ -225,6 +199,28 @@ export function ErpOrderForm({
           })}
         </div>
       )}
+
+      {/* One sheet, the same frame every other document sits in. */}
+      <div className="erp-sheet-page">
+      <header className="doc-head">
+        <div className="doc-head-id">
+          <span className="erp-doc-type">{config.typeLabel}</span>
+          <div className="doc-head-line">
+            <h1>{docNo}</h1>
+            <span className={`pill ${status.toLowerCase()}`}>{status.charAt(0) + status.slice(1).toLowerCase()}</span>
+            {badges}
+          </div>
+          <p className="doc-head-sub">
+            {[partnerName, netTotal > 0 ? money(netTotal) : null, shortDate(docDate),
+              dueDate ? `expected ${shortDate(dueDate)}` : null].filter(Boolean).join("  ·  ")}
+          </p>
+        </div>
+        <div className="doc-head-actions">
+          {fulfilActions}
+          <ErpPrintButton docId={docId} />
+          {menuActions && <ErpMore>{menuActions}</ErpMore>}
+        </div>
+      </header>
 
       {banner}
 
@@ -297,20 +293,11 @@ export function ErpOrderForm({
             )}
 
             {fulfilActions && (
-              <div className="erp-fulfil">
-                <span className="erp-fulfil-icon" aria-hidden="true">
-                  <UserRound size={20} />
-                </span>
-                <div className="erp-fulfil-text">
-                  <strong>{partnerName ?? config.partyLabel}</strong>
-                  <span>
-                    {openLines} order line{openLines === 1 ? "" : "s"} awaiting{" "}
-                    {config.fulfilledLabel === "Delivered" ? "delivery" : "receipt"}
-                    {remaining > 0 && ` · ${fmtQty(remaining)}${unit} remaining`}
-                  </span>
-                </div>
-                <div className="erp-fulfil-actions">{fulfilActions}</div>
-              </div>
+              <p className="erp-bar-note">
+                {openLines} order line{openLines === 1 ? "" : "s"} awaiting{" "}
+                {config.fulfilledLabel === "Delivered" ? "delivery" : "receipt"}
+                {remaining > 0 && ` · ${fmtQty(remaining)}${unit} remaining`}
+              </p>
             )}
           </div>
         </section>
@@ -403,6 +390,7 @@ export function ErpOrderForm({
       {commitments}
       {related}
       {footer}
+      </div>
     </div>
   );
 }

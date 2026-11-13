@@ -100,7 +100,7 @@ export function InvoiceProgress({
             : { label: "Due date", value: "on receipt" },
         ]}
         actions={payment.outstanding > 0 ? (
-          <Link href={payHref} className="btn">
+          <Link href={payHref} className="btn primary">
             <Wallet size={14} aria-hidden="true" /> {sales ? "Record receipt" : "Record payment"}
           </Link>
         ) : null}
@@ -122,42 +122,41 @@ function Half({
   const done = state.outstanding <= 0;
   return (
     <section className={`half ${done ? "done" : state.overdue ? "late" : ""}`}>
-      <div className="half-head">
-        <span className="half-icon"><Icon size={15} aria-hidden="true" /></span>
-        <h2>{title}</h2>
-        {state.overdue && (
-          <span className="pill overdue">
-            <TriangleAlert size={11} aria-hidden="true" /> Overdue
-          </span>
-        )}
-        {done && <span className="pill ok">Settled</span>}
+      <span className="half-icon"><Icon size={16} aria-hidden="true" /></span>
+      <div className="half-main">
+        <div className="half-head">
+          <h2>{title}</h2>
+          {state.overdue && (
+            <span className="pill overdue">
+              <TriangleAlert size={11} aria-hidden="true" /> Overdue
+            </span>
+          )}
+          {done && <span className="pill ok">Settled</span>}
+        </div>
+        <p className="half-amount">{amount}</p>
+        <dl className="half-meta">
+          {rows.map((r) => (
+            <div key={r.label}>
+              <dt>{r.label}</dt>
+              <dd style={r.strong ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
+                {r.value}
+              </dd>
+            </div>
+          ))}
+          {state.task && (
+            <div>
+              <dt>{state.task}</dt>
+              {/* A dash, not a name. Nobody owns this yet because nobody can:
+                  there are no accounts to own it with. */}
+              <dd className="railwho">
+                {state.responsible
+                  ? <><Avatar initials={state.initials ?? null} /> {state.responsible}</>
+                  : <span style={{ color: "var(--ghost)" }}>—</span>}
+              </dd>
+            </div>
+          )}
+        </dl>
       </div>
-
-      <p className="half-amount">{amount}</p>
-
-      <dl className="raildl">
-        {rows.map((r) => (
-          <div key={r.label}>
-            <dt>{r.label}</dt>
-            <dd style={r.strong ? { color: "var(--bad)", fontWeight: 600 } : undefined}>
-              {r.value}
-            </dd>
-          </div>
-        ))}
-        {state.task && (
-          <div>
-            <dt>{state.task}</dt>
-            {/* A dash, not a name. Nobody owns this yet because nobody can:
-                there are no accounts to own it with. */}
-            <dd className="railwho">
-              {state.responsible
-                ? <><Avatar initials={state.initials ?? null} /> {state.responsible}</>
-                : <span style={{ color: "var(--ghost)" }}>—</span>}
-            </dd>
-          </div>
-        )}
-      </dl>
-
       {actions && <div className="actions half-actions">{actions}</div>}
     </section>
   );

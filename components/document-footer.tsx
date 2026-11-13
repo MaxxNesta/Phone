@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDot, FileText, Landmark, PackageCheck, UserRound } from "lucide-react";
+import { CircleCheck, CircleDot, FileText, Landmark, PackageCheck } from "lucide-react";
 import { shortDate } from "@/lib/db";
 import type { DocEvent, Person } from "./document-rail";
 
@@ -28,14 +28,23 @@ const time = (v: unknown) =>
     { hour: "2-digit", minute: "2-digit" }) : "";
 
 export function DocumentFooter({
-  activity, related, createdBy, postedBy, postedAt,
+  activity, related, createdBy, postedBy, postedAt, createdAt,
 }: {
+  createdAt?: string | null;
   activity: DocEvent[];
   related: React.ReactNode;
   createdBy: Person;
   postedBy: Person;
   postedAt: string | null;
 }) {
+  /* Nothing logged is not nothing known: the document itself says who raised
+     it and who posted it, so the timeline always has those two to show. */
+  const events: DocEvent[] = activity.length > 0 ? activity : [
+    ...(postedAt ? [{ kind: "POSTED", note: "Posted", happened_at: postedAt,
+      actor: postedBy.name, initials: postedBy.initials }] : []),
+    ...(createdAt ? [{ kind: "CREATED", note: "Created", happened_at: createdAt,
+      actor: createdBy.name, initials: createdBy.initials }] : []),
+  ];
   return (
     <div className="docfooter">
       <div className="docfooter-links">{related}</div>
@@ -46,38 +55,28 @@ export function DocumentFooter({
           <span className="page-sub">who did what, and when</span>
         </div>
         <div className="card-body">
-          {activity.length === 0 ? (
-            <p className="hint">
-              {postedBy.name
-                ? <>Posted by {postedBy.name}{postedAt ? ` · ${shortDate(postedAt)}` : ""}.</>
-                : <>Posted{postedAt ? ` ${shortDate(postedAt)}` : ""}.</>}
-            </p>
+          {events.length === 0 ? (
+            <p className="hint">Nothing recorded yet.</p>
           ) : (
             <ol className="timeline">
-              {activity.map((e, i) => {
+              {events.map((e, i) => {
                 const Icon = ICON[e.kind] ?? CircleDot;
                 return (
                   <li key={`${e.happened_at}-${i}`} className={i === 0 ? "now" : ""}>
-                    <Icon size={13} aria-hidden="true" />
+                    <span className="timeline-icon"><Icon size={14} aria-hidden="true" /></span>
                     <div>
-                      <strong>{e.note ?? e.kind.toLowerCase()}</strong>
+                      <strong>
+                        {e.note ?? e.kind.toLowerCase()}
+                        {e.actor && <span className="timeline-who"> by {e.actor}</span>}
+                      </strong>
                       <span className="page-sub">
-                        {shortDate(e.happened_at)} {time(e.happened_at)}
-                        {e.actor ? ` · ${e.actor}` : ""}
+                        {shortDate(e.happened_at)}, {time(e.happened_at)}
                       </span>
                     </div>
-                    {e.initials !== undefined && (
-                      <span className={`avatar ${e.initials ? "" : "avatar-none"}`}>
-                        {e.initials ?? <UserRound size={11} aria-hidden="true" />}
-                      </span>
-                    )}
                   </li>
                 );
               })}
             </ol>
-          )}
-          {createdBy.name && createdBy.name !== postedBy.name && (
-            <p className="hint" style={{ marginTop: "0.6rem" }}>Raised by {createdBy.name}.</p>
           )}
         </div>
       </section>

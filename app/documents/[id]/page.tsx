@@ -25,6 +25,7 @@ import { DocStats, type DocStat } from "@/components/doc-stats";
 import { InvoiceProgress } from "@/components/invoice-progress";
 import {
   PackageCheck, FileText, Clock, Wallet, CircleDollarSign, Boxes, Truck, Tags,
+  FilePlus2, FileMinus2, Undo2,
 } from "lucide-react";
 import { CloseOrder } from "@/components/close-order";
 import { CorrectOrder, type CorrectableLine } from "@/components/correct-order";
@@ -705,6 +706,18 @@ export default async function DocumentPage({
   const isLiveInvoice = isInvoice && doc.status === "POSTED"
     && !doc.superseded_by_document_id;
   const orderBehind = stageDoc["PURCHASE_ORDER"] ?? stageDoc["SALES_ORDER"] ?? null;
+  /* How far the order behind a receipt or delivery has got, across every
+     receipt or delivery against it — read only on those two document types. */
+  const progressOrder = (isGr || isDel)
+    ? orderBehind ?? (() => {
+        const o = related.source.flatMap((g) => g.docs)
+          .find((d) => d.docType === (isGr ? "PURCHASE_ORDER" : "SALES_ORDER"));
+        return o ? { id: o.id, doc_no: o.docNo } : null;
+      })()
+    : null;
+  const orderSoFar = progressOrder
+    ? ((await getOrderProgress(progressOrder.id, isGr ? "PURCHASE_ORDER" : "SALES_ORDER")) as any[])
+    : null;
 
   /**
    * A voucher is corrected the same way, and can always be: nothing is ever
@@ -824,11 +837,7 @@ export default async function DocumentPage({
           returnLabel={returnRoute?.label ?? null}
           restoresUnits={Number(restores?.units ?? 0)}
           salesReturnHref={`/sales/returns/new?source=${doc.id}`}
-        >
-          {correctInvoiceAction}
-          {voucherCorrection}
-          {settlementCorrection}
-        </VoidDocument>
+        />
   ) : null;
 
   const correction = isPostedOrder && !doc.superseded_by_document_id ? (
@@ -949,6 +958,7 @@ export default async function DocumentPage({
       createdBy={{ name: people.doc?.created_by ?? null, initials: people.doc?.created_initials ?? null }}
       postedBy={{ name: people.doc?.posted_by ?? null, initials: people.doc?.posted_initials ?? null }}
       postedAt={people.doc?.posted_at ? String(people.doc.posted_at) : null}
+      createdAt={people.doc?.created_at ? String(people.doc.created_at) : null}
     />
   );
 
@@ -1095,8 +1105,79 @@ export default async function DocumentPage({
     );
   }
 
+  /* Everything this document lets you do, in one row beside its number: the
+     next step first, then the corrections. Voiding stays behind More. Each
+     button's explanation is its tooltip rather than a sentence in the page. */
+  const headActions = (
+    <>
+      {(needsInvoiceMatch || needsReceiptMatch) && (
+        <Link
+          href={needsInvoiceMatch
+            ? `/purchases/new?goods_receipt_id=${doc.id}`
+            : `/purchases/receive/new?match_invoice_id=${doc.id}`}
+          className="btn primary"
+          title={match?.state === "PARTIAL"
+            ? needsInvoiceMatch
+              ? "Part of this receipt has been billed. The rest is listed below."
+              : "Part of this invoice has arrived. The rest is listed below."
+            : needsInvoiceMatch
+              ? "Nothing has billed for this receipt yet."
+              : "Nothing has recorded these goods arriving yet."}
+        >
+          <FilePlus2 size={14} aria-hidden="true" />
+          {match?.state === "PARTIAL"
+            ? needsInvoiceMatch ? "Invoice the rest" : "Receive the rest"
+            : needsInvoiceMatch ? "Create purchase invoice" : "Create goods receipt"}
+          {match?.state === "PARTIAL" ? "" : ` — ${money(doc.gross_total)}`}
+        </Link>
+      )}
+      {needsSalesInvoice && (
+        <Link href={`/sales/new?delivery_id=${doc.id}`} className="btn primary"
+          title={salesInvoiceValue !== null
+            ? "Nothing has billed for this delivery yet. At the price its order agreed."
+            : "Nothing has billed for this delivery yet. No order set a price, so the price list decides it on the invoice."}>
+          <FilePlus2 size={14} aria-hidden="true" /> Create sales invoice
+          {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
+        </Link>
+      )}
+      {refundable > 0.5 && (
+        <Link href={`/sales/refunds/new?return=${doc.id}`} className="btn primary"
+          title={`${Math.round(refundable).toLocaleString("en-US")} MMK is owed back to this customer. Pay it in cash, by bank or to their wallet.`}>
+          <Undo2 size={14} aria-hidden="true" /> Refund
+        </Link>
+      )}
+      {voidPlan && correctInvoiceAction}
+      {voidPlan && voucherCorrection}
+      {voidPlan && settlementCorrection}
+      {isInvoice && doc.status === "POSTED" && outstanding > 0 && (
+        <Link
+          href={doc.doc_type === "SALES_INVOICE"
+            ? `/sales/credit-notes/new?invoice=${doc.id}`
+            : `/purchases/debit-notes/new?bill=${doc.id}`}
+          className="btn ghost"
+          title={doc.doc_type === "SALES_INVOICE"
+            ? "Take something off what this customer owes, without goods coming back."
+            : "Take something off what you owe here, without goods going back."}
+        >
+          <FileMinus2 size={14} aria-hidden="true" />
+          {doc.doc_type === "SALES_INVOICE" ? "Credit note" : "Debit note"}
+        </Link>
+      )}
+    </>
+  );
+
+  /* Who, how much, when — the line under the number. */
+  const summary = [
+    doc.partner_name ? String(doc.partner_name) : null,
+    Number(doc.gross_total) > 0 ? `${money(doc.gross_total)} ${doc.currency ?? ""}`.trim() : null,
+    shortDate(doc.doc_date),
+    isInvoice && doc.due_date ? `due ${shortDate(doc.due_date)}` : null,
+  ].filter(Boolean).join("  ·  ");
+
   return (
     <ErpDocShell
+      headActions={headActions}
+      summary={summary}
       backHref={backHref}
       backLabel={backLabel}
       docId={doc.id}
@@ -1199,7 +1280,7 @@ export default async function DocumentPage({
         </>
       }
       stats={statsNode}
-      menuActions={voidPlan?.canVoid ? voidNode : undefined}
+      menuActions={voidNode ?? undefined}
       footer={footer}
       badges={
         <>
@@ -1255,10 +1336,6 @@ export default async function DocumentPage({
         </div>
       )}
 
-      {/* Voiding sits with the document rather than on the list, because it
-          needs the whole picture — what it would reverse, and what has been
-          built on top of it — and that is only assembled here. */}
-      {voidPlan && !voidPlan.canVoid && voidNode}
 
       {movesGoods && (
         <LinkToOrder
@@ -1298,32 +1375,33 @@ export default async function DocumentPage({
         </>
       )}
 
-      {(needsInvoiceMatch || needsReceiptMatch) && (
-        <div className="docactions">
-          <Link
-            href={
-              needsInvoiceMatch
-                ? `/purchases/new?goods_receipt_id=${doc.id}`
-                : `/purchases/receive/new?match_invoice_id=${doc.id}`
-            }
-            className="btn"
-          >
-            {match?.state === "PARTIAL"
-              ? needsInvoiceMatch ? "Invoice the rest" : "Receive the rest"
-              : needsInvoiceMatch ? "Create purchase invoice" : "Create goods receipt"}
-            {match?.state === "PARTIAL" ? "" : ` — ${money(doc.gross_total)}`}
-          </Link>
-          <span className="page-sub">
-            {match?.state === "PARTIAL"
-              ? needsInvoiceMatch
-                ? "Part of this receipt has been billed. The rest is listed below."
-                : "Part of this invoice has arrived. The rest is listed below."
-              : needsInvoiceMatch
-                ? "Nothing has billed for this receipt yet."
-                : "Nothing has recorded these goods arriving yet."}
-          </span>
-        </div>
-      )}
+
+      {orderSoFar && progressOrder && (() => {
+        const ordered = orderSoFar.reduce((t, l) => t + Number(l.ordered), 0);
+        const got = Math.min(ordered, orderSoFar.reduce((t, l) => t + Number(l.fulfilled), 0));
+        const mine = (lines as any[]).reduce((t, l) => t + Number(l.base_qty ?? l.entered_qty ?? 0), 0);
+        const pct = ordered > 0 ? Math.round((got / ordered) * 100) : 0;
+        const word = isGr ? "received" : "delivered";
+        return ordered > 0 ? (
+          <div className="card">
+            <div className="card-head">
+              <h2>Order {isGr ? "received" : "delivered"} so far</h2>
+              <Link href={`/documents/${progressOrder.id}`} className="subline">{progressOrder.doc_no}</Link>
+            </div>
+            <div className="card-body qprog">
+              <div className="erp-progress">
+                <div className="erp-bar"><span className="erp-bar-fill" style={{ width: `${pct}%` }} /></div>
+                <span className="erp-bar-pct">{pct}%</span>
+              </div>
+              <p className="erp-bar-note">
+                {qty(String(got))} of {qty(String(ordered))}{unitWord ? ` ${unitWord}` : ""} {word} on the order
+                {" · "}{qty(String(mine))} on this {isGr ? "receipt" : "delivery"}
+                {ordered - got > 0 && <> · {qty(String(ordered - got))} still to come</>}
+              </p>
+            </div>
+          </div>
+        ) : null;
+      })()}
 
       {/* Joined to the Document section below, like every other part of the sheet. */}
       {match && match.lines.length > 0 && (
@@ -1338,6 +1416,24 @@ export default async function DocumentPage({
                   : movesGoods ? "Not invoiced" : `Not ${goodsWord}`}
             </span>
           </div>
+          {/* How far along, before the line-by-line answer. */}
+          {(() => {
+            const total = match.lines.reduce((t, l) => t + Number(l.qty), 0);
+            const done = Math.min(total, match.lines.reduce((t, l) => t + Number(l.settled), 0));
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+            return total > 0 ? (
+              <div className="card-body qprog">
+                <div className="erp-progress">
+                  <div className="erp-bar"><span className="erp-bar-fill" style={{ width: `${pct}%` }} /></div>
+                  <span className="erp-bar-pct">{pct}%</span>
+                </div>
+                <p className="erp-bar-note">
+                  {qty(String(done))} of {qty(String(total))}{unitWord ? ` ${unitWord}` : ""}{" "}
+                  {movesGoods ? "invoiced" : goodsWord}
+                </p>
+              </div>
+            ) : null;
+          })()}
           <div className="tablewrap">
             <table>
               <thead>
@@ -1382,52 +1478,6 @@ export default async function DocumentPage({
         </div>
       )}
 
-      {/* Reducing an invoice without goods moving. Offered only while
-          something is still owed on it: a note against a settled invoice
-          would drive it below nothing, and what that customer needs is a
-          refund. Sat next to the correction actions because it is one —
-          the other kind, for when their printed copy has to stay true. */}
-      {refundable > 0.5 && (
-        <div className="docactions">
-          <Link href={`/sales/refunds/new?return=${doc.id}`} className="btn">Refund</Link>
-          <span className="page-sub">
-            {Math.round(refundable).toLocaleString("en-US")} MMK is owed back to this customer. Pay it in cash, by bank or to their wallet.
-          </span>
-        </div>
-      )}
-
-      {isInvoice && doc.status === "POSTED" && outstanding > 0 && (
-        <div className="docactions">
-          <Link
-            href={doc.doc_type === "SALES_INVOICE"
-              ? `/sales/credit-notes/new?invoice=${doc.id}`
-              : `/purchases/debit-notes/new?bill=${doc.id}`}
-            className="btn ghost"
-          >
-            {doc.doc_type === "SALES_INVOICE" ? "Credit note" : "Debit note"}
-          </Link>
-          <span className="page-sub">
-            {doc.doc_type === "SALES_INVOICE"
-              ? "Take something off what this customer owes, without goods coming back."
-              : "Take something off what you owe here, without goods going back."}
-          </span>
-        </div>
-      )}
-
-      {needsSalesInvoice && (
-        <div className="docactions">
-          <Link href={`/sales/new?delivery_id=${doc.id}`} className="btn">
-            Create sales invoice
-            {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
-          </Link>
-          <span className="page-sub">
-            {salesInvoiceValue !== null
-              ? "Nothing has billed for this delivery yet. At the price its order agreed."
-              : "Nothing has billed for this delivery yet. No order set a price, so the "
-                + "price list decides it on the invoice."}
-          </span>
-        </div>
-      )}
 
 
       {isOpenOrder && orderLines.length > 0 && doc.doc_type === "PURCHASE_ORDER" && (
@@ -1506,7 +1556,6 @@ export default async function DocumentPage({
 
       <div className="grid2">
         <div className="card">
-          <div className="card-head"><h2>Document</h2><span className={`pill ${doc.status.toLowerCase()}`}>{doc.status}</span></div>
           <div className="card-body">
             {/* Pairs rather than a flat list of dt/dd.
                 Flat, the value column took whatever the card was wide — a
@@ -1641,6 +1690,18 @@ export default async function DocumentPage({
                     <td colSpan={5}>Total</td>
                     <td className="r">{money(doc.gross_total)}</td>
                   </tr>
+                  {isInvoice && (
+                    <>
+                      <tr className="tot-sub">
+                        <td colSpan={5}>Paid</td>
+                        <td className="r">{money(Math.max(0, Number(doc.gross_total) - outstanding))}</td>
+                      </tr>
+                      <tr className="tot-due">
+                        <td colSpan={5}>Amount due</td>
+                        <td className="r">{money(outstanding)}</td>
+                      </tr>
+                    </>
+                  )}
                 </tfoot>
               </table>
             </div>

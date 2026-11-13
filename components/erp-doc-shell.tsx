@@ -46,8 +46,12 @@ export type ChainStage = {
 export function ErpDocShell({
   docId, docNo, typeLabel, status, listHref, listLabel,
   chain, actions, menuActions, badges, children, backHref, backLabel,
-  banner, stats, footer, receiptHref,
+  banner, stats, footer, receiptHref, headActions, summary,
 }: {
+  /** The next step and the corrections, beside the number. */
+  headActions?: React.ReactNode;
+  /** Who, how much, when — one line under the number. */
+  summary?: string;
   docId: string;
   docNo: string;
   typeLabel: string;
@@ -101,11 +105,6 @@ export function ErpDocShell({
         <span className="erp-crumb-sep">/</span>
         <span className="erp-crumb-here">{docNo}</span>
         <ErpCopyNumber docNo={docNo} />
-        <span style={{ marginLeft: "auto" }} className="erp-head-tools">
-          {receiptHref && <ErpReceiptButton href={receiptHref} />}
-          <ErpPrintButton docId={docId} />
-          {menuActions && <ErpMore>{menuActions}</ErpMore>}
-        </span>
       </div>
 
       {chain.length > 0 && (
@@ -159,12 +158,25 @@ export function ErpDocShell({
         than as a caution about the action.
       */}
       <div className="erp-sheet-page">
-        <div className="erp-doc-title">
-          <span className="erp-doc-type">{typeLabel}</span>
-          <h1>{docNo}</h1>
-          <span className={`pill ${status.toLowerCase()}`}>{status}</span>
-          {badges}
-        </div>
+        {/* The document names itself once, and everything it lets you do sits
+            in one row beside the name — not scattered down the page. */}
+        <header className="doc-head">
+          <div className="doc-head-id">
+            <span className="erp-doc-type">{typeLabel}</span>
+            <div className="doc-head-line">
+              <h1>{docNo}</h1>
+              <span className={`pill ${status.toLowerCase()}`}>{status.charAt(0) + status.slice(1).toLowerCase()}</span>
+              {badges}
+            </div>
+            {summary && <p className="doc-head-sub">{summary}</p>}
+          </div>
+          <div className="doc-head-actions">
+            {headActions}
+            {receiptHref && <ErpReceiptButton href={receiptHref} />}
+            <ErpPrintButton docId={docId} />
+            {menuActions && <ErpMore>{menuActions}</ErpMore>}
+          </div>
+        </header>
         {stats}
         {actions && <div className="erp-actions">{actions}</div>}
         {banner}

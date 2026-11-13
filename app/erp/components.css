@@ -109,7 +109,9 @@
 
 /* ---------------------------------------------------- transaction form --- */
 
-.erp-form { background: var(--erp-bg); margin: calc(-1 * var(--s3)) calc(-1 * var(--s3)) 0; }
+/* No pull upwards: the page above has no padding to cancel any more, and the
+   negative margin slid the breadcrumb 8px over the search bar. */
+.erp-form { background: var(--erp-bg); margin: 0 calc(-1 * var(--s3)) 0; }
 
 /* Breadcrumb and action bar are two thin rows rather than one tall header.
    Two shallow bars above a sheet is what stops a mostly-empty document from

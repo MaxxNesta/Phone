@@ -5545,7 +5545,13 @@ export async function getOrderProgress(orderId: string, docType: string) {
       join document d on d.id = dl.document_id
      where d.doc_type = ${fulfilmentType}
        and d.status = 'POSTED'
-       and d.source_document_id in (${versionsOf(orderId)})
+       -- Raised from the order, or a line that names one of the order's lines
+       -- (a receipt raised against the bill reaches its order that way). The
+       -- same routes v_order_outstanding and the related-documents panel count.
+       and (d.source_document_id in (${versionsOf(orderId)})
+            or exists (select 1 from document_line x
+                        where x.id = dl.source_line_id
+                          and x.document_id in (${versionsOf(orderId)})))
      order by d.posting_date, d.doc_no, dl.line_no`;
 
   // A fulfilment line that names the order line it satisfies is credited to
@@ -8543,4 +8549,70 @@ export async function getOrderInvoiceVariance(companyId: string, f: {
      order by d.posting_date desc, d.doc_no desc
      limit 5000`;
   return rows as unknown as OrderVarianceRow[];
+}
+
+/**
+ * Sales by day (or by week over a long range) for the combined chart:
+ * net sales, gross profit and how many customers bought. Cost is what each
+ * invoice line's own allocation carried, as the dashboard tiles read it.
+ *
+ * Customers: distinct named customers, and every walk-in sale counted once,
+ * since the walk-in account is one partner standing for many people.
+ *
+ * `scope` is the caller's location filter on d.location_id, already as SQL.
+ */
+export async function getSalesSeries(
+  companyId: string, from: string, to: string, scope: ReturnType<typeof salesBranch> = sql``,
+) {
+  // Worked out here, not asked of the database: one round trip, not two.
+  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000;
+  const unit = days > 120 ? "week" : "day";
+  const rows = await sql`
+    with buckets as (
+      select date_trunc(${unit}, g)::date as b
+        from generate_series(${from}::date, ${to}::date, interval '1 day') g
+       group by 1
+    ),
+    s as (
+      select date_trunc(${unit}, d.posting_date)::date as b,
+             sum(dl.net_amount) as revenue,
+             sum(dl.net_amount - coalesce(c.cost, 0)) as profit,
+             count(distinct case when bp.code = 'WALKIN' then d.id::text else d.partner_id::text end) as customers
+        from document d
+        join business_partner bp on bp.id = d.partner_id
+        join document_line dl on dl.document_id = d.id
+        left join lateral (select sum(a.qty * a.unit_cost) as cost from sales_cost_allocation a
+                            where a.invoice_line_id = dl.id) c on true
+       where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
+         and d.posting_date between ${from}::date and ${to}::date ${scope}
+       group by 1
+    )
+    select to_char(buckets.b, 'YYYY-MM-DD') as day,
+           coalesce(s.revenue, 0)::float as revenue,
+           coalesce(s.profit, 0)::float as profit,
+           coalesce(s.customers, 0)::int as customers
+      from buckets left join s on s.b = buckets.b
+     order by buckets.b`;
+  return { unit: unit as "day" | "week", rows: rows as unknown as SalesPoint[] };
+}
+export type SalesPoint = { day: string; revenue: number; profit: number; customers: number };
+
+/** The branch filter the sales report uses, for callers outside this file. */
+export const salesScope = (branchId?: string | null) => salesBranch(sql`d.location_id`, branchId);
+
+/** The location filter the dashboards use: the locations this user may see. */
+export const locScope = (locs: string[] | null) => locs ? sql`and d.location_id = any(${locs})` : sql``;
+
+/** Sixty days ending today (Yangon): the last thirty to draw, the thirty before to compare. */
+export async function salesLast30(companyId: string, locs: string[] | null) {
+  const to = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Yangon" });
+  const from = new Date(Date.parse(`${to}T00:00:00Z`) - 59 * 86400000).toISOString().slice(0, 10);
+  const { rows } = await getSalesSeries(companyId, from, to, locScope(locs));
+  const prev = rows.slice(0, 30), now = rows.slice(30);
+  const sum = (r: SalesPoint[], k: "revenue" | "profit" | "customers") => r.reduce((t, x) => t + Number(x[k]), 0);
+  return {
+    from: now[0]?.day ?? to, to, rows: now,
+    now: { revenue: sum(now, "revenue"), profit: sum(now, "profit"), customers: sum(now, "customers") },
+    before: { revenue: sum(prev, "revenue"), profit: sum(prev, "profit"), customers: sum(prev, "customers") },
+  };
 }
