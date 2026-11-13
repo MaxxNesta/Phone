@@ -39,10 +39,12 @@ from Neon. That is the gap to close before production goes live.
    # then upload erp-YYYY-MM-DD.dump to a private R2 bucket (e.g. erp-backups)
    ```
 
-   Use the **direct** (non-pooler) connection string for pg_dump. Run it from
-   a scheduled job (a GitHub Actions cron, or a Vercel cron calling a script
-   that streams to R2). Give the R2 bucket a lifecycle rule that deletes dumps
-   older than 30 days.
+   This is `.github/workflows/nightly-backup.yml`: every night at 03:00
+   Yangon it dumps production with its **direct** (non-pooler) connection,
+   checks the dump can be read, uploads it to `postgres/` in the backup
+   bucket and deletes copies older than 30 days. It runs from `main` only;
+   start it by hand from the Actions tab to test. Its secrets are listed at
+   the top of the file.
 3. **R2 attachments** have no automatic backup. Turn on bucket replication or
    a weekly copy of the private bucket to a second bucket; product photos in
    the public bucket can be re-uploaded and matter less.

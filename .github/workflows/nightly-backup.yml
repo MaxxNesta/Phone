@@ -1,0 +1,105 @@
+# A copy of the production database outside Neon, every night.
+#
+# Neon's instant restore (7 days on Launch) lives with the database it
+# protects. This is the copy that survives anything happening to the Neon
+# project itself: pg_dump at 03:00 Yangon, checked readable, uploaded to a
+# private R2 bucket, and copies older than 30 days deleted.
+#
+# Scheduled workflows only run from the default branch (main). Run it by hand
+# from the Actions tab ("Run workflow") to test it.
+#
+# Secrets (Settings → Secrets and variables → Actions), set by the owner:
+#   PROD_DATABASE_URL       production's DIRECT connection string (not -pooler)
+#   R2_ACCOUNT_ID           Cloudflare account id
+#   R2_BACKUP_ACCESS_KEY_ID R2 API token scoped to the backup bucket only
+#   R2_BACKUP_SECRET_KEY
+#   R2_BACKUP_BUCKET        e.g. erp-backups (private)
+#
+# docs/08-backup-restore.md says how to restore from one of these and check it.
+name: nightly-backup
+
+on:
+  schedule:
+    - cron: "30 20 * * *"   # 20:30 UTC = 03:00 in Yangon
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KEEP_DAYS: 30
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_KEY }}
+      AWS_DEFAULT_REGION: auto
+      # R2 rejects the newer default checksum headers on some operations; send them only when required.
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      BUCKET: ${{ secrets.R2_BACKUP_BUCKET }}
+    steps:
+      - name: Check the secrets are set
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          ACCOUNT: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          missing=""
+          [ -n "$PROD_DATABASE_URL" ] || missing="$missing PROD_DATABASE_URL"
+          [ -n "$ACCOUNT" ] || missing="$missing R2_ACCOUNT_ID"
+          [ -n "$AWS_ACCESS_KEY_ID" ] || missing="$missing R2_BACKUP_ACCESS_KEY_ID"
+          [ -n "$AWS_SECRET_ACCESS_KEY" ] || missing="$missing R2_BACKUP_SECRET_KEY"
+          [ -n "$BUCKET" ] || missing="$missing R2_BACKUP_BUCKET"
+          if [ -n "$missing" ]; then echo "::error::Missing secrets:$missing"; exit 1; fi
+          case "$PROD_DATABASE_URL" in *-pooler.*) echo "::error::Use the direct connection string, not the pooler"; exit 1;; esac
+
+      # pg_dump must be at least the server's major version (production runs 18).
+      - name: Install pg_dump 18
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-18
+          /usr/lib/postgresql/18/bin/pg_dump --version
+
+      - name: Dump
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          FILE="erp-$(TZ=Asia/Yangon date +%F).dump"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+          /usr/lib/postgresql/18/bin/pg_dump "$PROD_DATABASE_URL" \
+            --format=custom --compress=9 --no-owner --no-privileges --file="$FILE"
+          # A dump that cannot be listed cannot be restored.
+          /usr/lib/postgresql/18/bin/pg_restore --list "$FILE" > /dev/null
+          tables=$(/usr/lib/postgresql/18/bin/pg_restore --list "$FILE" | grep -c " TABLE DATA " || true)
+          size=$(stat -c %s "$FILE")
+          echo "Dump $FILE: $size bytes, $tables tables with data"
+          [ "$tables" -gt 50 ] || { echo "::error::Only $tables tables in the dump"; exit 1; }
+
+      - name: Upload to R2
+        run: |
+          set -euo pipefail
+          aws s3 cp "$FILE" "s3://$BUCKET/postgres/$FILE" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          aws s3 ls "s3://$BUCKET/postgres/$FILE" --endpoint-url "$R2_ENDPOINT"
+
+      - name: Delete copies older than ${{ env.KEEP_DAYS }} days
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d "-$KEEP_DAYS days" +%F)
+          aws s3 ls "s3://$BUCKET/postgres/" --endpoint-url "$R2_ENDPOINT" | awk '{print $4}' | while read -r key; do
+            day=$(echo "$key" | sed -n 's/^erp-\([0-9-]\{10\}\)\.dump$/\1/p')
+            if [ -n "$day" ] && [ "$day" \< "$cutoff" ]; then
+              echo "deleting $key"
+              aws s3 rm "s3://$BUCKET/postgres/$key" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+            fi
+          done
