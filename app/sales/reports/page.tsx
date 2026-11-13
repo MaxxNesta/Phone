@@ -14,6 +14,7 @@ import {
 } from "@/lib/queries";
 import { SalesOverview } from "@/components/sales-overview";
 import { SalesPivot } from "@/components/sales-pivot";
+import { ChartTools } from "@/components/chart-tools";
 
 type Tab = SalesBreakdownBy | "overview" | "pivot";
 
@@ -74,9 +75,14 @@ export default async function SalesReports({
       ])
     : [null, null];
   const facts = tab === "pivot" ? await getSalesPivotFacts(company.id, range.from, range.to, branchId) : null;
-  const rows = tab === "overview" || tab === "pivot"
-    ? []
-    : await getSalesBreakdown(company.id, range.from, range.to, by, branchId);
+  const [rows, modelRows] = tab === "overview" || tab === "pivot"
+    ? [[], []]
+    : await Promise.all([
+        getSalesBreakdown(company.id, range.from, range.to, by, branchId),
+        // The item tab's donut is drawn by model: colours of one phone are
+        // one slice, so five slices cover most of the sales, not a third.
+        by === "item" ? getSalesBreakdown(company.id, range.from, range.to, "model", branchId) : Promise.resolve([]),
+      ]);
 
   const tot = rows.reduce((t, r) => ({
     qty: t.qty + r.qty,
@@ -88,15 +94,20 @@ export default async function SalesReports({
         revenue: 0, unmatched: 0, cost: 0, margin: 0 });
 
   const TOP = 5;
-  const head = rows.slice(0, TOP);
-  const tail = rows.slice(TOP);
+  const sliced = by === "item" ? [...modelRows].sort((a, b) => b.revenue - a.revenue) : rows;
+  const sliceNoun = by === "item" ? "models"
+    : ({ model: "models", brand: "brands", customer: "customers", category: "categories" } as Record<string, string>)[by] ?? "others";
+  const head = sliced.slice(0, TOP);
+  const tail = sliced.slice(TOP);
   const donut = [
     ...head.map((r) => ({ id: r.key, name: r.name, revenue: r.revenue })),
     ...(tail.length > 0
-      ? [{ id: "rest", name: `${tail.length} others`, rest: true,
+      ? [{ id: "rest", name: `Other ${tail.length} ${tail.length === 1 ? sliceNoun.replace(/ies$/, "y").replace(/s$/, "") : sliceNoun}`, rest: true,
            revenue: tail.reduce((t, r) => t + r.revenue, 0) }]
       : []),
   ].filter((d) => d.revenue > 0);
+  const file = (what: string) => `sales-${what}-${range.from}-to-${range.to}`;
+  const donutCsv = [["Name", "Net sales"], ...donut.map((d) => [d.name, Math.round(d.revenue)])];
 
   const link = (over: Record<string, string | undefined>) => {
     const q = new URLSearchParams();
@@ -313,6 +324,7 @@ export default async function SalesReports({
             <div className="card-head">
               <h2>Share of net sales</h2>
               <span className="page-sub">top 5</span>
+              <ChartTools name={file(`share-${by}`)} rows={donutCsv} />
             </div>
             <div className="card-body">
               <div className="chartbox">
@@ -333,6 +345,8 @@ export default async function SalesReports({
             <div className="card-head">
               <h2>Top 10 by net sales</h2>
               <span className="page-sub">{company.base_currency}</span>
+              <ChartTools name={file("top-net-sales")}
+                rows={[["Item", "Net sales"], ...rows.slice(0, 10).map((r) => [r.name, Math.round(r.revenue)])]} />
             </div>
             <div className="card-body">
               <div className="chartbox">
@@ -347,7 +361,9 @@ export default async function SalesReports({
           <div className="card">
             <div className="card-head">
               <h2>Units sold (top 10)</h2>
-              <span className="page-sub">quantity, not money</span>
+              <span className="page-sub">Quantity</span>
+              <ChartTools name={file("top-units")}
+                rows={[["Item", "Units"], ...[...rows].sort((a, b) => b.qty - a.qty).slice(0, 10).map((r) => [r.name, r.qty])]} />
             </div>
             <div className="card-body">
               <div className="chartbox">
@@ -363,7 +379,8 @@ export default async function SalesReports({
           <div className="card">
             <div className="card-head">
               <h2>Share of revenue</h2>
-              <span className="page-sub">top 5</span>
+              <span className="page-sub">top 5 models</span>
+              <ChartTools name={file("share-models")} rows={donutCsv} />
             </div>
             <div className="card-body">
               <div className="chartbox">

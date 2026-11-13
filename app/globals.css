@@ -10342,3 +10342,91 @@ tfoot tr.tot-due td { font-weight: 700; border-top: 0; }
 .combo-key { display: flex; gap: 1rem; flex-wrap: wrap; font-size: var(--t-xs); color: var(--muted); margin-top: 0.6rem; }
 .combo-key i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; margin-right: 0.35rem; }
 .combo-sub { display: block; margin-top: 0.1rem; }
+
+/* The till's clock, where the global search sits on every other page. */
+.tillclock {
+  display: inline-flex; align-items: center; gap: 0.55rem; height: 40px; min-width: 260px;
+  padding: 0 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line);
+  color: var(--ink-soft); font-size: var(--t-sm);
+}
+.tillclock svg { color: var(--muted); }
+.tillclock-time { margin-left: auto; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* The cart takes the full height of the window, so the lines have room and
+   the total and Complete sale stay at the bottom where the hand expects them. */
+@media (min-width: 901px) {
+  .pos3-cart { height: calc(100vh - 24px); max-height: none; }
+  .pos3-lines { min-height: 0; }
+}
+
+/* ---- Charts: one soft, modern palette everywhere (2026-11-13) ----
+   Blue leads; the rest are pastel hues that sit apart from each other and
+   from the black of the controls. Bars and slices take these through the
+   chart components, so every chart in the app changes together. */
+:root, :root[data-theme="light"] {
+  --chart-1: #5B8DEF;  /* soft blue */
+  --chart-2: #A5A6F6;  /* lavender */
+  --chart-3: #8FD9A8;  /* mint */
+  --chart-4: #F6A8BF;  /* rose */
+  --chart-5: #7B61FF;  /* violet */
+  --chart-6: #7CC4F4;  /* sky */
+  --bar-past: color-mix(in srgb, var(--chart-1) 30%, var(--surface));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-1: #6F9CF2; --chart-2: #B3B4F8; --chart-3: #8FE0AE;
+    --chart-4: #F7B4C7; --chart-5: #9583FF; --chart-6: #8ACCF6;
+  }
+}
+:root[data-theme="dark"] {
+  --chart-1: #6F9CF2; --chart-2: #B3B4F8; --chart-3: #8FE0AE;
+  --chart-4: #F7B4C7; --chart-5: #9583FF; --chart-6: #8ACCF6;
+}
+
+/* Ranked bars: name above, value at the right, a thin rounded bar beneath. */
+.rbar { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+.rbar.compact { gap: 0.5rem; }
+.rbar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.2rem 0.75rem; align-items: baseline; }
+.rbar-name { font-size: var(--t-sm); color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rbar.compact .rbar-name { font-size: var(--t-xs); }
+.rbar-value { font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rbar-value.neg { color: var(--bad); }
+.rbar-track { grid-column: 1 / -1; height: 6px; border-radius: 980px; background: var(--line-soft); overflow: hidden; }
+.rbar.compact .rbar-track { height: 5px; }
+.rbar-track i { display: block; height: 100%; border-radius: inherit; min-width: 3px;
+  transform-origin: left; animation: stat-grow-x .6s cubic-bezier(.2, .8, .2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .rbar-track i { animation: none; } }
+/* A ranked list sizes to its rows: ten names fit without a scrollbar. */
+.chartbox:has(> .rbar) { height: auto; max-height: none; overflow: visible; }
+.rbar.compact { gap: 0.45rem; }
+.rbar.compact .rbar-row { gap: 0.15rem 0.75rem; }
+.chartbox:has(> .donut-wrap) { height: auto; overflow: visible; }
+
+/* Chart card tools: three quiet icons in the head, shown fully on hover. */
+.chart-tools { display: inline-flex; gap: 2px; margin-left: auto; }
+.card-head .chart-tools + .page-sub, .card-head .page-sub + .chart-tools { margin-left: 0.5rem; }
+.chart-tool {
+  width: 28px; height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 8px;
+  display: inline-grid; place-items: center; background: transparent; color: var(--muted);
+  opacity: 0.6; transition: opacity .15s, background-color .15s;
+}
+.card:hover .chart-tool, .chart-tool:focus-visible { opacity: 1; }
+.chart-tool:hover { background: var(--line-soft); color: var(--ink); }
+/* Expanded: the card fills the screen, its chart grows with it. */
+.card:fullscreen { overflow: auto; padding: 24px 32px; border-radius: 0; background: var(--surface); }
+.card:fullscreen .chartbox { height: auto; }
+.card:fullscreen .donut-wrap { max-width: 900px; margin: 0 auto; }
+/* A head with tools stays one line: the subtitle gives way, not the icons. */
+.card-head:has(> .chart-tools) { flex-wrap: nowrap; gap: 0.5rem; }
+.card-head:has(> .chart-tools) > h2 { flex: none; }
+.card-head:has(> .chart-tools) > .page-sub { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.card-head > .chart-tools { flex: none; margin-left: 0; }
+/* Two more soft hues, so a seventh and eighth slice do not repeat the first. */
+:root { --chart-7: #F5C26B; --chart-8: #6FD3C9; }
+/* With tools in the head: title, subtitle under it, icons at the right. */
+.card-head:has(> .chart-tools) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: 0.1rem; }
+.card-head:has(> .chart-tools) > h2 { grid-column: 1; grid-row: 1; }
+.card-head:has(> .chart-tools) > .page-sub { grid-column: 1; grid-row: 2; text-align: left; white-space: normal; overflow: visible; }
+.card-head:has(> .chart-tools) > .chart-tools { grid-column: 2; grid-row: 1 / span 2; }
+.inv-charts > .inv-trend { grid-column: 1 / -1; }
+.inv-charts > .inv-trend, .inv-charts > .inv-trend .card-body { height: auto; max-height: none; overflow: visible; }

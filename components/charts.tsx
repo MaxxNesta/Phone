@@ -75,48 +75,32 @@ export function RevenueTrendChart({ data, height = 180 }: { data: { month: strin
 /** A horizontal ranked bar chart — top-selling items, top customers, anything "biggest N by X". */
 export function RankedBarChart({
   data,
-  height = 200,
+  height,
   compact = false,
 }: {
   data: { label: string; value: number | string }[];
+  /** Kept for callers; the list sizes to its rows. */
   height?: number;
-  /**
-   * Thinner bars and smaller labels, for a chart showing ten rows in the
-   * space this one usually gives six. Six fat bars read better than six
-   * thin ones, so the dashboard keeps what it has; ten at that weight are
-   * a solid block with gaps in it.
-   */
+  /** Tighter rows, for ten names in the space of six. */
   compact?: boolean;
 }) {
+  /* The name on its own line and a thin bar under it, rather than a name
+     squeezed beside a fat bar: product names are long ("iPhone 17 Pro Max
+     256GB CH/A White"), and beside the bar they were cut to a few words. */
   const rows = data.map((d) => ({ label: d.label, value: Number(d.value) }));
-  const bar = compact ? 10 : 18;
-  const tick = compact ? 11 : 12;
-  const axis = compact ? 140 : 160;
-  const cut = compact ? 20 : 24;
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <BarChart data={rows} layout="vertical"
-                margin={{ top: 4, right: compact ? 54 : 40, left: 4, bottom: 4 }}>
-        <XAxis type="number" hide />
-        <YAxis
-          type="category" dataKey="label" axisLine={false} tickLine={false} width={axis}
-          tick={{ fill: "var(--ink-soft)", fontSize: tick }}
-          tickFormatter={(v: string) => (v.length > cut ? `${v.slice(0, cut - 1)}…` : v)}
-        />
-        <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--line-soft)" }} />
-        <Bar dataKey="value" fill="var(--chart-1)" radius={[0, bar / 2, bar / 2, 0]} barSize={bar}>
-          {rows.map((r, i) => (
-            <Cell key={i} fill={signed(r.value, "var(--chart-1)")} />
-          ))}
-          <LabelList
-            dataKey="value"
-            position="right"
-            formatter={(v: unknown) => money(v as number)}
-            style={{ fill: "var(--muted)", fontSize: compact ? 11 : 12, fontFamily: "var(--sans)", fontVariantNumeric: "tabular-nums" }}
-          />
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <ol className={`rbar${compact ? " compact" : ""}`} style={height ? { minHeight: Math.min(height, rows.length * 40) } : undefined}>
+      {rows.map((r, i) => (
+        <li key={`${r.label}-${i}`} className="rbar-row" title={`${r.label} · ${money(r.value)}`}>
+          <span className="rbar-name">{r.label}</span>
+          <span className={`rbar-value${r.value < 0 ? " neg" : ""}`}>{money(r.value)}</span>
+          <span className="rbar-track">
+            <i style={{ width: `${(Math.abs(r.value) / max) * 100}%`, background: signed(r.value, "var(--chart-1)") }} />
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -169,7 +153,7 @@ export function RevenueBars({
             dashboard follows, and the month keeps five behind it for
             context rather than becoming the entire chart. */}
         <Bar
-          dataKey="revenue" radius={[6, 6, 0, 0]} maxBarSize={46}
+          dataKey="revenue" radius={[6, 6, 6, 6]} maxBarSize={18}
           cursor="pointer"
           onClick={(_data: unknown, index: number) => {
             const href = hrefs?.[rows[index]?.ym ?? ""];
@@ -225,6 +209,8 @@ const SLICE_COLOURS = [
   "var(--chart-4)",        // violet
   "var(--chart-5)",        // teal
   "var(--chart-6)",        // rose
+  "var(--chart-7)",
+  "var(--chart-8)",
 ];
 
 function SliceTooltip({ active, payload, total }: any) {
@@ -263,13 +249,16 @@ export function ShareDonut({
    *  months, a report means the period its filters are set to. */
   emptyLabel?: string;
 }) {
+  // Largest first, the gathered remainder last, so the ring reads from its
+  // biggest share round to "Others". Fixed colours keep the order they were given.
   const rows = data.map((d) => ({
     id: d.id, name: d.name, value: Number(d.revenue), rest: !!d.rest,
   }));
+  if (!fixed) rows.sort((a, b) => Number(a.rest) - Number(b.rest) || b.value - a.value);
   /* The remainder takes pale blue wherever it sits, and the named slices keep
      the palette in order regardless — so a colour means the same thing
      whether or not a remainder happens to be present. */
-  const REST = "color-mix(in srgb, var(--chart-1) 28%, var(--surface))";
+  const REST = "color-mix(in srgb, var(--ink) 16%, var(--surface))";
   let n = 0;
   const colourOf = (r: { rest: boolean }) =>
     r.rest ? REST : SLICE_COLOURS[n++ % SLICE_COLOURS.length];
@@ -287,8 +276,9 @@ export function ShareDonut({
           <PieChart>
             <Pie
               data={rows} dataKey="value" nameKey="name"
-              cx="50%" cy="50%" innerRadius={52} outerRadius={82}
-              paddingAngle={rows.length > 1 ? 2 : 0} stroke="var(--surface)" strokeWidth={2}
+              cx="50%" cy="50%" innerRadius={70} outerRadius={82} cornerRadius={8}
+              startAngle={180} endAngle={-180}
+              paddingAngle={rows.length > 1 ? 4 : 0} stroke="none"
             >
               {rows.map((r, i) => (
                 <Cell key={r.id} fill={colours[i]} />
@@ -361,12 +351,12 @@ export function TwoSeriesBars({
         {/* fill on the Bar as well as the Cells: the Cells colour each
             column, but the legend reads the series' own fill and shows a
             black dot without it. */}
-        <Bar dataKey={aLabel} fill={SLICE_COLOURS[0]} radius={[3, 3, 0, 0]} maxBarSize={22}>
+        <Bar dataKey={aLabel} fill={SLICE_COLOURS[0]} radius={[4, 4, 4, 4]} maxBarSize={10}>
           {rows.map((r, i) => (
             <Cell key={i} fill={signed(Number(r[aLabel]), SLICE_COLOURS[0])} />
           ))}
         </Bar>
-        <Bar dataKey={bLabel} fill={SLICE_COLOURS[1]} radius={[3, 3, 0, 0]} maxBarSize={22}>
+        <Bar dataKey={bLabel} fill={SLICE_COLOURS[1]} radius={[4, 4, 4, 4]} maxBarSize={10}>
           {rows.map((r, i) => (
             <Cell key={i} fill={signed(Number(r[bLabel]), SLICE_COLOURS[1])} />
           ))}
@@ -411,7 +401,7 @@ export function MeasureBars({
                  : Math.abs(v) >= 1e6 ? `${Math.round(v / 1e5) / 10}M`
                  : Math.abs(v) >= 1e3 ? `${Math.round(v / 1e3)}K` : String(v)} />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--line-soft)" }} />
-        <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={56}>
+        <Bar dataKey="value" radius={[6, 6, 6, 6]} maxBarSize={18}>
           {rows.map((r, i) => (
             <Cell key={r.label}
                   fill={signed(r.value, SLICE_COLOURS[i % SLICE_COLOURS.length])} />

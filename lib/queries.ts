@@ -7868,7 +7868,7 @@ export async function getSalesBreakdown(
      into revenue would hide both the gross and the fact it came back. On
      both bases this is the period's returns — a credit note is settled when
      it is raised, and there is nothing to match it to. */
-  const returned = (await sql`
+  const p_returned = sql`
     select ${dim} as key, sum(dl.net_amount) as returned
       from document_line dl
       join document d on d.id = dl.document_id
@@ -7878,10 +7878,9 @@ export async function getSalesBreakdown(
        and d.status = 'POSTED'
        and d.posting_date between ${from}::date and ${to}::date
        ${branch}
-     group by 1`) as unknown as Array<{ key: string; returned: string }>;
-  const returnBy = new Map(returned.map((c) => [c.key, Number(c.returned)]));
+     group by 1`;
 
-  const revenue = await sql`
+  const p_revenue = sql`
     select ${dim} as key, ${code} as code, ${name} as name,
            sum(case when dl.foc_reason_id is null then dl.base_qty else 0 end) as qty,
            sum(case when dl.foc_reason_id is null then dl.base_qty else 0 end
@@ -7912,7 +7911,7 @@ export async function getSalesBreakdown(
      it — the invoice normally, the delivery where the bill came first — so
      this basis ties to the income statement, which is the whole reason it
      exists. */
-  const cost = await sql`
+  const p_cost = sql`
     select ${dim} as key, ${code} as code, ${name} as name,
            sum(a.qty * a.unit_cost) as cost
       from sales_cost_allocation a
@@ -7939,7 +7938,7 @@ export async function getSalesBreakdown(
      now that both are recognised on the invoice.
      Goods that are not stocked are never awaiting shipment, so they are
      left out rather than reported as permanently unmatched. */
-  const unmatched = await sql`
+  const p_unmatched = sql`
     select ${dim} as key,
            sum(dl.net_amount * (1 - least(
              case when dl.base_qty > 0
@@ -7959,6 +7958,10 @@ export async function getSalesBreakdown(
        and i.is_stocked
        ${branch}
      group by 1`;
+  // Four independent reads, one round trip's wait rather than four.
+  const [returnedRows, revenue, cost, unmatched] = await Promise.all([p_returned, p_revenue, p_cost, p_unmatched]);
+  const returned = returnedRows as unknown as Array<{ key: string; returned: string }>;
+  const returnBy = new Map(returned.map((c) => [c.key, Number(c.returned)]));
   const unmatchedBy = new Map(
     (unmatched as unknown as Array<{ key: string; unmatched: string }>)
       .map((u) => [u.key, Number(u.unmatched)]));

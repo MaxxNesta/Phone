@@ -11,7 +11,10 @@ import { inventorySummary, catalogFacets, stripCost, foldToModels } from "@/lib/
 import { HelpHint } from "@/components/help-hint";
 import { CatalogFilterFields, catalogSelection } from "@/components/catalog-filters";
 import { AutoApply } from "@/components/auto-apply";
-import { ShareDonut, MeasureBars, RevenueTrendChart } from "@/components/charts";
+import { ShareDonut, MeasureBars } from "@/components/charts";
+import { ChartTools } from "@/components/chart-tools";
+import { InventoryTrendChart } from "@/components/inventory-trend-chart";
+import { ComboLegend } from "@/components/sales-combo-chart";
 import { money } from "@/lib/format";
 import { compact } from "@/components/stat";
 import { paginate } from "@/lib/paging";
@@ -95,20 +98,32 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     // The shop's own age groups (Inventory Aging settings), for the bar.
     agingReport(co, seen, { branchId: branch || undefined }),
     sql`select id, name from item_group where company_id = ${co} and parent_id is null order by name`,
-    // What the shelves were worth at each month's end: the inventory accounts' balance.
+    // Each month: what the shelves were worth at its end, what came in, and
+    // what went out as cost of sales. One pass over the ledger, grouped by
+    // month, rather than a separate scan per month.
     seeCost ? sql`
       with months as (
         select generate_series(date_trunc('month', fn_shop_today()) - interval '6 months',
-                               date_trunc('month', fn_shop_today()), interval '1 month')::date as m)
-      select to_char(m, 'YYYY-MM') as month,
-             coalesce((select sum(jl.base_amount) from journal_line jl
-                        join account a on a.id = jl.account_id
-                        join journal_entry je on je.id = jl.journal_entry_id
-                       where jl.company_id = ${co} and a.subledger = 'INVENTORY'
-                         and je.entry_date < (m + interval '1 month')
-                         ${scope.locationId ? sql`and jl.location_id = ${scope.locationId}`
-                           : scope.locs ? sql`and jl.location_id = any(${scope.locs})` : sql``}), 0)::float as revenue
-        from months order by m` : Promise.resolve([]),
+                               date_trunc('month', fn_shop_today()), interval '1 month')::date as m),
+      agg as (
+        select date_trunc('month', je.entry_date)::date as mon,
+               sum(jl.base_amount) filter (where a.subledger = 'INVENTORY') as inv_net,
+               sum(jl.base_amount) filter (where a.subledger = 'INVENTORY' and jl.base_amount > 0) as inv_in,
+               sum(jl.base_amount) filter (where a.account_type = 'COGS') as cogs
+          from journal_line jl
+          join account a on a.id = jl.account_id
+          join journal_entry je on je.id = jl.journal_entry_id
+         where jl.company_id = ${co} and (a.subledger = 'INVENTORY' or a.account_type = 'COGS')
+           and je.entry_date < date_trunc('month', fn_shop_today()) + interval '1 month'
+           ${at}
+         group by 1),
+      base as (select coalesce(sum(inv_net), 0) as b from agg where mon < (select min(m) from months))
+      select to_char(months.m, 'YYYY-MM') as month,
+             (base.b + sum(coalesce(agg.inv_net, 0)) over (order by months.m))::float as value,
+             coalesce(agg.inv_in, 0)::float as received,
+             coalesce(agg.cogs, 0)::float as cogs
+        from months cross join base left join agg on agg.mon = months.m
+       order by months.m` : Promise.resolve([]),
     // Turnover over the last 90 days: cost of goods sold against the average
     // of what the shelves were worth at the start and now.
     seeCost ? sql`
@@ -125,6 +140,19 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                         where jl.company_id = ${co} and a.subledger = 'INVENTORY' ${at}
                           and je.entry_date <= fn_shop_today()), 0)::float as closing` : Promise.resolve([]),
   ]);
+  const trendRows = (trend as { month: string; value: number; received: number; cogs: number }[]).map((t) => ({
+    month: t.month, value: Number(t.value), received: Number(t.received), cogs: Math.abs(Number(t.cogs)),
+  }));
+  const valNow = trendRows.at(-1)?.value ?? 0;
+  const valPrev = trendRows.at(-2)?.value ?? 0;
+  const valStart = trendRows[0]?.value ?? 0;
+  const sumIn = trendRows.reduce((t, r) => t + r.received, 0);
+  const sumOut = trendRows.reduce((t, r) => t + r.cogs, 0);
+  const pctMove = (now: number, then: number) => {
+    if (!then) return null;
+    const p = ((now - then) / Math.abs(then)) * 100;
+    return { text: `${p >= 0 ? "▲" : "▼"} ${Math.abs(p).toFixed(1)}%`, good: p >= 0 };
+  };
   const f0 = (flow as any[])[0];
   const avgInv = f0 ? (Number(f0.opening) + Number(f0.closing)) / 2 : 0;
   const turnover = f0 && avgInv > 0 ? Number(f0.cogs) / avgInv : null;
@@ -166,9 +194,9 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const top = cats.slice(0, 7);
   const rest = cats.slice(7);
   const donut = [...top.map((x) => ({ id: x.name, name: x.name, revenue: x.value })),
-    ...(rest.length ? [{ id: "rest", name: "Others", revenue: rest.reduce((s, x) => s + x.value, 0), rest: true }] : [])];
+    ...(rest.length ? [{ id: "rest", name: `Other ${rest.length} ${rest.length === 1 ? "category" : "categories"}`, revenue: rest.reduce((s, x) => s + x.value, 0), rest: true }] : [])];
   const bars = [...top.map((x) => ({ label: x.name, value: x.qty })),
-    ...(rest.length ? [{ label: "Others", value: rest.reduce((s, x) => s + x.qty, 0) }] : [])];
+    ...(rest.length ? [{ label: `Other ${rest.length}`, value: rest.reduce((s, x) => s + x.qty, 0) }] : [])];
 
   // The table: what is on the shelf, unless asked for the whole catalogue.
   const allItems = sp.all === "1" || sp.status === "OUT";
@@ -273,20 +301,33 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       <section className="inv-charts">
         {seeCost && (
           <div className="card inv-chart">
-            <div className="card-head"><h2>Stock value by category</h2><span className="page-sub">MMK, at cost</span></div>
+            <div className="card-head"><h2>Stock value by category</h2><span className="page-sub">MMK, at cost</span>
+              <ChartTools name="stock-value-by-category" rows={[["Category", "Value (MMK)"], ...donut.map((d) => [d.name, Math.round(Number(d.revenue))])]} /></div>
             <div className="card-body"><ShareDonut data={donut} currency="MMK" emptyLabel="Nothing in stock yet." /></div>
           </div>
         )}
         <div className="card inv-chart">
-          <div className="card-head"><h2>Stock quantity by category</h2><span className="page-sub">units on hand</span></div>
+          <div className="card-head"><h2>Stock quantity by category</h2><span className="page-sub">units on hand</span>
+            <ChartTools name="stock-quantity-by-category" rows={[["Category", "Units"], ...bars.map((b) => [b.label, Number(b.value)])]} /></div>
           <div className="card-body">
             {bars.length ? <MeasureBars data={bars} format="plain" height={250} /> : <div className="empty">Nothing in stock yet.</div>}
           </div>
         </div>
         {seeCost && (
-          <div className="card inv-chart">
-            <div className="card-head"><h2>Inventory value trend</h2><span className="page-sub">month end · {compact(totalValue)} MMK now</span></div>
-            <div className="card-body"><RevenueTrendChart data={trend as never} height={250} /></div>
+          <div className="card inv-chart inv-trend">
+            <div className="card-head"><h2>Inventory value trend</h2><span className="page-sub">last 7 months · MMK at cost</span>
+              <ChartTools name="inventory-value-trend" rows={[["Month", "Value at month end", "Stock in", "Cost of sales"],
+                ...trendRows.map((t) => [t.month, Math.round(t.value), Math.round(t.received), Math.round(t.cogs)])]} /></div>
+            <div className="card-body">
+              <ComboLegend items={[
+                { color: "var(--chart-1)", label: "Stock value", value: compact(valNow),
+                  delta: pctMove(valNow, valPrev), note: valStart ? `${pctMove(valNow, valStart)?.text ?? "—"} over 6 months` : undefined },
+                { color: "color-mix(in srgb, var(--chart-3) 75%, transparent)", label: "Stock in", value: compact(sumIn) },
+                { color: "color-mix(in srgb, var(--chart-4) 75%, transparent)", label: "Cost of sales", value: compact(sumOut) },
+                ...(dio !== null ? [{ color: "var(--line)", label: "Stock cover", value: `${Math.round(dio)} days`, note: "at the last 90 days' pace" }] : []),
+              ]} />
+              <InventoryTrendChart data={trendRows} height={260} />
+            </div>
           </div>
         )}
       </section>
@@ -313,7 +354,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           </div>
         </Link>
         <div className="card inv-status-card">
-          <div className="card-head"><h2>Catalogue by model</h2><span className="page-sub">{all.length} models</span></div>
+          <div className="card-head"><h2>Catalogue by model</h2><span className="page-sub">{all.length} models</span>
+            <ChartTools name="catalogue-by-stock-status" rows={[["Status", "Models"], ["In stock", healthy.length], ["Low stock", low.length], ["Out of stock", out.length]]} /></div>
           <div className="card-body">
             <ShareDonut count emptyLabel="No products yet." currency=""
               centre={{ value: String(all.length), label: "Models" }}

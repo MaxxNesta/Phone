@@ -323,7 +323,7 @@ function ProductMatrix({
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={byCol.filter((d) => d.qty > 0)} dataKey="qty" nameKey="name"
-                           innerRadius="58%" outerRadius="84%" paddingAngle={2}>
+                           innerRadius="72%" outerRadius="84%" cornerRadius={8} paddingAngle={4} stroke="none">
                         {byCol.filter((d) => d.qty > 0).map((_, i) => (
                           <Cell key={i} fill={SLICES[i % SLICES.length]} />
                         ))}

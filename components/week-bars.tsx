@@ -30,7 +30,7 @@ export function WeekBars({ data }: { data: { label: string; revenue: number }[] 
             )} />
           <Tooltip cursor={{ fill: "var(--brand-weak)" }}
             formatter={(v) => [`${money(Number(v))} MMK`, t("sales")]} />
-          <Bar dataKey="revenue" radius={[8, 8, 8, 8]} maxBarSize={56}>
+          <Bar dataKey="revenue" radius={[8, 8, 8, 8]} maxBarSize={18}>
             {data.map((d, i) => (
               <Cell key={d.label + i} fill={i === last ? "var(--chart-1)" : "var(--bar-past)"} />
             ))}

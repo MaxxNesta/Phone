@@ -66,7 +66,7 @@ export function SalesComboChart({ data, week = false, height = 280, showProfit =
           <YAxis yAxisId="m" axisLine={false} tickLine={false} width={44}
             tickFormatter={short} tick={{ fill: "var(--muted)", fontSize: 11 }} />
           {/* Customers on their own scale, kept to the bottom quarter. */}
-          <YAxis yAxisId="c" hide domain={[0, maxC * 4]} />
+          <YAxis yAxisId="c" orientation="right" hide domain={[0, maxC * 4]} />
           <Tooltip content={<Tip week={week} showProfit={showProfit} />} cursor={{ stroke: "var(--line)" }} />
           <Bar yAxisId="c" dataKey="customers" radius={[2, 2, 0, 0]} maxBarSize={14}>
             {data.map((_, i) => <Cell key={i} fill={tone(data, i)} />)}
