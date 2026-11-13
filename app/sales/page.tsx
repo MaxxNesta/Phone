@@ -6,7 +6,8 @@ import { seenLocations } from "@/lib/branch-scope";
 import { salesOverview } from "@/lib/overviews";
 import { money } from "@/lib/format";
 import { KpiCard } from "@/components/kpi-card";
-import { WeekBars } from "@/components/week-bars";
+import { SalesComboCard } from "@/components/sales-combo-card";
+import { salesLast30 } from "@/lib/queries";
 
 export const metadata = { title: "Sales overview" };
 
@@ -18,7 +19,8 @@ export default async function SalesOverview() {
   const user = await requirePermission("sales.view");
   const t = await getTranslations("overview");
   const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
-  const d = await salesOverview(user.companyId, await seenLocations());
+  const locs = await seenLocations();
+  const [d, perf] = await Promise.all([salesOverview(user.companyId, locs), salesLast30(user.companyId, locs)]);
   const seeCost = can(user, "cost.view");
   const { kpi } = d;
   const gp = kpi.revenue - kpi.cost;
@@ -49,10 +51,8 @@ export default async function SalesOverview() {
       </div>
 
       <div className="section-grid eqrow">
-        <div className="card">
-          <div className="card-head"><h2>{t("salesByDay")}</h2><span className="page-sub">{t("last7")}</span></div>
-          <div className="card-body"><WeekBars data={d.week.map((w) => ({ label: day(w.day, { weekday: "short" }), revenue: w.revenue }))} /></div>
-        </div>
+        <SalesComboCard title={t("salesByDay")} rows={perf.rows} now={perf.now} before={perf.before}
+          from={perf.from} to={perf.to} showProfit={seeCost} />
         <div className="card">
           <div className="card-head"><h2>{t("takings")}</h2><span className="page-sub">{t("today")}</span></div>
           <div className="card-body">

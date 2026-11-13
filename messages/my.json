@@ -1160,6 +1160,7 @@
     "today": "ယနေ့",
     "earlierDays": "ယခင်ရက်များ",
     "noSalesYesterday": "မနေ့က အရောင်း မရှိ",
+    "vsYesterdayShort": "မနေ့က နှင့် နှိုင်းယှဉ်",
     "vsYesterday": "မနေ့နှင့် နှိုင်းယှဉ်လျှင် {pct}%",
     "grossProfit": "အကြမ်း အမြတ်",
     "margin": "အမြတ် {pct}%",

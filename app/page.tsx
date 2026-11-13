@@ -8,14 +8,14 @@ import { planIncludes } from "@/lib/plans";
 import { retailDashboard } from "@/lib/phone";
 import { money } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
-import { WeekBars } from "@/components/week-bars";
+import { SalesComboCard } from "@/components/sales-combo-card";
 import { ArrowRight } from "lucide-react";
 import { ShareDonut } from "@/components/charts";
 import { PeriodPicker } from "@/components/period-picker";
 import { resolvePeriod, DEFAULT_PERIOD } from "@/lib/period";
 import {
   getTopCategories, getRevenueByRegion, getRevenueByBranch, getReceiptsByAccount, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
-  getHealth,
+  getHealth, salesLast30,
 } from "@/lib/queries";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -89,7 +89,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     return q ? `/?${q}` : "/";
   };
   const co = user.companyId;
-  const [d, cats, regionRows, branchRows, payRows, custRows, suppRows, recentDocs, health] = await Promise.all([
+  const [d, cats, regionRows, branchRows, payRows, custRows, suppRows, recentDocs, health, perf] = await Promise.all([
     seenLocations().then((locs) => retailDashboard(co, locs)),
     getTopCategories(co, period.cat.from, period.cat.to),
     advanced ? getRevenueByRegion(co, period.reg.from, period.reg.to) : none,
@@ -99,6 +99,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     advanced ? getSpendBySupplierCategory(co, period.supp.from, period.supp.to) : none,
     seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs, true)),
     advanced ? getHealth(co) : null,
+    seenLocations().then((locs) => salesLast30(co, locs)),
   ]);
   const categories = cats as unknown as Share[];
   const regions = regionRows as unknown as Share[];
@@ -148,24 +149,25 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
 
       <div className="stats">
         <Stat icon={<Banknote size={20} />} label={t("todaysSales")} value={`${compact(d.today.revenue)} MMK`}
-          note={change === null ? t("noSalesYesterday") : t("vsYesterday", { pct: `${change >= 0 ? "+" : ""}${change.toFixed(1)}` })}
-          noteTone={change === null ? undefined : change >= 0 ? "up" : "down"} />
+          delta={change === null ? null : { text: `${change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(1)}%`, good: change >= 0 }}
+          note={change === null ? t("noSalesYesterday") : t("vsYesterdayShort")}
+          trend={(d.week as unknown as { revenue: number }[]).map((w) => Number(w.revenue))} />
         {seeCost && (
           <Stat icon={<TrendingUp size={20} />} tone="slate" label={t("grossProfit")} value={`${compact(gp)} MMK`}
             note={t("margin", { pct: margin.toFixed(1) })} />
         )}
         <Stat icon={<Smartphone size={20} />} tone="violet" label={t("phonesSold")} value={t("units", { n: d.today.phones })}
+          delta={d.today.phones === d.yesterday.phones ? null : {
+            text: `${d.today.phones > d.yesterday.phones ? "▲" : "▼"} ${Math.abs(d.today.phones - d.yesterday.phones)}`,
+            good: d.today.phones > d.yesterday.phones }}
           note={t("yesterday", { n: d.yesterday.phones })} />
         <Stat icon={<Users size={20} />} tone="amber" label={t("receivables")} value={`${compact(d.ar.owed)} MMK`}
           note={t("customersDue", { n: d.ar.customers })} noteTone="warn" />
       </div>
 
       <div className="section-grid eqrow">
-        <div className="card">
-          <div className="card-head"><h2>{t("salesPerformance")}</h2><span className="page-sub">{t("last7")}</span></div>
-          <div className="card-body"><WeekBars data={(d.week as unknown as { day: string; label: string; revenue: number }[]).map((w) => ({
-            ...w, label: new Date(`${w.day}T00:00:00Z`).toLocaleDateString(dateLocale, { weekday: "short", timeZone: "UTC" }) }))} /></div>
-        </div>
+        <SalesComboCard title={t("salesPerformance")} rows={perf.rows} now={perf.now} before={perf.before}
+          from={perf.from} to={perf.to} showProfit={seeCost} />
         <div className="card">
           <div className="card-head"><h2>{t("topModels")}</h2><span className="page-sub">{t("last30")}</span></div>
           <div className="card-body">

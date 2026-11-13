@@ -1160,6 +1160,7 @@
     "today": "Today",
     "earlierDays": "Earlier days",
     "noSalesYesterday": "No sales yesterday",
+    "vsYesterdayShort": "vs yesterday",
     "vsYesterday": "{pct}% vs yesterday",
     "grossProfit": "Gross Profit",
     "margin": "{pct}% margin",

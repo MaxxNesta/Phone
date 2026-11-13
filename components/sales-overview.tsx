@@ -1,5 +1,5 @@
 import { money } from "@/lib/db";
-import { RevenueTrendChart, TwoSeriesBars } from "@/components/charts";
+import { SalesComboChart, ComboLegend, type ComboPoint } from "@/components/sales-combo-chart";
 
 type Side = {
   net: number; units: number; cost: number; profit: number;
@@ -53,6 +53,12 @@ function Delta({ now, before, points = false, invert = false }: {
   );
 }
 
+function pctDelta(now: number, before: number) {
+  if (before === 0) return null;
+  const pct = ((now - before) / Math.abs(before)) * 100;
+  return { text: `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`, good: pct >= 0 };
+}
+
 function Kpi({ label, value, now, before, points, invert }: {
   label: string; value: string;
   now: number | null; before: number | null; points?: boolean; invert?: boolean;
@@ -70,8 +76,10 @@ function Kpi({ label, value, now, before, points, invert }: {
 }
 
 export function SalesOverview({
-  now, before, series, prevFrom, prevTo, currency, retail,
+  now, before, prevFrom, prevTo, currency, retail, daily,
 }: {
+  /** Day by day (week by week over a long range): sales, profit, customers. */
+  daily: { unit: "day" | "week"; rows: ComboPoint[] };
   /** Retail: goods leave on the invoice, so nothing is ever unshipped. */
   retail?: boolean;
   now: Side; before: Side;
@@ -114,26 +122,23 @@ export function SalesOverview({
         )}
       </div>
 
-      <section className="grid2">
+      {/* Sales, profit and customers on one time axis, at the grain the
+          range allows: by day up to four months, by week beyond. */}
+      <section>
         <div className="card">
           <div className="card-head">
-            <h2>Sales trend</h2>
-            <span className="page-sub">net sales by month</span>
+            <span><h2>Sales, profit and customers</h2>
+              <span className="page-sub combo-sub">by {daily.unit} · against {prevFrom} to {prevTo}</span></span>
           </div>
           <div className="card-body">
-            <RevenueTrendChart
-              data={series.map((s) => ({ month: s.month, revenue: s.net }))} />
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="card-head">
-            <h2>Sales vs gross profit</h2>
-            <span className="page-sub">the gap is the cost</span>
-          </div>
-          <div className="card-body">
-            <TwoSeriesBars height={200} aLabel={revenueLabel} bLabel="Gross profit"
-              data={series.map((s) => ({ month: s.month, a: s.net, b: s.profit }))} />
+            <ComboLegend items={[
+              { color: "var(--blue)", label: "Net sales", value: `${currency} ${num(now.net)}`, delta: pctDelta(now.net, before.net) },
+              { color: "#AEAEB2", label: "Gross profit", value: `${currency} ${num(now.profit)}`, delta: pctDelta(now.profit, before.profit),
+                note: now.marginPct === null ? undefined : `${now.marginPct.toFixed(1)}% margin` },
+              { color: "#34C759", label: "Customers", value: num(daily.rows.reduce((t, r) => t + r.customers, 0)),
+                note: `avg ${currency} ${num(daily.rows.reduce((t, r) => t + r.customers, 0) ? now.net / daily.rows.reduce((t, r) => t + r.customers, 0) : 0)} each` },
+            ]} />
+            <SalesComboChart data={daily.rows} week={daily.unit === "week"} height={320} />
           </div>
         </div>
       </section>

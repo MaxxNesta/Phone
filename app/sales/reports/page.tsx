@@ -8,6 +8,7 @@ import { RankedBarChart, ShareDonut } from "@/components/charts";
 import { BreakdownPerformance } from "@/components/breakdown-performance";
 import {
   getCompany, getBranches, getSalesBreakdown, getSalesOverview, getBrandsInUse, getSalesPivotFacts, PIVOT_CAP, UNASSIGNED_BRANCH,
+  getSalesSeries, salesScope,
   type SalesBreakdownBy,
 } from "@/lib/queries";
 import { SalesOverview } from "@/components/sales-overview";
@@ -65,9 +66,12 @@ export default async function SalesReports({
   /* Only what the open tab needs. The overview compares two periods and
      the breakdowns scan one, and running both on every load would double
      the work to show half of it. */
-  const overview = tab === "overview"
-    ? await getSalesOverview(company.id, range.from, range.to, branchId)
-    : null;
+  const [overview, daily] = tab === "overview"
+    ? await Promise.all([
+        getSalesOverview(company.id, range.from, range.to, branchId),
+        getSalesSeries(company.id, range.from, range.to, salesScope(branchId)),
+      ])
+    : [null, null];
   const facts = tab === "pivot" ? await getSalesPivotFacts(company.id, range.from, range.to, branchId) : null;
   const rows = tab === "overview" || tab === "pivot"
     ? []
@@ -268,6 +272,7 @@ export default async function SalesReports({
         <SalesOverview
           now={overview.now} before={overview.before}
           series={overview.series} prevFrom={overview.prevFrom} prevTo={overview.prevTo}
+          daily={daily!}
           currency={company.base_currency}
           retail={retail}
         />
