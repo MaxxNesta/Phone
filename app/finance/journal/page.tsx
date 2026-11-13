@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getFinanceData, peekVoucherNo, createJournalVoucher } from "@/lib/actions";
 import { getCompany } from "@/lib/queries";
 import { VoucherForm } from "@/components/voucher-form";
@@ -8,7 +9,7 @@ import { HelpHint } from "@/components/help-hint";
 export default async function JournalVoucher() {
   const { accounts, accountTree, cashAccounts, bankAccounts, branches } = await getFinanceData();
   const company = await getCompany();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const nextNo = await peekVoucherNo("JOURNAL_VOUCHER");
   const money = cashAccounts;
 

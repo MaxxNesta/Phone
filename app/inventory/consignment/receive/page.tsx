@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getCompany, getConsignmentAgreements, getLocations } from "@/lib/queries";
 import { sql } from "@/lib/db";
 import { createConsignmentReceipt } from "@/lib/actions";
@@ -16,7 +17,7 @@ export default async function ReceiveConsignmentPage() {
          where company_id = ${company.id} and is_stocked and is_active order by code` as any,
   ]);
   const locations = allLocations.filter((l: any) => l.is_stock_location);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <ConsignmentReceiveForm

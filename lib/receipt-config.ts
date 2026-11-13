@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 /**
  * What a receipt template can decide, and only that.
  *
@@ -236,7 +237,7 @@ export type ReceiptIdentity = {
 /** Labelled as sample wherever it is shown: it is not a sale. */
 export const SAMPLE_RECEIPT: ReceiptData = {
   docNo: "SAMPLE-0001", version: 1, status: "POSTED",
-  date: new Date().toISOString().slice(0, 10), time: "16:28",
+  date: todayLocal(), time: "16:28",
   customer: "Walk-in customer", salesman: "Ko Aung", cashier: "Ma Su", paymentMethod: "Split payment",
   subtotal: 8_290_000, discount: 156_000, freeCount: 1, freeValue: 15_000,
   net: 8_134_000, tax: 0, total: 8_134_000,

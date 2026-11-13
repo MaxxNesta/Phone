@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { csvCell } from "@/lib/csv";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
       : mine[0]?.id ?? "00000000-0000-0000-0000-000000000000";
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const askedTo = asDate(q.get("to"));
   // Clamped the same way the page clamps it, or the file would cover a
   // different window than the screen it came from.

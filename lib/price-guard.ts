@@ -19,10 +19,10 @@ export async function priceFacts(co: string, itemIds: string[], partnerId: strin
     select i.id, i.name,
            coalesce(
              (select ip.price from item_price ip join price_level pl on pl.id = ip.price_level_id
-               where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= current_date
+               where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= fn_shop_today()
                order by ip.valid_from desc limit 1),
              (select ip.price from item_price ip
-               where ip.item_id = i.id and ip.valid_from <= current_date
+               where ip.item_id = i.id and ip.valid_from <= fn_shop_today()
                  and ip.price_level_id = (select price_level_id from business_partner where id = ${partnerId}::uuid)
                order by ip.valid_from desc limit 1))::float as price,
            (select sum(v.value_on_hand) / nullif(sum(v.qty_on_hand), 0) from v_stock_on_hand v

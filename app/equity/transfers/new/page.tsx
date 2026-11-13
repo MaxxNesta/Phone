@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { listShareholders, shareFormState } from "@/lib/shares";
@@ -23,7 +24,7 @@ export default async function NewShareTransfer() {
       <ShareTransferForm action={postShareTransferAction}
         holders={holders.map((h) => ({ id: h.id, code: h.code, name: h.name, folio_no: h.folio_no, is_active: h.is_active }))}
         holdings={state.holdings as never} nextIssueNo={state.nextIssueNo}
-        equityAccounts={equity as never} assetAccounts={money as never} today={new Date().toISOString().slice(0, 10)} />
+        equityAccounts={equity as never} assetAccounts={money as never} today={todayLocal()} />
     </div>
   );
 }

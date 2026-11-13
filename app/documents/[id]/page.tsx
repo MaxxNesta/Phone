@@ -1,3 +1,4 @@
+import { DISPLAY_TZ } from "@/lib/format";
 import { Fragment } from "react";
 import { FaDocLinks } from "@/components/fa-doc-links";
 import { HrDocLinks } from "@/components/hr-doc-links";
@@ -926,7 +927,7 @@ export default async function DocumentPage({
           {doc.memo && <> — {String(doc.memo)}</>}
           <div className="subline">
             Posted {people.doc?.posted_at
-              ? new Date(String(people.doc.posted_at)).toLocaleString("en-GB", {
+              ? new Date(String(people.doc.posted_at)).toLocaleString("en-GB", { timeZone: DISPLAY_TZ,
                   day: "numeric", month: "short", year: "numeric",
                   hour: "2-digit", minute: "2-digit",
                 })

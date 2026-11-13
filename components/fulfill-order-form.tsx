@@ -1,4 +1,5 @@
 "use client";
+import { todayLocal } from "@/lib/format";
 
 import Link from "next/link";
 import { MaybeSamePurchase, BillAwaitsTheseGoods, type WaitingBill } from "./same-purchase";
@@ -240,7 +241,7 @@ export function FulfillOrderForm({
             <input type="hidden" name="partner_id" value={partnerId} />
             <input type="hidden" name="location_id" value={locationId} />
             <input type="hidden" name="source_document_id" value={orderId} />
-            <input type="hidden" name="doc_date" value={new Date().toISOString().slice(0, 10)} />
+            <input type="hidden" name="doc_date" value={todayLocal()} />
             <input type="hidden" name="reference" value={`Against ${orderNo}`} />
             <input type="hidden" name="lines" value={payload} />
             {saveDraft && (

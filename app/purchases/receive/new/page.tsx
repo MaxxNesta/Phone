@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getFormData, createGoodsReceipt, saveReceiptDraft } from "@/lib/actions";
 import {
   getOpenPurchaseInvoices, getOpenPurchaseOrders, getGrirCollisions,
@@ -42,7 +43,7 @@ export default async function NewGoodsReceipt({
           action={createGoodsReceipt}
           bill={bill as never}
           locations={d.locations as never}
-          today={new Date().toISOString().slice(0, 10)}
+          today={todayLocal()}
           now={now}
           related={<RelatedDocumentsPanel related={related} />}
           backHref={orderId ? `/documents/${orderId}` : `/documents/${bill.id}`}
@@ -83,7 +84,7 @@ export default async function NewGoodsReceipt({
     order.lines.push({ itemId: r.item_id, itemCode: r.item_code, qty: Number(r.remaining_qty) });
     ordersBySupplier.set(r.partner_id, list);
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   // Receiving a purchase order: its open lines, at the price it was ordered.
   const orderRows = orderId ? (openOrders as unknown as Array<{

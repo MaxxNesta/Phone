@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCompany, getRoute, getRouteCandidates, getVehicles, getDrivers,
@@ -38,7 +39,7 @@ export default async function RouteDetail({
     Array<{ id: string; code: string; name: string; parent_id: string | null }>,
   ];
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <>

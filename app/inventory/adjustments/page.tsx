@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getCompany } from "@/lib/queries";
 import Link from "next/link";
 import { getFormData, createStockAdjustment } from "@/lib/actions";
@@ -17,7 +18,7 @@ export default async function NewStockAdjustment() {
   const co = await getCompany();
   if (!co) return <div className="empty">{c("noCompany")}</div>;
   const categories = await allCategories(co.id);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   if (categories.length === 0 || d.locations.length === 0) {
     return (

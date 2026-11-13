@@ -6,7 +6,7 @@ import { HelpHint } from "@/components/help-hint";
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const shortDate = (v: string | null) =>
   v ? new Date(v).toLocaleDateString("en-GB",
-    { day: "numeric", month: "short", year: "numeric" }) : "never";
+    { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }) : "never";
 
 export default async function Routes() {
   const company = await getCompany();

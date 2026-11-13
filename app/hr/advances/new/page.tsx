@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { employeeList, moneyAccounts } from "@/lib/hr";
@@ -14,7 +15,7 @@ export default async function NewAdvance({ searchParams }: { searchParams: Promi
   return (
     <div className="fa">
       <Breadcrumbs trail={[{ label: "HR & Payroll", href: "/hr" }, { label: "Salary Advances", href: "/hr/advances" }, { label: "New advance" }]} />
-      <AdvanceForm action={createAdvanceAction} money={money} today={new Date().toISOString().slice(0, 10)}
+      <AdvanceForm action={createAdvanceAction} money={money} today={todayLocal()}
         employeeId={(await searchParams).employee}
         employees={staff.filter((e) => e.status === "ACTIVE").map((e) => ({ id: e.id, code: e.code, name: e.full_name }))} />
     </div>

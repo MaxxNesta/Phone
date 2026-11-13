@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getFormData, createSalesOrder, saveInvoiceDraft } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
@@ -19,7 +20,7 @@ export default async function NewSalesOrder({
   if (!co) return <div className="empty">No company found.</div>;
   const categories = await allCategories(co.id);
   const awaiting = await getUntouchedOpenOrders(co.id, "SALES_ORDER");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   // Resuming an unfinished order. Gone meanwhile means a blank form, not an
   // error — the work is lost either way and a dead end helps nobody.

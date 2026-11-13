@@ -11,7 +11,7 @@ const money = (v: string | number | null | undefined) =>
   (Number(v ?? 0) + 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 const day = (v: string) =>
-  new Date(v).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  new Date(v).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
 
 type Year = {
   fiscal_year_id: string; code: string; status: string;

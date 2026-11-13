@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { sql, money } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
@@ -20,7 +21,7 @@ export default async function PaymentsReceived({
   const user = await requirePermission("accounting.view");
   const co = user.companyId;
   const sp = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const from = /^\d{4}-\d{2}-\d{2}$/.test(sp.from ?? "") ? sp.from! : today.slice(0, 8) + "01";
   const to = /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? "") ? sp.to! : today;
   const status = sp.status === "all" || sp.status === "REVERSED" ? sp.status : "POSTED";

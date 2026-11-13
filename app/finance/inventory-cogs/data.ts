@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
   getCompany, getBranches, getUnassignedBranchActivity,
@@ -8,7 +9,7 @@ import { stockReasons, explainGap, type Reason } from "@/lib/stock-reasons";
 export type Params = { from?: string; to?: string; branch?: string };
 
 const defaultFrom = () => `${new Date().getFullYear()}-01-01`;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayLocal();
 const n = (v: unknown) => Number(v ?? 0);
 const r4 = (v: number) => Math.round(v * 10000) / 10000;
 

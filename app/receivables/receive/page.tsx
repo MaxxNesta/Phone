@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { onlyMyLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { getSettlementData, createCustomerReceipt } from "@/lib/actions";
@@ -17,7 +18,7 @@ export default async function ReceiveFromCustomer({
   const company = await getCompany();
   // A receipt or payment is written at the person's own branch.
   const branches = company ? await onlyMyLocations((await getBranches(company.id)) as unknown as { id: string }[]) : [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   // Mapped as the person's own branch maps them, or the company default.
   const channels = company
     ? await channelsAt(company.id, branches.length === 1 ? (branches[0] as { id: string }).id : null)

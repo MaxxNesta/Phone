@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { sql } from "@/lib/db";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
@@ -17,7 +18,7 @@ import type { Section, Summary } from "@/components/statement-table";
 export type Params = { asOf?: string; branch?: string };
 
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 export async function getBalanceSheetData({ asOf: asOfParam, branch }: Params) {

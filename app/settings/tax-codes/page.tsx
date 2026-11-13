@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getCompany } from "@/lib/queries";
 import { sql } from "@/lib/db";
 import { createTaxCode, updateTaxCode, addTaxRate } from "@/lib/actions";
@@ -10,7 +11,7 @@ export default async function TaxCodes() {
   const co = await getCompany();
   if (!co) return <div className="empty">No company found.</div>;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   /* Each code with the rate in force today and every rate it has carried.
      Documents are counted per rate by the date they were posted on, so the
@@ -18,7 +19,7 @@ export default async function TaxCodes() {
      started. */
   const codes = (await sql`
     select t.id, t.code, t.name, t.is_active,
-           fn_tax_rate_on(t.id, current_date) as current,
+           fn_tax_rate_on(t.id, fn_shop_today()) as current,
            (select count(distinct l.document_id)::int from document_line l
              where l.tax_code_id = t.id) as documents,
            coalesce((

@@ -57,7 +57,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     sql`select id, name from price_level where company_id = ${company.id}
          order by (code = 'RETAIL' and (select retail_mode from company where id = ${company.id})) desc, sort_order, code` as unknown as Promise<{ id: string; name: string }[]>,
     sql`select distinct on (price_level_id) price_level_id, price from item_price
-         where item_id = ${id} and valid_from <= current_date order by price_level_id, valid_from desc` as unknown as Promise<any[]>,
+         where item_id = ${id} and valid_from <= fn_shop_today() order by price_level_id, valid_from desc` as unknown as Promise<any[]>,
     sql`select coalesce(sum(qty_on_hand), 0)::float as qty, coalesce(sum(value_on_hand), 0)::float as value
           from v_stock_on_hand where item_id = ${id}` as unknown as Promise<any[]>,
     sql`select d.id, d.doc_no, to_char(d.doc_date, 'DD Mon YYYY') as date, bp.name as supplier,

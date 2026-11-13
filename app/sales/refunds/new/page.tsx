@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { getRefundableReturns } from "@/lib/queries";
@@ -16,7 +17,7 @@ export default async function NewRefund({ searchParams }: { searchParams: Promis
     .filter((r) => Number(r.refundable) > 0.5 || r.id === returnId);
   const locations = [...new Set(rows.map((r) => r.location_id as string).filter(Boolean))];
   const channels = Object.fromEntries(await Promise.all(locations.map(async (l) => [l, await channelsAt(user.companyId, l)])));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <>

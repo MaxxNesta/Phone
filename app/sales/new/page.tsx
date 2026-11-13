@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getFormData, createSalesInvoice, saveInvoiceDraft } from "@/lib/actions";
 import { ordersAndDeliveriesOn } from "@/lib/features";
 import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocumentDraft } from "@/lib/queries";
@@ -32,7 +33,7 @@ export default async function NewSalesInvoice({
   // Whose goods are on the shelf. A Take Now invoice moves stock, so the line
   // has to be able to say which pool it came out of.
   const ownership = await getOwnershipMap(co.id);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   // Resuming an unfinished voucher. A draft deleted meanwhile opens a blank
   // form rather than an error — the work is gone either way, and a dead end

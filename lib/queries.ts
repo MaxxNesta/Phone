@@ -104,7 +104,7 @@ export async function getActionItems(companyId: string) {
       count(*)::int as open,
       count(*) filter (where done < 0.0001)::int as not_started,
       count(*) filter (where done >= 0.0001)::int as partial,
-      count(*) filter (where due_date is not null and due_date < current_date)::int as overdue
+      count(*) filter (where due_date is not null and due_date < fn_shop_today())::int as overdue
       from per_order
      where remaining > 0.0001`;
 
@@ -138,10 +138,10 @@ export async function getActionItems(companyId: string) {
   const [openDeliv] = await sql`
     select count(*)::int as n,
            count(*) filter (
-             where current_date - d.doc_date > ${GRIR_AGE_DAYS})::int as aged,
+             where fn_shop_today() - d.doc_date > ${GRIR_AGE_DAYS})::int as aged,
            coalesce(sum(d.gross_total) filter (
-             where current_date - d.doc_date > ${GRIR_AGE_DAYS}), 0) as aged_total,
-           coalesce(max(current_date - d.doc_date), 0)::int as oldest_days
+             where fn_shop_today() - d.doc_date > ${GRIR_AGE_DAYS}), 0) as aged_total,
+           coalesce(max(fn_shop_today() - d.doc_date), 0)::int as oldest_days
       from document d
      where d.company_id = ${companyId} and d.doc_type = 'DELIVERY' and d.status = 'POSTED'
        and not exists (
@@ -356,8 +356,8 @@ export async function getDueWithin(
      where company_id = ${companyId} and doc_type = ${docType}
        ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
        and due_date is not null
-       and due_date >= current_date
-       and due_date <= current_date + ${days}::int`;
+       and due_date >= fn_shop_today()
+       and due_date <= fn_shop_today() + ${days}::int`;
   return { total: Number(row?.total ?? 0), invoices: Number(row?.invoices ?? 0) };
 }
 
@@ -616,7 +616,7 @@ export async function getPartnerBalances(companyId: string, docType: "SALES_INVO
            sum(v.gross_total) as invoiced, sum(v.paid) as paid, sum(v.outstanding) as outstanding,
            sum(v.outstanding) filter (where v.due_date is not null and v.days_overdue > 0) as overdue,
            sum(v.outstanding) filter (where v.due_date is not null and v.days_overdue <= 0
-                                        and v.due_date <= current_date + 7) as due_soon,
+                                        and v.due_date <= fn_shop_today() + 7) as due_soon,
            max(p.credit_limit) as credit_limit
       from v_invoice_status v join business_partner p on p.id = v.partner_id
      where v.company_id = ${companyId} and v.doc_type = ${docType}
@@ -2142,7 +2142,7 @@ export async function getItems(companyId: string) {
               join price_level pl on pl.id = ip.price_level_id
              where ip.company_id = i.company_id
                and ip.item_id = i.id
-               and ip.valid_from <= current_date
+               and ip.valid_from <= fn_shop_today()
              order by pl.sort_order, pl.code, ip.valid_from desc
              limit 1
       ) sp on true
@@ -2902,9 +2902,9 @@ export async function getDocumentPeople(documentId: string) {
   const tasks = await sql`
     select t.id, t.task, t.due_date, t.done_at, t.aspect,
            u.name as responsible, u.initials,
-           (t.done_at is null and t.due_date is not null and t.due_date < current_date)
+           (t.done_at is null and t.due_date is not null and t.due_date < fn_shop_today())
              as overdue,
-           (current_date - t.due_date) as days_late
+           (fn_shop_today() - t.due_date) as days_late
       from document_task t
       left join app_user u on u.id = t.responsible_id
      -- Across versions. A task is an obligation about the thing — chase the
@@ -4223,7 +4223,7 @@ export async function getRevenueTrend(
 ) {
   return sql`
     with anchor as (
-      select date_trunc('month', coalesce(${anchor}::date, current_date)) as m
+      select date_trunc('month', coalesce(${anchor}::date, fn_shop_today())) as m
     ),
     months as (
       select (select m from anchor) - (n || ' months')::interval as month
@@ -4338,7 +4338,7 @@ export async function getStockBatches(companyId: string) {
     select l.item_id, l.location_id, loc.code as location_code,
            l.batch_no,
            to_char(l.expiry_date, 'YYYY-MM-DD')        as expiry_date,
-           (l.expiry_date - current_date)              as days_left,
+           (l.expiry_date - fn_shop_today())              as days_left,
            sum(l.qty_received
                - coalesce((select sum(c.qty) from stock_lot_consumption c
                             where c.lot_id = l.id), 0))  as qty
@@ -4369,7 +4369,7 @@ export async function getExpiryBands(companyId: string) {
   return sql`
     with lots as (
       select l.item_id, l.expiry_date,
-             (l.expiry_date - current_date) as days_left,
+             (l.expiry_date - fn_shop_today()) as days_left,
              (l.qty_received
               - coalesce((select sum(c.qty) from stock_lot_consumption c
                            where c.lot_id = l.id), 0)) as qty,
@@ -4429,12 +4429,12 @@ export async function getPickOrder(companyId: string) {
 export async function getExpiryByItem(companyId: string) {
   return sql`
     select l.item_id,
-           min(l.expiry_date - current_date)::int as soonest_days,
-           count(*) filter (where l.expiry_date < current_date)::int as expired_batches,
+           min(l.expiry_date - fn_shop_today())::int as soonest_days,
+           count(*) filter (where l.expiry_date < fn_shop_today())::int as expired_batches,
            sum((l.qty_received
                 - coalesce((select sum(c.qty) from stock_lot_consumption c
                              where c.lot_id = l.id), 0)) * l.unit_cost)
-             filter (where l.expiry_date < current_date)             as expired_value
+             filter (where l.expiry_date < fn_shop_today())             as expired_value
       from stock_lot l
       join item i on i.id = l.item_id
      where l.company_id = ${companyId}
@@ -4467,7 +4467,7 @@ export async function getPriceList(companyId: string) {
             select ip.price, ip.valid_from
               from item_price ip
              where ip.item_id = i.id and ip.price_level_id = pl.id
-               and ip.valid_from <= current_date
+               and ip.valid_from <= fn_shop_today()
              order by ip.valid_from desc
              limit 1
       ) cur on true
@@ -4581,7 +4581,7 @@ export async function getTopCustomers(companyId: string, months: number = 6, lim
      where d.company_id = ${companyId}
        and d.doc_type = 'SALES_INVOICE'
        and d.status = 'POSTED'
-       and d.posting_date >= date_trunc('month', current_date) - (${months} - 1 || ' months')::interval
+       and d.posting_date >= date_trunc('month', fn_shop_today()) - (${months} - 1 || ' months')::interval
      group by p.id, p.code, p.name
      order by revenue desc
      limit ${limit}`;
@@ -8211,7 +8211,7 @@ export async function getShippedNotInvoiced(
     select v.document_id as delivery_id,
            v.doc_no,
            to_char(v.posting_date, 'YYYY-MM-DD') as posting_date,
-           (current_date - v.posting_date)::int as days,
+           (fn_shop_today() - v.posting_date)::int as days,
            p.code as partner_code, p.name as partner_name,
            v.item_id, i.code as item_code, i.name as item_name,
            sum(v.qty_unclaimed) as qty,

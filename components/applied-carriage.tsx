@@ -7,7 +7,7 @@ import { SPREAD, type Spread } from "./spread-field";
 import type { AppliedCarriage as Applied } from "@/lib/courier-payables";
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
-const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
 // Posted charges are spread equally or by cost; a fixed amount per item posts as equal.
 const spreadLabel = (m: string) => (m in SPREAD ? SPREAD[m as Spread].label : m === "MANUAL" ? "Manual by product variant" : m);
 

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { getFinanceData, peekVoucherNo, createBankVoucher } from "@/lib/actions";
 import { getCompany } from "@/lib/queries";
@@ -9,7 +10,7 @@ import { HelpHint } from "@/components/help-hint";
 export default async function BankPayment() {
   const { accounts, accountTree, bankAccounts, branches } = await getFinanceData();
   const company = await getCompany();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const nextNo = await peekVoucherNo("BANK_VOUCHER", "OUT");
 
   if (bankAccounts.length === 0) {

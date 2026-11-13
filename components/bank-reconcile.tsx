@@ -10,7 +10,7 @@ const money = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 const day = (v: string | null) =>
-  v ? new Date(v).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—";
+  v ? new Date(v).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" }) : "—";
 
 type Line = {
   id: string; line_no: number; txn_date: string;

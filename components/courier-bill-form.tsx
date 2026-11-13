@@ -190,7 +190,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
             shares={shown.shares} title={carriage ? "Preview carriage inward" : `Preview ${type?.label.toLowerCase() ?? "cost"}`}
             costLabel={carriage ? "Carriage" : (type?.label ?? "Cost")}
             details={[
-              { icon: CalendarDays, label: "Bill date", value: shown.date ? new Date(shown.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—" },
+              { icon: CalendarDays, label: "Bill date", value: shown.date ? new Date(shown.date).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" }) : "—" },
               { icon: Hash, label: "Amount", value: `${fmt(total)} MMK` },
               { icon: Wallet, label: "Payment", value: paidNow ? `Paid now · ${paidLabel}` : "Pay later" },
               { icon: Layers, label: "Spread", value: SPREAD[method].label },

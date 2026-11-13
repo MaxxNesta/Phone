@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getCompany } from "@/lib/queries";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
@@ -32,10 +33,10 @@ export default async function NewDebitNote({
   if (!inv) notFound();
 
   const taxCodes = await sql`
-    select t.id, t.code, fn_tax_rate_on(t.id, current_date) as rate
+    select t.id, t.code, fn_tax_rate_on(t.id, fn_shop_today()) as rate
       from tax_code t
      where t.company_id = ${co.id} and t.is_active
-       and fn_tax_rate_on(t.id, current_date) is not null
+       and fn_tax_rate_on(t.id, fn_shop_today()) is not null
      order by t.code`;
 
   return (
@@ -66,7 +67,7 @@ export default async function NewDebitNote({
         kind="debit"
         invoice={inv as never}
         taxCodes={taxCodes as never}
-        today={new Date().toISOString().slice(0, 10)}
+        today={todayLocal()}
         action={createDebitNote}
       />
     </>

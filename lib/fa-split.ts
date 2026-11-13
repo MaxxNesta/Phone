@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { toUnits, fromUnits } from "./fa-engine";
@@ -88,8 +89,8 @@ export async function splitUnits(tx: TransactionSql, co: string, userId: string,
   }
   const detail = { units: picked.map((u: any) => u.code), cost: fromUnits(part), from: a.code, to: code };
   await tx`insert into fa_event ${tx([
-    { company_id: co, asset_id: assetId, event_type: "SPLIT", event_date: new Date().toISOString().slice(0, 10), created_by: userId, detail: tx.json(detail) },
-    { company_id: co, asset_id: child.id, event_type: "SPLIT", event_date: new Date().toISOString().slice(0, 10), created_by: userId, detail: tx.json(detail) },
+    { company_id: co, asset_id: assetId, event_type: "SPLIT", event_date: todayLocal(), created_by: userId, detail: tx.json(detail) },
+    { company_id: co, asset_id: child.id, event_type: "SPLIT", event_date: todayLocal(), created_by: userId, detail: tx.json(detail) },
   ])}`;
   return child.id as string;
 }

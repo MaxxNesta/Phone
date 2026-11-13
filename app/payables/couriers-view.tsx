@@ -5,7 +5,7 @@ import { courierCharges } from "@/lib/courier-payables";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { DocRefs } from "@/components/doc-refs";
 
-const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
 
 /**
  * The carriage inward tab: each bill owed for bringing goods in, numbered,

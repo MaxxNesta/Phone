@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { requirePermission } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
@@ -46,7 +47,7 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
         paidFrom={(await moneyAccounts(user.companyId)).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
         initialPartnerId={partner}
         initialReceiptId={gr}
-        today={new Date().toISOString().slice(0, 10)}
+        today={todayLocal()}
       />
     </div>
   );

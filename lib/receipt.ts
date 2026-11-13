@@ -55,7 +55,7 @@ export async function getReceipt(companyId: string, id: string, locs: string[] |
              -- so the slip can say what was given.
              case when dl.foc_reason_id is not null then (
                select ip.price::float from item_price ip join price_level pl on pl.id = ip.price_level_id
-                where ip.item_id = dl.item_id and pl.code = 'RETAIL' and ip.valid_from <= current_date
+                where ip.item_id = dl.item_id and pl.code = 'RETAIL' and ip.valid_from <= fn_shop_today()
                 order by ip.valid_from desc limit 1) end as list_price,
              coalesce((select array_agg(s.serial_no order by s.serial_no) from stock_movement sm
                 join stock_serial_issue si on si.stock_movement_id = sm.id

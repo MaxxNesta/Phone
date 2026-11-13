@@ -34,7 +34,7 @@ export function SupplierTrend({ data, name }: { data: TrendPoint[]; name: string
   const label = (m: string) => {
     const [y, mm] = m.split("-").map(Number);
     return new Date(Date.UTC(y, mm - 1, 1))
-      .toLocaleDateString("en-GB", { month: "short" });
+      .toLocaleDateString("en-GB", { timeZone: "UTC", month: "short" });
   };
 
   return (
@@ -79,7 +79,7 @@ function TrendTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   const [y, m] = String(label).split("-").map(Number);
   const month = new Date(Date.UTC(y, m - 1, 1))
-    .toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    .toLocaleDateString("en-GB", { timeZone: "UTC", month: "long", year: "numeric" });
   return (
     <div className="card" style={{
       padding: "0.45rem 0.65rem", fontSize: "0.78rem",

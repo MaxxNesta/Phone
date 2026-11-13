@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { requirePermission } from "@/lib/auth";
 import { onlyMyLocations, seenLocations } from "@/lib/branch-scope";
 import { getBranches } from "@/lib/queries";
@@ -43,7 +44,7 @@ export default async function PayCourier({ searchParams }: { searchParams: Promi
           accounts={accounts.map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
           initialPartnerId={partner}
           initialChargeId={charge}
-          today={new Date().toISOString().slice(0, 10)}
+          today={todayLocal()}
         />
       )}
     </div>

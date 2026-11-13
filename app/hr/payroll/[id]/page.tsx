@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Users, Wallet, MinusCircle, Hourglass, Trash2 } from "lucide-react";
@@ -38,7 +39,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     live && unpaid > 0 && can(user, "hr.payroll.pay") ? moneyAccounts(co) : [],
     acct && !masked ? (r.document_id ? runJournalLines(r.document_id).then((lines) => ({ missing: [] as string[], lines })) : draftJournal(co, r.id)) : null,
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <div className="fa">

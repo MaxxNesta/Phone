@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import {
   getCompany, getCashFlowStatement, getBranches,
@@ -26,7 +27,7 @@ function defaultFrom() {
   return `${new Date().getFullYear()}-01-01`;
 }
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 export const SECTIONS: Array<{ key: string; label: string }> = [

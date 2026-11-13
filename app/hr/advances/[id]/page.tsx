@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { HandCoins, Undo2, Hourglass } from "lucide-react";
@@ -81,7 +82,7 @@ export default async function AdvancePage({ params }: { params: Promise<{ id: st
           {(state === "OPEN" || state === "PARTIAL") && (
             <section className="card fa-panel">
               <div className="fa-panel-head"><h2>Repay in cash or by bank</h2></div>
-              <RepayForm action={repayAdvanceAction} advanceId={a.id} money={money} today={new Date().toISOString().slice(0, 10)} outstanding={kyat(a.outstanding)} />
+              <RepayForm action={repayAdvanceAction} advanceId={a.id} money={money} today={todayLocal()} outstanding={kyat(a.outstanding)} />
             </section>
           )}
         </div>

@@ -386,7 +386,7 @@ export function VoucherForm({
               docNo: nextNo,
               status: "UNPOSTED",
               date: new Date(docDate || today).toLocaleDateString("en-GB",
-                { day: "2-digit", month: "short", year: "numeric" }),
+                { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }),
               reference: reference || null,
               memo: narration || null,
               entries: lines.map((l) => ({

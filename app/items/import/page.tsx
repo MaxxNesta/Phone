@@ -1,3 +1,4 @@
+import { DISPLAY_TZ } from "@/lib/format";
 import Link from "next/link";
 import { getCompany, getImportBatches } from "@/lib/queries";
 import { runItemImport } from "@/lib/actions";
@@ -52,7 +53,7 @@ export default async function ImportItems() {
                     <tr key={b.id}>
                       <td className="code">{b.ref}</td>
                       <td className="wrap">{b.filename}</td>
-                      <td>{new Date(b.created_at).toLocaleString("en-GB", {
+                      <td>{new Date(b.created_at).toLocaleString("en-GB", { timeZone: DISPLAY_TZ,
                             day: "2-digit", month: "short", year: "numeric",
                             hour: "2-digit", minute: "2-digit" })}</td>
                       <td className="r">{b.row_count}</td>

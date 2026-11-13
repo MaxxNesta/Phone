@@ -15,7 +15,7 @@ type Row = {
 type Account = { id: string; code: string; name: string };
 
 const day = (v: string) =>
-  new Date(v).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  new Date(v).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
 
 /**
  * A cash or bank book: every movement on an account, with a running balance.

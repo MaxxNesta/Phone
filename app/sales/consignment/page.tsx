@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import { getCompany, getConsignedStockOnHand, getPartners, getLocations } from "@/lib/queries";
 import { createConsignmentSale } from "@/lib/actions";
@@ -15,7 +16,7 @@ export default async function ConsignmentSalePage() {
 
   const customers = partners.filter((p: any) => p.is_customer);
   const locations = allLocations.filter((l: any) => l.is_stock_location);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <ConsignmentSaleForm

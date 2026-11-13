@@ -1,4 +1,5 @@
 "use client";
+import { todayLocal } from "@/lib/format";
 
 import { ArrowLeftRight, Coins } from "lucide-react";
 import { useState } from "react";
@@ -36,7 +37,7 @@ export function CurrencyRate({ options, base, currency, rate, onChange, locked, 
   const saveIt = async () => {
     const fd = new FormData();
     fd.set("from_currency", currency); fd.set("rate", rate);
-    fd.set("valid_from", date || new Date().toISOString().slice(0, 10));
+    fd.set("valid_from", date || todayLocal());
     const r = await saveRate(null as never, fd);
     if (r && "ok" in r) notify("success", `Saved: ${r.ok}`);
     else notify("error", (r as { error?: string })?.error ?? "Not saved");

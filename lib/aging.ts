@@ -37,13 +37,13 @@ export async function agingReport(co: string, locs: string[] | null, f: { q?: st
        group by 1, 2, 3, 4`,
     sql`
       select sm.item_id, coalesce(br.id, loc.id) as branch_id,
-             sum(-sm.qty) filter (where sm.movement_date > current_date - 30)::float as sold_30,
+             sum(-sm.qty) filter (where sm.movement_date > fn_shop_today() - 30)::float as sold_30,
              sum(-sm.qty)::float as sold_90
         from stock_movement sm join document d on d.id = sm.document_id
         join location loc on loc.id = sm.location_id left join location br on br.id = loc.parent_id
        where sm.company_id = ${co} and d.status = 'POSTED' and sm.kind is null
          and d.doc_type in ('SALES_INVOICE', 'DELIVERY', 'SALES_RETURN')
-         and sm.movement_date > current_date - 90
+         and sm.movement_date > fn_shop_today() - 90
          ${locs ? sql`and sm.location_id = any(${locs})` : sql``}
        group by 1, 2`,
   ]);

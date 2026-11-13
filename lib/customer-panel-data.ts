@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { sql } from "./db";
 
 /**
@@ -152,11 +153,11 @@ export async function customerInvoices(s: Scope, partnerId: string, offset = 0) 
     sql`
       select coalesce(sum(d.gross_total), 0) as invoiced,
              coalesce(sum(oi.outstanding), 0) as outstanding,
-             coalesce(sum(oi.outstanding) filter (where d.due_date < current_date), 0) as overdue,
+             coalesce(sum(oi.outstanding) filter (where d.due_date < fn_shop_today()), 0) as overdue,
              count(*) filter (where coalesce(oi.outstanding, 0) > 0)::int as unpaid
         ${base}`,
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   return {
     rows: (rows as any[]).slice(0, PAGE).map((r) => {
       const total = n(r.gross_total), out = n(r.outstanding);

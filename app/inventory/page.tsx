@@ -98,8 +98,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
     // What the shelves were worth at each month's end: the inventory accounts' balance.
     seeCost ? sql`
       with months as (
-        select generate_series(date_trunc('month', current_date) - interval '6 months',
-                               date_trunc('month', current_date), interval '1 month')::date as m)
+        select generate_series(date_trunc('month', fn_shop_today()) - interval '6 months',
+                               date_trunc('month', fn_shop_today()), interval '1 month')::date as m)
       select to_char(m, 'YYYY-MM') as month,
              coalesce((select sum(jl.base_amount) from journal_line jl
                         join account a on a.id = jl.account_id
@@ -115,15 +115,15 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       select coalesce((select sum(jl.base_amount) from journal_line jl join account a on a.id = jl.account_id
                          join journal_entry je on je.id = jl.journal_entry_id
                         where jl.company_id = ${co} and a.account_type = 'COGS' ${at}
-                          and je.entry_date > current_date - 90 and je.entry_date <= current_date), 0)::float as cogs,
+                          and je.entry_date > fn_shop_today() - 90 and je.entry_date <= fn_shop_today()), 0)::float as cogs,
              coalesce((select sum(jl.base_amount) from journal_line jl join account a on a.id = jl.account_id
                          join journal_entry je on je.id = jl.journal_entry_id
                         where jl.company_id = ${co} and a.subledger = 'INVENTORY' ${at}
-                          and je.entry_date <= current_date - 90), 0)::float as opening,
+                          and je.entry_date <= fn_shop_today() - 90), 0)::float as opening,
              coalesce((select sum(jl.base_amount) from journal_line jl join account a on a.id = jl.account_id
                          join journal_entry je on je.id = jl.journal_entry_id
                         where jl.company_id = ${co} and a.subledger = 'INVENTORY' ${at}
-                          and je.entry_date <= current_date), 0)::float as closing` : Promise.resolve([]),
+                          and je.entry_date <= fn_shop_today()), 0)::float as closing` : Promise.resolve([]),
   ]);
   const f0 = (flow as any[])[0];
   const avgInv = f0 ? (Number(f0.opening) + Number(f0.closing)) / 2 : 0;

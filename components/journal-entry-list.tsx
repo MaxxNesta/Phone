@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Download, Printer, Rows3 } from "lucide-react";
-import { money } from "@/lib/format";
+import { money, todayLocal } from "@/lib/format";
 
 export type EntryLine = {
   accountCode: string;
@@ -90,7 +90,7 @@ export function JournalEntryList({ entries, backQuery = "" }:
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `journal-entries-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `journal-entries-${todayLocal()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -1,3 +1,4 @@
+import { DISPLAY_TZ } from "@/lib/format";
 import { CircleCheck, CircleDot, FileText, Landmark, PackageCheck } from "lucide-react";
 import { shortDate } from "@/lib/db";
 import type { DocEvent, Person } from "./document-rail";
@@ -25,7 +26,7 @@ const ICON: Record<string, typeof CircleDot> = {
 
 const time = (v: unknown) =>
   v ? new Date(String(v)).toLocaleTimeString("en-GB",
-    { hour: "2-digit", minute: "2-digit" }) : "";
+    { timeZone: DISPLAY_TZ, hour: "2-digit", minute: "2-digit" }) : "";
 
 export function DocumentFooter({
   activity, related, createdBy, postedBy, postedAt, createdAt,

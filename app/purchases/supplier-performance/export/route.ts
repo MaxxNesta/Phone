@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { csvCell } from "@/lib/csv";
 import { requirePermission } from "@/lib/auth";
 import { NextRequest } from "next/server";
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
   }
 
   const q = req.nextUrl.searchParams;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const asked = asDate(q.get("to"));
   const to = asked === null || asked > today ? today : asked;
   const from = asDate(q.get("from"))

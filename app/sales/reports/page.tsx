@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import Link from "next/link";
 import { money } from "@/lib/db";
@@ -32,7 +33,7 @@ const pct = (v: number | null) =>
   v === null ? "—" : `${v.toFixed(1)}%`;
 
 const defaultFrom = () => `${new Date().getFullYear()}-01-01`;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => todayLocal();
 
 export default async function SalesReports({
   searchParams,

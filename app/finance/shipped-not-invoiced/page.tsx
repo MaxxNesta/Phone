@@ -38,7 +38,7 @@ export default async function ShippedNotInvoiced({
   /* The date the bands are measured against, read from the database rather
      than this server's clock — the ages were computed there, and a page
      printing its own idea of today could name a different one. */
-  const [asOfRow] = await sql`select to_char(current_date, 'DD Mon YYYY') as d`;
+  const [asOfRow] = await sql`select to_char(fn_shop_today(), 'DD Mon YYYY') as d`;
   const asOf = String(asOfRow?.d ?? "");
 
   const [report, account] = await Promise.all([

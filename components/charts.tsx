@@ -9,7 +9,7 @@ import { money } from "@/lib/format";
 
 const monthLabel = (ym: string) => {
   const [y, m] = ym.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "short" });
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { timeZone: "UTC", month: "short" });
 };
 
 function ChartTooltip({ active, payload, label, valueLabel }: any) {

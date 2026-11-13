@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 /**
  * Voiding a posted document, and editing one.
  *
@@ -433,7 +434,7 @@ export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> 
     select count(*)::int as n from fiscal_period
      where company_id = ${doc.company_id} and status = 'OPEN'
        and ${doc.posting_date}::date between start_date and end_date`;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const reversalDate = Number(openHere.n) > 0 ? doc.posting_date : today;
 
   const [openToday] = await db`

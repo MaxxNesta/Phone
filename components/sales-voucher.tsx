@@ -120,7 +120,7 @@ type Line = {
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 const day = (d: string | null) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—";
+  d ? new Date(d).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short" }) : "—";
 
 function addDays(iso: string, days: number) {
   const d = new Date(iso);

@@ -1,4 +1,5 @@
 "use client";
+import { todayLocal } from "@/lib/format";
 
 import { Download } from "lucide-react";
 
@@ -14,7 +15,7 @@ export function downloadCsv(name: string, rows: (string | number)[][]) {
   const url = URL.createObjectURL(new Blob(["﻿" + toCsv(rows)], { type: "text/csv;charset=utf-8" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${name}-${todayLocal()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

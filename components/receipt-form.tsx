@@ -86,7 +86,7 @@ const NONE = "__none__";
 
 const shortDate = (v: unknown) =>
   v ? new Date(String(v)).toLocaleDateString("en-GB",
-    { weekday: "short", day: "numeric", month: "short" }) : "";
+    { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }) : "";
 
 export function ReceiptForm({
   action,

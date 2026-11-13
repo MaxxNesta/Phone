@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Info, X } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
-import { money, shortDate } from "@/lib/format";
+import { money, shortDate, todayLocal } from "@/lib/format";
 import { AutoApply } from "@/components/auto-apply";
 import { SupplyCanvas } from "@/components/supply-canvas";
 import { CategoryAdd } from "@/components/category-add";
@@ -27,7 +27,7 @@ export default async function SupplyChain({ searchParams }: { searchParams: Prom
   const seeCost = can(user, "cost.view");
   const measure: "qty" | "value" = sp.measure === "value" && seeCost ? "value" : "qty";
   const unit = measure === "qty" ? "units" : "MMK";
-  const range = { from: sp.from || jan1(), to: sp.to || new Date().toISOString().slice(0, 10) };
+  const range = { from: sp.from || jan1(), to: sp.to || todayLocal() };
 
   const [flows, groups, branches] = await Promise.all([
     getFlows(co, { ...range, branchId: sp.branch || null }),

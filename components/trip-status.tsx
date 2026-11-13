@@ -1,4 +1,5 @@
 "use client";
+import { DISPLAY_TZ } from "@/lib/format";
 
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -39,7 +40,7 @@ export function TripStatus({
   }, [state, router]);
 
   const when = (v: string | null) =>
-    v ? new Date(v).toLocaleString("en-GB", {
+    v ? new Date(v).toLocaleString("en-GB", { timeZone: DISPLAY_TZ,
       day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
     }) : null;
 

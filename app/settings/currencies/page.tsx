@@ -3,7 +3,7 @@ import { requireUser, can } from "@/lib/auth";
 import { deleteCurrency, deleteRate } from "@/lib/currency-actions";
 import { CurrencyForm, RateForm } from "@/components/currency-forms";
 import { DeleteButton } from "@/components/confirm-delete";
-import { shortDate } from "@/lib/format";
+import { shortDate, todayLocal } from "@/lib/format";
 
 export const metadata = { title: "Currencies" };
 
@@ -23,7 +23,7 @@ export default async function Currencies() {
   ]);
   const latestBy = new Map(latest.map((r: any) => [r.from_currency, r]));
   const foreign = currencies.filter((c: any) => c.code !== co.base_currency);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <>

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { getFormData, createSalesReturn } from "@/lib/actions";
 import { getReturnableSales, getCompany } from "@/lib/queries";
@@ -15,7 +16,7 @@ export default async function NewSalesReturn() {
   if (!co) return <div className="empty">No company found.</div>;
   const categories = await allCategories(co.id);
   const salesDocs = await getReturnableSales(co.id);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   // How money can be paid back, as each location's branch maps it.
   const channels = Object.fromEntries(await Promise.all(
     (d.locations as unknown as { id: string }[]).map(async (l) => [l.id, await channelsAt(co.id, l.id)])));

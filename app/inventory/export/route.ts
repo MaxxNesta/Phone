@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { csvCell } from "@/lib/csv";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
     r.status === "HEALTHY" ? "In stock" : r.status === "LOW" ? "Low stock" : "Out of stock"].map(quote).join(","));
   // A BOM, so Excel opens Burmese names as UTF-8.
   const body = "﻿" + [head.join(","), ...lines].join("\n") + "\n";
-  const day = new Date().toISOString().slice(0, 10);
+  const day = todayLocal();
   return new Response(body, {
     headers: {
       "content-type": "text/csv; charset=utf-8",

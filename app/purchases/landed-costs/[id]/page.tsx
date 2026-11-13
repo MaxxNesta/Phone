@@ -1,3 +1,4 @@
+import { DISPLAY_TZ } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql, money } from "@/lib/db";
@@ -24,7 +25,7 @@ const STATUS_NOW: Record<string, string> = {
 const TREATMENT: Record<string, string> = {
   INVENTORY: "to stock value", HOLDING: "to goods shipped not invoiced, waiting for the invoice", COGS: "to cost of sales",
 };
-const when = (t: string | Date | null) => (t ? new Date(t).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
+const when = (t: string | Date | null) => (t ? new Date(t).toLocaleString("en-GB", { timeZone: DISPLAY_TZ, dateStyle: "medium", timeStyle: "short" }) : "");
 
 export default async function LandedCostPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePermission("cost.view");

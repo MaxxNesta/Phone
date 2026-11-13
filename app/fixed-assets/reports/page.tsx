@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { HelpHint } from "@/components/help-hint";
 import { requirePermission } from "@/lib/auth";
@@ -30,7 +31,7 @@ export default async function FaReports({ searchParams }: { searchParams: Promis
   const user = await requirePermission("accounting.view");
   const co = user.companyId;
   const report = REPORTS.some(([k]) => k === sp.report) ? sp.report! : "summary";
-  const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+  const today = todayLocal();
   const seen = await seenLocations();
   const [branches, categories, assets] = await Promise.all([faBranches(co).then(seenBranches), faCategories(co), assetList(co, seen)]);
   const f: ReportFilters = {

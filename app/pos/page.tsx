@@ -23,14 +23,14 @@ export default async function PosPage() {
     sql`select id, name, code from business_partner
          where company_id = ${co} and is_customer and is_active and code <> 'WALKIN' order by name`,
     sql`select id, name from salesman where company_id = ${co} and is_active order by name`,
-    sql`select t.id, t.code, t.name, fn_tax_rate_on(t.id, current_date)::float as rate
+    sql`select t.id, t.code, t.name, fn_tax_rate_on(t.id, fn_shop_today())::float as rate
           from tax_code t where t.company_id = ${co} order by t.code`,
     sql`select id, name from foc_reason where company_id = ${co} and applies_to = 'SALE' order by name`,
     // The bands the sale will be priced with, so the till shows the same total.
     sql`select id, code, name, basis, item_id, item_group_id, min_value, max_value, discount_pct
           from volume_discount
          where company_id = ${co} and is_active
-           and valid_from <= current_date and (valid_to is null or valid_to >= current_date)`,
+           and valid_from <= fn_shop_today() and (valid_to is null or valid_to >= fn_shop_today())`,
   ]);
 
   const mine = (await onlyMyLocations(locations as unknown as { id: string }[])) as { id: string }[];

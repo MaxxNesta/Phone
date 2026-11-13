@@ -61,7 +61,7 @@ export default async function AgingPage({
    * believe "90+ days" has no third date on screen to check it against.
    */
   const locs = await seenLocations();
-  const [asOfRow] = await sql`select to_char(current_date, 'DD Mon YYYY') as d`;
+  const [asOfRow] = await sql`select to_char(fn_shop_today(), 'DD Mon YYYY') as d`;
   const asOf = String(asOfRow?.d ?? "");
 
   const [ar, ap, items, dueSoon] = await Promise.all([

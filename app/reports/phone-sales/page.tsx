@@ -4,7 +4,7 @@ import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
 import { requirePermission, can } from "@/lib/auth";
 import { phoneSales, SALES_DIMENSIONS, type SalesDimension, stripCost } from "@/lib/phone";
-import { money } from "@/lib/format";
+import { money, todayLocal } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
 import { RankedBarChart } from "@/components/charts";
 import { Banknote, TrendingUp, Percent, Smartphone } from "lucide-react";
@@ -18,7 +18,7 @@ type Search = { from?: string; to?: string; by?: string; scope?: string; page?: 
 export default async function PhoneSalesReport({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requirePermission("reports.view");
   const sp = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const from = sp.from || today.slice(0, 8) + "01";
   const to = sp.to || today;
   const by = (sp.by && sp.by in SALES_DIMENSIONS ? sp.by : "model") as SalesDimension;

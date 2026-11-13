@@ -1,3 +1,4 @@
+import { DISPLAY_TZ } from "@/lib/format";
 import { planIncludes } from "@/lib/plans";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
@@ -252,7 +253,7 @@ export default async function Dashboard({
      the movement in the big number — so both periods say which they are, and
      the month-on-month line carries the month's own figure with it. */
   const monthName = (ym: string | undefined) =>
-    ym ? new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long" }) : "";
+    ym ? new Date(`${ym}-01T00:00:00Z`).toLocaleDateString("en-GB", { timeZone: "UTC", month: "long" }) : "";
   const thisMonthName = monthName(trend[latestIdx]?.month);
   const lastMonthName = monthName(trend[latestIdx - 1]?.month);
 
@@ -276,7 +277,7 @@ export default async function Dashboard({
 
   const urgent = actions.reduce((t, a) => t + a.n, 0);
 
-  const today = new Date().toLocaleDateString("en-GB", {
+  const today = new Date().toLocaleDateString("en-GB", { timeZone: DISPLAY_TZ,
     weekday: "long", day: "numeric", month: "long",
   });
 
@@ -401,7 +402,7 @@ export default async function Dashboard({
     if (mins < 60) return `${mins} min ago`;
     const hours = Math.round(mins / 60);
     if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-    return new Date(on).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return new Date(on).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short" });
   };
 
   return (

@@ -1,4 +1,5 @@
 "use client";
+import { todayLocal } from "@/lib/format";
 
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
@@ -120,7 +121,7 @@ export function VolumeDiscountForm({
             <div className="field">
               <label htmlFor="valid_from">In force from</label>
               <input id="valid_from" name="valid_from" type="date"
-                     defaultValue={new Date().toISOString().slice(0, 10)} required />
+                     defaultValue={todayLocal()} required />
             </div>
             <div className="field">
               <label htmlFor="valid_to">Until</label>

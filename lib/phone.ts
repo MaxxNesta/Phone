@@ -39,7 +39,7 @@ const COLOUR_RE = "colou?r";
 const RETAIL_PRICE = sql`
   (select ip.price from item_price ip
      join price_level pl on pl.id = ip.price_level_id
-    where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= current_date
+    where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= fn_shop_today()
     order by ip.valid_from desc limit 1)`;
 
 // ----------------------------------------------------------------- POS ----
@@ -158,7 +158,7 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
            v.brand_name, ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour,
            v.location_id, v.location_name, br.name as branch_name,
            v.unit_cost::float as unit_cost, ${RETAIL_PRICE}::float as price,
-           v.status, v.received_date, (current_date - v.received_date) as age_days,
+           v.status, v.received_date, (fn_shop_today() - v.received_date) as age_days,
            v.supplier_name, v.customer_name, v.out_doc_no, v.out_date, v.warranty_expiry,
            v.was_returned, v.was_transferred
       from v_stock_serial v
@@ -213,14 +213,14 @@ const phoneStockOverview = cache(async (companyId: string) => {
                                                   'is_stock_location', is_stock_location) order by code)
                   from location where company_id = ${companyId} and is_active), '[]') as locations,
       (select count(*) filter (where status = 'IN_STOCK') from v)::int as available,
-      (select count(*) filter (where status = 'IN_STOCK' and received_date > current_date - 7) from v)::int as received_week,
+      (select count(*) filter (where status = 'IN_STOCK' and received_date > fn_shop_today() - 7) from v)::int as received_week,
       (select count(*) from v)::int as total,
       (select count(*) filter (where status = 'SOLD') from v)::int as sold,
       (select count(*) filter (where status = 'RESERVED') from v)::int as reserved,
       (select count(*) filter (where status = 'REPAIR') from v)::int as repair,
-      (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date)) from v)::int as sold_month,
-      (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', current_date) - interval '1 month'
-                                 and out_date < date_trunc('month', current_date)) from v)::int as sold_last_month,
+      (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today())) from v)::int as sold_month,
+      (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today()) - interval '1 month'
+                                 and out_date < date_trunc('month', fn_shop_today())) from v)::int as sold_last_month,
       (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0) from v)::float as value`;
   return r;
 });
@@ -285,8 +285,8 @@ export async function warrantyLookup(companyId: string, q: string, locs: string[
            v.status, v.customer_name, v.out_doc_no, v.out_document_id, v.out_date,
            v.warranty_months, v.warranty_expiry,
            case when v.warranty_expiry is null then null
-                when v.warranty_expiry < current_date then 'EXPIRED'
-                when v.warranty_expiry < current_date + 30 then 'ENDING'
+                when v.warranty_expiry < fn_shop_today() then 'EXPIRED'
+                when v.warranty_expiry < fn_shop_today() + 30 then 'ENDING'
                 else 'ACTIVE' end as warranty_state,
            v.supplier_name, v.received_date, v.supplier_warranty_months
       from v_stock_serial v
@@ -305,7 +305,7 @@ export async function warrantiesEnding(companyId: string, days = 30, locs: strin
       from v_stock_serial
      where company_id = ${companyId} and status = 'SOLD'
        ${locs ? sql`and location_id = any(${locs})` : sql``}
-       and warranty_expiry between current_date and current_date + ${days}::int
+       and warranty_expiry between fn_shop_today() and fn_shop_today() + ${days}::int
      order by warranty_expiry
      limit 200`;
 }
@@ -402,12 +402,12 @@ export async function phoneStockSummary(companyId: string, locs: string[] | null
     with held as (
       select v.model_name, v.brand_name, coalesce(br.name, loc.name) as branch,
              count(*)::int as units, sum(v.unit_cost)::float as value,
-             round(avg(current_date - v.received_date))::int as avg_age,
-             max(current_date - v.received_date)::int as oldest,
-             count(*) filter (where current_date - v.received_date <= 30)::int as d0_30,
-             count(*) filter (where current_date - v.received_date between 31 and 60)::int as d31_60,
-             count(*) filter (where current_date - v.received_date between 61 and 90)::int as d61_90,
-             count(*) filter (where current_date - v.received_date > 90)::int as d90
+             round(avg(fn_shop_today() - v.received_date))::int as avg_age,
+             max(fn_shop_today() - v.received_date)::int as oldest,
+             count(*) filter (where fn_shop_today() - v.received_date <= 30)::int as d0_30,
+             count(*) filter (where fn_shop_today() - v.received_date between 31 and 60)::int as d31_60,
+             count(*) filter (where fn_shop_today() - v.received_date between 61 and 90)::int as d61_90,
+             count(*) filter (where fn_shop_today() - v.received_date > 90)::int as d90
         from v_stock_serial v
         left join location loc on loc.id = v.location_id
         left join location br on br.id = loc.parent_id
@@ -416,8 +416,8 @@ export async function phoneStockSummary(companyId: string, locs: string[] | null
        group by 1, 2, 3
     ),
     sold as (
-      select model_name, count(*) filter (where out_date > current_date - 30)::int as sold_30,
-             count(*) filter (where out_date > current_date - 90)::int as sold_90
+      select model_name, count(*) filter (where out_date > fn_shop_today() - 30)::int as sold_30,
+             count(*) filter (where out_date > fn_shop_today() - 90)::int as sold_90
         from v_stock_serial
        where company_id = ${companyId} and status = 'SOLD'
          ${locs ? sql`and location_id = any(${locs})` : sql``}
@@ -434,16 +434,16 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
   // Someone who sees only their own branch gets its figures only (seenLocations).
   const at = (col: "location_id" | "d.location_id" | "s.location_id") =>
     locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``;
-  const range = (from: ReturnType<typeof sql>, to: ReturnType<typeof sql> = sql`current_date`) =>
+  const range = (from: ReturnType<typeof sql>, to: ReturnType<typeof sql> = sql`fn_shop_today()`) =>
     saleRows(companyId, from, to, locs);
   const [[today], [yesterday], [month], [stock], [ar], [aged], low, week, topModels, aging, recent, ending, bad] =
     await Promise.all([
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost,
-                 coalesce(sum(r.phones), 0)::int as phones from (${range(sql`current_date`)}) r`,
+                 coalesce(sum(r.phones), 0)::int as phones from (${range(sql`fn_shop_today()`)}) r`,
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.phones), 0)::int as phones
-            from (${range(sql`current_date - 1`, sql`current_date - 1`)}) r`,
+            from (${range(sql`fn_shop_today() - 1`, sql`fn_shop_today() - 1`)}) r`,
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost
-            from (${range(sql`date_trunc('month', current_date)::date`)}) r`,
+            from (${range(sql`date_trunc('month', fn_shop_today())::date`)}) r`,
       sql`select coalesce(sum(value_on_hand), 0)::float as value from v_stock_on_hand
            where company_id = ${companyId} ${at("location_id")}`,
       sql`select coalesce(sum(outstanding), 0)::float as owed, count(distinct partner_id)::int as customers
@@ -451,24 +451,24 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
              and outstanding > 0.005
              ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}`,
       sql`select count(*)::int as n from v_stock_serial
-           where company_id = ${companyId} and status = 'IN_STOCK' and received_date < current_date - 90
+           where company_id = ${companyId} and status = 'IN_STOCK' and received_date < fn_shop_today() - 90
              ${at("location_id")}`,
       // At or under the reorder point: the Stock page's list, worst first.
       lowStockToday(companyId).then((r) => r.rows.slice(0, 5)),
       sql`select to_char(d, 'YYYY-MM-DD') as day, to_char(d, 'Dy') as label,
-                 coalesce((select sum(r.revenue) from (${range(sql`current_date - 6`)}) r
+                 coalesce((select sum(r.revenue) from (${range(sql`fn_shop_today() - 6`)}) r
                             where r.posting_date = d), 0)::float as revenue
-            from generate_series(current_date - 6, current_date, interval '1 day') d order by d`,
+            from generate_series(fn_shop_today() - 6, fn_shop_today(), interval '1 day') d order by d`,
       sql`select coalesce(p.name, i.name) as model, sum(r.phones)::int as sold, sum(r.revenue)::float as revenue
-            from (${range(sql`current_date - 30`)}) r
+            from (${range(sql`fn_shop_today() - 30`)}) r
             join item i on i.id = r.item_id left join item p on p.id = i.parent_item_id
            where i.tracks_serial group by 1 order by 2 desc, 3 desc limit 5`,
-      sql`select case when current_date - received_date <= 30 then '0–30 days'
-                      when current_date - received_date <= 60 then '31–60 days'
-                      when current_date - received_date <= 90 then '61–90 days'
+      sql`select case when fn_shop_today() - received_date <= 30 then '0–30 days'
+                      when fn_shop_today() - received_date <= 60 then '31–60 days'
+                      when fn_shop_today() - received_date <= 90 then '61–90 days'
                       else 'Over 90 days' end as label, count(*)::int as value
             from v_stock_serial where company_id = ${companyId} and status = 'IN_STOCK' ${at("location_id")}
-           group by 1 order by min(current_date - received_date)`,
+           group by 1 order by min(fn_shop_today() - received_date)`,
       sql`select d.id, d.doc_no, d.gross_total::float as total, bp.code as partner_code, bp.name as customer,
                  (select i.name from document_line dl join item i on i.id = dl.item_id
                    where dl.document_id = d.id order by dl.net_amount desc limit 1) as item,
@@ -482,7 +482,7 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
            order by d.posted_at desc limit 5`,
       sql`select count(*)::int as n from v_stock_serial
            where company_id = ${companyId} and status = 'SOLD'
-             and warranty_expiry between current_date and current_date + 30 ${at("location_id")}`,
+             and warranty_expiry between fn_shop_today() and fn_shop_today() + 30 ${at("location_id")}`,
       // A serial and the stock it belongs to disagreeing is a bug, not a
       // business event; it is shown so somebody notices.
       sql`select i.name, q.on_hand::float, coalesce(s.n, 0)::int as serials

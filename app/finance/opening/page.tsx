@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { getFinanceData, getFormData, createOpeningBatch } from "@/lib/actions";
@@ -93,7 +94,7 @@ export default async function OpeningSetupPage() {
   }
 
   const [finance, form] = await Promise.all([getFinanceData(), getFormData()]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <>

@@ -90,7 +90,7 @@ export default async function ItemPage({
           left join lateral (
             select ip.price, ip.uom_id, ip.valid_from from item_price ip
              where ip.item_id = ${id} and ip.price_level_id = pl.id
-               and ip.valid_from <= current_date
+               and ip.valid_from <= fn_shop_today()
              order by ip.valid_from desc limit 1) ip on true
           left join uom u on u.id = ip.uom_id
          where pl.company_id = ${company.id}

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getCompany, getPriceList } from "@/lib/queries";
 import { sql } from "@/lib/db";
 import { setItemPrice, createPriceLevel, updatePriceLevel, deletePriceLevel } from "@/lib/actions";
@@ -71,7 +72,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       prices: number; partners: number;
     }>;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const priced = items.filter((i) => i.levels.some((l) => l.price !== null)).length;
 
   const pg = paginate(items, sp.page);

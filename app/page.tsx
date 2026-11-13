@@ -44,7 +44,7 @@ const since = (at: string | null, on: string,
   if (mins < 60) return t("minAgo", { n: mins });
   const hours = Math.round(mins / 60);
   if (hours < 24) return t("hoursAgo", { n: hours });
-  return new Date(on).toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
+  return new Date(on).toLocaleDateString(dateLocale, { timeZone: "UTC", day: "numeric", month: "short" });
 };
 
 /** The document types the dashboard names; anything else is said as its code. */

@@ -1,4 +1,5 @@
 "use client";
+import { DISPLAY_TZ, todayLocal } from "@/lib/format";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -239,7 +240,7 @@ const Doc = ({ id, no }: { id: string | null; no: string | null }) =>
 
 function Overview({ d, label, onTab }: { d: ImeiDrawerData; label: (s: string) => string; onTab: (t: Tab) => void }) {
   const u = d.unit;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const warranty = u.warrantyExpiry ?? u.supplierWarrantyExpiry;
   return (
     <>
@@ -381,7 +382,7 @@ function ActivityTab({ d, t }: { d: ImeiDrawerData; t: ReturnType<typeof useTran
                 <p className="imei-tl-what">{title}{e.voided && " (voided)"}{e.docId && <> · <Doc id={e.docId} no={e.docNo} /></>}</p>
                 {e.detail && <p className="imei-muted small">{e.detail}</p>}
               </div>
-              <time>{e.at.length > 10 ? new Date(e.at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : e.at}</time>
+              <time>{e.at.length > 10 ? new Date(e.at).toLocaleString("en-GB", { timeZone: DISPLAY_TZ, day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : e.at}</time>
             </li>
           );
         })}

@@ -1,3 +1,4 @@
+import { DISPLAY_TZ } from "@/lib/format";
 import {
   CircleCheck, CircleDot, Clock, FileText, Landmark, PackageCheck, UserRound,
 } from "lucide-react";
@@ -35,7 +36,7 @@ export type DocEvent = {
 
 const time = (v: unknown) =>
   v ? new Date(String(v)).toLocaleTimeString("en-GB",
-    { hour: "2-digit", minute: "2-digit" }) : "";
+    { timeZone: DISPLAY_TZ, hour: "2-digit", minute: "2-digit" }) : "";
 
 /** Initials in a circle. Grey where nobody was recorded, rather than blank. */
 export function Avatar({ initials, title }: { initials: string | null; title?: string }) {

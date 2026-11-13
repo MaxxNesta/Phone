@@ -40,6 +40,18 @@ export function qty(v: string | number | null | undefined): string {
  */
 export const DISPLAY_TZ = process.env.DISPLAY_TZ ?? "Asia/Yangon";
 
+/**
+ * Today's date in the company's zone, as YYYY-MM-DD.
+ *
+ * Not new Date().toISOString().slice(0, 10): that is today in UTC, which in
+ * Yangon is still yesterday until 06:30 — a sale rung up at breakfast would
+ * default to the day before.
+ */
+export function todayLocal(tz = DISPLAY_TZ): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date());
+}
+
 /** A plain accounting date: no time, no zone conversion. */
 export function shortDate(d: Date | string | null | undefined): string {
   if (!d) return "—";

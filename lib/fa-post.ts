@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { postJournalVoucher } from "./posting";
@@ -240,4 +241,4 @@ export async function readyToPost(co: string, branches: string[] | null, now: Mo
     .sort((x, y) => x.month.localeCompare(y.month) || x.branch.localeCompare(y.branch));
 }
 
-export const currentMonth = () => monthOf(new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10));
+export const currentMonth = () => monthOf(todayLocal());

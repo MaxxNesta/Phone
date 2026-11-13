@@ -7,7 +7,7 @@ import {
 export type TimelinePoint = { t: number; price: number; qty: number; doc: string; partner: string };
 export type TimelineBucket = { t: number; avg: number; band: [number, number]; lines: number; avgTax?: number };
 
-const day = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" });
+const day = (t: number) => new Date(t).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "2-digit" });
 const kyat = (v: number) => Math.round(v).toLocaleString("en-US");
 
 

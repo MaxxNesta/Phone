@@ -20,7 +20,7 @@ import { PrintButton } from "@/components/print-button";
  */
 const shortDate = (v: unknown) =>
   v ? new Date(String(v)).toLocaleDateString("en-GB",
-    { day: "2-digit", month: "short", year: "numeric" }) : "";
+    { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }) : "";
 
 const money = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });

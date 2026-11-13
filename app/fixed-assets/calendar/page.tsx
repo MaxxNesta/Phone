@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { HelpHint } from "@/components/help-hint";
 import { canPostFa } from "@/lib/fa-access";
@@ -79,7 +80,7 @@ export default async function DepreciationCalendar({ searchParams }: { searchPar
   const days = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
   const lead = (first.getUTCDay() + 6) % 7; // Monday first
   const cells = Array.from({ length: Math.ceil((lead + days) / 7) * 7 }, (_, k) => k - lead + 1);
-  const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+  const today = todayLocal();
   const byDay = new Map<string, CalEvent[]>();
   for (const e of c.events) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
   const dayEvents = day ? byDay.get(day) ?? [] : [];

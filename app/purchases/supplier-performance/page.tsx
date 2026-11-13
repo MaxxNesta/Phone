@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { money, shortDate } from "@/lib/db";
@@ -61,7 +62,7 @@ export default async function SupplierPerformancePage({
 
   const q = await searchParams;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const asked = asDate(q.to);
   // Clamped, because a period running into the future reports a supplier as
   // having failed to deliver things that are not due yet.

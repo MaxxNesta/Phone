@@ -79,7 +79,7 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
                   </tr>
                   {open && b.lines.map((l, i) => (
                     <tr key={i}>
-                      <td className="code">{new Date(l.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</td>
+                      <td className="code">{new Date(l.date).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" })}</td>
                       <td className="code">{b.accountCode}</td>
                       {/* The main account on the other side (a sale: Sales); hover lists every account with its amount. */}
                       <td className="ledger-desc" title={l.contra.map((c) => `${c.account}  ${money(c.amount)}`).join("\n") || undefined}>

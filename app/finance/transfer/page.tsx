@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getFinanceData, createCashTransfer } from "@/lib/actions";
 import { TransferForm } from "@/components/transfer-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
@@ -10,7 +11,7 @@ export default async function InterbranchTransfer() {
     ...(cashAccounts as unknown as Acct[]),
     ...(bankAccounts as unknown as Acct[]),
   ];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   if (money.length < 2) {
     return (

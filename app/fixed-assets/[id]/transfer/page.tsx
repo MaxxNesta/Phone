@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { notFound } from "next/navigation";
 import { requireFaPoster } from "@/lib/fa-access";
 import { sql } from "@/lib/db";
@@ -41,7 +42,7 @@ export default async function TransferAsset({ params, searchParams }: { params: 
     : { cost: a.acquisition_cost, accumulated: a.accumulated };
   const [acct] = await sql`select a.code as asset, x.code as accum from fa_category c join account a on a.id = c.asset_account_id
                              join account x on x.id = c.accum_account_id where c.id = ${a.category_id}`;
-  const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+  const today = todayLocal();
   const codes = (units as any[]).filter((u) => chosen.includes(u.id)).map((u) => u.code);
   return (
     <div className="ie">

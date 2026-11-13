@@ -57,7 +57,7 @@ const SIGNATURES: Record<string, string[]> = {
 
 const shortDate = (v: unknown) =>
   v ? new Date(String(v)).toLocaleDateString("en-GB",
-    { day: "2-digit", month: "short", year: "numeric" }) : "";
+    { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }) : "";
 
 export default async function DocumentPrint({
   params,

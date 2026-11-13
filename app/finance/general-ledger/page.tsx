@@ -570,7 +570,7 @@ async function AccountView({
                     <tr key={i}>
                       <td className="code">
                         {new Date(r.entry_date).toLocaleDateString("en-GB",
-                          { day: "2-digit", month: "short", year: "numeric" })}
+                          { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" })}
                       </td>
                       <td className="code">{r.entry_no}</td>
                       <td className="code">{r.doc_no ?? "—"}</td>

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, HandCoins, Wallet, FileText, CalendarDays } from "lucide-react";
@@ -22,9 +23,9 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
   const pay = can(user, "hr.salary.view"), adv = can(user, "hr.advances");
   const [salaries, advances, slips] = await Promise.all([
     pay ? salaryHistory(e.id) : [], adv ? advanceList(co, seen, e.id) : [], pay ? slipList(co, seen, { employeeId: e.id }) : []]);
-  const current = salaries.find((s) => s.effective_from <= new Date().toISOString().slice(0, 10)) ?? null;
+  const current = salaries.find((s) => s.effective_from <= todayLocal()) ?? null;
   const outstanding = advances.filter((a) => a.doc_status === "POSTED").reduce((t, a) => t + Number(a.outstanding), 0);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <div className="fa">

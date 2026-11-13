@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { sql } from "./db";
 import { getReceiptsByAccount, getDueWithin } from "./queries";
 
@@ -13,7 +14,7 @@ import { getReceiptsByAccount, getDueWithin } from "./queries";
 
 /** Today in Yangon, whatever the server's clock says. */
 export function yangonToday() {
-  return new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+  return todayLocal();
 }
 const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 

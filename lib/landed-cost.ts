@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 /**
  * Landed cost: freight, insurance, duty and the rest, spread onto the phones
  * of posted goods receipts.
@@ -774,7 +775,7 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
       throw new Error(`${doc.doc_no} has courier payments against it (${paid.v.toLocaleString("en-US")}). Reverse those payments first.`);
     }
     const base = await baseCurrency(tx, input.companyId);
-    const date = input.date || new Date().toISOString().slice(0, 10);
+    const date = input.date || todayLocal();
 
     const [{ no }] = await tx`select fn_next_document_no(${input.companyId}, 'LANDED_COST', ${date}::date) as no`;
     const [{ fy }] = await tx`select fn_fiscal_year_for(${input.companyId}, ${date}::date) as fy`;

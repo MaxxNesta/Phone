@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { getFormData, createPurchaseInvoice, saveInvoiceDraft } from "@/lib/actions";
 import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, getCompany } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
@@ -43,7 +44,7 @@ export default async function NewPurchaseInvoice({
     ? (goodsReceipts as { id: string; doc_no: string }[]).find((g) => g.id === goods_receipt_id)
     : undefined;
   const awaiting = await getOpenOrdersAwaitingGoods(co.id, "PURCHASE_ORDER");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   // Items are deliberately not required: a product can be created from the
   // voucher itself. A category is, since nothing unclassified may enter stock.

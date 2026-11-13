@@ -4,7 +4,7 @@ import { sql } from "@/lib/db";
 import { requirePermission, can } from "@/lib/auth";
 import { getPriceHistory, getOrderInvoiceVariance, type PriceSide, type PriceRow } from "@/lib/queries";
 import { OrderVariance } from "./variance";
-import { money, shortDate } from "@/lib/format";
+import { money, shortDate, todayLocal } from "@/lib/format";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { AutoApply } from "@/components/auto-apply";
@@ -76,7 +76,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
   const variance = seeCost && sp.side === "variance";
   const tab = variance ? "variance" : side;
   const buying = side !== "sale";
-  const range = { from: sp.from || firstOfLastMonth(), to: sp.to || new Date().toISOString().slice(0, 10) };
+  const range = { from: sp.from || firstOfLastMonth(), to: sp.to || todayLocal() };
 
   const filters = {
     q: sp.q || undefined, partnerId: sp.partner || undefined, currency: sp.currency || undefined,

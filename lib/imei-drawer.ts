@@ -44,7 +44,7 @@ export async function imeiDrawer(serialId: string) {
   const prices = await sql`
     select pl.id, pl.code, pl.name,
            (select ip.price::float from item_price ip
-             where ip.item_id = ${u.item_id} and ip.price_level_id = pl.id and ip.valid_from <= current_date
+             where ip.item_id = ${u.item_id} and ip.price_level_id = pl.id and ip.valid_from <= fn_shop_today()
              order by ip.valid_from desc limit 1) as price
       from price_level pl
      where pl.company_id = ${user.companyId}

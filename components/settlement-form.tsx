@@ -56,7 +56,7 @@ function Amount({ value, onChange, label, invalid, placeholder, id }: {
   );
 }
 const day = (d: string | null) =>
-  d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+  d ? new Date(d).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }) : "—";
 
 /**
  * Settling invoices. The invoices themselves are never edited — this records

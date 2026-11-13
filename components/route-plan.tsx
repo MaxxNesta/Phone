@@ -27,7 +27,7 @@ type Candidate = {
 type Run = { id: string; trip_no: string; trip_date: string; status: string };
 
 const shortDate = (v: string) =>
-  new Date(v).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  new Date(v).toLocaleDateString("en-GB", { timeZone: "UTC", day: "numeric", month: "short", year: "numeric" });
 
 /**
  * The standing call list, and the button that turns it into today's trip.

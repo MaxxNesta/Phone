@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getCompany, getNegativeStock } from "@/lib/queries";
 import { reconcileNegativeStockAction } from "@/lib/actions";
 import { ReconcileStock } from "@/components/reconcile-stock";
-import { money } from "@/lib/format";
+import { money, todayLocal } from "@/lib/format";
 import { HelpHint } from "@/components/help-hint";
 import { getTranslations } from "next-intl/server";
 
@@ -18,7 +18,7 @@ export default async function NegativeStock() {
   const rows = (await seenRows((await getNegativeStock(company.id)) as unknown as Record<string, unknown>[])) as unknown as Parameters<
     typeof ReconcileStock
   >[0]["rows"];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const totalValue = rows.reduce((s, r) => s + Number(r.outstanding_value), 0);
 
   return (

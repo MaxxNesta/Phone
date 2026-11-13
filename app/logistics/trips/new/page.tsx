@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { sql } from "@/lib/db";
 import { getCompany, getVehicles, getDrivers, getSalesmen, getLocations,
          getUncarriedDeliveries } from "@/lib/queries";
@@ -20,7 +21,7 @@ export default async function NewTrip() {
     Array<Parameters<typeof NewTripForm>[0]["candidates"][number]>,
   ];
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   return (
     <>

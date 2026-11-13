@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { getFormData, createPurchaseReturn } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
@@ -18,7 +19,7 @@ export default async function NewPurchaseReturn({
   const co = await getCompany();
   if (!co) return <div className="empty">No company found.</div>;
   const categories = await allCategories(co.id);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const returnable = await getReturnablePurchases(co.id);
 
   /**

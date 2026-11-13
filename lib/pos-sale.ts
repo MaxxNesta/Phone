@@ -43,7 +43,7 @@ export async function postTillSale(sale: TillSale, tr: Tr): Promise<{ id: string
 
   const walkInId = await walkIn(co);
   const partnerId = sale.partnerId || walkInId;
-  const today = (await sql`select to_char(current_date, 'YYYY-MM-DD') as d`)[0].d as string;
+  const today = (await sql`select to_char(fn_shop_today(), 'YYYY-MM-DD') as d`)[0].d as string;
 
   // The same attempt twice is the same sale. Looking for it first was not
   // enough: requests sent together all looked before any had posted, and

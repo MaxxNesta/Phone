@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { sql } from "./db";
 import { schedule, toUnits, monthOf, type Convention, type EngineAsset, type ScheduleRow, type Month } from "./fa-engine";
 
@@ -90,4 +91,4 @@ export async function loadSchedules(co: string, f: { branches?: string[] | null;
 }
 
 /** The current month in Yangon, "YYYY-MM". */
-export const thisMonth = () => monthOf(new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10));
+export const thisMonth = () => monthOf(todayLocal());

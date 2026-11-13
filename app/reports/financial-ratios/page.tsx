@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { getCompany, getBranches, getCashConversionCycle } from "@/lib/queries";
@@ -30,7 +31,7 @@ export default async function FinancialRatiosPage({
   if (!company) return <div className="empty">No company found.</div>;
 
   const tab = (TABS.find(([k]) => k === p.tab)?.[0] ?? "overview") as Tab;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   const from = isDate(p.from) ? p.from! : `${today.slice(0, 4)}-01-01`;
   let to = isDate(p.to) ? p.to! : today;
   if (to < from) to = from;

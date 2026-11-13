@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { getFormData, createDelivery } from "@/lib/actions";
 import {
@@ -37,7 +38,7 @@ export default async function NewDelivery({
         <DeliverAgainstInvoice
           action={createDelivery}
           invoice={invoice as never}
-          today={new Date().toISOString().slice(0, 10)}
+          today={todayLocal()}
           related={<RelatedDocumentsPanel related={related} />}
           backHref={orderId ? `/documents/${orderId}` : `/documents/${invoice.id}`}
           backLabel={orderId ? "Back to order" : "Back to invoice"}
@@ -58,7 +59,7 @@ export default async function NewDelivery({
     // can name the batch before the goods are picked.
     getPickOrder(co.id),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
 
   if (d.customers.length === 0 || categories.length === 0 || d.locations.length === 0) {
     return (

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
@@ -12,7 +13,7 @@ export default async function NewLandedCost({ searchParams }: { searchParams: Pr
     postedReceipts(user.companyId, await seenLocations()),
     landedCostTemplates(user.companyId, true),
   ]) as [any[], any[]];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocal();
   // The receipt it was opened from goes first, ticked.
   const ordered = gr ? [...receipts.filter((r) => r.id === gr), ...receipts.filter((r) => r.id !== gr)] : receipts;
 

@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/format";
 import { notFound } from "next/navigation";
 import { requireFaPoster } from "@/lib/fa-access";
 import { sql } from "@/lib/db";
@@ -36,7 +37,7 @@ export default async function DisposeAsset({ params, searchParams }: { params: P
   const allUnits = (units as any[]).map((u) => u.id as string);
   const chosen = units.length > 1 ? (sp.unit === undefined ? allUnits : ([] as string[]).concat(sp.unit).filter((x) => allUnits.includes(x))) : [];
   const partial = chosen.length > 0 && chosen.length < allUnits.length;
-  const today = new Date(Date.now() + 6.5 * 3600_000).toISOString().slice(0, 10);
+  const today = todayLocal();
   const spDate = one(sp.date), spProceeds = one(sp.proceeds), spAccount = one(sp.account);
   const date = spDate && /^\d{4}-\d{2}-\d{2}$/.test(spDate) ? spDate : today;
   const proceeds = spProceeds && /^\d+(\.\d{1,4})?$/.test(spProceeds.replace(/,/g, "")) ? spProceeds.replace(/,/g, "") : "0";
