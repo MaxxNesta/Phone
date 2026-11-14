@@ -155,6 +155,7 @@
     "CASHIER": "Cashier",
     "SALESPERSON": "Salesperson",
     "INVENTORY": "Inventory clerk",
+    "PURCHASER": "Purchaser",
     "ACCOUNTANT": "Accountant"
   },
   "language": {

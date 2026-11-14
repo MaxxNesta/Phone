@@ -1,5 +1,5 @@
 import { lowStockToday } from "@/lib/replenish-data";
-import { lowStockHref } from "@/lib/plans";
+import { lowStockHref, planIncludes } from "@/lib/plans";
 import { getCompany } from "@/lib/queries";
 import { seenLocations, seenRows } from "@/lib/branch-scope";
 import Link from "next/link";
@@ -65,6 +65,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   // Only "review and order" leads to the planner, where the package has one.
   const lowHref = "/items/stock#low-stock";
   const orderHref = company ? lowStockHref(company.plan) : "/items/stock";
+  // Turnover, days of stock and stock cover: Standard and Advanced.
+  const analysis = !company || planIncludes(company.plan, "inventory_analysis");
 
   // The warehouses this person may see, each with the branch it belongs to.
   const seen = await seenLocations();
@@ -284,7 +286,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
           "At cost, landed costs included.")}
         {kpi(<Layers size={16} aria-hidden="true" />, "Total on hand", `${(named + counted).toLocaleString("en-US")} units`,
           `IMEI / serial: ${named.toLocaleString("en-US")} · Quantity: ${counted.toLocaleString("en-US")}`)}
-        {seeCost ? <>
+        {seeCost && analysis ? <>
           {kpi(<Repeat size={16} aria-hidden="true" />, "Inventory turnover", turnover === null ? "—" : `${turnover.toFixed(1)}×`,
             "Cost of goods sold in the last 90 days over the average stock value (start and now).")}
           {kpi(<Hourglass size={16} aria-hidden="true" />, "Days inventory outstanding", dio === null ? "—" : `${dio.toFixed(1)} days`,
@@ -297,7 +299,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </>}
       </div>
 
-      {/* Three charts, one frame, one height. */}
+      {/* Three charts in a row, one frame, one height; the value trend runs
+          the full width under them. */}
       <section className="inv-charts">
         {seeCost && (
           <div className="card inv-chart">
@@ -313,6 +316,17 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             {bars.length ? <MeasureBars data={bars} format="plain" height={250} /> : <div className="empty">Nothing in stock yet.</div>}
           </div>
         </div>
+        <div className="card inv-chart inv-status-card">
+          <div className="card-head"><h2>Catalogue by model</h2><span className="page-sub">{all.length} models</span>
+            <ChartTools name="catalogue-by-stock-status" rows={[["Status", "Models"], ["In stock", healthy.length], ["Low stock", low.length], ["Out of stock", out.length]]} /></div>
+          <div className="card-body">
+            <ShareDonut count emptyLabel="No products yet." currency=""
+              centre={{ value: String(all.length), label: "Models" }}
+              colours={["var(--ok)", "#FF9F0A", "var(--bad)"]}
+              data={[{ id: "in", name: "In stock", revenue: healthy.length }, { id: "low", name: "Low stock", revenue: low.length },
+                     { id: "out", name: "Out of stock", revenue: out.length }]} />
+          </div>
+        </div>
         {seeCost && (
           <div className="card inv-chart inv-trend">
             <div className="card-head"><h2>Inventory value trend</h2><span className="page-sub">last 7 months · MMK at cost</span>
@@ -324,7 +338,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                   delta: pctMove(valNow, valPrev), note: valStart ? `${pctMove(valNow, valStart)?.text ?? "—"} over 6 months` : undefined },
                 { color: "color-mix(in srgb, var(--chart-3) 75%, transparent)", label: "Stock in", value: compact(sumIn) },
                 { color: "color-mix(in srgb, var(--chart-4) 75%, transparent)", label: "Cost of sales", value: compact(sumOut) },
-                ...(dio !== null ? [{ color: "var(--line)", label: "Stock cover", value: `${Math.round(dio)} days`, note: "at the last 90 days' pace" }] : []),
+                ...(analysis && dio !== null ? [{ color: "var(--line)", label: "Stock cover", value: `${Math.round(dio)} days`, note: "at the last 90 days' pace" }] : []),
               ]} />
               <InventoryTrendChart data={trendRows} height={260} />
             </div>
@@ -353,17 +367,6 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             </ul>
           </div>
         </Link>
-        <div className="card inv-status-card">
-          <div className="card-head"><h2>Catalogue by model</h2><span className="page-sub">{all.length} models</span>
-            <ChartTools name="catalogue-by-stock-status" rows={[["Status", "Models"], ["In stock", healthy.length], ["Low stock", low.length], ["Out of stock", out.length]]} /></div>
-          <div className="card-body">
-            <ShareDonut count emptyLabel="No products yet." currency=""
-              centre={{ value: String(all.length), label: "Models" }}
-              colours={["var(--ok)", "#FF9F0A", "var(--bad)"]}
-              data={[{ id: "in", name: "In stock", revenue: healthy.length }, { id: "low", name: "Low stock", revenue: low.length },
-                     { id: "out", name: "Out of stock", revenue: out.length }]} />
-          </div>
-        </div>
       </section>
 
       <div className="inv-row3">

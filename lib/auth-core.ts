@@ -68,6 +68,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   CASHIER: ["pos.sell", "sales.view", "sales.post", "inventory.view", "partners.manage"],
   SALESPERSON: ["pos.sell", "sales.view", "inventory.view", "partners.manage"],
   INVENTORY: ["inventory.view", "inventory.manage", "purchase.view", "items.manage"],
+  // Buys: orders, goods receipts, bills and supplier returns, and the
+  // suppliers behind them. Sees stock to know what to buy; pays nobody.
+  PURCHASER: ["purchase.view", "purchase.post", "inventory.view", "partners.manage"],
   ACCOUNTANT: ["sales.view", "purchase.view", "inventory.view", "cost.view",
     "accounting.view", "accounting.post", "reports.view", "partners.manage",
     // A run's totals and journal, and paying it as a batch; no one's salary.
@@ -84,6 +87,8 @@ export type SessionUser = {
   branchId: string | null;
   /** May see every branch's documents and reports, though posting stays at branchId. */
   seesAllBranches: boolean;
+  /** A package seat's level (0198); null means the company's package. */
+  seatPlan?: string | null;
 };
 
 /** Only these roles may work across every branch. */
@@ -138,7 +143,7 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
   if (!token) return null;
   const hash = tokenHash(token);
   const [u] = await sql`
-    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches,
+    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches, u.seat_plan,
            s.last_seen_at < now() - interval '5 minutes' as stale
       from user_session s join app_user u on u.id = s.user_id
      where s.token_hash = ${hash} and s.expires_at > now()
@@ -149,7 +154,7 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
   if (u.stale) await sql`update user_session set last_seen_at = now() where token_hash = ${hash}`;
   return { id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
            email: u.email, role: u.role as Role, branchId: u.branch_id ?? null,
-           seesAllBranches: Boolean(u.sees_all_branches) };
+           seesAllBranches: Boolean(u.sees_all_branches), seatPlan: (u.seat_plan as string | null) ?? null };
 }
 
 /**

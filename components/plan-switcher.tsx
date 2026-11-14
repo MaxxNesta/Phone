@@ -120,7 +120,7 @@ export function PlanSwitcher({
                   <tr className="plan-group"><th colSpan={4}>{g.group}</th></tr>
                   {g.lines.map((ln) => (
                     <tr key={ln.label}>
-                      <td>{ln.label}</td>
+                      <td>{ln.label}{ln.note && <span className="plan-note">{ln.note}</span>}</td>
                       {ORDER.map((p) => (
                         <td key={p} className={`c${p === current ? " here" : ""}`}>
                           {ln.in.includes(p)
@@ -143,7 +143,7 @@ export function PlanSwitcher({
             <div className="hintbar caution">
               {locked
                 ? <><strong>Need more?</strong> Contact your provider to change the package, add modules or add user seats.</>
-                : <><strong>Test site:</strong> the package, modules and user seats can be changed here. In production only the provider can change them.</>}
+                : <><strong>Test site:</strong> the package, add-ons and user seats can be changed here for testing. In production only the provider can change them.</>}
               {" "}A company already over its user seats keeps everyone it has and is
               refused only when adding more.
             </div>

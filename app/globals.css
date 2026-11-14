@@ -10595,3 +10595,21 @@ dialog.denied::backdrop { background: rgb(0 0 0 / .35); backdrop-filter: blur(2p
 .tick.yes .tick-box { background: var(--blue); border-color: var(--blue); color: #fff; }
 .tick.na::before { content: "—"; color: var(--line); }
 .ppl-edit > summary.btn { display: inline-flex; align-items: center; height: 36px; padding: 0 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+/* Three charts across, the trend full width under them; aging alone on its row. */
+.inv-charts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .inv-charts { grid-template-columns: minmax(0, 1fr); } }
+.inv-row2 { grid-template-columns: minmax(0, 1fr); }
+.plan-note { display: block; font-size: var(--t-xs); color: var(--muted); margin-top: 0.15rem; }
+.plan-table td .subline { display: block; }
+
+.seat-mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s3); border-top: 1px solid var(--line-soft); }
+.seat-mod { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 0.9rem; border: 1px solid var(--line); border-radius: 12px; }
+.seat-mod-text { display: flex; flex-direction: column; }
+.seat-mod-text span { font-size: var(--t-xs); color: var(--muted); }
+.seat-mod-n { min-width: 1.5rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.seat-mods-note { grid-column: 1 / -1; font-size: var(--t-xs); }
+.mod-card.needs { opacity: 0.6; }
+.mod-needs { color: var(--muted); }
+.seat-group { grid-column: 1 / -1; font-size: var(--t-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
+.seat-mod.blocked { opacity: 0.55; }
+.seat-save { display: flex; justify-content: flex-end; border-top: 1px solid var(--line-soft); }

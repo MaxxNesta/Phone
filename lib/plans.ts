@@ -63,6 +63,43 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
  * keep the switch so the tiers can be tested.
  */
 export const planSwitchable = process.env.VERCEL_ENV !== "production";
+// Customers never change it in production; on DEV and preview the owner can,
+// to test each package (and scripts/set-package.mjs does the same from a terminal).
+
+/**
+ * Seats (0196, 0197). A package seat holds any role; a module seat, bought
+ * with the Sales, Purchases or Inventory module, holds only that module's
+ * roles. A package is always underneath: module seats are added to it.
+ */
+export type Seat = "package" | "sales" | "purchases" | "inventory";
+export const SEATS: { key: Seat; name: string; roles: string[] | null }[] = [
+  { key: "package", name: "Package seat", roles: null },
+  { key: "sales", name: "Sales seat", roles: ["CASHIER", "SALESPERSON"] },
+  { key: "purchases", name: "Purchases seat", roles: ["PURCHASER"] },
+  { key: "inventory", name: "Inventory seat", roles: ["INVENTORY"] },
+];
+export const seatAllows = (seat: Seat, role: string) => {
+  const s = SEATS.find((x) => x.key === seat);
+  return !!s && (s.roles === null || s.roles.includes(role));
+};
+
+/** Package levels, lowest first. A seat's level never rises above the company's. */
+export const PLAN_ORDER: Plan[] = ["STARTER", "BUSINESS", "ENTERPRISE"];
+export const planRank = (p: Plan) => PLAN_ORDER.indexOf(p);
+/** The lower of two levels: a seat is capped by the company's package. */
+export const capPlan = (seat: Plan | null | undefined, company: Plan): Plan =>
+  seat && planRank(seat) < planRank(company) ? seat : company;
+
+/** Add-ons that need Standard or Advanced underneath (2026-11-14). */
+export const STANDARD_UP_ADDONS: Module[] = ["fixed_assets", "landed_cost"];
+export const addonAllowed = (plan: Plan, m: Module) => !STANDARD_UP_ADDONS.includes(m) || plan !== "STARTER";
+
+/**
+ * Package seats at one level: the company's own level brings its included
+ * seat; every level has the extra seats bought at it (0198).
+ */
+export const packageSeatsAt = (level: Plan, companyPlan: Plan, bought: Record<string, number> | null | undefined) =>
+  (level === companyPlan ? (limitFor(companyPlan, "users") ?? 0) : 0) + Math.max(0, Number(bought?.[level] ?? 0));
 
 /** People who may sign in: the package's included user plus the seats bought (0196). */
 export const userLimit = (plan: Plan, extraUsers: number) => (limitFor(plan, "users") ?? 0) + Math.max(0, extraUsers || 0);
@@ -87,12 +124,15 @@ export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
  */
 export type Feature = "supplier_performance" | "dashboard_advanced" | "replenishment"
   | "financial_ratios" | "price_history" | "supply_chain"
-  | "inventory_aging" | "financial_statements" | "sales_report" | "ar_ap_aging";
+  | "inventory_aging" | "financial_statements" | "sales_report" | "ar_ap_aging" | "inventory_analysis";
 
 const FEATURES: Record<Feature, Plan[]> = {
   // Business and Enterprise. A Starter shop buys from a handful of people
   // it already knows; scoring them is a growing company's problem.
-  supplier_performance: ["BUSINESS", "ENTERPRISE"],
+  // Advanced only (2026-11-14). It scores suppliers on orders: promised
+  // dates, what arrived against them, and price. Purchases billed directly,
+  // without an order, have nothing to be measured against and are left out.
+  supplier_performance: ["ENTERPRISE"],
   // The main dashboard's accounting health (trial balance checks) and its
   // region, customer-type and supplier-type breakdowns. Starter keeps the
   // rest of the dashboard (decided 2026-11-09).
@@ -115,6 +155,8 @@ const FEATURES: Record<Feature, Plan[]> = {
   financial_statements: ["BUSINESS", "ENTERPRISE"],
   sales_report: ["BUSINESS", "ENTERPRISE"],
   ar_ap_aging: ["BUSINESS", "ENTERPRISE"],
+  // Inventory turnover, days inventory outstanding and stock cover (2026-11-14).
+  inventory_analysis: ["BUSINESS", "ENTERPRISE"],
 };
 
 /**
@@ -149,8 +191,10 @@ export const MODULES: { key: Module; name: string; covers: string }[] = [
  * add-on only when bought. A company read without the column (older code
  * paths) has them all.
  */
-export function hasModule(company: { modules?: string[] | null } | null | undefined, m: Module): boolean {
-  return isCore(m) || !company?.modules || company.modules.includes(m);
+export function hasModule(company: { modules?: string[] | null; plan?: Plan } | null | undefined, m: Module): boolean {
+  if (isCore(m)) return true;
+  if (company?.plan && !addonAllowed(company.plan, m)) return false;
+  return !company?.modules || company.modules.includes(m);
 }
 
 /**
@@ -158,7 +202,7 @@ export function hasModule(company: { modules?: string[] | null } | null | undefi
  * packages that include the line; a line every package has is still listed,
  * so the columns show what Essential gives as well as what it lacks.
  */
-export const PLAN_COMPARISON: { group: string; lines: { label: string; in: Plan[] }[] }[] = [
+export const PLAN_COMPARISON: { group: string; lines: { label: string; note?: string; in: Plan[] }[] }[] = [
   { group: "Everyday", lines: [
     { label: "Counter sale, invoices, returns", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
     { label: "Purchases, goods receipts, payables", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
@@ -173,7 +217,7 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; in: Plan[
     { label: "Detailed sales report", in: FEATURES.sales_report },
     { label: "AR / AP aging", in: FEATURES.ar_ap_aging },
     { label: "Inventory aging", in: FEATURES.inventory_aging },
-    { label: "Supplier performance", in: FEATURES.supplier_performance },
+    { label: "Inventory turnover, days of stock and stock cover", in: FEATURES.inventory_analysis },
     { label: "Dashboard accounting health and breakdowns", in: FEATURES.dashboard_advanced },
   ] },
   { group: "Advanced", lines: [
@@ -181,6 +225,7 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; in: Plan[
     { label: "Financial ratios", in: FEATURES.financial_ratios },
     { label: "Price history", in: FEATURES.price_history },
     { label: "Supply chain", in: FEATURES.supply_chain },
+    { label: "Supplier performance", note: "Scores purchases made through purchase orders only; bills entered directly without an order are not counted", in: FEATURES.supplier_performance },
   ] },
 ];
 

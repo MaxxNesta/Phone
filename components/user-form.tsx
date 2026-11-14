@@ -8,13 +8,30 @@ import { useNotice } from "@/components/toast";
 /** Roles that may work across every branch. Kept with ALL_BRANCH_ROLES in auth-core. */
 const ACROSS_BRANCHES = ["ADMIN", "MANAGER"];
 
-export function UserForm({ user, branches = [] }: {
-  user?: { id: string; name: string; email: string; role: string; is_active: boolean; branch_id?: string | null; sees_all_branches?: boolean };
+/** Seat types and their roles, as lib/plans.ts SEATS (kept here so the form stays a client module). */
+const SEAT_OPTS: { key: string; name: string; roles: string[] | null }[] = [
+  { key: "package", name: "Package seat", roles: null },
+  { key: "sales", name: "Sales seat", roles: ["CASHIER", "SALESPERSON"] },
+  { key: "purchases", name: "Purchases seat", roles: ["PURCHASER"] },
+  { key: "inventory", name: "Inventory seat", roles: ["INVENTORY"] },
+];
+
+const LEVELS: [string, string][] = [["STARTER", "Essential"], ["BUSINESS", "Standard"], ["ENTERPRISE", "Advanced"]];
+
+export function UserForm({ user, branches = [], free, companyPlan = "ENTERPRISE" }: {
+  /** The company's package: no seat above it. */
+  companyPlan?: string;
+  /** Seats free by type, shown beside each choice. */
+  free?: Record<string, number>;
+  user?: { id: string; name: string; email: string; role: string; is_active: boolean; branch_id?: string | null; sees_all_branches?: boolean; seat?: string; seat_plan?: string | null };
   branches?: { id: string; code: string; name: string }[];
 }) {
   const [state, action, pending] = useActionState(saveUser, null);
   useNotice(state);
   const [role, setRole] = useState(user?.role ?? "CASHIER");
+  const [seat, setSeat] = useState(user?.seat ?? "package");
+  const allowed = SEAT_OPTS.find((s) => s.key === seat)?.roles ?? null;
+  const roleOk = !allowed || allowed.includes(role);
   const across = ACROSS_BRANCHES.includes(role);
   const k = user?.id ?? "new";
   return (
@@ -29,11 +46,44 @@ export function UserForm({ user, branches = [] }: {
         <label htmlFor={`ue-${k}`}>Email</label>
         <input id={`ue-${k}`} name="email" type="email" required defaultValue={user?.email} />
       </div>
+      {/* The seat first: a module seat holds only its module's roles. */}
+      <div className="field">
+        <label htmlFor={`us-${k}`}>Seat</label>
+        <select id={`us-${k}`} name="seat" value={seat}
+                onChange={(e) => {
+                  const next = e.target.value; setSeat(next);
+                  const r = SEAT_OPTS.find((s) => s.key === next)?.roles;
+                  if (r && !r.includes(role)) setRole(r[0]);
+                }}>
+          {SEAT_OPTS.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.name}{free && s.key in free ? ` · ${free[s.key]} free` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+      {seat === "package" && (
+        <div className="field">
+          <label htmlFor={`ul-${k}`}>Package level</label>
+          <select id={`ul-${k}`} name="seat_plan" defaultValue={user?.seat_plan ?? companyPlan}>
+            {LEVELS.map(([v, label], i) => {
+              const above = i > LEVELS.findIndex(([x]) => x === companyPlan);
+              return (
+                <option key={v} value={v} disabled={above}>
+                  {label}{above ? " · upgrade the company first" : free && `pkg:${v}` in free ? ` · ${free[`pkg:${v}`]} free` : ""}
+                </option>
+              );
+            })}
+          </select>
+          <span className="hint">What this person sees. It can’t be above the company’s package.</span>
+        </div>
+      )}
       <div className="field">
         <label htmlFor={`ur-${k}`}>Role</label>
         <select id={`ur-${k}`} name="role" value={role} onChange={(e) => setRole(e.target.value)}>
-          {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+          {ROLES.filter((r) => !allowed || allowed.includes(r)).map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
         </select>
+        {!roleOk && <span className="hint">This seat can’t hold that role.</span>}
       </div>
       {/* Where this person works. Everyone but an administrator or a manager
           belongs to one branch and works only there; with one branch there is

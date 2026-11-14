@@ -20,7 +20,9 @@ const ICON: Record<Module, LucideIcon> = {
  * add-ons, each added or removed on its own. On a live site the provider
  * sets them, so the cards are shown without their buttons.
  */
-export function ModuleSwitcher({ all, current, core, planName, locked, action }: {
+export function ModuleSwitcher({ all, current, core, planName, locked, action, needsStandard = [] }: {
+  /** Add-ons this package cannot take (they start on Standard). */
+  needsStandard?: Module[];
   all: { key: Module; name: string; covers: string }[];
   current: string[];
   core: Module[];
@@ -39,7 +41,7 @@ export function ModuleSwitcher({ all, current, core, planName, locked, action }:
   const Card = ({ m, on, isCore }: { m: (typeof all)[number]; on: boolean; isCore: boolean }) => {
     const Icon = ICON[m.key];
     return (
-      <div className={`mod-card${on ? " on" : ""}`}>
+      <div className={`mod-card${on && !needsStandard.includes(m.key) ? " on" : ""}${needsStandard.includes(m.key) ? " needs" : ""}`}>
         <span className="mod-icon"><Icon size={20} aria-hidden="true" /></span>
         <div className="mod-text">
           <strong>{m.name}</strong>
@@ -48,6 +50,8 @@ export function ModuleSwitcher({ all, current, core, planName, locked, action }:
         <div className="mod-foot">
           {isCore ? (
             <span className="mod-state"><Check size={14} aria-hidden="true" /> In {planName}</span>
+          ) : needsStandard.includes(m.key) ? (
+            <span className="mod-state mod-needs">From the Standard package</span>
           ) : locked ? (
             <span className="mod-state">{on ? <><Check size={14} aria-hidden="true" /> Added</> : "Not added"}</span>
           ) : (
@@ -59,7 +63,7 @@ export function ModuleSwitcher({ all, current, core, planName, locked, action }:
               </button>
             </form>
           )}
-          {!isCore && on && !locked && <span className="mod-state"><Check size={14} aria-hidden="true" /> Added</span>}
+          {!isCore && on && !locked && !needsStandard.includes(m.key) && <span className="mod-state"><Check size={14} aria-hidden="true" /> Added</span>}
         </div>
       </div>
     );

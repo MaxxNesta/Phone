@@ -42,6 +42,7 @@ export async function endSession() {
 /** Test sites only: with sign-in off, the owner can look at the app as another role. */
 export const PREVIEW_ROLE_COOKIE = "preview_role";
 export const PREVIEW_BRANCH_COOKIE = "preview_branch";
+export const PREVIEW_PLAN_COOKIE = "preview_plan";
 export const previewAllowed = () => !authRequired() && process.env.VERCEL_ENV !== "production";
 
 export const currentUser = cache(async (): Promise<SessionUser | null> => {
@@ -54,7 +55,8 @@ export const currentUser = cache(async (): Promise<SessionUser | null> => {
     if (!as || !(ROLES as readonly string[]).includes(as)) return owner;
     // A branch id means "works at this branch only"; none means all branches.
     const branch = jar.get(PREVIEW_BRANCH_COOKIE)?.value || null;
-    return { ...owner, role: as as SessionUser["role"], branchId: branch, seesAllBranches: !branch };
+    const plan = jar.get(PREVIEW_PLAN_COOKIE)?.value || null;
+    return { ...owner, role: as as SessionUser["role"], branchId: branch, seesAllBranches: !branch, seatPlan: plan };
   }
   return userForToken((await cookies()).get(SESSION_COOKIE)?.value);
 });

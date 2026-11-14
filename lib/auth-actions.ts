@@ -1,5 +1,5 @@
 "use server";
-import { userLimit } from "./plans";
+import { SEATS, seatAllows, PLAN_ORDER, PLAN_NAME, planRank, packageSeatsAt, type Seat, type Plan } from "./plans";
 
 import { str } from "./input";
 import { redirect } from "next/navigation";
@@ -12,7 +12,7 @@ import { sql } from "./db";
 import { tooManyFailures, recordFailure, clearFailures, LOGIN_LIMITS } from "./login-throttle";
 import {
   createSession, endSession, hashPassword, verifyPassword, requirePermission,
-  ROLES, ALL_BRANCH_ROLES, type Role,
+  ROLES, ROLE_LABEL, ALL_BRANCH_ROLES, type Role,
 } from "./auth";
 
 type Result = { error: string } | { ok: string } | null;
@@ -126,6 +126,14 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
   const active = fd.get("is_active") !== null;
   const branchId = str(fd, "branch_id") || null;
   const seesAll = fd.get("sees_all_branches") !== null;
+  const seat = (str(fd, "seat") || "package") as Seat;
+  const level = seat === "package" ? (str(fd, "seat_plan") || null) : null;
+  if (level && !PLAN_ORDER.includes(level as Plan)) return { error: "Choose a package level." };
+  if (!SEATS.some((s) => s.key === seat)) return { error: "Choose a seat." };
+  if (!seatAllows(seat, role)) {
+    const s = SEATS.find((x) => x.key === seat)!;
+    return { error: `A ${s.name.toLowerCase()} can only be ${s.roles!.map((r) => ROLE_LABEL[r as Role]).join(" or ")}. Move this person to a package seat, or buy the module for this role.` };
+  }
 
   if (!name || !email.includes("@")) return { error: "Enter a name and an email address." };
   if (!ROLES.includes(role)) return { error: "Choose a role." };
@@ -143,17 +151,36 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
 
   // Seats: the package's included user plus those bought. Only adding a
   // person, or reactivating one, needs a free seat; editing never does.
-  const [seat] = await sql`
-    select c.plan, c.extra_users,
-           (select count(*)::int from app_user u where u.company_id = c.id and u.is_active
-              and (${id || null}::uuid is null or u.id <> ${id || null}::uuid)) as others,
-           (select is_active from app_user u where u.id = ${id || null}::uuid) as was_active
+  const [room] = await sql`
+    select c.plan, c.package_seats, c.module_seats,
+           (select is_active from app_user u where u.id = ${id || null}::uuid) as was_active,
+           (select seat from app_user u where u.id = ${id || null}::uuid) as was_seat,
+           (select coalesce(seat_plan, c.plan) from app_user u where u.id = ${id || null}::uuid) as was_level
       from company c where c.id = ${admin.companyId}`;
-  const needsSeat = active && (!id || seat?.was_active === false);
-  if (seat && needsSeat) {
-    const limit = userLimit(seat.plan, Number(seat.extra_users));
-    if (seat.others + 1 > limit) {
-      return { error: `Your package includes ${limit} user${limit === 1 ? "" : "s"}, and ${seat.others} ${seat.others === 1 ? "is" : "are"} active. Add a user seat to add another person, or deactivate someone first.` };
+  const companyPlan = room.plan as Plan;
+  const myLevel = (level ?? companyPlan) as Plan;
+  // A seat's level never rises above the company's package.
+  if (seat === "package" && planRank(myLevel) > planRank(companyPlan)) {
+    return { error: `The company is on ${PLAN_NAME[companyPlan]}. Upgrade the company to ${PLAN_NAME[myLevel]} first, then add ${PLAN_NAME[myLevel]} seats.` };
+  }
+  const [{ others }] = await sql`
+    select count(*)::int as others from app_user u
+     where u.company_id = ${admin.companyId} and u.is_active and u.seat = ${seat} and u.password_hash is not null
+       and (${seat} <> 'package' or coalesce(u.seat_plan, ${companyPlan}) = ${myLevel})
+       and (${id || null}::uuid is null or u.id <> ${id || null}::uuid)`;
+  // A seat is needed by someone new, someone reactivated, or someone moved to another seat or level.
+  const needsSeat = active && (!id || room?.was_active === false || room?.was_seat !== seat
+    || (seat === "package" && room?.was_level !== myLevel));
+  if (needsSeat) {
+    const limit = seat === "package" ? packageSeatsAt(myLevel, companyPlan, room.package_seats)
+      : Number((room.module_seats as Record<string, number> | null)?.[seat] ?? 0);
+    if (others + 1 > limit) {
+      const s = SEATS.find((x) => x.key === seat)!;
+      const what = seat === "package" ? `${PLAN_NAME[myLevel]} package seat` : s.name.toLowerCase();
+      return { error: limit === 0
+        ? (seat === "package" ? `No ${what}s are bought. Add one in Settings → Package, or choose another level.`
+            : `No ${what}s are bought. Buy the ${s.name.replace(" seat", "")} module, or use a package seat.`)
+        : `All ${limit} ${what}${limit === 1 ? "" : "s"} are in use. Add a seat, or deactivate someone first.` };
     }
   }
 
@@ -162,7 +189,7 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
     if (id) {
       await sql`
         update app_user set name = ${name}, initials = ${initialsOf(name)}, email = ${email},
-               role = ${role}, is_active = ${active}, branch_id = ${branchId}, sees_all_branches = ${seesAll},
+               role = ${role}, is_active = ${active}, seat = ${seat}, seat_plan = ${level === companyPlan ? null : level}, branch_id = ${branchId}, sees_all_branches = ${seesAll},
                password_hash = coalesce(${hash}, password_hash)
          where id = ${id} and company_id = ${admin.companyId}`;
       // A deactivated account or a changed password ends its sessions now.
@@ -170,8 +197,8 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
     } else {
       if (!hash) return { error: "A new account needs a password." };
       await sql`
-        insert into app_user (company_id, name, initials, email, password_hash, role, is_active, branch_id, sees_all_branches)
-        values (${admin.companyId}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, ${role}, ${active}, ${branchId}, ${seesAll})`;
+        insert into app_user (company_id, name, initials, email, password_hash, role, is_active, branch_id, sees_all_branches, seat, seat_plan)
+        values (${admin.companyId}, ${name}, ${initialsOf(name)}, ${email}, ${hash}, ${role}, ${active}, ${branchId}, ${seesAll}, ${seat}, ${level === companyPlan ? null : level})`;
     }
   } catch (e) {
     const msg = (e as Error).message;

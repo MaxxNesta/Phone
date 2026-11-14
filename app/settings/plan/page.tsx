@@ -1,7 +1,7 @@
 import { sql } from "@/lib/db";
 import { getCompany } from "@/lib/queries";
 import { setCompanyPlan, setCompanyModules, setExtraUsers } from "@/lib/actions";
-import { PLAN_LIMITS, PLAN_NAME, planSwitchable, MODULES, CORE_MODULES, type Plan } from "@/lib/plans";
+import { PLAN_LIMITS, PLAN_NAME, PLAN_ORDER, planSwitchable, MODULES, CORE_MODULES, STANDARD_UP_ADDONS, type Plan } from "@/lib/plans";
 import { ModuleSwitcher } from "@/components/module-switcher";
 import { SeatCard } from "@/components/seat-card";
 import { PlanSwitcher } from "@/components/plan-switcher";
@@ -11,10 +11,13 @@ export default async function PlanSettings() {
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const [row] = (await sql`select plan, extra_users,
-      (select count(*)::int from app_user u where u.company_id = c.id and u.is_active) as active_users
+  const [row] = (await sql`select plan, package_seats, module_seats,
+      (select coalesce(jsonb_object_agg(k, n), '{}') from (
+         select case when seat = 'package' then coalesce(seat_plan, c.plan) else seat end as k, count(*)::int as n
+           from app_user u where u.company_id = c.id and u.is_active and u.password_hash is not null group by 1) x) as used
       from company c where c.id = ${company.id}`) as
-    unknown as { plan: Plan; extra_users: number; active_users: number }[];
+    unknown as { plan: Plan; package_seats: Record<string, number>; module_seats: Record<string, number>; used: Record<string, number> }[];
+  const rank = PLAN_ORDER.indexOf(row.plan);
 
   // What this company actually holds, so a limit can be read against
   // something real rather than in the abstract.
@@ -30,9 +33,8 @@ export default async function PlanSettings() {
         <span className="eyebrow">Settings · Account</span>
         <h1>Package</h1>
         <HelpHint>
-          Which package this company is on. In production the package is set
-          by the provider; on test sites it can be switched here so each tier
-          can be tried.
+          Which package this company is on, its add-ons and its seats. They are
+          set by your provider and shown here for reference.
           <br /><br />
           Branches and warehouses are unlimited in every package. Each
           package includes one user; more people need user seats.
@@ -50,10 +52,18 @@ export default async function PlanSettings() {
 
       <ModuleSwitcher all={MODULES} current={company.modules ?? MODULES.map((m) => m.key)}
         core={CORE_MODULES} planName={PLAN_NAME[row.plan]}
+        needsStandard={row.plan === "STARTER" ? STANDARD_UP_ADDONS : []}
         locked={!planSwitchable} action={setCompanyModules} />
 
-      <SeatCard included={PLAN_LIMITS[row.plan].users ?? 1} extra={row.extra_users} active={row.active_users}
-        locked={!planSwitchable} action={setExtraUsers} />
+      <SeatCard locked={!planSwitchable} action={setExtraUsers}
+        packages={PLAN_ORDER.map((p, i) => ({
+          key: p, name: `${PLAN_NAME[p]} seats`,
+          included: p === row.plan ? (PLAN_LIMITS[p].users ?? 1) : 0,
+          bought: Number(row.package_seats?.[p] ?? 0), used: Number(row.used?.[p] ?? 0),
+          blocked: i > rank ? `Upgrade the company to ${PLAN_NAME[p]} first` : undefined,
+        }))}
+        modules={[["sales", "Sales seats"], ["purchases", "Purchases seats"], ["inventory", "Inventory seats"]].map(([key, name]) => ({
+          key, name, included: 0, bought: Number(row.module_seats?.[key] ?? 0), used: Number(row.used?.[key] ?? 0) }))} />
     </>
   );
 }

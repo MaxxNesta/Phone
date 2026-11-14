@@ -10,7 +10,7 @@ import type { Role } from "@/lib/roles";
 import { UserForm } from "@/components/user-form";
 import { dateTime } from "@/lib/format";
 import { getCompany } from "@/lib/queries";
-import { hasModule, PLAN_NAME, userLimit, type Module } from "@/lib/plans";
+import { hasModule, PLAN_NAME, PLAN_ORDER, packageSeatsAt, type Module, type Plan } from "@/lib/plans";
 import { previewRole } from "@/lib/preview-actions";
 
 export const metadata = { title: "Users" };
@@ -64,13 +64,13 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
   const admin = await requirePermission("users.manage");
   const sp = await searchParams;
   const [users, branches, company, [seat]] = await Promise.all([
-    sql`select u.id, u.name, u.initials, u.email, u.role, u.is_active, u.last_login_at, u.branch_id, u.sees_all_branches, b.name as branch_name
+    sql`select u.id, u.name, u.initials, u.email, u.role, u.seat, u.seat_plan, u.is_active, u.password_hash is not null as can_sign_in, u.last_login_at, u.branch_id, u.sees_all_branches, b.name as branch_name
           from app_user u left join location b on b.id = u.branch_id
          where u.company_id = ${admin.companyId} order by u.is_active desc, u.name`,
     sql`select id, code, name from location
          where company_id = ${admin.companyId} and parent_id is null and is_active order by code`,
     getCompany(),
-    sql`select extra_users from company where id = ${admin.companyId}`,
+    sql`select plan, package_seats, module_seats from company where id = ${admin.companyId}`,
   ]);
   const people = users as any[];
   const manyBranches = branches.length > 1;
@@ -78,8 +78,21 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
   const shown = q ? people.filter((u) => `${u.name} ${u.email ?? ""} ${ROLE_LABEL[u.role as Role] ?? ""}`.toLowerCase().includes(q)) : people;
   const adding = sp.new === "1";
   const picked = adding ? null : people.find((u) => u.id === sp.u) ?? shown[0] ?? null;
-  const seats = company ? userLimit(company.plan, Number(seat?.extra_users ?? 0)) : 0;
+  const companyPlan = (seat?.plan ?? company?.company_plan ?? "STARTER") as Plan;
+  const levelOf = (u: any) => (u.seat_plan ?? companyPlan) as Plan;
+  const seats = PLAN_ORDER.reduce((t, p) => t + packageSeatsAt(p, companyPlan, seat?.package_seats), 0);
   const active = people.filter((u) => u.is_active).length;
+  // A seat is a person who can sign in; the stand-in Owner (sign-in off) has no password and takes none.
+  const signs = (u: any) => u.is_active && u.can_sign_in;
+  const inSeat = (k: string) => people.filter((u) => signs(u) && (u.seat ?? "package") === k).length;
+  const ms = (seat?.module_seats ?? {}) as Record<string, number>;
+  const bought: Record<string, number> = { package: seats, sales: ms.sales ?? 0, purchases: ms.purchases ?? 0, inventory: ms.inventory ?? 0 };
+  const free: Record<string, number> = Object.fromEntries(Object.entries(bought).map(([k, n]) => [k, Math.max(0, n - inSeat(k))]));
+  for (const p of PLAN_ORDER) {
+    const used = people.filter((u) => signs(u) && (u.seat ?? "package") === "package" && levelOf(u) === p).length;
+    free[`pkg:${p}`] = Math.max(0, packageSeatsAt(p, companyPlan, seat?.package_seats) - used);
+  }
+  const SEAT_NAME: Record<string, string> = { package: "Package seat", sales: "Sales seat", purchases: "Purchases seat", inventory: "Inventory seat" };
   const perms = picked ? (ROLE_PERMISSIONS[picked.role as Role] as string[]) : [];
   const has = (p: string | null) => !!p && perms.includes(p);
   const canPreview = previewAllowed();
@@ -98,8 +111,10 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
         <span className="eyebrow">Settings · Account</span>
         <h1>Users</h1>
         <p className="page-sub">
-          {active} of {seats} user seats in use{company ? ` · ${PLAN_NAME[company.plan]} package` : ""}
-          {active >= seats ? " · add a seat in Settings → Package to add another person" : ""}
+          {inSeat("package")} of {seats} package seats in use
+          {(["sales", "purchases", "inventory"] as const).filter((k) => bought[k] > 0 || inSeat(k) > 0)
+            .map((k) => ` · ${inSeat(k)} of ${bought[k]} ${SEAT_NAME[k].toLowerCase()}s`).join("")}
+          {company ? ` · ${PLAN_NAME[company.plan]} package` : ""}
         </p>
       </div>
 
@@ -118,7 +133,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
                   <span className="ppl-avatar">{u.initials ?? u.name.slice(0, 2).toUpperCase()}</span>
                   <span className="ppl-who">
                     <strong>{u.name}</strong>
-                    <span>{ROLE_LABEL[u.role as Role] ?? u.role}{u.is_active ? "" : " · inactive"}</span>
+                    <span>{ROLE_LABEL[u.role as Role] ?? u.role}{(u.seat ?? "package") !== "package" ? ` · ${SEAT_NAME[u.seat]}` : ""}{u.is_active ? "" : " · inactive"}</span>
                   </span>
                 </Link>
               </li>
@@ -132,7 +147,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
           {adding ? (
             <>
               <div className="ppl-head"><div><h2>Add a person</h2><span className="page-sub">They sign in with their email and this password.</span></div></div>
-              <div className="card-body"><UserForm branches={branches as never} /></div>
+              <div className="card-body"><UserForm branches={branches as never} free={free} companyPlan={companyPlan} /></div>
             </>
           ) : picked ? (
             <>
@@ -142,6 +157,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
                   <h2>{picked.name}{!picked.is_active && <span className="pill reversed">inactive</span>}</h2>
                   <span className="page-sub">
                     {ROLE_LABEL[picked.role as Role] ?? picked.role}
+                    {(picked.seat ?? "package") === "package" ? ` · ${PLAN_NAME[levelOf(picked)]} seat` : ` · ${SEAT_NAME[picked.seat]}`}
                     {scope(picked) ? ` · ${scope(picked)}` : ""}
                     {` · last sign-in ${picked.last_login_at ? dateTime(picked.last_login_at) : "never"}`}
                   </span>
@@ -151,13 +167,14 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
                     <form action={previewRole}>
                       <input type="hidden" name="role" value={picked.role} />
                       <input type="hidden" name="branch" value={picked.sees_all_branches ? "" : picked.branch_id ?? ""} />
+                      <input type="hidden" name="seat_plan" value={(picked.seat ?? "package") === "package" ? levelOf(picked) : ""} />
                       <button type="submit" className="btn">View as {picked.name.split(" ")[0]}</button>
                     </form>
                   )}
                   <details className="ppl-edit">
                     <summary className="btn">Edit</summary>
                     <div className="ppl-edit-pop">
-                      <UserForm branches={branches as never} user={{ id: picked.id, name: picked.name, email: picked.email ?? "", role: picked.role, is_active: picked.is_active, branch_id: picked.branch_id, sees_all_branches: picked.sees_all_branches }} />
+                      <UserForm branches={branches as never} free={free} companyPlan={companyPlan} user={{ id: picked.id, name: picked.name, email: picked.email ?? "", role: picked.role, is_active: picked.is_active, branch_id: picked.branch_id, sees_all_branches: picked.sees_all_branches, seat: picked.seat ?? "package", seat_plan: picked.seat_plan }} />
                     </div>
                   </details>
                 </div>

@@ -2,7 +2,7 @@ import { cache } from "react";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { grirMatcher, type MatchableLine, type DraftDocType } from "./posting";
-import type { Plan } from "./plans";
+import { capPlan, type Plan } from "./plans";
 
 export type Company = { id: string; code: string; name: string; name_my: string | null;
   base_currency: string;
@@ -17,7 +17,9 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   /** Active stock locations. One means nothing ever moves between them. */
   warehouses: number;
   /** The modules bought (0194); lib/plans.ts hasModule reads it. */
-  modules: string[] };
+  modules: string[];
+  /** The company's own package; `plan` above is the reader's level (0198). */
+  company_plan: Plan };
 
 /** The company. Once per request: the layout, the page and the signed-in
  *  owner all ask, and the answer cannot change between them. */
@@ -27,7 +29,14 @@ export const getCompany = cache(async (): Promise<Company | null> => {
            (select count(*)::int from location l
              where l.company_id = c.id and l.is_stock_location and l.is_active) as warehouses
       from company c order by created_at limit 1`;
-  return rows[0] ?? null;
+  const c = rows[0];
+  if (!c) return null;
+  // `plan` is what this reader's seat allows: the company's package, or a
+  // lower level their package seat was bought at. Every gate reads `plan`,
+  // so each person sees their own level without any gate knowing seats.
+  let seat: string | null = null;
+  try { seat = (await (await import("./auth")).currentUser())?.seatPlan ?? null; } catch { /* outside a request */ }
+  return { ...c, company_plan: c.plan, plan: capPlan(seat as Plan | null, c.plan) };
 });
 
 export async function getKpis(companyId: string) {

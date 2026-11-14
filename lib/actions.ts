@@ -16,7 +16,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
   from "./import-vouchers";
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse, advAppliedByInvoice } from "./queries";
 import { scaffoldCompany } from "./setup";
-import { limitFor, planSwitchable, planIncludes, type Plan, type Feature, MODULES, isCore } from "./plans";
+import { limitFor, planSwitchable, planIncludes, type Plan, type Feature, MODULES, isCore, addonAllowed } from "./plans";
 import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
 import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
@@ -4491,6 +4491,10 @@ export async function setCompanyModules(_prev: unknown, fd: FormData): Promise<A
     const on = str(fd, "on") === "1";
     if (!MODULES.some((x) => x.key === m)) return { error: "Not a module" };
     if (isCore(m as never)) return { error: "That module comes with every package." };
+    if (on) {
+      const [c] = await sql`select plan from company where id = ${co}`;
+      if (!addonAllowed(c.plan, m as never)) return { error: "Fixed assets and landed cost start on the Standard package. Change the package first." };
+    }
     await sql`update company set modules = case
                 when ${on} then (select array_agg(distinct x) from unnest(array_append(modules, ${m})) x)
                 else array_remove(modules, ${m}) end
@@ -4509,9 +4513,18 @@ export async function setExtraUsers(_prev: unknown, fd: FormData): Promise<Actio
   if (!planSwitchable) return { error: "User seats are set by your provider." };
   try {
     const co = await companyId();
-    const n = Math.round(num(fd, "extra_users"));
-    if (n < 0 || n > 500) return { error: "Seats must be 0 to 500." };
-    await sql`update company set extra_users = ${n} where id = ${co}`;
+    const [c] = await sql`select plan from company where id = ${co}`;
+    const levels = Object.fromEntries((["STARTER", "BUSINESS", "ENTERPRISE"] as const)
+      .map((k) => [k, Math.round(num(fd, `pkg_${k}`))]));
+    const mods = Object.fromEntries((["sales", "purchases", "inventory"] as const)
+      .map((k) => [k, Math.round(num(fd, `seats_${k}`))]));
+    if ([...Object.values(levels), ...Object.values(mods)].some((v) => v < 0 || v > 500)) return { error: "Seats must be 0 to 500." };
+    // Seats above the company's package cannot be bought: upgrade first.
+    const rank = ["STARTER", "BUSINESS", "ENTERPRISE"].indexOf(c.plan);
+    if (Object.entries(levels).some(([k, v]) => v > 0 && ["STARTER", "BUSINESS", "ENTERPRISE"].indexOf(k) > rank)) {
+      return { error: "Seats above the company's package need the company upgraded first." };
+    }
+    await sql`update company set package_seats = ${sql.json(levels)}, module_seats = ${sql.json(mods)} where id = ${co}`;
     revalidatePath("/settings/plan");
     revalidatePath("/settings/users");
   } catch (e) {
