@@ -42,4 +42,6 @@ export function ordersAndDeliveriesOn(company: { retail_mode?: boolean | null } 
  *            (fails closed in every combination); scripts/test-price-guard.mjs.
  *   turn on  when the owner says "ready": set this to true and redeploy.
  */
-export const SIGN_IN_REQUIRED = false;
+// ON since 2026-11-14 (owner's go-ahead). Test accounts with known passwords
+// for DEV: scripts/test-accounts.mjs (re-run it to reset them).
+export const SIGN_IN_REQUIRED = true;
