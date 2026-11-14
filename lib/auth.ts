@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { sql } from "./db";
 import {
-  can, userForToken, tokenHash, SESSION_COOKIE, ROLE_LABEL, authRequired, ownerUser, SESSION_HOURS, SESSION_IDLE_MINUTES,
+  can, userForToken, tokenHash, SESSION_COOKIE, ROLE_LABEL, ROLES, authRequired, ownerUser, SESSION_HOURS, SESSION_IDLE_MINUTES,
   type Permission, type SessionUser,
 } from "./auth-core";
 
@@ -39,9 +39,23 @@ export async function endSession() {
 }
 
 /** Who is asking, once per request. */
+/** Test sites only: with sign-in off, the owner can look at the app as another role. */
+export const PREVIEW_ROLE_COOKIE = "preview_role";
+export const PREVIEW_BRANCH_COOKIE = "preview_branch";
+export const previewAllowed = () => !authRequired() && process.env.VERCEL_ENV !== "production";
+
 export const currentUser = cache(async (): Promise<SessionUser | null> => {
-  // Sign-in off: everyone is the owner.
-  if (!authRequired()) return ownerUser();
+  // Sign-in off: everyone is the owner — or, on a test site, the role being previewed.
+  if (!authRequired()) {
+    const owner = await ownerUser();
+    if (!owner || !previewAllowed()) return owner;
+    const jar = await cookies();
+    const as = jar.get(PREVIEW_ROLE_COOKIE)?.value;
+    if (!as || !(ROLES as readonly string[]).includes(as)) return owner;
+    // A branch id means "works at this branch only"; none means all branches.
+    const branch = jar.get(PREVIEW_BRANCH_COOKIE)?.value || null;
+    return { ...owner, role: as as SessionUser["role"], branchId: branch, seesAllBranches: !branch };
+  }
   return userForToken((await cookies()).get(SESSION_COOKIE)?.value);
 });
 

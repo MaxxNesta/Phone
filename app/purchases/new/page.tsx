@@ -1,3 +1,4 @@
+import { hasModule } from "@/lib/plans";
 import { todayLocal } from "@/lib/format";
 import { getFormData, createPurchaseInvoice, saveInvoiceDraft } from "@/lib/actions";
 import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, getCompany } from "@/lib/queries";
@@ -92,6 +93,7 @@ export default async function NewPurchaseInvoice({
 
       <InvoiceForm
         kind="purchase"
+        carriage={hasModule(co, "landed_cost")}
         fx={fx}
         action={createPurchaseInvoice}
         saveDraft={saveInvoiceDraft}

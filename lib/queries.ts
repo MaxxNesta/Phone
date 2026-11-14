@@ -15,13 +15,15 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   /** Counter retail (the default here) or the trading flow — 0117. */
   retail_mode: boolean;
   /** Active stock locations. One means nothing ever moves between them. */
-  warehouses: number };
+  warehouses: number;
+  /** The modules bought (0194); lib/plans.ts hasModule reads it. */
+  modules: string[] };
 
 /** The company. Once per request: the layout, the page and the signed-in
  *  owner all ask, and the answer cannot change between them. */
 export const getCompany = cache(async (): Promise<Company | null> => {
   const rows = await sql<Company[]>`
-    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode,
+    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules,
            (select count(*)::int from location l
              where l.company_id = c.id and l.is_stock_location and l.is_active) as warehouses
       from company c order by created_at limit 1`;

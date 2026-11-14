@@ -48,15 +48,12 @@ export type PlanLimits = {
 };
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
-  // Agreed 2026-09-23: a small shop is one place with a few stores in it.
-  STARTER: { branches: 1, warehouses: 3, users: null },
-
-  // Agreed 2026-10-05: Business is two to four branches. Its warehouse
-  // count is not decided. Null is "nobody has said", deliberately distinct
-  // from a large number standing in for "plenty".
-  BUSINESS: { branches: 4, warehouses: null, users: null },
-  // Five branches and up.
-  ENTERPRISE: { branches: null, warehouses: null, users: null },
+  // Branches and warehouses are unlimited in every package (owner's call,
+  // 2026-11-14); null never refuses. Each package includes one user, and
+  // further users are bought as seats (0196).
+  STARTER: { branches: null, warehouses: null, users: 1 },
+  BUSINESS: { branches: null, warehouses: null, users: 1 },
+  ENTERPRISE: { branches: null, warehouses: null, users: 1 },
 };
 
 /**
@@ -66,6 +63,9 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
  * keep the switch so the tiers can be tested.
  */
 export const planSwitchable = process.env.VERCEL_ENV !== "production";
+
+/** People who may sign in: the package's included user plus the seats bought (0196). */
+export const userLimit = (plan: Plan, extraUsers: number) => (limitFor(plan, "users") ?? 0) + Math.max(0, extraUsers || 0);
 
 /** Whether a limit is known. An unknown limit never refuses anything. */
 export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
@@ -116,6 +116,73 @@ const FEATURES: Record<Feature, Plan[]> = {
   sales_report: ["BUSINESS", "ENTERPRISE"],
   ar_ap_aging: ["BUSINESS", "ENTERPRISE"],
 };
+
+/**
+ * The areas a company can buy separately (migration 0194), on top of its
+ * package. Dashboard, products, partners, documents and settings come with
+ * every purchase. Counter Sale is part of Sales.
+ */
+export type Module = "sales" | "purchases" | "inventory" | "landed_cost" | "accounting" | "fixed_assets" | "hr" | "equity" | "logistics";
+
+/**
+ * Every package includes the core: selling, buying, stock and the books.
+ * The package decides how deep each goes. The rest are add-ons, bought on
+ * top of any package (a company always has one: company.plan is not null).
+ */
+export const CORE_MODULES: Module[] = ["sales", "purchases", "inventory", "accounting"];
+export const isCore = (m: Module) => CORE_MODULES.includes(m);
+
+export const MODULES: { key: Module; name: string; covers: string }[] = [
+  { key: "sales", name: "Sales", covers: "Counter sale, sales history, invoices, returns, receivables" },
+  { key: "purchases", name: "Purchases", covers: "Orders, goods receipts, purchase invoices, payables" },
+  { key: "inventory", name: "Inventory", covers: "Stock, IMEI tracking, transfers, counts, aging" },
+  { key: "landed_cost", name: "Landed cost", covers: "Freight, duty and carriage onto stock; the carriage section on receipts and bills" },
+  { key: "accounting", name: "Accounting", covers: "Cash and bank, journals, ledger, financial reports" },
+  { key: "fixed_assets", name: "Fixed Assets", covers: "Asset register, depreciation" },
+  { key: "hr", name: "HR & Payroll", covers: "Employees, advances, payroll, payslips" },
+  { key: "equity", name: "Equity", covers: "Shareholders, capital, share transfers" },
+  { key: "logistics", name: "Logistics", covers: "Routes, delivery trips, vehicles, drivers" },
+];
+
+/**
+ * Whether the company has a module: the core comes with every package; an
+ * add-on only when bought. A company read without the column (older code
+ * paths) has them all.
+ */
+export function hasModule(company: { modules?: string[] | null } | null | undefined, m: Module): boolean {
+  return isCore(m) || !company?.modules || company.modules.includes(m);
+}
+
+/**
+ * The package page's comparison, in the order it is read. `in` lists the
+ * packages that include the line; a line every package has is still listed,
+ * so the columns show what Essential gives as well as what it lacks.
+ */
+export const PLAN_COMPARISON: { group: string; lines: { label: string; in: Plan[] }[] }[] = [
+  { group: "Everyday", lines: [
+    { label: "Counter sale, invoices, returns", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "Purchases, goods receipts, payables", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "Stock, IMEI tracking, transfers, counts", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "Low-stock alerts and reorder points", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "Cash and bank vouchers, journals", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "General ledger and trial balance", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "Sales overview and sales & margin", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+  ] },
+  { group: "Reports", lines: [
+    { label: "Financial statements (P&L, balance sheet, cash flow, inventory & COGS)", in: FEATURES.financial_statements },
+    { label: "Detailed sales report", in: FEATURES.sales_report },
+    { label: "AR / AP aging", in: FEATURES.ar_ap_aging },
+    { label: "Inventory aging", in: FEATURES.inventory_aging },
+    { label: "Supplier performance", in: FEATURES.supplier_performance },
+    { label: "Dashboard accounting health and breakdowns", in: FEATURES.dashboard_advanced },
+  ] },
+  { group: "Advanced", lines: [
+    { label: "Replenishment planning", in: FEATURES.replenishment },
+    { label: "Financial ratios", in: FEATURES.financial_ratios },
+    { label: "Price history", in: FEATURES.price_history },
+    { label: "Supply chain", in: FEATURES.supply_chain },
+  ] },
+];
 
 /** Where a low-stock link should lead: the planner where the package has it, the Stock page otherwise. */
 export function lowStockHref(plan: Plan): string {

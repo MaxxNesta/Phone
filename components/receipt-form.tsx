@@ -89,7 +89,7 @@ const shortDate = (v: unknown) =>
     { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }) : "";
 
 export function ReceiptForm({
-  action,
+  action, carriage = true,
   suppliers,
   items: initialItems,
   locations,
@@ -106,6 +106,8 @@ export function ReceiptForm({
   order,
   paidFrom,
 }: {
+  /** The landed cost module: without it, no carriage section. */
+  carriage?: boolean;
   /** Cash and bank accounts a courier can be paid from on the spot. */
   paidFrom?: { id: string; label: string }[];
   /** Receiving a purchase order: its lines arrive filled in, against it. */
@@ -849,8 +851,10 @@ export function ReceiptForm({
         </div>
       </div>
 
-      <CarriageSection couriers={suppliers} base={base} paidFrom={paidFrom ?? []}
-        units={tracked.reduce((s, l) => s + (Number(l.qty) || 0), 0)} onBlocked={setCarriageBlock} />
+      {carriage && (
+        <CarriageSection couriers={suppliers} base={base} paidFrom={paidFrom ?? []}
+          units={tracked.reduce((s, l) => s + (Number(l.qty) || 0), 0)} onBlocked={setCarriageBlock} />
+      )}
 
       {matchedPi && (
         <div className="hint" style={{ marginBottom: "0.75rem" }}>

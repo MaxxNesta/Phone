@@ -1,3 +1,4 @@
+import { hasModule } from "@/lib/plans";
 import { DISPLAY_TZ } from "@/lib/format";
 import { Fragment } from "react";
 import { FaDocLinks } from "@/components/fa-doc-links";
@@ -216,7 +217,9 @@ export default async function DocumentPage({
 
   // Counter retail has no delivery: an order is billed, and the invoice
   // hands the goods over (docs/06-phone-retail.md, D-P1).
-  const retail = Boolean((await getCompany())?.retail_mode);
+  const company = await getCompany();
+  const retail = Boolean(company?.retail_mode);
+  const landedOn = hasModule(company, "landed_cost");
   const chain = (CHAINS[doc.doc_type] ?? [doc.doc_type]).filter((s) => !(retail && s === "DELIVERY"));
   const totalDebit = journal.reduce((s: number, l: any) => s + Number(l.debit), 0);
   const totalCredit = journal.reduce((s: number, l: any) => s + Number(l.credit), 0);
@@ -1201,7 +1204,7 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
-          {isPi && applied.length > 0 && (
+          {landedOn && isPi && applied.length > 0 && (
             <div className="lc-gr">
               <dl>
                 <div><dt>Carriage inward on these goods</dt><dd>{money(applied.reduce((t, c) => t + c.total, 0))}</dd></div>
@@ -1209,7 +1212,7 @@ export default async function DocumentPage({
               <span className="lc-gr-actions"><AppliedCarriage charges={applied} /></span>
             </div>
           )}
-          {landed && (
+          {landedOn && landed && (
             <div className="lc-gr">
               <dl>
                 <div><dt>Original inventory value</dt><dd>{money(landed.original)}</dd></div>
@@ -1736,7 +1739,7 @@ export default async function DocumentPage({
       />
 
       {/* Back to the asset subledger, when this journal carries assets. */}
-      {seeJournal && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} documentId={doc.id} />}
+      {seeJournal && landedOn && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} documentId={doc.id} />}
       {seeJournal && <FaDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
       <HrDocLinks documentId={doc.id} />
 

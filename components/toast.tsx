@@ -38,6 +38,11 @@ export function useNotice(
     last.current = state;
     const s = state as { ok?: unknown; error?: unknown };
     if (typeof s.error === "string" && s.error) {
+      // A refusal for want of a permission is a dialog, not a passing toast.
+      if (/accounts cannot do this \(/.test(s.error)) {
+        window.dispatchEvent(new CustomEvent("erp:denied", { detail: s.error }));
+        return;
+      }
       if (opts.errors === false) return;
       notify(isBusyText(s.error) ? "warning" : "error", s.error);
     } else if ("ok" in s && s.ok !== false) {

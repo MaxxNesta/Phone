@@ -1,3 +1,4 @@
+import { hasModule } from "@/lib/plans";
 import { todayLocal } from "@/lib/format";
 import { getFormData, createGoodsReceipt, saveReceiptDraft } from "@/lib/actions";
 import {
@@ -125,6 +126,7 @@ export default async function NewGoodsReceipt({
     <>
       <ReceiptForm
         key={toReceive?.id ?? "free"}
+        carriage={hasModule(co, "landed_cost")}
         order={toReceive}
         action={createGoodsReceipt}
         suppliers={d.suppliers as never}

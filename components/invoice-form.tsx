@@ -98,7 +98,7 @@ function addDays(iso: string, days: number) {
 }
 
 export function InvoiceForm({
-  kind,
+  kind, carriage = true,
   action, saveDraft, draft,
   partners,
   items: initialItems,
@@ -116,6 +116,8 @@ export function InvoiceForm({
   fx,
   supplierFocId = null,
 }: {
+  /** The landed cost module: without it, no carriage section. */
+  carriage?: boolean;
   /** Purchase: the supplier FOC reason a free line posts under; none hides the choice. */
   supplierFocId?: string | null;
   /** Currencies and latest rates — a purchase from abroad is billed in its own. */
@@ -1289,7 +1291,7 @@ export function InvoiceForm({
 
       {/* Arriving with this bill posts a goods receipt, so the courier who
           brought the goods is asked about here, as the receipt would ask. */}
-      {!isSales && receiveMode === "now" && (
+      {carriage && !isSales && receiveMode === "now" && (
         <CarriageSection couriers={partners as never} base={base} paidFrom={paidFrom}
           units={lines.filter(named).reduce((s, l) => s + (Number(l.qty) || 0), 0)}
           onBlocked={setCarriageBlock} />

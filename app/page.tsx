@@ -143,9 +143,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <p className="page-sub">{date}</p>
       </div>
 
-      {denied && (
-        <div className="alert" role="alert">{t("denied", { page: denied })}</div>
-      )}
 
       <div className="stats">
         <Stat icon={<Banknote size={20} />} label={t("todaysSales")} value={`${compact(d.today.revenue)} MMK`}

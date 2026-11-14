@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { userForToken, permissionForPath, can, SESSION_COOKIE, authRequired } from "@/lib/auth-core";
+import { userForToken, permissionForPath, can, SESSION_COOKIE, authRequired, ROLES } from "@/lib/auth-core";
 import { begin, heavyKindFor, TooBusy } from "@/lib/heavy";
 
 // Every request is signed in or sent to /login, and every page is checked
@@ -73,6 +73,17 @@ export async function middleware(req: NextRequest) {
   // Sign-in switched off: no login page, everyone acts as the owner.
   if (!authRequired()) {
     if (path === "/login") return withCsp(NextResponse.redirect(new URL("/", req.url)));
+    // Test sites: the owner previewing a role meets that role's doors.
+    const as = process.env.VERCEL_ENV !== "production" ? req.cookies.get("preview_role")?.value : undefined;
+    if (as && (ROLES as readonly string[]).includes(as)) {
+      const need = permissionForPath(path);
+      if (need && !can({ role: as } as never, need)) {
+        const to = req.nextUrl.clone();
+        to.pathname = "/";
+        to.search = `?denied=${encodeURIComponent(need)}`;
+        return withCsp(NextResponse.redirect(to));
+      }
+    }
     const busy = await overLimit(req, null, headers);
     if (busy) return withCsp(busy);
     return withCsp(NextResponse.next({ request: { headers } }));

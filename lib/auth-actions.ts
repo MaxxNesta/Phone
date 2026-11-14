@@ -1,4 +1,5 @@
 "use server";
+import { userLimit } from "./plans";
 
 import { str } from "./input";
 import { redirect } from "next/navigation";
@@ -138,6 +139,22 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
   if (branchId && !branches.some((b) => b.id === branchId)) return { error: "Choose one of the company's branches." };
   if (!branchId && !ALL_BRANCH_ROLES.includes(role) && branches.length > 1) {
     return { error: "Choose the branch this person works at. Only an administrator or a manager can work across all branches." };
+  }
+
+  // Seats: the package's included user plus those bought. Only adding a
+  // person, or reactivating one, needs a free seat; editing never does.
+  const [seat] = await sql`
+    select c.plan, c.extra_users,
+           (select count(*)::int from app_user u where u.company_id = c.id and u.is_active
+              and (${id || null}::uuid is null or u.id <> ${id || null}::uuid)) as others,
+           (select is_active from app_user u where u.id = ${id || null}::uuid) as was_active
+      from company c where c.id = ${admin.companyId}`;
+  const needsSeat = active && (!id || seat?.was_active === false);
+  if (seat && needsSeat) {
+    const limit = userLimit(seat.plan, Number(seat.extra_users));
+    if (seat.others + 1 > limit) {
+      return { error: `Your package includes ${limit} user${limit === 1 ? "" : "s"}, and ${seat.others} ${seat.others === 1 ? "is" : "are"} active. Add a user seat to add another person, or deactivate someone first.` };
+    }
   }
 
   try {

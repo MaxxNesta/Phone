@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import { TopSearch } from "@/components/top-search";
+import { DeniedDialog } from "@/components/denied-dialog";
+import { previewRole } from "@/lib/preview-actions";
+import { PREVIEW_ROLE_COOKIE, previewAllowed } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { sql } from "@/lib/db";
 import { Noto_Sans_Myanmar, Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
@@ -9,7 +14,7 @@ import "flag-icons/css/flag-icons.min.css";
 import "./globals.css";
 import Link from "next/link";
 import { getCompany } from "@/lib/queries";
-import { planIncludes } from "@/lib/plans";
+import { planIncludes, hasModule } from "@/lib/plans";
 import { NavLink, NavGroup, NavSubGroup } from "./nav";
 import { MobileNav } from "@/components/mobile-nav";
 import { SidebarCollapse } from "@/components/sidebar-collapse";
@@ -98,6 +103,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   else dbError = companyResult.reason instanceof Error ? companyResult.reason.message : String(companyResult.reason);
   const user = bare || dbError || userResult.status === "rejected" ? null : userResult.value;
   const may = (p: Permission) => can(user, p);
+  const previewing = Boolean(user && previewAllowed() && (await cookies()).get(PREVIEW_ROLE_COOKIE)?.value);
+  const previewBranchName = previewing && user?.branchId
+    ? ((await sql`select name from location where id = ${user.branchId}`)[0]?.name as string | undefined) : undefined;
   // The interface language: English, or Myanmar laid over it (i18n/request.ts).
   const locale = await getLocale();
   const messages = await getMessages();
@@ -149,9 +157,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {seesMainDashboard(user) && <NavLink href="/" exact><LayoutDashboard size={15} /> <span className="navlink-text">{n("dashboard")}</span></NavLink>}
 
-            {may("pos.sell") && <NavLink href="/pos"><ScanLine size={15} /> <span className="navlink-text">{n("counterSale")}</span></NavLink>}
+            {may("pos.sell") && hasModule(company, "sales") && <NavLink href="/pos"><ScanLine size={15} /> <span className="navlink-text">{n("counterSale")}</span></NavLink>}
 
-            {may("sales.view") && (
+            {may("sales.view") && hasModule(company, "sales") && (
               <NavGroup label={n("salesHistory")} icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}>
                 <NavLink href="/sales" exact>{n("salesOverview")}</NavLink>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
@@ -177,7 +185,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {may("inventory.view") && (
+            {may("inventory.view") && hasModule(company, "inventory") && (
               <NavGroup label={n("inventory")} icon={<Boxes size={15} />} match={["/inventory", "/items/stock"]}>
                 <NavLink href="/inventory" exact>{n("summary")}</NavLink>
                 <NavLink href="/items/stock">{n("stock")}</NavLink>
@@ -193,7 +201,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {may("purchase.view") && (
+            {may("purchase.view") && hasModule(company, "purchases") && (
               <NavGroup label={n("purchases")} icon={<Package size={15} />} match={["/purchases", "/payables"]}>
                 <NavLink href="/purchases" exact>{n("purchasesOverview")}</NavLink>
                 <NavLink href="/purchases/orders" exact>{n("purchaseOrders")}</NavLink>
@@ -202,7 +210,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/purchases/invoices" exact>{n("purchaseInvoices")}</NavLink>
                 <NavLink href="/purchases/returns" exact>{n("supplierReturns")}</NavLink>
                 <NavLink href="/purchases/debit-notes" exact>{n("debitNotes")}</NavLink>
-                {may("cost.view") && <NavLink href="/purchases/landed-costs">{n("landedCosts")}</NavLink>}
+                {may("cost.view") && hasModule(company, "landed_cost") && <NavLink href="/purchases/landed-costs">{n("landedCosts")}</NavLink>}
                 {company && planIncludes(company.plan, "supplier_performance") && (
                   <NavLink href="/purchases/supplier-performance" exact>{n("supplierPerformance")}</NavLink>
                 )}
@@ -218,7 +226,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <NavLink href="/partners/categories" exact>{n("partnerCategories")}</NavLink>
             </NavGroup>
 
-            {may("accounting.view") && (
+            {may("accounting.view") && hasModule(company, "accounting") && (
               <NavGroup label={n("accounting")} icon={<BookOpen size={15} />} match={["/finance", "/ledger"]}>
                 <NavSubGroup label={n("cashBank")} match={[
                   "/finance/cash-detail", "/finance/bank-detail", "/finance/cash-receipt",
@@ -261,13 +269,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             )}
 
             {/* Who owns the company: its own group, not a corner of the ledger. */}
-            {may("accounting.view") && (
+            {may("accounting.view") && hasModule(company, "equity") && (
               // One entry: the page's four tabs are its navigation.
               <NavLink href="/equity/shareholders" match="/equity"><PieChart size={15} /> <span className="navlink-text">{n("equity")}</span></NavLink>
             )}
 
             {/* The asset subledger: it feeds the ledger above, through its journals. */}
-            {may("accounting.view") && (
+            {may("accounting.view") && hasModule(company, "fixed_assets") && (
               <NavGroup label={n("fixedAssets")} icon={<Landmark size={15} />} match={["/fixed-assets"]}>
                 <NavLink href="/fixed-assets" exact>{n("faOverview")}</NavLink>
                 <NavLink href="/fixed-assets/register">{n("assetRegister")}</NavLink>
@@ -279,7 +287,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {(may("hr.employees.view") || may("hr.advances") || may("hr.salary.view") || may("hr.payroll.accounting")) && (
+            {(may("hr.employees.view") || may("hr.advances") || may("hr.salary.view") || may("hr.payroll.accounting")) && hasModule(company, "hr") && (
               <NavGroup label={n("hrPayroll")} icon={<Briefcase size={15} />} match={["/hr"]}>
                 {may("hr.employees.view") && <NavLink href="/hr/employees">{n("employees")}</NavLink>}
                 {may("hr.advances") && <NavLink href="/hr/advances">{n("salaryAdvances")}</NavLink>}
@@ -289,18 +297,18 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {may("reports.view") && (
+            {may("reports.view") && (hasModule(company, "sales") || hasModule(company, "inventory") || hasModule(company, "purchases") || hasModule(company, "accounting")) && (
               <NavGroup label={n("reports")} icon={<BarChart3 size={15} />} match={["/reports", "/sales/reports"]}>
-                <NavLink href="/reports/phone-sales">{n("salesMargin")}</NavLink>
-                {company && planIncludes(company.plan, "inventory_aging") && <NavLink href="/reports/phone-stock">{n("stockAging")}</NavLink>}
-                {company && planIncludes(company.plan, "sales_report") && <NavLink href="/sales/reports">{n("salesReportDetailed")}</NavLink>}
-                {company && planIncludes(company.plan, "price_history") && <NavLink href="/reports/price-history">{n("priceHistory")}</NavLink>}
-                {company && planIncludes(company.plan, "supply_chain") && <NavLink href="/reports/supply-chain">{n("supplyChain")}</NavLink>}
-                {may("accounting.view") && company && planIncludes(company.plan, "financial_ratios") && <NavLink href="/reports/financial-ratios">{n("financialRatios")}</NavLink>}
+                {hasModule(company, "sales") && <NavLink href="/reports/phone-sales">{n("salesMargin")}</NavLink>}
+                {hasModule(company, "inventory") && company && planIncludes(company.plan, "inventory_aging") && <NavLink href="/reports/phone-stock">{n("stockAging")}</NavLink>}
+                {hasModule(company, "sales") && company && planIncludes(company.plan, "sales_report") && <NavLink href="/sales/reports">{n("salesReportDetailed")}</NavLink>}
+                {hasModule(company, "sales") && company && planIncludes(company.plan, "price_history") && <NavLink href="/reports/price-history">{n("priceHistory")}</NavLink>}
+                {(hasModule(company, "sales") || hasModule(company, "purchases")) && company && planIncludes(company.plan, "supply_chain") && <NavLink href="/reports/supply-chain">{n("supplyChain")}</NavLink>}
+                {may("accounting.view") && hasModule(company, "accounting") && company && planIncludes(company.plan, "financial_ratios") && <NavLink href="/reports/financial-ratios">{n("financialRatios")}</NavLink>}
               </NavGroup>
             )}
 
-            {wholesale && may("settings.manage") && (
+            {wholesale && may("settings.manage") && hasModule(company, "logistics") && (
               <NavGroup label={n("logistics")} icon={<Truck size={15} />} match={["/logistics"]}>
                 <NavLink href="/logistics/routes" exact>{n("routes")}</NavLink>
                 <NavLink href="/logistics/trips" exact>{n("deliveryTrips")}</NavLink>
@@ -337,8 +345,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/salespersons" sub>{n("salespersons")}</NavLink>
                 </NavSubGroup>
                 <NavSubGroup label={n("purchasing")} match={["/settings/landed-cost-types", "/settings/landed-cost-templates", "/settings/supplier-discounts"]}>
-                  <NavLink href="/settings/landed-cost-types" sub>{n("landedCostTypes")}</NavLink>
-                  <NavLink href="/settings/landed-cost-templates" sub>{n("landedCostTemplates")}</NavLink>
+                  {hasModule(company, "landed_cost") && <NavLink href="/settings/landed-cost-types" sub>{n("landedCostTypes")}</NavLink>}
+                  {hasModule(company, "landed_cost") && <NavLink href="/settings/landed-cost-templates" sub>{n("landedCostTemplates")}</NavLink>}
                   <NavLink href="/settings/supplier-discounts" sub>{n("supplierDiscounts")}</NavLink>
                 </NavSubGroup>
                 <NavSubGroup label={n("accounting")} match={["/settings/accounts", "/settings/tax-codes", "/settings/currencies", "/settings/payment-methods"]}>
@@ -363,6 +371,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {user && (
               <header className="topbar noprint">
                 <TopSearch placeholder={sh("searchPlaceholder")} label={sh("searchLabel")} />
+                {previewing && (
+                  <form action={previewRole} className="preview-bar">
+                    <span>Viewing as <strong>{roleT(user.role)}</strong>{" · "}{user.branchId ? (previewBranchName ?? "one branch") : "all branches"}</span>
+                    <button type="submit" className="btn tiny">Stop</button>
+                  </form>
+                )}
                 <LanguageSwitcher />
                 <details className="usermenu">
                   <summary aria-label={`${user.name}, ${roleT(user.role)}`}>{user.initials}</summary>
@@ -376,6 +390,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </details>
               </header>
             )}
+            {user && <DeniedDialog />}
             <div className="inner">
               {dbError ? (
                 <div className="card">

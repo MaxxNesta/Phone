@@ -16,7 +16,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
   from "./import-vouchers";
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse, advAppliedByInvoice } from "./queries";
 import { scaffoldCompany } from "./setup";
-import { limitFor, planSwitchable, planIncludes, type Plan, type Feature } from "./plans";
+import { limitFor, planSwitchable, planIncludes, type Plan, type Feature, MODULES, isCore } from "./plans";
 import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
 import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
@@ -4475,6 +4475,45 @@ export async function setCompanyPlan(_prev: unknown, fd: FormData): Promise<Acti
     await sql`update company set plan = ${plan} where id = ${co}`;
     revalidatePath("/settings/plan");
     revalidatePath("/", "layout");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/** Add or remove one add-on module (0194). Test sites only, like the package. The core comes with the package. */
+export async function setCompanyModules(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
+  if (!planSwitchable) return { error: "Modules are set by your provider." };
+  try {
+    const co = await companyId();
+    const m = str(fd, "module");
+    const on = str(fd, "on") === "1";
+    if (!MODULES.some((x) => x.key === m)) return { error: "Not a module" };
+    if (isCore(m as never)) return { error: "That module comes with every package." };
+    await sql`update company set modules = case
+                when ${on} then (select array_agg(distinct x) from unnest(array_append(modules, ${m})) x)
+                else array_remove(modules, ${m}) end
+              where id = ${co}`;
+    revalidatePath("/settings/plan");
+    revalidatePath("/", "layout");
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { ok: true };
+}
+
+/** Extra user seats (0196). Test sites only, like the package. */
+export async function setExtraUsers(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
+  if (!planSwitchable) return { error: "User seats are set by your provider." };
+  try {
+    const co = await companyId();
+    const n = Math.round(num(fd, "extra_users"));
+    if (n < 0 || n > 500) return { error: "Seats must be 0 to 500." };
+    await sql`update company set extra_users = ${n} where id = ${co}`;
+    revalidatePath("/settings/plan");
+    revalidatePath("/settings/users");
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
