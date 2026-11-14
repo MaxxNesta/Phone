@@ -70,7 +70,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const { denied } = sp;
   // The whole-business view is the owner's and manager's; everyone else
   // starts on the overview of their own work, carrying any refusal with them.
-  if (!seesMainDashboard(user)) redirect(`${homeFor(user)}${denied ? `?denied=${encodeURIComponent(denied)}` : ""}`);
+  if (!seesMainDashboard(user) || (user.seat && user.seat !== "package")) redirect(`${homeFor(user)}${denied ? `?denied=${encodeURIComponent(denied)}` : ""}`);
   // Starter keeps the dashboard but not the accounting checks or the
   // region and customer/supplier-type breakdowns (lib/plans.ts).
   const company = await getCompany();

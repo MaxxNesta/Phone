@@ -2,7 +2,7 @@ import Link from "next/link";
 import {
   ScanLine, ShoppingCart, Undo2, Percent, Package, Ship, Boxes, Smartphone, Tags, Users as UsersIcon,
   BookOpen, FileX, BarChart3, Landmark, Briefcase, Wallet, HandCoins, PieChart, Truck, Settings, UserCog, Receipt,
-  Check, Minus, Search, Plus, type LucideIcon,
+  Check, Minus, Lock, Search, Plus, type LucideIcon,
 } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, ROLE_LABEL, ROLE_PERMISSIONS, previewAllowed } from "@/lib/auth";
@@ -78,6 +78,8 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
   const shown = q ? people.filter((u) => `${u.name} ${u.email ?? ""} ${ROLE_LABEL[u.role as Role] ?? ""}`.toLowerCase().includes(q)) : people;
   const adding = sp.new === "1";
   const picked = adding ? null : people.find((u) => u.id === sp.u) ?? shown[0] ?? null;
+  // The grid shows what the picked person sees: a module seat, its module only.
+  const theirs = company && picked ? { ...company, seat: picked.seat ?? "package" } : company;
   const companyPlan = (seat?.plan ?? company?.company_plan ?? "STARTER") as Plan;
   const levelOf = (u: any) => (u.seat_plan ?? companyPlan) as Plan;
   const seats = PLAN_ORDER.reduce((t, p) => t + packageSeatsAt(p, companyPlan, seat?.package_seats), 0);
@@ -86,13 +88,13 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
   const signs = (u: any) => u.is_active && u.can_sign_in;
   const inSeat = (k: string) => people.filter((u) => signs(u) && (u.seat ?? "package") === k).length;
   const ms = (seat?.module_seats ?? {}) as Record<string, number>;
-  const bought: Record<string, number> = { package: seats, sales: ms.sales ?? 0, purchases: ms.purchases ?? 0, inventory: ms.inventory ?? 0 };
+  const bought: Record<string, number> = { package: seats, sales: ms.sales ?? 0, purchases: ms.purchases ?? 0, inventory: ms.inventory ?? 0, accounting: ms.accounting ?? 0 };
   const free: Record<string, number> = Object.fromEntries(Object.entries(bought).map(([k, n]) => [k, Math.max(0, n - inSeat(k))]));
   for (const p of PLAN_ORDER) {
     const used = people.filter((u) => signs(u) && (u.seat ?? "package") === "package" && levelOf(u) === p).length;
     free[`pkg:${p}`] = Math.max(0, packageSeatsAt(p, companyPlan, seat?.package_seats) - used);
   }
-  const SEAT_NAME: Record<string, string> = { package: "Package seat", sales: "Sales seat", purchases: "Purchases seat", inventory: "Inventory seat" };
+  const SEAT_NAME: Record<string, string> = { package: "Package seat", sales: "Sales seat", purchases: "Purchases seat", inventory: "Inventory seat", accounting: "Accounting seat" };
   const perms = picked ? (ROLE_PERMISSIONS[picked.role as Role] as string[]) : [];
   const has = (p: string | null) => !!p && perms.includes(p);
   const canPreview = previewAllowed();
@@ -112,7 +114,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
         <h1>Users</h1>
         <p className="page-sub">
           {inSeat("package")} of {seats} package seats in use
-          {(["sales", "purchases", "inventory"] as const).filter((k) => bought[k] > 0 || inSeat(k) > 0)
+          {(["sales", "purchases", "inventory", "accounting"] as const).filter((k) => bought[k] > 0 || inSeat(k) > 0)
             .map((k) => ` · ${inSeat(k)} of ${bought[k]} ${SEAT_NAME[k].toLowerCase()}s`).join("")}
           {company ? ` · ${PLAN_NAME[company.plan]} package` : ""}
         </p>
@@ -182,8 +184,8 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
 
               <div className="perm">
                 <p className="perm-note">What {/^[AEIOU]/.test(ROLE_LABEL[picked.role as Role]) ? "an" : "a"} {ROLE_LABEL[picked.role as Role]} can do. The role decides; to change it, edit the person’s role.</p>
-                {GROUPS.filter((g) => !g.module || hasModule(company, g.module)).map((g) => {
-                  const rows = g.rows.filter((r) => !r.module || hasModule(company, r.module));
+                {GROUPS.filter((g) => !g.module || hasModule(theirs, g.module)).map((g) => {
+                  const rows = g.rows.filter((r) => !r.module || hasModule(theirs, r.module));
                   if (rows.length === 0) return null;
                   return (
                     <table key={g.name} className="perm-table">
@@ -196,7 +198,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
                           return (
                             <tr key={r.label}>
                               <td><span className="perm-label"><Icon size={16} aria-hidden="true" />{r.label}</span></td>
-                              <td><Tick on={r.view === null ? null : v} /></td>
+                              <td><Tick on={r.view === null ? null : v} locked={w && r.view !== null} /></td>
                               <td><Tick on={r.work === null ? null : w} /></td>
                             </tr>
                           );
@@ -216,13 +218,13 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
   );
 }
 
-/** A read-only tick: yes, no, or nothing to grant here. */
-function Tick({ on }: { on: boolean | null }) {
+/** A read-only tick: yes, no, or nothing to grant here. `locked`: on because Work in is. */
+function Tick({ on, locked }: { on: boolean | null; locked?: boolean }) {
   if (on === null) return <span className="tick na" aria-label="not applicable" />;
   return (
-    <span className={`tick${on ? " yes" : ""}`}>
-      <span className="tick-box">{on ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : <Minus size={10} aria-hidden="true" />}</span>
-      {on ? "Yes" : "No"}
+    <span className={`tick${on ? " yes" : ""}${locked ? " locked" : ""}`} title={locked ? "Comes with Work in" : undefined}>
+      <span className="tick-box">{locked ? <Lock size={10} strokeWidth={2.5} aria-hidden="true" /> : on ? <Check size={12} strokeWidth={3} aria-hidden="true" /> : <Minus size={10} aria-hidden="true" />}</span>
+      <span className="tick-text">{locked ? "Included" : on ? "Yes" : "No"}</span>
     </span>
   );
 }

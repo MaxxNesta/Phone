@@ -4565,6 +4565,8 @@ main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(
   border: 0; background: transparent; color: var(--muted); border-radius: 10px; cursor: pointer;
 }
 .login-reveal:hover { color: var(--ink); }
+/* One eye only: Edge adds its own reveal button to password fields. */
+.login-password input::-ms-reveal, .login-password input::-ms-clear { display: none; }
 .login-reveal:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
 .btn.login-submit { width: 100%; justify-content: center; margin-top: 4px; }
 .login-help { margin: 16px 8px 0; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.45; }
@@ -10594,7 +10596,22 @@ dialog.denied::backdrop { background: rgb(0 0 0 / .35); backdrop-filter: blur(2p
 .tick.yes { color: var(--ink); }
 .tick.yes .tick-box { background: var(--blue); border-color: var(--blue); color: #fff; }
 .tick.na::before { content: "—"; color: var(--line); }
+/* View that comes with Work in: on, and not separately grantable. */
+.tick.locked .tick-box { background: color-mix(in srgb, var(--blue) 45%, var(--surface)); border-color: transparent; }
+.tick.locked { color: var(--muted); }
 .ppl-edit > summary.btn { display: inline-flex; align-items: center; height: 36px; padding: 0 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+/* Stacked on a phone, the list scrolls with the page: pinned, it slid over the
+   permissions. After the base rules so it wins. */
+@media (max-width: 900px) {
+  .ppl-list { position: static; }
+  .ppl-list ul { max-height: 260px; }
+  .perm { padding: 0.5rem 1rem 1rem; }
+  .perm-table .perm-col { width: 76px; }
+  .tick-text { display: none; }
+  .perm-label { display: block; }
+  .perm-label svg { vertical-align: -3px; margin-right: 0.5rem; }
+  .perm-table th:first-child, .perm-table td:first-child { padding-right: 0.75rem; white-space: normal; }
+}
 /* Three charts across, the trend full width under them; aging alone on its row. */
 .inv-charts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 1100px) { .inv-charts { grid-template-columns: minmax(0, 1fr); } }

@@ -62,7 +62,7 @@ export default async function PlanSettings() {
           bought: Number(row.package_seats?.[p] ?? 0), used: Number(row.used?.[p] ?? 0),
           blocked: i > rank ? `Upgrade the company to ${PLAN_NAME[p]} first` : undefined,
         }))}
-        modules={[["sales", "Sales seats"], ["purchases", "Purchases seats"], ["inventory", "Inventory seats"]].map(([key, name]) => ({
+        modules={[["sales", "Sales seats"], ["purchases", "Purchases seats"], ["inventory", "Inventory seats"], ["accounting", "Accounting seats"]].map(([key, name]) => ({
           key, name, included: 0, bought: Number(row.module_seats?.[key] ?? 0), used: Number(row.used?.[key] ?? 0) }))} />
     </>
   );

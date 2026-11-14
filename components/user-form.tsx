@@ -14,6 +14,7 @@ const SEAT_OPTS: { key: string; name: string; roles: string[] | null }[] = [
   { key: "sales", name: "Sales seat", roles: ["CASHIER", "SALESPERSON"] },
   { key: "purchases", name: "Purchases seat", roles: ["PURCHASER"] },
   { key: "inventory", name: "Inventory seat", roles: ["INVENTORY"] },
+  { key: "accounting", name: "Accounting seat", roles: ["ACCOUNTANT"] },
 ];
 
 const LEVELS: [string, string][] = [["STARTER", "Essential"], ["BUSINESS", "Standard"], ["ENTERPRISE", "Advanced"]];

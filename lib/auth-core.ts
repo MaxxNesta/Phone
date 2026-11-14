@@ -67,7 +67,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   MANAGER: ALL.filter((p) => p !== "users.manage" && p !== "settings.manage" && !HR_OWNER_ONLY.includes(p)),
   CASHIER: ["pos.sell", "sales.view", "sales.post", "inventory.view", "partners.manage"],
   SALESPERSON: ["pos.sell", "sales.view", "inventory.view", "partners.manage"],
-  INVENTORY: ["inventory.view", "inventory.manage", "purchase.view", "items.manage"],
+  // Stock is valued at cost, so whoever runs inventory sees it (2026-11-14).
+  INVENTORY: ["inventory.view", "inventory.manage", "purchase.view", "items.manage", "cost.view"],
   // Buys: orders, goods receipts, bills and supplier returns, and the
   // suppliers behind them. Sees stock to know what to buy; pays nobody.
   PURCHASER: ["purchase.view", "purchase.post", "inventory.view", "partners.manage"],
@@ -89,6 +90,8 @@ export type SessionUser = {
   seesAllBranches: boolean;
   /** A package seat's level (0198); null means the company's package. */
   seatPlan?: string | null;
+  /** package, or the one module this person's seat is for (0197). */
+  seat?: string;
 };
 
 /** Only these roles may work across every branch. */
@@ -104,7 +107,10 @@ export function seesMainDashboard(user: Pick<SessionUser, "role"> | null | undef
 }
 
 /** Where a person lands: the main dashboard, or the first overview their role may open. */
-export function homeFor(user: Pick<SessionUser, "role">): string {
+export function homeFor(user: Pick<SessionUser, "role" | "seat">): string {
+  // A module seat starts in its own module.
+  const seatHome: Record<string, string> = { sales: can(user, "sales.view") ? "/sales" : "/pos", purchases: "/purchases", inventory: "/inventory", accounting: "/finance/journal" };
+  if (user.seat && seatHome[user.seat]) return seatHome[user.seat];
   if (seesMainDashboard(user)) return "/";
   if (can(user, "sales.view")) return "/sales";
   if (can(user, "purchase.view")) return "/purchases";
@@ -143,7 +149,7 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
   if (!token) return null;
   const hash = tokenHash(token);
   const [u] = await sql`
-    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches, u.seat_plan,
+    select u.id, u.company_id, u.name, u.initials, u.email, u.role, u.branch_id, u.sees_all_branches, u.seat_plan, u.seat,
            s.last_seen_at < now() - interval '5 minutes' as stale
       from user_session s join app_user u on u.id = s.user_id
      where s.token_hash = ${hash} and s.expires_at > now()
@@ -154,7 +160,7 @@ export async function userForToken(token: string | undefined): Promise<SessionUs
   if (u.stale) await sql`update user_session set last_seen_at = now() where token_hash = ${hash}`;
   return { id: u.id, companyId: u.company_id, name: u.name, initials: u.initials,
            email: u.email, role: u.role as Role, branchId: u.branch_id ?? null,
-           seesAllBranches: Boolean(u.sees_all_branches), seatPlan: (u.seat_plan as string | null) ?? null };
+           seesAllBranches: Boolean(u.sees_all_branches), seatPlan: (u.seat_plan as string | null) ?? null, seat: (u.seat as string) ?? "package" };
 }
 
 /**

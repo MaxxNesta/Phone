@@ -16,10 +16,10 @@ export const ACCOUNTS = [
   { name: "admin",            email: "admin@gmail.com",       role: "ADMIN",       password: "Admin@2026" },
   { name: "Test Manager",     email: "manager@mtk.test",      role: "MANAGER",     password: "Manager@2026" },
   { name: "Test Cashier",     email: "cashier@mtk.test",      role: "CASHIER",     password: "Cashier@2026" },
-  { name: "Test Salesperson", email: "sales@mtk.test",        role: "SALESPERSON", password: "Sales@2026" },
-  { name: "Test Inventory",   email: "inventory@mtk.test",    role: "INVENTORY",   password: "Inventory@2026" },
-  { name: "Test Purchaser",   email: "purchaser@mtk.test",    role: "PURCHASER",   password: "Purchaser@2026" },
-  { name: "Test Accountant",  email: "accountant@mtk.test",   role: "ACCOUNTANT",  password: "Accountant@2026" },
+  { name: "Test Salesperson", email: "sales@mtk.test",        role: "SALESPERSON", password: "Sales@2026", seat: "sales" },
+  { name: "Test Inventory",   email: "inventory@mtk.test",    role: "INVENTORY",   password: "Inventory@2026", seat: "inventory" },
+  { name: "Test Purchaser",   email: "purchaser@mtk.test",    role: "PURCHASER",   password: "Purchaser@2026", seat: "purchases" },
+  { name: "Test Accountant",  email: "accountant@mtk.test",   role: "ACCOUNTANT",  password: "Accountant@2026", seat: "accounting" },
 ];
 
 // The same scheme as lib/auth-core.ts hashPassword.
@@ -44,16 +44,20 @@ try {
     await sql`
       insert into app_user (company_id, name, initials, email, password_hash, role, is_active, branch_id, sees_all_branches, seat, seat_plan)
       values (${co.id}, ${a.name}, ${initials(a.name)}, ${a.email}, ${hash(a.password)}, ${a.role}, true,
-              ${across ? null : branch?.id ?? null}, ${across}, 'package', null)
+              ${across ? null : branch?.id ?? null}, ${across}, ${a.seat ?? "package"}, null)
       on conflict (company_id, name) do update set
         email = excluded.email, password_hash = excluded.password_hash, role = excluded.role, is_active = true,
-        branch_id = excluded.branch_id, sees_all_branches = excluded.sees_all_branches, seat = 'package', seat_plan = null`;
+        branch_id = excluded.branch_id, sees_all_branches = excluded.sees_all_branches, seat = excluded.seat, seat_plan = null`;
   }
   // Enough package seats at the company's level for every test account.
   const [{ n }] = await sql`select count(*)::int as n from app_user
     where company_id = ${co.id} and is_active and password_hash is not null and seat = 'package' and seat_plan is null`;
   await sql`update company set package_seats = coalesce(package_seats, '{}'::jsonb) || jsonb_build_object(plan, greatest(${n} - 1, 0))
              where id = ${co.id}`;
+  // And one module seat for each module-seat test account.
+  const mods = {};
+  for (const a of ACCOUNTS) if (a.seat) mods[a.seat] = (mods[a.seat] ?? 0) + 1;
+  await sql`update company set module_seats = coalesce(module_seats, '{}'::jsonb) || ${sql.json(mods)} where id = ${co.id}`;
 
   if (process.argv.includes("--clean")) {
     // Inactive users nothing points at: old accounts from test runs.
@@ -68,7 +72,7 @@ try {
   }
 
   console.log("\nTest accounts (DEV) — sign in with email and password:");
-  for (const a of ACCOUNTS) console.log(`  ${a.role.padEnd(12)} ${a.email.padEnd(24)} ${a.password}`);
+  for (const a of ACCOUNTS) console.log(`  ${a.role.padEnd(12)} ${a.email.padEnd(24)} ${a.password.padEnd(16)} ${a.seat ?? "package"} seat`);
   const [left] = await sql`select count(*)::int as active, count(*) filter (where not is_active)::int as inactive from app_user where company_id = ${co.id}`;
   console.log(`\nUsers now: ${left.active} active, ${left.inactive} inactive.`);
 } catch (e) {

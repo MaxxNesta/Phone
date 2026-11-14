@@ -71,13 +71,18 @@ export const planSwitchable = process.env.VERCEL_ENV !== "production";
  * with the Sales, Purchases or Inventory module, holds only that module's
  * roles. A package is always underneath: module seats are added to it.
  */
-export type Seat = "package" | "sales" | "purchases" | "inventory";
+export type Seat = "package" | "sales" | "purchases" | "inventory" | "accounting";
 export const SEATS: { key: Seat; name: string; roles: string[] | null }[] = [
   { key: "package", name: "Package seat", roles: null },
   { key: "sales", name: "Sales seat", roles: ["CASHIER", "SALESPERSON"] },
   { key: "purchases", name: "Purchases seat", roles: ["PURCHASER"] },
   { key: "inventory", name: "Inventory seat", roles: ["INVENTORY"] },
+  { key: "accounting", name: "Accounting seat", roles: ["ACCOUNTANT"] },
 ];
+/** Module seats, in order. */
+export const MODULE_SEATS = ["sales", "purchases", "inventory", "accounting"] as const;
+/** Add-ons a module seat still sees: they live inside its module's menu. */
+const SEAT_ADDONS: Record<string, Module[]> = { purchases: ["landed_cost"], accounting: ["equity", "fixed_assets"] };
 export const seatAllows = (seat: Seat, role: string) => {
   const s = SEATS.find((x) => x.key === seat);
   return !!s && (s.roles === null || s.roles.includes(role));
@@ -191,7 +196,13 @@ export const MODULES: { key: Module; name: string; covers: string }[] = [
  * add-on only when bought. A company read without the column (older code
  * paths) has them all.
  */
-export function hasModule(company: { modules?: string[] | null; plan?: Plan } | null | undefined, m: Module): boolean {
+export function hasModule(company: { modules?: string[] | null; plan?: Plan; seat?: string | null } | null | undefined, m: Module): boolean {
+  // A module seat sees its own module only (2026-11-14).
+  const seat = company?.seat;
+  if (seat && seat !== "package") {
+    if (isCore(m)) return m === seat;
+    if (!SEAT_ADDONS[seat]?.includes(m)) return false;
+  }
   if (isCore(m)) return true;
   if (company?.plan && !addonAllowed(company.plan, m)) return false;
   return !company?.modules || company.modules.includes(m);

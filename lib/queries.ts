@@ -19,7 +19,9 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   /** The modules bought (0194); lib/plans.ts hasModule reads it. */
   modules: string[];
   /** The company's own package; `plan` above is the reader's level (0198). */
-  company_plan: Plan };
+  company_plan: Plan;
+  /** The reader's seat: package, or the one module they see. */
+  seat: string };
 
 /** The company. Once per request: the layout, the page and the signed-in
  *  owner all ask, and the answer cannot change between them. */
@@ -34,9 +36,10 @@ export const getCompany = cache(async (): Promise<Company | null> => {
   // `plan` is what this reader's seat allows: the company's package, or a
   // lower level their package seat was bought at. Every gate reads `plan`,
   // so each person sees their own level without any gate knowing seats.
-  let seat: string | null = null;
-  try { seat = (await (await import("./auth")).currentUser())?.seatPlan ?? null; } catch { /* outside a request */ }
-  return { ...c, company_plan: c.plan, plan: capPlan(seat as Plan | null, c.plan) };
+  // `seat` likewise narrows the modules: a module seat sees only its module.
+  let me: { seatPlan?: string | null; seat?: string } | null = null;
+  try { me = await (await import("./auth")).currentUser(); } catch { /* outside a request */ }
+  return { ...c, company_plan: c.plan, plan: capPlan((me?.seatPlan ?? null) as Plan | null, c.plan), seat: me?.seat ?? "package" };
 });
 
 export async function getKpis(companyId: string) {

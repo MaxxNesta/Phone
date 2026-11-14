@@ -363,7 +363,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            <NavLink href="/documents" exact><FileText size={15} /> <span className="navlink-text">{n("allDocuments")}</span></NavLink>
+            {/* Every document type at once: package seats only; a module seat stays in its module. */}
+            {(!company?.seat || company.seat === "package") && <NavLink href="/documents" exact><FileText size={15} /> <span className="navlink-text">{n("allDocuments")}</span></NavLink>}
 
           </nav>
 

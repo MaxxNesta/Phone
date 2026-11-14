@@ -48,7 +48,8 @@ export function LoginForm({ firstRun, next }: { firstRun: boolean; next: string 
             autoComplete={firstRun ? "new-password" : "current-password"} />
           <button type="button" className="login-reveal" onClick={() => setReveal(!reveal)}
             aria-label={reveal ? "Hide password" : "Show password"} aria-pressed={reveal}>
-            {reveal ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+            {/* The icon shows the state: crossed out while hidden, open while shown. */}
+            {reveal ? <Eye size={18} aria-hidden="true" /> : <EyeOff size={18} aria-hidden="true" />}
           </button>
         </div>
         {firstRun && <span className="hint">At least 8 characters</span>}

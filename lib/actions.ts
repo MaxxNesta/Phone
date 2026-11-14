@@ -4516,7 +4516,7 @@ export async function setExtraUsers(_prev: unknown, fd: FormData): Promise<Actio
     const [c] = await sql`select plan from company where id = ${co}`;
     const levels = Object.fromEntries((["STARTER", "BUSINESS", "ENTERPRISE"] as const)
       .map((k) => [k, Math.round(num(fd, `pkg_${k}`))]));
-    const mods = Object.fromEntries((["sales", "purchases", "inventory"] as const)
+    const mods = Object.fromEntries((["sales", "purchases", "inventory", "accounting"] as const)
       .map((k) => [k, Math.round(num(fd, `seats_${k}`))]));
     if ([...Object.values(levels), ...Object.values(mods)].some((v) => v < 0 || v > 500)) return { error: "Seats must be 0 to 500." };
     // Seats above the company's package cannot be bought: upgrade first.
