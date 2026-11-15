@@ -430,17 +430,19 @@ export async function phoneStockSummary(companyId: string, locs: string[] | null
 
 // ------------------------------------------------------------ dashboard ----
 
-export async function retailDashboard(companyId: string, locs: string[] | null = null) {
+export async function retailDashboard(companyId: string, locs: string[] | null = null, serials = true) {
   // Someone who sees only their own branch gets its figures only (seenLocations).
   const at = (col: "location_id" | "d.location_id" | "s.location_id") =>
     locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``;
   const range = (from: ReturnType<typeof sql>, to: ReturnType<typeof sql> = sql`fn_shop_today()`) =>
     saleRows(companyId, from, to, locs);
+  // What "sold" counts: phones where IMEI is on, every unit where it is off.
+  const sold = serials ? sql`r.phones` : sql`r.units`;
   const [[today], [yesterday], [month], [stock], [ar], [aged], low, week, topModels, aging, recent, ending, bad] =
     await Promise.all([
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost,
-                 coalesce(sum(r.phones), 0)::int as phones from (${range(sql`fn_shop_today()`)}) r`,
-      sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.phones), 0)::int as phones
+                 coalesce(sum(${sold}), 0)::int as phones from (${range(sql`fn_shop_today()`)}) r`,
+      sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(${sold}), 0)::int as phones
             from (${range(sql`fn_shop_today() - 1`, sql`fn_shop_today() - 1`)}) r`,
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost
             from (${range(sql`date_trunc('month', fn_shop_today())::date`)}) r`,
@@ -450,19 +452,26 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
             from v_open_item where company_id = ${companyId} and doc_type = 'SALES_INVOICE'
              and outstanding > 0.005
              ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}`,
-      sql`select count(*)::int as n from v_stock_serial
-           where company_id = ${companyId} and status = 'IN_STOCK' and received_date < fn_shop_today() - 90
-             ${at("location_id")}`,
+      // Aged stock: phones by unit where IMEI is on; otherwise the quantity
+      // still sitting in FIFO lots received over 90 days ago (any product).
+      serials
+        ? sql`select count(*)::int as n from v_stock_serial
+               where company_id = ${companyId} and status = 'IN_STOCK' and received_date < fn_shop_today() - 90
+                 ${at("location_id")}`
+        : sql`select coalesce(sum(qty_remaining), 0)::int as n from v_stock_lot_open
+               where company_id = ${companyId} and qty_remaining > 0
+                 and (received_date at time zone 'Asia/Yangon')::date < fn_shop_today() - 90
+                 ${at("location_id")}`,
       // At or under the reorder point: the Stock page's list, worst first.
       lowStockToday(companyId).then((r) => r.rows.slice(0, 5)),
       sql`select to_char(d, 'YYYY-MM-DD') as day, to_char(d, 'Dy') as label,
                  coalesce((select sum(r.revenue) from (${range(sql`fn_shop_today() - 6`)}) r
                             where r.posting_date = d), 0)::float as revenue
             from generate_series(fn_shop_today() - 6, fn_shop_today(), interval '1 day') d order by d`,
-      sql`select coalesce(p.name, i.name) as model, sum(r.phones)::int as sold, sum(r.revenue)::float as revenue
+      sql`select coalesce(p.name, i.name) as model, sum(${sold})::int as sold, sum(r.revenue)::float as revenue
             from (${range(sql`fn_shop_today() - 30`)}) r
             join item i on i.id = r.item_id left join item p on p.id = i.parent_item_id
-           where i.tracks_serial group by 1 order by 2 desc, 3 desc limit 5`,
+           where (i.tracks_serial or not ${serials}) group by 1 having sum(${sold}) > 0 order by 2 desc, 3 desc limit 5`,
       sql`select case when fn_shop_today() - received_date <= 30 then '0–30 days'
                       when fn_shop_today() - received_date <= 60 then '31–60 days'
                       when fn_shop_today() - received_date <= 90 then '61–90 days'
@@ -505,7 +514,8 @@ function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnTyp
     select d.posting_date, dl.item_id, dl.net_amount as revenue,
            coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                       where a.invoice_line_id = dl.id), 0) as cost,
-           case when i.tracks_serial then dl.base_qty else 0 end as phones
+           case when i.tracks_serial then dl.base_qty else 0 end as phones,
+           dl.base_qty as units
       from document d
       join document_line dl on dl.document_id = d.id
       join item i on i.id = dl.item_id

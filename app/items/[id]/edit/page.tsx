@@ -8,6 +8,7 @@ import { saveItemEdit } from "@/lib/actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ItemEditor, type EditorItem } from "@/components/item-editor";
 import { PhoneSettings } from "@/components/phone-settings";
+import { serialTrackingOn } from "@/lib/features";
 
 export async function generateMetadata() { return { title: "Edit item" }; }
 
@@ -131,7 +132,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
       <Breadcrumbs trail={trail} />
       {/* Tracking and warranty belong to the product (and so to all its variants). */}
       <ItemEditor item={data} action={saveItemEdit}
-        tracking={canTrack ? <PhoneSettings item={item} embedded /> : null} />
+        tracking={canTrack ? <PhoneSettings item={item} embedded serial={serialTrackingOn(await getCompany())} /> : null} />
     </div>
   );
 }

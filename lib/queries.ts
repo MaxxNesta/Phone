@@ -21,13 +21,15 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   /** The company's own package; `plan` above is the reader's level (0198). */
   company_plan: Plan;
   /** The reader's seat: package, or the one module they see. */
-  seat: string };
+  seat: string;
+  /** Switched-on features (0200); read through lib/features.ts. */
+  features: import("./features").CompanyFeatures };
 
 /** The company. Once per request: the layout, the page and the signed-in
  *  owner all ask, and the answer cannot change between them. */
 export const getCompany = cache(async (): Promise<Company | null> => {
   const rows = await sql<Company[]>`
-    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules,
+    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules, features,
            (select count(*)::int from location l
              where l.company_id = c.id and l.is_stock_location and l.is_active) as warehouses
       from company c order by created_at limit 1`;

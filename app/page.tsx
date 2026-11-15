@@ -4,6 +4,7 @@ import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, A
 import { redirect } from "next/navigation";
 import { currentUser, can, seesMainDashboard, homeFor } from "@/lib/auth";
 import { getCompany } from "@/lib/queries";
+import { serialTrackingOn } from "@/lib/features";
 import { planIncludes } from "@/lib/plans";
 import { retailDashboard } from "@/lib/phone";
 import { money } from "@/lib/format";
@@ -74,6 +75,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   // Starter keeps the dashboard but not the accounting checks or the
   // region and customer/supplier-type breakdowns (lib/plans.ts).
   const company = await getCompany();
+  const serials = serialTrackingOn(company);
   const advanced = !company || planIncludes(company.plan, "dashboard_advanced");
   const none = Promise.resolve([] as never);
   // One window per donut, as on the business overview: each card's period
@@ -90,7 +92,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   };
   const co = user.companyId;
   const [d, cats, regionRows, branchRows, payRows, custRows, suppRows, recentDocs, health, perf] = await Promise.all([
-    seenLocations().then((locs) => retailDashboard(co, locs)),
+    seenLocations().then((locs) => retailDashboard(co, locs, serials)),
     getTopCategories(co, period.cat.from, period.cat.to),
     advanced ? getRevenueByRegion(co, period.reg.from, period.reg.to) : none,
     seenLocations().then((locs) => getRevenueByBranch(co, period.branch.from, period.branch.to, locs)),
@@ -153,7 +155,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <Stat icon={<TrendingUp size={20} />} tone="slate" label={t("grossProfit")} value={`${compact(gp)} MMK`}
             note={t("margin", { pct: margin.toFixed(1) })} />
         )}
-        <Stat icon={<Smartphone size={20} />} tone="violet" label={t("phonesSold")} value={t("units", { n: d.today.phones })}
+        {/* Phones sold where IMEI is on; every unit sold where it is off. */}
+        <Stat icon={serials ? <Smartphone size={20} /> : <Package size={20} />} tone="violet" label={t(serials ? "phonesSold" : "unitsSold")} value={t("units", { n: d.today.phones })}
           delta={d.today.phones === d.yesterday.phones ? null : {
             text: `${d.today.phones > d.yesterday.phones ? "▲" : "▼"} ${Math.abs(d.today.phones - d.yesterday.phones)}`,
             good: d.today.phones > d.yesterday.phones }}
@@ -169,7 +172,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <div className="card">
           <div className="card-head"><h2>{t("topModels")}</h2><span className="page-sub">{t("last30")}</span></div>
           <div className="card-body">
-            {d.topModels.length === 0 && <p className="page-sub">{t("noPhonesSold")}</p>}
+            {d.topModels.length === 0 && <p className="page-sub">{t(serials ? "noPhonesSold" : "nothingSold")}</p>}
             {d.topModels.slice(0, 5).map((m: any) => (
               <div className="listrow" key={m.model}>
                 <span className="grow prod-text"><div className="prod-name clamp2" title={m.model}>{m.model}</div><div className="prod-sub">{t("sold", { n: m.sold })}</div></span>
@@ -230,11 +233,13 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           <Stat icon={<Package size={20} />} tone="slate" label={t("inventoryValue")} value={`${compact(d.stock.value)} MMK`}
             note={<Link href="/inventory">{t("inventorySummary")}</Link>} />
         )}
-        <Stat icon={<Clock size={20} />} tone="amber" label={t("agedPhones")} value={d.aged}
+        {/* Aged stock: phones by unit, or any product's quantity from its lots (lib/phone.ts). */}
+        <Stat icon={<Clock size={20} />} tone="amber" label={t(serials ? "agedPhones" : "agedStock")} value={d.aged}
           note={<Link href="/reports/phone-stock">{t("unsold90")}</Link>} noteTone={d.aged ? "warn" : undefined} />
-        <Stat icon={<ShieldAlert size={20} />} tone="violet" label={t("warrantiesEnding")} value={d.ending}
-          note={<Link href="/inventory/warranty?ending=30">{t("within30")}</Link>} />
-        {d.bad.length > 0 && (
+        {/* Warranty and serial-mismatch tiles: counted from IMEI units, so only where serial numbers are on. */}
+        {serials && <Stat icon={<ShieldAlert size={20} />} tone="violet" label={t("warrantiesEnding")} value={d.ending}
+          note={<Link href="/inventory/warranty?ending=30">{t("within30")}</Link>} />}
+        {serials && d.bad.length > 0 && (
           <Stat icon={<AlertTriangle size={20} />} tone="amber" label={t("mismatch")} value={d.bad.length}
             note={d.bad.map((b: any) => t("mismatchItem", { name: b.name, serials: b.serials, onHand: b.on_hand })).join("; ")} noteTone="down" />
         )}

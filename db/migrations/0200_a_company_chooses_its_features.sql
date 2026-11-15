@@ -1,0 +1,15 @@
+-- A company chooses its features.
+--
+-- Shops differ: a phone shop names every unit by IMEI, a clothes shop counts
+-- them; a distributor takes orders and delivers, a counter shop hands goods
+-- over at the till. One codebase serves them all, so these choices live here,
+-- per company, not in the code.
+--
+--   serial_tracking     IMEI and serial numbers: menus, product tracking, phone
+--                       tiles. Absent means on (every shop so far sells phones).
+--   orders_deliveries   Sales orders, deliveries, deliver-later. Absent means
+--                       the old rule: on for a wholesale company, off at retail.
+--
+-- Set by the provider (scripts/set-package.mjs now, the console later), shown
+-- read-only in Settings. lib/features.ts reads it.
+alter table company add column if not exists features jsonb not null default '{}'::jsonb;

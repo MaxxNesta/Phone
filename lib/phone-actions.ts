@@ -1,5 +1,6 @@
 "use server";
 
+import { serialTrackingOn } from "./features";
 import { revalidatePath } from "next/cache";
 import { sql } from "./db";
 import { requirePermission } from "./auth";
@@ -55,11 +56,14 @@ export async function setItemPhoneSettings(fd: FormData) {
   const user = await requirePermission("items.manage");
   const id = String(fd.get("id") ?? "");
   const [item] = await sql`
-    select i.tracks_serial, exists (select 1 from stock_movement m where m.item_id = i.id) as moved
-      from item i where i.id = ${id} and i.company_id = ${user.companyId}`;
+    select i.tracks_serial, i.identity, c.features, exists (select 1 from stock_movement m where m.item_id = i.id) as moved
+      from item i join company c on c.id = i.company_id where i.id = ${id} and i.company_id = ${user.companyId}`;
   if (!item) throw new Error("That item does not exist");
   const asked = String(fd.get("identity") ?? "");
-  const wanted = ["IMEI", "SERIAL", "OPTIONAL", "NONE"].includes(asked) ? asked
+  // Serial numbers switched off (0200): tracking is not changed from here; an
+  // item keeps what it has, so units already on the shelf stay as recorded.
+  const wanted = !serialTrackingOn(item) ? String(item.identity ?? "NONE")
+    : ["IMEI", "SERIAL", "OPTIONAL", "NONE"].includes(asked) ? asked
     : fd.get("tracks_serial") !== null ? "IMEI" : "NONE";
   const warranty = monthsOf(fd, "warranty_months");
   const supplierWarranty = monthsOf(fd, "supplier_warranty_months");

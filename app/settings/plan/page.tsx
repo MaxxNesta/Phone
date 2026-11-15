@@ -6,6 +6,7 @@ import { ModuleSwitcher } from "@/components/module-switcher";
 import { SeatCard } from "@/components/seat-card";
 import { PlanSwitcher } from "@/components/plan-switcher";
 import { HelpHint } from "@/components/help-hint";
+import { ordersAndDeliveriesOn, serialTrackingOn } from "@/lib/features";
 
 export default async function PlanSettings() {
   const company = await getCompany();
@@ -54,6 +55,24 @@ export default async function PlanSettings() {
         core={CORE_MODULES} planName={PLAN_NAME[row.plan]}
         needsStandard={row.plan === "STARTER" ? STANDARD_UP_ADDONS : []}
         locked={!planSwitchable} action={setCompanyModules} />
+
+      {/* Feature switches (0200): set by the provider, shown here for reference. */}
+      <section className="card">
+        <div className="card-head"><h2>Features</h2></div>
+        <table className="feat-table">
+          <tbody>
+            {[
+              { on: serialTrackingOn(company), name: "IMEI & serial numbers", what: "Each phone or device named by its IMEI or serial on receipt, sale and warranty. Off: every product is counted by quantity." },
+              { on: ordersAndDeliveriesOn(company), name: "Orders & deliveries", what: "Sales orders, deliveries and deliver-later. Off: every invoice hands the goods over at the counter." },
+            ].map((f) => (
+              <tr key={f.name}>
+                <td><strong>{f.name}</strong><div className="subline">{f.what}</div></td>
+                <td className="num"><span className={`pill ${f.on ? "ok" : "neutral"}`}>{f.on ? "On" : "Off"}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
       <SeatCard locked={!planSwitchable} action={setExtraUsers}
         packages={PLAN_ORDER.map((p, i) => ({

@@ -1,7 +1,7 @@
 "use server";
 import { str, num } from "./input";
 import { todayLocal } from "@/lib/format";
-import { ordersAndDeliveriesOn } from "./features";
+import { ordersAndDeliveriesOn, serialTrackingOn } from "./features";
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
@@ -824,8 +824,11 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
     // How each unit is named: IMEI, serial number, or not at all. The older
     // yes/no switch still means IMEI where a form sends only that.
-    const identity = (["IMEI", "SERIAL", "OPTIONAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
-      ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
+    // A company with serial numbers switched off counts every product (0200).
+    const [feat] = await sql`select features from company where id = ${co}`;
+    const identity = !serialTrackingOn(feat) ? "NONE"
+      : (["IMEI", "SERIAL", "OPTIONAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
+        ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
 
     // An option not offered for this kind of product — Memory on an iPhone —
     // is refused here as well as hidden on the form.
@@ -2083,7 +2086,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // Retail: the invoice is the hand-over, so it moves the stock itself and
     // no delivery exists (docs/06-phone-retail.md, D-P1). Consigned goods
     // still go through the delivery, which is the only path that settles them.
-    const [mode] = await sql`select retail_mode from company where id = ${co}`;
+    const [mode] = await sql`select retail_mode, features from company where id = ${co}`;
     // Only a take-now sale: "we deliver now" records its delivery like any shop.
     // With orders and deliveries switched off (lib/features.ts) every retail
     // sale is take-now and deliver-later is refused.

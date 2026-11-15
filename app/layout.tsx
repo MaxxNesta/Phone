@@ -8,7 +8,7 @@ import { sql } from "@/lib/db";
 import { Noto_Sans_Myanmar, Geist } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
-import { ordersAndDeliveriesOn } from "@/lib/features";
+import { ordersAndDeliveriesOn, serialTrackingOn } from "@/lib/features";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import "flag-icons/css/flag-icons.min.css";
 import "./globals.css";
@@ -114,8 +114,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const roleT = await getTranslations("roles");
   // Distribution screens (orders, deliveries, routes) only in the trading flow.
   const wholesale = company ? !company.retail_mode : false;
-  // Developer switch, lib/features.ts.
+  // Per-company switches (company.features, lib/features.ts).
   const deliveries = ordersAndDeliveriesOn(company);
+  // IMEI and serial numbers: off for a shop that counts its stock rather than naming each unit.
+  const serials = serialTrackingOn(company);
 
   if (bare) {
     return (
@@ -189,11 +191,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <NavGroup label={n("inventory")} icon={<Boxes size={15} />} match={["/inventory", "/items/stock"]}>
                 <NavLink href="/inventory" exact>{n("summary")}</NavLink>
                 <NavLink href="/items/stock">{n("stock")}</NavLink>
-                <NavLink href="/inventory/phones">{n("imeiTracking")}</NavLink>
+                {serials && <NavLink href="/inventory/phones">{n("imeiTracking")}</NavLink>}
                 {may("inventory.manage") && (company?.warehouses ?? 0) > 1 && <NavLink href="/inventory/transfer">{n("stockTransfers")}</NavLink>}
                 {may("inventory.manage") && <NavLink href="/inventory/adjustments">{n("stockCount")}</NavLink>}
                 {company && planIncludes(company.plan, "inventory_aging") && <NavLink href="/reports/phone-stock">{n("inventoryAging")}</NavLink>}
-                <NavLink href="/inventory/warranty">{n("warrantyLookup")}</NavLink>
+                {serials && <NavLink href="/inventory/warranty">{n("warrantyLookup")}</NavLink>}
                 <NavLink href="/inventory/movements">{n("stockMovements")}</NavLink>
                 {company && planIncludes(company.plan, "replenishment") && <NavLink href="/inventory/replenishment">{n("replenishment")}</NavLink>}
                 <NavLink href="/inventory/negative-stock">{n("negativeStock")}</NavLink>
@@ -371,7 +373,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <main className="main">
             {user && (
               <header className="topbar noprint">
-                <TopSearch placeholder={sh("searchPlaceholder")} label={sh("searchLabel")} />
+                <TopSearch placeholder={sh(serials ? "searchPlaceholder" : "searchPlaceholderNoSerial")} label={sh("searchLabel")} />
                 {previewing && (
                   <form action={previewRole} className="preview-bar">
                     <span>Viewing as <strong>{roleT(user.role)}</strong>{" · "}{user.branchId ? (previewBranchName ?? "one branch") : "all branches"}</span>

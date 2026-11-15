@@ -58,7 +58,10 @@ export function ItemForm({
   retail,
   canAddBrand,
   canKeepDuplicates,
+  serial = true,
 }: {
+  /** IMEI and serial numbers switched on for the company (lib/features.ts). Off: every product is counted. */
+  serial?: boolean;
   /** May keep two variants of one configuration on purpose (items.duplicates). */
   canKeepDuplicates?: boolean;
   /** Owner only (brands.manage): the shop sells Apple. */
@@ -135,7 +138,8 @@ export function ItemForm({
   const [chain, setChain] = useState<string[]>(initialChain);
   // A product that comes in variants is not sold itself: its variants carry the codes.
   const [hasVariants, setHasVariants] = useState(false);
-  const [showWarranty, setShowWarranty] = useState(false);
+  // Without serial numbers, warranty is all this section holds: open it.
+  const [showWarranty, setShowWarranty] = useState(!serial);
   // Controlled only so the variant preview can name the product it is
   // about to make twelve of.
   const [itemName, setItemName] = useState("");
@@ -161,7 +165,7 @@ export function ItemForm({
   // person filling this in says otherwise for this one product.
   const typeIdentity = nodes.find((n) => n.id === chain[0])?.identity ?? "NONE";
   const [trackOverride, setTrackOverride] = useState<{ root: string; v: string } | null>(null);
-  const tracking = trackOverride && trackOverride.root === chain[0] ? trackOverride.v : typeIdentity;
+  const tracking = !serial ? "NONE" : trackOverride && trackOverride.root === chain[0] ? trackOverride.v : typeIdentity;
   const groupCode = selected?.code ?? "";
 
   /* Item codes. Auto numbers under a model code (the category's code unless
@@ -234,7 +238,7 @@ export function ItemForm({
   const steps = [
     { id: "pf-info", label: "Product information", done: infoDone },
     { id: "pf-codes", label: "Item codes", done: codesDone },
-    { id: "pf-tracking", label: "Traceability", done: true },
+    { id: "pf-tracking", label: serial ? "Traceability" : "Warranty", done: true },
     ...(hasVariants ? [
       { id: "pf-variants", label: "Variants", done: plan.kept.length > 0 },
       { id: "pf-review", label: "Review", done: plan.ready && plan.kept.length > 0 },
@@ -476,11 +480,11 @@ export function ItemForm({
             <div className="pf2-head">
               <span className="pf2-step">3</span>
               <div className="pf2-title">
-                <h2>Traceability</h2>
-                <HelpHint label="About traceability">
+                <h2>{serial ? "Traceability" : "Warranty"}</h2>
+                {serial && <HelpHint label="About traceability">
                   How each unit is told apart in stock. IMEI and serial number name every unit, so a sale,
                   a return or a warranty claim points at one phone; quantity only counts them.
-                </HelpHint>
+                </HelpHint>}
               </div>
               {!showWarranty && (
                 <button type="button" className="pf2-link" onClick={() => setShowWarranty(true)}>
@@ -489,7 +493,7 @@ export function ItemForm({
               )}
             </div>
             <div className="pf2-body">
-              <div className="pf2-seg four" role="radiogroup" aria-label="Tracked by">
+              {serial && <div className="pf2-seg four" role="radiogroup" aria-label="Tracked by">
                 {TRACKING.map((t) => {
                   const Icon = t.v === "IMEI" ? Smartphone : t.v === "SERIAL" ? Barcode : t.v === "OPTIONAL" ? ScanLine : Boxes;
                   return (
@@ -503,7 +507,7 @@ export function ItemForm({
                     </button>
                   );
                 })}
-              </div>
+              </div>}
 
               {showWarranty && (
                 <div className="pf2-fields" style={{ marginTop: 10 }}>

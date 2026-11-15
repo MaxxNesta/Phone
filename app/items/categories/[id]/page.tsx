@@ -1,3 +1,4 @@
+import { serialTrackingOn } from "@/lib/features";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
@@ -164,6 +165,7 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
               returnTo={returnTo}
               presetGroupId={id}
               retail={Boolean((await getCompany())?.retail_mode)}
+              serial={serialTrackingOn(await getCompany())}
               canAddBrand={can((await currentUser())!, "brands.manage")}
               canKeepDuplicates={can((await currentUser())!, "items.duplicates")}
             />

@@ -22,7 +22,7 @@ export default async function NewSalesInvoice({
   // How money taken now is paid, as each location's branch maps it.
   const channels = company ? Object.fromEntries(await Promise.all(
     (d.locations as unknown as { id: string }[]).map(async (l) => [l.id, await channelsAt(company.id, l.id)]))) : {};
-  const [co] = await sql`select id, base_currency, retail_mode from company order by created_at limit 1`;
+  const [co] = await sql`select id, base_currency, retail_mode, features from company order by created_at limit 1`;
   const categories = await allCategories(co.id);
   const deliveries = await getOpenDeliveries(co.id);
   // Same as the purchase side: billed from one delivery, the crumb names it.

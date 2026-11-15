@@ -6,7 +6,7 @@
 //   npx tsx --env-file=.env scripts/check-delivery-entries.mjs
 //
 // Run it after touching delivery or invoice posting. Either setting of
-// ORDERS_AND_DELIVERIES (lib/features.ts) posts through these same paths.
+// Orders & deliveries switched on for a company (company.features, lib/features.ts) posts through these same paths.
 // Cases, dated across a month end (Oct 31 → Nov 2):
 //   A  delivered, then invoiced
 //   B  invoiced (deliver later), then delivered — the sale and its cost land

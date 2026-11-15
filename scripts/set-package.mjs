@@ -9,6 +9,7 @@
 //   npx tsx --env-file=.env scripts/set-package.mjs --plan STANDARD
 //   npx tsx --env-file=.env scripts/set-package.mjs --addons hr,equity,fixed_assets
 //   npx tsx --env-file=.env scripts/set-package.mjs --seats ENTERPRISE=0,BUSINESS=2,STARTER=0 --module-seats sales=1,purchases=0,inventory=0
+//   npx tsx --env-file=.env scripts/set-package.mjs --features serial=off,orders=on      (serial=default clears one)
 //
 // Packages: ESSENTIAL | STANDARD | ADVANCED (stored as STARTER | BUSINESS | ENTERPRISE).
 import postgres from "postgres";
@@ -48,7 +49,19 @@ try {
   if (opt("module-seats")) {
     await sql`update company set module_seats = ${sql.json(pairs(opt("module-seats")))} where id = ${c.id}`;
   }
-  const [now] = await sql`select plan, modules, package_seats, module_seats,
+  if (opt("features")) {
+    // Company feature switches (0200). on / off sets one; default removes it,
+    // so the app's built-in default applies again.
+    const KEY = { serial: "serial_tracking", orders: "orders_deliveries" };
+    const [cur] = await sql`select features from company where id = ${c.id}`;
+    const next = { ...(cur.features ?? {}) };
+    for (const [k, v] of Object.entries(Object.fromEntries((opt("features") ?? "").split(",").filter(Boolean).map((p) => p.split("=").map((x) => x.trim()))))) {
+      if (!KEY[k] || !["on", "off", "default"].includes(v)) throw new Error(`Feature must be serial|orders = on|off|default (got ${k}=${v})`);
+      if (v === "default") delete next[KEY[k]]; else next[KEY[k]] = v === "on";
+    }
+    await sql`update company set features = ${sql.json(next)} where id = ${c.id}`;
+  }
+  const [now] = await sql`select plan, modules, package_seats, module_seats, features,
     (select count(*)::int from app_user u where u.company_id = c.id and u.is_active and u.password_hash is not null) as signing_in
     from company c where id = ${c.id}`;
   console.log(now);
