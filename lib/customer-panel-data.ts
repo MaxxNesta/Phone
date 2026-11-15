@@ -28,8 +28,8 @@ async function scope(s: Scope, partnerId: string) {
   return { co: s.co, at };
 }
 
-const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : null);
-const n = (v: unknown) => Number(v ?? 0);
+export const iso = (d: unknown) => (d instanceof Date ? d.toISOString() : d ? String(d) : null);
+export const n = (v: unknown) => Number(v ?? 0);
 
 export type Activity = {
   kind: string; at: string | null; docId: string | null; docNo: string | null;
@@ -37,7 +37,7 @@ export type Activity = {
 };
 
 /** Newest first, from what is recorded: the partner row and its documents. */
-async function activityRows(partnerId: string, co: string, at: (c: string) => unknown, offset: number, limit: number) {
+export async function activityRows(partnerId: string, co: string, at: (c: string) => unknown, offset: number, limit: number) {
   const rows = await sql`
     select * from (
       select 'CREATED' as kind, bp.created_at as at, null::uuid as doc_id, null as doc_no,

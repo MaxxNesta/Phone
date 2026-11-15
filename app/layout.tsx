@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { TopSearch } from "@/components/top-search";
+import { PlanMark } from "@/components/plan-mark";
 import { DeniedDialog } from "@/components/denied-dialog";
 import { previewRole } from "@/lib/preview-actions";
 import { PREVIEW_ROLE_COOKIE, previewAllowed } from "@/lib/auth";
@@ -151,7 +152,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           />
           <nav className="sidebar" id="sidebar">
             <div className="brand">
-              <span className="brand-name">{company?.name ?? sh("appName")}</span>
+              <span className="brand-name">
+                {company?.name ?? sh("appName")}
+                {company && <PlanMark plan={company.company_plan} />}
+              </span>
               <span className="brand-sub">{company?.base_currency ?? sh("notSetUp")}</span>
             </div>
 
@@ -334,7 +338,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <NavLink href="/items/brands" sub>{n("brands")}</NavLink>
                     <NavLink href="/items/attributes" sub>{n("variants")}</NavLink>
                     <NavLink href="/items/units" sub>{n("units")}</NavLink>
-                    <NavLink href="/items/purchasing" sub>{n("purchasingTerms")}</NavLink>
+                    {/* Purchasing terms live on each supplier now (Partners → Suppliers → panel). */}
                     <NavLink href="/items/import" sub>{n("importItems")}</NavLink>
                   </NavSubGroup>
                 )}

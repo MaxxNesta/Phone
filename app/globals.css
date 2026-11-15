@@ -10666,3 +10666,121 @@ dialog.denied::backdrop { background: rgb(0 0 0 / .35); backdrop-filter: blur(2p
 .feat-table .subline { margin-top: 2px; max-width: 60ch; }
 /* A service or charge on the till: no stock count, always available. */
 .pos3-stock.service { background: color-mix(in srgb, var(--blue) 10%, transparent); color: var(--blue-ink, var(--blue)); }
+
+/* Supplier panel: adding a purchasing term, inside the panel's box. */
+.cpanel-form { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.cpanel-form label { display: grid; gap: 4px; font-size: 0.78rem; font-weight: 500; color: var(--ink-soft); }
+.cpanel-form select, .cpanel-form input { width: 100%; }
+.cpanel-form .hint { font-weight: 400; }
+.cpanel-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* The Suppliers list: seven columns, so its own widths over the customer table's nine. */
+table.ctable.stable th:nth-child(1) { width: 26%; }
+table.ctable.stable th:nth-child(2) { width: 18%; }
+table.ctable.stable th:nth-child(3) { width: 13%; }
+table.ctable.stable th:nth-child(4) { width: 13%; }
+table.ctable.stable th:nth-child(5) { width: 16%; }
+table.ctable.stable th:nth-child(6) { width: 10%; }
+table.ctable.stable th:nth-child(7) { width: 44px; }
+table.ctable.stable td.r { padding-right: 14px; }
+
+/* The company's package beside its name (components/plan-mark.tsx). */
+.brand-name { display: inline-flex; align-items: center; gap: 6px; }
+.plan-mark { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; flex: none; }
+.plan-mark.enterprise { color: #a86a00; background: linear-gradient(180deg, #fff4d6, #fde6a8); box-shadow: inset 0 0 0 1px rgb(168 106 0 / 0.22); }
+.plan-mark.business { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 22%, transparent); }
+.plan-mark.starter { color: var(--muted); background: var(--line-soft); box-shadow: inset 0 0 0 1px var(--line); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .plan-mark.enterprise { color: #ffcf66; background: rgb(255 207 102 / 0.14); box-shadow: inset 0 0 0 1px rgb(255 207 102 / 0.3); }
+}
+:root[data-theme="dark"] .plan-mark.enterprise { color: #ffcf66; background: rgb(255 207 102 / 0.14); box-shadow: inset 0 0 0 1px rgb(255 207 102 / 0.3); }
+
+/* ---------- Settings → Package & seats (app/settings/plan) ---------- */
+.acct { display: flex; flex-direction: column; gap: var(--s3); }
+.acct-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s3); flex-wrap: wrap; }
+.acct-title { display: flex; align-items: center; gap: 14px; }
+.acct-title h1 { margin: 2px 0 2px; font-size: 1.6rem; letter-spacing: -0.02em; }
+.acct-title .page-sub { margin: 0; }
+.acct-plan-icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+.acct-plan-icon.sm { width: 26px; height: 26px; border-radius: 8px; }
+.acct-plan-icon.enterprise { color: #a86a00; background: linear-gradient(180deg, #fff6dd, #fce6a6); box-shadow: inset 0 0 0 1px rgb(168 106 0 / 0.2); }
+.acct-plan-icon.business { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 20%, transparent); }
+.acct-plan-icon.starter { color: var(--muted); background: var(--line-soft); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* Tabs: a quiet segmented control, as in Apple's settings. */
+.acct-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--line-soft); align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.acct-tabs a { padding: 6px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 500; color: var(--muted); text-decoration: none; white-space: nowrap; }
+.acct-tabs a:hover { color: var(--ink); }
+.acct-tabs a.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 0.5px rgb(0 0 0 / 0.06); }
+
+.acct-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--s3); }
+.acct-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+.acct-kpi-icon { grid-row: span 2; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--line-soft); color: var(--muted); }
+.acct-kpi-label { font-size: 0.78rem; color: var(--muted); }
+.acct-kpi strong { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.acct-kpi strong small, .acct-bar-top strong small, .acct-seat-head strong small { font-size: 0.78rem; font-weight: 500; color: var(--muted); }
+
+.acct-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: var(--s3); align-items: start; }
+@media (max-width: 1100px) { .acct-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) { .acct-grid { grid-template-columns: 1fr; } }
+.acct-card { padding: 16px 18px; }
+.acct-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.acct-card-head h2 { margin: 0; font-size: 0.98rem; }
+.acct-link { font-size: 0.82rem; font-weight: 500; color: var(--blue); text-decoration: none; }
+.acct-link:hover { text-decoration: underline; }
+
+.acct-bars { display: flex; flex-direction: column; gap: 14px; }
+.acct-bar-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.84rem; margin-bottom: 6px; }
+.acct-bar-top span { color: var(--muted); }
+.acct-track { height: 8px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.acct-track span { display: block; height: 100%; border-radius: 999px; background: var(--blue); transition: width 0.4s ease; }
+.acct-track span.full { background: #e8a200; }
+.acct-hint { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.78rem; font-weight: 500; color: #a86a00; }
+
+.acct-status { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.acct-status li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); font-size: 0.86rem; }
+.acct-status li:last-child { border-bottom: 0; }
+.acct-status li strong { margin-left: auto; font-weight: 600; }
+.acct-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--line); }
+.acct-dot.online { background: #34c759; box-shadow: 0 0 0 3px rgb(52 199 89 / 0.18); }
+.acct-dot.away { background: #ff9f0a; }
+.acct-dot.offline { background: #8e8e93; }
+.acct-dot.never, .acct-dot.inactive, .acct-dot.nologin { background: var(--line); }
+.acct-state { display: inline-flex; align-items: center; gap: 7px; }
+
+.acct-lead { margin: 0; max-width: 72ch; }
+.acct-section { margin: 6px 0 -4px; font-size: 0.95rem; }
+.acct-seat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s3); }
+.acct-seat { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.acct-seat.closed { opacity: 0.6; }
+.acct-seat-head { display: flex; align-items: center; gap: 10px; }
+.acct-seat-head h3 { margin: 0; font-size: 0.92rem; }
+.acct-seat-head strong { margin-left: auto; font-size: 1.1rem; font-weight: 600; }
+.acct-holders { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.acct-holders li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--line-soft); font-size: 0.78rem; }
+
+.acct-avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--line-soft); color: var(--ink); font-size: 0.72rem; font-weight: 600; }
+.acct-avatar.xs { width: 22px; height: 22px; font-size: 0.62rem; }
+.acct-person { display: inline-flex; align-items: center; gap: 10px; }
+.acct-person > span:last-child { display: flex; flex-direction: column; }
+.acct-table { width: 100%; }
+.acct-table th { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+.acct-table td, .acct-table th { padding: 11px 14px; vertical-align: middle; }
+.acct-table tr.off { opacity: 0.55; }
+.acct-seat-pill { display: inline-flex; padding: 2px 9px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; white-space: nowrap; }
+.acct-seat-pill.enterprise { color: #8a5600; background: #fdf0cc; }
+.acct-seat-pill.business { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+.acct-seat-pill.starter, .acct-seat-pill.module { color: var(--muted); background: var(--line-soft); }
+.acct-pager { display: flex; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line-soft); }
+.acct-table .subline { display: block; margin-top: 1px; }
+
+/* Settings → Users: the people list folds away; each person shows their seat. */
+.ppl-fold > summary { list-style: none; cursor: pointer; }
+.ppl-fold > summary::-webkit-details-marker { display: none; }
+.ppl-fold-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 4px 10px; font-weight: 600; font-size: 0.92rem; }
+.ppl-fold-head .page-sub { font-weight: 500; margin-left: 4px; font-size: 0.82rem; }
+.ppl-fold-caret { transition: transform 0.2s ease; }
+.ppl-fold:not([open]) .ppl-fold-caret { transform: rotate(-90deg); }
+.ppl-fold:not([open]) .ppl-fold-head { padding-bottom: 4px; }
+.ppl:has(.ppl-fold:not([open])) { grid-template-columns: 200px minmax(0, 1fr); }
+.ppl-seat { margin-left: auto; flex: none; }
+@media (prefers-reduced-motion: reduce) { .ppl-fold-caret { transition: none; } }

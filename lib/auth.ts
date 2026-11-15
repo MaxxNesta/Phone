@@ -16,14 +16,24 @@ export * from "./auth-core";
 // ------------------------------------------------------------- sessions --
 
 export async function createSession(userId: string) {
-  // Ended sessions are deleted rather than left to pile up.
-  await sql`delete from user_session where expires_at < now()
-              or last_seen_at < now() - make_interval(mins => ${SESSION_IDLE_MINUTES})`;
+  // Ended sessions are deleted rather than left to pile up; their sign-in
+  // rows are stamped first, at the last activity, as timed out (0202).
+  await sql`
+    with gone as (
+      delete from user_session where expires_at < now()
+          or last_seen_at < now() - make_interval(mins => ${SESSION_IDLE_MINUTES})
+      returning sign_in_id, last_seen_at)
+    update user_sign_in l set signed_out_at = g.last_seen_at, ended_by = 'TIMEOUT'
+      from gone g where l.id = g.sign_in_id and l.signed_out_at is null`;
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_HOURS * 3600_000);
   await sql`
-    insert into user_session (user_id, token_hash, expires_at)
-    values (${userId}, ${tokenHash(token)}, ${expires})`;
+    with log as (
+      insert into user_sign_in (company_id, user_id)
+      select company_id, id from app_user where id = ${userId}
+      returning id)
+    insert into user_session (user_id, token_hash, expires_at, sign_in_id)
+    values (${userId}, ${tokenHash(token)}, ${expires}, (select id from log))`;
   await sql`update app_user set last_login_at = now() where id = ${userId}`;
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true, sameSite: "lax", path: "/", expires,
@@ -34,7 +44,11 @@ export async function createSession(userId: string) {
 export async function endSession() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await sql`delete from user_session where token_hash = ${tokenHash(token)}`;
+  // Signing out stamps the sign-in row (0202) as the session goes.
+  if (token) await sql`
+    with gone as (delete from user_session where token_hash = ${tokenHash(token)} returning sign_in_id)
+    update user_sign_in l set signed_out_at = now(), ended_by = 'SIGN_OUT'
+      from gone g where l.id = g.sign_in_id and l.signed_out_at is null`;
   jar.delete(SESSION_COOKIE);
 }
 

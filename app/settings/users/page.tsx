@@ -2,7 +2,7 @@ import Link from "next/link";
 import {
   ScanLine, ShoppingCart, Undo2, Percent, Package, Ship, Boxes, Smartphone, Tags, Users as UsersIcon,
   BookOpen, FileX, BarChart3, Landmark, Briefcase, Wallet, HandCoins, PieChart, Truck, Settings, UserCog, Receipt,
-  Check, Minus, Lock, Search, Plus, type LucideIcon,
+  Check, Minus, Lock, Search, Plus, ChevronDown, type LucideIcon,
 } from "lucide-react";
 import { sql } from "@/lib/db";
 import { requirePermission, ROLE_LABEL, ROLE_PERMISSIONS, previewAllowed } from "@/lib/auth";
@@ -123,6 +123,9 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
       <div className="ppl">
         {/* The people. */}
         <aside className="card ppl-list">
+          {/* Folds away so the person's details take the full width. */}
+          <details className="ppl-fold" open>
+          <summary className="ppl-fold-head"><span>People <span className="page-sub">{people.length}</span></span><ChevronDown size={16} aria-hidden="true" className="ppl-fold-caret" /></summary>
           <form className="ppl-search" role="search">
             <Search size={15} aria-hidden="true" />
             <input name="q" defaultValue={sp.q ?? ""} placeholder="Search people…" aria-label="Search people" />
@@ -135,13 +138,20 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
                   <span className="ppl-avatar">{u.initials ?? u.name.slice(0, 2).toUpperCase()}</span>
                   <span className="ppl-who">
                     <strong>{u.name}</strong>
-                    <span>{ROLE_LABEL[u.role as Role] ?? u.role}{(u.seat ?? "package") !== "package" ? ` · ${SEAT_NAME[u.seat]}` : ""}{u.is_active ? "" : " · inactive"}</span>
+                    <span>{ROLE_LABEL[u.role as Role] ?? u.role}{u.is_active ? "" : " · inactive"}</span>
                   </span>
+                  {/* Which seat they hold: the package level, or the module. */}
+                  {u.is_active && u.can_sign_in && (
+                    <span className={`acct-seat-pill ppl-seat ${(u.seat ?? "package") === "package" ? levelOf(u).toLowerCase() : "module"}`}>
+                      {(u.seat ?? "package") === "package" ? PLAN_NAME[levelOf(u)] : SEAT_NAME[u.seat].replace(" seat", "")}
+                    </span>
+                  )}
                 </Link>
               </li>
             ))}
             {shown.length === 0 && <li className="page-sub ppl-empty">Nobody matches.</li>}
           </ul>
+          </details>
         </aside>
 
         {/* The selected person, or the form to add one. */}

@@ -140,7 +140,7 @@ function CustomerPanel({ partner, priceLevels, categories, updateAction, onClose
 }
 
 /** One tab's data, fetched the first time the tab is shown. */
-function useLoad<T>(load: () => Promise<T>) {
+export function useLoad<T>(load: () => Promise<T>) {
   const [state, setState] = useState<{ data?: T; error?: string; loading: boolean }>({ loading: true });
   useEffect(() => {
     let live = true;
@@ -152,16 +152,16 @@ function useLoad<T>(load: () => Promise<T>) {
   return state;
 }
 
-function Loading() {
+export function Loading() {
   const t = useTranslations("customerPanel");
   return <div className="cpanel-state">{t("loading")}</div>;
 }
-function Failed({ error }: { error: string }) {
+export function Failed({ error }: { error: string }) {
   const t = useTranslations("customerPanel");
   return <div className="cpanel-state bad">{t("failed")} <span className="page-sub">{error}</span></div>;
 }
 
-function Section({ icon, title, action, children }: {
+export function Section({ icon, title, action, children }: {
   icon: React.ReactNode; title: string; action?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
@@ -172,7 +172,7 @@ function Section({ icon, title, action, children }: {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="cpanel-field">
       <span>{label}</span>
@@ -420,12 +420,13 @@ function Settlements({ partnerId, invoiceId }: { partnerId: string; invoiceId: s
   );
 }
 
-function docLabel(t: ReturnType<typeof useTranslations>, type: string | null) {
+export function docLabel(t: ReturnType<typeof useTranslations>, type: string | null) {
   if (!type) return "";
   return t.has(`doc.${type}`) ? t(`doc.${type}`) : type.replace(/_/g, " ").toLowerCase();
 }
 
-function Timeline({ rows }: { rows: Activity[] }) {
+/** `created`: how the partner's own first line reads ("Customer created", "Supplier created"). */
+export function Timeline({ rows, created }: { rows: Activity[]; created?: string }) {
   const t = useTranslations("customerPanel");
   if (!rows.length) return <div className="cpanel-state">{t("noActivity")}</div>;
   return (
@@ -434,7 +435,7 @@ function Timeline({ rows }: { rows: Activity[] }) {
         <li key={(a.docId ?? "c") + i} className={`k-${a.kind}`}>
           <div className="cpanel-tl-main">
             <strong>
-              {a.kind === "CREATED" ? t("created")
+              {a.kind === "CREATED" ? (created ?? t("created"))
                 : a.kind === "VOID" ? t("voidedDoc", { doc: docLabel(t, a.docType) })
                 : a.status && a.status !== "POSTED" ? t("drafted", { doc: docLabel(t, a.docType) })
                 : docLabel(t, a.docType)}
