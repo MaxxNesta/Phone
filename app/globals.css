@@ -10630,3 +10630,31 @@ dialog.denied::backdrop { background: rgb(0 0 0 / .35); backdrop-filter: blur(2p
 .seat-group { grid-column: 1 / -1; font-size: var(--t-xs); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.25rem; }
 .seat-mod.blocked { opacity: 0.55; }
 .seat-save { display: flex; justify-content: flex-end; border-top: 1px solid var(--line-soft); }
+
+/* Loading skeleton (app/loading.tsx): shapes of a page, shimmering softly. */
+.skel-page { display: flex; flex-direction: column; gap: var(--s3); padding-top: 0.25rem; }
+.skel { background: color-mix(in srgb, var(--ink) 7%, transparent); border-radius: 8px; position: relative; overflow: hidden; }
+.skel::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 60%, transparent), transparent);
+  animation: skel-shine 1.2s ease-in-out infinite; }
+@keyframes skel-shine { to { transform: translateX(100%); } }
+.skel-title { width: 240px; max-width: 60%; height: 28px; }
+.skel-sub { width: 360px; max-width: 80%; height: 14px; margin-top: -0.5rem; }
+.skel-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: var(--s3); }
+.skel-kpi { height: 84px; border-radius: var(--r-lg); }
+.skel-card { display: flex; flex-direction: column; gap: 14px; padding: 1.25rem; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.skel-row { height: 14px; }
+/* Appears only if the page takes a moment: a fast page never flashes it. */
+.skel-page { animation: skel-in 0.2s ease 0.12s both; }
+@keyframes skel-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .skel::after, .skel-page { animation: none; } }
+
+/* The nav item just clicked, before its page arrives: lit at once, with a small spinner. */
+.navlink { position: relative; }
+.nav-pending { display: none; }
+.nav-pending[data-on] { display: block; position: absolute; right: 10px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+  border: 1.5px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%;
+  animation: nav-spin 0.6s linear infinite; }
+.navlink:has(.nav-pending[data-on]) { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+@keyframes nav-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .nav-pending[data-on] { animation: none; } }
