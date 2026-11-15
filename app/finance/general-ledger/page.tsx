@@ -282,7 +282,7 @@ async function EntriesView({
                 <AutoApply />
                 <button type="submit" className="tiny" data-apply>Apply</button>
                 {filtered && (
-                  <a href="/finance/general-ledger" className="btn ghost tiny">Clear</a>
+                  <Link href="/finance/general-ledger" className="btn ghost tiny">Clear</Link>
                 )}
               </div>
             </div>

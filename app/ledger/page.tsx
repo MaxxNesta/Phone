@@ -212,7 +212,7 @@ export default async function TrialBalance({
                 <AutoApply />
                 <button type="submit" className="tiny" data-apply>Apply</button>
                 {(p.asOf || p.location || p.type) && (
-                  <a href="/ledger" className="btn ghost tiny">Clear</a>
+                  <Link href="/ledger" className="btn ghost tiny">Clear</Link>
                 )}
               </div>
             </div>

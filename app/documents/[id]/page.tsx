@@ -1320,23 +1320,23 @@ export default async function DocumentPage({
           {voidInfo.doc_no && (
             <>
               {" "}Reversed by{" "}
-              <a href={`/documents/${voidInfo.id}`} style={{ color: "var(--link)" }}>
+              <Link href={`/documents/${voidInfo.id}`} style={{ color: "var(--link)" }}>
                 {voidInfo.doc_no}
-              </a>
+              </Link>
               {voidInfo.doc_date ? ` on ${voidInfo.doc_date}` : ""}.
             </>
           )}
           {voidInfo.replacement_no && (
             <>
               {" "}Replaced by{" "}
-              <a href={`/documents/${voidInfo.replacement_id}`} style={{ color: "var(--link)" }}>
+              <Link href={`/documents/${voidInfo.replacement_id}`} style={{ color: "var(--link)" }}>
                 {voidInfo.replacement_no}
-              </a>.
+              </Link>.
             </>
           )}
           {voidInfo.void_reason && <> Reason: {voidInfo.void_reason}.</>}
           {" "}
-          <a href="/documents/history" style={{ color: "var(--link)" }}>History log</a>
+          <Link href="/documents/history" style={{ color: "var(--link)" }}>History log</Link>
         </div>
       )}
 
