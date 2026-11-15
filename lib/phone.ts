@@ -36,10 +36,15 @@ const optionMatching = (re: string) => sql`
 const STORAGE_RE = "storage|capacity|rom|memory";
 const COLOUR_RE = "colou?r";
 
+// The till's price: the RETAIL level, or where a shop named its levels
+// otherwise (S1, S2…) the first one — the same rule the price guard and the
+// invoice default use (lib/actions.ts), so the till and the guard agree.
 const RETAIL_PRICE = sql`
   (select ip.price from item_price ip
      join price_level pl on pl.id = ip.price_level_id
-    where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= fn_shop_today()
+    where ip.item_id = i.id and ip.valid_from <= fn_shop_today()
+      and pl.id = (select l.id from price_level l where l.company_id = i.company_id
+                    order by (l.code = 'RETAIL') desc, l.sort_order, l.code limit 1)
     order by ip.valid_from desc limit 1)`;
 
 // ----------------------------------------------------------------- POS ----
@@ -49,6 +54,8 @@ export type SellableItem = {
   model: string; brand: string | null; variant: string | null;
   tracks_serial: boolean; on_hand: number; price: number | null; warranty_months: number | null;
   photo: string | null;
+  /** False for a service or charge (Error Fee): no stock, never out. */
+  is_stocked: boolean;
   /** Its type — iPhone, Mac, Accessories: the top category. */
   type: string | null;
   /** Its own category, which a quantity discount band can be scoped to. */
@@ -84,7 +91,7 @@ async function sellable(companyId: string, locationId: string, term: string | nu
   const like = term ? `%${term}%` : null;
   return sql<SellableItem[]>`
     select i.id, i.code, i.name, i.barcode, coalesce(p.name, i.name) as model, i.item_group_id,
-           b.name as brand, ${VARIANT_LABEL} as variant, i.tracks_serial,
+           b.name as brand, ${VARIANT_LABEL} as variant, i.tracks_serial, i.is_stocked,
            fn_qty_on_hand(${companyId}, i.id, ${locationId})::float as on_hand,
            ${RETAIL_PRICE}::float as price, i.warranty_months,
            (select t.name from item_group g join item_group t on t.id = coalesce(g.parent_id, g.id)
@@ -102,7 +109,8 @@ async function sellable(companyId: string, locationId: string, term: string | nu
       from item i
       left join item p on p.id = i.parent_item_id
       left join brand b on b.id = coalesce(p.brand_id, i.brand_id)
-     where i.company_id = ${companyId} and i.is_active and i.is_stocked
+     -- Services (not stocked) are sold here too: an Error Fee has no shelf.
+     where i.company_id = ${companyId} and i.is_active
        -- A product with variants is a heading, not something on a shelf.
        and not exists (select 1 from item c where c.parent_item_id = i.id)
        and (${like}::text is null
@@ -110,7 +118,7 @@ async function sellable(companyId: string, locationId: string, term: string | nu
             or i.code ilike ${like} or i.name ilike ${like}
             or p.name ilike ${like} or b.name ilike ${like})
      order by (i.barcode = ${term}) desc nulls last,
-              fn_qty_on_hand(${companyId}, i.id, ${locationId}) > 0 desc,
+              (not i.is_stocked or fn_qty_on_hand(${companyId}, i.id, ${locationId}) > 0) desc,
               coalesce(p.name, i.name), i.name
      limit ${term ? SEARCH_LIMIT : SHELF_LIMIT}`;
 }

@@ -19,7 +19,10 @@ export async function priceFacts(co: string, itemIds: string[], partnerId: strin
     select i.id, i.name,
            coalesce(
              (select ip.price from item_price ip join price_level pl on pl.id = ip.price_level_id
-               where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= fn_shop_today()
+               where ip.item_id = i.id and ip.valid_from <= fn_shop_today()
+                 -- RETAIL, or the first level where a shop named them otherwise (lib/phone.ts RETAIL_PRICE).
+                 and pl.id = (select l.id from price_level l where l.company_id = i.company_id
+                               order by (l.code = 'RETAIL') desc, l.sort_order, l.code limit 1)
                order by ip.valid_from desc limit 1),
              (select ip.price from item_price ip
                where ip.item_id = i.id and ip.valid_from <= fn_shop_today()
