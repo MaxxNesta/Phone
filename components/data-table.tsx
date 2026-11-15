@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { csvCell } from "@/lib/csv";
 import { useRouter } from "next/navigation";
 import { Columns3, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, X } from "lucide-react";
 import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
@@ -296,10 +297,7 @@ export function DataTable({
    * see".
    */
   function exportCsv() {
-    const quote = (v: string | number | null | undefined) => {
-      const t = v === null || v === undefined ? "" : String(v);
-      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
+    const quote = csvCell;
     const fields = [
       ...visibleColumns.filter((c) => c.label.trim() !== ""),
       ...csvExtra,

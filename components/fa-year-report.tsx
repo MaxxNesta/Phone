@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Download } from "lucide-react";
 import type { MonthCell, ScheduleAsset, SummaryGroup, SummaryRow } from "@/lib/fa-year";
 import { registerHeaders } from "@/lib/fa-import";
 import { HelpHint } from "@/components/help-hint";
+import { csvCell } from "@/lib/csv";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const money = (v: number) => Math.round(v).toLocaleString("en-US");
@@ -14,7 +15,7 @@ const money2 = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits:
 
 /** A CSV of what is on screen, downloaded from the browser. */
 function download(name: string, rows: (string | number)[][]) {
-  const csv = rows.map((r) => r.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : c)).join(",")).join("\n");
+  const csv = rows.map((r) => r.map(csvCell).join(",")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
   a.download = name; a.click(); URL.revokeObjectURL(a.href);

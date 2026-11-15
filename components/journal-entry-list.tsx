@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { csvCell } from "@/lib/csv";
 import Link from "next/link";
 import { ChevronRight, Download, Printer, Rows3 } from "lucide-react";
 import { money, todayLocal } from "@/lib/format";
@@ -85,7 +86,7 @@ export function JournalEntryList({ entries, backQuery = "" }:
       }
     }
     const csv = rows
-      .map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(","))
+      .map((r) => r.map(csvCell).join(","))
       .join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");

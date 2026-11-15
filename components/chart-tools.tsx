@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { csvCell } from "@/lib/csv";
 import { Download, FileSpreadsheet, Maximize2, Minimize2 } from "lucide-react";
 
 /**
@@ -32,7 +33,7 @@ export function ChartTools({ name, rows }: {
 
   const csv = () => {
     if (!rows) return;
-    const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const q = csvCell;
     save(new Blob(["﻿" + rows.map((r) => r.map(q).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }), `${name}.csv`);
   };
 

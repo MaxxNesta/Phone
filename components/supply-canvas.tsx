@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { csvCell } from "@/lib/csv";
 import { useRouter } from "next/navigation";
 import { Download, Maximize2, Minimize2 } from "lucide-react";
 import type { CanvasCat, CanvasLink, CanvasNode } from "@/lib/supply-chain";
@@ -107,7 +108,7 @@ export function SupplyCanvas({ left, cats, right, links, unit, focus, baseQuery,
 
   /** The flows as rows a spreadsheet can take. */
   const exportCsv = () => {
-    const q = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+    const q = csvCell;
     const rows = [["Direction", "Supplier / customer", "Category", unit === "units" ? "Units" : "MMK"].map(q).join(",")];
     for (const l of links) {
       const inbound = l.to.startsWith("cat:");
