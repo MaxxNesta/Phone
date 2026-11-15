@@ -14,7 +14,7 @@ export default async function ImportPurchaseInvoices() {
       <div className="page-head">
         <span className="eyebrow">Purchases</span>
         <h1>Import invoices</h1>
-        <HelpHint>The purchase invoice report, uploaded or pasted. Each invoice posts as a real bill with its goods receipt.</HelpHint>
+        <HelpHint>The purchase invoice report, pasted from Excel. Each invoice posts as a real bill with its goods receipt.</HelpHint>
       </div>
       <div className="actions">
         <Link href="/purchases/invoices/imported" className="btn ghost">History records</Link>
