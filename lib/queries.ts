@@ -2620,9 +2620,13 @@ export async function getGrirPositions(companyId: string) {
     getOpenGoodsReceipts(companyId, null) as unknown as Promise<
       { lines: { qty: number; unitPrice: number }[] }[]>,
   ]);
-  const total = (ds: { lines: { qty: number; unitPrice: number }[] }[]) =>
-    ds.reduce((s, d) => s + d.lines.reduce((t, l) => t + l.qty * l.unitPrice, 0), 0);
+  return grirTotals(invoices, receipts);
+}
 
+type OpenDocs = { lines: { qty: number; unitPrice: number }[] }[];
+/** The two GRIR positions from lists already loaded in full (getOpenPurchaseInvoices / getOpenGoodsReceipts with no limit). */
+export function grirTotals(invoices: OpenDocs, receipts: OpenDocs) {
+  const total = (ds: OpenDocs) => ds.reduce((s, d) => s + d.lines.reduce((t, l) => t + l.qty * l.unitPrice, 0), 0);
   return { awaited: total(invoices), unbilled: total(receipts) };
 }
 

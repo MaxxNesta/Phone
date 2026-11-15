@@ -22,6 +22,11 @@ let label = "";
 const sql = (globalThis as any).__sql as ReturnType<typeof postgres>;
 
 const { posSearch, retailDashboard } = await import("../lib/phone");
+const Q = await import("../lib/queries");
+const { getImportedInvoiceRows } = await import("../lib/historical-purchases");
+// Which pages to profile: all by default, or name some (shelf dashboard invoices receipts).
+const only = process.argv.slice(2);
+const want = (k: string) => only.length === 0 || only.includes(k);
 
 async function timed<T>(name: string, fn: () => Promise<T>) {
   label = name;
@@ -59,12 +64,28 @@ try {
 
   // Warm the connection pool so the first timing isn't a connect.
   await sql`select 1`;
-  const runs = [
-    await timed("shelf (no search)", () => posSearch(co.id, loc.id, "")),
-    await timed("search 'iphone'", () => posSearch(co.id, loc.id, "iphone")),
-    await timed("dashboard (all branches)", () => retailDashboard(co.id, null)),
-    await timed("dashboard (one branch)", () => retailDashboard(co.id, [loc.id])),
-  ];
+  const runs = [];
+  if (want("shelf")) runs.push(await timed("shelf (no search)", () => posSearch(co.id, loc.id, "")),
+                               await timed("search 'iphone'", () => posSearch(co.id, loc.id, "iphone")));
+  if (want("dashboard")) runs.push(await timed("dashboard (all branches)", () => retailDashboard(co.id, null)),
+                                   await timed("dashboard (one branch)", () => retailDashboard(co.id, [loc.id])));
+  // The supplier panel, every tab, for the supplier with the most documents.
+  if (want("supplier")) {
+    const SP = await import("../lib/supplier-panel-data");
+    const [sup] = await sql`select d.partner_id as id from document d join business_partner bp on bp.id = d.partner_id
+      where d.company_id = ${co.id} and bp.is_supplier group by 1 order by count(*) desc limit 1`;
+    const sc = { co: co.id, locs: null };
+    runs.push(await timed("supplier panel (all tabs)", () => Promise.all([
+      SP.supplierOverview(sc, sup.id), SP.supplierPurchases(sc, sup.id), SP.supplierBills(sc, sup.id),
+      SP.supplierTerms(sc, sup.id), SP.supplierActivity(sc, sup.id)])));
+  }
+  // The Purchase invoices list (app/purchases/invoices/page.tsx).
+  if (want("invoices")) runs.push(await timed("purchase invoices page", () => Promise.all([
+    Q.getInvoiceList(co.id, "PURCHASE_INVOICE", null), Q.getDocumentDrafts(co.id, "PURCHASE_INVOICE"), getImportedInvoiceRows(co.id, null)])));
+  // The Goods receipts page (app/purchases/receive/page.tsx).
+  if (want("receipts")) runs.push(await timed("goods receipts page", () => Promise.all([
+    Q.getOpenPurchaseOrders(co.id), Q.getGoodsReceiptHistory(co.id, null),
+    Q.getOpenGoodsReceipts(co.id, null), Q.getGrirCollisions(co.id), Q.getOpenPurchaseInvoices(co.id, null), Q.getBillsRaisedFromOrders(co.id)])));
 
   for (const r of runs) {
     console.log(`\n=== ${r.name}: ${r.wall.toFixed(0)} ms wall (from here to Neon and back), ${r.queries.length} queries`);
