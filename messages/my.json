@@ -1034,6 +1034,7 @@
     "noPriceSet": "ဈေး မသတ်မှတ်ရသေး",
     "outOfStock": "လက်ကျန် ကုန်",
     "left": "{n} ခု ကျန်",
+    "service": "ဝန်ဆောင်မှု",
     "selectUnitOf": "{name} တစ်လုံး ရွေးရန်",
     "addName": "{name} ထည့်ရန်",
     "unavailable": "မရနိုင်",

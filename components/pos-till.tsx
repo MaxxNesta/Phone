@@ -236,7 +236,8 @@ export function PosTill(props: {
       if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, l.onHand) } : l));
       return [...ls, {
         key: newKey(), itemId: item.id, name: item.model, variant: variantLine(item) || null, photo: item.photo,
-        tracksSerial: false, serial: null, qty: 1, onHand: item.on_hand,
+        // A service has no stock: any quantity may be sold.
+        tracksSerial: false, serial: null, qty: 1, onHand: item.is_stocked === false ? 9999 : item.on_hand,
         unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
         warrantyMonths: item.warranty_months, focReasonId: null,
       }];
@@ -661,7 +662,7 @@ export function PosTill(props: {
                           {i.price != null && i.price > 0
                             ? <p className="pos3-price">{money(i.price)} <small>MMK</small></p>
                             : <p className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> {tr("noPriceSet")}</p>}
-                          <span className={`pos3-stock ${st}`}>{st === "out" ? tr("outOfStock") : tr("left", { n: i.on_hand })}</span>
+                          <span className={`pos3-stock ${st}`}>{st === "service" ? tr("service") : st === "out" ? tr("outOfStock") : tr("left", { n: i.on_hand })}</span>
                         </div>
                       </div>
                       <button type="button" className="pos3-add" onClick={() => addItem(i)} disabled={st === "out"}

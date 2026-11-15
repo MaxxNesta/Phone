@@ -10664,3 +10664,5 @@ dialog.denied::backdrop { background: rgb(0 0 0 / .35); backdrop-filter: blur(2p
 .feat-table td { padding: 0.85rem 1.25rem; vertical-align: middle; }
 .feat-table td.num { width: 1%; white-space: nowrap; }
 .feat-table .subline { margin-top: 2px; max-width: 60ch; }
+/* A service or charge on the till: no stock count, always available. */
+.pos3-stock.service { background: color-mix(in srgb, var(--blue) 10%, transparent); color: var(--blue-ink, var(--blue)); }

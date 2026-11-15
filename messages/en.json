@@ -1034,6 +1034,7 @@
     "noPriceSet": "No price set",
     "outOfStock": "Out of stock",
     "left": "{n} left",
+    "service": "Service",
     "selectUnitOf": "Select unit of {name}",
     "addName": "Add {name}",
     "unavailable": "Unavailable",

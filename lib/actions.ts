@@ -826,7 +826,8 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     // yes/no switch still means IMEI where a form sends only that.
     // A company with serial numbers switched off counts every product (0200).
     const [feat] = await sql`select features from company where id = ${co}`;
-    const identity = !serialTrackingOn(feat) ? "NONE"
+    // A service or charge (not stocked) is never tracked unit by unit either.
+    const identity = !serialTrackingOn(feat) || fd.get("is_stocked") === null ? "NONE"
       : (["IMEI", "SERIAL", "OPTIONAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
         ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
 
