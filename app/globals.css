@@ -10798,3 +10798,45 @@ table.ctable.stable td.r { padding-right: 14px; }
 .rcv-table th, .rcv-table td { padding-left: 10px; padding-right: 10px; }
 .rcv-table .rcv-locked { white-space: nowrap; }
 .gr .alert + .gr-bottom { margin-top: var(--s3); }
+
+/* Payment card on sales and purchase invoices: credit asks for nothing,
+   paid in full follows the total, and the balance reads as one clear line. */
+.paycard .card-head { display: flex; align-items: center; gap: 8px; }
+.paycard .card-head .pill { margin-left: auto; }
+.paycard-mode { margin-bottom: 14px; }
+.paycard-note { padding: 12px 14px; border-radius: 10px; background: var(--line-soft); font-size: 0.9rem; }
+.paycard-note p { margin: 0 0 6px; }
+.paycard-note p:last-child { margin-bottom: 0; }
+.paycard input.readonly { background: var(--line-soft); color: var(--ink); cursor: default; }
+.paycard-balance { display: flex; align-items: baseline; justify-content: space-between; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.paycard-balance span { color: var(--muted); font-size: 0.88rem; }
+.paycard-balance strong { font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+.paycard-balance strong.owed { color: var(--cr, var(--ink)); }
+.paycard-balance strong.clear { color: var(--ok, var(--ink)); }
+
+/* Section header strips on document forms only (.form.docsheet): a soft
+   tint that starts at the sheet's left border and fades out to the right.
+   Only the header, never the section, and no bar of its own. The sheet's
+   cards have no frame, so the strip reaches back across its 28px padding. */
+.form.docsheet .card > .card-head {
+  padding: 10px 16px 10px 14px; margin-bottom: 14px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--blue) 8%, transparent), transparent 70%);
+}
+.form.docsheet > .card > .card-head,
+.form.docsheet > details.card > .card-head,
+.form.docsheet > .grid2 > .card:first-child > .card-head,
+.form.docsheet > section > .card > .card-head {
+  margin-left: -28px; padding-left: 28px;
+}
+/* The first section sits flush with the sheet's top edge and corner. */
+.form.docsheet { padding-top: 0; }
+.form.docsheet > div.card:first-of-type { padding-top: 0; }
+.form.docsheet > div.card:first-of-type > .card-head { border-top-left-radius: 9px; }
+.form.docsheet .card > .card-head h2 { color: var(--ink); }
+/* The payment card's strip follows Cash / Credit. */
+.form.docsheet .card.paycard > .card-head:has(.pill.ok) {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ok, #34c759) 9%, transparent), transparent 70%);
+}
+/* The details band on a waved sheet: its strip flush with the sheet's top edge. */
+.form.docsheet.waved > .card.doc-info:not(.receive-mode) { margin-top: 0; padding-top: 0; }
+.form.docsheet.waved > .card.doc-info:not(.receive-mode) > .card-head { border-top-left-radius: 9px; }

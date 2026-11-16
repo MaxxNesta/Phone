@@ -205,6 +205,9 @@ export function InvoiceForm({
   const [docDate, setDocDate] = useState(restored?.docDate ?? today);
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
   const [cashOut, setCashOut] = useState(restored?.cashOut ?? "");
+  // How this bill is settled: on credit (nothing paid now), paid in full
+  // (the amount follows the total, nothing left owing) or part paid.
+  const [payMode, setPayMode] = useState<"credit" | "full" | "part">(Number(restored?.cashOut) > 0 ? "part" : "credit");
   const [cashAccountId, setCashAccountId] = useState("");
   const [matchedGrId, setMatchedGrId] = useState("");
   /**
@@ -416,6 +419,8 @@ export function InvoiceForm({
     setFromOrderId(null);
     const p = partners.find((x) => x.id === id);
     if (p && p.payment_terms_days > 0) setDueDate(addDays(docDate, p.payment_terms_days));
+    // A supplier who gives no credit is paid on the spot.
+    if (p && kind === "purchase") setPayMode(p.payment_terms_days > 0 ? "credit" : "full");
   }
 
   /**
@@ -599,6 +604,13 @@ export function InvoiceForm({
     : [];
 
   const orderBehind = matchedGr?.lines.find((gl) => gl.orderId) ?? null;
+
+  // Paid in full follows the total; on credit pays nothing now.
+  useEffect(() => {
+    if (isSales) return;
+    if (payMode === "full") setCashOut(String(total));
+    else if (payMode === "credit") setCashOut("");
+  }, [payMode, total, isSales]);
 
   const cashOverpaid = !isSales && Number(cashOut) > total;
   const leavesBalance = !isSales && Number(cashOut) < total;
@@ -1337,18 +1349,31 @@ export function InvoiceForm({
           which collapses to one column under 320px per card. */}
       <div className="grid2">
       {!isSales && (
-        <div className="card" style={{ marginTop: "0.5rem" }}>
+        <div className="card paycard" style={{ marginTop: "0.5rem" }}>
           <div className="card-head">
             <h2>Payment</h2>
           </div>
           <div className="card-body">
+            <div className="segmented paycard-mode" role="radiogroup" aria-label="How this bill is paid">
+              {([["credit", "On credit"], ["full", "Paid in full"], ["part", "Part paid"]] as const).map(([k, label]) => (
+                <button key={k} type="button" role="radio" aria-checked={payMode === k}
+                  className={`seg${payMode === k ? " on" : ""}`} onClick={() => setPayMode(k)}>{label}</button>
+              ))}
+            </div>
+            {payMode === "credit" ? (
+              /* On credit: nothing to fill in; the bill is owed to the supplier. */
+              <div className="paycard-note">
+                <p>The full amount is owed to the supplier{dueDate ? <>, due <strong>{dueDate}</strong></> : ""}. Nothing is paid now.</p>
+              </div>
+            ) : (
             <div className="row">
               <div className="field">
-                <label htmlFor="cash_out">Amount paid</label>
+                <label htmlFor="cash_out">{payMode === "full" ? "Paid in full" : "Amount paid now"}</label>
                 <input id="cash_out" name="cash_out" type="number" min="0" step="any"
                   value={cashOut} onChange={(e) => setCashOut(e.target.value)}
+                  readOnly={payMode === "full"} className={payMode === "full" ? "readonly" : undefined}
                   placeholder="0" />
-                <span className="hint">Leave blank for a fully credit purchase</span>
+                <span className="hint">{payMode === "full" ? "The invoice total: nothing is left owing." : "The rest stays owed to the supplier."}</span>
               </div>
 
               {!foreign && (channels?.[locationId] ?? []).some((c) => c.accountId) ? (
@@ -1367,6 +1392,11 @@ export function InvoiceForm({
                 </select>
               </div>
               )}
+            </div>
+            )}
+            <div className="paycard-balance">
+              <span>{total - (Number(cashOut) || 0) > 0.005 ? "Owed to the supplier" : "Nothing owed"}</span>
+              <strong className={total - (Number(cashOut) || 0) > 0.005 ? "owed" : "clear"}>{fmt(Math.max(0, total - (Number(cashOut) || 0)))}</strong>
             </div>
             {cashOverpaid && (
               <div className="alert" style={{ marginTop: "0.5rem" }}>

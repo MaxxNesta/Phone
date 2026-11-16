@@ -781,6 +781,11 @@ export function SalesVoucher({
   useEffect(() => {
     if (paymentType === "CASH") setCashIn(String(total));
   }, [paymentType, total]);
+  // Credit takes nothing now: the whole amount goes on account. A part
+  // payment later is a customer receipt, not a field here.
+  useEffect(() => {
+    if (paymentType === "CREDIT") setCashIn("");
+  }, [paymentType]);
 
   // Discount is netted into the unit price. Trade discount posts nothing of
   // its own — only settlement discount gets an account.
@@ -1689,24 +1694,13 @@ export function SalesVoucher({
       </div>
 
       <div className="grid2">
-        <div className="card">
-          <div className="card-head"><h2>Payment &amp; delivery</h2></div>
+        <div className="card paycard">
+          <div className="card-head">
+            <h2>Payment</h2>
+            <span className={`pill ${paymentType === "CASH" ? "ok" : "info"}`}>{paymentType === "CASH" ? "Cash" : "Credit"}</span>
+          </div>
           <div className="card-body">
-            <div className="row">
-              {/* Not "delivery fee": this screen already uses delivery for the
-                  document recording stock leaving the warehouse, which happens
-                  on a counter sale too, so a field of that name reads as
-                  something owed on every sale.
-
-                  Disabled rather than removed, so the charge stays visible as
-                  something this screen can do — and that is load-bearing, not
-                  cosmetic. A disabled input is left out of the submission
-                  entirely, so the action sees no field at all, which is the
-                  one case it reads as "bill whatever the delivery charged".
-                  While this was always enabled, a blank box posted a charge of
-                  zero and billing a delivery that carried one silently dropped
-                  it: measured, a delivery carrying 7,500 billed at 10,000 with
-                  a fee of 0. */}
+            {fulfilment && <div className="row">
               {(() => {
                 // A counter sale carries nothing anywhere, so there is no charge to ask about.
                 if (!fulfilment) return null;
@@ -1727,12 +1721,24 @@ export function SalesVoucher({
               </div>
                 );
               })()}
-              <div className="field">
-                <label htmlFor="cash_in">Cash in</label>
-                <input id="cash_in" name="cash_in" type="number" min="0" step="any"
-                  value={cashIn} onChange={(e) => setCashIn(e.target.value)} />
-                <span className="hint">Taken now — creates a receipt against this invoice</span>
+            </div>}
+
+            {paymentType === "CREDIT" ? (
+              /* On credit: nothing to fill in. The whole amount goes on the
+                 customer's account, due when the header says. */
+              <div className="paycard-note">
+                <p>The full amount goes on <strong>{customer?.name ?? "the customer"}</strong>&rsquo;s account
+                  {dueDate ? <>, due <strong>{day(dueDate)}</strong></> : ""}. Nothing is taken now.</p>
               </div>
+            ) : (
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="cash_in">Paid in full</label>
+                  <input id="cash_in" name="cash_in" type="number" min="0" step="any"
+                    value={cashIn} onChange={(e) => setCashIn(e.target.value)}
+                    readOnly className="readonly" />
+                  <span className="hint">The invoice total, taken now: nothing is left owing.</span>
+                </div>
               {payChannels.length > 0 ? (
                 <>
                   <div className="field">
@@ -1772,13 +1778,12 @@ export function SalesVoucher({
                   </select>
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
-            <div className="totalbar" style={{ marginTop: "0.5rem", paddingRight: 0 }}>
-              <span style={{ color: "var(--muted)" }}>Balance on account</span>
-              <span className="big" style={{ color: balance > 0 ? "var(--cr)" : "var(--ok)" }}>
-                {fmt(balance)}
-              </span>
+            <div className="paycard-balance">
+              <span>{balance > 0 ? "Owed on account" : "Nothing owed"}</span>
+              <strong className={balance > 0 ? "owed" : "clear"}>{fmt(Math.max(0, balance))}</strong>
             </div>
           </div>
         </div>
