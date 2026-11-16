@@ -10784,3 +10784,17 @@ table.ctable.stable td.r { padding-right: 14px; }
 .ppl:has(.ppl-fold:not([open])) { grid-template-columns: 200px minmax(0, 1fr); }
 .ppl-seat { margin-left: auto; flex: none; }
 @media (prefers-reduced-motion: reduce) { .ppl-fold-caret { transition: none; } }
+
+/* Receiving against a bill, on the standard goods receipt sheet. */
+.doc-info .card-head .rcv-change { margin-left: auto; font-size: 0.85rem; font-weight: 500; color: var(--link, var(--blue)); text-decoration: none; }
+.rcv-ro { display: flex; align-items: center; min-height: 38px; padding: 0 2px; font-weight: 500; }
+.rcv-costnote { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 14px; border-top: 1px solid var(--line-soft); }
+.rcv-effects dd { text-align: right; }
+.rcv-effects dt a, .rcv-effects dd a { color: var(--link, var(--blue)); }
+/* Receive-now box: room for the number beside its unit. */
+.rcv-table th.vc-qty { width: 136px; }
+.rcv-table td .rcv-qty input[type="number"] { width: 72px; min-width: 72px; padding: 0 8px; text-align: right; }
+/* Nine columns on a delivery: tighter cells so nothing scrolls sideways. */
+.rcv-table th, .rcv-table td { padding-left: 10px; padding-right: 10px; }
+.rcv-table .rcv-locked { white-space: nowrap; }
+.gr .alert + .gr-bottom { margin-top: var(--s3); }
