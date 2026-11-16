@@ -3,7 +3,7 @@ import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { landedOn } from "./landed-cost";
 import { planVoidIn, type VoidBlocker } from "./void";
-import { priceLines, pricePurchaseLines, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
+import { priceLines, pricePurchaseLines, allocateFreeUnits, spreadByWeight, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
 
 // The posting engine.
 //
@@ -4761,14 +4761,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       // Quantity-weighted where an item is billed on more than one line, so
       // one receipt line takes one cost and it is the cost of those goods.
       const prices = await tx`
-        -- Before the supplier's discount: under the GROSS policy the goods are
-        -- stocked at the price bought, and the bill credited the discount.
+        -- What the bill put on stock (stock_cost: by discount policy, with
+        -- free units' share). Bills from before 0204 were all GROSS: the goods
+        -- at the price bought, the discount credited separately.
         select dl.item_id,
-               sum(dl.net_amount + case when co.purchase_discount_policy = 'GROSS'
-                     then coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0) else 0 end) as net,
+               sum(coalesce(dl.stock_cost, dl.net_amount
+                     + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0))) as net,
                sum(dl.base_qty) as qty
           from document_line dl
-          join company co on co.id = dl.company_id
          where dl.document_id = ${input.sourceDocumentId}
          group by dl.item_id
         having sum(dl.base_qty) > 0`;
@@ -5946,21 +5946,19 @@ async function _postPurchaseInvoice(
   const includesTax = input.priceIncludesTax ?? false;
 
   /* The supplier's discount, line first and bill after (pricePurchaseLines,
-     the same arithmetic the bill form previews). Under the GROSS policy the
-     goods keep the price they were bought at — GR/IR, stock and expense all
-     move at the gross — the supplier is owed the discounted amount, and the
-     difference is credited to Purchase Discounts. Tax is on what is owed.
-     NET (the discount lowers the cost) is a policy the engine does not post
-     yet, so a discounted bill under it is refused rather than guessed at. */
+     the same arithmetic the bill form previews). Tax is on what is owed.
+
+     NET (the default, IAS 2.11): the discount lowers what the goods cost, so
+     GR/IR, stock and expense all move at the discounted net and the discount
+     reaches profit as each phone is sold. GROSS: the goods keep the price
+     before the discount, and the discount is credited to Purchase Discounts
+     here, once. Bills posted under one method keep it; the policy decides
+     only what is posted now (0204). */
   const priced = pricePurchaseLines(
     input.lines.map((l) => ({ qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmount: l.discountAmount })),
     { pct: input.billDiscountPct ?? null, amount: input.billDiscountAmount ?? null }, scale);
-  if (priced.discount > 0) {
-    const [co] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
-    if (co?.p !== "GROSS") {
-      throw new Error("This company's supplier discount policy reduces stock cost, which cannot be posted yet. Post the bill at the discounted price instead.");
-    }
-  }
+  const [policyRow] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
+  const grossMethod = policyRow?.p === "GROSS";
 
   const splits = input.lines.map((l, i) => {
     const rate = l.taxCodeId ? taxRates.get(l.taxCodeId) : noTax;
@@ -5978,6 +5976,36 @@ async function _postPurchaseInvoice(
     return { ...split, rate: chosen, grossEx, discount, itemDiscount, billDiscount: roundMoney(discount - itemDiscount, scale), priced: p };
   });
   const discountTotal = roundMoney(splits.reduce((t, v) => t + v.discount, 0), scale);
+
+  /* What each line puts on stock (or expense): the discounted net under NET,
+     the price before the discount under GROSS. Then free units take their
+     share of what the paid ones cost — eleven phones for the price of ten
+     are eleven phones at a tenth less, not ten at full price and one at
+     nothing (allocateFreeUnits). The bill's total cost does not move. */
+  const itemRows = await tx`
+    select id, is_stocked, base_uom_id from item where id = any(${[...new Set(input.lines.map((l) => l.itemId))]})`;
+  const itemOf = new Map(itemRows.map((r) => [r.id as string, r]));
+  const packs: Awaited<ReturnType<typeof packFactor>>[] = [];
+  for (const l of input.lines) {
+    const it = itemOf.get(l.itemId);
+    if (!it) throw new Error("Item not found");
+    packs.push(await packFactor(tx, l.itemId, l.uomId, it.base_uom_id as string));
+  }
+  const stockedIdx = input.lines.map((l, i) => (itemOf.get(l.itemId)!.is_stocked ? i : -1)).filter((i) => i >= 0);
+  const costOf = splits.map((v) => (grossMethod ? v.grossEx : v.net));
+  const freeItems = [...new Set(stockedIdx.filter((i) => input.lines[i].focReasonId).map((i) => input.lines[i].itemId))];
+  const lastCost = new Map<string, number>();
+  if (freeItems.length) {
+    for (const r of await tx`
+      select distinct on (item_id) item_id, unit_cost from stock_lot
+       where company_id = ${companyId} and item_id = any(${freeItems}) and unit_cost > 0
+       order by item_id, created_at desc`) lastCost.set(r.item_id as string, Number(r.unit_cost));
+  }
+  const allocated = allocateFreeUnits(
+    stockedIdx.map((i) => ({ itemId: input.lines[i].itemId, qty: round4(input.lines[i].qty * packs[i].factor),
+                             cost: costOf[i], free: !!input.lines[i].focReasonId })),
+    (itemId) => lastCost.get(itemId) ?? null, scale);
+  stockedIdx.forEach((i, k) => { costOf[i] = allocated[k]; });
 
   const lineNets = splits.map((v) => v.net);
   const netTotal = roundMoney(lineNets.reduce((t, v) => t + v, 0), scale);
@@ -6006,12 +6034,10 @@ async function _postPurchaseInvoice(
   for (const line of input.lines) {
     lineNo++;
 
-    const [item] = await tx`
-      select id, is_stocked, base_uom_id from item where id = ${line.itemId}`;
-    if (!item) throw new Error("Item not found");
+    const item = itemOf.get(line.itemId)!;
 
     const net = lineNets[lineNo - 1];
-    const pack = await packFactor(tx, line.itemId, line.uomId, item.base_uom_id as string);
+    const pack = packs[lineNo - 1];
     const baseQty = round4(line.qty * pack.factor);
 
     await tx`
@@ -6019,7 +6045,7 @@ async function _postPurchaseInvoice(
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
          discount_pct, discount_amount, invoice_discount_pct, invoice_discount_amount,
-         net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, foc_reason_id)
+         net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, foc_reason_id, stock_cost)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${line.unitPrice},
@@ -6027,13 +6053,12 @@ async function _postPurchaseInvoice(
          ${splits[lineNo - 1].priced.invoiceDiscountPct}, ${splits[lineNo - 1].billDiscount},
          ${net}, ${line.taxCodeId ?? splits[lineNo - 1].rate?.id ?? null},
          ${splits[lineNo - 1].tax}, ${roundMoney(net + splits[lineNo - 1].tax, scale)},
-         ${line.sourceLineId ?? null}, ${line.focReasonId ?? null})`;
+         ${line.sourceLineId ?? null}, ${line.focReasonId ?? null}, ${costOf[lineNo - 1]})`;
 
     isStocked.set(line.itemId, !!item.is_stocked);
 
-    // At the price before any supplier discount (GROSS policy); the discount
-    // is credited to Purchase Discounts once, below.
-    const bought = splits[lineNo - 1].grossEx;
+    // What the goods cost, by policy and with free units' share (above).
+    const bought = costOf[lineNo - 1];
     if (item.is_stocked) {
       // Cleared against GR/IR below, once for the whole invoice — a single
       // matched or unmatched settlement reads far clearer than one per line.
@@ -6152,8 +6177,8 @@ async function _postPurchaseInvoice(
       const billed: {
         receiptLineId: string; qty: number; newUnitCost: number; heldValue: number;
       }[] = [];
-      for (const line of input.lines) {
-        if (!isStocked.get(line.itemId)) continue;
+      input.lines.forEach((line, i) => {
+        if (!isStocked.get(line.itemId)) return;
         const got = draw(line.itemId, line.qty, line.sourceLineId);
         relieved += got.value;
 
@@ -6161,11 +6186,13 @@ async function _postPurchaseInvoice(
           billed.push({
             receiptLineId: t.lineId,
             qty: t.qty,
-            newUnitCost: line.unitPrice,
+            // What the bill says a unit cost: after discount (NET), with the
+            // free units' share — not the list price typed on the line.
+            newUnitCost: line.qty === 0 ? 0 : costOf[i] / line.qty,
             heldValue: t.value,
           });
         }
-      }
+      });
       grirAmount = round4(relieved);
 
       // A price that turned out to be wrong is a cost, not an expense. It goes
@@ -6196,9 +6223,10 @@ async function _postPurchaseInvoice(
     journal.push({ accountId: grir[0].a, amount: grirAmount, partnerId });
   }
 
-  if (discountTotal !== 0) {
+  // GROSS only: under NET the discount is already out of the cost above.
+  if (grossMethod && discountTotal !== 0) {
     const [pd] = await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`;
-    if (!pd?.a) throw new Error("Point the Purchase discount received account (Settings → Accounts) at 51201 Purchase Discounts before posting a discounted bill.");
+    if (!pd?.a) throw new Error("Point the Purchase discount received account (Settings → Accounts) at 5130 Purchase Discounts before posting a discounted bill.");
     journal.push({ accountId: pd.a, amount: -discountTotal, partnerId, locationId });
   }
 
@@ -7142,12 +7170,22 @@ async function _postNote(
       select fn_resolve_control_account(${companyId}, 'AP_CONTROL', ${partnerId}) as a`;
     journal.push({ accountId: ap[0].a, amount: gross, partnerId,
                    ...(fx ? { currency: fx.currency, fcAmount: toFc(gross, fx) } : {}) });
-    // A discount the supplier allows after billing lands where the bill's own
-    // discounts do (Purchase Discounts); any other correction is a return of cost.
-    const ret = input.category === "DISCOUNT"
-      ? await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`
-      : await tx`select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
-    journal.push({ accountId: ret[0].a, amount: -amount });
+    const [pol] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
+    if (input.category === "DISCOUNT" && pol?.p !== "GROSS") {
+      // NET: a discount after billing is still a lower cost for those goods.
+      for (const jl of await discountOffBill(tx, {
+        companyId, billId: input.sourceDocumentId, noteId: doc.id as string, docDate,
+        locationId: noteLocation, amount, scale, reason: `${docNo}: ${input.reason.trim()}`,
+      })) journal.push(jl);
+    } else {
+      // GROSS: a discount the supplier allows after billing lands where the
+      // bill's own discounts do (Purchase Discounts); any other correction is
+      // a return of cost.
+      const ret = input.category === "DISCOUNT"
+        ? await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`
+        : await tx`select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
+      journal.push({ accountId: ret[0].a, amount: -amount });
+    }
     if (tax !== 0 && rate) {
       journal.push({ accountId: taxAccountFor(rate, "input"), amount: -tax });
     }
@@ -7161,6 +7199,87 @@ async function _postNote(
   await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
 
   return { id: doc.id as string, docNo, against: source.doc_no as string, gross };
+}
+
+/**
+ * A supplier's discount on a bill already posted, under the NET method: it
+ * lowers what those goods cost, so it goes where the goods are now — exactly
+ * the walk a bill's own price correction takes (adjustReceiptCost). On the
+ * shelf it comes off stock; sold, off cost of sales, on the account the sale
+ * charged (Goods Shipped Not Invoiced included); moved, it follows them.
+ *
+ * Spread over the bill's lines by what each put on stock, then over each
+ * line's receipt lines by quantity, both to the exact amount. A service line's
+ * share comes off its expense. Goods not yet received have no lot to lower,
+ * so their share goes to Purchase Price Variance, where a difference with no
+ * goods behind it belongs. Credits only: the posted bill is not touched.
+ */
+async function discountOffBill(tx: TransactionSql, input: {
+  companyId: string; billId: string; noteId: string; docDate: string;
+  locationId: string | null; amount: number; scale: number; reason: string;
+}): Promise<JournalLine[]> {
+  const { companyId, billId, amount, scale } = input;
+  const lines = await tx`
+    select dl.id, dl.item_id, dl.source_line_id, i.is_stocked,
+           coalesce(dl.stock_cost, dl.net_amount
+             + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0)) as cost
+      from document_line dl join item i on i.id = dl.item_id
+     where dl.document_id = ${billId}
+     order by dl.line_no`;
+  const shares = spreadByWeight(amount, lines.map((l) => Number(l.cost)), scale);
+  // The receipt lines that brought the bill's goods in, in one read: the ones
+  // its lines were billed from, any receipt raised from this bill, and the
+  // receipt the bill as a whole was raised from.
+  const sourced = lines.map((l) => l.source_line_id).filter(Boolean) as string[];
+  const receiptLines = await tx`
+    select rl.id, rl.item_id, rl.base_qty, r.id as receipt_id,
+           (r.source_document_id = ${billId}
+            or r.id = (select source_document_id from document where id = ${billId})) as whole
+      from document r join document_line rl on rl.document_id = r.id
+     where r.doc_type = 'GOODS_RECEIPT' and r.status = 'POSTED'
+       and (r.source_document_id = ${billId}
+            or r.id = (select source_document_id from document where id = ${billId})
+            or r.id in (select document_id from document_line where id = any(${sourced})))
+     order by r.posting_date, rl.line_no`;
+  const journal: JournalLine[] = [];
+  const billed: { receiptLineId: string; qty: number; newUnitCost: number; heldValue: number }[] = [];
+  let expensed = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const share = shares[i];
+    if (share === 0) continue;
+    if (!l.is_stocked) {
+      const [x] = await tx`select fn_resolve_account_for_item(${companyId}, 'COGS', ${l.item_id}) as a`;
+      journal.push({ accountId: x.a, amount: -share, locationId: input.locationId });
+      expensed = round4(expensed + share);
+      continue;
+    }
+    const receipt = receiptLines.filter((r) =>
+      r.item_id === l.item_id && (r.id === l.source_line_id || r.whole));
+    if (receipt.length === 0) continue;
+    const parts = spreadByWeight(share, receipt.map((r) => Number(r.base_qty)), 4);
+    receipt.forEach((r, k) => {
+      if (parts[k] === 0) return;
+      // A difference of exactly minus the part: one unit at it, nothing held.
+      billed.push({ receiptLineId: r.id as string, qty: 1, newUnitCost: -parts[k], heldValue: 0 });
+    });
+  }
+
+  const moved = billed.length ? await adjustReceiptCost(tx, {
+    companyId, documentId: input.noteId, docDate: input.docDate,
+    locationId: input.locationId as string, reason: input.reason, billed,
+  }) : { journal: [], toInventory: 0, toCogs: 0 };
+  for (const jl of moved.journal) journal.push(jl);
+
+  // Whatever found no goods to lower: not yet received, or received before
+  // lots were tracked.
+  const rest = round4(amount - expensed + moved.toInventory + moved.toCogs);
+  if (rest !== 0) {
+    const [pv] = await tx`select fn_system_account(${companyId}, 'PURCHASE_PRICE_VARIANCE') as a`;
+    journal.push({ accountId: pv.a, amount: -rest, locationId: input.locationId });
+  }
+  return journal;
 }
 
 /** Sales side: the customer owes less, and no goods came back. */

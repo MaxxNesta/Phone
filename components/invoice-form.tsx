@@ -1273,7 +1273,7 @@ export function InvoiceForm({
                       <label className="le-check">
                         <input type="checkbox" checked={freeOn}
                           onChange={(e) => setLine(l.key, e.target.checked ? { hasFree: true } : { hasFree: false, focQty: "" })} />
-                        <span><strong>Units free from the supplier</strong><small>On top of what is billed. They arrive at zero cost, under FOC Received.</small></span>
+                        <span><strong>Units free from the supplier</strong><small>On top of what is billed. The price of the billed units is shared over all of them, so every unit carries the same cost.</small></span>
                       </label>
                       {freeOn && (
                         <div className="le-sub">
@@ -1281,6 +1281,9 @@ export function InvoiceForm({
                             <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="0" autoFocus
                               onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
                           </label>
+                          {freeOf(l) > 0 && amount(l) > 0 && (
+                            <p className="le-note">{fmt(arriving(l))} units for {fmt(amount(l))}: about {fmt(Math.round((amount(l) / arriving(l)) * 100) / 100)} each, free ones included.</p>
+                          )}
                           {freeOf(l) > 0 && named(l) && (
                             <p className="le-note">{fmt(arriving(l))} {modeOf(l) === "IMEI" ? "IMEIs" : "serials"} to enter under the line: {fmt(Number(l.qty) || 0)} billed + {fmt(freeOf(l))} free.</p>
                           )}

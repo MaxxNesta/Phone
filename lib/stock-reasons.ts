@@ -60,6 +60,9 @@ function rule(m: Movement, dir: "in" | "out", roles: { cogsId: string | null; he
     case "PURCHASE_INVOICE":
       return { key: `bill-${dir}`, label: () => dir === "in" ? "Bill price differences added to stock" : "Bill price differences taken off stock",
                detail: "A supplier billed a different price from the receipt; the difference was put on the goods still held." };
+    case "DEBIT_NOTE":
+      return { key: `dn-${dir}`, label: () => dir === "out" ? "Supplier discounts taken off stock" : "Supplier note corrections added to stock",
+               detail: "A supplier allowed a discount after billing; it lowered the cost of the goods still held (the share of goods already sold went to cost of sales)." };
     case "LANDED_COST":
       return { key: "landed", label: () => "Freight and import costs added", detail: "Carriage, duty and the like spread onto the goods they brought in." };
     case "SALES_INVOICE":
