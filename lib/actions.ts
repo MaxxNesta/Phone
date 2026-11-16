@@ -7000,6 +7000,15 @@ export async function updateAccount(_prev: unknown, fd: FormData): Promise<Actio
       };
     }
 
+    // Carriage inward is part of what the goods cost: it is always presented
+    // under cost of goods sold, never among operating expenses, whether or not
+    // anything has posted to it yet.
+    if (type !== "COGS") {
+      const [ci] = await sql`select 1 from system_account
+                              where company_id = ${co} and account_id = ${id} and role = 'CARRIAGE_INWARD'`;
+      if (ci) return { error: "Carriage Inward is part of the cost of the goods, so it stays a Cost of Goods Sold account." };
+    }
+
     if (!isActive && current.is_active) {
       const lock = await accountLock(co, id);
       if (lock) return { error: lock };
