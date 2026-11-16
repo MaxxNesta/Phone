@@ -36,8 +36,8 @@ try {
     const [{ n: before }] = await tx`select count(*)::int as n from journal_line where company_id = ${co.id}`;
     const v = (lines, memo) => P.postJournalVoucher({ companyId: co.id, docDate: day, memo, locationId: wh.id, lines }, tx);
 
-    await v([{ accountId: cash.id, amount: 5_000_000 }, { accountId: await acc("31105"), amount: -5_000_000 }], "capital");
-    await v([{ accountId: cash.id, amount: 2_000_000 }, { accountId: await acc("23001"), amount: -2_000_000 }], "loan");
+    await v([{ accountId: cash.id, amount: 5_000_000 }, { accountId: await acc("3120"), amount: -5_000_000 }], "capital");
+    await v([{ accountId: cash.id, amount: 2_000_000 }, { accountId: await acc("2510"), amount: -2_000_000 }], "loan");
     const bill = await P.postPurchaseWithReceipt({
       companyId: co.id, partnerId: supplier.id, locationId: wh.id, docDate: day, dueDate: day,
       memo: "ratios test", reference: null, cashOut: 0, cashAccountId: null,
@@ -54,7 +54,7 @@ try {
       allocations: [{ invoiceId: sale.id, amount: 200000 }] }, tx);
     const [rent] = await tx`select id from account where company_id = ${co.id} and account_type = 'EXPENSE' and is_postable and code like '6%' and code not like '67%' order by code limit 1`;
     await v([{ accountId: rent.id, amount: 50_000 }, { accountId: cash.id, amount: -50_000 }], "rent");
-    await v([{ accountId: await acc("67101"), amount: 10_000 }, { accountId: cash.id, amount: -10_000 }], "interest");
+    await v([{ accountId: await acc("6910"), amount: 10_000 }, { accountId: cash.id, amount: -10_000 }], "interest");
 
     const { current: c, previous, trend } = await getFinancialRatios(co.id, { from, to, compare: "previous", branchId: null }, tx);
     const r = c.ratios;

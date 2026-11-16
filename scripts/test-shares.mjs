@@ -11,7 +11,7 @@ if (docs) throw new Error("DEV has transactions; this test empties them, so it w
 const { resetTransactions } = await import("./test-reset.mjs");
 const S = await import("../lib/shares.ts");
 const acct = async (code) => (await sql`select id from account where company_id = ${co.id} and code = ${code}`)[0].id;
-const [equity, bank] = [await acct("31104"), await acct("13202")];
+const [equity, bank] = [await acct("3110"), await acct("1121")];
 const base = { companyId: co.id, userId: null, shareType: "EQUITY", equityAccountId: equity, remarks: null };
 const issue = (to, from, n, date = "2026-01-15") => S.postShareTransfer({ ...base, type: "ISSUE", date, fromShareholderId: null, toShareholderId: to, noOfShares: n, fromNo: from, rate: 10, assetAccountId: bank });
 const holds = async (id) => (await S.listShareholders(co.id)).find((s) => s.id === id);
@@ -30,7 +30,7 @@ try {
   assert.equal((await holds(elena.id)).equity, 6000);
   assert.match((await holds(elena.id)).folio_no, /^FN\d{5}$/, "folio given on the first issue");
   const j = await sql`select a.code, jl.base_amount::float amt from share_transfer t join journal_line jl on jl.journal_entry_id = t.journal_entry_id join account a on a.id = jl.account_id where t.id = ${i1.id} order by a.code`;
-  assert.deepEqual(j.map((x) => [x.code, x.amt]), [["13202", 60000], ["31104", -60000]], "issue: Dr bank, Cr capital");
+  assert.deepEqual(j.map((x) => [x.code, x.amt]), [["1121", 60000], ["3110", -60000]], "issue: Dr bank, Cr capital");
 
   await assert.rejects(() => issue(marcus.id, 5000, 10), /already issued/, "an issue cannot reuse numbers");
 
@@ -50,7 +50,7 @@ try {
   await S.cancelShareTransfer(co.id, tr.id, "2026-09-01");
   assert.equal((await holds(elena.id)).equity, 6000, "cancelling gives the shares back");
   assert.equal((await holds(horizon.id)).equity, 1000);
-  const [{ b }] = await sql`select coalesce(sum(jl.base_amount), 0)::float b from journal_line jl join account a on a.id = jl.account_id where a.code = '31104'`;
+  const [{ b }] = await sql`select coalesce(sum(jl.base_amount), 0)::float b from journal_line jl join account a on a.id = jl.account_id where a.code = '3110'`;
   assert.equal(b, -(60000 + 40000 + 10000 - 6000), "capital: three issues less the buy-back at 12");
   console.log("shares: all checks pass");
 } finally {

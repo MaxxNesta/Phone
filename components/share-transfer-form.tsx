@@ -50,7 +50,7 @@ export function ShareTransferForm({ action, holders, holdings, nextIssueNo, equi
   const amount = n * (Number(rate) || 0);
   const folio = (id: string) => holders.find((h) => h.id === id)?.folio_no;
   const cur = TYPES.find((t) => t.key === type)!;
-  const defaultEquity = equityAccounts.find((a) => a.code === "31104")?.id ?? equityAccounts[0]?.id ?? "";
+  const defaultEquity = equityAccounts.find((a) => a.code === "3110")?.id ?? equityAccounts[0]?.id ?? "";
 
   return (
     <form action={formAction} className="form wide docsheet">

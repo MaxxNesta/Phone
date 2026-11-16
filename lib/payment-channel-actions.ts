@@ -23,7 +23,7 @@ async function audit(db: Sql, co: string, channelId: string | null, userId: stri
 /**
  * A wallet's own account, made when a shop first maps one: a bank account
  * filed under the bank accounts' own heading with the next code after them
- * (13212 → 13213). An account of that name already in the chart is reused
+ * (1140 → 1141). An account of that name already in the chart is reused
  * rather than doubled.
  */
 async function walletAccount(db: Sql, co: string, name: string): Promise<string> {

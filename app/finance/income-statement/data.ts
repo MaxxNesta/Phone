@@ -102,7 +102,7 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
    * distinction; a company whose chart has no such group simply shows no
    * other-income section, and the statement reads as it did before.
    */
-  // "7" is the customer chart's Others group (db/chart.mjs).
+  // "7" is the customer chart's Other Income class (db/chart.mjs).
   const isOtherIncome = (code: string) => code === "4-OI" || code === "7";
   const NON_OPERATING_EXPENSE_GROUP = "6-NO";
   const revenueAll = buildStatement(chart, amounts, ["REVENUE"]);

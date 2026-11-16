@@ -11,7 +11,7 @@ const acc = async (code) => (await sql`select id from account where company_id =
 const [b2] = await sql`select id from location where company_id = ${co.id} and parent_id is null and name = 'Branch 2'`;
 const jv = (docDate, memo, lines) => P.postJournalVoucher({ companyId: co.id, docDate, memo, locationId: b2.id,
   lines: lines.map(([code, amount]) => ({ accountId: code, amount })) });
-const [a11301, a12109, a66301, a31105] = await Promise.all(["11301", "12109", "66301", "31105"].map(acc));
+const [a11301, a12109, a66301, a31105] = await Promise.all(["1610", "1710", "6410", "3120"].map(acc));
 const r1 = await jv("2025-04-01", "Generator 25kVA purchased (owner contribution, booked at year start)", [[a11301, 12_000_000], [a31105, -12_000_000]]);
 const r2 = await jv("2025-04-30", "Depreciation Apr 2025, generator", [[a66301, 190_000], [a12109, -190_000]]);
 // One journal for two assets: generator and solar set, December 2025.

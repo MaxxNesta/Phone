@@ -94,14 +94,14 @@ try {
                              acquisition_cost, residual_value, useful_life_months, status)
     values (${co.id}, ${code}, ${name}, ${await cat(catCode)}, ${branchId}, ${postingBranch}, ${inService}, ${inService}, ${cost}, ${residual}, ${life}, 'ACTIVE')
     returning id`)[0].id;
-  const gen = await mk("ZZT-GEN", "Generator", "11301", B2, "2025-04-10", 12_000_000, 600_000, 60);
-  const pc = await mk("ZZT-PC", "Computers", "11403", HO, "2025-04-02", 3_900_000, 0, 36);
+  const gen = await mk("ZZT-GEN", "Generator", "1610", B2, "2025-04-10", 12_000_000, 600_000, 60);
+  const pc = await mk("ZZT-PC", "Computers", "1622", HO, "2025-04-02", 3_900_000, 0, 36);
   // Used at Branch 2, depreciates at Head Office by policy.
-  const ac = await mk("ZZT-AC", "Air conditioner", "11404", B2, "2025-05-01", 2_600_000, 100_000, 48, HO);
+  const ac = await mk("ZZT-AC", "Air conditioner", "1623", B2, "2025-05-01", 2_600_000, 100_000, 48, HO);
 
   // Acquisitions through the ledger, at the branch each depreciates at, and linked.
-  const cap = await acc("31105");
-  for (const [id, code, amount, at] of [[gen, "11301", 12_000_000, B2], [pc, "11403", 3_900_000, HO], [ac, "11404", 2_600_000, HO]]) {
+  const cap = await acc("3120");
+  for (const [id, code, amount, at] of [[gen, "1610", 12_000_000, B2], [pc, "1622", 3_900_000, HO], [ac, "1623", 2_600_000, HO]]) {
     const r = await P.postJournalVoucher({ companyId: co.id, docDate: "2025-04-01", locationId: at, memo: `ZZT acquisition ${code}`,
       lines: [{ accountId: await acc(code), amount }, { accountId: cap, amount: -amount }] });
     const [l] = await sql`select jl.id from journal_line jl join document d on d.journal_entry_id = jl.journal_entry_id where d.id = ${r.id} and jl.base_amount > 0`;
@@ -110,9 +110,9 @@ try {
 
   await step("May 2025: one voucher per branch, grouped by account, exact", async () => {
     const b2 = await voucher(await post(B2, "2025-05"));
-    assert.deepEqual(b2, { "12109": -190_000, "66301": 190_000 });
+    assert.deepEqual(b2, { "1710": -190_000, "6410": 190_000 });
     const ho = await voucher(await post(HO, "2025-05"));
-    assert.deepEqual(ho, { "12103": -108_333, "66403": 108_333 }, "the AC starts in June; it posts at Head Office, not Branch 2");
+    assert.deepEqual(ho, { "1722": -108_333, "6422": 108_333 }, "the AC starts in June; it posts at Head Office, not Branch 2");
   });
 
   await step("asset rows tie to the voucher's credit lines", async () => {
@@ -128,7 +128,7 @@ try {
 
   await step("June 2025, Head Office: the AC (used at Branch 2) lands on Head Office's voucher", async () => {
     const ho = await voucher(await post(HO, "2025-06"));
-    assert.deepEqual(ho, { "12103": -108_333, "12104": -52_083, "66403": 108_333, "66404": 52_083 });
+    assert.deepEqual(ho, { "1722": -108_333, "1723": -52_083, "6422": 108_333, "6423": 52_083 });
   });
 
   await step("a posted month is not posted again, even by two at once", async () => {
@@ -155,7 +155,7 @@ try {
   });
 
   await step("a category whose account cannot be posted to is refused", async () => {
-    const id = await acc("12109");
+    const id = await acc("1710");
     await sql`update account set is_active = false where id = ${id}`;
     try { await refuses(() => F.draftRun(co.id, B2, "2025-07", admin.id, "REVIEW", NOW), /12109 is inactive/); }
     finally { await sql`update account set is_active = true where id = ${id}`; }
@@ -163,7 +163,7 @@ try {
 
   await step("manual depreciation not yet linked blocks the month; linked, it is never posted again", async () => {
     const r = await P.postJournalVoucher({ companyId: co.id, docDate: "2025-07-31", locationId: B2, memo: "ZZT July by hand",
-      lines: [{ accountId: await acc("66301"), amount: 190_000 }, { accountId: await acc("12109"), amount: -190_000 }] });
+      lines: [{ accountId: await acc("6410"), amount: 190_000 }, { accountId: await acc("1710"), amount: -190_000 }] });
     await refuses(() => F.draftRun(co.id, B2, "2025-07", admin.id, "REVIEW", NOW), /by hand in 2025-07 and is not linked/);
     await linkManual(r.id, gen, "2025-07", 190_000);
     await refuses(() => F.draftRun(co.id, B2, "2025-07", admin.id, "REVIEW", NOW), /Nothing is left to depreciate/);
@@ -190,27 +190,27 @@ try {
     const gl = await sql`
       select a.code, coalesce(l.parent_id, l.id) as b, sum(jl.base_amount)::float as bal
         from journal_line jl join account a on a.id = jl.account_id left join location l on l.id = jl.location_id
-       where jl.company_id = ${co.id} and a.code in ('11301', '12109') group by 1, 2`;
+       where jl.company_id = ${co.id} and a.code in ('1610', '1710') group by 1, 2`;
     const at = (code, b) => gl.find((g) => g.code === code && g.b === b)?.bal ?? 0;
-    assert.equal(at("11301", B2), 0); assert.equal(at("11301", HO), 12_000_000);
-    assert.equal(at("12109", B2), 0); assert.equal(at("12109", HO), -570_000);
+    assert.equal(at("1610", B2), 0); assert.equal(at("1610", HO), 12_000_000);
+    assert.equal(at("1710", B2), 0); assert.equal(at("1710", HO), -570_000);
     const [g] = await sql`select branch_id, posting_branch_id from fixed_asset where id = ${gen}`;
     assert.equal(g.branch_id, HO); assert.equal(g.posting_branch_id, null);
   });
 
   await step("August posts at the generator's new branch", async () => {
     const ho = await voucher(await post(HO, "2025-08"));
-    assert.equal(ho["66301"], 190_000);
-    assert.equal(ho["66403"], 108_333);
+    assert.equal(ho["6410"], 190_000);
+    assert.equal(ho["6422"], 108_333);
     const b2 = await sql`select count(*)::int as n from fa_run where company_id = ${co.id} and branch_id = ${B2} and period_month = '2025-08-01'`;
     assert.equal(b2[0].n, 0);
   });
 
   await step("disposal waits for depreciation to the cutoff, then posts cost, accumulated, proceeds and gain", async () => {
     const [s] = await sql`select gain_account_id, loss_account_id from fa_setting where company_id = ${co.id}`;
-    await sql`update fa_setting set gain_account_id = ${await acc("41301")}, loss_account_id = ${await acc("66101")} where company_id = ${co.id}`;
+    await sql`update fa_setting set gain_account_id = ${await acc("4210")}, loss_account_id = ${await acc("6301")} where company_id = ${co.id}`;
     try {
-      const cash = await acc("13101");
+      const cash = await acc("1110");
       await refuses(() => M.disposeAsset(co.id, admin.id, { assetId: pc, date: "2025-10-15", reason: "ZZT sold", proceeds: "3500000", proceedsAccountId: cash }),
         /through 2025-09 is not all posted/);
       await post(HO, "2025-09");
@@ -221,10 +221,10 @@ try {
       const { docNo } = await M.disposeAsset(co.id, admin.id, { assetId: pc, date: "2025-10-15", reason: "ZZT sold", proceeds: "3500000", proceedsAccountId: cash });
       const lines = await sql`select a.code, jl.base_amount::float as v from document d join journal_line jl on jl.journal_entry_id = d.journal_entry_id
                                 join account a on a.id = jl.account_id where d.doc_no = ${docNo} order by a.code`;
-      assert.deepEqual(Object.fromEntries(lines.map((l) => [l.code, l.v])), { "11403": -3_900_000, "12103": 541_665, "13101": 3_500_000, "41301": -141_665 });
+      assert.deepEqual(Object.fromEntries(lines.map((l) => [l.code, l.v])), { "1622": -3_900_000, "1722": 541_665, "1110": 3_500_000, "4210": -141_665 });
       // October: no depreciation for a disposed asset.
       const ho = await voucher(await post(HO, "2025-10"));
-      assert.equal(ho["66403"], undefined);
+      assert.equal(ho["6422"], undefined);
     } finally {
       await sql`update fa_setting set gain_account_id = ${s.gain_account_id}, loss_account_id = ${s.loss_account_id} where company_id = ${co.id}`;
     }
@@ -245,7 +245,7 @@ try {
 
   await step("the register ties to the General Ledger, branch by branch and company-wide", async () => {
     const rows = await R.reconciliationReport(co.id, { from: "2025-04-01", to: "2025-10-31", branches: null });
-    const ours = rows.filter((r) => ["11301", "11403", "11404", "12109", "12103", "12104"].includes(r.account));
+    const ours = rows.filter((r) => ["1610", "1622", "1623", "1710", "1722", "1723"].includes(r.account));
     assert.ok(ours.length >= 6);
     for (const r of ours) assert.equal(r.difference, "0.0000", `${r.account} ${r.branch}: register ${r.register}, ledger ${r.ledger}`);
     // Company-wide is the sum of branches: accumulated on the ledger equals all depreciation recorded.

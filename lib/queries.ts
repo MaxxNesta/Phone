@@ -4981,7 +4981,7 @@ async function totalsAt(db: Sql, companyId: string, dates: string[]) {
             union all
             select p.id, p.parent_id, p.code from tree p join up on p.id = up.parent_id
           )
-          select code from up where code in ('1-CA', '2-CL', '13', '21') limit 1
+          select code from up where code in ('1-CA', '2-CL', '11', '12', '13', '14', '15', '21', '22', '23', '24') limit 1
         ) h on true
     ),
     closes as (
@@ -4995,9 +4995,9 @@ async function totalsAt(db: Sql, companyId: string, dates: string[]) {
          coalesce(sum(jl.base_amount) filter (where jl.account_id in (select account_id from ctl where role = 'INVENTORY')), 0) as inv,
          coalesce(sum(jl.base_amount) filter (where jl.account_id in (select account_id from ctl where role = 'AR_CONTROL')), 0) as ar,
         -coalesce(sum(jl.base_amount) filter (where jl.account_id in (select account_id from ctl where role = 'AP_CONTROL')), 0) as ap,
-         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '13')), 0) as ca,
-        -coalesce(sum(jl.base_amount) filter (where h.heading in ('2-CL', '21')), 0) as cl,
-         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '13')
+         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '11', '12', '13', '14', '15')), 0) as ca,
+        -coalesce(sum(jl.base_amount) filter (where h.heading in ('2-CL', '21', '22', '23', '24')), 0) as cl,
+         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '11', '12', '13', '14', '15')
                     and jl.account_id in (select account_id from ctl where role = 'INVENTORY')), 0) as ca_inv
         from journal_line jl
         join journal_entry je on je.id = jl.journal_entry_id

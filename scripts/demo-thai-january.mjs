@@ -17,7 +17,7 @@ if (!/\bDEV\b/.test(co.name)) throw new Error("DEV only");
 const one = async (q) => (await q)[0];
 const thai = await one(sql`select id from business_partner where company_id = ${co.id} and code = '01-002'`);
 const acct = async (code) => (await one(sql`select id from account where company_id = ${co.id} and code = ${code}`)).id;
-const AYA = await acct("13204"), KBZ = await acct("13202"), YOMA = await acct("13203"), NAN = await acct("13206");
+const AYA = await acct("1123"), KBZ = await acct("1121"), YOMA = await acct("1122"), NAN = await acct("1125");
 
 if (process.argv.includes("--remove")) {
   const { resetTransactions } = await import("./test-reset.mjs");

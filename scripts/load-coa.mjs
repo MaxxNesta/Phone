@@ -85,7 +85,7 @@ if (confirm && targetHost !== envHost && named !== targetHost) {
 // The old chart's accounts, mapped to their home in the new one, so free-of-
 // charge reasons keep writing off to the same kind of account.
 // A reason the chart names keeps the account the chart gives it.
-const FOC_REMAP = { "5300": "59905", "6320": "64104", "6100": "64104" };
+const FOC_REMAP = { "5300": "5920", "6320": "6230", "6100": "6230" };
 const FOC_HOME = Object.fromEntries(FOC_REASONS.map(([code, , acct]) => [code, acct]));
 
 const local = url.includes("localhost") || url.includes("127.0.0.1");

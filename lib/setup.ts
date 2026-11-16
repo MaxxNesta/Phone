@@ -38,7 +38,7 @@ type ChartRow = [
   name: string,
   type: AccountType,
   postable: boolean,
-  flags?: { control?: boolean; cash?: boolean; bank?: boolean; under?: string; added?: boolean },
+  flags?: { control?: boolean; cash?: boolean; bank?: boolean; under?: string; added?: boolean; from?: string | string[] },
 ];
 
 const chart = CHART as ChartRow[];

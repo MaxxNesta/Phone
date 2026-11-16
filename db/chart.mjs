@@ -11,327 +11,290 @@
 
 /** code, name, type, postable, flags
  *
- * Section codes are numbered, not lettered, because the chart is read in
- * `order by code` and letters sort alphabetically: H-CGS lands between H-CA
- * and H-CL, which puts Cost of Sales second, above the liabilities. The
- * leading digit matches the account block beneath it and the hyphen sorts
- * before any digit, so each section lands immediately ahead of its accounts.
- * They are never displayed — the Code column is blank on a section row. */
+ * Three levels: class (1 digit) → group (2 digits) → account (4 digits). The
+ * account's first two digits are its group and the first digit its class, so
+ * `order by code` reads top-down and every account is two steps from its class
+ * (4 Revenue → 41 Sales → 4110 Sales).
+ *
+ * `from` names what the account was before migration 0203 renumbered the chart
+ * (the customer's legacy 5-digit codes, kept on each account as legacy_code).
+ * On a group it lists the legacy headings it replaces, so an account the chart
+ * does not know is still filed under the right group.
+ *
+ * Sections the statements read by code — keep them in step with lib/queries.ts
+ * (totalsAt), lib/financial-ratios.ts and lib/format.ts SECTION_TYPE_LABEL:
+ *   current assets 11–15 · non-current assets 16–19
+ *   current liabilities 21–24 · long-term borrowings 25
+ *   sales 41 · other operating income 42 · other income class 7 · finance costs 69
+ */
 export const CHART = [
-  // Assets are three groups deep, the customer's own layout: the group codes
-  // are the prefixes of the account codes beneath them (1 → 11 → 113 → 11301),
-  // so `order by code` still reads top-down.
-  ["1",     "Assets",                            "ASSET",     false],
-  ["11",    "Fixed Assets",                      "ASSET",     false, { under: "1" }],
-  ["113",   "Machinery",                         "ASSET",     false, { under: "11" }],
-  ["11301", "Generator & Solar",                 "ASSET",     true],
-  ["114",   "Furniture and Office Equipment",    "ASSET",     false, { under: "11" }],
-  ["11401", "Save/မီးခံသေတ္တာ",                  "ASSET",     true],
-  ["11402", "Table, Chair & Locker",             "ASSET",     true],
-  ["11403", "Computer & Printer",                "ASSET",     true],
-  ["11404", "AirCon & Freezer",                  "ASSET",     true],
-  ["11405", "Phone",                             "ASSET",     true],
-  ["11406", "Office Equipment",                  "ASSET",     true],
-  ["11407", "CCTV & Router",                     "ASSET",     true],
-  ["115",   "Vehicles",                          "ASSET",     false, { under: "11" }],
-  ["11501", "Cycle & EV Cycle",                  "ASSET",     true],
-  ["121",   "Accumulated Depreciation",          "ASSET",     false, { under: "11" }],
-  ["12101", "Accumulated Dep; Save/မီးခံသေတ္တာ", "ASSET",     true],
-  ["12102", "Accumulated Dep; Table, Chair & Locker", "ASSET", true],
-  ["12103", "Accumulated Dep; Computer & Printer", "ASSET",   true],
-  ["12104", "Accumulated Dep; AirCon & Freezer", "ASSET",     true],
-  ["12105", "Accumulated Dep; Phone",            "ASSET",     true],
-  ["12106", "Accumulated Dep; Office Equipment", "ASSET",     true],
-  ["12107", "Accumulated Dep; Cycle & EV Cycle", "ASSET",     true],
-  ["12108", "Accumulated Dep; CCTV & Router",    "ASSET",     true],
-  ["12109", "Accumulated Dep; Generator & Solar", "ASSET",    true],
-  ["12110", "Accumulated Amor; Galaxy Software", "ASSET",     true],
-  ["13",    "Current Assets",                    "ASSET",     false, { under: "1" }],
-  ["131",   "Cash",                              "ASSET",     false, { under: "13" }],
-  ["13101", "Cash Account",                      "ASSET",     true,  { cash: true }],
-  ["13102", "Suspense Cash",                     "ASSET",     true,  { cash: true }],
-  ["13103", "Yuan Cash",                         "ASSET",     true,  { cash: true }],
+  ["1",    "Assets",                                   "ASSET",     false],
+  ["11",   "Cash and Bank",                            "ASSET",     false, { under: "1", from: ["131", "132", "133"] }],
+  ["1110", "Cash Account",                             "ASSET",     true,  { from: "13101", cash: true }],
+  ["1111", "Suspense Cash",                            "ASSET",     true,  { from: "13102", cash: true }],
+  ["1112", "Yuan Cash",                                "ASSET",     true,  { from: "13103", cash: true }],
   // Both flags, deliberately. is_bank_account puts it in the bank book; the
   // payment and sales screens ask for is_cash_account, and a bank account you
   // cannot pay a supplier from is not much of a bank account. The cash book
   // asks for "cash and not bank", so these still stay out of it.
-  ["132",   "Bank",                              "ASSET",     false, { under: "13" }],
-  ["13201", "UAB Bank Call Account",             "ASSET",     true,  { cash: true, bank: true }],
-  ["13202", "KBZ Bank Current Account",          "ASSET",     true,  { cash: true, bank: true }],
-  ["13203", "Yoma Bank Flexi Account",           "ASSET",     true,  { cash: true, bank: true }],
-  ["13204", "AYA Bank Account",                  "ASSET",     true,  { cash: true, bank: true }],
-  ["13205", "CB Bank Account",                   "ASSET",     true,  { cash: true, bank: true }],
-  ["13206", "Daw Nan Yu War",                    "ASSET",     true,  { cash: true, bank: true }],
-  ["13207", "MMQR (UAB)",                        "ASSET",     true,  { cash: true, bank: true }],
-  ["13208", "UAB Bank (Cheque) Account",         "ASSET",     true,  { cash: true, bank: true }],
-  ["13209", "KBZ Bank (Cheque) Account",         "ASSET",     true,  { cash: true, bank: true }],
-  ["13210", "Yoma Bank (Cheque) Account",        "ASSET",     true,  { cash: true, bank: true }],
-  ["13211", "AYA Bank (Cheque) Account",         "ASSET",     true,  { cash: true, bank: true }],
-  ["13212", "CB Bank (Cheque) Account",          "ASSET",     true,  { cash: true, bank: true }],
-  ["133",   "Credit Card",                       "ASSET",     false, { under: "13" }],
-  ["13301", "Credit Card",                       "ASSET",     true,  { cash: true, bank: true }],
-  ["135",   "Accounts Receivable",               "ASSET",     false, { under: "13" }],
-  ["13501", "Accounts Receivable",               "ASSET",     true,  { control: true }],
-  ["138",   "Advance (Other Department)",        "ASSET",     false, { under: "13" }],
-  ["13801", "Advance",                           "ASSET",     true],
-  ["141",   "Inventory",                         "ASSET",     false, { under: "13" }],
-  ["14101", "Inventory (Opening)",               "ASSET",     true],
-  ["142",   "I.B.S.T",                           "ASSET",     false, { under: "13" }],
-  ["14201", "Branch Stock Transfer",             "ASSET",     true],
-  // Not in the customer's chart; the posting engine needs all three.
-  ["143",   "Clearing & Tax",                    "ASSET",     false, { under: "13" }],
-  ["14301", "GR/IR Clearing",                    "ASSET",     true,  { added: true }],
-  // Commercial tax paid on purchases, creditable against tax charged on
-  // sales. An asset while it is still owed back to us, not an expense — a
-  // trader who expenses it pays it twice.
-  ["14302", "Input Commercial Tax",              "ASSET",     true,  { added: true }],
+  ["1120", "UAB Bank Call Account",                    "ASSET",     true,  { from: "13201", cash: true, bank: true }],
+  ["1121", "KBZ Bank Current Account",                 "ASSET",     true,  { from: "13202", cash: true, bank: true }],
+  ["1122", "Yoma Bank Flexi Account",                  "ASSET",     true,  { from: "13203", cash: true, bank: true }],
+  ["1123", "AYA Bank Account",                         "ASSET",     true,  { from: "13204", cash: true, bank: true }],
+  ["1124", "CB Bank Account",                          "ASSET",     true,  { from: "13205", cash: true, bank: true }],
+  ["1125", "Daw Nan Yu War",                           "ASSET",     true,  { from: "13206", cash: true, bank: true }],
+  ["1126", "MMQR (UAB)",                               "ASSET",     true,  { from: "13207", cash: true, bank: true }],
+  ["1127", "UAB Bank (Cheque) Account",                "ASSET",     true,  { from: "13208", cash: true, bank: true }],
+  ["1128", "KBZ Bank (Cheque) Account",                "ASSET",     true,  { from: "13209", cash: true, bank: true }],
+  ["1129", "Yoma Bank (Cheque) Account",               "ASSET",     true,  { from: "13210", cash: true, bank: true }],
+  ["1130", "AYA Bank (Cheque) Account",                "ASSET",     true,  { from: "13211", cash: true, bank: true }],
+  ["1131", "CB Bank (Cheque) Account",                 "ASSET",     true,  { from: "13212", cash: true, bank: true }],
+  ["1140", "Credit Card",                              "ASSET",     true,  { from: "13301", cash: true, bank: true }],
+  ["12",   "Receivables",                              "ASSET",     false, { under: "1", from: ["135", "138"] }],
+  ["1210", "Accounts Receivable",                      "ASSET",     true,  { from: "13501", control: true }],
+  ["1220", "Advance (Other Department)",               "ASSET",     true,  { from: "13801" }],
+  ["13",   "Inventory",                                "ASSET",     false, { under: "1", from: ["141", "142"] }],
+  // The one inventory account: every receipt, sale and adjustment moves it.
+  // It was "Inventory (Opening)" in the legacy chart, which it never was.
+  ["1310", "Inventory",                                "ASSET",     true,  { from: "14101" }],
+  ["1320", "Branch Stock Transfer",                    "ASSET",     true,  { from: "14201" }],
+  // Not in the customer's chart; the posting engine needs all four.
+  ["14",   "Clearing and Tax",                         "ASSET",     false, { under: "1", from: ["143"] }],
+  ["1410", "GR/IR Clearing",                           "ASSET",     true,  { from: "14301", added: true }],
   // The sales mirror of GR/IR. Goods have left and nobody has been billed
   // for them, so their cost is out of inventory and not yet cost of sales.
-  // Nothing posts here yet — see docs/03-decisions.md, D8.
-  ["14303", "Goods Shipped Not Invoiced",        "ASSET",     true,  { added: true }],
+  ["1420", "Goods Shipped Not Invoiced",               "ASSET",     true,  { from: "14303", added: true }],
   // Where a landed-cost bill waits until it is spread over the goods (0135).
-  ["14304", "Landed Cost Clearing",              "ASSET",     true,  { added: true }],
-  ["151",   "Advance Paid",                      "ASSET",     false, { under: "13" }],
-  ["15101", "Prepayment (Sup)",                  "ASSET",     true],
+  ["1430", "Landed Cost Clearing",                     "ASSET",     true,  { from: "14304", added: true }],
+  // Commercial tax paid on purchases, creditable against tax charged on
+  // sales. An asset while it is still owed back to us, not an expense.
+  ["1440", "Input Commercial Tax",                     "ASSET",     true,  { from: "14302", added: true }],
+  ["15",   "Advances and Prepayments",                 "ASSET",     false, { under: "1", from: ["13", "151", "152"] }],
+  ["1510", "Prepayment (Sup)",                         "ASSET",     true,  { from: "15101" }],
   // Paid to a supplier before they billed us. Ours until they do.
-  ["15102", "Purchase Advance",                  "ASSET",     true],
-  ["152",   "Prepaid Expenses",                  "ASSET",     false, { under: "13" }],
-  ["15201", "Prepaid Rent",                      "ASSET",     true],
-  ["15202", "Prepaid Tax",                       "ASSET",     true],
-  ["15203", "Prepaid Delivery",                  "ASSET",     true],
-  ["16",    "Intangible Assets",                 "ASSET",     false, { under: "1" }],
-  ["161",   "Software",                          "ASSET",     false, { under: "16" }],
-  ["16101", "Galaxy Software Installation",      "ASSET",     true],
-  ["17",    "Other Assets",                      "ASSET",     false, { under: "1" }],
-  ["171",   "Deferred Expenses",                 "ASSET",     false, { under: "17" }],
-  ["17101", "Staff Loan",                        "ASSET",     true],
-  ["2",     "Liabilities",                       "LIABILITY", false],
-  ["21",    "Current Liabilities",               "LIABILITY", false, { under: "2" }],
-  ["211",   "Accounts Payable",                  "LIABILITY", false, { under: "21" }],
-  ["21101", "Accounts Payable",                  "LIABILITY", true,  { control: true }],
-  ["21108", "Payable Expenses",                  "LIABILITY", true],
-  ["21109", "Payable (Other)",                   "LIABILITY", true],
-  ["21110", "Accrued Expense",                   "LIABILITY", true],
-  ["213",   "Advance Received",                  "LIABILITY", false, { under: "21" }],
+  ["1520", "Purchase Advance",                         "ASSET",     true,  { from: "15102" }],
+  ["1530", "Prepaid Rent",                             "ASSET",     true,  { from: "15201" }],
+  ["1540", "Prepaid Tax",                              "ASSET",     true,  { from: "15202" }],
+  ["1550", "Prepaid Delivery",                         "ASSET",     true,  { from: "15203" }],
+  ["16",   "Property, Plant and Equipment",            "ASSET",     false, { under: "1", from: ["11", "113", "114", "115"] }],
+  ["1610", "Generator & Solar",                        "ASSET",     true,  { from: "11301" }],
+  ["1620", "Save/မီးခံသေတ္တာ",                          "ASSET",     true,  { from: "11401" }],
+  ["1621", "Table, Chair & Locker",                    "ASSET",     true,  { from: "11402" }],
+  ["1622", "Computer & Printer",                       "ASSET",     true,  { from: "11403" }],
+  ["1623", "AirCon & Freezer",                         "ASSET",     true,  { from: "11404" }],
+  ["1624", "Phone",                                    "ASSET",     true,  { from: "11405" }],
+  ["1625", "Office Equipment",                         "ASSET",     true,  { from: "11406" }],
+  ["1626", "CCTV & Router",                            "ASSET",     true,  { from: "11407" }],
+  ["1630", "Cycle & EV Cycle",                         "ASSET",     true,  { from: "11501" }],
+  ["17",   "Accumulated Depreciation and Amortisation", "ASSET",    false, { under: "1", from: ["121"] }],
+  ["1710", "Accumulated Dep; Generator & Solar",       "ASSET",     true,  { from: "12109" }],
+  ["1720", "Accumulated Dep; Save/မီးခံသေတ္တာ",         "ASSET",     true,  { from: "12101" }],
+  ["1721", "Accumulated Dep; Table, Chair & Locker",   "ASSET",     true,  { from: "12102" }],
+  ["1722", "Accumulated Dep; Computer & Printer",      "ASSET",     true,  { from: "12103" }],
+  ["1723", "Accumulated Dep; AirCon & Freezer",        "ASSET",     true,  { from: "12104" }],
+  ["1724", "Accumulated Dep; Phone",                   "ASSET",     true,  { from: "12105" }],
+  ["1725", "Accumulated Dep; Office Equipment",        "ASSET",     true,  { from: "12106" }],
+  ["1726", "Accumulated Dep; CCTV & Router",           "ASSET",     true,  { from: "12108" }],
+  ["1730", "Accumulated Dep; Cycle & EV Cycle",        "ASSET",     true,  { from: "12107" }],
+  ["1740", "Accumulated Amor; Galaxy Software",        "ASSET",     true,  { from: "12110" }],
+  ["18",   "Intangible Assets",                        "ASSET",     false, { under: "1", from: ["16", "161"] }],
+  ["1810", "Galaxy Software Installation",             "ASSET",     true,  { from: "16101" }],
+  ["19",   "Other Non-current Assets",                 "ASSET",     false, { under: "1", from: ["17", "171"] }],
+  ["1910", "Staff Loan",                               "ASSET",     true,  { from: "17101" }],
+
+  ["2",    "Liabilities",                              "LIABILITY", false],
+  ["21",   "Trade and Other Payables",                 "LIABILITY", false, { under: "2", from: ["21", "211"] }],
+  ["2110", "Accounts Payable",                         "LIABILITY", true,  { from: "21101", control: true }],
+  ["2120", "Payable Expenses",                         "LIABILITY", true,  { from: "21108" }],
+  ["2130", "Payable (Other)",                          "LIABILITY", true,  { from: "21109" }],
+  ["2140", "Accrued Expense",                          "LIABILITY", true,  { from: "21110" }],
+  ["22",   "Advances and Deferred Revenue",            "LIABILITY", false, { under: "2", from: ["213"] }],
   // Taken from a customer before we billed them. Theirs until we do.
-  ["21301", "Sale Advance",                      "LIABILITY", true],
-  ["21302", "Prereceive Customer",               "LIABILITY", true],
+  ["2210", "Sale Advance",                             "LIABILITY", true,  { from: "21301" }],
+  ["2220", "Prereceive Customer",                      "LIABILITY", true,  { from: "21302" }],
   // Billed and not yet delivered: the price waits here until the goods go.
-  ["21303", "Billed Not Delivered (Unearned Revenue)", "LIABILITY", true],
-  ["21307", "Sale Cash",                         "LIABILITY", true],
-  ["214",   "Consign Stock",                     "LIABILITY", false, { under: "21" }],
-  ["21401", "Consign Stock",                     "LIABILITY", true],
-  ["21402", "Unpaid Sold Consign",               "LIABILITY", true],
-  // Not in the customer's chart. Commercial tax charged on a sale is money
-  // held for the revenue department, never income, so it needs a liability.
-  ["215",   "Tax Payable",                       "LIABILITY", false, { under: "21" }],
-  ["21501", "Commercial Tax Payable",            "LIABILITY", true,  { added: true }],
-  ["23",    "Long-Term Liabilities",             "LIABILITY", false, { under: "2" }],
-  ["230",   "Long-Term Liabilities",             "LIABILITY", false, { under: "23" }],
-  ["23001", "Loan",                              "LIABILITY", true],
-  ["3",     "Equity",                            "EQUITY",    false],
-  ["31",    "Capital Stock",                     "EQUITY",    false, { under: "3" }],
-  ["311",   "Founding Shares",                   "EQUITY",    false, { under: "31" }],
-  ["31104", "Capital Stock",                     "EQUITY",    true],
-  ["31105", "Capital",                           "EQUITY",    true],
-  ["312",   "Ordinary Shares",                   "EQUITY",    false, { under: "31" }],
-  ["31203", "Shares -Royal",                     "EQUITY",    true],
-  ["31204", "Shares -ACT",                       "EQUITY",    true],
-  ["31205", "Shares -RD",                        "EQUITY",    true],
-  ["32",    "Profit & Loss",                     "EQUITY",    false, { under: "3" }],
-  ["322",   "Profit and Loss",                   "EQUITY",    false, { under: "32" }],
-  ["32201", "Profit and Loss",                   "EQUITY",    true],
-  // Not in the customer's chart. Balances opening balances and nets to zero
-  // once they are all in; posting them against capital would overstate it.
-  ["33",    "Opening Balance",                   "EQUITY",    false, { under: "3" }],
-  ["331",   "Opening Balance",                   "EQUITY",    false, { under: "33" }],
-  ["33101", "Opening Balance Equity",            "EQUITY",    true,  { added: true }],
-  ["4",     "Revenue",                           "REVENUE",   false],
-  ["41",    "Sales",                             "REVENUE",   false, { under: "4" }],
-  ["411",   "Sales",                             "REVENUE",   false, { under: "41" }],
-  ["41101", "Sales (Default)",                   "REVENUE",   true],
-  ["41102", "Sales(Consign)",                    "REVENUE",   true],
-  ["41105", "FOC",                               "REVENUE",   true],
+  ["2230", "Billed Not Delivered (Unearned Revenue)",  "LIABILITY", true,  { from: "21303" }],
+  ["2240", "Sale Cash",                                "LIABILITY", true,  { from: "21307" }],
+  ["23",   "Consignment",                              "LIABILITY", false, { under: "2", from: ["214"] }],
+  ["2310", "Consign Stock",                            "LIABILITY", true,  { from: "21401" }],
+  ["2320", "Unpaid Sold Consign",                      "LIABILITY", true,  { from: "21402" }],
+  // Commercial tax charged on a sale is money held for the revenue
+  // department, never income, so it needs a liability.
+  ["24",   "Tax Payable",                              "LIABILITY", false, { under: "2", from: ["215"] }],
+  ["2410", "Commercial Tax Payable",                   "LIABILITY", true,  { from: "21501", added: true }],
+  ["25",   "Long-term Borrowings",                     "LIABILITY", false, { under: "2", from: ["23", "230"] }],
+  ["2510", "Loan",                                     "LIABILITY", true,  { from: "23001" }],
+
+  ["3",    "Equity",                                   "EQUITY",    false],
+  ["31",   "Share Capital",                            "EQUITY",    false, { under: "3", from: ["31", "311", "312"] }],
+  ["3110", "Capital Stock",                            "EQUITY",    true,  { from: "31104" }],
+  ["3120", "Capital",                                  "EQUITY",    true,  { from: "31105" }],
+  ["3130", "Shares -Royal",                            "EQUITY",    true,  { from: "31203" }],
+  ["3140", "Shares -ACT",                              "EQUITY",    true,  { from: "31204" }],
+  ["3150", "Shares -RD",                               "EQUITY",    true,  { from: "31205" }],
+  ["32",   "Retained Earnings",                        "EQUITY",    false, { under: "3", from: ["32", "322"] }],
+  ["3210", "Profit and Loss",                          "EQUITY",    true,  { from: "32201" }],
+  // Balances opening balances and nets to zero once they are all in; posting
+  // them against capital would overstate it.
+  ["33",   "Opening Balance",                          "EQUITY",    false, { under: "3", from: ["33", "331"] }],
+  ["3310", "Opening Balance Equity",                   "EQUITY",    true,  { from: "33101", added: true }],
+
+  ["4",    "Revenue",                                  "REVENUE",   false],
+  // Sales and everything that reduces them: returns and discounts are revenue
+  // given back, so they sit with sales and show as deductions from it.
+  ["41",   "Sales",                                    "REVENUE",   false, { under: "4", from: ["41", "411", "412", "43", "431"] }],
+  ["4110", "Sales",                                    "REVENUE",   true,  { from: "41101" }],
+  ["4120", "Sales (Consignment)",                      "REVENUE",   true,  { from: "41102" }],
   // Charged to the customer for carrying the goods they bought. Not product
-  // sales — but revenue all the same, because it exists only because the
-  // sale did. Not in the customer's chart; the engine posts delivery fees here.
-  ["41106", "Delivery Income",                   "REVENUE",   true,  { added: true }],
-  ["412",   "Sale Discount",                     "REVENUE",   false, { under: "41" }],
-  ["41201", "Sales Discounts",                   "REVENUE",   true],
-  ["41202", "Sales Comm",                        "REVENUE",   true],
-  ["413",   "Other Incomes",                     "REVENUE",   false, { under: "41" }],
-  ["41301", "Other Incomes",                     "REVENUE",   true],
-  ["43",    "Return In",                         "REVENUE",   false, { under: "4" }],
-  ["431",   "Return In",                         "REVENUE",   false, { under: "43" }],
-  ["43101", "Return In",                         "REVENUE",   true],
-  ["43103", "ReturnIn Discount",                 "REVENUE",   true],
-  ["43104", "ReturnInFOC",                       "REVENUE",   true],
-  ["43105", "Return In (Charges)",               "REVENUE",   true],
-  ["5",     "Cost of Goods Sold",                "COGS",      false],
-  ["51",    "Purchase",                          "COGS",      false, { under: "5" }],
-  ["511",   "Purchase",                          "COGS",      false, { under: "51" }],
-  ["51101", "Branch Transfer (Stock)",           "COGS",      true],
-  ["51105", "Purchase (Consignment)",            "COGS",      true],
-  ["51107", "Pur Consign Opening",               "COGS",      true],
-  ["51108", "Purchase",                          "COGS",      true],
-  ["51109", "Purchase(Consign Adjust)",          "COGS",      true],
-  ["51110", "Carriage Inward",                   "COGS",      true],
-  ["512",   "Purchase Discount",                 "COGS",      false, { under: "51" }],
-  ["51201", "Purchase Discounts",                "COGS",      true],
-  ["51202", "FOC Received",                      "COGS",      true],
-  ["513",   "Purchase Commission",               "COGS",      false, { under: "51" }],
-  ["51301", "Purchase Commission",               "COGS",      true],
-  ["52",    "Return Out",                        "COGS",      false, { under: "5" }],
-  ["521",   "Return Out",                        "COGS",      false, { under: "52" }],
-  ["52101", "Purchase Return",                   "COGS",      true],
-  ["52102", "ReturnOut FOC",                     "COGS",      true],
-  ["59",    "Adjustment",                        "COGS",      false, { under: "5" }],
-  ["599",   "Adjustment",                        "COGS",      false, { under: "59" }],
-  ["59902", "Adjust amount",                     "COGS",      true],
-  ["59905", "Inventory Damage",                  "COGS",      true],
-  ["59906", "Damage Control A/C",                "COGS",      true],
-  // Not in the customer's chart. Absorbs a bill that differs from the
-  // receipt it settles; folding it into Purchase would hide it inside cost.
-  ["59907", "Purchase Price Variance",           "COGS",      true,  { added: true }],
-  ["6",     "Expenses",                          "EXPENSE",   false],
-  ["61",    "General Expenses",                  "EXPENSE",   false, { under: "6" }],
-  ["612",   "Selling & Distribution Expenses",   "EXPENSE",   false, { under: "61" }],
-  ["61252", "Salary",                            "EXPENSE",   true],
-  ["61253", "Overtime",                          "EXPENSE",   true],
-  ["61254", "Carriage Outward",                  "EXPENSE",   true],
-  ["615",   "Inventory Expense",                 "EXPENSE",   false, { under: "61" }],
-  ["61504", "Inventory Loss",                    "EXPENSE",   true],
-  ["61506", "Office Use",                        "EXPENSE",   true],
-  ["64",    "Sales & Marketing Expenses",        "EXPENSE",   false, { under: "6" }],
-  ["641",   "Marketing Expenses",                "EXPENSE",   false, { under: "64" }],
-  ["64102", "Sample",                            "EXPENSE",   true],
-  ["64103", "Money Adjust",                      "EXPENSE",   true],
-  ["64104", "Promotion",                         "EXPENSE",   true],
-  ["64105", "Packing Materials",                 "EXPENSE",   true],
-  ["66",    "Admin Expenses",                    "EXPENSE",   false, { under: "6" }],
-  ["660",   "Phone Service Expenses",            "EXPENSE",   false, { under: "66" }],
-  ["66001", "Exg.Rate Gain/Loss",                "EXPENSE",   true],
-  ["66002", "Warranty Service Expenses",         "EXPENSE",   true],
-  ["661",   "Administration Expenses",           "EXPENSE",   false, { under: "66" }],
-  ["66101", "General Expenses",                  "EXPENSE",   true],
-  ["66102", "Municipal Tax",                     "EXPENSE",   true],
-  ["66103", "Training Expenses",                 "EXPENSE",   true],
-  ["66104", "Entertainment Expenses",            "EXPENSE",   true],
-  ["66105", "Rental Charges",                    "EXPENSE",   true],
-  ["66106", "Internet & Email",                  "EXPENSE",   true],
-  ["66107", "Cleaning Expenses",                 "EXPENSE",   true],
-  ["66108", "Insurance Expenses",                "EXPENSE",   true],
-  ["66109", "Bank Charges",                      "EXPENSE",   true],
-  ["66110", "Tax & Rate : Government Fees",      "EXPENSE",   true],
-  ["66111", "Software Maintenance Expenses",     "EXPENSE",   true],
-  ["66112", "Meter Bill",                        "EXPENSE",   true],
-  ["66113", "Printing & Stationery Expenses",    "EXPENSE",   true],
-  ["66114", "Repair & Maintenance -Office Equipment", "EXPENSE", true],
-  ["66115", "Transportation Expenses",           "EXPENSE",   true],
-  ["66116", "Job Advertising Expenses",          "EXPENSE",   true],
-  ["66117", "Professional Fees",                 "EXPENSE",   true],
-  ["66118", "Phone Bill",                        "EXPENSE",   true],
-  ["66119", "Staff Welfare",                     "EXPENSE",   true],
-  ["66120", "Refreshment (water)",               "EXPENSE",   true],
-  ["66121", "Cash Excess/ Deficit",              "EXPENSE",   true],
-  ["66122", "Service Charges",                   "EXPENSE",   true],
-  ["66123", "Other Materials",                   "EXPENSE",   true],
-  ["663",   "Machinery Depreciation Expenses",   "EXPENSE",   false, { under: "66" }],
-  ["66301", "Depreciation For Generator/Solar",  "EXPENSE",   true],
-  ["664",   "Furniture & Office Equipment Depr; Exp;", "EXPENSE", false, { under: "66" }],
-  ["66401", "Depreciation For Save/ မီးခံသေတ္တာ", "EXPENSE",  true],
-  ["66402", "Depreciation For Table, Chair & Locker", "EXPENSE", true],
-  ["66403", "Depreciation For Computer & Printer", "EXPENSE", true],
-  ["66404", "Depreciation For AirCon & Freezer", "EXPENSE",   true],
-  ["66405", "Depreciation For Phone",            "EXPENSE",   true],
-  ["66406", "Depreciation For Office Equipment", "EXPENSE",   true],
-  ["66407", "Depreciation For CCTV & Router",    "EXPENSE",   true],
-  ["665",   "Vehicles Depreciation Exp;",        "EXPENSE",   false, { under: "66" }],
-  ["66501", "Depreciation For Cycle & EV Cycle", "EXPENSE",   true],
-  ["666",   "Galaxy Amortisation",               "EXPENSE",   false, { under: "66" }],
-  ["66601", "Amortisation For Galaxy software",  "EXPENSE",   true],
-  // Not trading income, so not part of revenue. A group of its own so the
-  // income statement shows what the business earned by trading before what
-  // it earned some other way (app/finance/income-statement reads code "7").
-  ["7",     "Others",                            "REVENUE",   false],
-  ["71",    "Other Income",                      "REVENUE",   false, { under: "7" }],
-  ["712",   "Tax Received",                      "REVENUE",   false, { under: "71" }],
-  ["71204", "Sale Tax",                          "REVENUE",   true],
-  ["714",   "Cash Service Income",               "REVENUE",   false, { under: "71" }],
-  ["71401", "Service Income",                    "REVENUE",   true],
-  ["71402", "Bank Interest",                     "REVENUE",   true],
-  ["75",    "Currency Conversion Adjustment",    "REVENUE",   false, { under: "7" }],
-  ["755",   "Currency Conversion Adjustment",    "REVENUE",   false, { under: "75" }],
-  ["75501", "Currency Conversion Adjust",        "REVENUE",   true],
-  ["75502", "Trial Adjust",                      "REVENUE",   true],
+  // sales, but revenue all the same: it exists only because the sale did.
+  ["4130", "Delivery Income",                          "REVENUE",   true,  { from: "41106", added: true }],
+  ["4140", "FOC",                                      "REVENUE",   true,  { from: "41105" }],
+  ["4180", "Sales Returns",                            "REVENUE",   true,  { from: "43101" }],
+  ["4181", "Sales Returns - Discount",                 "REVENUE",   true,  { from: "43103" }],
+  ["4182", "Sales Returns - FOC",                      "REVENUE",   true,  { from: "43104" }],
+  ["4183", "Sales Returns - Charges",                  "REVENUE",   true,  { from: "43105" }],
+  ["4190", "Sales Discounts",                          "REVENUE",   true,  { from: "41201" }],
+  ["4191", "Sales Commission",                         "REVENUE",   true,  { from: "41202" }],
+  ["42",   "Other Operating Income",                   "REVENUE",   false, { under: "4", from: ["413"] }],
+  ["4210", "Other Incomes",                            "REVENUE",   true,  { from: "41301" }],
+
+  ["5",    "Cost of Sales",                            "COGS",      false],
+  ["51",   "Cost of Goods Sold",                       "COGS",      false, { under: "5", from: ["51", "511", "512", "513", "52", "521"] }],
+  // The perpetual FIFO cost of everything sold. The legacy chart called it
+  // "Purchase" (51108) because it was written for a periodic system.
+  ["5110", "Cost of Goods Sold",                       "COGS",      true,  { from: "51108" }],
+  ["5120", "Carriage Inward",                          "COGS",      true,  { from: "51110" }],
+  ["5130", "Purchase Discounts",                       "COGS",      true,  { from: "51201" }],
+  ["5140", "FOC Received",                             "COGS",      true,  { from: "51202" }],
+  ["5150", "Purchase Commission",                      "COGS",      true,  { from: "51301" }],
+  ["5160", "Purchase Returns",                         "COGS",      true,  { from: "52101" }],
+  ["5161", "Purchase Returns - FOC",                   "COGS",      true,  { from: "52102" }],
+  ["5170", "Purchase (Consignment)",                   "COGS",      true,  { from: "51105" }],
+  ["5171", "Purchase Consignment Opening",             "COGS",      true,  { from: "51107" }],
+  ["5172", "Purchase (Consignment Adjust)",            "COGS",      true,  { from: "51109" }],
+  ["5180", "Branch Transfer (Stock)",                  "COGS",      true,  { from: "51101" }],
+  ["59",   "Inventory Adjustments",                    "COGS",      false, { under: "5", from: ["59", "599"] }],
+  ["5910", "Adjust Amount",                            "COGS",      true,  { from: "59902" }],
+  ["5920", "Inventory Damage",                         "COGS",      true,  { from: "59905" }],
+  ["5930", "Damage Control A/C",                       "COGS",      true,  { from: "59906" }],
+  // Absorbs a bill that differs from the receipt where no goods are left to
+  // carry the difference; folding it into cost would hide it.
+  ["5940", "Purchase Price Variance",                  "COGS",      true,  { from: "59907", added: true }],
+
+  ["6",    "Operating Expenses",                       "EXPENSE",   false],
+  ["61",   "Selling and Distribution",                 "EXPENSE",   false, { under: "6", from: ["61", "612"] }],
+  ["6110", "Salary",                                   "EXPENSE",   true,  { from: "61252" }],
+  ["6120", "Overtime",                                 "EXPENSE",   true,  { from: "61253" }],
+  ["6130", "Carriage Outward",                         "EXPENSE",   true,  { from: "61254" }],
+  ["62",   "Marketing",                                "EXPENSE",   false, { under: "6", from: ["64", "641"] }],
+  ["6210", "Sample",                                   "EXPENSE",   true,  { from: "64102" }],
+  ["6220", "Money Adjust",                             "EXPENSE",   true,  { from: "64103" }],
+  ["6230", "Promotion",                                "EXPENSE",   true,  { from: "64104" }],
+  ["6240", "Packing Materials",                        "EXPENSE",   true,  { from: "64105" }],
+  ["63",   "Administrative",                           "EXPENSE",   false, { under: "6", from: ["66", "661", "615", "660"] }],
+  ["6301", "General Expenses",                         "EXPENSE",   true,  { from: "66101" }],
+  ["6302", "Municipal Tax",                            "EXPENSE",   true,  { from: "66102" }],
+  ["6303", "Training Expenses",                        "EXPENSE",   true,  { from: "66103" }],
+  ["6304", "Entertainment Expenses",                   "EXPENSE",   true,  { from: "66104" }],
+  ["6305", "Rental Charges",                           "EXPENSE",   true,  { from: "66105" }],
+  ["6306", "Internet & Email",                         "EXPENSE",   true,  { from: "66106" }],
+  ["6307", "Cleaning Expenses",                        "EXPENSE",   true,  { from: "66107" }],
+  ["6308", "Insurance Expenses",                       "EXPENSE",   true,  { from: "66108" }],
+  ["6309", "Bank Charges",                             "EXPENSE",   true,  { from: "66109" }],
+  ["6310", "Tax & Rate : Government Fees",             "EXPENSE",   true,  { from: "66110" }],
+  ["6311", "Software Maintenance Expenses",            "EXPENSE",   true,  { from: "66111" }],
+  ["6312", "Meter Bill",                               "EXPENSE",   true,  { from: "66112" }],
+  ["6313", "Printing & Stationery Expenses",           "EXPENSE",   true,  { from: "66113" }],
+  ["6314", "Repair & Maintenance -Office Equipment",   "EXPENSE",   true,  { from: "66114" }],
+  ["6315", "Transportation Expenses",                  "EXPENSE",   true,  { from: "66115" }],
+  ["6316", "Job Advertising Expenses",                 "EXPENSE",   true,  { from: "66116" }],
+  ["6317", "Professional Fees",                        "EXPENSE",   true,  { from: "66117" }],
+  ["6318", "Phone Bill",                               "EXPENSE",   true,  { from: "66118" }],
+  ["6319", "Staff Welfare",                            "EXPENSE",   true,  { from: "66119" }],
+  ["6320", "Refreshment (water)",                      "EXPENSE",   true,  { from: "66120" }],
+  ["6321", "Cash Excess/ Deficit",                     "EXPENSE",   true,  { from: "66121" }],
+  ["6322", "Service Charges",                          "EXPENSE",   true,  { from: "66122" }],
+  ["6323", "Other Materials",                          "EXPENSE",   true,  { from: "66123" }],
+  ["6330", "Inventory Loss",                           "EXPENSE",   true,  { from: "61504" }],
+  ["6331", "Office Use",                               "EXPENSE",   true,  { from: "61506" }],
+  ["6340", "Exchange Rate Gain/Loss",                  "EXPENSE",   true,  { from: "66001" }],
+  ["6350", "Warranty Service Expenses",                "EXPENSE",   true,  { from: "66002" }],
+  ["64",   "Depreciation and Amortisation",            "EXPENSE",   false, { under: "6", from: ["663", "664", "665", "666"] }],
+  ["6410", "Depreciation For Generator/Solar",         "EXPENSE",   true,  { from: "66301" }],
+  ["6420", "Depreciation For Save/ မီးခံသေတ္တာ",        "EXPENSE",   true,  { from: "66401" }],
+  ["6421", "Depreciation For Table, Chair & Locker",   "EXPENSE",   true,  { from: "66402" }],
+  ["6422", "Depreciation For Computer & Printer",      "EXPENSE",   true,  { from: "66403" }],
+  ["6423", "Depreciation For AirCon & Freezer",        "EXPENSE",   true,  { from: "66404" }],
+  ["6424", "Depreciation For Phone",                   "EXPENSE",   true,  { from: "66405" }],
+  ["6425", "Depreciation For Office Equipment",        "EXPENSE",   true,  { from: "66406" }],
+  ["6426", "Depreciation For CCTV & Router",           "EXPENSE",   true,  { from: "66407" }],
+  ["6430", "Depreciation For Cycle & EV Cycle",        "EXPENSE",   true,  { from: "66501" }],
+  ["6440", "Amortisation For Galaxy software",         "EXPENSE",   true,  { from: "66601" }],
+  ["69",   "Finance Costs",                            "EXPENSE",   false, { under: "6", from: ["67", "671"] }],
+  ["6910", "Interest Expense",                         "EXPENSE",   true,  { from: "67101" }],
+
+  // Not trading income, so not part of revenue: the income statement shows
+  // what the business earned by trading before what it earned some other way
+  // (app/finance/income-statement reads class "7").
+  ["7",    "Other Income",                             "REVENUE",   false],
+  ["71",   "Other Income",                             "REVENUE",   false, { under: "7", from: ["71", "712", "714", "75", "755"] }],
+  ["7110", "Service Income",                           "REVENUE",   true,  { from: "71401" }],
+  ["7120", "Bank Interest",                            "REVENUE",   true,  { from: "71402" }],
+  ["7130", "Sale Tax",                                 "REVENUE",   true,  { from: "71204" }],
+  ["7140", "Currency Conversion Adjust",               "REVENUE",   true,  { from: "75501" }],
+  ["7150", "Trial Adjust",                             "REVENUE",   true,  { from: "75502" }],
 ];
 
 // Where the posting engine resolves each role. Getting one of these wrong
 // does not fail — it posts, balanced, to the wrong account, which is the
 // failure mode migration 0022 exists to record.
 export const SYSTEM = {
-  GRIR_CLEARING: "14301", OPENING_BALANCE_EQUITY: "33101", RETAINED_EARNINGS: "32201",
-  PURCHASE_PRICE_VARIANCE: "59907", PURCHASE_DISCOUNT_RECEIVED: "51201",
-  SALES_DISCOUNT_ALLOWED: "41201", PROMOTION_EXPENSE: "64104", STOCK_ADJUSTMENT: "59902",
+  GRIR_CLEARING: "1410", OPENING_BALANCE_EQUITY: "3310", RETAINED_EARNINGS: "3210",
+  PURCHASE_PRICE_VARIANCE: "5940", PURCHASE_DISCOUNT_RECEIVED: "5130",
+  SALES_DISCOUNT_ALLOWED: "4190", PROMOTION_EXPENSE: "6230", STOCK_ADJUSTMENT: "5910",
 
-  // Mostly homes the chart already has, rather than accounts nobody asked for
-  // — a rounding difference is a miscellaneous cost and stays one.
-  //
-  // Two exceptions, both about which side of the operating line money falls.
-  // A delivery fee is earned because a sale happened, so it is revenue and
-  // belongs above that line — kept out of 4000 Sales because it is not product
-  // sales, but revenue nonetheless. An exchange difference is the opposite: it
-  // is what happened to money between agreeing a price and settling it, and
-  // belongs below. So the gain sits in Other Income and the loss now has an
-  // account of its own instead of hiding inside Miscellaneous Expenses.
-  // The customer keeps both directions in one account, 66001.
-  FX_GAIN: "66001", FX_LOSS: "66001", ROUNDING_DIFFERENCE: "66121",
-  DELIVERY_INCOME: "41106",
+  // A rounding difference is a miscellaneous cost and stays one. The customer
+  // keeps both exchange directions in one account.
+  FX_GAIN: "6340", FX_LOSS: "6340", ROUNDING_DIFFERENCE: "6321",
+  DELIVERY_INCOME: "4130",
 
   // Delivered goods wait here until the invoice recognises their cost; a
   // landed-cost bill waits in clearing until it is spread onto the phones.
-  SHIPPED_NOT_INVOICED: "14303", LANDED_COST_CLEARING: "14304",
+  SHIPPED_NOT_INVOICED: "1420", LANDED_COST_CLEARING: "1430",
   // What a courier or driver named on a landed-cost charge is owed.
-  OTHER_PAYABLE: "21109",
+  OTHER_PAYABLE: "2130",
   // A courier's bill is booked here, then spread from here onto the phones.
-  CARRIAGE_INWARD: "51110",
+  CARRIAGE_INWARD: "5120",
 
   // Money that moved before the invoice did. Deliberately not the control
-  // accounts: an advance has no open item, so parking it in receivables would
-  // put the ledger and the subledger out of step the moment it was taken —
-  // and it is not a receivable anyway. It is something owed to the customer
-  // until the goods go, and something owed to us until the supplier delivers.
-  CUSTOMER_ADVANCE: "21301", SUPPLIER_ADVANCE: "15102",
+  // accounts: an advance has no open item.
+  CUSTOMER_ADVANCE: "2210", SUPPLIER_ADVANCE: "1520",
   // An invoice raised before its goods leave: the sale is earned on delivery,
   // so the price is held here until then (migration 0191).
-  BILLED_NOT_DELIVERED: "21303",
+  BILLED_NOT_DELIVERED: "2230",
 
-  // Commercial tax. Charged on a sale it is money held for the revenue
-  // department, never income; paid on a purchase it is creditable against
-  // what we charge, so it sits in assets until it is set off.
-  OUTPUT_TAX: "21501", INPUT_TAX: "14302",
+  // Commercial tax: held for the revenue department on a sale, creditable on
+  // a purchase.
+  OUTPUT_TAX: "2410", INPUT_TAX: "1440",
 };
 
-// COGS points at 51108 "Purchase" — they are the same account here. The
-// customer's chart is written for a periodic system, where purchases
-// accumulate in Purchase and cost of sales is computed at period end. This app is
-// perpetual FIFO: a goods receipt debits Inventory, never Purchase, and cost
-// of goods sold posts as the goods leave. So 51108 is the account doing that
-// job, and a second "Cost of Goods Sold" beside it would be the same thing
-// under two names.
+// This app is perpetual FIFO: a goods receipt debits Inventory, and cost of
+// goods sold posts as the goods leave — to 5110 Cost of Goods Sold.
 export const DETERMINATION = {
-  AR_CONTROL: "13501", AP_CONTROL: "21101", INVENTORY: "14101",
-  COGS: "51108", REVENUE: "41101", SALES_RETURN: "43101",
+  AR_CONTROL: "1210", AP_CONTROL: "2110", INVENTORY: "1310",
+  COGS: "5110", REVENUE: "4110", SALES_RETURN: "4180",
 };
 
 /**
- * Free-of-charge reasons a new company starts with. The account each writes
- * off to is what keeps a giveaway out of cost of sales, so a promotion is
- * visible as promotion rather than quietly eroding gross margin.
+ * Free-of-charge reasons a new company starts with. A standalone giveaway
+ * (promotion, sample, office use, damage) writes off to its own account so it
+ * is visible as what it was. A free item given with a sale is not one of
+ * these: it is part of the sale and its cost is cost of sales.
  */
 export const FOC_REASONS = [
-  ["PROMOTION", "Promotional giveaway", "64104"],
-  ["SAMPLE",    "Customer sample",      "64102"],
-  ["OFFICE",    "Office use",           "61506"],
-  ["DAMAGED",   "Damaged or expired",   "59905"],
+  ["PROMOTION", "Promotional giveaway", "6230"],
+  ["SAMPLE",    "Customer sample",      "6210"],
+  ["OFFICE",    "Office use",           "6331"],
+  ["DAMAGED",   "Damaged or expired",   "5920"],
 ];
+

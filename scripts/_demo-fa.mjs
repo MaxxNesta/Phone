@@ -23,12 +23,12 @@ if (ids.length) { console.log("already there:", ids.length); await sql.end(); pr
 const cat = async (code) => (await sql`select id from fa_category where company_id = ${co.id} and code = ${code}`)[0].id;
 const branches = await sql`select id from location where company_id = ${co.id} and parent_id is null and is_active order by code`;
 const A = [
-  ["ZZFA-001", "Generator 25kVA", "11301", 0, "2025-03-04", 12_000_000, 600_000, 60],
-  ["ZZFA-002", "Solar panel set", "11301", 0, "2025-11-20", 8_400_000, 0, 84],
-  ["ZZFA-003", "Daikin inverter AC", "11404", 0, "2025-06-01", 2_600_000, 100_000, 48],
-  ["ZZFA-004", "Counter computers (3)", "11403", 1, "2024-12-15", 3_900_000, 0, 36],
-  ["ZZFA-005", "Display tables & lockers", "11402", 1, "2026-01-10", 1_800_000, 0, 60],
-  ["ZZFA-006", "Delivery EV cycle", "11501", 0, "2026-04-02", 2_200_000, 200_000, 36],
+  ["ZZFA-001", "Generator 25kVA", "1610", 0, "2025-03-04", 12_000_000, 600_000, 60],
+  ["ZZFA-002", "Solar panel set", "1610", 0, "2025-11-20", 8_400_000, 0, 84],
+  ["ZZFA-003", "Daikin inverter AC", "1623", 0, "2025-06-01", 2_600_000, 100_000, 48],
+  ["ZZFA-004", "Counter computers (3)", "1622", 1, "2024-12-15", 3_900_000, 0, 36],
+  ["ZZFA-005", "Display tables & lockers", "1621", 1, "2026-01-10", 1_800_000, 0, 60],
+  ["ZZFA-006", "Delivery EV cycle", "1630", 0, "2026-04-02", 2_200_000, 200_000, 36],
 ];
 for (const [code, name, c, b, svc, cost, res, life] of A) {
   const [a] = await sql`insert into fixed_asset (company_id, code, name, category_id, branch_id, acquisition_date, in_service_date,

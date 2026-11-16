@@ -110,8 +110,8 @@ try {
   });
   check("the receipt posts with no invoice at all", !!adv.docNo, adv.docNo);
   check("  the money is held as a liability, not as a receivable",
-    near(await balance("21301"), -20000) && near(await balance("13501"), 0),
-    `2060 ${await balance("21301")} · AR ${await balance("13501")}`);
+    near(await balance("2210"), -20000) && near(await balance("1210"), 0),
+    `2060 ${await balance("2210")} · AR ${await balance("1210")}`);
   check("  and it shows as available on account", near(await available(cust.id), 20000),
     `${await available(cust.id)}`);
   await invariants("after taking it");
@@ -135,7 +135,7 @@ try {
   check("applying the advance posts its own document", !!applied.docNo, applied.docNo);
   check("  the invoice now owes 35,550", near(await owes(inv.id), 35550), `${await owes(inv.id)}`);
   check("  the advance is spent", near(await available(cust.id), 0), `${await available(cust.id)}`);
-  check("  the liability is gone", near(await balance("21301"), 0), `${await balance("21301")}`);
+  check("  the liability is gone", near(await balance("2210"), 0), `${await balance("2210")}`);
   check("  and no second receipt was created",
     n((await sql`select count(*)::int c from document
         where doc_type = ${"CUSTOMER_RECEIPT"}`)[0].c) === 1);
@@ -203,8 +203,8 @@ try {
     allocations: [], advance: 30000, memo: "Deposit on next order",
   });
   check("it is held as an asset, not as a payable",
-    near(await balance("15102"), 30000) && near(await available(supp.id), 30000),
-    `1070 ${await balance("15102")} · available ${await available(supp.id)}`);
+    near(await balance("1520"), 30000) && near(await available(supp.id), 30000),
+    `1070 ${await balance("1520")} · available ${await available(supp.id)}`);
 
   const bill = await P.postPurchaseInvoice({
     companyId: co.id, partnerId: supp.id, locationId: loc.id,
@@ -214,7 +214,7 @@ try {
   await P.applyAdvance({ companyId: co.id, invoiceId: bill.id, docDate: today,
     allocations: [{ paymentId: paid.id, amount: 30000 }] });
   check("applying it relieves the bill", near(await owes(bill.id), 10000), `${await owes(bill.id)}`);
-  check("  and the asset is used up", near(await balance("15102"), 0), `${await balance("15102")}`);
+  check("  and the asset is used up", near(await balance("1520"), 0), `${await balance("1520")}`);
   await invariants("after the supplier side");
 
   // ---- part of an advance, kept for next time -----------------------------
@@ -318,18 +318,18 @@ try {
       // Measured across the application alone. Earlier sections of this suite
       // left advances of their own sitting in the same branch, so an absolute
       // balance here would be reading their residue rather than this.
-      const yangonBefore = await per("21301", yangon.id);
-      const mandalayBefore = await per("21301", mandalay.id);
+      const yangonBefore = await per("2210", yangon.id);
+      const mandalayBefore = await per("2210", mandalay.id);
 
       await P.applyAdvance({ companyId: co.id, invoiceId: i.id, docDate: today,
         allocations: [{ paymentId: a.id, amount: 9000 }] });
 
       check("the advance clears in the branch that took it",
-        near((await per("21301", yangon.id)) - yangonBefore, 9000),
-        `Yangon 2060 moved ${(await per("21301", yangon.id)) - yangonBefore}`);
+        near((await per("2210", yangon.id)) - yangonBefore, 9000),
+        `Yangon 2060 moved ${(await per("2210", yangon.id)) - yangonBefore}`);
       check("  and the branch that raised the bill is untouched by it",
-        near((await per("21301", mandalay.id)) - mandalayBefore, 0),
-        `Mandalay 2060 moved ${(await per("21301", mandalay.id)) - mandalayBefore}`);
+        near((await per("2210", mandalay.id)) - mandalayBefore, 0),
+        `Mandalay 2060 moved ${(await per("2210", mandalay.id)) - mandalayBefore}`);
       check("  the receivable clears where the invoice was raised",
         near(await owes(i.id), 3000), `${await owes(i.id)}`);
       await invariants("across branches");
