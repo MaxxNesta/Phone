@@ -292,7 +292,7 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
       <table className="imei-mini">
         <thead><tr><th>Component</th><th className="num">Amount (MMK)</th></tr></thead>
         <tbody>
-          <tr><td>Purchase cost{c.discount ? <span className="imei-muted"> (FIFO, before supplier discount)</span> : null}</td><td className="num">{money(c.purchase)}</td></tr>
+          <tr><td>Purchase cost{c.discount?.credited ? <span className="imei-muted"> (FIFO, before supplier discount)</span> : null}</td><td className="num">{money(c.purchase)}</td></tr>
           {c.landed.map((l, i) => <tr key={i}><td>{l.type}</td><td className="num">{money(l.amount)}</td></tr>)}
           {c.landed.length === 0 && <tr><td>Landed costs</td><td className="num">0</td></tr>}
           {Math.abs(c.other) >= 1 && <tr><td>Other adjustments <span className="imei-muted">(bill corrections)</span></td><td className="num">{money(c.other)}</td></tr>}
@@ -301,8 +301,9 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
       </table>
       {c.discount && (
         <p className="imei-muted" style={{ margin: "6px 0 0" }}>
-          The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit was credited to Purchase Discounts.
-          It does not lower the recorded FIFO cost.
+          {c.discount.credited
+            ? <>The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit was credited to Purchase Discounts. It does not lower the recorded FIFO cost.</>
+            : <>The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit lowered its FIFO cost (net method).</>}
         </p>
       )}
 

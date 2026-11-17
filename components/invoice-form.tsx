@@ -1420,8 +1420,9 @@ export function InvoiceForm({
             <dl className="summary">
               {!isSales && (
                 <>
-                  {/* Gross, what comes off, what is owed: the stock keeps the
-                      gross and the discount is credited to Purchase Discounts. */}
+                  {/* Gross, what comes off, what is owed. Under NET (0204) the
+                      stock takes what is owed; under GROSS it keeps the gross
+                      and the discount is credited to Purchase Discounts. */}
                   <dt>Gross</dt><dd>{fmt(priced.gross)}</dd>
                   {lineDiscounts > 0 && <><dt>Line discounts</dt><dd>−{fmt(lineDiscounts)}</dd></>}
                   <dt>

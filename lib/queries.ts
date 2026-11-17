@@ -6529,7 +6529,7 @@ export async function getLedgerDetails(
              case when jl.base_amount > 0 then  jl.base_amount else 0 end::float as debit,
              case when jl.base_amount < 0 then -jl.base_amount else 0 end::float as credit,
              -- The other side: the accounts on the opposite side of this line,
-             -- largest first, each with its amount (a sale reads 41101 Sales).
+             -- largest first, each with its amount (a sale reads 4110 Sales).
              (select json_agg(json_build_object('account', oa.code || ' ' || oa.name, 'amount', abs(o.amt),
                                                 'money', case when oa.is_bank_account then 'Bank' when oa.is_cash_account then 'Cash' end)
                       order by abs(o.amt) desc)
@@ -7661,7 +7661,7 @@ export async function getInventoryCogsReconciliation(
     return codes;
   })();
   /* Carriage inward left in expense for the period: a courier's bill booked to
-     51110 and not (yet) spread onto the goods it brought (0162). Net, so what
+     5120 and not (yet) spread onto the goods it brought (0162). Net, so what
      was spread back onto inventory is not counted twice. */
   const p_carriage = (async () => {
     if (!roles.carriage) return null;

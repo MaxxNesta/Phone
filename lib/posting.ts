@@ -3293,7 +3293,7 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
       if (!held[0]?.a) {
         throw new Error(
           "No account is set for goods shipped and not invoiced. "
-          + "Migration 0114 adds 1090 and the SHIPPED_NOT_INVOICED role.");
+          + "Point it at 1420 Goods Shipped Not Invoiced in Settings → Accounts.");
       }
       journal.push({ accountId: held[0].a as string, amount: claimable, locationId });
       if (provisional !== 0) {
@@ -4370,7 +4370,7 @@ async function _postSalesInvoice(
       : roundMoney(discountGross * (net / chargedBeforeTaxSplit), scale);
 
     /* Deliver later: goods billed before they leave are not yet a sale. The
-       price after discount waits in Billed Not Delivered (21303) and each
+       price after discount waits in Billed Not Delivered (2230) and each
        delivery moves its share to Sales and Sales Discounts (0191). A
        service on the same invoice is earned now — nothing is delivered for it. */
     const deferRevenue = !!input.toDeliver && !input.issueStock && !input.deliveryId
@@ -9954,7 +9954,7 @@ async function voidDocumentIn(
       }
       if (landedLater.length > 0) {
         await writeJournal(tx, doc.company_id as string, plan.reversalDate, doc.doc_type as string,
-          reversal.id as string, `${reversalNo} landed cost back to 1090`, landedLater);
+          reversal.id as string, `${reversalNo} landed cost back to Goods Shipped Not Invoiced`, landedLater);
       }
     }
 
