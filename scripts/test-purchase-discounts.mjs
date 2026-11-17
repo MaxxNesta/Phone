@@ -193,7 +193,12 @@ try {
     const d5 = await P.postDebitNote({ companyId: co.id, partnerId: supp.id, docDate: today,
       sourceDocumentId: b5.id, amount: 1000, category: "DISCOUNT", reason: "Late delivery allowance" }, tx);
     const j5 = await posted(d5.id);
-    check("no goods to lower: 1,000 to price variance", j5["5940"] === -1000 && j5["2110"] === 1000, JSON.stringify(j5));
+    check("not received yet: the 1,000 comes off GR/IR, nothing to price variance", j5["1410"] === -1000 && j5["2110"] === 1000 && !j5["5940"], JSON.stringify(j5));
+    const g5 = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      sourceDocumentId: b5.id, lines: [{ itemId: item.id, qty: 2, unitCost: 0 }] }, tx);
+    check("  received later: at 4,500 each, net of the discount", near((await lotCost(g5.id)).u, 4500), JSON.stringify(await lotCost(g5.id)));
+    const grir5 = (await posted(b5.id))["1410"] + j5["1410"] + (await posted(g5.id))["1410"];
+    check("  GR/IR clears to nothing across bill, note and receipt", Math.abs(grir5) < 0.01, String(grir5));
 
     // 6 -----------------------------------------------------------------------
     console.log("\n  6. a free item of a different product\n");

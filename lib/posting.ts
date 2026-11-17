@@ -4799,7 +4799,12 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         -- at the price bought, the discount credited separately.
         select dl.item_id,
                sum(coalesce(dl.stock_cost, dl.net_amount
-                     + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0))) as net,
+                     + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0))
+                   -- less discounts agreed before the goods came (discountOffBill)
+                   - coalesce((select sum(n.net_amount) from document_line n
+                                 join document nd on nd.id = n.document_id
+                                where n.source_line_id = dl.id and nd.doc_type = 'DEBIT_NOTE'
+                                  and nd.status = 'POSTED'), 0)) as net,
                sum(dl.base_qty) as qty
           from document_line dl
          where dl.document_id = ${input.sourceDocumentId}
@@ -7295,7 +7300,7 @@ async function discountOffBill(tx: TransactionSql, input: {
 }): Promise<JournalLine[]> {
   const { companyId, billId, amount, scale } = input;
   const lines = await tx`
-    select dl.id, dl.item_id, dl.source_line_id, i.is_stocked,
+    select dl.id, dl.item_id, dl.source_line_id, dl.entered_uom_id, dl.location_id, i.is_stocked,
            coalesce(dl.stock_cost, dl.net_amount
              + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0)) as cost
       from document_line dl join item i on i.id = dl.item_id
@@ -7319,6 +7324,9 @@ async function discountOffBill(tx: TransactionSql, input: {
   const journal: JournalLine[] = [];
   const billed: { receiptLineId: string; qty: number; newUnitCost: number; heldValue: number }[] = [];
   let expensed = 0;
+  // Bill lines whose goods have not arrived: the discount waits in GR/IR with
+  // the bill's own debit, and lowers what the goods are received at.
+  const waiting: { line: { id: string; item_id: string; location_id: string | null; entered_uom_id: string }; share: number }[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
@@ -7332,7 +7340,9 @@ async function discountOffBill(tx: TransactionSql, input: {
     }
     const receipt = receiptLines.filter((r) =>
       r.item_id === l.item_id && (r.id === l.source_line_id || r.whole));
-    if (receipt.length === 0) continue;
+    // ponytail: a line part-received takes its whole share onto the units that
+    // arrived (right in total, early per unit); split by qty if that matters.
+    if (receipt.length === 0) { waiting.push({ line: l as never, share }); continue; }
     const parts = spreadByWeight(share, receipt.map((r) => Number(r.base_qty)), 4);
     receipt.forEach((r, k) => {
       if (parts[k] === 0) return;
@@ -7347,9 +7357,29 @@ async function discountOffBill(tx: TransactionSql, input: {
   }) : { journal: [], toInventory: 0, toCogs: 0 };
   for (const jl of moved.journal) journal.push(jl);
 
-  // Whatever found no goods to lower: not yet received, or received before
-  // lots were tracked.
-  const rest = round4(amount - expensed + moved.toInventory + moved.toCogs);
+  /* Not yet received: the bill debited GR/IR at the full cost, so the
+     discount comes off GR/IR, and is recorded against the bill line (a note
+     line of zero quantity) so the receipt raised from the bill values the
+     goods net of it and clears GR/IR exactly (_postGoodsReceipt). */
+  let held = 0;
+  if (waiting.length) {
+    const [bill] = await tx`select partner_id from document where id = ${billId}`;
+    let n = 0;
+    for (const w of waiting) {
+      await tx`
+        insert into document_line
+          (company_id, document_id, line_no, item_id, location_id, entered_qty, entered_uom_id,
+           conversion_factor, base_qty, unit_price, net_amount, gross_amount, source_line_id)
+        values (${companyId}, ${input.noteId}, ${++n}, ${w.line.item_id}, ${w.line.location_id},
+                0, ${w.line.entered_uom_id}, 1, 0, 0, ${w.share}, ${w.share}, ${w.line.id})`;
+      held = round4(held + w.share);
+    }
+    const [grir] = await tx`select fn_system_account(${companyId}, 'GRIR_CLEARING') as a`;
+    journal.push({ accountId: grir.a, amount: -held, partnerId: bill.partner_id, locationId: input.locationId });
+  }
+
+  // Whatever is left found no lot to lower: received before lots were tracked.
+  const rest = round4(amount - expensed - held + moved.toInventory + moved.toCogs);
   if (rest !== 0) {
     const [pv] = await tx`select fn_system_account(${companyId}, 'PURCHASE_PRICE_VARIANCE') as a`;
     journal.push({ accountId: pv.a, amount: -rest, locationId: input.locationId });
