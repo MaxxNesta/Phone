@@ -1298,6 +1298,43 @@ async function postNote(
   redirectWithToast(`/documents/${docId}`, `${isCredit ? "Credit" : "Debit"} note posted`);
 }
 
+/**
+ * What a debit note would post, before it is posted: the note is posted for
+ * real inside a transaction that is always rolled back, so the allocation
+ * shown is the engine's own (stock held, cost of sales, price variance) and
+ * cannot drift from what Post does. Nothing is kept, numbers included.
+ */
+export async function previewDebitNote(input: {
+  sourceDocumentId: string; partnerId: string; docDate: string; amount: number;
+  taxCodeId: string | null; category: string; reason: string;
+}): Promise<{ lines: { code: string; name: string; amount: number }[] } | { error: string }> {
+  await requirePermission("purchase.post");
+  const co = await companyId();
+  const done = new Error("preview");
+  let lines: { code: string; name: string; amount: number }[] = [];
+  try {
+    await sql.begin(async (tx) => {
+      const r = await postDebitNote({
+        companyId: co, partnerId: input.partnerId, docDate: input.docDate,
+        sourceDocumentId: input.sourceDocumentId, amount: Number(input.amount),
+        taxCodeId: input.taxCodeId || null, category: input.category as never,
+        reason: input.reason?.trim() || "Preview",
+      }, tx);
+      lines = (await tx`
+        select a.code, a.name, sum(jl.base_amount)::float as amount
+          from journal_line jl
+          join journal_entry je on je.id = jl.journal_entry_id
+          join account a on a.id = jl.account_id
+         where je.source_id = ${(r as { id: string }).id}
+         group by a.code, a.name order by sum(jl.base_amount) desc, a.code`) as never;
+      throw done;
+    });
+  } catch (e) {
+    if (e !== done) return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { lines };
+}
+
 /** The customer owes less, and no goods came back. */
 export async function createCreditNote(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("sales.return");
