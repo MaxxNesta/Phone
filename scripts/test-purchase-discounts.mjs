@@ -74,8 +74,9 @@ try {
          and not exists (select 1 from item c where c.parent_item_id = item.id)`;
     const [item] = await tx`select id, code from item where ${plain}
          and not exists (select 1 from stock_movement m where m.item_id = item.id) order by code limit 1`;
+    // Bought before if any such item exists; on an emptied database, any other.
     const [other] = await tx`select id, code from item where ${plain} and id <> ${item.id}
-         and exists (select 1 from stock_lot l where l.item_id = item.id and l.unit_cost > 0) order by code limit 1`;
+         order by exists (select 1 from stock_lot l where l.item_id = item.id and l.unit_cost > 0) desc, code limit 1`;
     const [supp] = await tx`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
     const [cust] = await tx`select id from business_partner where company_id = ${co.id} and is_customer order by code limit 1`;
     const today = new Date().toISOString().slice(0, 10);
