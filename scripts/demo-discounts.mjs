@@ -21,7 +21,7 @@ const [co] = await sql`select id, name from company order by created_at limit 1`
 if (!/DEV/.test(co.name)) { console.error(`Refusing: "${co.name}" is not a DEV company.`); process.exit(1); }
 
 if (process.argv.includes("--undo")) {
-  const r = await sql`update item set is_active = false where company_id = ${co.id} and code like 'DFDEMO-%' returning code`;
+  const r = await sql`update item set is_active = false where company_id = ${co.id} and code like '%DFDEMO-%' returning code`;
   console.log(`retired ${r.length} demo items; their documents stay until DEV's transactions are next emptied`);
   await sql.end(); process.exit(0);
 }
@@ -43,7 +43,7 @@ await sql.begin(async (tx) => {
   const [supFoc] = await tx`select id from foc_reason where company_id = ${co.id} and applies_to = 'PURCHASE' limit 1`;
 
   const item = async (code, name, price) => {
-    const [i] = await tx`select id from item where company_id = ${co.id} and code = ${code}`;
+    const [i] = await tx`select id from item where company_id = ${co.id} and (code = ${code} or code like '%-' || ${code})`;
     const id = i?.id ?? (await tx`insert into item (company_id, item_group_id, code, serial, name, base_uom_id, is_stocked)
         values (${co.id}, ${grp.id}, ${code}, ${code}, ${name}, ${uom.id}, true) returning id`)[0].id;
     await tx`update item set is_active = true where id = ${id}`;
