@@ -81,8 +81,12 @@ try {
   // A shop that dropped KBZPay gets one for the suite, removed again afterwards.
   [madeKbz] = await sql`insert into payment_channel (company_id, code, name, kind, requires_reference, sort_order)
     select ${co.id}, 'KBZPAY', 'KBZPay', 'WALLET', true, 30
-     where not exists (select 1 from payment_channel where company_id = ${co.id} and code = 'KBZPAY') returning id`;
-  const CASH = await channel("CASH"), KBZ = await channel("KBZPAY");
+     where not exists (select 1 from payment_channel where company_id = ${co.id}
+                        and (code = 'KBZPAY' or lower(name) = 'kbzpay')) returning id`;
+  // A wallet added in Settings gets a generated code (KBZPAY-xxxx): find it by name too.
+  const CASH = await channel("CASH");
+  const KBZ = (await sql`select id from payment_channel where company_id = ${co.id}
+                          and (code = 'KBZPAY' or lower(name) = 'kbzpay') order by (code = 'KBZPAY') desc limit 1`)[0].id;
   // A wallet account of the test's own: a real KBZPay account, active or
   // retired, is never borrowed, and the channel's own mapping is put back.
   let [wallet] = await sql`select id from account where company_id = ${co.id} and code = 'T-KBZPAY'`;
