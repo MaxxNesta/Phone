@@ -205,6 +205,30 @@ try {
     }
     check("  the bill's cost still adds to 4,000", Math.round((s6[0] + s6[1]) * 100) === 400000);
 
+    // 8 -----------------------------------------------------------------------
+    console.log("\n  8. a discount on a bill already paid, and the supplier pays it back\n");
+    const [cashAcct] = await tx`select id, code from account where company_id = ${co.id} and is_cash_account and not is_bank_account and is_postable order by code limit 1`;
+    const b8 = await P.postPurchaseInvoice({
+      companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today, dueDate: null,
+      cashOut: 5000, cashAccountId: cashAcct.id,
+      lines: [{ itemId: item.id, qty: 5, unitPrice: 1000 }],
+    }, tx);
+    const owing = async (id) => Number((await tx`select outstanding from v_open_item where document_id = ${id}`)[0]?.outstanding ?? 0);
+    check("paid in full", (await owing(b8.id)) === 0);
+    const d8 = await P.postDebitNote({ companyId: co.id, partnerId: supp.id, docDate: today,
+      sourceDocumentId: b8.id, amount: 500, category: "DISCOUNT", reason: "Price protection" }, tx);
+    check("the note posts and the supplier owes 500 back", (await owing(b8.id)) === -500, String(await owing(b8.id)));
+    const { refundable } = await P.refundableOnDebitNote(tx, d8.id);
+    check("  500 to come back", refundable === 500, String(refundable));
+    const tooMuch = await P.postSupplierRefund({ companyId: co.id, noteId: d8.id, docDate: today, cashAccountId: cashAcct.id, amount: 600 }, tx)
+      .then(() => null, (e) => e.message);
+    check("  600 is refused", /600 was entered/.test(tooMuch ?? ""), tooMuch ?? "posted");
+    const rf = await P.postSupplierRefund({ companyId: co.id, noteId: d8.id, docDate: today, cashAccountId: cashAcct.id, amount: 500 }, tx);
+    const jr = await posted(rf.id);
+    check("  refund: Dr cash 500 / Cr payables 500, the bill settles", jr[cashAcct.code] === 500 && jr["2110"] === -500 && (await owing(b8.id)) === 0, JSON.stringify(jr));
+    const [no] = await tx`select doc_no from document where id = ${rf.id}`;
+    check("  numbered as a supplier refund", /^SRF/.test(no.doc_no), no.doc_no);
+
     // 7 -----------------------------------------------------------------------
     console.log("\n  7. GROSS still posts as before\n");
     await tx`update company set purchase_discount_policy = 'GROSS' where id = ${co.id}`;

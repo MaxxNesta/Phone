@@ -1786,6 +1786,7 @@ const REL_LABEL: Record<string, string> = {
   SALES_INVOICE: "Sales invoice",
   CUSTOMER_RECEIPT: "Receive payment",
   CUSTOMER_REFUND: "Customer refund",
+  SUPPLIER_REFUND: "Supplier refund",
   SALES_RETURN: "Customer return",
   PURCHASE_ORDER: "Purchase order",
   GOODS_RECEIPT: "Goods receipt",
@@ -3512,7 +3513,7 @@ export async function getVariantProfitability(
   return sql`
     with revenue as (
       select dl.item_id, sum(dl.base_qty) as qty_sold,
-             sum(dl.net_amount) as revenue
+             sum(coalesce(dl.revenue_amount, dl.net_amount)) as revenue
         from document_line dl
         join document d on d.id = dl.document_id
        where d.company_id = ${companyId}
@@ -4279,7 +4280,7 @@ export async function getTopItems(
   return sql`
     select i.id, i.code, i.name,
            sum(dl.base_qty) as qty,
-           sum(dl.net_amount) as revenue
+           sum(coalesce(dl.revenue_amount, dl.net_amount)) as revenue
       from document_line dl
       join document d on d.id = dl.document_id
       join item i on i.id = dl.item_id
@@ -4309,7 +4310,7 @@ export async function getTopCategories(
     select coalesce(g.id::text, 'none')          as id,
            coalesce(g.name, 'Uncategorised')     as name,
            sum(dl.base_qty)                      as qty,
-           sum(dl.net_amount)                    as revenue
+           sum(coalesce(dl.revenue_amount, dl.net_amount))                    as revenue
       from document_line dl
       join document d on d.id = dl.document_id
       join item i on i.id = dl.item_id
@@ -4319,7 +4320,7 @@ export async function getTopCategories(
        and d.status = 'POSTED'
        and d.posting_date >= ${from}::date and d.posting_date < ${to}::date
      group by 1, 2
-     having sum(dl.net_amount) > 0
+     having sum(coalesce(dl.revenue_amount, dl.net_amount)) > 0
      order by revenue desc
      limit ${limit}`;
 }
@@ -7908,7 +7909,7 @@ export async function getSalesBreakdown(
            sum(coalesce(dl.discount_amount, 0)
              + coalesce(dl.volume_discount_amount, 0)
              + coalesce(dl.invoice_discount_amount, 0)) as discount,
-           sum(case when dl.foc_reason_id is null then dl.net_amount else 0 end) as revenue,
+           sum(coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)) as revenue,
            sum(case when dl.foc_reason_id is not null then dl.base_qty else 0 end) as free_qty,
            count(distinct d.id)::int as invoices
       from document_line dl
@@ -8073,7 +8074,7 @@ export async function getSalesOverview(
          ${branch(sql`d.location_id`)}`) as unknown as Array<{ returned: string }>;
 
     const [rev] = (await sql`
-      select coalesce(sum(case when dl.foc_reason_id is null then dl.net_amount else 0 end), 0) as net,
+      select coalesce(sum(coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)), 0) as net,
              coalesce(sum(case when dl.foc_reason_id is null then dl.base_qty else 0 end), 0) as units,
              coalesce(sum(coalesce(dl.discount_amount, 0)
                         + coalesce(dl.volume_discount_amount, 0)
@@ -8138,7 +8139,7 @@ export async function getSalesOverview(
       ),
       rev as (
         select to_char(d.posting_date, 'YYYY-MM') as month,
-               sum(case when dl.foc_reason_id is null then dl.net_amount else 0 end) as net
+               sum(coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)) as net
           from document_line dl
           join document d on d.id = dl.document_id
          where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE'
@@ -8352,7 +8353,7 @@ export async function getSalesPivotFacts(
               join variant_attribute a on a.id = o.attribute_id
              where ivo.item_id = i.id) as opts,
            case when dl.foc_reason_id is null then dl.base_qty else 0 end::float as qty,
-           case when dl.foc_reason_id is null then dl.net_amount else 0 end::float as revenue,
+           coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)::float as revenue,
            coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                       where a.invoice_line_id = dl.id), 0)::float as cost
       from document_line dl
@@ -8598,8 +8599,8 @@ export async function getSalesSeries(
     ),
     s as (
       select date_trunc(${unit}, d.posting_date)::date as b,
-             sum(dl.net_amount) as revenue,
-             sum(dl.net_amount - coalesce(c.cost, 0)) as profit,
+             sum(coalesce(dl.revenue_amount, dl.net_amount)) as revenue,
+             sum(coalesce(dl.revenue_amount, dl.net_amount) - coalesce(c.cost, 0)) as profit,
              count(distinct case when bp.code = 'WALKIN' then d.id::text else d.partner_id::text end) as customers
         from document d
         join business_partner bp on bp.id = d.partner_id

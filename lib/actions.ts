@@ -28,7 +28,7 @@ import { sniff, ATTACHMENT_SNIFF } from "./upload-limits";
 import { asRegion } from "./regions";
 import {
   postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postRetailSale, postPurchaseWithReceipt,
-  postCreditNote, postDebitNote,
+  postCreditNote, postDebitNote, postSupplierRefund,
   postSalesOrder, postPurchaseOrder, postDelivery, postGoodsReceipt,
   postSupplierPayment, postCustomerReceipt,
   postCashVoucher, postBankVoucher, postJournalVoucher,
@@ -2419,6 +2419,39 @@ export async function createCustomerRefund(_prev: unknown, fd: FormData): Promis
   revalidatePath("/");
   revalidatePath("/documents");
   revalidatePath("/receivables");
+  revalidatePath("/finance/payments");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+/**
+ * A supplier paying back what a debit note left owing on a bill already
+ * paid (0206). Raised from the note; the money comes into a cash or bank
+ * account and the bill climbs back to zero.
+ */
+export async function createSupplierRefund(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
+  let docId: string;
+  let toastMsg = "Refund recorded";
+  try {
+    const co = await companyId();
+    const noteId = str(fd, "note_id");
+    const [n] = await sql`select location_id from document
+                           where id = ${noteId} and company_id = ${co} and doc_type = 'DEBIT_NOTE'`;
+    if (!n) return { error: "That debit note no longer exists" };
+    await assertMyBranch(n.location_id as string | null);
+    const cashAccountId = str(fd, "cash_account_id");
+    if (!cashAccountId) return { error: "Choose the cash or bank account the money came into" };
+    const r = await postOnce(co, attemptKey(fd), (tx) => postSupplierRefund({
+      companyId: co, noteId, docDate: str(fd, "doc_date"), cashAccountId,
+      amount: num(fd, "amount"), reference: str(fd, "reference") || null,
+    }, tx));
+    docId = r.id;
+    toastMsg = `Refund ${r.docNo} recorded`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents");
+  revalidatePath("/payables");
   revalidatePath("/finance/payments");
   redirectWithToast(`/documents/${docId}`, toastMsg);
 }

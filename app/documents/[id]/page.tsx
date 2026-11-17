@@ -48,6 +48,7 @@ import {
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { sql, money, qty, shortDate } from "@/lib/db";
+import { refundableOnDebitNote } from "@/lib/posting";
 import {
   getDocument,
   getDocumentLines,
@@ -124,6 +125,7 @@ const PLURAL: Record<string, string> = {
   SALES_INVOICE: "Sales invoices",
   CUSTOMER_RECEIPT: "Customer receipts",
   CUSTOMER_REFUND: "Customer refunds",
+  SUPPLIER_REFUND: "Supplier refunds",
 };
 
 /** Where an arrow labelled for it leads back to. */
@@ -284,7 +286,7 @@ export default async function DocumentPage({
   // Cash or credit is a question only an invoice answers. A receipt, a
   // payment or a voucher moved real money, so it says where: the cash or
   // bank account on its journal, or the channel it came through.
-  const MONEY_DOCS = ["CASH_VOUCHER", "BANK_VOUCHER", "CUSTOMER_RECEIPT", "SUPPLIER_PAYMENT", "CUSTOMER_REFUND", "CASH_TRANSFER"];
+  const MONEY_DOCS = ["CASH_VOUCHER", "BANK_VOUCHER", "CUSTOMER_RECEIPT", "SUPPLIER_PAYMENT", "CUSTOMER_REFUND", "SUPPLIER_REFUND", "CASH_TRANSFER"];
   const isInvoiceDoc = doc.doc_type === "SALES_INVOICE" || doc.doc_type === "PURCHASE_INVOICE";
   const moneyAccounts = MONEY_DOCS.includes(doc.doc_type) && doc.journal_entry_id
     ? ((await sql`select distinct a.code, a.name from journal_line jl join account a on a.id = jl.account_id
@@ -597,6 +599,9 @@ export default async function DocumentPage({
   // A customer return that still owes the customer money back.
   const refundable = (doc.doc_type === "SALES_RETURN" || doc.doc_type === "CREDIT_NOTE") && doc.status === "POSTED"
     ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
+  // A debit note on a bill already paid: what the supplier still owes back.
+  const supplierRefundable = doc.doc_type === "DEBIT_NOTE" && doc.status === "POSTED"
+    ? (await refundableOnDebitNote(sql as never, doc.id)).refundable : 0;
 
   /**
    * Money this partner already handed over, waiting for a bill. Offered on the
@@ -1142,6 +1147,12 @@ export default async function DocumentPage({
             : "Nothing has billed for this delivery yet. No order set a price, so the price list decides it on the invoice."}>
           <FilePlus2 size={14} aria-hidden="true" /> Create sales invoice
           {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
+        </Link>
+      )}
+      {supplierRefundable > 0.5 && (
+        <Link href={`/purchases/refunds/new?note=${doc.id}`} className="btn primary"
+          title={`${Math.round(supplierRefundable).toLocaleString("en-US")} MMK is owed back by the supplier.`}>
+          <Undo2 size={14} aria-hidden="true" /> Refund received
         </Link>
       )}
       {refundable > 0.5 && (

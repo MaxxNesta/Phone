@@ -388,6 +388,7 @@ export default async function Dashboard({
     SALES_INVOICE: { short: "SI", tint: "var(--warn)" },
     CUSTOMER_RECEIPT: { short: "REC", tint: "var(--brand)" },
     CUSTOMER_REFUND: { short: "RF", tint: "var(--bad)" },
+    SUPPLIER_REFUND: { short: "SRF", tint: "var(--brand)" },
     STOCK_TRANSFER: { short: "TR", tint: "var(--muted)" },
     STOCK_ADJUSTMENT: { short: "ADJ", tint: "var(--muted)" },
   };

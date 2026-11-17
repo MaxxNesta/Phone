@@ -140,6 +140,30 @@ try {
     const j7 = await posted(r7.id);
     check("its cost leaves 5110, not the promotion account", j7["5110"] === -1000 && !j7[promoAcct.code], JSON.stringify(j7));
 
+    // 8 -------------------------------------------------------------------------
+    console.log("\n  8. IFRS 15: a phone and a free case share the sale by list price\n");
+    const [caseItem] = await tx`select id, code, base_uom_id from item where company_id = ${co.id} and is_stocked and not tracks_serial
+         and not tracks_batch and is_active and id <> ${item.id}
+         and not exists (select 1 from item c where c.parent_item_id = item.id) order by code limit 1`;
+    const [phoneUom] = await tx`select base_uom_id from item where id = ${item.id}`;
+    const [lvl] = await tx`select id from price_level where company_id = ${co.id} order by (code = 'RETAIL') desc, sort_order, code limit 1`;
+    for (const [it, uom, price] of [[item.id, phoneUom.base_uom_id, 1_000_000], [caseItem.id, caseItem.base_uom_id, 50_000]]) {
+      await tx`insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
+               values (${co.id}, ${it}, ${lvl.id}, ${uom}, 'MMK', ${price}, ${yesterday}::date)`;
+    }
+    await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: yesterday,
+      lines: [{ itemId: caseItem.id, qty: 5, unitCost: 10_000 }] }, tx);
+    const s8 = await sale([{ itemId: item.id, qty: 1, unitPrice: 1_000_000 }, { itemId: caseItem.id, qty: 1, unitPrice: 0, focReasonId: promo.id }]);
+    const l8 = await tx`select net_amount::float as net, revenue_amount::float as rev from document_line where document_id = ${s8.id} order by line_no`;
+    check("the invoice still charges 1,000,000 and the case 0", l8[0].net === 1_000_000 && l8[1].net === 0, JSON.stringify(l8));
+    check("revenue split 952,381 / 47,619 by list price", Math.abs(l8[0].rev - 952381) <= 1 && Math.abs(l8[1].rev - 47619) <= 1, JSON.stringify(l8));
+    check("  together exactly 1,000,000", l8[0].rev + l8[1].rev === 1_000_000);
+    const j8 = await posted(s8.id);
+    check("  the ledger: 4110 credited 1,000,000 in all", j8["4110"] === -1_000_000, JSON.stringify(j8));
+    const s8b = await sale([{ itemId: item.id, qty: 1, unitPrice: 1_000_000 }]);
+    const [l8b] = await tx`select revenue_amount from document_line where document_id = ${s8b.id}`;
+    check("  no free line: no allocation recorded", l8b.revenue_amount === null);
+
     throw ROLLBACK;
   });
 } catch (e) {

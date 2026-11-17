@@ -29,7 +29,7 @@ export async function salesOverview(co: string, locs: string[] | null, serials =
     // A void posts its reversal as a negative invoice the same way, so the
     // sums net it out; only the count has to leave both sides out.
     sql`select count(distinct d.id) filter (where d.reverses_document_id is null and d.reversed_by_document_id is null)::int as sales,
-               coalesce(sum(dl.net_amount), 0)::float as revenue,
+               coalesce(sum(coalesce(dl.revenue_amount, dl.net_amount)), 0)::float as revenue,
                coalesce(sum(c.cost), 0)::float as cost,
                coalesce(sum(dl.base_qty) filter (where i.tracks_serial or not ${serials}), 0)::int as phones
           from document d
@@ -47,7 +47,7 @@ export async function salesOverview(co: string, locs: string[] | null, serials =
                         and d.posting_date between ${today}::date - 6 and ${today}::date ${at}
                       group by 1) s on s.posting_date = g::date
          order by g`,
-    sql`select coalesce(p.name, i.name) as model, sum(dl.base_qty)::int as sold, sum(dl.net_amount)::float as revenue
+    sql`select coalesce(p.name, i.name) as model, sum(dl.base_qty)::int as sold, sum(coalesce(dl.revenue_amount, dl.net_amount))::float as revenue
           from document d
           join document_line dl on dl.document_id = d.id
           join item i on i.id = dl.item_id left join item p on p.id = i.parent_item_id

@@ -28,7 +28,7 @@ export default async function PaymentsReceived({
   const channel = sp.channel || "";
   // Money in (receipts, less refunds) or money out (payments to suppliers).
   const out = sp.dir === "out";
-  const types = out ? ["SUPPLIER_PAYMENT"] : ["CUSTOMER_RECEIPT", "CUSTOMER_REFUND"];
+  const types = out ? ["SUPPLIER_PAYMENT", "SUPPLIER_REFUND"] : ["CUSTOMER_RECEIPT", "CUSTOMER_REFUND"];
   const locs = await seenLocations();
   const branch = await scopedBranch(sp.branch);
 
@@ -44,7 +44,7 @@ export default async function PaymentsReceived({
     sql`
       select d.id, d.doc_no, d.doc_type, d.posting_date, d.posted_at, d.status, d.currency,
              -- A refund is money going back out: it counts against its method.
-             (case when d.doc_type = 'CUSTOMER_REFUND' then -d.gross_total else d.gross_total end)::float as amount,
+             (case when d.doc_type in ('CUSTOMER_REFUND', 'SUPPLIER_REFUND') then -d.gross_total else d.gross_total end)::float as amount,
              d.payment_reference, coalesce(pc.name, '—') as channel, pc.kind,
              a.code || ' · ' || a.name as account, p.name as customer, l.name as location,
              u.name as created_by, rv.doc_no as reversed_by,
@@ -68,7 +68,7 @@ export default async function PaymentsReceived({
     sql`
       select coalesce(pc.name, 'Not labelled') as channel, pc.kind,
              count(*)::int as n,
-             sum(case when d.doc_type = 'CUSTOMER_REFUND' then -d.gross_total else d.gross_total end)::float as amount
+             sum(case when d.doc_type in ('CUSTOMER_REFUND', 'SUPPLIER_REFUND') then -d.gross_total else d.gross_total end)::float as amount
         from document d left join payment_channel pc on pc.id = d.payment_channel_id
        where ${where}
        group by 1, 2 order by amount desc`,

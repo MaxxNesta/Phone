@@ -9,7 +9,7 @@ type Invoice = {
   id: string; doc_no: string; doc_date: string;
   partner_id: string; partner_name: string;
   gross_total: string; outstanding: string;
-  /** Credit notes: what is left of the sale after earlier returns and notes. */
+  /** What is left of the invoice after earlier returns and notes (credit notes; kyat bills). */
   remaining?: string;
   /** A bill owed in a foreign currency is reduced in that currency. */
   currency?: string; exchange_rate?: number;
@@ -64,7 +64,7 @@ export function NoteForm({
   const gross = net + tax;
   // A credit note may pass what is owed, up to what is left of the sale: the
   // customer who already paid is owed the rest back, and Refund pays it.
-  const cap = kind === "credit" && invoice.remaining != null ? Number(invoice.remaining) / fxRate : owed;
+  const cap = invoice.remaining != null ? Number(invoice.remaining) / fxRate : owed;
   const tooMuch = gross > cap + 0.0001;
   const owedBack = Math.max(0, gross - owed);
   const isCredit = kind === "credit";
@@ -232,9 +232,9 @@ export function NoteForm({
               </span>
             )}
             <span style={{ color: "var(--muted)" }}>
-              {isCredit && owedBack > 0 ? "Customer is owed back" : isCredit ? "Customer will owe" : "We will owe"}
+              {owedBack > 0 ? (isCredit ? "Customer is owed back" : "Supplier owes us back") : isCredit ? "Customer will owe" : "We will owe"}
             </span>
-            <span className="big">{money(isCredit && owedBack > 0 ? owedBack : Math.max(0, owed - gross))} {unit}</span>
+            <span className="big">{money(owedBack > 0 ? owedBack : Math.max(0, owed - gross))} {unit}</span>
           </div>
         </div>
       </div>

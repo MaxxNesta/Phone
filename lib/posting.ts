@@ -4252,6 +4252,37 @@ async function _postSalesInvoice(
   const journal: JournalLine[] = [];
   /** What this invoice bills, for the cost claim once every line exists. */
   const billedLines: Array<{ lineId: string; itemId: string; qty: number; serials?: string[] }> = [];
+  /* A free item given with this sale earns its share of it (IFRS 15, 0205).
+     What the customer paid for the charged lines is spread over every line,
+     free ones included, by what each sells for on its own — its price-list
+     price (the till's own rule), or for a charged line with none, the price
+     it was sold at. A 1,000 phone and a 50 case for 1,000: 952.38 / 47.62.
+     Revenue in total does not move. A deliver-later invoice keeps it on the
+     paid lines: its free lines do not wait in 2230 for the goods to go. */
+  const revenueOf = new Map<InvoiceLine, number>();
+  const deferredInvoice = !!input.toDeliver && !input.issueStock && !input.deliveryId;
+  if (!deferredInvoice && input.lines.some((l) => l.focReasonId) && input.lines.some((l) => !l.focReasonId)) {
+    const listed = new Map((await tx`
+      select i.id, (select ip.price from item_price ip join price_level pl on pl.id = ip.price_level_id
+                     where ip.item_id = i.id and ip.valid_from <= ${docDate}::date
+                       and pl.id = (select l.id from price_level l where l.company_id = i.company_id
+                                     order by (l.code = 'RETAIL') desc, l.sort_order, l.code limit 1)
+                     order by ip.valid_from desc limit 1)::float as price
+        from item i where i.id = any(${[...new Set(input.lines.map((l) => l.itemId))]})`)
+      .map((r) => [r.id as string, Number(r.price ?? 0)]));
+    const netOf = (l: InvoiceLine) => (l.focReasonId ? 0
+      : round4(taxFor.get(l)?.net ?? pricedFor.get(l)?.net ?? l.qty * l.unitPrice));
+    const ssp = input.lines.map((l) => {
+      const qty = round4(l.qty * (packs.get(l)?.factor ?? 1));
+      const list = listed.get(l.itemId) ?? 0;
+      return list > 0 ? qty * list : l.focReasonId ? 0 : l.qty * l.unitPrice;
+    });
+    if (input.lines.some((l, i) => l.focReasonId && ssp[i] > 0)) {
+      const pool = roundMoney(input.lines.reduce((t, l) => t + netOf(l), 0), scale);
+      spreadByWeight(pool, ssp, scale).forEach((v, i) => revenueOf.set(input.lines[i], v));
+    }
+  }
+
   let lineNo = 0;
 
   for (const line of input.lines) {
@@ -4282,7 +4313,7 @@ async function _postSalesInvoice(
          volume_discount_pct, volume_discount_amount, volume_discount_id,
          invoice_discount_pct, invoice_discount_amount, invoice_discount_id,
          net_amount, tax_code_id, tax_amount, gross_amount, foc_reason_id,
-         warranty_months, source_line_id)
+         warranty_months, source_line_id, revenue_amount)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty},
@@ -4305,7 +4336,7 @@ async function _postSalesInvoice(
          -- It records a relationship and nothing more. Fulfilment is counted
          -- from deliveries and receipts, never from invoices, so nothing that
          -- adds up quantities starts counting this.
-         ${line.sourceLineId ?? null})
+         ${line.sourceLineId ?? null}, ${revenueOf.get(line) ?? null})
       returning id`;
 
     /* Which units this line bills, for the cost claim after the loop. Free
@@ -4384,10 +4415,12 @@ async function _postSalesInvoice(
         insert into sales_revenue_deferred
           (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
         values (${companyId}, ${invLine.id}, ${doc.id}, ${baseQty}, ${round4(net)}, ${discount}, ${revenue[0].a})`;
-    } else if (net !== 0 || discount !== 0) {
+    } else if ((revenueOf.get(line) ?? net) !== 0 || discount !== 0) {
+      // The line's allocated share where free items took part (above).
+      const earned = revenueOf.get(line) ?? net;
       const revenue = await tx`
         select fn_resolve_account_for_item(${companyId}, 'REVENUE', ${line.itemId}) as a`;
-      journal.push({ accountId: revenue[0].a, amount: -round4(net + discount) });
+      journal.push({ accountId: revenue[0].a, amount: -round4(earned + discount) });
       if (discount !== 0) {
         const allowed = await tx`
           select fn_system_account(${companyId}, 'SALES_DISCOUNT_ALLOWED') as a`;
@@ -7096,34 +7129,32 @@ async function _postNote(
   const tax = rate ? roundMoney((amount * rate.rate) / 100, scale) : 0;
   const gross = roundMoney(amount + tax, scale);
 
-  /* How far the note may go. A debit note stops at what we still owe the
-     supplier. A credit note may go on past what the customer still owes, up
-     to what is left of the invoice after earlier returns and notes: a
-     customer who has already paid is owed the difference, which leaves the
-     invoice below zero exactly as a return does, and Refund pays it out
-     (refundableOnReturn). Beyond the invoice's own value it is not a
-     reduction of this sale at all. */
+  /* How far the note may go: past what is still owed, up to what is left of
+     the invoice after earlier returns and notes. Already paid, the other side
+     is owed the difference, which leaves the invoice below zero exactly as a
+     return does; Refund pays it out (refundableOnReturn for a customer,
+     refundableOnDebitNote for a supplier). Beyond the invoice's own value it
+     is not a reduction of this invoice at all. A foreign-currency bill stops
+     at what is owed: its refund would need a rate of its own. */
+  const [left] = await tx`
+    select d.currency, d.gross_total - coalesce((
+             select sum(rr.gross_total) from document rr
+              where fn_current_document(rr.source_document_id) = fn_current_document(d.id)
+                and rr.doc_type in ('SALES_RETURN', 'CREDIT_NOTE', 'PURCHASE_RETURN', 'DEBIT_NOTE') and rr.status = 'POSTED'
+                and rr.reversed_by_document_id is null and rr.reverses_document_id is null), 0) as v
+      from document d where d.id = ${input.sourceDocumentId}`;
   const [open] = await tx`
     select outstanding from v_open_item where document_id = ${input.sourceDocumentId}`;
-  let owed = Number(open?.outstanding ?? 0);
-  if (isCredit) {
-    const [left] = await tx`
-      select d.gross_total - coalesce((
-               select sum(rr.gross_total) from document rr
-                where fn_current_document(rr.source_document_id) = fn_current_document(d.id)
-                  and rr.doc_type in ('SALES_RETURN', 'CREDIT_NOTE') and rr.status = 'POSTED'
-                  and rr.reversed_by_document_id is null and rr.reverses_document_id is null), 0) as v
-        from document d where d.id = ${input.sourceDocumentId}`;
-    owed = Number(left?.v ?? 0);
-  }
+  const owed = isCredit || left?.currency === "MMK"
+    ? Number(left?.v ?? 0) : Number(open?.outstanding ?? 0);
   if (gross > owed + 0.0001) {
     throw new Error(
-      isCredit
+      isCredit || left?.currency === "MMK"
         ? `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} left after earlier returns and notes, ` +
           `and this note is for ${Math.round(gross).toLocaleString("en-US")}. Reduce the note.`
         : `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} still owing and ` +
-          `this note is for ${Math.round(gross).toLocaleString("en-US")}. A note cannot take ` +
-          `a bill below nothing — reduce the note.`
+          `this note is for ${Math.round(gross).toLocaleString("en-US")}. A note on a foreign-currency ` +
+          `bill cannot take it below nothing — reduce the note.`
     );
   }
 
@@ -8608,6 +8639,88 @@ export async function refundableOnReturn(tx: TransactionSql, returnId: string) {
                       location_id: string | null; invoice_id: string | null; total: number },
     refundable: round4(Math.max(0, Math.min(Number(r.total) - Number(r.refunded), owed))),
   };
+}
+
+/**
+ * What a supplier still owes us back for a debit note: what the bill now
+ * sits below zero, less refunds already recorded from the note, capped by
+ * the note itself.
+ */
+export async function refundableOnDebitNote(tx: TransactionSql, noteId: string) {
+  const [n] = await tx`
+    select d.id, d.company_id, d.partner_id, d.doc_no, d.status, d.doc_type, d.gross_total::float as total,
+           d.location_id, fn_current_document(d.source_document_id) as bill_id,
+           coalesce((select sum(f.gross_total) from document f
+                      where f.source_document_id = d.id and f.doc_type = 'SUPPLIER_REFUND'
+                        and f.status = 'POSTED'), 0)::float as refunded
+      from document d where d.id = ${noteId}`;
+  if (!n || n.doc_type !== "DEBIT_NOTE") throw new Error("A supplier refund settles a debit note");
+  if (n.status !== "POSTED") throw new Error(`${n.doc_no} is ${String(n.status).toLowerCase()} and cannot be refunded`);
+  const [o] = await tx`select outstanding::float as o from v_open_item where document_id = ${n.bill_id}`;
+  const owedBack = Math.max(0, -Number(o?.o ?? 0));
+  return {
+    note: n as { id: string; company_id: string; partner_id: string; doc_no: string;
+                 location_id: string | null; bill_id: string; total: number },
+    refundable: round4(Math.max(0, Math.min(Number(n.total) - Number(n.refunded), owedBack))),
+  };
+}
+
+/**
+ * Money a supplier pays back for a debit note on a bill already paid:
+ * Dr the cash or bank account it came into / Cr Accounts Payable, allocated
+ * as minus the amount against the bill so it climbs back to zero (0206).
+ * Cost is not touched — the debit note already moved it.
+ */
+export async function postSupplierRefund(input: {
+  companyId: string; noteId: string; docDate: string; cashAccountId: string; amount: number;
+  memo?: string | null; reference?: string | null;
+}, outer?: TransactionSql) {
+  const amount = round4(Number(input.amount));
+  if (!(amount > 0)) throw new Error("Enter the amount received");
+  return inTransaction(outer, async (tx) => {
+    await tx`select id from document where id = ${input.noteId} for update`;
+    const { note: n, refundable } = await refundableOnDebitNote(tx, input.noteId);
+    if (n.company_id !== input.companyId) throw new Error("That debit note belongs to another company");
+    if (amount > refundable + 0.005) {
+      throw new Error(refundable > 0
+        ? `${n.doc_no} leaves ${refundable} to come back; ${amount} was entered`
+        : `${n.doc_no} leaves nothing to come back: the bill is not below zero`);
+    }
+    const [cash] = await tx`
+      select 1 from account where id = ${input.cashAccountId} and company_id = ${input.companyId}
+         and is_cash_account and is_postable`;
+    if (!cash) throw new Error("A refund comes into a cash or bank account");
+
+    const fyRows = await tx`select fn_fiscal_year_for(${input.companyId}, ${input.docDate}::date) as fy`;
+    const fiscalYear = fyRows[0]?.fy ?? null;
+    if (!fiscalYear) throw new Error(`No fiscal year covers ${input.docDate}`);
+    const { docNo } = await documentNumberFor(tx, input.companyId, "SUPPLIER_REFUND", input.docDate, null);
+
+    const [doc] = await tx`
+      insert into document
+        (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, partner_id, location_id,
+         currency, exchange_rate, status, net_total, tax_total, gross_total, memo, reference,
+         payment_type, posted_at, source_document_id)
+      values
+        (${input.companyId}, 'SUPPLIER_REFUND', ${docNo}, ${fiscalYear}, ${input.docDate}::date,
+         ${input.docDate}::date, ${n.partner_id}, ${n.location_id}, 'MMK', 1, 'POSTED',
+         ${amount}, 0, ${amount}, ${input.memo ?? `Refund on ${n.doc_no}`}, ${input.reference ?? null},
+         'CASH', now(), ${n.id})
+      returning id`;
+    await tx`
+      insert into payment_allocation (company_id, payment_id, invoice_id, amount, base_amount)
+      values (${input.companyId}, ${doc.id}, ${n.bill_id}, ${-amount}, ${-amount})`;
+    const [bill] = await tx`select location_id from document where id = ${n.bill_id}`;
+    const ap = (await tx`select fn_resolve_control_account(${input.companyId}, 'AP_CONTROL', ${n.partner_id}) as a`)[0].a;
+    const entryId = await writeJournal(tx, input.companyId, input.docDate, "SUPPLIER_REFUND", doc.id,
+      `${docNo} refund from supplier on ${n.doc_no}`,
+      [
+        { accountId: input.cashAccountId, amount, locationId: n.location_id },
+        { accountId: ap, amount: -amount, partnerId: n.partner_id, locationId: (bill?.location_id as string) ?? null },
+      ]);
+    await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
+    return { id: doc.id as string, docNo: docNo as string };
+  });
 }
 
 /**

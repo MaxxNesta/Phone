@@ -355,8 +355,8 @@ export async function phoneSales(companyId: string, from: string, to: string,
       select d.id as doc_id, d.posting_date, d.partner_id, d.salesman_id, d.location_id,
              dl.item_id, s.serial_no,
              case when s.id is null then dl.base_qty else 1 end as qty,
-             case when s.id is null then dl.net_amount
-                  else dl.net_amount / nullif(dl.base_qty, 0) end as revenue,
+             case when s.id is null then coalesce(dl.revenue_amount, dl.net_amount)
+                  else coalesce(dl.revenue_amount, dl.net_amount) / nullif(dl.base_qty, 0) end as revenue,
              case when s.id is null
                   then coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                                   where a.invoice_line_id = dl.id), 0)
@@ -519,7 +519,7 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
 function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnType<typeof sql>,
                   locs: string[] | null = null) {
   return sql`
-    select d.posting_date, dl.item_id, dl.net_amount as revenue,
+    select d.posting_date, dl.item_id, coalesce(dl.revenue_amount, dl.net_amount) as revenue,
            coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                       where a.invoice_line_id = dl.id), 0) as cost,
            case when i.tracks_serial then dl.base_qty else 0 end as phones,
