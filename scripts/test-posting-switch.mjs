@@ -297,9 +297,11 @@ try {
   const pending = await P.postSalesInvoice({ ...base, docDate: DAY, dueDate: DAY,
     paymentType: "CREDIT", toDeliver: true,
     lines: [{ itemId: item.id, qty: 5, unitPrice: 300 }] });
-  check("the bill books the cost with the sale, ahead of the goods (0178)",
-    r2((await balance("5110")) - cogs7) === 500 && r2((await balance("1420")) - held7) === -500,
-    `5000 ${await balance("5110")} / 1090 ${await balance("1420")}`);
+  // Since 0191 the sale is earned when the goods go: the bill books no cost
+  // ahead (its price waits in 2230), and the delivery below recognises it.
+  check("the bill books no cost ahead of the goods (0191)",
+    r2((await balance("5110")) - cogs7) === 0 && r2((await balance("1420")) - held7) === 0,
+    `5110 ${r2((await balance("5110")) - cogs7)} / 1420 ${r2((await balance("1420")) - held7)}`);
   await reconcile();
 
   await P.postDelivery({ ...base, docDate: DAY, sourceDocumentId: pending.id,

@@ -127,9 +127,12 @@ try {
   const [mixed] = await sql`select gross_total::float as t, memo from document where doc_no = ${r[0].invoiceNo ?? ""}`;
   check("posted at the discounted total", r[0].status === "posted" && Math.abs(mixed?.t - 200_000) < 1, JSON.stringify({ r: r[0], mixed }));
   check("a serial on a no-serial item stays on the bill as a note", /NOTE1/.test(mixed?.memo ?? ""));
+  // NET (0204): the discount comes off what the goods cost, not to 5130.
   const [disc] = await sql`select coalesce(sum(-jl.base_amount), 0)::float as d from journal_line jl join account a on a.id = jl.account_id
     where a.code = '5130' and jl.journal_entry_id in (select journal_entry_id from document where doc_no = ${r[0].invoiceNo ?? ""})`;
-  check("the discount reaches 51201", Math.abs(disc.d - 30_000) < 1, String(disc.d));
+  const [cost] = await sql`select coalesce(sum(dl.stock_cost), 0)::float as c from document_line dl
+    join document d on d.id = dl.document_id where d.doc_no = ${r[0].invoiceNo ?? ""}`;
+  check("the discount lowers the cost, nothing to 5130", disc.d === 0 && Math.abs(cost.c - 200_000) < 1, `5130 ${disc.d}, stock cost ${cost.c}`);
 
   console.log("\n  A failure rolls back that invoice only; a retry posts nothing twice\n");
   const taken = s1[0];  // already in stock from the first bill
