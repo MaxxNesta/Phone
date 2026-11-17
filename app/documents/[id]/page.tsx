@@ -595,7 +595,7 @@ export default async function DocumentPage({
 
   const outstanding = isInvoice ? await getDocumentOutstanding(doc.id) : 0;
   // A customer return that still owes the customer money back.
-  const refundable = doc.doc_type === "SALES_RETURN" && doc.status === "POSTED"
+  const refundable = (doc.doc_type === "SALES_RETURN" || doc.doc_type === "CREDIT_NOTE") && doc.status === "POSTED"
     ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
 
   /**

@@ -9,6 +9,8 @@ type Invoice = {
   id: string; doc_no: string; doc_date: string;
   partner_id: string; partner_name: string;
   gross_total: string; outstanding: string;
+  /** Credit notes: what is left of the sale after earlier returns and notes. */
+  remaining?: string;
   /** A bill owed in a foreign currency is reduced in that currency. */
   currency?: string; exchange_rate?: number;
 };
@@ -60,7 +62,11 @@ export function NoteForm({
   const rate = Number(taxCodes.find((t) => t.id === taxCodeId)?.rate ?? 0);
   const tax = rate > 0 ? Math.round((net * rate) / 100) : 0;
   const gross = net + tax;
-  const tooMuch = gross > owed + 0.0001;
+  // A credit note may pass what is owed, up to what is left of the sale: the
+  // customer who already paid is owed the rest back, and Refund pays it.
+  const cap = kind === "credit" && invoice.remaining != null ? Number(invoice.remaining) / fxRate : owed;
+  const tooMuch = gross > cap + 0.0001;
+  const owedBack = Math.max(0, gross - owed);
   const isCredit = kind === "credit";
   const isPriceDiscount = !isCredit && category === "DISCOUNT";
 
@@ -226,9 +232,9 @@ export function NoteForm({
               </span>
             )}
             <span style={{ color: "var(--muted)" }}>
-              {isCredit ? "Customer will owe" : "We will owe"}
+              {isCredit && owedBack > 0 ? "Customer is owed back" : isCredit ? "Customer will owe" : "We will owe"}
             </span>
-            <span className="big">{money(Math.max(0, owed - gross))} {unit}</span>
+            <span className="big">{money(isCredit && owedBack > 0 ? owedBack : Math.max(0, owed - gross))} {unit}</span>
           </div>
         </div>
       </div>
@@ -262,10 +268,9 @@ export function NoteForm({
 
       {tooMuch && (
         <div className="alert">
-          That is more than the {money(owed)} still owing. A note cannot take an
-          invoice below nothing — {isCredit
-            ? "refund what was overpaid instead, or reduce the amount."
-            : "reduce the amount, or raise it against another bill."}
+          {isCredit
+            ? <>That is more than the {money(cap)} left of this sale after earlier returns and notes. Reduce the amount.</>
+            : <>That is more than the {money(owed)} still owing. A note cannot take a bill below nothing — reduce the amount, or raise it against another bill.</>}
         </div>
       )}
 
@@ -275,7 +280,7 @@ export function NoteForm({
         </button>
         <span className="page-sub">
           {isCredit
-            ? "Dr Sales Return / Cr Accounts Receivable. No stock moves — goods coming back is a return."
+            ? `Dr ${category === "DISCOUNT" ? "Sales Discounts" : "Sales Returns"} / Cr Accounts Receivable. No stock moves — goods coming back is a return.${owedBack > 0 ? " The customer is owed the difference: refund it from the posted note." : ""}`
             : isPriceDiscount
               ? (preview ? "Posts exactly the allocation above. No stock moves; only its cost." : "Review the allocation first.")
               : "Dr Accounts Payable / Cr Purchase Return. No stock moves — goods going back is a return."}

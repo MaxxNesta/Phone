@@ -8471,7 +8471,7 @@ export async function getRefundableReturns(companyId: string, locs: string[] | n
                         where f.source_document_id = d.id and f.doc_type = 'CUSTOMER_REFUND'
                           and f.status = 'POSTED'), 0)::float as refunded
         from document d
-       where d.company_id = ${companyId} and d.doc_type = 'SALES_RETURN' and d.status = 'POSTED'
+       where d.company_id = ${companyId} and d.doc_type in ('SALES_RETURN', 'CREDIT_NOTE') and d.status = 'POSTED'
          and d.reversed_by_document_id is null
          ${locs ? sql`and d.location_id = any(${locs})` : sql``}
          ${onlyId ? sql`and d.id = ${onlyId}` : sql``}

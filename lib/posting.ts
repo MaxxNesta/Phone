@@ -3222,12 +3222,12 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
     // to come back to the same place.
     let expenseAccountId: string;
     if (line.focReasonId) {
-      // A giveaway is settled the moment it leaves. No invoice is coming, so
-      // its cost goes to the reason's own account and never passes through
-      // the holding account below.
-      const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId} and applies_to = 'SALE'`;
-      if (!foc) throw new Error(SALE_FOC_ONLY);
-      expenseAccountId = foc.account_id as string;
+      // A free line is settled the moment it leaves: no invoice will bill it,
+      // so its cost never passes through the holding account below. Given
+      // with a sale it is cost of sales; a standalone giveaway (a delivery of
+      // nothing but free goods, for no order or invoice) goes to its reason.
+      expenseAccountId = await focExpenseAccount(tx, companyId, line.itemId, line.focReasonId,
+        !!input.sourceDocumentId || input.lines.some((l) => !l.focReasonId));
     } else {
       const cogs = await tx`
         select fn_resolve_account_for_item(${companyId}, 'COGS', ${line.itemId}) as a`;
@@ -3966,9 +3966,9 @@ async function issueStockLine(tx: TransactionSql, a: {
 
   let expenseAccountId: string;
   if (a.focReasonId) {
-    const [foc] = await tx`select account_id from foc_reason where id = ${a.focReasonId} and applies_to = 'SALE'`;
-    if (!foc) throw new Error(SALE_FOC_ONLY);
-    expenseAccountId = foc.account_id as string;
+    // Issued by a sales invoice, which always charges for something: a free
+    // item given with a sale is part of what the sale cost.
+    expenseAccountId = await focExpenseAccount(tx, a.companyId, a.itemId, a.focReasonId, true);
   } else {
     const [cogs] = await tx`
       select fn_resolve_account_for_item(${a.companyId}, 'COGS', ${a.itemId}) as a`;
@@ -5845,6 +5845,26 @@ const worthSomething = (journal: JournalLine[]) => journal.some((l) => Math.abs(
 /** A giveaway names why goods left; a supplier FOC reason is for goods that arrived free. */
 const SALE_FOC_ONLY = "A free line on a sale needs a giveaway reason; the supplier FOC reason is for goods received free.";
 
+/**
+ * Where the cost of goods given free goes (decision 2026-11-16).
+ *
+ * Given with a sale — the free case with the phone — it is part of what that
+ * sale cost, so cost of sales: margin reads true and nothing sits in
+ * promotion that was really the price of selling. A standalone giveaway,
+ * goods that leave with no sale at all, goes to its reason's own account
+ * (promotion, sample, office use, damage) so it shows as what it was. The
+ * reason is still checked and stored either way, for the FOC reports.
+ */
+async function focExpenseAccount(
+  tx: TransactionSql, companyId: string, itemId: string, focReasonId: string, withSale: boolean,
+): Promise<string> {
+  const [foc] = await tx`select account_id from foc_reason where id = ${focReasonId} and applies_to = 'SALE'`;
+  if (!foc) throw new Error(SALE_FOC_ONLY);
+  if (!withSale) return foc.account_id as string;
+  const [c] = await tx`select fn_resolve_account_for_item(${companyId}, 'COGS', ${itemId}) as a`;
+  return c.a as string;
+}
+
 async function supplierFoc<L extends InvoiceLine>(tx: TransactionSql, companyId: string, lines: L[]): Promise<L[]> {
   const ids = [...new Set(lines.map((l) => l.focReasonId).filter((x): x is string => Boolean(x)))];
   if (ids.length === 0) return lines;
@@ -7076,18 +7096,34 @@ async function _postNote(
   const tax = rate ? roundMoney((amount * rate.rate) / 100, scale) : 0;
   const gross = roundMoney(amount + tax, scale);
 
-  /* What the invoice still owes, so a note cannot take it below nothing. A
-     customer who has already paid needs their money back, not a credit — and
-     an invoice driven negative would sit in aging as a debt owed the wrong
-     way round. */
+  /* How far the note may go. A debit note stops at what we still owe the
+     supplier. A credit note may go on past what the customer still owes, up
+     to what is left of the invoice after earlier returns and notes: a
+     customer who has already paid is owed the difference, which leaves the
+     invoice below zero exactly as a return does, and Refund pays it out
+     (refundableOnReturn). Beyond the invoice's own value it is not a
+     reduction of this sale at all. */
   const [open] = await tx`
     select outstanding from v_open_item where document_id = ${input.sourceDocumentId}`;
-  const owed = Number(open?.outstanding ?? 0);
+  let owed = Number(open?.outstanding ?? 0);
+  if (isCredit) {
+    const [left] = await tx`
+      select d.gross_total - coalesce((
+               select sum(rr.gross_total) from document rr
+                where fn_current_document(rr.source_document_id) = fn_current_document(d.id)
+                  and rr.doc_type in ('SALES_RETURN', 'CREDIT_NOTE') and rr.status = 'POSTED'
+                  and rr.reversed_by_document_id is null and rr.reverses_document_id is null), 0) as v
+        from document d where d.id = ${input.sourceDocumentId}`;
+    owed = Number(left?.v ?? 0);
+  }
   if (gross > owed + 0.0001) {
     throw new Error(
-      `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} still owing and ` +
-      `this note is for ${Math.round(gross).toLocaleString("en-US")}. A note cannot take ` +
-      `an invoice below nothing — refund what was overpaid instead, or reduce the note.`
+      isCredit
+        ? `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} left after earlier returns and notes, ` +
+          `and this note is for ${Math.round(gross).toLocaleString("en-US")}. Reduce the note.`
+        : `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} still owing and ` +
+          `this note is for ${Math.round(gross).toLocaleString("en-US")}. A note cannot take ` +
+          `a bill below nothing — reduce the note.`
     );
   }
 
@@ -7142,20 +7178,28 @@ async function _postNote(
         left = round4(left - share);
         (h as Record<string, unknown>).share = share;
       });
+      // A discount keeps the sale at its price and adds to what was allowed
+      // off it, so the delivery releases the same Sales and more Sales
+      // Discounts; any other note lowers what the delivery releases as sale.
+      const asDiscount = input.category === "DISCOUNT";
       for (const h of held) {
         const share = Number((h as Record<string, unknown>).share);
         if (share === 0) continue;
         await tx`
           insert into sales_revenue_deferred
             (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
-          values (${companyId}, ${h.invoice_line_id}, ${doc.id}, 0, ${-share}, 0, ${h.revenue_account_id})`;
+          values (${companyId}, ${h.invoice_line_id}, ${doc.id}, 0, ${-share}, ${asDiscount ? share : 0}, ${h.revenue_account_id})`;
       }
       const bnd = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
       journal.push({ accountId: bnd[0].a, amount: round4(fromHeld) });
     }
-    // Revenue given back, tax given back, and the customer owes less.
-    const ret = await tx`
-      select fn_resolve_account_for_item(${companyId}, 'SALES_RETURN', null) as a`;
+    // Revenue given back, tax given back, and the customer owes less. A
+    // discount agreed after the sale is a discount, shown with the invoice's
+    // own (Sales Discounts, Option B: sales stay gross); every other note is
+    // a return of revenue.
+    const ret = input.category === "DISCOUNT"
+      ? await tx`select fn_system_account(${companyId}, 'SALES_DISCOUNT_ALLOWED') as a`
+      : await tx`select fn_resolve_account_for_item(${companyId}, 'SALES_RETURN', null) as a`;
     if (round4(amount - fromHeld) !== 0) journal.push({ accountId: ret[0].a, amount: round4(amount - fromHeld) });
     if (tax !== 0 && rate) {
       journal.push({ accountId: taxAccountFor(rate, "output"), amount: tax });
@@ -7568,9 +7612,10 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         if (billedCost === 0) {
           // Every unit came back before it was billed; nothing to take from cost of sales.
         } else if (line.focReasonId) {
-          const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId} and applies_to = 'SALE'`;
-          if (!foc) throw new Error(SALE_FOC_ONLY);
-          journal.push({ accountId: foc.account_id, amount: -billedCost, locationId });
+          // Back where it was charged: cost of sales if it came with a sale.
+          const acct = await focExpenseAccount(tx, companyId, line.itemId, line.focReasonId,
+            !!input.sourceDocumentId || input.lines.some((l) => !l.focReasonId));
+          journal.push({ accountId: acct, amount: -billedCost, locationId });
         } else {
           const cogs = await tx`
             select fn_resolve_account_for_item(${companyId}, 'COGS', ${line.itemId}) as a`;
@@ -8543,7 +8588,8 @@ export async function refundableOnReturn(tx: TransactionSql, returnId: string) {
                       where f.source_document_id = d.id and f.doc_type = 'CUSTOMER_REFUND'
                         and f.status = 'POSTED'), 0)::float as refunded
       from document d where d.id = ${returnId}`;
-  if (!r || r.doc_type !== "SALES_RETURN") throw new Error("A refund pays out a customer return");
+  // A return, or a credit note that took a paid invoice below zero.
+  if (!r || !["SALES_RETURN", "CREDIT_NOTE"].includes(r.doc_type)) throw new Error("A refund pays out a customer return or credit note");
   if (r.status !== "POSTED") throw new Error(`${r.doc_no} is ${String(r.status).toLowerCase()} and cannot be refunded`);
   let owed: number;
   if (r.invoice_id) {

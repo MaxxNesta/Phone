@@ -2395,8 +2395,8 @@ function refundFrom(fd: FormData) {
 
 async function refundScope(co: string, returnId: string) {
   const [r] = await sql`select partner_id, location_id from document
-                         where id = ${returnId} and company_id = ${co} and doc_type = 'SALES_RETURN'`;
-  if (!r) throw new Error("That return no longer exists");
+                         where id = ${returnId} and company_id = ${co} and doc_type in ('SALES_RETURN', 'CREDIT_NOTE')`;
+  if (!r) throw new Error("That return or credit note no longer exists");
   await assertMyBranch(r.location_id as string | null);
   return r.partner_id as string;
 }
@@ -2672,7 +2672,7 @@ export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise
 }
 
 export async function createDelivery(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("sales.post");
+  const user = await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Delivery posted";
 
@@ -2681,6 +2681,14 @@ export async function createDelivery(_prev: unknown, fd: FormData): Promise<Acti
     const lines = parseFulfillmentLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    // Nothing but free goods, for no order or invoice: a standalone giveaway
+    // (sample, promotion), stock leaving at the company's expense with no
+    // sale — so its cost goes to the reason's account, not cost of sales.
+    // That is authorised by someone who manages stock, not by whoever is at
+    // the counter. A free item given with a sale needs no such sign-off.
+    if (!str(fd, "source_document_id") && lines.every((l) => l.focReasonId) && !can(user, "inventory.manage")) {
+      return { error: "Every line is free and there is no sale behind it, so this is a giveaway. Ask a manager (or whoever manages stock) to post it." };
+    }
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
