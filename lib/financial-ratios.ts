@@ -87,9 +87,9 @@ async function totalsAt(db: Sql, companyId: string, dates: string[], branchId: s
         coalesce(sum(jl.base_amount) filter (where x.codes && array['11','12','13','14','15'] and x.money), 0) as cash,
         coalesce(sum(jl.base_amount) filter (where 'AR_CONTROL' = any(x.roles)), 0) as ar,
         coalesce(sum(jl.base_amount) filter (where 'INVENTORY' = any(x.roles)), 0) as inv,
-       -coalesce(sum(jl.base_amount) filter (where x.codes && array['21','22','23','24']), 0) as cl,
+       -coalesce(sum(jl.base_amount) filter (where x.codes && array['21','22','23','24','26']), 0) as cl,
        -coalesce(sum(jl.base_amount) filter (where 'AP_CONTROL' = any(x.roles)), 0) as ap,
-       -coalesce(sum(jl.base_amount) filter (where '25' = any(x.codes)), 0) as debt,
+       -coalesce(sum(jl.base_amount) filter (where x.codes && array['25','26']), 0) as debt,
         coalesce(sum(jl.base_amount) filter (where x.t = 'ASSET'), 0) as assets,
        -coalesce(sum(jl.base_amount) filter (where x.t = 'LIABILITY'), 0) as liab,
        -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE'

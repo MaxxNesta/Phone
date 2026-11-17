@@ -23,13 +23,15 @@
  *
  * Sections the statements read by code — keep them in step with lib/queries.ts
  * (totalsAt), lib/financial-ratios.ts and lib/format.ts SECTION_TYPE_LABEL:
- *   current assets 11–15 · non-current assets 16–19
- *   current liabilities 21–24 · long-term borrowings 25
+ *   current assets 1-CA (11–15) · non-current assets 1-NC (16–19)
+ *   current liabilities 2-CL (21–24, 26) · non-current liabilities 2-NL (25)
  *   sales 41 · other operating income 42 · other income class 7 · finance costs 69
  */
 export const CHART = [
   ["1",    "Assets",                                   "ASSET",     false],
-  ["11",   "Cash and Bank",                            "ASSET",     false, { under: "1", from: ["131", "132", "133"] }],
+  // The balance sheet's own split (0208); groups 11–15 current, 16–19 not.
+  ["1-CA", "Current Assets",                           "ASSET",     false, { under: "1" }],
+  ["11",   "Cash and Bank",                            "ASSET",     false, { under: "1-CA", from: ["131", "132", "133"] }],
   ["1110", "Cash Account",                             "ASSET",     true,  { from: "13101", cash: true }],
   ["1111", "Suspense Cash",                            "ASSET",     true,  { from: "13102", cash: true }],
   ["1112", "Yuan Cash",                                "ASSET",     true,  { from: "13103", cash: true }],
@@ -50,16 +52,16 @@ export const CHART = [
   ["1130", "AYA Bank (Cheque) Account",                "ASSET",     true,  { from: "13211", cash: true, bank: true }],
   ["1131", "CB Bank (Cheque) Account",                 "ASSET",     true,  { from: "13212", cash: true, bank: true }],
   ["1140", "Credit Card",                              "ASSET",     true,  { from: "13301", cash: true, bank: true }],
-  ["12",   "Receivables",                              "ASSET",     false, { under: "1", from: ["135", "138"] }],
+  ["12",   "Receivables",                              "ASSET",     false, { under: "1-CA", from: ["135", "138"] }],
   ["1210", "Accounts Receivable",                      "ASSET",     true,  { from: "13501", control: true }],
   ["1220", "Advance (Other Department)",               "ASSET",     true,  { from: "13801" }],
-  ["13",   "Inventory",                                "ASSET",     false, { under: "1", from: ["141", "142"] }],
+  ["13",   "Inventory",                                "ASSET",     false, { under: "1-CA", from: ["141", "142"] }],
   // The one inventory account: every receipt, sale and adjustment moves it.
   // It was "Inventory (Opening)" in the legacy chart, which it never was.
   ["1310", "Inventory",                                "ASSET",     true,  { from: "14101" }],
   ["1320", "Branch Stock Transfer",                    "ASSET",     true,  { from: "14201" }],
   // Not in the customer's chart; the posting engine needs all four.
-  ["14",   "Clearing and Tax",                         "ASSET",     false, { under: "1", from: ["143"] }],
+  ["14",   "Clearing and Tax",                         "ASSET",     false, { under: "1-CA", from: ["143"] }],
   ["1410", "GR/IR Clearing",                           "ASSET",     true,  { from: "14301", added: true }],
   // The sales mirror of GR/IR. Goods have left and nobody has been billed
   // for them, so their cost is out of inventory and not yet cost of sales.
@@ -69,7 +71,7 @@ export const CHART = [
   // Commercial tax paid on purchases, creditable against tax charged on
   // sales. An asset while it is still owed back to us, not an expense.
   ["1440", "Input Commercial Tax",                     "ASSET",     true,  { from: "14302", added: true }],
-  ["15",   "Advances and Prepayments",                 "ASSET",     false, { under: "1", from: ["13", "151", "152"] }],
+  ["15",   "Advances and Prepayments",                 "ASSET",     false, { under: "1-CA", from: ["13", "151", "152"] }],
   ["1510", "Prepayment (Sup)",                         "ASSET",     true,  { from: "15101" }],
   // Paid to a supplier before they billed us. Ours until they do.
   ["1520", "Purchase Advance",                         "ASSET",     true,  { from: "15102" }],
@@ -78,7 +80,10 @@ export const CHART = [
   ["1550", "Prepaid Delivery",                         "ASSET",     true,  { from: "15203" }],
   // A supplier rebate earned before their credit note (0207).
   ["1560", "Supplier Rebates Receivable",              "ASSET",     true],
-  ["16",   "Property, Plant and Equipment",            "ASSET",     false, { under: "1", from: ["11", "113", "114", "115"] }],
+  ["1-NC", "Non-current Assets",                       "ASSET",     false, { under: "1" }],
+  ["16",   "Property, Plant and Equipment",            "ASSET",     false, { under: "1-NC", from: ["11", "113", "114", "115"] }],
+  ["1601", "Land",                                     "ASSET",     true],
+  ["1602", "Buildings",                                "ASSET",     true],
   ["1610", "Generator & Solar",                        "ASSET",     true,  { from: "11301" }],
   ["1620", "Save/မီးခံသေတ္တာ",                          "ASSET",     true,  { from: "11401" }],
   ["1621", "Table, Chair & Locker",                    "ASSET",     true,  { from: "11402" }],
@@ -88,7 +93,9 @@ export const CHART = [
   ["1625", "Office Equipment",                         "ASSET",     true,  { from: "11406" }],
   ["1626", "CCTV & Router",                            "ASSET",     true,  { from: "11407" }],
   ["1630", "Cycle & EV Cycle",                         "ASSET",     true,  { from: "11501" }],
-  ["17",   "Accumulated Depreciation and Amortisation", "ASSET",    false, { under: "1", from: ["121"] }],
+  ["17",   "Accumulated Depreciation and Amortisation", "ASSET",    false, { under: "1-NC", from: ["121"] }],
+  // Land is not depreciated, so it has no accumulated depreciation.
+  ["1701", "Accumulated Dep; Buildings",               "ASSET",     true],
   ["1710", "Accumulated Dep; Generator & Solar",       "ASSET",     true,  { from: "12109" }],
   ["1720", "Accumulated Dep; Save/မီးခံသေတ္တာ",         "ASSET",     true,  { from: "12101" }],
   ["1721", "Accumulated Dep; Table, Chair & Locker",   "ASSET",     true,  { from: "12102" }],
@@ -99,18 +106,21 @@ export const CHART = [
   ["1726", "Accumulated Dep; CCTV & Router",           "ASSET",     true,  { from: "12108" }],
   ["1730", "Accumulated Dep; Cycle & EV Cycle",        "ASSET",     true,  { from: "12107" }],
   ["1740", "Accumulated Amor; Galaxy Software",        "ASSET",     true,  { from: "12110" }],
-  ["18",   "Intangible Assets",                        "ASSET",     false, { under: "1", from: ["16", "161"] }],
+  ["18",   "Intangible Assets",                        "ASSET",     false, { under: "1-NC", from: ["16", "161"] }],
   ["1810", "Galaxy Software Installation",             "ASSET",     true,  { from: "16101" }],
-  ["19",   "Other Non-current Assets",                 "ASSET",     false, { under: "1", from: ["17", "171"] }],
+  ["19",   "Other Non-current Assets",                 "ASSET",     false, { under: "1-NC", from: ["17", "171"] }],
   ["1910", "Staff Loan",                               "ASSET",     true,  { from: "17101" }],
 
   ["2",    "Liabilities",                              "LIABILITY", false],
-  ["21",   "Trade and Other Payables",                 "LIABILITY", false, { under: "2", from: ["21", "211"] }],
+  ["2-CL", "Current Liabilities",                      "LIABILITY", false, { under: "2" }],
+  ["21",   "Trade and Other Payables",                 "LIABILITY", false, { under: "2-CL", from: ["21", "211"] }],
   ["2110", "Accounts Payable",                         "LIABILITY", true,  { from: "21101", control: true }],
   ["2120", "Payable Expenses",                         "LIABILITY", true,  { from: "21108" }],
   ["2130", "Payable (Other)",                          "LIABILITY", true,  { from: "21109" }],
   ["2140", "Accrued Expense",                          "LIABILITY", true,  { from: "21110" }],
-  ["22",   "Advances and Deferred Revenue",            "LIABILITY", false, { under: "2", from: ["213"] }],
+  // What payroll owes staff until they are paid (HR settings, 0186).
+  ["2150", "Salary Payable",                           "LIABILITY", true],
+  ["22",   "Advances and Deferred Revenue",            "LIABILITY", false, { under: "2-CL", from: ["213"] }],
   // Taken from a customer before we billed them. Theirs until we do.
   ["2210", "Sale Advance",                             "LIABILITY", true,  { from: "21301" }],
   ["2220", "Prereceive Customer",                      "LIABILITY", true,  { from: "21302" }],
@@ -119,14 +129,19 @@ export const CHART = [
   ["2240", "Sale Cash",                                "LIABILITY", true,  { from: "21307" }],
   // A customer rebate to be paid out or credited later: IFRS 15 refund liability (0207).
   ["2250", "Rebates Payable (Refund Liability)",       "LIABILITY", true],
-  ["23",   "Consignment",                              "LIABILITY", false, { under: "2", from: ["214"] }],
+  ["23",   "Consignment",                              "LIABILITY", false, { under: "2-CL", from: ["214"] }],
   ["2310", "Consign Stock",                            "LIABILITY", true,  { from: "21401" }],
   ["2320", "Unpaid Sold Consign",                      "LIABILITY", true,  { from: "21402" }],
   // Commercial tax charged on a sale is money held for the revenue
   // department, never income, so it needs a liability.
-  ["24",   "Tax Payable",                              "LIABILITY", false, { under: "2", from: ["215"] }],
+  ["24",   "Tax Payable",                              "LIABILITY", false, { under: "2-CL", from: ["215"] }],
   ["2410", "Commercial Tax Payable",                   "LIABILITY", true,  { from: "21501", added: true }],
-  ["25",   "Long-term Borrowings",                     "LIABILITY", false, { under: "2", from: ["23", "230"] }],
+  // Loans due within a year, and the part of a long-term loan that is.
+  ["26",   "Short-term Borrowings",                    "LIABILITY", false, { under: "2-CL" }],
+  ["2610", "Short-term Loan",                          "LIABILITY", true],
+  ["2620", "Current Portion of Long-term Loan",        "LIABILITY", true],
+  ["2-NL", "Non-current Liabilities",                  "LIABILITY", false, { under: "2" }],
+  ["25",   "Long-term Borrowings",                     "LIABILITY", false, { under: "2-NL", from: ["23", "230"] }],
   ["2510", "Loan",                                     "LIABILITY", true,  { from: "23001" }],
 
   ["3",    "Equity",                                   "EQUITY",    false],
@@ -224,6 +239,7 @@ export const CHART = [
   ["6340", "Exchange Rate Gain/Loss",                  "EXPENSE",   true,  { from: "66001" }],
   ["6350", "Warranty Service Expenses",                "EXPENSE",   true,  { from: "66002" }],
   ["64",   "Depreciation and Amortisation",            "EXPENSE",   false, { under: "6", from: ["663", "664", "665", "666"] }],
+  ["6401", "Depreciation For Buildings",               "EXPENSE",   true],
   ["6410", "Depreciation For Generator/Solar",         "EXPENSE",   true,  { from: "66301" }],
   ["6420", "Depreciation For Save/ မီးခံသေတ္တာ",        "EXPENSE",   true,  { from: "66401" }],
   ["6421", "Depreciation For Table, Chair & Locker",   "EXPENSE",   true,  { from: "66402" }],

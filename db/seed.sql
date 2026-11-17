@@ -101,7 +101,7 @@ end loop;
 
 -- -------------------------------------------------------------- accounts --
 -- The MTK chart, generated from db/chart.mjs by scripts/gen-seed-chart.mjs.
--- The same 181 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
+-- The same 193 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
 -- loads: the demo and a real company are the same shape, so a report that
 -- reads right here reads right there. Regenerate after changing the chart.
 
@@ -119,20 +119,10 @@ insert into account (company_id, code, name, account_type, is_postable) values
 insert into account (company_id, parent_id, code, name, account_type, is_postable)
 select co, p.id, x.code, x.name, x.atype, false
 from (values
-    ('1', '11', 'Cash and Bank',                       'ASSET'::account_type),
-    ('1', '12', 'Receivables',                         'ASSET'::account_type),
-    ('1', '13', 'Inventory',                           'ASSET'::account_type),
-    ('1', '14', 'Clearing and Tax',                    'ASSET'::account_type),
-    ('1', '15', 'Advances and Prepayments',            'ASSET'::account_type),
-    ('1', '16', 'Property, Plant and Equipment',       'ASSET'::account_type),
-    ('1', '17', 'Accumulated Depreciation and Amortisation',  'ASSET'::account_type),
-    ('1', '18', 'Intangible Assets',                   'ASSET'::account_type),
-    ('1', '19', 'Other Non-current Assets',            'ASSET'::account_type),
-    ('2', '21', 'Trade and Other Payables',            'LIABILITY'::account_type),
-    ('2', '22', 'Advances and Deferred Revenue',       'LIABILITY'::account_type),
-    ('2', '23', 'Consignment',                         'LIABILITY'::account_type),
-    ('2', '24', 'Tax Payable',                         'LIABILITY'::account_type),
-    ('2', '25', 'Long-term Borrowings',                'LIABILITY'::account_type),
+    ('1', '1-CA', 'Current Assets',                      'ASSET'::account_type),
+    ('1', '1-NC', 'Non-current Assets',                  'ASSET'::account_type),
+    ('2', '2-CL', 'Current Liabilities',                 'LIABILITY'::account_type),
+    ('2', '2-NL', 'Non-current Liabilities',             'LIABILITY'::account_type),
     ('3', '31', 'Share Capital',                       'EQUITY'::account_type),
     ('3', '32', 'Retained Earnings',                   'EQUITY'::account_type),
     ('3', '33', 'Opening Balance',                     'EQUITY'::account_type),
@@ -146,6 +136,28 @@ from (values
     ('6', '64', 'Depreciation and Amortisation',       'EXPENSE'::account_type),
     ('6', '69', 'Finance Costs',                       'EXPENSE'::account_type),
     ('7', '71', 'Other Income',                        'REVENUE'::account_type)
+) as x(parent, code, name, atype)
+join account p on p.company_id = co and p.code = x.parent;
+
+-- Sections nested 2 deep, under the sections above.
+insert into account (company_id, parent_id, code, name, account_type, is_postable)
+select co, p.id, x.code, x.name, x.atype, false
+from (values
+    ('1-CA', '11', 'Cash and Bank',                       'ASSET'::account_type),
+    ('1-CA', '12', 'Receivables',                         'ASSET'::account_type),
+    ('1-CA', '13', 'Inventory',                           'ASSET'::account_type),
+    ('1-CA', '14', 'Clearing and Tax',                    'ASSET'::account_type),
+    ('1-CA', '15', 'Advances and Prepayments',            'ASSET'::account_type),
+    ('1-NC', '16', 'Property, Plant and Equipment',       'ASSET'::account_type),
+    ('1-NC', '17', 'Accumulated Depreciation and Amortisation',  'ASSET'::account_type),
+    ('1-NC', '18', 'Intangible Assets',                   'ASSET'::account_type),
+    ('1-NC', '19', 'Other Non-current Assets',            'ASSET'::account_type),
+    ('2-CL', '21', 'Trade and Other Payables',            'LIABILITY'::account_type),
+    ('2-CL', '22', 'Advances and Deferred Revenue',       'LIABILITY'::account_type),
+    ('2-CL', '23', 'Consignment',                         'LIABILITY'::account_type),
+    ('2-CL', '24', 'Tax Payable',                         'LIABILITY'::account_type),
+    ('2-CL', '26', 'Short-term Borrowings',               'LIABILITY'::account_type),
+    ('2-NL', '25', 'Long-term Borrowings',                'LIABILITY'::account_type)
 ) as x(parent, code, name, atype)
 join account p on p.company_id = co and p.code = x.parent;
 
@@ -184,6 +196,8 @@ from (values
     ('15', '1540', 'Prepaid Tax',                         'ASSET'::account_type,   false,  false,  false),
     ('15', '1550', 'Prepaid Delivery',                    'ASSET'::account_type,   false,  false,  false),
     ('15', '1560', 'Supplier Rebates Receivable',         'ASSET'::account_type,   false,  false,  false),
+    ('16', '1601', 'Land',                                'ASSET'::account_type,   false,  false,  false),
+    ('16', '1602', 'Buildings',                           'ASSET'::account_type,   false,  false,  false),
     ('16', '1610', 'Generator & Solar',                   'ASSET'::account_type,   false,  false,  false),
     ('16', '1620', 'Save/မီးခံသေတ္တာ',                    'ASSET'::account_type,   false,  false,  false),
     ('16', '1621', 'Table, Chair & Locker',               'ASSET'::account_type,   false,  false,  false),
@@ -193,6 +207,7 @@ from (values
     ('16', '1625', 'Office Equipment',                    'ASSET'::account_type,   false,  false,  false),
     ('16', '1626', 'CCTV & Router',                       'ASSET'::account_type,   false,  false,  false),
     ('16', '1630', 'Cycle & EV Cycle',                    'ASSET'::account_type,   false,  false,  false),
+    ('17', '1701', 'Accumulated Dep; Buildings',          'ASSET'::account_type,   false,  false,  false),
     ('17', '1710', 'Accumulated Dep; Generator & Solar',  'ASSET'::account_type,   false,  false,  false),
     ('17', '1720', 'Accumulated Dep; Save/မီးခံသေတ္တာ',   'ASSET'::account_type,   false,  false,  false),
     ('17', '1721', 'Accumulated Dep; Table, Chair & Locker',  'ASSET'::account_type,   false,  false,  false),
@@ -209,6 +224,7 @@ from (values
     ('21', '2120', 'Payable Expenses',                    'LIABILITY'::account_type,  false,  false,  false),
     ('21', '2130', 'Payable (Other)',                     'LIABILITY'::account_type,  false,  false,  false),
     ('21', '2140', 'Accrued Expense',                     'LIABILITY'::account_type,  false,  false,  false),
+    ('21', '2150', 'Salary Payable',                      'LIABILITY'::account_type,  false,  false,  false),
     ('22', '2210', 'Sale Advance',                        'LIABILITY'::account_type,  false,  false,  false),
     ('22', '2220', 'Prereceive Customer',                 'LIABILITY'::account_type,  false,  false,  false),
     ('22', '2230', 'Billed Not Delivered (Unearned Revenue)',  'LIABILITY'::account_type,  false,  false,  false),
@@ -217,6 +233,8 @@ from (values
     ('23', '2310', 'Consign Stock',                       'LIABILITY'::account_type,  false,  false,  false),
     ('23', '2320', 'Unpaid Sold Consign',                 'LIABILITY'::account_type,  false,  false,  false),
     ('24', '2410', 'Commercial Tax Payable',              'LIABILITY'::account_type,  false,  false,  false),
+    ('26', '2610', 'Short-term Loan',                     'LIABILITY'::account_type,  false,  false,  false),
+    ('26', '2620', 'Current Portion of Long-term Loan',   'LIABILITY'::account_type,  false,  false,  false),
     ('25', '2510', 'Loan',                                'LIABILITY'::account_type,  false,  false,  false),
     ('31', '3110', 'Capital Stock',                       'EQUITY'::account_type,  false,  false,  false),
     ('31', '3120', 'Capital',                             'EQUITY'::account_type,  false,  false,  false),
@@ -285,6 +303,7 @@ from (values
     ('63', '6331', 'Office Use',                          'EXPENSE'::account_type,  false,  false,  false),
     ('63', '6340', 'Exchange Rate Gain/Loss',             'EXPENSE'::account_type,  false,  false,  false),
     ('63', '6350', 'Warranty Service Expenses',           'EXPENSE'::account_type,  false,  false,  false),
+    ('64', '6401', 'Depreciation For Buildings',          'EXPENSE'::account_type,  false,  false,  false),
     ('64', '6410', 'Depreciation For Generator/Solar',    'EXPENSE'::account_type,  false,  false,  false),
     ('64', '6420', 'Depreciation For Save/ မီးခံသေတ္တာ',  'EXPENSE'::account_type,  false,  false,  false),
     ('64', '6421', 'Depreciation For Table, Chair & Locker',  'EXPENSE'::account_type,  false,  false,  false),
