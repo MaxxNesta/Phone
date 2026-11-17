@@ -101,7 +101,7 @@ end loop;
 
 -- -------------------------------------------------------------- accounts --
 -- The MTK chart, generated from db/chart.mjs by scripts/gen-seed-chart.mjs.
--- The same 179 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
+-- The same 181 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
 -- loads: the demo and a real company are the same shape, so a report that
 -- reads right here reads right there. Regenerate after changing the chart.
 
@@ -183,6 +183,7 @@ from (values
     ('15', '1530', 'Prepaid Rent',                        'ASSET'::account_type,   false,  false,  false),
     ('15', '1540', 'Prepaid Tax',                         'ASSET'::account_type,   false,  false,  false),
     ('15', '1550', 'Prepaid Delivery',                    'ASSET'::account_type,   false,  false,  false),
+    ('15', '1560', 'Supplier Rebates Receivable',         'ASSET'::account_type,   false,  false,  false),
     ('16', '1610', 'Generator & Solar',                   'ASSET'::account_type,   false,  false,  false),
     ('16', '1620', 'Save/မီးခံသေတ္တာ',                    'ASSET'::account_type,   false,  false,  false),
     ('16', '1621', 'Table, Chair & Locker',               'ASSET'::account_type,   false,  false,  false),
@@ -212,6 +213,7 @@ from (values
     ('22', '2220', 'Prereceive Customer',                 'LIABILITY'::account_type,  false,  false,  false),
     ('22', '2230', 'Billed Not Delivered (Unearned Revenue)',  'LIABILITY'::account_type,  false,  false,  false),
     ('22', '2240', 'Sale Cash',                           'LIABILITY'::account_type,  false,  false,  false),
+    ('22', '2250', 'Rebates Payable (Refund Liability)',  'LIABILITY'::account_type,  false,  false,  false),
     ('23', '2310', 'Consign Stock',                       'LIABILITY'::account_type,  false,  false,  false),
     ('23', '2320', 'Unpaid Sold Consign',                 'LIABILITY'::account_type,  false,  false,  false),
     ('24', '2410', 'Commercial Tax Payable',              'LIABILITY'::account_type,  false,  false,  false),

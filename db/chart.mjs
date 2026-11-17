@@ -76,6 +76,8 @@ export const CHART = [
   ["1530", "Prepaid Rent",                             "ASSET",     true,  { from: "15201" }],
   ["1540", "Prepaid Tax",                              "ASSET",     true,  { from: "15202" }],
   ["1550", "Prepaid Delivery",                         "ASSET",     true,  { from: "15203" }],
+  // A supplier rebate earned before their credit note (0207).
+  ["1560", "Supplier Rebates Receivable",              "ASSET",     true],
   ["16",   "Property, Plant and Equipment",            "ASSET",     false, { under: "1", from: ["11", "113", "114", "115"] }],
   ["1610", "Generator & Solar",                        "ASSET",     true,  { from: "11301" }],
   ["1620", "Save/မီးခံသေတ္တာ",                          "ASSET",     true,  { from: "11401" }],
@@ -115,6 +117,8 @@ export const CHART = [
   // Billed and not yet delivered: the price waits here until the goods go.
   ["2230", "Billed Not Delivered (Unearned Revenue)",  "LIABILITY", true,  { from: "21303" }],
   ["2240", "Sale Cash",                                "LIABILITY", true,  { from: "21307" }],
+  // A customer rebate to be paid out or credited later: IFRS 15 refund liability (0207).
+  ["2250", "Rebates Payable (Refund Liability)",       "LIABILITY", true],
   ["23",   "Consignment",                              "LIABILITY", false, { under: "2", from: ["214"] }],
   ["2310", "Consign Stock",                            "LIABILITY", true,  { from: "21401" }],
   ["2320", "Unpaid Sold Consign",                      "LIABILITY", true,  { from: "21402" }],
