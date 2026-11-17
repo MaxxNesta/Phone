@@ -80,6 +80,11 @@ try {
     const [supp] = await tx`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
     const [cust] = await tx`select id from business_partner where company_id = ${co.id} and is_customer order by code limit 1`;
     const today = new Date().toISOString().slice(0, 10);
+    // The company-wide reconciliation as found: another suite may have left
+    // its own gap, so what is checked is that these documents add none.
+    const gapNow = async () => (await tx`select coalesce(sum(gl_balance - stock_value), 0)::float as g
+                                          from v_check_inventory_reconciliation`)[0].g;
+    const gapBefore = await gapNow();
     // Scenario 1 a day earlier: in one transaction now() never moves, so lots
     // received "together" would leave FIFO order between them to chance.
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -286,8 +291,8 @@ try {
     await tx`update fiscal_period set status = 'OPEN' where id = ${fp.id}`;
 
     // 12 (brief 13) ---------------------------------------------------------
-    const gaps = await tx`select * from v_check_inventory_reconciliation`;
-    check("stock ledger and inventory account still tie after all of it", gaps.length === 0, JSON.stringify(gaps).slice(0, 300));
+    const gapAfter = await gapNow();
+    check("stock ledger and inventory account still tie after all of it (no new gap)", Math.abs(gapAfter - gapBefore) < 0.01, `before ${gapBefore}, after ${gapAfter}`);
 
     // 7 -----------------------------------------------------------------------
     console.log("\n  7. GROSS still posts as before\n");

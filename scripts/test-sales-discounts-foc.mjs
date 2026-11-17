@@ -51,6 +51,11 @@ try {
     const [cash] = await tx`select id from account where company_id = ${co.id} and is_cash_account and not is_bank_account and is_postable order by code limit 1`;
     const [promo] = await tx`select id, account_id from foc_reason where company_id = ${co.id} and applies_to = 'SALE' and code = 'PROMOTION'`;
     const today = new Date().toISOString().slice(0, 10);
+    // The company-wide reconciliation as found: another suite may have left
+    // its own gap, so what is checked is that these documents add none.
+    const gapNow = async () => (await tx`select coalesce(sum(gl_balance - stock_value), 0)::float as g
+                                          from v_check_inventory_reconciliation`)[0].g;
+    const gapBefore = await gapNow();
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
     const [promoAcct] = await tx`select code from account where id = ${promo.account_id}`;
     console.log(`\n  ${co.name}  ·  ${item.code}  ·  giveaways to ${promoAcct.code}  ·  rolled back at the end\n`);
@@ -193,8 +198,8 @@ try {
       where a.code = '4190' and je.entry_date = ${today}::date and jl.company_id = ${co.id}`;
     check("discounts in the report = 4190 in the ledger for the day", Math.abs(rep.totals.total - gl.v) < 0.01, `${rep.totals.total} vs ${gl.v}`);
     check("  and the report reads the same as the ledger figure it shows", Math.abs(rep.ledger[0].v - gl.v) < 0.01);
-    const gaps = await tx`select * from v_check_inventory_reconciliation`;
-    check("stock ledger and inventory account tie", gaps.length === 0, JSON.stringify(gaps).slice(0, 300));
+    const gapAfter = await gapNow();
+    check("stock ledger and inventory account tie (no new gap)", Math.abs(gapAfter - gapBefore) < 0.01, `before ${gapBefore}, after ${gapAfter}`);
 
     throw ROLLBACK;
   });

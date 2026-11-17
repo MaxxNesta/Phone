@@ -64,7 +64,10 @@ export const currentUser = cache(async (): Promise<SessionUser | null> => {
   if (!authRequired()) {
     const owner = await ownerUser();
     if (!owner || !previewAllowed()) return owner;
-    const jar = await cookies();
+    // Outside a request (a script calling an action) there is no browser and
+    // so no role being previewed: plain owner.
+    let jar: Awaited<ReturnType<typeof cookies>>;
+    try { jar = await cookies(); } catch { return owner; }
     const as = jar.get(PREVIEW_ROLE_COOKIE)?.value;
     if (!as || !(ROLES as readonly string[]).includes(as)) return owner;
     // A branch id means "works at this branch only"; none means all branches.
