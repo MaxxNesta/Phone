@@ -95,8 +95,10 @@ try {
       return Object.fromEntries(rows.map((r) => [r.code, Math.round(r.v * 100) / 100]));
     };
     const lotCost = async (receiptId) => {
-      const [r] = await tx`select sl.unit_cost::float as u, sl.qty_received::float as q from stock_lot sl
-         join stock_movement sm on sm.id = sl.stock_movement_id where sm.document_id = ${receiptId}
+      // What a unit carries now: the lot's own cost plus every correction to it.
+      const [r] = await tx`select (sl.unit_cost + coalesce((select sum(a.delta_unit_cost) from stock_lot_adjustment a
+                                    where a.lot_id = sl.id), 0))::float as u, sl.qty_received::float as q
+         from stock_lot sl join stock_movement sm on sm.id = sl.stock_movement_id where sm.document_id = ${receiptId}
          order by sl.created_at limit 1`;
       return r;
     };
@@ -228,6 +230,64 @@ try {
     check("  refund: Dr cash 500 / Cr payables 500, the bill settles", jr[cashAcct.code] === 500 && jr["2110"] === -500 && (await owing(b8.id)) === 0, JSON.stringify(jr));
     const [no] = await tx`select doc_no from document where id = ${rf.id}`;
     check("  numbered as a supplier refund", /^SRF/.test(no.doc_no), no.doc_no);
+
+    // 9 (brief 4) -----------------------------------------------------------
+    console.log("");
+    console.log("  9. a later discount with every unit still in stock");
+    console.log("");
+    const g9 = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      lines: [{ itemId: other.id, qty: 5, unitCost: 1000 }] }, tx);
+    const [g9l] = await lineOf(g9.id);
+    const b9 = await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today, dueDate: null,
+      goodsReceiptId: g9.id, lines: [{ itemId: other.id, qty: 5, unitPrice: 1000, sourceLineId: g9l }] }, tx);
+    const d9 = await P.postDebitNote({ companyId: co.id, partnerId: supp.id, docDate: today, sourceDocumentId: b9.id,
+      amount: 300, category: "DISCOUNT", reason: "Allowance, all on the shelf" }, tx);
+    const j9 = await posted(d9.id);
+    check("all 300 off stock, nothing to cost of sales", j9["1310"] === -300 && !j9["5110"] && !j9["5940"], JSON.stringify(j9));
+    check("  the lot now costs 940 a unit", near((await lotCost(g9.id)).u, 940), JSON.stringify(await lotCost(g9.id)));
+
+    // 10 (brief 6) ----------------------------------------------------------
+    console.log("");
+    console.log("  10. the discounted goods were moved to another warehouse");
+    console.log("");
+    const [wh] = await tx`select parent_id from location where id = ${loc.id}`;
+    const [loc2] = await tx`insert into location (company_id, parent_id, code, name, is_stock_location)
+      values (${co.id}, ${wh.parent_id}, 'ZDF-WH2', 'Discount test warehouse', true) returning id`;
+    // Received two days ago, so FIFO moves exactly this receipt's units.
+    const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10);
+    const g10 = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: twoDaysAgo,
+      lines: [{ itemId: other.id, qty: 4, unitCost: 2000 }] }, tx);
+    const [g10l] = await lineOf(g10.id);
+    await P.postStockTransfer({ companyId: co.id, fromLocationId: loc.id, toLocationId: loc2.id, docDate: today,
+      lines: [{ itemId: other.id, qty: 2 }] }, tx);
+    const b10 = await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today, dueDate: null,
+      goodsReceiptId: g10.id, lines: [{ itemId: other.id, qty: 4, unitPrice: 2000, sourceLineId: g10l }] }, tx);
+    const d10 = await P.postDebitNote({ companyId: co.id, partnerId: supp.id, docDate: today, sourceDocumentId: b10.id,
+      amount: 400, category: "DISCOUNT", reason: "Allowance after a transfer" }, tx);
+    const j10 = await posted(d10.id);
+    check("all 400 off stock: the moved units are still ours", j10["1310"] === -400 && !j10["5110"], JSON.stringify(j10));
+    const at = async (l) => Number((await tx`select coalesce(sum(total_cost), 0)::float as v from stock_movement
+      where document_id = ${d10.id} and location_id = ${l}`)[0].v);
+    check("  200 at each warehouse, following the goods", (await at(loc.id)) === -200 && (await at(loc2.id)) === -200,
+      `${await at(loc.id)} / ${await at(loc2.id)}`);
+
+    // 11 (brief 12) ---------------------------------------------------------
+    console.log("");
+    console.log("  11. reversal and a closed period");
+    console.log("");
+    await P.voidDocument({ documentId: d9.id, reason: "Entered twice" }, tx);
+    check("voiding the note puts the lot back at 1,000", near((await lotCost(g9.id)).u, 1000), JSON.stringify(await lotCost(g9.id)));
+    const [fp] = await tx`select id from fiscal_period where company_id = ${co.id}
+      and start_date <= ${today}::date and end_date >= ${today}::date`;
+    await tx`update fiscal_period set status = 'CLOSED' where id = ${fp.id}`;
+    const closed = await tx.savepoint((sp) => P.postDebitNote({ companyId: co.id, partnerId: supp.id, docDate: today,
+      sourceDocumentId: b9.id, amount: 100, category: "DISCOUNT", reason: "Into a closed month" }, sp)).then(() => null, (e) => e.message);
+    check("a note into a closed period is refused", !!closed, closed ?? "posted");
+    await tx`update fiscal_period set status = 'OPEN' where id = ${fp.id}`;
+
+    // 12 (brief 13) ---------------------------------------------------------
+    const gaps = await tx`select * from v_check_inventory_reconciliation`;
+    check("stock ledger and inventory account still tie after all of it", gaps.length === 0, JSON.stringify(gaps).slice(0, 300));
 
     // 7 -----------------------------------------------------------------------
     console.log("\n  7. GROSS still posts as before\n");

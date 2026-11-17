@@ -29,6 +29,7 @@ const url = process.env.DATABASE_URL;
 const sql = postgres(url, { ssl: url.includes("localhost") ? false : "require",
   prepare: !url.includes("-pooler."), onnotice: () => {}, max: 1 });
 const P = await import("../lib/posting.ts");
+const { discountReport } = await import("../lib/discount-report.ts");
 
 let bad = 0;
 const check = (label, ok, detail = "") => {
@@ -163,6 +164,37 @@ try {
     const s8b = await sale([{ itemId: item.id, qty: 1, unitPrice: 1_000_000 }]);
     const [l8b] = await tx`select revenue_amount from document_line where document_id = ${s8b.id}`;
     check("  no free line: no allocation recorded", l8b.revenue_amount === null);
+
+    // 9 (brief 1) ------------------------------------------------------------
+    console.log("");
+    console.log("  9. a discount on the invoice itself");
+    console.log("");
+    const s9 = await sale([{ itemId: item.id, qty: 2, unitPrice: 5000, discountPct: 10 }]);
+    const j9 = await posted(s9.id);
+    check("Sales at the full 10,000, 1,000 to 4190, receivable 9,000", j9["4110"] === -10000 && j9["4190"] === 1000 && j9["1210"] === 9000, JSON.stringify(j9));
+
+    // 10 (brief 14) ----------------------------------------------------------
+    console.log("");
+    console.log("  10. the report against the books, nothing counted twice");
+    console.log("");
+    const s10 = await P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      toDeliver: true, paymentType: "CREDIT", allowOverCreditLimit: true, creditOverrideReason: "test",
+      lines: [{ itemId: item.id, qty: 1, unitPrice: 5000 }, { itemId: item.id, qty: 1, unitPrice: 0, focReasonId: promo.id }] }, tx);
+    const l10 = await tx`select id from document_line where document_id = ${s10.id} order by line_no`;
+    await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, sourceDocumentId: s10.id,
+      lines: [{ itemId: item.id, qty: 1, sourceLineId: l10[0].id }, { itemId: item.id, qty: 1, unitPrice: 0, focReasonId: promo.id, sourceLineId: l10[1].id }] }, tx);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const rep = await discountReport(co.id, "sales", today, tomorrow, null, tx);
+    const mine = (id) => rep.free.filter((f) => f.document_id === id).length;
+    const [d10] = await tx`select id from document where source_document_id = ${s10.id} and doc_type = 'DELIVERY'`;
+    check("the deliver-later free unit counted once (on its delivery)", mine(s10.id) + mine(d10.id) === 1, `${mine(s10.id)} + ${mine(d10.id)}`);
+    const [gl] = await tx`select coalesce(sum(jl.base_amount), 0)::float as v from journal_line jl
+      join journal_entry je on je.id = jl.journal_entry_id join account a on a.id = jl.account_id
+      where a.code = '4190' and je.entry_date = ${today}::date and jl.company_id = ${co.id}`;
+    check("discounts in the report = 4190 in the ledger for the day", Math.abs(rep.totals.total - gl.v) < 0.01, `${rep.totals.total} vs ${gl.v}`);
+    check("  and the report reads the same as the ledger figure it shows", Math.abs(rep.ledger[0].v - gl.v) < 0.01);
+    const gaps = await tx`select * from v_check_inventory_reconciliation`;
+    check("stock ledger and inventory account tie", gaps.length === 0, JSON.stringify(gaps).slice(0, 300));
 
     throw ROLLBACK;
   });

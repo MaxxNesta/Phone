@@ -20,15 +20,17 @@ import { sql } from "./db";
  */
 export type Side = "sales" | "purchases";
 
-export async function discountReport(companyId: string, side: Side, from: string, to: string, locs: string[] | null) {
+export async function discountReport(companyId: string, side: Side, from: string, to: string, locs: string[] | null,
+  /** A test passes its transaction, to read what it has not committed. */
+  db: typeof sql = sql) {
   const sales = side === "sales";
   const invType = sales ? "SALES_INVOICE" : "PURCHASE_INVOICE";
   const noteType = sales ? "CREDIT_NOTE" : "DEBIT_NOTE";
-  const inScope = locs ? sql`and d.location_id = any(${locs})` : sql``;
-  const period = sql`d.posting_date >= ${from}::date and d.posting_date < ${to}::date`;
+  const inScope = locs ? db`and d.location_id = any(${locs})` : db``;
+  const period = db`d.posting_date >= ${from}::date and d.posting_date < ${to}::date`;
 
   const [lines, notes, free, ledger] = await Promise.all([
-    sql`
+    db`
       select dl.id, d.id as document_id, d.doc_no, to_char(d.posting_date, 'YYYY-MM-DD') as date,
              d.partner_id, coalesce(p.name, 'Walk-in') as partner, i.code as item_code, i.name as item_name,
              dl.base_qty::float as qty,
@@ -38,7 +40,7 @@ export async function discountReport(companyId: string, side: Side, from: string
              dl.net_amount::float as net,
              -- Purchases: whether the bill's discount lowered the goods' cost
              -- (NET) or was credited to Purchase Discounts (GROSS).
-             ${sales ? sql`null` : sql`exists (select 1 from journal_line jl
+             ${sales ? db`null` : db`exists (select 1 from journal_line jl
                 join system_account sa on sa.account_id = jl.account_id and sa.role = 'PURCHASE_DISCOUNT_RECEIVED'
                where jl.journal_entry_id = d.journal_entry_id)`} as credited
         from document d
@@ -50,7 +52,7 @@ export async function discountReport(companyId: string, side: Side, from: string
          and coalesce(dl.discount_amount, 0) + coalesce(dl.volume_discount_amount, 0)
              + coalesce(dl.invoice_discount_amount, 0) > 0
        order by d.posting_date desc, d.doc_no desc, dl.line_no`,
-    sql`
+    db`
       select d.id as document_id, d.doc_no, to_char(d.posting_date, 'YYYY-MM-DD') as date,
              d.partner_id, coalesce(p.name, 'Walk-in') as partner, d.net_total::float as amount,
              d.memo as reason, src.id as against_id, src.doc_no as against,
@@ -59,7 +61,7 @@ export async function discountReport(companyId: string, side: Side, from: string
              (select coalesce(json_agg(json_build_object('code', a.code, 'name', a.name, 'amount', abs(x.v)) order by a.code), '[]')
                 from (select jl.account_id, sum(jl.base_amount) as v from journal_line jl
                        where jl.journal_entry_id = d.journal_entry_id group by jl.account_id
-                      having ${sales ? sql`sum(jl.base_amount) > 0` : sql`sum(jl.base_amount) < 0`}) x
+                      having ${sales ? db`sum(jl.base_amount) > 0` : db`sum(jl.base_amount) < 0`}) x
                 join account a on a.id = x.account_id) as landed
         from document d
         left join document src on src.id = d.source_document_id
@@ -67,7 +69,7 @@ export async function discountReport(companyId: string, side: Side, from: string
        where d.company_id = ${companyId} and d.doc_type = ${noteType} and d.status = 'POSTED'
          and d.adjustment_reason = 'DISCOUNT' and ${period} ${inScope}
        order by d.posting_date desc, d.doc_no desc`,
-    sales ? sql`
+    sales ? db`
       -- A free line counts where its goods moved: on the invoice that issued
       -- them, or on the delivery. A deliver-later invoice's free line is
       -- counted by its delivery, never twice.
@@ -90,7 +92,7 @@ export async function discountReport(companyId: string, side: Side, from: string
        where d.company_id = ${companyId} and d.doc_type in ('SALES_INVOICE', 'DELIVERY') and d.status = 'POSTED'
          and ${period} ${inScope}
          and exists (select 1 from stock_movement sm where sm.document_line_id = dl.id)
-       order by d.posting_date desc, d.doc_no desc` : sql`
+       order by d.posting_date desc, d.doc_no desc` : db`
       select dl.id, d.id as document_id, d.doc_type, d.doc_no, to_char(d.posting_date, 'YYYY-MM-DD') as date,
              coalesce(p.name, '—') as partner, i.code as item_code, i.name as item_name,
              dl.base_qty::float as qty, r.code as reason_code, r.name as reason,
@@ -106,7 +108,7 @@ export async function discountReport(companyId: string, side: Side, from: string
        where d.company_id = ${companyId} and d.doc_type = 'PURCHASE_INVOICE' and d.status = 'POSTED'
          and ${period} ${inScope}
        order by d.posting_date desc, d.doc_no desc`,
-    sql`
+    db`
       select sa.role, a.code, a.name,
              coalesce((select sum(jl.base_amount) from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
                         where jl.account_id = a.id and je.entry_date >= ${from}::date and je.entry_date < ${to}::date), 0)::float as v
