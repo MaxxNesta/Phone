@@ -76,6 +76,8 @@ export type InvoiceLine = {
    * shelf and recorded as gone.
    */
   serials?: string[];
+  /** Secondhand buyback: these IMEIs may have been ours before (see FulfillmentLine). */
+  reacquire?: boolean;
 
   /** Customer warranty on this line, in months. Defaults to the item's. */
   warrantyMonths?: number | null;
@@ -257,6 +259,14 @@ export type FulfillmentLine = {
    * discover that is while the box is open.
    */
   serials?: string[];
+  /**
+   * Secondhand buyback: a listed IMEI that has been ours before and has since
+   * gone out (sold, returned to a supplier) comes back as the same unit, on a
+   * new layer at this receipt's cost, its history kept. One still on a shelf
+   * is refused — a phone cannot be in stock twice. Without this flag any
+   * known IMEI is refused, as a new phone from a supplier never has history.
+   */
+  reacquire?: boolean;
 
   /** Optional per-unit detail for a received serial: IMEI 2, the maker's
    *  serial, supplier warranty. Keyed by the serial it describes. */
@@ -4930,16 +4940,42 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
          where company_id = ${companyId}
            and (serial_no = any(${[...given, ...extra]}) or imei2 = any(${[...given, ...extra]})
                 or device_serial = any(${extra}))`;
+      let fresh = given;
       if (clash.length > 0) {
-        throw new Error(
-          `${(clash as unknown as { serial_no: string }[])[0].serial_no} is already `
-          + `recorded. A serial identifies one unit, and that one has arrived before.`
-        );
+        const known = line.reacquire ? await tx`
+          select s.id, s.serial_no,
+                 exists (select 1 from v_stock_serial_available a where a.serial_id = s.id) as on_shelf
+            from stock_serial s
+           where s.company_id = ${companyId} and s.serial_no = any(${given})` : [];
+        const back = known.filter((k) => !k.on_shelf);
+        const stillHere = known.find((k) => k.on_shelf);
+        if (stillHere) {
+          throw new Error(`${stillHere.serial_no} is in stock already. A phone cannot be on the shelf twice.`);
+        }
+        // Anything clashing that is not a whole known IMEI coming back (an
+        // IMEI 2 or maker's serial of another unit) is still refused.
+        if (!line.reacquire || clash.length !== back.length) {
+          throw new Error(
+            `${(clash as unknown as { serial_no: string }[])[0].serial_no} is already `
+            + `recorded. A serial identifies one unit, and that one has arrived before.`
+          );
+        }
+        // The same unit, a new acquisition: onto this receipt's layer, at
+        // this receipt's cost, with everything before it kept in its events.
+        await tx`update stock_serial set stock_lot_id = ${lotId}, stock_movement_id = ${movement.id},
+                   item_id = ${line.itemId}
+                  where id = any(${back.map((k) => k.id as string)})`;
+        await insertInChunks(tx, "stock_serial_event", back.map((k) => ({
+          company_id: companyId, serial_id: k.id, event: "REACQUIRED",
+          document_id: doc.id, to_location_id: locationId, lot_id: lotId,
+        })));
+        const reused = new Set(back.map((k) => k.serial_no as string));
+        fresh = given.filter((sn) => !reused.has(sn));
       }
       // Two statements for the whole line, not two per unit: a box of 200
       // phones was 400 round trips.
-      if (given.length > 0) {
-        const units = await insertInChunks(tx, "stock_serial", given.map((sn) => {
+      if (fresh.length > 0) {
+        const units = await insertInChunks(tx, "stock_serial", fresh.map((sn) => {
           const d = details.get(sn);
           return {
             company_id: companyId, item_id: line.itemId, serial_no: sn,
@@ -6476,7 +6512,7 @@ export async function postPurchaseWithReceipt(
           batchNo: l.batchNo, expiryDate: l.expiryDate,
           // The handsets in the box. Without these a bill that receives
           // phones is refused: the receipt it composes has to name them.
-          serials: l.serials, unitDetails: l.unitDetails,
+          serials: l.serials, unitDetails: l.unitDetails, reacquire: l.reacquire,
           // Only where the order is what this receipt answers. Without an
           // order these carry nothing, exactly as before.
           sourceLineId: orderId ? l.sourceLineId : undefined,

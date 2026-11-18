@@ -1,7 +1,7 @@
 import { sql } from "./db";
 import { can, DISCOUNT_CEILING_PCT, type SessionUser } from "./auth-core";
 
-type Line = { itemId: string; unitPrice: number; discountPct?: number | null; focReasonId?: string | null };
+type Line = { itemId: string; unitPrice: number; discountPct?: number | null; focReasonId?: string | null; serials?: string[] };
 export type PriceProblem = {
   key: "discountNeedsManager" | "priceNeedsManager" | "freeNeedsManager" | "belowCostNeedsManager";
   values: Record<string, string | number>;
@@ -61,10 +61,28 @@ export async function priceProblem(
   const ids = [...new Set(lines.map((l) => l.itemId))];
   if (ids.length === 0) return null;
   const known = await facts(ids);
+  /* Secondhand units (0209) sell at a price typed for each phone: the list
+     is the new phone's, and the item's average cost mixes new and used. A
+     line of nothing but used IMEIs is held only to those phones' own cost. */
+  const imeis = lines.flatMap((l) => l.serials ?? []).map((x) => x.trim()).filter(Boolean);
+  const used = new Map<string, number>();
+  if (imeis.length) {
+    for (const r of await sql`
+      select v.imei, v.unit_cost::float as cost from v_stock_serial v
+       where v.company_id = ${co} and v.imei = any(${imeis})
+         and exists (select 1 from secondhand_intake i where i.serial_id = v.serial_id
+                                                         and i.receipt_id = v.received_document_id)`) used.set(r.imei, r.cost);
+  }
   for (const l of lines) {
     const item = known.get(l.itemId);
     if (!item) continue;
     const charged = l.unitPrice * (1 - (l.discountPct ?? 0) / 100);
+    const mine = (l.serials ?? []).map((x) => x.trim()).filter(Boolean);
+    if (mine.length && mine.every((x) => used.has(x))) {
+      const own = mine.reduce((t, x) => t + used.get(x)!, 0) / mine.length;
+      if (charged < own - 0.005) return { key: "belowCostNeedsManager", values: { name: item.name } };
+      continue;
+    }
     if (item.price) {
       const floor = item.price * (1 - pct / 100);
       if (charged < floor - 0.005) {

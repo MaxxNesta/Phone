@@ -101,7 +101,7 @@ end loop;
 
 -- -------------------------------------------------------------- accounts --
 -- The MTK chart, generated from db/chart.mjs by scripts/gen-seed-chart.mjs.
--- The same 193 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
+-- The same 194 accounts lib/setup.ts scaffolds and scripts/load-coa.mjs
 -- loads: the demo and a real company are the same shape, so a report that
 -- reads right here reads right there. Regenerate after changing the chart.
 
@@ -190,6 +190,7 @@ from (values
     ('14', '1420', 'Goods Shipped Not Invoiced',          'ASSET'::account_type,   false,  false,  false),
     ('14', '1430', 'Landed Cost Clearing',                'ASSET'::account_type,   false,  false,  false),
     ('14', '1440', 'Input Commercial Tax',                'ASSET'::account_type,   false,  false,  false),
+    ('14', '1450', 'Trade-in Clearing',                   'ASSET'::account_type,   false,  false,  false),
     ('15', '1510', 'Prepayment (Sup)',                    'ASSET'::account_type,   false,  false,  false),
     ('15', '1520', 'Purchase Advance',                    'ASSET'::account_type,   false,  false,  false),
     ('15', '1530', 'Prepaid Rent',                        'ASSET'::account_type,   false,  false,  false),
@@ -345,6 +346,7 @@ from (values
     ('CUSTOMER_ADVANCE',            '2210'),
     ('SUPPLIER_ADVANCE',            '1520'),
     ('BILLED_NOT_DELIVERED',        '2230'),
+    ('TRADE_IN_CLEARING',           '1450'),
     ('OUTPUT_TAX',                  '2410'),
     ('INPUT_TAX',                   '1440')
 ) as r(role, code)

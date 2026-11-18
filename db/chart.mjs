@@ -71,6 +71,8 @@ export const CHART = [
   // Commercial tax paid on purchases, creditable against tax charged on
   // sales. An asset while it is still owed back to us, not an expense.
   ["1440", "Input Commercial Tax",                     "ASSET",     true,  { from: "14302", added: true }],
+  // A trade-in's bill and sale settle against each other here; nets to nothing (0209).
+  ["1450", "Trade-in Clearing",                        "ASSET",     true],
   ["15",   "Advances and Prepayments",                 "ASSET",     false, { under: "1-CA", from: ["13", "151", "152"] }],
   ["1510", "Prepayment (Sup)",                         "ASSET",     true,  { from: "15101" }],
   // Paid to a supplier before they billed us. Ours until they do.
@@ -292,6 +294,8 @@ export const SYSTEM = {
   // An invoice raised before its goods leave: the sale is earned on delivery,
   // so the price is held here until then (migration 0191).
   BILLED_NOT_DELIVERED: "2230",
+  // A trade-in's payment and receipt pass through it and cancel (0209).
+  TRADE_IN_CLEARING: "1450",
 
   // Commercial tax: held for the revenue department on a sale, creditable on
   // a purchase.
