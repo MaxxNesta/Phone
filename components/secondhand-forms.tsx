@@ -31,13 +31,13 @@ function Seller({ label }: { label: string }) {
     <div className="card">
       <div className="card-head"><h2>{label}</h2></div>
       <div className="card-body"><div className="row">
-        <div className="field"><label htmlFor="seller_name">Name *</label><input id="seller_name" name="seller_name" required /></div>
-        <div className="field"><label htmlFor="seller_phone">Phone *</label><input id="seller_phone" name="seller_phone" inputMode="tel" required /></div>
-        <div className="field"><label htmlFor="seller_kind">Source *</label>
+        <div className="field"><label htmlFor="seller_name">Name</label><input id="seller_name" name="seller_name" required /></div>
+        <div className="field"><label htmlFor="seller_phone">Phone</label><input id="seller_phone" name="seller_phone" inputMode="tel" required /></div>
+        <div className="field"><label htmlFor="seller_kind">Source</label>
           <select id="seller_kind" name="seller_kind" value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="CUSTOMER">Customer (individual)</option><option value="SHOP">Another shop</option>
           </select></div>
-        <div className="field"><label htmlFor="seller_nrc">NRC {kind === "CUSTOMER" ? "*" : ""}</label>
+        <div className="field"><label htmlFor="seller_nrc">NRC</label>
           <input id="seller_nrc" name="seller_nrc" required={kind === "CUSTOMER"} placeholder="12/ABC(N)123456" />
           <span className="hint">Kept with the phone, in case it is ever reported stolen</span></div>
       </div></div>
@@ -51,11 +51,11 @@ function Inspection({ checks, setChecks }: { checks: Record<string, string>; set
       <div className="card-head"><h2>Inspection</h2></div>
       <div className="card-body">
         <div className="row">
-          <div className="field"><label htmlFor="grade">Condition (grade) *</label>
+          <div className="field"><label htmlFor="grade">Condition (grade)</label>
             <select id="grade" name="grade" defaultValue="B">{GRADES.map((g) => <option key={g} value={g}>Grade {g}</option>)}</select></div>
           <div className="field"><label htmlFor="battery_pct">Battery health %</label>
             <input id="battery_pct" name="battery_pct" type="number" min="0" max="100" /></div>
-          <div className="field"><label htmlFor="activation_lock">Activation lock *</label>
+          <div className="field"><label htmlFor="activation_lock">Activation lock</label>
             <select id="activation_lock" name="activation_lock" defaultValue="REMOVED">
               <option value="REMOVED">Removed</option><option value="PRESENT">Still on</option></select></div>
         </div>
@@ -123,12 +123,12 @@ export function BuySecondhandForm({ action, items, locations, cashAccounts, toda
         <div className="card">
           <div className="card-head"><h2>Phone</h2></div>
           <div className="card-body"><div className="row">
-            <div className="field" style={{ flex: 2 }}><label htmlFor="item_id">Model *</label>
+            <div className="field" style={{ flex: 2 }}><label htmlFor="item_id">Model</label>
               <select id="item_id" name="item_id" required defaultValue={info?.unit?.item_id ?? ""} key={info?.unit?.item_id ?? "none"}>
                 <option value="" disabled>Choose the model…</option>
                 {items.map((i) => <option key={i.id} value={i.id}>{i.name} · {i.code}</option>)}
               </select></div>
-            <div className="field"><label htmlFor="imei">IMEI *</label>
+            <div className="field"><label htmlFor="imei">IMEI</label>
               <input id="imei" name="imei" required value={imei} onChange={(e) => setImei(e.target.value)} inputMode="numeric" /></div>
           </div><History info={info} /></div>
         </div>
@@ -136,16 +136,16 @@ export function BuySecondhandForm({ action, items, locations, cashAccounts, toda
         <div className="card">
           <div className="card-head"><h2>Purchase</h2></div>
           <div className="card-body"><div className="row">
-            <div className="field"><label htmlFor="location_id">Warehouse *</label>
+            <div className="field"><label htmlFor="location_id">Warehouse</label>
               <select id="location_id" name="location_id" required>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
-            <div className="field"><label htmlFor="price">Buyback price (MMK) *</label>
+            <div className="field"><label htmlFor="price">Buyback price (MMK)</label>
               <input id="price" name="price" type="number" min="1" required value={price} onChange={(e) => setPrice(e.target.value)} /></div>
-            <div className="field"><label htmlFor="payment">Payment *</label>
+            <div className="field"><label htmlFor="payment">Payment</label>
               <select id="payment" name="payment" value={payment} onChange={(e) => setPayment(e.target.value)}>
                 <option value="NOW">Paid now</option><option value="LATER">Pay later (owed)</option></select></div>
             {payment === "NOW" && <div className="field"><label htmlFor="cash_account_id">From</label>
               <select id="cash_account_id" name="cash_account_id">{cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></div>}
-            <div className="field"><label htmlFor="doc_date">Date *</label><input id="doc_date" name="doc_date" type="date" defaultValue={today} required /></div>
+            <div className="field"><label htmlFor="doc_date">Date</label><input id="doc_date" name="doc_date" type="date" defaultValue={today} required /></div>
           </div></div>
         </div>
         <div className="form-commit actions">
@@ -190,29 +190,29 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
         <div className="grid2">
           <div className="card">
             <div className="card-head"><h2>New phone</h2></div>
-            <div className="card-body">
-              <div className="field"><label htmlFor="new_imei">IMEI *</label>
+            <div className="card-body sh-stack">
+              <div className="field"><label htmlFor="new_imei">IMEI</label>
                 <input id="new_imei" name="new_imei" required value={newImei} onChange={(e) => setNewImei(e.target.value)} /></div>
               <input type="hidden" name="new_item_id" value={fresh?.unit?.item_id ?? ""} />
               {fresh && (fresh.onShelf
                 ? <p className="hint">✓ {fresh.unit?.model} — in stock{fresh.unit?.used ? " (secondhand)" : ""}</p>
                 : <p className="alert">Not in stock. Choose a phone on the shelf.</p>)}
-              <div className="field"><label htmlFor="new_price">Selling price (MMK) *</label>
+              <div className="field"><label htmlFor="new_price">Selling price (MMK)</label>
                 <input id="new_price" name="new_price" type="number" min="1" required value={newPrice} onChange={(e) => setNewPrice(e.target.value)} /></div>
             </div>
           </div>
           <div className="card">
             <div className="card-head"><h2>Customer&rsquo;s old phone</h2></div>
-            <div className="card-body">
-              <div className="field"><label htmlFor="item_id">Model *</label>
+            <div className="card-body sh-stack">
+              <div className="field"><label htmlFor="item_id">Model</label>
                 <select id="item_id" name="item_id" required defaultValue={old?.unit?.item_id ?? ""} key={old?.unit?.item_id ?? "none"}>
                   <option value="" disabled>Choose the model…</option>
                   {items.map((i) => <option key={i.id} value={i.id}>{i.name} · {i.code}</option>)}
                 </select></div>
-              <div className="field"><label htmlFor="imei">IMEI *</label>
+              <div className="field"><label htmlFor="imei">IMEI</label>
                 <input id="imei" name="imei" required value={oldImei} onChange={(e) => setOldImei(e.target.value)} /></div>
               <History info={old} />
-              <div className="field"><label htmlFor="inspected_value">Inspected value (MMK) *</label>
+              <div className="field"><label htmlFor="inspected_value">Inspected value (MMK)</label>
                 <input id="inspected_value" name="inspected_value" type="number" min="1" required value={inspected} onChange={(e) => setInspected(e.target.value)} />
                 <span className="hint">What the old phone is worth as stock</span></div>
               <div className="field"><label htmlFor="top_up">Promotion top-up (MMK)</label>
@@ -225,11 +225,11 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
         <div className="card">
           <div className="card-head"><h2>Settlement</h2></div>
           <div className="card-body"><div className="row">
-            <div className="field"><label htmlFor="location_id">Branch / warehouse *</label>
+            <div className="field"><label htmlFor="location_id">Branch / warehouse</label>
               <select id="location_id" name="location_id" required>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
             <div className="field"><label htmlFor="cash_account_id">{diff >= 0 ? "Customer pays into" : "Refund from"}</label>
               <select id="cash_account_id" name="cash_account_id" required>{cashAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select></div>
-            <div className="field"><label htmlFor="doc_date">Date *</label><input id="doc_date" name="doc_date" type="date" defaultValue={today} required /></div>
+            <div className="field"><label htmlFor="doc_date">Date</label><input id="doc_date" name="doc_date" type="date" defaultValue={today} required /></div>
           </div>
           {diff < 0 && (
             <label className="check" style={{ marginTop: 8 }}>

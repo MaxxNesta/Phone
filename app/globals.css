@@ -10884,3 +10884,5 @@ table.ctable.stable td.r { padding-right: 14px; }
 .sh-check { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 0.875rem; }
 .sh-check select { width: auto; min-width: 120px; }
 @media (max-width: 900px) { .sh-layout { grid-template-columns: minmax(0, 1fr); } .sh-layout .sh-summary { position: static; } }
+.sh-stack { display: grid; gap: 14px; }
+.sh-stack > .hint, .sh-stack > p { margin: -8px 0 0; }
