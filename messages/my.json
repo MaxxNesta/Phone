@@ -137,7 +137,13 @@
     "salaryAdvances": "Salary Advances",
     "payroll": "Payroll",
     "payslips": "Payslips",
-    "hrSettings": "Settings"
+    "hrSettings": "Settings",
+    "dashboards": "ဒက်ရှ်ဘုတ်များ",
+    "executiveDashboard": "အမှုဆောင် ဒက်ရှ်ဘုတ်",
+    "salesReports": "အရောင်း",
+    "purchasingReports": "အဝယ်",
+    "inventoryReports": "ကုန်လက်ကျန်",
+    "financeReports": "ငွေစာရင်း"
   },
   "shell": {
     "appName": "မြန်မာ ERP",

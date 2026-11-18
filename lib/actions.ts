@@ -1834,18 +1834,26 @@ export async function addStandardUnits(_prev: unknown, _fd: FormData): Promise<A
     ["KG", "Kilogram", null, null, false], ["G", "Gram", "KG", 0.001, false], ["LB", "Pound", "KG", 0.453592, false],
     ["PCS", "Piece", null, null, true], ["SET", "Set", null, null, true], ["PAIR", "Pair", null, null, true],
   ];
+  // Myanmar first on screen (lib/uom-labels.ts): the name the counter says.
+  const MY: Record<string, string> = {
+    M: "မီတာ", CM: "စင်တီမီတာ", MM: "မီလီမီတာ", IN: "လက်မ", FT: "ပေ", YD: "ကိုက်",
+    L: "လီတာ", ML: "မီလီလီတာ", GAL: "ဂါလံ", KG: "ကီလိုဂရမ်", G: "ဂရမ်", LB: "ပေါင်",
+    PCS: "ခု", SET: "စုံ", PAIR: "ရံ",
+  };
   let added = 0;
   try {
     const co = await companyId();
     await sql.begin(async (tx) => {
       for (const [code, name, ref, qty, whole] of STD) {
         const [have] = await tx`select id, ref_uom_id from uom where company_id = ${co} and code = ${code}`;
+        if (have) await tx`update uom set name_my = coalesce(name_my, ${MY[code]}) where id = ${have.id}`;
         const [r] = ref ? await tx`select id, ref_uom_id from uom where company_id = ${co} and code = ${ref}` : [];
         const refId = r && !r.ref_uom_id ? r.id : null;
         if (!have) {
-          await tx`insert into uom (company_id, code, name, ref_uom_id, ref_qty, whole_numbers)
-                   values (${co}, ${code}, ${name}, ${refId}, ${refId ? qty : null}, ${whole})`;
+          await tx`insert into uom (company_id, code, name, name_my, ref_uom_id, ref_qty, whole_numbers)
+                   values (${co}, ${code}, ${name}, ${MY[code]}, ${refId}, ${refId ? qty : null}, ${whole})`;
           added++;
+          continue;
         } else if (whole) {
           await tx`update uom set whole_numbers = true where id = ${have.id}`;
         } else if (refId && !have.ref_uom_id
@@ -4288,7 +4296,7 @@ export async function getFormData() {
            from item_group g
            left join item_group p on p.id = g.parent_id
           where g.company_id = ${co} order by g.code`,
-    sql`select id, code, name from uom where company_id = ${co} and is_active order by code`,
+    sql`select id, code, name, name_my from uom where company_id = ${co} and is_active order by code`,
 
     sql`select id, code, name, name_my, commission_pct from salesman
          where company_id = ${co} and is_active order by code`,

@@ -17,7 +17,7 @@ export default async function NewItem() {
 
   const [nodes, uoms, brands, variantAttributes] = await Promise.all([
     allCategories(co.id),
-    sql`select id, code, name from uom where company_id = ${co.id} and is_active order by code`,
+    sql`select id, code, name, name_my from uom where company_id = ${co.id} and is_active order by code`,
     getBrands(co.id),
     getVariantAttributes(co.id),
   ]);

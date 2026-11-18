@@ -3,7 +3,7 @@
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ShoppingCart, Package, Boxes, BookOpen, Ship, Landmark, Briefcase, PieChart, Truck, Check, Plus,
+  ShoppingCart, Package, Boxes, BookOpen, Ship, Landmark, Briefcase, PieChart, Truck, Check, Plus, Gauge,
   type LucideIcon,
 } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
@@ -12,7 +12,7 @@ import { useNotice } from "@/components/toast";
 
 const ICON: Record<Module, LucideIcon> = {
   sales: ShoppingCart, purchases: Package, inventory: Boxes, accounting: BookOpen,
-  landed_cost: Ship, fixed_assets: Landmark, hr: Briefcase, equity: PieChart, logistics: Truck,
+  landed_cost: Ship, fixed_assets: Landmark, hr: Briefcase, equity: PieChart, logistics: Truck, management: Gauge,
 };
 
 /**

@@ -52,7 +52,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
 
   const [brands, uoms, packs] = await Promise.all([
     sql`select id, code, name from brand where company_id = ${company.id} order by name` as unknown as Promise<{ id: string; code: string; name: string }[]>,
-    sql`select id, code, name from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string }[]>,
+    sql`select id, code, name, name_my from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string; name_my: string | null }[]>,
     sql`select uom_id, factor::float as factor, sale_price::float as price, barcode from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number; price: number | null; barcode: string | null }[]>,
   ]);
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([

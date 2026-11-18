@@ -137,7 +137,13 @@
     "salaryAdvances": "Salary Advances",
     "payroll": "Payroll",
     "payslips": "Payslips",
-    "hrSettings": "Settings"
+    "hrSettings": "Settings",
+    "dashboards": "Dashboards",
+    "executiveDashboard": "Executive dashboard",
+    "salesReports": "Sales",
+    "purchasingReports": "Purchasing",
+    "inventoryReports": "Inventory",
+    "financeReports": "Finance"
   },
   "shell": {
     "appName": "Myanmar ERP",

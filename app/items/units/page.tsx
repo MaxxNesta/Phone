@@ -7,6 +7,7 @@ import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { getTranslations } from "next-intl/server";
 import { sparePartsOn } from "@/lib/features";
+import { UOM } from "@/lib/uom-labels";
 import Link from "next/link";
 
 export default async function Units() {
@@ -54,7 +55,8 @@ export default async function Units() {
   const conv: DataRow[] = [];
   if (sparePartsOn(co)) {
     const packs = (await sql`
-      select i.id, i.code, i.name, bu.code as base, pu.code as unit, iu.factor::float as factor, iu.sale_price::float as price
+      select i.id, i.code, i.name, coalesce(bu.name_my || ' ', '') || bu.code as base,
+             coalesce(pu.name_my || ' ', '') || pu.code as unit, iu.factor::float as factor, iu.sale_price::float as price
         from item_uom iu
         join item i on i.id = iu.item_id
         join uom bu on bu.id = i.base_uom_id
@@ -82,9 +84,9 @@ export default async function Units() {
             <tr>
               <td>{i === 0 ? <Link href={`/items/${it.id}`}><span className="code">{it.code}</span> {it.name}</Link>
                            : <span className="subline">{it.code}</span>}</td>
-              <td><strong>1 {parent.unit}</strong>{parent.factor === 1 && <span className="subline"> · stock unit</span>}</td>
+              <td><strong>1 {parent.unit}</strong>{parent.factor === 1 && <span className="subline"> · {UOM.stockUnit}</span>}</td>
               <td className="r">{n4(holds)}</td>
-              <td>{child.unit}{child.factor === 1 && <span className="subline"> · stock unit</span>}</td>
+              <td>{child.unit}{child.factor === 1 && <span className="subline"> · {UOM.stockUnit}</span>}</td>
               <td className="r">{n4(parent.factor)} {it.base}</td>
               <td className="r">{parent.price != null ? n4(parent.price) : ""}</td>
             </tr>
@@ -127,7 +129,7 @@ export default async function Units() {
               columns={[
                 { key: "code", label: c("code"), sortable: true },
                 { key: "name", label: c("name"), sortable: true },
-                ...(spare ? [{ key: "equals", label: "Equals", align: "r" as const }, { key: "whole", label: "Whole only" }] : []),
+                ...(spare ? [{ key: "equals", label: UOM.equals, align: "r" as const }, { key: "whole", label: UOM.whole }] : []),
                 { key: "items", label: c("items"), sortable: true, align: "r" },
                 { key: "is_active", label: c("status"), sortable: true },
                 { key: "actions", label: "" },
@@ -141,7 +143,7 @@ export default async function Units() {
         <section>
           <div className="card">
             <div className="card-head">
-              <h2>Conversions</h2>
+              <h2>{UOM.conversions}</h2>
               <span className="page-sub">What each pack holds, parent to child, down to the unit stock is counted in</span>
             </div>
             {conv.length === 0 ? (
@@ -155,11 +157,11 @@ export default async function Units() {
                 csvFilename="unit-conversions.csv"
                 columns={[
                   { key: "item", label: "Product", sortable: true },
-                  { key: "parent", label: "Parent unit", sortable: true },
-                  { key: "holds", label: "Holds", sortable: true, align: "r" },
-                  { key: "child", label: "Child unit", sortable: true },
-                  { key: "stock", label: "In stock units", sortable: true, align: "r" },
-                  { key: "price", label: "Sells at", align: "r" },
+                  { key: "parent", label: "ကြီး · Parent", sortable: true },
+                  { key: "holds", label: UOM.factor, sortable: true, align: "r" },
+                  { key: "child", label: "ငယ် · Child", sortable: true },
+                  { key: "stock", label: UOM.base, sortable: true, align: "r" },
+                  { key: "price", label: UOM.sellsAt, align: "r" },
                 ]}
               />
             )}

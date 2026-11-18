@@ -10976,3 +10976,18 @@ table.ctable.stable td.r { padding-right: 14px; }
 .unitrules-eq { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .unitrules-eq input { width: 120px; }
 .unitrules-eq select { width: auto; min-width: 160px; }
+
+/* Executive dashboard (Management Reports). */
+.exec-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
+.exec-stats { margin-bottom: 14px; }
+.exec-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .exec-grid { grid-template-columns: minmax(0, 1fr); } }
+.exec-table { width: 100%; font-variant-numeric: tabular-nums; }
+.exec-table td.neg { color: var(--bad); }
+.exec-table tfoot td { font-weight: 600; border-top: 1px solid var(--line); }
+.exec-issues { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.exec-issues li { display: flex; gap: 8px; align-items: flex-start; }
+.exec-issues svg { color: var(--warn, #B25000); flex: none; margin-top: 2px; }
+.exec-ok { display: flex; gap: 8px; align-items: center; margin: 0; color: var(--ink-soft); }
+.exec-ok svg { color: var(--ok, #248A3D); }
+.exec-links { display: flex; gap: 16px; margin: 12px 0 0; font-size: var(--t-sm); }

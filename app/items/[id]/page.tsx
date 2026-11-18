@@ -83,10 +83,12 @@ export default async function ItemPage({
   const partNos = spareParts
     ? await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no` : [];
   const [packs, prices, stock, movements, variants] = await Promise.all([
-    sql`select u.code, iu.factor, iu.sale_price from v_item_pack iu
+    sql`select u.code, u.name_my as my, iu.factor, iu.sale_price,
+               (select bu.name_my from item bi join uom bu on bu.id = bi.base_uom_id where bi.id = ${id}) as base_my
+          from v_item_pack iu
           join uom u on u.id = iu.uom_id
          where iu.item_id = ${id} order by iu.factor` as unknown as Promise<
-      Array<{ code: string; factor: string; sale_price: string | null }>>,
+      Array<{ code: string; my: string | null; factor: string; sale_price: string | null; base_my: string | null }>>,
     // The price standing today at each level — a future-dated price is
     // real but not yet the answer, so it is not shown as one.
     sql`select pl.name as level, pl.sort_order, ip.price, u.code as uom_code,
@@ -194,7 +196,7 @@ export default async function ItemPage({
                 </span>
               ) : (
                 spareParts ? (
-                  <PackLadder base={item.uom_code} packs={packs.map((p) => ({ code: p.code, factor: Number(p.factor),
+                  <PackLadder base={item.uom_code} baseMy={packs[0]?.base_my} packs={packs.map((p) => ({ code: p.code, my: p.my, factor: Number(p.factor),
                     price: p.sale_price == null ? null : Number(p.sale_price) }))} />
                 ) : (
                 <ul className="plainlist">

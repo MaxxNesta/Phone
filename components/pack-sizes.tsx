@@ -2,8 +2,9 @@
 
 import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
+import { UOM, unitLabel } from "@/lib/uom-labels";
 
-type Uom = { id: string; code: string; name: string };
+type Uom = { id: string; code: string; name: string; name_my?: string | null };
 type Pack = { key: number; uomId: string; factor: string; price: string; barcode: string };
 
 /**
@@ -50,20 +51,20 @@ export function PackSizes({
 
   return (
     <div className="field" style={{ marginTop: "0.6rem" }}>
-      <label>{pk("label")}</label>
+      <label>{spareParts ? UOM.alt : pk("label")}</label>
       <input type="hidden" name="packs" value={payload} />
 
       {spareParts && packs.length > 0 ? (
         /* A spare-parts shop: one row a pack, the columns named once. */
         <div className="packgrid" role="table" aria-label={pk("label")}>
           <div className="packgrid-head" role="row">
-            <span>Pack</span><span>Holds</span><span>{pk("sellsAt")}</span><span>Barcode</span><span />
+            <span>{UOM.pack}</span><span>{UOM.factor}</span><span>{UOM.sellsAt}</span><span>{UOM.barcode}</span><span />
           </div>
           {packs.map((p) => (
             <div key={p.key} className="packgrid-row" role="row">
               <select value={p.uomId} onChange={(e) => set(p.key, { uomId: e.target.value })} aria-label="Pack unit">
                 <option value="">{pk("chooseUnit")}</option>
-                {available.map((u) => <option key={u.id} value={u.id}>{u.code} · {u.name}</option>)}
+                {available.map((u) => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}
               </select>
               <span className="packgrid-qty">
                 <input type="number" min="0" step="any" value={p.factor} onChange={(e) => set(p.key, { factor: e.target.value })}
@@ -127,18 +128,18 @@ export function PackSizes({
       </span>
       {spareParts && base && (
         <label className="packbuy">
-          <span>Bought in</span>
+          <span>{UOM.buy}</span>
           <select name="purchase_uom_id" value={buy} onChange={(e) => setBuy(e.target.value)}>
-            <option value="">{base.code} (stock unit)</option>
+            <option value="">{unitLabel(base)} · {UOM.stockUnit}</option>
             {packs.filter((p) => p.uomId).map((p) => <option key={p.key} value={p.uomId}>{codeOf(p.uomId)} of {p.factor || "?"} {base.code}</option>)}
           </select>
-          <span className="hint">Purchase orders and bills start in this unit.</span>
+          <span className="hint">အဝယ်များ ဤယူနစ်ဖြင့် စသည် · Purchases start in this unit</span>
         </label>
       )}
       {spareParts && base && (
-        <PackLadder base={base.code} packs={packs
+        <PackLadder base={base.code} baseMy={base.name_my} packs={packs
           .filter((p) => p.uomId && Number(p.factor) > 0)
-          .map((p) => ({ code: uoms.find((u) => u.id === p.uomId)?.code ?? "?", factor: Number(p.factor),
+          .map((p) => ({ code: uoms.find((u) => u.id === p.uomId)?.code ?? "?", my: uoms.find((u) => u.id === p.uomId)?.name_my, factor: Number(p.factor),
                          price: p.price === "" ? null : Number(p.price) }))} />
       )}
     </div>
@@ -153,24 +154,27 @@ const n4 = (n: number) => Number(n.toFixed(4)).toLocaleString("en-US", { maximum
  * box it holds and how many stock units that is; a unit smaller than the
  * stock unit (feet on an item counted in metres) sits inside it the same way.
  */
-export function PackLadder({ base, packs }: {
+export function PackLadder({ base, baseMy, packs }: {
   base: string;
-  packs: { code: string; factor: number; price?: number | null }[];
+  /** The stock unit's Myanmar name, shown first. */
+  baseMy?: string | null;
+  packs: { code: string; my?: string | null; factor: number; price?: number | null }[];
 }) {
   if (packs.length === 0) return null;
-  const all = [...packs, { code: base, factor: 1, price: null, isBase: true }]
-    .sort((a, b) => b.factor - a.factor) as { code: string; factor: number; price?: number | null; isBase?: boolean }[];
+  const all = [...packs, { code: base, my: baseMy, factor: 1, price: null, isBase: true }]
+    .sort((a, b) => b.factor - a.factor) as { code: string; my?: string | null; factor: number; price?: number | null; isBase?: boolean }[];
+  const say = (u: { code: string; my?: string | null }) => (u.my ? `${u.my} ${u.code}` : u.code);
   const level = (i: number): ReactNode => {
     const u = all[i], next = all[i + 1];
     return (
       <div className={`ladder-box${u.isBase ? " base" : ""}`}>
         <div className="ladder-head">
-          <strong>1 {u.code}</strong>
-          {next && <span>= {n4(u.factor / next.factor)} {next.code}</span>}
+          <strong>1 {say(u)}</strong>
+          {next && <span>= {n4(u.factor / next.factor)} {say(next)}</span>}
           {!u.isBase && next && !next.isBase && <span className="ladder-base">= {n4(u.factor)} {base}</span>}
           {!u.isBase && !next && <span className="ladder-base">= {n4(u.factor)} {base}</span>}
-          {u.isBase && <span className="ladder-tag">stock unit</span>}
-          {u.price != null && <span className="ladder-price">sells at {n4(u.price)}</span>}
+          {u.isBase && <span className="ladder-tag">{UOM.base}</span>}
+          {u.price != null && <span className="ladder-price">{UOM.sellsAt} {n4(u.price)}</span>}
         </div>
         {next && level(i + 1)}
       </div>

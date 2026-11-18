@@ -101,8 +101,8 @@ export function UnitRow({
     <tr>
       <td className="code">{unit.code}</td>
       <td className="wrap">
-        {unit.name}
-        {unit.name_my && <div className="subline">{unit.name_my}</div>}
+        {/* Myanmar first, English after (lib/uom-labels.ts). */}
+        {unit.name_my ? <>{unit.name_my}<div className="subline">{unit.name}</div></> : unit.name}
       </td>
       {rulesFrom && <td className="r">{unit.ref_code ? `${Number(unit.ref_qty)} ${unit.ref_code}` : ""}</td>}
       {rulesFrom && <td>{unit.whole_numbers ? <span className="pill neutral">Whole</span> : ""}</td>}

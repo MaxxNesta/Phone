@@ -234,6 +234,7 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/payables", "accounting.view"],
   // The ratios read the balance sheet, so they open with the books, not with sales reports.
   ["/reports/financial-ratios", "accounting.view"],
+  ["/reports/executive", "accounting.view"],
   ["/reports", "reports.view"],
   ["/sales/reports", "reports.view"],
   ["/sales", "sales.view"],
