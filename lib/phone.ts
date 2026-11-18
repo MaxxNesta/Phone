@@ -142,6 +142,8 @@ export async function unitsOnShelf(companyId: string, itemId: string, locationId
 export type PhoneStockFilter = {
   q?: string; locationId?: string; brand?: string; model?: string;
   storage?: string; colour?: string; status?: string; supplierId?: string;
+  /** New stock, or secondhand (bought back or traded in, 0209). */
+  condition?: "NEW" | "USED";
   /** The locations the reader may see (seenLocations); null for every one. */
   locs?: string[] | null;
 };
@@ -168,7 +170,7 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
            v.unit_cost::float as unit_cost, ${RETAIL_PRICE}::float as price,
            v.status, v.received_date, (fn_shop_today() - v.received_date) as age_days,
            v.supplier_name, v.customer_name, v.out_doc_no, v.out_date, v.warranty_expiry,
-           v.was_returned, v.was_transferred
+           v.was_returned, v.was_transferred, v.secondhand_grade
       from v_stock_serial v
       join item i on i.id = v.item_id
       left join item p on p.id = i.parent_item_id
@@ -186,6 +188,7 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
        and (${f.colour ?? null}::text is null or ${optionMatching(COLOUR_RE)} = ${f.colour ?? null})
        and (${f.status ?? null}::text is null or v.status = ${f.status ?? null})
        and (${f.supplierId ?? null}::uuid is null or v.supplier_id = ${f.supplierId ?? null})
+       and (${f.condition ?? null}::text is null or (${f.condition ?? null} = 'USED') = (v.secondhand_grade is not null))
      order by v.status = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date, v.imei
      limit ${size > 0 ? size : 500} offset ${offset}`;
   return Object.assign(rows, { total: rows.length ? Number((rows[0] as any).total_count) : 0 });
@@ -204,7 +207,7 @@ const phoneStockOverview = cache(async (companyId: string) => {
   const [r] = await sql`
     with v as materialized (
       select brand_name, model_name, supplier_id, supplier_name, status,
-             received_date, out_date, unit_cost
+             received_date, out_date, unit_cost, secondhand_grade is not null as used
         from v_stock_serial where company_id = ${companyId}
     ), opt as (
       select ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour
@@ -229,7 +232,9 @@ const phoneStockOverview = cache(async (companyId: string) => {
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today())) from v)::int as sold_month,
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today()) - interval '1 month'
                                  and out_date < date_trunc('month', fn_shop_today())) from v)::int as sold_last_month,
-      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0) from v)::float as value`;
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0) from v)::float as value,
+      (select count(*) filter (where status = 'IN_STOCK' and used) from v)::int as available_used,
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR') and used), 0) from v)::float as value_used`;
   return r;
 });
 
@@ -538,7 +543,9 @@ export async function serialKpis(companyId: string) {
   return { available: r.available as number, received_week: r.received_week as number,
            total: r.total as number, sold: r.sold as number,
            reserved: r.reserved as number, repair: r.repair as number, sold_month: r.sold_month as number,
-           sold_last_month: r.sold_last_month as number, value: r.value as number };
+           sold_last_month: r.sold_last_month as number, value: r.value as number,
+           // New and secondhand on the shelf, counted and valued apart (0211).
+           available_used: r.available_used as number, value_used: r.value_used as number };
 }
 
 /**

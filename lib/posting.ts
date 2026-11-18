@@ -10283,11 +10283,21 @@ async function voidDocumentIn(
              ${-cost}, ${reversal.id})
           returning id`;
 
-        await tx`
+        const [used] = await tx`
           insert into stock_lot_consumption
             (company_id, lot_id, stock_movement_id, qty, unit_cost)
           values
-            (${doc.company_id}, ${lot.id}, ${out.id}, ${qty}, ${Number(lot.unit_cost)})`;
+            (${doc.company_id}, ${lot.id}, ${out.id}, ${qty}, ${Number(lot.unit_cost)})
+          returning id`;
+
+        // The handsets on that layer leave with it. A serial is on the shelf
+        // until something issues it from its layer, so closing the layer
+        // alone left a voided receipt's IMEIs showing as in stock: phones
+        // the books say were never received, still offered for sale.
+        await tx`
+          insert into stock_serial_issue (company_id, serial_id, stock_movement_id, lot_id, consumption_id)
+          select ${doc.company_id}, s.id, ${out.id}, ${lot.id}, ${used.id}
+            from stock_serial s where s.stock_lot_id = ${lot.id}`;
       }
     }
 

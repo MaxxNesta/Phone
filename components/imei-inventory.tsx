@@ -13,6 +13,8 @@ import { imeiDrawer, type ImeiDrawerData } from "@/lib/imei-drawer";
 export type ImeiRow = {
   serial_id: string; imei: string; item_name: string; item_code: string; photo: string | null;
   location_name: string | null; unit_cost?: number | null; price: number | null; status: string; was_returned: boolean;
+  /** Set when this unit came in secondhand (bought back or traded in). */
+  secondhand_grade?: string | null;
 };
 type Tab = "overview" | "cost" | "prices" | "activity";
 
@@ -97,6 +99,7 @@ export function ImeiTable({ rows, showCost, showLocation, emptyLabel }: {
                 <td>
                   <StatusPill s={r.status} label={label(r.status)} />
                   {r.was_returned && <span className="imei-pill warn">{t("ph.returned")}</span>}
+                  {r.secondhand_grade && <span className="imei-pill" title="Bought back or traded in">Used · {r.secondhand_grade}</span>}
                 </td>
               </tr>
             ))}

@@ -7,7 +7,7 @@ import { str, num } from "./input";
 import { requirePermission, can } from "./auth";
 import { assertMyBranch } from "./branch-scope";
 import { postOnce } from "./idempotency";
-import { postSecondhandBuy, postTradeIn, previousSaleOf, type Inspection, type Seller } from "./secondhand";
+import { postSecondhandBuy, postTradeIn, previousSaleOf, voidTradeIn, type Inspection, type Seller } from "./secondhand";
 import type { ActionResult } from "./actions";
 
 const company = async () => (await sql`select id from company order by created_at limit 1`)[0].id as string;
@@ -96,4 +96,21 @@ export async function createTradeIn(_prev: unknown, fd: FormData): Promise<Actio
   }
   revalidatePath("/documents");
   return done(`/documents/${saleId}`, "Trade-in posted");
+}
+
+/** Undo a whole trade-in: its settlement, its sale and its old phone's purchase, together or not at all. */
+export async function voidWholeTradeIn(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("documents.void");
+  const saleId = str(fd, "sale_id");
+  try {
+    const co = await company();
+    const [d] = await sql`select location_id from document where id = ${saleId} and company_id = ${co}`;
+    if (!d) return { error: "That invoice no longer exists" };
+    await assertMyBranch(d.location_id as string | null);
+    await sql.begin((tx) => voidTradeIn(tx, { companyId: co, saleId, reason: str(fd, "reason") || "Voided at the counter" }));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents");
+  return done(`/documents/${saleId}`, "Trade-in undone");
 }

@@ -1,5 +1,5 @@
 import type { TransactionSql } from "postgres";
-import { postPurchaseWithReceipt, postRetailSale, postSupplierPayment, postCustomerReceipt } from "./posting";
+import { postPurchaseWithReceipt, postRetailSale, postSupplierPayment, postCustomerReceipt, voidDocument } from "./posting";
 
 /**
  * Secondhand buyback and trade-in (0209). Composes the existing documents —
@@ -163,4 +163,32 @@ export async function postTradeIn(tx: TransactionSql, input: TradeInInput) {
             ${saleTotal}, ${input.inspectedValue}, ${topUp}, ${difference})
     returning id`;
   return { id: sale.id, docNo: sale.docNo, tradeInId: link.id as string, billId: buy.billId, difference };
+}
+
+/**
+ * Undo a whole trade-in in one act: every payment and receipt that settled
+ * its sale or its old phone's bill, then the sale (the new phone goes back
+ * on the shelf), then the bill (its receipt with it: the old phone comes
+ * off). Each is an ordinary void — a reversal, never an edit — so the usual
+ * refusals hold: if the old phone has since been resold, the bill cannot be
+ * undone, and because this is one transaction nothing is undone at all.
+ */
+export async function voidTradeIn(tx: TransactionSql, input: { companyId: string; saleId: string; reason: string }) {
+  const [t] = await tx`
+    select t.id, t.sale_id, i.bill_id, i.receipt_id from trade_in t join secondhand_intake i on i.id = t.intake_id
+     where t.company_id = ${input.companyId} and t.sale_id = ${input.saleId}`;
+  if (!t) throw new Error("That invoice is not a trade-in");
+  if (!input.reason?.trim()) throw new Error("Say why the trade-in is being undone");
+  const reason = `Trade-in undone: ${input.reason.trim()}`;
+  const settled = await tx`
+    select distinct d.id from payment_allocation pa join document d on d.id = pa.payment_id
+     where pa.invoice_id in (${t.sale_id}, ${t.bill_id}) and d.status = 'POSTED' and d.lifecycle_owner_id is null`;
+  for (const d of settled) await voidDocument({ documentId: d.id as string, reason }, tx);
+  await voidDocument({ documentId: t.sale_id as string, reason, goodsBack: true }, tx);
+  await voidDocument({ documentId: t.bill_id as string, reason, goodsBack: true }, tx);
+  // The receipt is the bill's partner, not its child: undone on its own, and
+  // refused if the old phone has left the shelf since.
+  const [r] = await tx`select status from document where id = ${t.receipt_id}`;
+  if (r?.status === "POSTED") await voidDocument({ documentId: t.receipt_id as string, reason }, tx);
+  return { id: t.sale_id as string, docNo: "" };
 }

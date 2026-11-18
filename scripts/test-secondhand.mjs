@@ -10,6 +10,7 @@
 //   7. a genuine customer return is not a buyback
 //   8. reversal refused once the bought phone has been resold
 //   9. stock ledger and inventory account: no new gap
+//  10. void a whole trade-in in one act; refused (and nothing undone) once the old phone is resold
 
 import postgres from "postgres";
 const sql = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} });
@@ -116,6 +117,25 @@ try {
     // 8 ---------------------------------------------------------------------
     const voidGr = await refused(tx, (sp) => P.voidDocument({ documentId: b1.receiptId, reason: "test", goodsBack: true }, sp));
     check("8. voiding the first buyback's receipt after resale is refused", !!voidGr, voidGr ?? "voided");
+
+    // 10 --------------------------------------------------------------------
+    const clearV = await bal("1450");
+    await S.voidTradeIn(tx, { companyId: co.id, saleId: t2.id, reason: "test" });
+    const st = async (id) => (await tx`select status from document where id = ${id}`)[0].status;
+    check("10. void whole trade-in: sale and bill both reversed", (await st(t2.id)) !== "POSTED" && (await st(t2.billId)) !== "POSTED",
+      `${await st(t2.id)} / ${await st(t2.billId)}`);
+    const shelf = async (imei) => (await tx`select exists (select 1 from v_stock_serial_available where company_id = ${co.id} and serial_no = ${imei}) as y`)[0].y;
+    check("    the new phone is back on the shelf, the old one is gone", (await shelf("TST-SH-NEW2")) && !(await shelf("TST-SH-0003")), `new ${await shelf("TST-SH-NEW2")} old ${await shelf("TST-SH-0003")}`);
+    check("    clearing still nets to zero", (await bal("1450")) - clearV === 0);
+    await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
+      lines: [{ itemId: phone.id, qty: 1, unitCost: 1_000_000, serials: ["TST-SH-NEW3"] }] }, tx);
+    const t3 = await S.postTradeIn(tx, { companyId: co.id, locationId: loc.id, docDate: today, seller,
+      itemId: phone.id, imei: "TST-SH-0004", inspection: insp, inspectedValue: 400_000,
+      newItemId: phone.id, newImei: "TST-SH-NEW3", newPrice: 1_100_000, cashAccountId: cash.id });
+    await sell("TST-SH-0004", 500_000, 500_000);
+    const blocked = await refused(tx, (sp) => S.voidTradeIn(sp, { companyId: co.id, saleId: t3.id, reason: "test" }));
+    check("    once the old phone is resold, the whole void is refused", !!blocked, blocked ?? "voided");
+    check("    and nothing was undone", (await st(t3.id)) === "POSTED");
 
     // 9 ---------------------------------------------------------------------
     const gapAfter = await gapNow();
