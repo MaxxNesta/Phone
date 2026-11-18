@@ -10875,3 +10875,12 @@ table.ctable.stable td.r { padding-right: 14px; }
 .coa-table td.coa-actions .rowmenu { display: inline-block; margin-left: 8px; vertical-align: middle; }
 .coa-table td.coa-actions .dots { display: inline-grid; place-items: center; color: var(--muted); }
 .coa-table td.coa-actions .dots:hover { color: var(--ink); }
+
+/* Secondhand and trade-in: the sheet with its summary beside it, which stays
+   in view while the sheet scrolls; one column on a phone. */
+.sh-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.sh-layout .sh-summary { position: sticky; top: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; }
+.sh-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 28px; margin-top: 12px; }
+.sh-check { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 0.875rem; }
+.sh-check select { width: auto; min-width: 120px; }
+@media (max-width: 900px) { .sh-layout { grid-template-columns: minmax(0, 1fr); } .sh-layout .sh-summary { position: static; } }

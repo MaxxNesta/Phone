@@ -174,6 +174,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 {wholesale && <NavLink href="/sales/consignment">{n("consignmentSale")}</NavLink>}
                 <NavLink href="/sales/returns" exact>{n("customerReturns")}</NavLink>
                 <NavLink href="/sales/credit-notes" exact>{n("creditNotes")}</NavLink>
+                <NavLink href="/sales/trade-in/new">{n("tradeIn")}</NavLink>
                 <NavLink href="/sales/discounts" exact>{n("volumeDiscounts")}</NavLink>
                 <NavLink href="/sales/discounts-given" exact>{n("discountsGiven")}</NavLink>
                 <NavLink href="/receivables" exact>{n("receivables")}</NavLink>
@@ -217,6 +218,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/purchases/returns" exact>{n("supplierReturns")}</NavLink>
                 <NavLink href="/purchases/debit-notes" exact>{n("debitNotes")}</NavLink>
                 <NavLink href="/purchases/discounts-received" exact>{n("discountsReceived")}</NavLink>
+                <NavLink href="/purchases/secondhand/new">{n("buySecondhand")}</NavLink>
                 {may("cost.view") && hasModule(company, "landed_cost") && <NavLink href="/purchases/landed-costs">{n("landedCosts")}</NavLink>}
                 {company && planIncludes(company.plan, "supplier_performance") && (
                   <NavLink href="/purchases/supplier-performance" exact>{n("supplierPerformance")}</NavLink>
