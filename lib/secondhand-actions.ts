@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { str, num } from "./input";
 import { requirePermission, can } from "./auth";
@@ -113,4 +114,70 @@ export async function voidWholeTradeIn(_prev: unknown, fd: FormData): Promise<Ac
   }
   revalidatePath("/documents");
   return done(`/documents/${saleId}`, "Trade-in undone");
+}
+
+export type PostingPreview = {
+  entries: { docNo: string; docType: string; lines: { code: string; name: string; debit: number; credit: number }[] }[];
+  stock: { item: string; imei: string; qty: number; location: string }[];
+};
+const PREVIEW_DONE = new Error("preview");
+
+/** Posts for real inside a transaction that always rolls back, and reads what it wrote. */
+async function preview(post: (tx: TransactionSql, co: string) => Promise<unknown>) {
+  const co = await company();
+  let out: PostingPreview = { entries: [], stock: [] };
+  try {
+    await sql.begin(async (tx) => {
+      await post(tx, co);
+      // Everything this transaction wrote carries its start time (now() is fixed inside it).
+      const docs = await tx`select id, doc_no, doc_type from document where company_id = ${co} and created_at = now()
+         order by array_position(array['GOODS_RECEIPT','PURCHASE_INVOICE','SALES_INVOICE','SUPPLIER_PAYMENT','CUSTOMER_RECEIPT'], doc_type), doc_no`;
+      const ids = docs.map((d) => d.id as string);
+      const lines = await tx`
+        select d.id as doc_id, a.code, a.name, sum(jl.base_amount)::float as v
+          from document d join journal_line jl on jl.journal_entry_id = d.journal_entry_id join account a on a.id = jl.account_id
+         where d.id = any(${ids}) group by d.id, a.code, a.name order by sum(jl.base_amount) desc`;
+      out = {
+        entries: docs.map((d) => ({ docNo: d.doc_no as string, docType: d.doc_type as string,
+          lines: lines.filter((l) => l.doc_id === d.id && Math.abs(l.v) > 0.004)
+            .map((l) => ({ code: l.code, name: l.name, debit: l.v > 0 ? l.v : 0, credit: l.v < 0 ? -l.v : 0 })) }))
+          .filter((e) => e.lines.length),
+        stock: (await tx`
+          select i.name as item, coalesce(s.serial_no, '') as imei, sm.qty::float as qty, l.name as location
+            from stock_movement sm join item i on i.id = sm.item_id join location l on l.id = sm.location_id
+            left join stock_serial s on s.stock_movement_id = sm.id
+           where sm.document_id = any(${ids}) and sm.qty <> 0`) as never,
+      };
+      throw PREVIEW_DONE;
+    });
+  } catch (e) { if (e !== PREVIEW_DONE) throw e; }
+  return out;
+}
+
+export async function previewSecondhandBuy(fd: FormData): Promise<{ ok: true; preview: PostingPreview } | { error: string }> {
+  const user = await requirePermission("purchase.post");
+  try {
+    await assertMyBranch(str(fd, "location_id"));
+    return { ok: true, preview: await preview((tx, co) => postSecondhandBuy(tx, {
+      companyId: co, userId: user.id, locationId: str(fd, "location_id"), docDate: str(fd, "doc_date"),
+      seller: sellerFrom(fd), itemId: str(fd, "item_id"), imei: str(fd, "imei"), price: num(fd, "price"),
+      inspection: inspectionFrom(fd),
+      cashAccountId: str(fd, "payment") === "NOW" ? str(fd, "cash_account_id") || null : null,
+    })) };
+  } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
+}
+
+export async function previewTradeIn(fd: FormData): Promise<{ ok: true; preview: PostingPreview } | { error: string }> {
+  const user = await requirePermission("sales.post");
+  try {
+    await assertMyBranch(str(fd, "location_id"));
+    return { ok: true, preview: await preview((tx, co) => postTradeIn(tx, {
+      companyId: co, userId: user.id, locationId: str(fd, "location_id"), docDate: str(fd, "doc_date"),
+      seller: sellerFrom(fd), itemId: str(fd, "item_id"), imei: str(fd, "imei"), inspection: inspectionFrom(fd),
+      inspectedValue: num(fd, "inspected_value"), topUp: num(fd, "top_up"),
+      newItemId: str(fd, "new_item_id"), newImei: str(fd, "new_imei"), newPrice: num(fd, "new_price"),
+      cashAccountId: str(fd, "cash_account_id"),
+      payExcess: fd.get("pay_excess") === "on" && can(user, "purchase.post"),
+    })) };
+  } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
 }

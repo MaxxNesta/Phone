@@ -49,6 +49,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { sql, money, qty, shortDate } from "@/lib/db";
 import { refundableOnDebitNote } from "@/lib/posting";
+import { voidWholeTradeIn } from "@/lib/secondhand-actions";
+import { DeleteButton } from "@/components/confirm-delete";
 import {
   getDocument,
   getDocumentLines,
@@ -600,6 +602,9 @@ export default async function DocumentPage({
   const refundable = (doc.doc_type === "SALES_RETURN" || doc.doc_type === "CREDIT_NOTE") && doc.status === "POSTED"
     ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
   // A debit note on a bill already paid: what the supplier still owes back.
+  // A sale that is one half of a trade-in can be undone whole (0209).
+  const isTradeIn = doc.doc_type === "SALES_INVOICE" && doc.status === "POSTED" && can(user, "documents.void")
+    && (await sql`select 1 from trade_in where sale_id = ${doc.id}`).length > 0;
   const supplierRefundable = doc.doc_type === "DEBIT_NOTE" && doc.status === "POSTED"
     ? (await refundableOnDebitNote(sql as never, doc.id)).refundable : 0;
 
@@ -1148,6 +1153,15 @@ export default async function DocumentPage({
           <FilePlus2 size={14} aria-hidden="true" /> Create sales invoice
           {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
         </Link>
+      )}
+      {isTradeIn && (
+        <DeleteButton action={voidWholeTradeIn} label="Undo whole trade-in" confirmLabel="Undo trade-in"
+          pendingLabel="Undoing…" className="btn ghost" confirmClassName="danger-solid"
+          title={`Undo trade-in ${doc.doc_no}?`}
+          detail="Reverses the sale, the old phone's purchase and receipt, and their settlement, all together. The new phone goes back on the shelf; the old phone comes off. Refused, with nothing changed, if the old phone has been sold since.">
+          <input type="hidden" name="sale_id" value={doc.id} />
+          <input type="hidden" name="reason" value="Undone from the invoice" />
+        </DeleteButton>
       )}
       {supplierRefundable > 0.5 && (
         <Link href={`/purchases/refunds/new?note=${doc.id}`} className="btn primary"

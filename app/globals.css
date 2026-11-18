@@ -10876,13 +10876,28 @@ table.ctable.stable td.r { padding-right: 14px; }
 .coa-table td.coa-actions .dots { display: inline-grid; place-items: center; color: var(--muted); }
 .coa-table td.coa-actions .dots:hover { color: var(--ink); }
 
-/* Secondhand and trade-in: the sheet with its summary beside it, which stays
-   in view while the sheet scrolls; one column on a phone. */
-.sh-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
-.sh-layout .sh-summary { position: sticky; top: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 10px; }
+/* Secondhand and trade-in: a plain hairline sheet. No tinted header
+   strips (.hairline overrides the document-sheet strips), small quiet
+   section titles, a hairline between sections, and the figures in one line
+   in the commit bar instead of a box beside the sheet. */
+.form.docsheet.hairline .card > .card-head,
+.form.docsheet.hairline > .card > .card-head,
+.form.docsheet.hairline > .grid2 > .card:first-child > .card-head {
+  background: none; margin: 0; padding: 0 0 12px; border-radius: 0;
+}
+.form.docsheet.hairline { padding-top: 6px; }
+.form.docsheet.hairline > div.card:first-of-type { padding-top: 16px; }
+.form.docsheet.hairline .card-head h2 { font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.form.docsheet.hairline > .grid2 { border-top: 1px solid var(--line-soft); }
+.sh-commit { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.sh-totals { display: flex; gap: 22px; flex-wrap: wrap; margin: 0; font-variant-numeric: tabular-nums; }
+.sh-totals > div { display: flex; flex-direction: column; gap: 1px; }
+.sh-totals dt { font-size: 0.75rem; color: var(--muted); }
+.sh-totals dd { margin: 0; font-size: 0.9375rem; color: var(--ink); }
+.sh-totals .sh-total { padding-left: 22px; border-left: 1px solid var(--line); }
+.sh-totals .sh-total dd { font-weight: 600; font-size: 1.0625rem; }
 .sh-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0 28px; margin-top: 12px; }
 .sh-check { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 0.875rem; }
 .sh-check select { width: auto; min-width: 120px; }
-@media (max-width: 900px) { .sh-layout { grid-template-columns: minmax(0, 1fr); } .sh-layout .sh-summary { position: static; } }
 .sh-stack { display: grid; gap: 14px; }
 .sh-stack > .hint, .sh-stack > p { margin: -8px 0 0; }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Package, X } from "lucide-react";
 import type { ActionResult } from "@/lib/actions";
-import { lookupImei } from "@/lib/secondhand-actions";
+import { lookupImei, previewSecondhandBuy, previewTradeIn, type PostingPreview } from "@/lib/secondhand-actions";
 import { useNotice } from "@/components/toast";
 
 type Item = { id: string; code: string; name: string };
@@ -87,17 +88,83 @@ function History({ info }: { info: Lookup | null }) {
   return null;
 }
 
-function Summary({ rows, total, totalLabel }: { rows: [string, string][]; total: string; totalLabel: string }) {
+/** The figures in one line in the commit bar, the total last. */
+function Totals({ rows, total, totalLabel }: { rows: [string, string][]; total: string; totalLabel: string }) {
   return (
-    <aside className="sh-summary card">
-      <div className="card-head"><h2>Summary</h2></div>
-      <div className="card-body">
-        <dl className="summary">
-          {rows.map(([k, v]) => <div key={k} style={{ display: "contents" }}><dt>{k}</dt><dd>{v}</dd></div>)}
-          <dt><strong>{totalLabel}</strong></dt><dd><strong>{total}</strong></dd>
-        </dl>
+    <dl className="sh-totals">
+      {rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+      <div className="sh-total"><dt>{totalLabel}</dt><dd>{total}</dd></div>
+    </dl>
+  );
+}
+
+const DOC: Record<string, string> = {
+  GOODS_RECEIPT: "Goods receipt", PURCHASE_INVOICE: "Purchase (bill)", SALES_INVOICE: "Sale",
+  SUPPLIER_PAYMENT: "Payment to seller", CUSTOMER_RECEIPT: "Receipt from customer",
+};
+
+/**
+ * Review before posting: the engine posts it for real in a transaction that
+ * is rolled back (previewSecondhandBuy / previewTradeIn), and this shows what
+ * that wrote — each document's entries with their account codes, and the
+ * phones that move. Post submits the form itself; nothing is saved before.
+ */
+function useReview(run: (fd: FormData) => Promise<{ ok: true; preview: PostingPreview } | { error: string }>) {
+  const form = useRef<HTMLFormElement>(null);
+  const [review, setReview] = useState<PostingPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const open = async () => {
+    if (!form.current?.reportValidity()) return;
+    setBusy(true); setProblem(null);
+    const r = await run(new FormData(form.current));
+    setBusy(false);
+    if ("error" in r) setProblem(r.error); else setReview(r.preview);
+  };
+  const post = () => { setReview(null); form.current?.requestSubmit(); };
+  return { form, review, busy, problem, open, post, close: () => setReview(null) };
+}
+
+function ReviewDialog({ preview, title, confirmLabel, onConfirm, onClose }: {
+  preview: PostingPreview; title: string; confirmLabel: string; onConfirm: () => void; onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => { ref.current?.showModal(); }, []);
+  return (
+    <dialog ref={ref} className="mp" onClose={onClose} aria-labelledby="sh-review-title">
+      <header className="mp-head">
+        <div><h2 id="sh-review-title">{title}</h2><p>Nothing is saved until you post.</p></div>
+        <button type="button" className="mp-x" aria-label="Close" onClick={() => ref.current?.close()}><X size={16} /></button>
+      </header>
+      <div className="mp-body">
+        {preview.stock.length > 0 && (
+          <section className="mp-stock" aria-label="Stock">
+            <Package size={16} aria-hidden="true" />
+            <span>{preview.stock.map((s) => `${s.qty > 0 ? "In" : "Out"}: ${s.item}${s.imei ? ` (${s.imei})` : ""}`).join(" · ")}</span>
+          </section>
+        )}
+        <div className="mp-ledger">
+          {preview.entries.map((e) => {
+            const dr = e.lines.reduce((t, l) => t + l.debit, 0), cr = e.lines.reduce((t, l) => t + l.credit, 0);
+            return (
+              <table key={e.docNo}>
+                <caption>{DOC[e.docType] ?? e.docType} <span className="m">{e.docNo}</span></caption>
+                <thead><tr><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
+                <tbody>{e.lines.map((l) => (
+                  <tr key={l.code + l.debit + l.credit}><td><span className="m">{l.code}</span> {l.name}</td>
+                    <td className="r">{l.debit ? money(l.debit) : ""}</td><td className="r">{l.credit ? money(l.credit) : ""}</td></tr>
+                ))}</tbody>
+                <tfoot><tr><td>Total</td><td className="r">{money(dr)}</td><td className="r">{money(cr)}</td></tr></tfoot>
+              </table>
+            );
+          })}
+        </div>
       </div>
-    </aside>
+      <footer className="mp-foot">
+        <button type="button" className="btn ghost" onClick={() => ref.current?.close()}>Back</button>
+        <button type="button" className="btn" onClick={onConfirm} autoFocus>{confirmLabel}</button>
+      </footer>
+    </dialog>
   );
 }
 
@@ -113,10 +180,11 @@ export function BuySecondhandForm({ action, items, locations, cashAccounts, toda
   const [payment, setPayment] = useState("NOW");
   const [checks, setChecks] = useState<Record<string, string>>({});
   const info = useImei(imei);
+  const r = useReview(previewSecondhandBuy);
 
   return (
-    <div className="sh-layout">
-      <form action={formAction} className="form wide docsheet">
+    <>
+      <form ref={r.form} action={formAction} className="form wide docsheet hairline">
         <input type="hidden" name="idempotency_key" value={key} />
         {state && "error" in state && <div className="alert">{state.error}</div>}
         <Seller label="Seller" />
@@ -148,14 +216,17 @@ export function BuySecondhandForm({ action, items, locations, cashAccounts, toda
             <div className="field"><label htmlFor="doc_date">Date</label><input id="doc_date" name="doc_date" type="date" defaultValue={today} required /></div>
           </div></div>
         </div>
-        <div className="form-commit actions">
-          <button type="submit" disabled={pending || !!info?.onShelf}>{pending ? "Posting…" : "Post purchase"}</button>
-          <span className="page-sub">A purchase and goods receipt: Dr Inventory / Cr {payment === "NOW" ? "Cash or Bank" : "Accounts Payable"}.</span>
+        {r.problem && <div className="alert">{r.problem}</div>}
+        <div className="form-commit sh-commit">
+          <Totals rows={[["Phones", "1"], ["Payment", payment === "NOW" ? "Paid now" : "Owed to seller"]]}
+            totalLabel="Buyback total" total={`${money(Number(price))} MMK`} />
+          <button type="button" onClick={r.open} disabled={pending || r.busy || !!info?.onShelf}>
+            {pending ? "Posting…" : r.busy ? "Working it out…" : "Review purchase"}</button>
         </div>
       </form>
-      <Summary rows={[["Phones", "1"], ["Payment", payment === "NOW" ? "Paid now" : "Owed to seller"]]}
-        totalLabel="Buyback total" total={`${money(Number(price))} MMK`} />
-    </div>
+      {r.review && <ReviewDialog preview={r.review} title="Post this secondhand purchase?" confirmLabel="Post purchase"
+        onConfirm={r.post} onClose={r.close} />}
+    </>
   );
 }
 
@@ -180,10 +251,11 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
   const allowance = (Number(inspected) || 0) + (Number(topUp) || 0);
   const diff = sale - (Number(inspected) || 0);
   const newOk = !!fresh?.onShelf;
+  const r = useReview(previewTradeIn);
 
   return (
-    <div className="sh-layout">
-      <form action={formAction} className="form wide docsheet">
+    <>
+      <form ref={r.form} action={formAction} className="form wide docsheet hairline">
         <input type="hidden" name="idempotency_key" value={key} />
         {state && "error" in state && <div className="alert">{state.error}</div>}
         <Seller label="Customer" />
@@ -238,15 +310,18 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
             </label>
           )}</div>
         </div>
-        <div className="form-commit actions">
-          <button type="submit" disabled={pending || !newOk || !!old?.onShelf}>{pending ? "Posting…" : "Post trade-in"}</button>
-          <span className="page-sub">Sale, old-phone purchase and settlement post together, or not at all.</span>
+        {r.problem && <div className="alert">{r.problem}</div>}
+        <div className="form-commit sh-commit">
+          <Totals
+            rows={[["New phone", money(Number(newPrice))], ...(Number(topUp) ? [["Promotion", `− ${money(Number(topUp))}`] as [string, string]] : []),
+                   ["Trade-in", `− ${money(Number(inspected))}`], ["Allowance", money(allowance)]]}
+            totalLabel={diff >= 0 ? "Customer pays" : "Customer is owed"} total={`${money(Math.abs(diff))} MMK`} />
+          <button type="button" onClick={r.open} disabled={pending || r.busy || !newOk || !!old?.onShelf}>
+            {pending ? "Posting…" : r.busy ? "Working it out…" : "Review trade-in"}</button>
         </div>
       </form>
-      <Summary
-        rows={[["New phone", `${money(Number(newPrice))} MMK`], ...(Number(topUp) ? [["Promotion", `− ${money(Number(topUp))}`] as [string, string]] : []),
-               ["Less trade-in", `− ${money(Number(inspected))}`], ["Trade-in allowance", `${money(allowance)} MMK`]]}
-        totalLabel={diff >= 0 ? "Customer pays" : "Customer is owed"} total={`${money(Math.abs(diff))} MMK`} />
-    </div>
+      {r.review && <ReviewDialog preview={r.review} title="Post this trade-in?" confirmLabel="Post trade-in"
+        onConfirm={r.post} onClose={r.close} />}
+    </>
   );
 }
