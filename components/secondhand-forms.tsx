@@ -38,7 +38,7 @@ function Seller({ label }: { label: string }) {
             <option value="CUSTOMER">Customer (individual)</option><option value="SHOP">Another shop</option>
           </select></div>
         <div className="field"><label htmlFor="seller_nrc">NRC</label>
-          <input id="seller_nrc" name="seller_nrc" required={kind === "CUSTOMER"} placeholder="12/ABC(N)123456" />
+          <input id="seller_nrc" name="seller_nrc" required={kind === "CUSTOMER"} placeholder="e.g. 12/ABC(N)123456" />
           <span className="hint">Kept with the phone, in case it is ever reported stolen</span></div>
       </div></div>
     </div>
