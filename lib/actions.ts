@@ -1998,6 +1998,9 @@ function parseLines(fd: FormData): InvoiceLine[] {
     .map((l: any) => ({
       itemId: String(l.itemId ?? ""),
       qty: Number(l.qty),
+      // The unit the quantity and price are in. Dropped here, a line typed
+      // in boxes posted as that many pieces.
+      uomId: l.uomId ? String(l.uomId) : null,
       unitPrice: Number(l.unitPrice),
       discountPct: Number(l.discountPct) || 0,
       // Which commercial tax this line carries. A blank means the form did
@@ -2581,6 +2584,8 @@ function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
     .map((l: any) => ({
       itemId: String(l.itemId ?? ""),
       qty: Number(l.qty),
+      // Dropped here, a receipt typed in cartons stocked that many pieces.
+      uomId: l.uomId ? String(l.uomId) : null,
       unitCost: l.unitCost ? Number(l.unitCost) : undefined,
       // The lot these goods arrived under. The engine requires it for an
       // item that tracks batches and ignores it for one that does not.
