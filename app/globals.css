@@ -10953,3 +10953,26 @@ table.ctable.stable td.r { padding-right: 14px; }
 .pos3-line-unit .unittoggle button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
 .pos3-line-unit .unittoggle button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .pos3-line-unit .unitecho { font-size: 0.75rem; color: var(--muted); }
+
+/* Spare parts: packs as one row each, columns named once. */
+.packgrid { display: grid; gap: 6px; margin-top: 4px; }
+.packgrid-head, .packgrid-row { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(110px, 1fr) minmax(100px, 1fr) minmax(120px, 1.2fr) auto; gap: 8px; align-items: center; }
+.packgrid-head { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.packgrid-row > * { min-width: 0; width: 100%; }
+.packgrid-row > button { width: auto; }
+.packgrid-qty { display: flex; align-items: center; gap: 6px; }
+.packgrid-qty input { min-width: 0; flex: 1; }
+.packgrid-qty span { color: var(--muted); font-size: var(--t-sm); }
+.packbuy { display: grid; grid-template-columns: auto minmax(0, 240px) 1fr; gap: 10px; align-items: center; margin-top: 12px; }
+.packbuy > span:first-child { font-weight: 500; }
+@media (max-width: 760px) {
+  .packgrid-head { display: none; }
+  .packgrid-row { grid-template-columns: 1fr 1fr; }
+  .packbuy { grid-template-columns: 1fr; }
+}
+
+/* Units (spare parts): 1 FT = [0.3048] [M], and whole numbers only. */
+.unitrules { display: grid; gap: 8px; margin-top: 10px; }
+.unitrules-eq { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.unitrules-eq input { width: 120px; }
+.unitrules-eq select { width: auto; min-width: 160px; }

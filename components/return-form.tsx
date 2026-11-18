@@ -5,7 +5,7 @@ import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
-import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { PartnerPicker } from "./partner-picker";
@@ -184,12 +184,12 @@ export function ReturnForm({
     setLines((ls) => {
       let next = [...ls];
       for (const p of picks) {
-        const at = next.find((l) => l.itemId === p.itemId);
-        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
         const item = byId(p.itemId);
         const rate = receiptRate(p.itemId);
-        const price = rate !== null ? rate : Number(!item ? 0 : isSales ? item.sale_price : item.next_cost);
-        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "" };
+        const st = startLine(item, rate !== null ? rate : Number(!item ? 0 : isSales ? item.sale_price : item.next_cost) || 0, { uomId: p.uomId });
+        const at = next.find((l) => l.itemId === p.itemId && (l.uomId || null) === st.uomId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: st.price > 0 ? String(st.price) : "", uomId: st.uomId };
         const blank = next.find((l) => !l.itemId);
         next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
           : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];

@@ -9,7 +9,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { TrackMode } from "./track-mode";
 import { CarriageSection } from "./carriage-section";
 import type { AwaitingLine } from "@/lib/queries";
-import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
@@ -398,12 +398,13 @@ export function InvoiceForm({
 
   function pickItem(key: number, itemId: string) {
     const item = byId(itemId);
-    const price = !item ? "" : isSales ? item.sale_price : item.next_cost;
+    const st = startLine(item, Number(!item ? 0 : isSales ? item.sale_price : item.next_cost) || 0, { buying: !isSales });
     // Changing the item detaches the line from the receipt line it was
     // prefilled from — that reference belonged to the old item.
     setLine(key, {
       itemId,
-      unitPrice: Number(price) > 0 ? String(Number(price)) : "",
+      unitPrice: st.price > 0 ? String(st.price) : "",
+      uomId: st.uomId ?? undefined,
       sourceLineId: undefined,
     });
   }
@@ -441,11 +442,12 @@ export function InvoiceForm({
     setLines((ls) => {
       let next = [...ls];
       for (const p of picks) {
-        const at = next.find((l) => l.itemId === p.itemId);
-        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
         const item = byId(p.itemId);
-        const price = !item ? 0 : Number(isSales ? item.sale_price : item.next_cost);
-        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "" };
+        const st = startLine(item, !item ? 0 : Number(isSales ? item.sale_price : item.next_cost) || 0, { uomId: p.uomId, buying: !isSales });
+        // A box and a loose piece of the same product are two lines.
+        const at = next.find((l) => l.itemId === p.itemId && (l.uomId || null) === st.uomId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: st.price > 0 ? String(st.price) : "", uomId: st.uomId ?? undefined };
         const blank = next.find((l) => !l.itemId);
         next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
           : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];

@@ -66,7 +66,9 @@ export type SellableItem = {
   parts: string[] | null;
   /** Its stock unit and the packs it sells in (a can, a foot). Empty for a phone. */
   base_uom_id: string; uom_code: string;
-  packs: { uomId: string; code: string; factor: number; price: number | null }[];
+  packs: { uomId: string; code: string; factor: number; price: number | null; barcode: string | null; whole: boolean }[];
+  /** The stock unit takes whole numbers only. */
+  whole: boolean;
 };
 
 export type ScannedUnit = {
@@ -110,8 +112,10 @@ async function sellable(companyId: string, locationId: string, term: string | nu
              where pn.item_id = i.id) as parts,
            i.base_uom_id, (select u.code from uom u where u.id = i.base_uom_id) as uom_code,
            coalesce((select json_agg(json_build_object('uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor::float,
-                                                      'price', iu.sale_price::float) order by iu.factor)
-                       from item_uom iu join uom pu on pu.id = iu.uom_id where iu.item_id = i.id), '[]'::json) as packs,
+                                                      'price', iu.sale_price::float, 'barcode', iu.barcode, 'whole', pu.whole_numbers)
+                                     order by iu.standard, iu.factor desc)
+                       from v_item_pack iu join uom pu on pu.id = iu.uom_id where iu.item_id = i.id), '[]'::json) as packs,
+           (select bu.whole_numbers from uom bu where bu.id = i.base_uom_id) as whole,
            case when i.photo_updated_at is not null
                   then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
                 when p.photo_updated_at is not null
@@ -126,6 +130,7 @@ async function sellable(companyId: string, locationId: string, term: string | nu
        and not exists (select 1 from item c where c.parent_item_id = i.id)
        and (${like}::text is null
             or i.barcode = ${term}
+            or exists (select 1 from item_uom pb where pb.item_id = i.id and pb.barcode = ${term})
             or i.code ilike ${like} or i.name ilike ${like}
             or p.name ilike ${like} or b.name ilike ${like}
             or exists (select 1 from item_part_number pn where pn.item_id = i.id

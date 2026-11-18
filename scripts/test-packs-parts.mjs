@@ -11,11 +11,15 @@
 //   7. litres: oil counted in L, bought in 200 L drums and 4 L cans, sold by the can and loose (2.5 L)
 //   8. metres and feet: hose counted in M, sold in FT (1 FT = 0.3048 M)
 //   9. the till's price guard reads a pack line per stock unit and honours a pack's own price
+//  10. one box and one loose piece on the same sale
+//  11. a unit defined once (1 TCM = 0.01 M) sells any product counted in M, no pack set up
+//  12. whole units stay whole: 1.5 BOX refused, 2.5 L fine
+//  13. lines start in the buying unit, or the scanned box, at that unit's price
 
 import postgres from "postgres";
 const sql = postgres(process.env.DATABASE_URL, { max: 1, onnotice: () => {} });
 const P = await import("../lib/posting.ts");
-const { priceInUnit } = await import("../components/unit-toggle.tsx");
+const { priceInUnit, startLine, packByBarcode } = await import("../components/unit-toggle.tsx");
 const { priceProblem } = await import("../lib/price-guard.ts");
 
 let bad = 0;
@@ -144,6 +148,51 @@ try {
     check("   a foot of hose at 3,048 passes (10,000 a metre)", (await guard([{ itemId: hose, unitPrice: 3048, uomId: FT }])) === null);
     check("   a foot at 2,000 needs a manager", (await guard([{ itemId: hose, unitPrice: 2000, uomId: FT }])) !== null);
     check("   a piece at 5,000 still passes as before", (await guard([{ itemId: item.id, unitPrice: 5000 }])) === null);
+
+    // 10 --------------------------------------------------------------------
+    const q10 = await onHand();
+    const mixed = await P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      paymentType: "CREDIT", allowOverCreditLimit: true, creditOverrideReason: "test",
+      lines: [{ itemId: item.id, qty: 1, uomId: box.id, unitPrice: 45000 }, { itemId: item.id, qty: 1, unitPrice: 5000 }] }, tx);
+    const [mx] = await tx`select gross_total::float g from document where id = ${mixed.id}`;
+    check("10. 1 box and 1 loose piece: −11 pieces, 50,000 charged", (await onHand()) - q10 === -11 && mx.g === 50000, `${(await onHand()) - q10} / ${mx.g}`);
+
+    // 11 --------------------------------------------------------------------
+    const CM = (await tx`insert into uom (company_id, code, name, ref_uom_id, ref_qty) values (${co.id}, 'TCM', 'Centimetre', ${M}, 0.01)
+        on conflict (company_id, code) do update set ref_uom_id = excluded.ref_uom_id, ref_qty = excluded.ref_qty returning id`)[0].id;
+    const [fam] = await tx`select factor::float f, standard from v_item_pack where item_id = ${hose} and uom_id = ${CM}`;
+    check("11. hose offers CM with no pack set up: 1 CM = 0.01 M", fam?.f === 0.01 && fam.standard === true, JSON.stringify(fam));
+    const [fam2] = await tx`select factor::float f from v_item_pack where item_id = ${hose} and uom_id = ${FT}`;
+    check("    the product's own FT pack still wins", fam2?.f === 0.3048);
+    const q11 = await qty(hose);
+    await P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      paymentType: "CREDIT", allowOverCreditLimit: true, creditOverrideReason: "test",
+      lines: [{ itemId: hose, qty: 50, uomId: CM, unitPrice: 100 }] }, tx);
+    check("    50 CM sold: 0.5 M out", Math.round(((await qty(hose)) - q11) * 1e4) / 1e4 === -0.5, `${(await qty(hose)) - q11}`);
+    const [noOil] = await tx`select count(*)::int n from v_item_pack where item_id = ${oil} and uom_id = ${CM}`;
+    check("    oil (counted in L) is not offered CM", noOil.n === 0);
+
+    // 12 --------------------------------------------------------------------
+    await tx`update uom set whole_numbers = true where id = ${box.id}`;
+    const half = await tx.savepoint((sp) => P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      dueDate: today, paymentType: "CREDIT", allowOverCreditLimit: true, creditOverrideReason: "test",
+      lines: [{ itemId: item.id, qty: 1.5, uomId: box.id, unitPrice: 45000 }] }, sp)).then(() => null, (e) => e.message);
+    check("12. 1.5 BOX refused: whole units only", /whole units only/.test(half ?? ""), half ?? "posted");
+    const loose = await tx.savepoint((sp) => P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
+      dueDate: today, paymentType: "CREDIT", allowOverCreditLimit: true, creditOverrideReason: "test",
+      lines: [{ itemId: oil, qty: 2.5, unitPrice: 16000 }] }, sp)).then(() => null, (e) => e.message);
+    check("    2.5 L still fine", loose === null, loose ?? "");
+
+    // 13 --------------------------------------------------------------------
+    const oilItem = { purchase_uom_id: DRUM, packs: [{ uomId: DRUM, code: "DRUM", factor: 200, price: null, barcode: "8850001" }, { uomId: CAN, code: "CAN", factor: 4, price: 60000 }] };
+    const b13 = startLine(oilItem, 10000, { buying: true });
+    check("13. a purchase line starts in DRUM at 2,000,000", b13.uomId === DRUM && b13.price === 2_000_000, JSON.stringify(b13));
+    const s13 = startLine(oilItem, 16000, {});
+    check("    a sale starts in the stock unit", s13.uomId === null && s13.price === 16000);
+    const c13 = startLine(oilItem, 16000, { uomId: packByBarcode(oilItem, "8850001") });
+    const k13 = startLine(oilItem, 16000, { uomId: CAN });
+    check("    a scanned drum barcode starts a drum line; a can at its own 60,000", c13.uomId === DRUM && c13.price === 3_200_000 && k13.price === 60000,
+      `${c13.price} / ${k13.price}`);
 
     throw ROLLBACK;
   });

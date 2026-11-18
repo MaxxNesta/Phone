@@ -20,7 +20,9 @@ export type EditorItem = {
   isModel: boolean;
   /** A product's own settings (a model or a plain item; a variant inherits them). */
   nameMy: string; brandId: string; uomId: string; ownPhoto: string | null;
-  packs: { uomId: string; factor: number; price?: number | null }[];
+  packs: { uomId: string; factor: number; price?: number | null; barcode?: string | null }[];
+  /** The unit purchases start in (0214). */
+  buyUomId: string | null;
   /** Part numbers, or null when the company has them switched off. */
   partNumbers: PartNo[] | null;
   brands: { id: string; code: string; name: string }[];
@@ -212,7 +214,7 @@ export function ItemEditor({ item, action, tracking }: {
           {product && (
             <section className="ie-card" key={resetKey} onChange={() => { setSaved(false); setTouched(true); }}>
               <h3>Pack sizes &amp; photo</h3>
-              <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} />
+              <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} buyUomId={item.buyUomId} />
               {item.partNumbers && !isModel && <div style={{ marginTop: "var(--s2)" }}><PartNumbers initial={item.partNumbers} /></div>}
               <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
             </section>

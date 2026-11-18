@@ -1,6 +1,6 @@
 "use client";
 
-import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
@@ -230,7 +230,7 @@ export function PosTill(props: {
     else scan.current?.focus();
   };
 
-  const addItem = async (item: SellableItem) => {
+  const addItem = async (item: SellableItem, uomId: string | null = null) => {
     if (item.tracks_serial) {
       const units = (await posUnitsAction(item.id, locationId))
         .filter((u) => u.status === "IN_STOCK" && !lines.some((l) => l.serial === u.imei));
@@ -238,16 +238,18 @@ export function PosTill(props: {
       return;
     }
     setLines((ls) => {
-      const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId && !l.uomId);
-      if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, l.onHand) } : l));
+      // A box and a loose piece of the same product are two lines.
+      const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId && (l.uomId ?? null) === uomId);
+      if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, Math.max(l.onHand / fac(l), 1)) } : l));
+      const st = startLine(item, item.price ?? 0, { uomId });
       return [...ls, {
         key: newKey(), itemId: item.id, name: item.model, variant: variantLine(item) || null, photo: item.photo,
         // A service has no stock: any quantity may be sold.
         tracksSerial: false, serial: null, qty: 1, onHand: item.is_stocked === false ? 9999 : item.on_hand,
-        unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
+        unitPrice: st.price, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
         warrantyMonths: item.warranty_months, focReasonId: null,
         ...((item.packs ?? []).length ? { packs: item.packs, base: { uomId: item.base_uom_id, code: item.uom_code },
-                                          listPrice: item.price, uomId: null } : {}),
+                                          listPrice: item.price, uomId: st.uomId } : {}),
       }];
     });
     setMessage(null);
@@ -276,6 +278,9 @@ export function PosTill(props: {
     const byBarcode = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === lower
       || (flat.length >= 3 && (i.parts ?? []).includes(flat)));
     if (byBarcode.length === 1) { await addItem(byBarcode[0]); setQ(""); return; }
+    // A box's own barcode adds one box (0214).
+    const packed = r.items.find((i) => (i.packs ?? []).some((p) => p.barcode === t));
+    if (packed) { await addItem(packed, (packed.packs ?? []).find((p) => p.barcode === t)!.uomId); setQ(""); return; }
     if (truncated) { setItems(r.items); searched.current = true; }
   });
 

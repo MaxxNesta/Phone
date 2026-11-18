@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 type Uom = { id: string; code: string; name: string };
-type Pack = { key: number; uomId: string; factor: string; price: string };
+type Pack = { key: number; uomId: string; factor: string; price: string; barcode: string };
 
 /**
  * The packs an item is bought and sold in, each holding so many base units.
@@ -19,17 +19,19 @@ type Pack = { key: number; uomId: string; factor: string; price: string };
  * receipts saying 24.
  */
 export function PackSizes({
-  uoms, baseUomId, initial, spareParts = false,
+  uoms, baseUomId, initial, spareParts = false, buyUomId = null,
 }: {
+  /** The unit purchase lines start in (0214); null is the stock unit. */
+  buyUomId?: string | null;
   /** A spare-parts shop: a selling price per pack, and the ladder underneath. */
   spareParts?: boolean;
   uoms: Uom[];
   baseUomId: string;
-  initial: { uomId: string; factor: number; price?: number | null }[];
+  initial: { uomId: string; factor: number; price?: number | null; barcode?: string | null }[];
 }) {
   const pk = useTranslations("packSizes");
   const [packs, setPacks] = useState<Pack[]>(
-    initial.map((p, i) => ({ key: i, uomId: p.uomId, factor: String(p.factor), price: p.price == null ? "" : String(p.price) })),
+    initial.map((p, i) => ({ key: i, uomId: p.uomId, factor: String(p.factor), price: p.price == null ? "" : String(p.price), barcode: p.barcode ?? "" })),
   );
   const base = uoms.find((u) => u.id === baseUomId);
   const available = uoms.filter((u) => u.id !== baseUomId);
@@ -40,15 +42,45 @@ export function PackSizes({
   const payload = JSON.stringify(
     packs
       .filter((p) => p.uomId && Number(p.factor) > 0)
-      .map((p) => ({ uomId: p.uomId, factor: Number(p.factor), price: !spareParts || p.price === "" ? null : Number(p.price) })),
+      .map((p) => ({ uomId: p.uomId, factor: Number(p.factor), price: !spareParts || p.price === "" ? null : Number(p.price),
+                     barcode: spareParts ? p.barcode.trim() || null : null })),
   );
+  const [buy, setBuy] = useState(buyUomId ?? "");
+  const codeOf = (id: string) => uoms.find((u) => u.id === id)?.code ?? "?";
 
   return (
     <div className="field" style={{ marginTop: "0.6rem" }}>
       <label>{pk("label")}</label>
       <input type="hidden" name="packs" value={payload} />
 
-      {packs.length === 0 ? (
+      {spareParts && packs.length > 0 ? (
+        /* A spare-parts shop: one row a pack, the columns named once. */
+        <div className="packgrid" role="table" aria-label={pk("label")}>
+          <div className="packgrid-head" role="row">
+            <span>Pack</span><span>Holds</span><span>{pk("sellsAt")}</span><span>Barcode</span><span />
+          </div>
+          {packs.map((p) => (
+            <div key={p.key} className="packgrid-row" role="row">
+              <select value={p.uomId} onChange={(e) => set(p.key, { uomId: e.target.value })} aria-label="Pack unit">
+                <option value="">{pk("chooseUnit")}</option>
+                {available.map((u) => <option key={u.id} value={u.id}>{u.code} · {u.name}</option>)}
+              </select>
+              <span className="packgrid-qty">
+                <input type="number" min="0" step="any" value={p.factor} onChange={(e) => set(p.key, { factor: e.target.value })}
+                       aria-label={pk("perPack")} />
+                <span>{base?.code}</span>
+              </span>
+              <input type="number" min="0" step="any" value={p.price} placeholder={pk("pricePlaceholder")}
+                     onChange={(e) => set(p.key, { price: e.target.value })} aria-label={pk("packPrice")} />
+              <input value={p.barcode} placeholder="Scan the box" onChange={(e) => set(p.key, { barcode: e.target.value })}
+                     aria-label="Pack barcode" />
+              <button type="button" className="ghost tiny" onClick={() => setPacks((ps) => ps.filter((x) => x.key !== p.key))}>
+                {pk("remove")}
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : packs.length === 0 ? (
         <span className="hint">
           {pk("onlyBase", { unit: base?.code ?? pk("ownUnit") })}
         </span>
@@ -86,13 +118,23 @@ export function PackSizes({
 
       <button
         type="button" className="ghost tiny" style={{ marginTop: "0.4rem" }}
-        onClick={() => setPacks((ps) => [...ps, { key: Date.now(), uomId: "", factor: "", price: "" }])}
+        onClick={() => setPacks((ps) => [...ps, { key: Date.now(), uomId: "", factor: "", price: "", barcode: "" }])}
       >
         {pk("add")}
       </button>
       <span className="hint">
         {pk("hint", { unit: base?.code ?? pk("units") })}
       </span>
+      {spareParts && base && (
+        <label className="packbuy">
+          <span>Bought in</span>
+          <select name="purchase_uom_id" value={buy} onChange={(e) => setBuy(e.target.value)}>
+            <option value="">{base.code} (stock unit)</option>
+            {packs.filter((p) => p.uomId).map((p) => <option key={p.key} value={p.uomId}>{codeOf(p.uomId)} of {p.factor || "?"} {base.code}</option>)}
+          </select>
+          <span className="hint">Purchase orders and bills start in this unit.</span>
+        </label>
+      )}
       {spareParts && base && (
         <PackLadder base={base.code} packs={packs
           .filter((p) => p.uomId && Number(p.factor) > 0)

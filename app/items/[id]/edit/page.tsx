@@ -27,7 +27,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const seeCost = can(user, "cost.view");
 
   const [item] = (await sql`
-    select i.id, i.code, i.name, i.name_my, i.name_is_custom, i.barcode, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
+    select i.id, i.code, i.name, i.name_my, i.name_is_custom, i.barcode, i.purchase_uom_id, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
            i.brand_id, i.base_uom_id, i.warranty_months, i.supplier_warranty_months,
            exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
            (select count(*)::int from item c where c.parent_item_id = i.id) as variant_count,
@@ -53,7 +53,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const [brands, uoms, packs] = await Promise.all([
     sql`select id, code, name from brand where company_id = ${company.id} order by name` as unknown as Promise<{ id: string; code: string; name: string }[]>,
     sql`select id, code, name from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string }[]>,
-    sql`select uom_id, factor::float as factor, sale_price::float as price from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number; price: number | null }[]>,
+    sql`select uom_id, factor::float as factor, sale_price::float as price, barcode from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number; price: number | null; barcode: string | null }[]>,
   ]);
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
@@ -108,7 +108,8 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     parentId: item.parent_item_id, parentName: item.parent_name,
     isModel, nameMy: item.name_my ?? "", brandId: item.brand_id ?? "", uomId: item.base_uom_id,
     ownPhoto: item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null,
-    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor), price: p.price })), brands, uoms,
+    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor), price: p.price, barcode: p.barcode })), brands, uoms,
+    buyUomId: (item.purchase_uom_id as string | null) ?? null,
     partNumbers: sparePartsOn(company)
       ? (await sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
                     where item_id = ${id} order by kind, part_no`) as unknown as PartNo[]

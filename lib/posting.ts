@@ -2170,7 +2170,7 @@ async function packFactor(
 ): Promise<PackFactor> {
   if (!uomId || uomId === baseUomId) return { factor: 1, uomId: baseUomId };
   const [row] = await tx`
-    select factor from item_uom where item_id = ${itemId} and uom_id = ${uomId}`;
+    select factor from v_item_pack where item_id = ${itemId} and uom_id = ${uomId}`;
   if (!row) {
     const [u] = await tx`select code from uom where id = ${uomId}`;
     const [i] = await tx`select code, name from item where id = ${itemId}`;

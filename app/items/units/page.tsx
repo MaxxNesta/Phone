@@ -1,6 +1,6 @@
 import { getCompany } from "@/lib/queries";
 import { sql } from "@/lib/db";
-import { createUnit, updateUnit, deactivateUnit, activateUnit, deleteUnit } from "@/lib/actions";
+import { createUnit, updateUnit, deactivateUnit, activateUnit, deleteUnit, addStandardUnits } from "@/lib/actions";
 import { AddUnitForm } from "@/components/unit-form";
 import { UnitRow } from "@/components/unit-row";
 import { DataTable, type DataRow } from "@/components/data-table";
@@ -18,14 +18,17 @@ export default async function Units() {
   if (!co) return <div className="empty">{c("noCompany")}</div>;
 
   const units = (await sql`
-    select u.id, u.code, u.name, u.name_my, u.is_active,
+    select u.id, u.code, u.name, u.name_my, u.is_active, u.ref_uom_id, u.ref_qty::float as ref_qty, u.whole_numbers,
+           r.code as ref_code,
            count(i.id)::int as items
       from uom u
+      left join uom r on r.id = u.ref_uom_id
       left join item i on i.base_uom_id = u.id
      where u.company_id = ${co.id}
-     group by u.id
+     group by u.id, r.code
      order by u.name`) as any[];
 
+  const spare = sparePartsOn(co);
   const rows: DataRow[] = units.map((u) => ({
     key: u.id,
     searchText: [u.code, u.name, u.name_my].filter(Boolean).join(" "),
@@ -37,6 +40,7 @@ export default async function Units() {
         deactivateAction={deactivateUnit}
         activateAction={activateUnit}
         deleteAction={deleteUnit}
+        rulesFrom={spare ? units : undefined}
       />
     ),
   }));
@@ -99,7 +103,7 @@ export default async function Units() {
         <p className="page-sub">{t("sub")}</p>
       </div>
 
-      <AddUnitForm action={createUnit} />
+      <AddUnitForm action={createUnit} rulesFrom={spare ? units : undefined} standardAction={spare ? addStandardUnits : undefined} />
 
       <section>
         <div className="card">
@@ -123,6 +127,7 @@ export default async function Units() {
               columns={[
                 { key: "code", label: c("code"), sortable: true },
                 { key: "name", label: c("name"), sortable: true },
+                ...(spare ? [{ key: "equals", label: "Equals", align: "r" as const }, { key: "whole", label: "Whole only" }] : []),
                 { key: "items", label: c("items"), sortable: true, align: "r" },
                 { key: "is_active", label: c("status"), sortable: true },
                 { key: "actions", label: "" },

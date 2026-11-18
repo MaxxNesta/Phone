@@ -7,7 +7,7 @@ import { asVariant } from "./variant-tags";
 import { useTranslations } from "next-intl";
 
 type Node = { id: string; name: string; parent_id: string | null };
-export type Pick = { itemId: string; qty: number };
+export type Pick = { itemId: string; qty: number; uomId?: string | null };
 type Filters = { category: string; brand: string; model: string; opts: Record<string, string> };
 const NONE: Filters = { category: "", brand: "", model: "", opts: {} };
 
@@ -121,6 +121,9 @@ export function AddItemsBar({
     if (onEnter && (await onEnter(t))) { setQ(""); setMsg(null); setListing(false); box.current?.focus(); return; }
     // A scanned barcode or a typed code means one item: it goes straight on.
     const flat = t.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    // A box's own barcode adds one box (0214).
+    const packed = items.find((i) => (i.packs ?? []).some((p) => p.barcode === t));
+    if (packed) { add([{ itemId: packed.id, qty: 1, uomId: (packed.packs ?? []).find((p) => p.barcode === t)!.uomId }]); return; }
     const exact = items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase()
       || (flat.length >= 3 && (i.parts ?? []).some((p) => p.norm === flat)));
     const pick = exact.length === 1 ? exact[0] : hits[hi];

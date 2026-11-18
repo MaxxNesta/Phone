@@ -4,11 +4,16 @@ import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { useTranslations } from "next-intl";
 import { useNotice } from "@/components/toast";
+import { UnitRules } from "./unit-rules";
 
 export function AddUnitForm({
-  action,
+  action, rulesFrom, standardAction,
 }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
+  /** A spare-parts shop: every unit, for the Equals and Whole rules (0214). */
+  rulesFrom?: { id: string; code: string; name: string; ref_uom_id?: string | null }[];
+  /** A spare-parts shop: add the usual measures in one click. */
+  standardAction?: (prev: unknown, fd: FormData) => Promise<ActionResult>;
 }) {
   const c = useTranslations("common");
   const f = useTranslations("itemForm");
@@ -20,11 +25,22 @@ export function AddUnitForm({
   );
   useNotice(state);
   const [open, setOpen] = useState(false);
+  const [stdState, stdAction, stdPending] = useActionState<ActionResult | null, FormData>(
+    (standardAction ?? action) as never, null);
+  useNotice(stdState);
 
   if (!open) {
     return (
       <div className="actions">
         <button type="button" onClick={() => setOpen(true)}>{u("plusUnit")}</button>
+        {standardAction && (
+          <form action={stdAction} style={{ display: "inline" }}>
+            <button type="submit" className="ghost" disabled={stdPending}
+                    title="M, CM, MM, IN, FT, YD · L, ML, GAL · KG, G, LB · PCS, SET, PAIR (whole)">
+              {stdPending ? c("saving") : "Add standard units"}
+            </button>
+          </form>
+        )}
       </div>
     );
   }
@@ -61,6 +77,7 @@ export function AddUnitForm({
             </div>
           </div>
 
+          {rulesFrom && <UnitRules units={rulesFrom} />}
           <div className="actions">
             <button type="submit" disabled={pending}>{pending ? c("saving") : u("save")}</button>
           </div>

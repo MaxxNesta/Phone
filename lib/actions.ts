@@ -1100,12 +1100,13 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
        Replacing the list cannot disturb a posted document — every line
        carries the factor it used, so a carton that becomes 20s next year
        leaves last year's receipts saying 24. */
-    let packs: { uomId: string; factor: number; price: number | null }[] = [];
+    let packs: { uomId: string; factor: number; price: number | null; barcode: string | null }[] = [];
     const rawPacks = str(fd, "packs");
     if (rawPacks) {
       try {
         packs = (JSON.parse(rawPacks) as any[])
-          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor), price: packPrice(p.price) }))
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor), price: packPrice(p.price),
+                         barcode: String(p.barcode ?? "").trim().slice(0, 64) || null }))
           .filter((p) => p.uomId && p.uomId !== uomId && p.factor > 0);
       } catch {
         return { error: await m("packsUnreadable") };
@@ -1139,10 +1140,27 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
       if (rawPacks) {
         await tx`delete from item_uom where item_id = ${id}`;
         for (const p of packs) {
+          if (p.barcode) {
+            // A box's barcode must not be some product's own barcode: a scan would mean two things.
+            const [clash] = await tx`select code from item where company_id = ${co} and barcode = ${p.barcode}`;
+            if (clash) throw new Error(`Barcode ${p.barcode} is already ${clash.code}'s own barcode.`);
+            const [other] = await tx`select i.code from item_uom iu join item i on i.id = iu.item_id
+                                      where iu.company_id = ${co} and iu.barcode = ${p.barcode} and iu.item_id <> ${id}`;
+            if (other) throw new Error(`Barcode ${p.barcode} is already on a pack of ${other.code}.`);
+          }
           await tx`
-            insert into item_uom (company_id, item_id, uom_id, factor, sale_price)
-            values (${co}, ${id}, ${p.uomId}, ${p.factor}, ${p.price})`;
+            insert into item_uom (company_id, item_id, uom_id, factor, sale_price, barcode)
+            values (${co}, ${id}, ${p.uomId}, ${p.factor}, ${p.price}, ${p.barcode})`;
         }
+      }
+      // The unit purchases start in (0214): the stock unit, a pack, or a unit of its family.
+      if (fd.has("purchase_uom_id")) {
+        const buy = str(fd, "purchase_uom_id") || null;
+        if (buy) {
+          const [ok] = await tx`select 1 from v_item_pack where item_id = ${id} and uom_id = ${buy}`;
+          if (!ok) throw new Error("Bought in has to be one of this product's packs.");
+        }
+        await tx`update item set purchase_uom_id = ${buy} where id = ${id} and company_id = ${co}`;
       }
 
       // Left alone unless the picker said otherwise. A form submitted with
@@ -1714,6 +1732,29 @@ export async function createBrandInline(
  * once when the item is created and the sheet importer refuses to guess
  * "Btl" into "Bottle" — and why a unit in use is retired rather than deleted.
  */
+/**
+ * A unit's rules from the form (0214), when the form carried them: what it
+ * equals in a reference unit, and whole numbers only. One level of reference:
+ * the reference has none of its own, and a unit others refer to takes none.
+ */
+async function unitRules(fd: FormData, co: string, id: string | null) {
+  if (!fd.has("unit_rules")) return null;
+  const refId = str(fd, "ref_uom_id") || null;
+  const qty = refId ? Number(str(fd, "ref_qty")) : null;
+  if (refId) {
+    if (!(qty! > 0)) throw new Error("Say how much of the reference unit one of this unit is, e.g. 0.3048.");
+    if (refId === id) throw new Error("A unit cannot be its own reference.");
+    const [ref] = await sql`select ref_uom_id from uom where id = ${refId} and company_id = ${co}`;
+    if (!ref) throw new Error("Choose the reference unit again.");
+    if (ref.ref_uom_id) throw new Error("The reference has to be a base measure (M, L, KG), not one defined from another.");
+    if (id) {
+      const [used] = await sql`select code from uom where ref_uom_id = ${id} limit 1`;
+      if (used) throw new Error(`${used.code} is defined from this unit, so this one stays a reference.`);
+    }
+  }
+  return { refId, qty, whole: fd.get("whole_numbers") === "on" };
+}
+
 export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
@@ -1728,9 +1769,11 @@ export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionRe
     const dup = await sql`select 1 from uom where company_id = ${co} and code = ${code}`;
     if (dup.length) return { error: await m("codeUsed", { code }) };
 
+    const rules = await unitRules(fd, co, null);
     await sql`
-      insert into uom (company_id, code, name, name_my)
-      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null})`;
+      insert into uom (company_id, code, name, name_my, ref_uom_id, ref_qty, whole_numbers)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
+              ${rules?.refId ?? null}, ${rules?.qty ?? null}, ${rules?.whole ?? false})`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -1763,6 +1806,11 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
         code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
+    const rules = await unitRules(fd, co, id);
+    if (rules) {
+      await sql`update uom set ref_uom_id = ${rules.refId}, ref_qty = ${rules.qty}, whole_numbers = ${rules.whole}
+                 where id = ${id} and company_id = ${co}`;
+    }
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -1770,6 +1818,47 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
 
   revalidatePath("/items/units");
   redirectWithToast("/items/units", await m("unitUpdated"));
+}
+
+/**
+ * The usual measures in one click (0214): length from M, volume from L,
+ * weight from KG, and pieces whole. A code the shop already has is left as
+ * it is, apart from gaining its reference if it had none.
+ */
+export async function addStandardUnits(_prev: unknown, _fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
+  const STD: [string, string, string | null, number | null, boolean][] = [
+    ["M", "Metre", null, null, false], ["CM", "Centimetre", "M", 0.01, false], ["MM", "Millimetre", "M", 0.001, false],
+    ["IN", "Inch", "M", 0.0254, false], ["FT", "Foot", "M", 0.3048, false], ["YD", "Yard", "M", 0.9144, false],
+    ["L", "Litre", null, null, false], ["ML", "Millilitre", "L", 0.001, false], ["GAL", "Gallon (US)", "L", 3.785412, false],
+    ["KG", "Kilogram", null, null, false], ["G", "Gram", "KG", 0.001, false], ["LB", "Pound", "KG", 0.453592, false],
+    ["PCS", "Piece", null, null, true], ["SET", "Set", null, null, true], ["PAIR", "Pair", null, null, true],
+  ];
+  let added = 0;
+  try {
+    const co = await companyId();
+    await sql.begin(async (tx) => {
+      for (const [code, name, ref, qty, whole] of STD) {
+        const [have] = await tx`select id, ref_uom_id from uom where company_id = ${co} and code = ${code}`;
+        const [r] = ref ? await tx`select id, ref_uom_id from uom where company_id = ${co} and code = ${ref}` : [];
+        const refId = r && !r.ref_uom_id ? r.id : null;
+        if (!have) {
+          await tx`insert into uom (company_id, code, name, ref_uom_id, ref_qty, whole_numbers)
+                   values (${co}, ${code}, ${name}, ${refId}, ${refId ? qty : null}, ${whole})`;
+          added++;
+        } else if (whole) {
+          await tx`update uom set whole_numbers = true where id = ${have.id}`;
+        } else if (refId && !have.ref_uom_id
+                   && !(await tx`select 1 from uom where ref_uom_id = ${have.id} limit 1`).length) {
+          await tx`update uom set ref_uom_id = ${refId}, ref_qty = ${qty} where id = ${have.id}`;
+        }
+      }
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/units");
+  redirectWithToast("/items/units", added ? `${added} standard units added` : "Standard units already in place");
 }
 
 /**
@@ -1856,7 +1945,11 @@ export type PickerItem = {
   base_uom_id?: string;
   /** The packs this item is bought and sold in. Empty for an item handled
    *  only in its own unit, which is most of a catalogue. */
-  packs?: { uomId: string; code: string; factor: string | number; price?: string | number | null }[];
+  packs?: { uomId: string; code: string; factor: string | number; price?: string | number | null; barcode?: string | null; whole?: boolean }[];
+  /** The unit purchase lines start in (0214); null for the stock unit. */
+  purchase_uom_id?: string | null;
+  /** The stock unit takes whole numbers only (0214). */
+  whole?: boolean;
   /** Whether goods of this item arrive in identifiable lots, and whether
    *  those lots have a shelf life. A receipt form asks for what these say. */
   tracks_batch?: boolean; tracks_expiry?: boolean;
@@ -4149,11 +4242,15 @@ export async function getFormData() {
                 -- can offer them without a second round trip per item.
                 coalesce((
                   select json_agg(json_build_object(
-                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor, 'price', iu.sale_price)
-                         order by iu.factor)
-                    from item_uom iu join uom pu on pu.id = iu.uom_id
+                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor, 'price', iu.sale_price,
+                           'barcode', iu.barcode, 'whole', pu.whole_numbers)
+                         order by iu.standard, iu.factor desc)
+                    from v_item_pack iu join uom pu on pu.id = iu.uom_id
                    where iu.item_id = i.id
                 ), '[]'::json) as packs,
+                -- What a purchase line starts in (0214): oil by the DRUM.
+                i.purchase_uom_id,
+                (select bu.whole_numbers from uom bu where bu.id = i.base_uom_id) as whole,
                 -- The numbers a part is asked for by (0213): OEM, other
                 -- brands', the supplier's. Searched by the picker.
                 (select json_agg(json_build_object('no', pn.part_no, 'kind', pn.kind, 'norm', pn.norm) order by pn.kind, pn.part_no)

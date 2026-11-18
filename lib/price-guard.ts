@@ -82,7 +82,7 @@ export async function priceProblem(
   const packed = lines.filter((l) => l.uomId);
   if (packed.length) {
     for (const r of await db`
-      select item_id, uom_id, factor::float as factor, sale_price::float as price from item_uom
+      select item_id, uom_id, factor::float as factor, sale_price::float as price from v_item_pack
        where company_id = ${co} and item_id = any(${packed.map((l) => l.itemId)})`) {
       packOf.set(`${r.item_id}|${r.uom_id}`, { factor: r.factor, price: r.price });
     }

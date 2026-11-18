@@ -83,7 +83,7 @@ export default async function ItemPage({
   const partNos = spareParts
     ? await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no` : [];
   const [packs, prices, stock, movements, variants] = await Promise.all([
-    sql`select u.code, iu.factor, iu.sale_price from item_uom iu
+    sql`select u.code, iu.factor, iu.sale_price from v_item_pack iu
           join uom u on u.id = iu.uom_id
          where iu.item_id = ${id} order by iu.factor` as unknown as Promise<
       Array<{ code: string; factor: string; sale_price: string | null }>>,

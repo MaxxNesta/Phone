@@ -2,7 +2,37 @@
 
 import { useState } from "react";
 
-export type Pack = { uomId: string; code: string; factor: number; price?: number | null };
+export type Pack = { uomId: string; code: string; factor: number; price?: number | null; barcode?: string | null; whole?: boolean };
+
+type HasPacks = {
+  packs?: { uomId: string; code: string; factor: string | number; price?: string | number | null; barcode?: string | null; whole?: boolean }[] | null;
+  purchase_uom_id?: string | null;
+};
+
+/** An item's packs as numbers, as every form needs them. */
+export function packsOf(item: HasPacks | null | undefined): Pack[] {
+  return (item?.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
+    price: p.price == null ? null : Number(p.price), barcode: p.barcode ?? null, whole: !!p.whole }));
+}
+
+/** The pack a scanned code names, if it is one of this item's pack barcodes. */
+export function packByBarcode(item: HasPacks | null | undefined, code: string): string | null {
+  const t = code.trim();
+  return t ? packsOf(item).find((p) => p.barcode === t)?.uomId ?? null : null;
+}
+
+/**
+ * The unit a new line starts in, and its price: a scanned pack; else, buying,
+ * the product's buying unit (oil by the DRUM); else the stock unit.
+ * `price` is the stock-unit price the form would have used.
+ */
+export function startLine(item: HasPacks | null | undefined, price: number,
+                          o: { uomId?: string | null; buying?: boolean }): { uomId: string | null; price: number } {
+  const packs = packsOf(item);
+  const want = o.uomId ?? (o.buying ? item?.purchase_uom_id ?? null : null);
+  if (!want || !packs.some((p) => p.uomId === want)) return { uomId: null, price };
+  return { uomId: want, price: priceInUnit(packs, null, want, price, o.buying ? null : price) };
+}
 
 /**
  * A line's price after its unit changes. Selling, a pack with its own price
