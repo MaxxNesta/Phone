@@ -1579,6 +1579,35 @@ tbody tr.coa-section { background: var(--line-soft); }
 tbody tr.coa-section:hover { background: var(--line-soft); }
 tbody tr.coa-section > td { padding-top: 10px; padding-bottom: 10px; }
 
+/* Chart of accounts tree: one 22px lane per level, lines drawn in the lanes
+   (a pipe where the branch carries on, a tee or a last-elbow for the row
+   itself), so expanded groups read as connected the way a file tree does. */
+.coa-table { --coa-lane: 22px; }
+.coa-table .coa-tree-cell { position: relative; white-space: nowrap; padding-left: 12px; }
+.coa-table .coa-guides { display: inline-flex; align-self: stretch; vertical-align: top; }
+.coa-table .coa-g { position: relative; display: inline-block; width: var(--coa-lane); }
+.coa-table .coa-g::before, .coa-table .coa-g::after { content: ""; position: absolute; border-color: var(--line); }
+/* The lane spans the whole row so lines meet the next row's: extend the
+   pseudo-elements past the cell padding with generous top/bottom. */
+.coa-table .coa-g-pipe::before,
+.coa-table .coa-g-tee::before { left: 9px; top: -40px; bottom: -40px; border-left: 1px solid var(--line); }
+.coa-table .coa-g-last::before { left: 9px; top: -40px; height: calc(40px + 0.7em); border-left: 1px solid var(--line); }
+.coa-table .coa-g-tee::after,
+.coa-table .coa-g-last::after { left: 9px; top: 0.7em; width: 10px; border-top: 1px solid var(--line); }
+.coa-table td.coa-tree-cell { overflow: hidden; }
+.coa-table .coa-code { font-family: var(--mono, ui-monospace, monospace); font-variant-numeric: tabular-nums;
+  letter-spacing: .02em; padding-right: 14px; }
+.coa-table .coa-head { display: inline-flex; flex-direction: column; gap: 1px; }
+.coa-table .coa-toggle { all: unset; cursor: pointer; font-weight: 700; }
+.coa-table .coa-toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.coa-table .coa-chev { display: inline-block; width: 1.1em; transition: transform .15s; }
+.coa-table .coa-chev[data-folded] { transform: rotate(-90deg); }
+@media (prefers-reduced-motion: reduce) { .coa-table .coa-chev { transition: none; } }
+.coa-table td { padding-top: 9px; padding-bottom: 9px; }
+.coa-table.compact td { padding-top: 4px; padding-bottom: 4px; }
+.coa-table.compact tbody tr.coa-section > td { padding-top: 6px; padding-bottom: 6px; }
+.coa-table.compact .subline { display: none; }
+
 /* Kept in the accessibility tree and focusable, but out of the layout — used
    for the real <input type="file"> behind a styled drop zone, so the file
    dialog, keyboard and screen readers all still work. */
@@ -10840,3 +10869,9 @@ table.ctable.stable td.r { padding-right: 14px; }
 /* The details band on a waved sheet: its strip flush with the sheet's top edge. */
 .form.docsheet.waved > .card.doc-info:not(.receive-mode) { margin-top: 0; padding-top: 0; }
 .form.docsheet.waved > .card.doc-info:not(.receive-mode) > .card-head { border-top-left-radius: 9px; }
+
+/* Chart of accounts: the posting count and the gear sit at the row's end. */
+.coa-table td.coa-actions { white-space: nowrap; text-align: right; }
+.coa-table td.coa-actions .rowmenu { display: inline-block; margin-left: 8px; vertical-align: middle; }
+.coa-table td.coa-actions .dots { display: inline-grid; place-items: center; color: var(--muted); }
+.coa-table td.coa-actions .dots:hover { color: var(--ink); }

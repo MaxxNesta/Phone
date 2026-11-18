@@ -3,6 +3,8 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { RowMenu } from "./row-menu";
+import { Settings } from "lucide-react";
 import { ACCOUNT_TYPE_LABEL } from "./account-form";
 import { accountTypeLabel } from "@/lib/format";
 import { useNotice } from "@/components/toast";
@@ -45,7 +47,12 @@ export function AccountRow({
   deleteAction,
   folded,
   onToggle,
+  guides = [],
 }: {
+  /** Tree lines left of the row, one per level: a pipe where that level's
+   *  branch carries on below, nothing where it ended; the last is this row's
+   *  own elbow (tee, or last for the final child). */
+  guides?: ("pipe" | "none" | "tee" | "last")[];
   /** Set on a heading row: whether its accounts are hidden, and how to flip it. */
   folded?: boolean;
   onToggle?: () => void;
@@ -200,23 +207,33 @@ export function AccountRow({
           columns stay empty rather than repeating a number nobody quotes and
           a type that belongs to the accounts underneath. The code is still
           there to edit — it is on the Edit form, where changing it belongs. */}
-      <td className="code" style={{ paddingLeft: `${1 + depth * 1.4}rem` }}>
-        {isHeading ? "" : account.code}
-      </td>
-      <td className="wrap" style={{ paddingLeft: isHeading ? `${1 + depth * 1.4}rem` : undefined }}>
-        {onToggle ? (
-          <button type="button" onClick={onToggle} aria-expanded={!folded}
-            style={{ all: "unset", cursor: "pointer", fontWeight: 700 }}>
-            <span aria-hidden style={{ display: "inline-block", width: "1.1em", transition: "transform .15s", transform: folded ? "rotate(-90deg)" : "none" }}>▾</span>
-            {account.name}
-          </button>
+      {/* The tree lives in the first cell: lines, then a heading's chevron
+          and name across both columns, or an account's code with its name in
+          a column of its own. */}
+      <td className="coa-tree-cell" colSpan={isHeading ? 2 : 1} data-depth={depth}>
+        <span className="coa-guides" aria-hidden>
+          {guides.map((g, i) => <span key={i} className={`coa-g coa-g-${g}`} />)}
+        </span>
+        {isHeading ? (
+          <span className="coa-head">
+            {onToggle ? (
+              <button type="button" onClick={onToggle} aria-expanded={!folded} className="coa-toggle">
+                <span aria-hidden className="coa-chev" data-folded={folded || undefined}>▾</span>
+                {account.name}
+              </button>
+            ) : <strong>{account.name}</strong>}
+            {account.name_my && <span className="subline">{account.name_my}</span>}
+          </span>
         ) : (
-          <strong style={{ fontWeight: isHeading ? 700 : 400 }}>{account.name}</strong>
-        )}
-        {account.name_my && (
-          <div className="subline" style={{ fontWeight: 400 }}>{account.name_my}</div>
+          <span className="coa-code">{account.code}</span>
         )}
       </td>
+      {!isHeading && (
+        <td className="wrap">
+          {account.name}
+          {account.name_my && <div className="subline">{account.name_my}</div>}
+        </td>
+      )}
       <td style={{ color: "var(--muted)" }}>
         {isHeading ? "" : accountTypeLabel(account, accounts, ACCOUNT_TYPE_LABEL)}
       </td>
@@ -232,14 +249,19 @@ export function AccountRow({
         )}
         {locked && <> <span className="pill" title={`Used by the posting engine for ${lockedBy}`}>in use by posting</span></>}
       </td>
-      <td>
-        <span className="actions">
-          <button type="button" className="ghost tiny" onClick={() => setEditing(true)}>Edit</button>
+      <td className="coa-actions">
+        {account.posting_count > 0 && (
+          <span className="hint" style={{ color: "var(--muted)" }}>
+            {account.posting_count} posting{account.posting_count === 1 ? "" : "s"}
+          </span>
+        )}
+        <RowMenu label={`Actions for ${account.code} ${account.name}`} icon={<Settings size={15} aria-hidden />}>
+          <button type="button" onClick={() => setEditing(true)}>Edit</button>
 
           {account.is_active && !locked && (
-            <form action={deactFormAction} style={{ display: "inline" }}>
+            <form action={deactFormAction}>
               <input type="hidden" name="id" value={account.id} />
-              <button type="submit" className="warn tiny">Deactivate</button>
+              <button type="submit" className="warn">Deactivate</button>
             </form>
           )}
 
@@ -247,30 +269,26 @@ export function AccountRow({
               posting engine needs being retired, so a locked account that is
               somehow inactive is exactly the one most worth putting back. */}
           {!account.is_active && (
-            <form action={actFormAction} style={{ display: "inline" }}>
+            <form action={actFormAction}>
               <input type="hidden" name="id" value={account.id} />
-              <button type="submit" className="ghost tiny">Reactivate</button>
+              <button type="submit">Reactivate</button>
             </form>
           )}
 
-          {!locked && account.posting_count === 0 && account.child_count === 0 && (
+          {!locked && account.posting_count === 0 && account.child_count === 0 && (<>
+            <div className="rowmenu-sep" />
             <ConfirmDelete
             action={delFormAction}
             pending={delPending}
             error={delState && "error" in delState ? delState.error : null}
             title={`Delete ${account.code} ${account.name}?`}
             detail="This cannot be undone."
+            className="danger"
           >
             <input type="hidden" name="id" value={account.id} />
           </ConfirmDelete>
-          )}
-
-          {account.posting_count > 0 && (
-            <span className="hint" style={{ color: "var(--muted)" }}>
-              {account.posting_count} posting{account.posting_count === 1 ? "" : "s"}
-            </span>
-          )}
-        </span>
+          </>)}
+        </RowMenu>
 
       </td>
     </tr>

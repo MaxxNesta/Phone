@@ -22,8 +22,10 @@ import { useTranslations } from "next-intl";
  * row was cut off at the table's edge. Portalled and placed at the button's
  * own screen position, it escapes the wrapper entirely.
  */
-export function RowMenu({ label, children }: {
+export function RowMenu({ label, icon, children }: {
   label?: string;
+  /** What the button shows; the vertical dots by default. */
+  icon?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const c = useTranslations("common");
@@ -106,7 +108,7 @@ export function RowMenu({ label, children }: {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        &#8942;
+        {icon ?? <>&#8942;</>}
       </button>
       {open && at && (
         <Portal>
