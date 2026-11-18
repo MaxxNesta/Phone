@@ -13,11 +13,16 @@
  *                     Off: every invoice hands the goods over itself. Both post
  *                     correctly (0178; scripts/check-delivery-entries.mjs).
  */
-export type CompanyFeatures = { serial_tracking?: boolean; orders_deliveries?: boolean };
+export type CompanyFeatures = { serial_tracking?: boolean; orders_deliveries?: boolean; part_numbers?: boolean };
 type HasFeatures = { retail_mode?: boolean | null; features?: CompanyFeatures | null } | null | undefined;
 
 export function serialTrackingOn(company: HasFeatures) {
   return company?.features?.serial_tracking ?? true;
+}
+
+/** Part numbers (0213): OEM, equivalents and supplier codes on each item, for spare-parts shops. Absent means off. */
+export function partNumbersOn(company: HasFeatures) {
+  return company?.features?.part_numbers ?? false;
 }
 
 export function ordersAndDeliveriesOn(company: HasFeatures) {

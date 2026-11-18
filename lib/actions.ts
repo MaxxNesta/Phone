@@ -688,12 +688,12 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     /* The packs this item is bought and sold in, named at creation rather
        than discovered later on the edit panel. Same shape the edit path
        reads, so one component serves both. */
-    let newPacks: { uomId: string; factor: number }[] = [];
+    let newPacks: { uomId: string; factor: number; price: number | null }[] = [];
     const rawNewPacks = str(fd, "packs");
     if (rawNewPacks) {
       try {
         newPacks = (JSON.parse(rawNewPacks) as any[])
-          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor), price: packPrice(p.price) }))
           .filter((p) => p.uomId && p.factor > 0);
       } catch {
         return { error: await m("packsUnreadable") };
@@ -874,8 +874,8 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
       for (const p of newPacks) {
         await tx`
-          insert into item_uom (company_id, item_id, uom_id, factor)
-          values (${co}, ${item.id}, ${p.uomId}, ${p.factor})`;
+          insert into item_uom (company_id, item_id, uom_id, factor, sale_price)
+          values (${co}, ${item.id}, ${p.uomId}, ${p.factor}, ${p.price})`;
       }
 
       if (photo && "set" in photo) {
@@ -1044,7 +1044,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            the price. A carton of shirts is a carton of each size; a
            pack left only on the parent would apply to nothing. */
         const packRows = planned.flatMap((p) => newPacks.map((pk) =>
-          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor })));
+          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor, sale_price: pk.price })));
         for (let i = 0; i < packRows.length; i += 5000) {
           await tx`insert into item_uom ${tx(packRows.slice(i, i + 5000))}`;
         }
@@ -1100,12 +1100,12 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
        Replacing the list cannot disturb a posted document — every line
        carries the factor it used, so a carton that becomes 20s next year
        leaves last year's receipts saying 24. */
-    let packs: { uomId: string; factor: number }[] = [];
+    let packs: { uomId: string; factor: number; price: number | null }[] = [];
     const rawPacks = str(fd, "packs");
     if (rawPacks) {
       try {
         packs = (JSON.parse(rawPacks) as any[])
-          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor), price: packPrice(p.price) }))
           .filter((p) => p.uomId && p.uomId !== uomId && p.factor > 0);
       } catch {
         return { error: await m("packsUnreadable") };
@@ -1140,8 +1140,8 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
         await tx`delete from item_uom where item_id = ${id}`;
         for (const p of packs) {
           await tx`
-            insert into item_uom (company_id, item_id, uom_id, factor)
-            values (${co}, ${id}, ${p.uomId}, ${p.factor})`;
+            insert into item_uom (company_id, item_id, uom_id, factor, sale_price)
+            values (${co}, ${id}, ${p.uomId}, ${p.factor}, ${p.price})`;
         }
       }
 
@@ -1856,7 +1856,7 @@ export type PickerItem = {
   base_uom_id?: string;
   /** The packs this item is bought and sold in. Empty for an item handled
    *  only in its own unit, which is most of a catalogue. */
-  packs?: { uomId: string; code: string; factor: string | number }[];
+  packs?: { uomId: string; code: string; factor: string | number; price?: string | number | null }[];
   /** Whether goods of this item arrive in identifiable lots, and whether
    *  those lots have a shelf life. A receipt form asks for what these say. */
   tracks_batch?: boolean; tracks_expiry?: boolean;
@@ -1870,6 +1870,8 @@ export type PickerItem = {
   variant?: unknown;
   /** What a scanner reads off the packet. */
   barcode?: string | null;
+  /** Part numbers (OEM, equivalents, supplier codes), with `norm` the number without spaces or dashes. */
+  parts?: { no: string; kind: string; norm: string }[] | null;
   /** The product a variant belongs to — "iPhone 18 Pro Max". Null for an item with no variants. */
   model?: string | null;
   /** Its picture, or its product's. */
@@ -1983,6 +1985,14 @@ export async function createItemInline(
 }
 
 // --------------------------------------------------------------- invoices --
+
+/** A pack's own selling price, or null for "piece price times the size". */
+function packPrice(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!(n >= 0)) throw new Error("A pack price cannot be negative");
+  return n;
+}
 
 function parseLines(fd: FormData): InvoiceLine[] {
   const raw = String(fd.get("lines") ?? "[]");
@@ -4139,11 +4149,15 @@ export async function getFormData() {
                 -- can offer them without a second round trip per item.
                 coalesce((
                   select json_agg(json_build_object(
-                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor)
+                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor, 'price', iu.sale_price)
                          order by iu.factor)
                     from item_uom iu join uom pu on pu.id = iu.uom_id
                    where iu.item_id = i.id
                 ), '[]'::json) as packs,
+                -- The numbers a part is asked for by (0213): OEM, other
+                -- brands', the supplier's. Searched by the picker.
+                (select json_agg(json_build_object('no', pn.part_no, 'kind', pn.kind, 'norm', pn.norm) order by pn.kind, pn.part_no)
+                   from item_part_number pn where pn.item_id = i.id) as parts,
                 coalesce(s.qty, 0) as on_hand,
                 coalesce((
                   select unit_cost from v_stock_lot_open
@@ -4779,6 +4793,24 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         }
       }
       if (code !== item.code) await tx`update item set serial = ${code}, code_is_manual = true where id = ${id} and company_id = ${co}`;
+      // Part numbers (0213), only when the form carried them: replaced whole.
+      if (fd.has("part_numbers")) {
+        const KINDS = ["OEM", "EQUIVALENT", "SUPPLIER"];
+        const seen = new Set<string>();
+        const rows = (JSON.parse(str(fd, "part_numbers") || "[]") as { kind?: string; no?: string; maker?: string }[])
+          .map((p) => ({ kind: KINDS.includes(String(p.kind)) ? String(p.kind) : "OEM",
+                         no: String(p.no ?? "").trim().slice(0, 60), maker: String(p.maker ?? "").trim().slice(0, 60) || null }))
+          .filter((p) => {
+            const k = p.kind + p.no.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+            if (!p.no.replace(/[^A-Za-z0-9]/g, "") || seen.has(k)) return false;
+            seen.add(k); return true;
+          });
+        await tx`delete from item_part_number where item_id = ${id} and company_id = ${co}`;
+        for (const p of rows) {
+          await tx`insert into item_part_number (company_id, item_id, part_no, kind, maker)
+                   values (${co}, ${id}, ${p.no}, ${p.kind}, ${p.maker})`;
+        }
+      }
       for (const level of levels) {
         if (!(level.id in prices)) continue;
         const raw = String(prices[level.id] ?? "").trim();

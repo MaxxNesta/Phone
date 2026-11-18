@@ -9,7 +9,7 @@ import { setCompanyPlan, setCompanyModules } from "@/lib/actions";
 import { PLAN_LIMITS, PLAN_NAME, PLAN_ORDER, planSwitchable, MODULES, CORE_MODULES, STANDARD_UP_ADDONS, packageSeatsAt, type Plan } from "@/lib/plans";
 import { ModuleSwitcher } from "@/components/module-switcher";
 import { PlanSwitcher } from "@/components/plan-switcher";
-import { ordersAndDeliveriesOn, serialTrackingOn } from "@/lib/features";
+import { ordersAndDeliveriesOn, serialTrackingOn, partNumbersOn } from "@/lib/features";
 import { DISPLAY_TZ } from "@/lib/format";
 
 export const metadata = { title: "Package & seats" };
@@ -205,6 +205,7 @@ export default async function PackageAndSeats({ searchParams }: { searchParams: 
                 {[
                   { on: serialTrackingOn(company), name: "IMEI & serial numbers", what: "Each phone or device named by its IMEI or serial on receipt, sale and warranty. Off: every product is counted by quantity." },
                   { on: ordersAndDeliveriesOn(company), name: "Orders & deliveries", what: "Sales orders, deliveries and deliver-later. Off: every invoice hands the goods over at the counter." },
+                  { on: partNumbersOn(company), name: "Part numbers", what: "OEM numbers, other brands' equivalents and supplier codes on each product; typing any of them finds the part. For spare-parts shops." },
                 ].map((f) => (
                   <tr key={f.name}>
                     <td><strong>{f.name}</strong><div className="subline">{f.what}</div></td>

@@ -52,11 +52,11 @@ try {
   if (opt("features")) {
     // Company feature switches (0200). on / off sets one; default removes it,
     // so the app's built-in default applies again.
-    const KEY = { serial: "serial_tracking", orders: "orders_deliveries" };
+    const KEY = { serial: "serial_tracking", orders: "orders_deliveries", parts: "part_numbers" };
     const [cur] = await sql`select features from company where id = ${c.id}`;
     const next = { ...(cur.features ?? {}) };
     for (const [k, v] of Object.entries(Object.fromEntries((opt("features") ?? "").split(",").filter(Boolean).map((p) => p.split("=").map((x) => x.trim()))))) {
-      if (!KEY[k] || !["on", "off", "default"].includes(v)) throw new Error(`Feature must be serial|orders = on|off|default (got ${k}=${v})`);
+      if (!KEY[k] || !["on", "off", "default"].includes(v)) throw new Error(`Feature must be serial|orders|parts = on|off|default (got ${k}=${v})`);
       if (v === "default") delete next[KEY[k]]; else next[KEY[k]] = v === "on";
     }
     await sql`update company set features = ${sql.json(next)} where id = ${c.id}`;

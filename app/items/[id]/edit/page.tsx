@@ -8,7 +8,8 @@ import { saveItemEdit } from "@/lib/actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ItemEditor, type EditorItem } from "@/components/item-editor";
 import { PhoneSettings } from "@/components/phone-settings";
-import { serialTrackingOn } from "@/lib/features";
+import { serialTrackingOn, partNumbersOn } from "@/lib/features";
+import type { PartNo } from "@/components/part-numbers";
 
 export async function generateMetadata() { return { title: "Edit item" }; }
 
@@ -52,7 +53,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const [brands, uoms, packs] = await Promise.all([
     sql`select id, code, name from brand where company_id = ${company.id} order by name` as unknown as Promise<{ id: string; code: string; name: string }[]>,
     sql`select id, code, name from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string }[]>,
-    sql`select uom_id, factor::float as factor from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number }[]>,
+    sql`select uom_id, factor::float as factor, sale_price::float as price from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number; price: number | null }[]>,
   ]);
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
@@ -107,7 +108,11 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     parentId: item.parent_item_id, parentName: item.parent_name,
     isModel, nameMy: item.name_my ?? "", brandId: item.brand_id ?? "", uomId: item.base_uom_id,
     ownPhoto: item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null,
-    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor) })), brands, uoms,
+    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor), price: p.price })), brands, uoms,
+    partNumbers: partNumbersOn(company)
+      ? (await sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
+                    where item_id = ${id} order by kind, part_no`) as unknown as PartNo[]
+      : null,
     parts: (item.parts ?? []) as { a: string; o: string }[],
     photo, siblings,
     levels: levels.map((l) => ({ id: l.id, name: l.name, price: priceBy.get(l.id) ?? "" })),

@@ -9,7 +9,7 @@ import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source
 import { priceLines, type VolumeBand } from "@/lib/discount";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
-import { UnitToggle } from "./unit-toggle";
+import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
@@ -335,6 +335,9 @@ export function SalesVoucher({
   /** The order these prices were agreed on, when one is behind them. */
   const agreedFrom = lines.find((l) => l.agreedPrice != null && l.orderId)
     ?? null;
+
+  const packsOf = (item: PickerItem): Pack[] => (item.packs ?? []).map((p) =>
+    ({ uomId: p.uomId, code: p.code, factor: Number(p.factor), price: p.price == null ? null : Number(p.price) }));
 
   const setLine = (key: number, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
@@ -1564,9 +1567,14 @@ export function SalesVoucher({
                       <div className="le-field">Unit
                         <UnitToggle
                           base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
-                          packs={(item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor) }))}
+                          packs={packsOf(item)}
                           value={l.uomId ?? ""}
-                          onChange={(id: string | null) => setLine(l.key, { uomId: id ?? undefined })}
+                          onChange={(id: string | null) => setLine(l.key, {
+                            uomId: id ?? undefined,
+                            // An agreed price stays; a suggested one follows the unit.
+                            ...(l.agreedPrice != null ? {} : {
+                              unitPrice: String(priceInUnit(packsOf(item), l.uomId, id, Number(l.unitPrice) || 0, priceFor(l.itemId))) }),
+                          })}
                           disabled={!!l.sourceLineId}
                           label={`Unit for ${item.code}`}
                           qty={Number(l.qty) || 0}

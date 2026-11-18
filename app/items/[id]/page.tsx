@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getStockMovements } from "@/lib/queries";
+import { partNumbersOn } from "@/lib/features";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 import { ItemThumb } from "@/components/item-thumb";
 import { HelpHint } from "@/components/help-hint";
@@ -77,11 +78,13 @@ export default async function ItemPage({
 
   if (!item) notFound();
 
+  const partNos = partNumbersOn(company)
+    ? await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no` : [];
   const [packs, prices, stock, movements, variants] = await Promise.all([
-    sql`select u.code, iu.factor from item_uom iu
+    sql`select u.code, iu.factor, iu.sale_price from item_uom iu
           join uom u on u.id = iu.uom_id
          where iu.item_id = ${id} order by iu.factor` as unknown as Promise<
-      Array<{ code: string; factor: string }>>,
+      Array<{ code: string; factor: string; sale_price: string | null }>>,
     // The price standing today at each level — a future-dated price is
     // real but not yet the answer, so it is not shown as one.
     sql`select pl.name as level, pl.sort_order, ip.price, u.code as uom_code,
@@ -191,12 +194,23 @@ export default async function ItemPage({
                 <ul className="plainlist">
                   {packs.map((p) => (
                     <li key={p.code} className="code">
-                      1 {p.code} = {qty(p.factor)} {item.uom_code}
+                      1 {p.code} = {qty(p.factor)} {item.uom_code}{p.sale_price != null && <> · {pk("sellsAt")} {qty(p.sale_price)}</>}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+            {partNos.length > 0 && (
+              <div className="field" style={{ marginTop: "var(--s2)" }}>
+                <label>Part numbers</label>
+                <ul className="plainlist">
+                  {partNos.map((p) => (
+                    <li key={p.kind + p.part_no}><span className="code">{p.part_no}</span>
+                      <span className="subline"> {p.kind === "OEM" ? "OEM" : p.kind === "SUPPLIER" ? "Supplier code" : "Equivalent"}{p.maker ? ` · ${p.maker}` : ""}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {(item.tracks_batch || item.tracks_expiry) && (
               <div className="field" style={{ marginTop: "var(--s2)" }}>
                 <label>{c("tracking")}</label>

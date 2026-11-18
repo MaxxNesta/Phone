@@ -2187,6 +2187,26 @@ async function packFactor(
   return { factor, uomId };
 }
 
+/**
+ * A return typed in packs, turned into the item's own unit. Stock, cost
+ * layers and GR/IR all count base units, so everything after this sees base
+ * quantities and per-base prices; the line keeps what was typed (`entered`)
+ * so the document still reads "2 BOX".
+ */
+async function returnInBaseUnits(tx: TransactionSql, lines: ReturnLine[]): Promise<ReturnLine[]> {
+  const out: ReturnLine[] = [];
+  for (const l of lines) {
+    const [item] = l.uomId ? await tx`select base_uom_id from item where id = ${l.itemId}` : [];
+    if (!item) { out.push(l); continue; }
+    const pack = await packFactor(tx, l.itemId, l.uomId, item.base_uom_id as string);
+    out.push(pack.factor === 1 ? l : {
+      ...l, qty: round4(l.qty * pack.factor), unitPrice: l.unitPrice / pack.factor,
+      entered: { qty: l.qty, uomId: pack.uomId, factor: pack.factor },
+    });
+  }
+  return out;
+}
+
 // ------------------------------------------------------- batch tracking --
 //
 // Per item, and two switches: a batch is traceability (which lot are these
@@ -7028,6 +7048,10 @@ export type ReturnLine = {
   focReasonId?: string | null;
   /** The exact units coming back (or going back), for a serial-tracked item. */
   serials?: string[];
+  /** The unit `qty` and `unitPrice` are in. Left unset it is the item's own unit. */
+  uomId?: string | null;
+  /** Set by returnInBaseUnits: the line as typed, kept for the document line. */
+  entered?: { qty: number; uomId: string; factor: number };
 };
 export type ReturnInput = {
   /**
@@ -7494,6 +7518,7 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
   assertLines(input.lines);
 
   return inTransaction(outer, async (tx) => {
+    input = { ...input, lines: await returnInBaseUnits(tx, input.lines) };
     const { companyId, partnerId, locationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
     const serialTrackedR = await serialTracking(tx, input.lines);
@@ -7586,12 +7611,13 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
       const [docLine] = await tx`
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
-           entered_qty, entered_uom_id, base_qty, unit_price,
+           entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
            net_amount, tax_code_id, tax_amount, gross_amount, foc_reason_id)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
-           ${line.qty}, ${item.base_uom_id}, ${line.qty},
-           ${line.focReasonId ? 0 : line.unitPrice},
+           ${line.entered?.qty ?? line.qty}, ${line.entered?.uomId ?? item.base_uom_id},
+           ${line.entered?.factor ?? 1}, ${line.qty},
+           ${line.focReasonId ? 0 : round4(line.unitPrice * (line.entered?.factor ?? 1))},
            ${net}, ${line.focReasonId ? null : (line.taxCodeId ?? rt?.rate?.id ?? null)},
            ${lineTax}, ${round4(net + lineTax)}, ${line.focReasonId ?? null})
         returning id`;
@@ -7801,6 +7827,7 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
   assertLines(input.lines);
 
   return inTransaction(outer, async (tx) => {
+    input = { ...input, lines: await returnInBaseUnits(tx, input.lines) };
     const { companyId, partnerId, locationId, docDate } = input;
     const serialTrackedP = await serialTracking(tx, input.lines);
     assertSerials(input.lines, serialTrackedP, "send back");
@@ -8047,11 +8074,12 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
       const [docLine] = await tx`
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
-           entered_qty, entered_uom_id, base_qty, unit_price,
+           entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
            net_amount, tax_code_id, tax_amount, gross_amount)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
-           ${line.qty}, ${item.base_uom_id}, ${line.qty}, ${line.unitPrice},
+           ${line.entered?.qty ?? line.qty}, ${line.entered?.uomId ?? item.base_uom_id},
+           ${line.entered?.factor ?? 1}, ${line.qty}, ${round4(line.unitPrice * (line.entered?.factor ?? 1))},
            ${net}, ${splitsR[lineNo - 1].rate?.id ?? null},
            ${splitsR[lineNo - 1].tax},
            ${round4(net + splitsR[lineNo - 1].tax)})

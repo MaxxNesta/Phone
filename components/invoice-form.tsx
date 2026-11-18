@@ -9,6 +9,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { TrackMode } from "./track-mode";
 import { CarriageSection } from "./carriage-section";
 import type { AwaitingLine } from "@/lib/queries";
+import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
@@ -1238,6 +1239,27 @@ export function InvoiceForm({
                       <input type="number" min="0" step="any" value={l.unitPrice} readOnly={!!l.orderLineId}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
                     </label>
+                    {item && (item.packs ?? []).length > 0 && (() => {
+                      const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
+                        price: p.price == null ? null : Number(p.price) }));
+                      return (
+                        <div className="le-field">Unit
+                          <UnitToggle
+                            base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
+                            packs={packs}
+                            value={l.uomId ?? ""}
+                            onChange={(id) => setLine(l.key, {
+                              uomId: id ?? undefined,
+                              unitPrice: String(priceInUnit(packs, l.uomId, id, Number(l.unitPrice) || 0,
+                                                            isSales ? Number(item.sale_price) || null : null)),
+                            })}
+                            disabled={!!(l.sourceLineId || l.orderLineId)}
+                            label={`Unit for ${item.code}`}
+                            qty={Number(l.qty) || 0}
+                          />
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <section className="le-sec">

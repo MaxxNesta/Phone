@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowUpRight, Search, RotateCcw, Smartphone, FileText } from
 import type { ActionResult } from "@/lib/actions";
 import { optionLabel } from "@/lib/item-code";
 import { PackSizes } from "./pack-sizes";
+import { PartNumbers, type PartNo } from "./part-numbers";
 import { ItemPhotoField } from "./item-photo-field";
 import { useNotice } from "@/components/toast";
 
@@ -19,7 +20,9 @@ export type EditorItem = {
   isModel: boolean;
   /** A product's own settings (a model or a plain item; a variant inherits them). */
   nameMy: string; brandId: string; uomId: string; ownPhoto: string | null;
-  packs: { uomId: string; factor: number }[];
+  packs: { uomId: string; factor: number; price?: number | null }[];
+  /** Part numbers, or null when the company has them switched off. */
+  partNumbers: PartNo[] | null;
   brands: { id: string; code: string; name: string }[];
   uoms: { id: string; code: string; name: string }[];
   parts: { a: string; o: string }[];
@@ -210,6 +213,7 @@ export function ItemEditor({ item, action, tracking }: {
             <section className="ie-card" key={resetKey} onChange={() => { setSaved(false); setTouched(true); }}>
               <h3>Pack sizes &amp; photo</h3>
               <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} />
+              {item.partNumbers && !isModel && <div style={{ marginTop: "var(--s2)" }}><PartNumbers initial={item.partNumbers} /></div>}
               <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
             </section>
           )}
@@ -217,6 +221,7 @@ export function ItemEditor({ item, action, tracking }: {
             <section className="ie-card" key={`p${resetKey}`} onChange={() => { setSaved(false); setTouched(true); }}>
               <h3>Photo</h3>
               <ItemPhotoField currentSrc={item.ownPhoto} />
+              {item.partNumbers && <div style={{ marginTop: "var(--s2)" }}><PartNumbers initial={item.partNumbers} /></div>}
             </section>
           )}
           {tracking && (

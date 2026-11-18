@@ -16,6 +16,8 @@ export type FacetItem = {
   opts: Record<string, string> | null;
   /** False for a service or charge: it has no stock and is always available. */
   is_stocked?: boolean;
+  /** Part numbers it is asked for by, as typed and without dashes (0213). */
+  parts?: string[] | null;
 };
 
 export type Selection = {
@@ -48,7 +50,7 @@ export function matchesText(i: FacetItem, q: string): boolean {
   const words = q.toLowerCase().split(/[\s,]+/).filter(Boolean);
   if (words.length === 0) return true;
   const hay = squash([i.model, i.variant ?? "", i.brand ?? "", i.code, i.barcode ?? "",
-    ...Object.values(i.opts ?? {})].join(" "));
+    ...Object.values(i.opts ?? {}), ...(i.parts ?? [])].join(" "));
   return words.every((w) => hay.includes(squash(w)));
 }
 

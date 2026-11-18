@@ -2,7 +2,23 @@
 
 import { useState } from "react";
 
-export type Pack = { uomId: string; code: string; factor: number };
+export type Pack = { uomId: string; code: string; factor: number; price?: number | null };
+
+/**
+ * A line's price after its unit changes. Selling, a pack with its own price
+ * (0213) takes it, and otherwise the list price per piece times the pack.
+ * Buying, or with no list price, the price per piece is kept and scaled.
+ */
+export function priceInUnit(packs: Pack[], from: string | null | undefined, to: string | null | undefined,
+                            price: number, listPrice?: number | null): number {
+  const f = (id: string | null | undefined) => (id ? packs.find((p) => p.uomId === id)?.factor ?? 1 : 1);
+  if (listPrice != null) {
+    const own = to ? packs.find((p) => p.uomId === to)?.price : null;
+    if (own != null) return Number(own);
+    if (listPrice > 0) return round(listPrice * f(to));
+  }
+  return round((price / f(from)) * f(to));
+}
 
 /**
  * Which unit a line is counted in.

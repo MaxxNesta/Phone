@@ -5,6 +5,7 @@ import { Fragment, useActionState, useEffect, useRef, useState } from "react";
 import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
+import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { PartnerPicker } from "./partner-picker";
@@ -20,7 +21,7 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
-type Line = { key: number; itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; withSerials?: boolean };
+type Line = { key: number; itemId: string; qty: string; unitPrice: string; uomId?: string | null; serials?: ScannedSerial[]; withSerials?: boolean };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
   partner_id: string; rates?: Record<string, number>;
   /** A purchase made in a foreign currency, and its rate. */
@@ -153,11 +154,11 @@ export function ReturnForm({
     const item = byId(itemId);
     const fromReceipt = receiptRate(itemId);
     if (fromReceipt !== null) {
-      setLine(key, { itemId, unitPrice: String(fromReceipt) });
+      setLine(key, { itemId, uomId: null, unitPrice: String(fromReceipt) });
       return;
     }
     const price = !item ? "" : isSales ? item.sale_price : item.next_cost;
-    setLine(key, { itemId, unitPrice: Number(price) > 0 ? String(Number(price)) : "" });
+    setLine(key, { itemId, uomId: null, unitPrice: Number(price) > 0 ? String(Number(price)) : "" });
   }
 
   // Switching the source re-prices what is already on the form. On a prefilled
@@ -200,13 +201,16 @@ export function ReturnForm({
   const removeLine = (key: number) =>
     setLines((ls) => ls.filter((l) => l.key !== key));
 
+  /** The quantity in the item's own unit, for comparing with stock. */
+  const baseQty = (l: Line) => (Number(l.qty) || 0)
+    * Number((byId(l.itemId)?.packs ?? []).find((p) => p.uomId === l.uomId)?.factor ?? 1);
   const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
   const total = lines.reduce((s, l) => s + amount(l), 0);
 
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0,
+      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0, uomId: l.uomId || null,
                      serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial) }))
   );
   const serialShort = lines.some((l) => named(l) && Number(l.qty) > 0
@@ -217,7 +221,7 @@ export function ReturnForm({
   const shortages = lines.filter((l) => {
     if (isSales || !l.itemId) return false;
     const item = byId(l.itemId);
-    return item?.is_stocked && Number(l.qty) > Number(item.on_hand);
+    return item?.is_stocked && baseQty(l) > Number(item.on_hand);
   });
 
   const openReview = async () => {
@@ -369,7 +373,7 @@ export function ReturnForm({
               )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
-                const short = !isSales && item?.is_stocked && Number(l.qty) > Number(item.on_hand);
+                const short = !isSales && item?.is_stocked && baseQty(l) > Number(item.on_hand);
 
                 return (
                   <Fragment key={l.key}>
@@ -379,6 +383,19 @@ export function ReturnForm({
                         <>
                           <div className="line-item-name">{item.name}</div>
                           <span className="subline">{item.code}</span>
+                          {(item.packs ?? []).length > 0 && (() => {
+                            const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
+                              price: p.price == null ? null : Number(p.price) }));
+                            return (
+                              <div style={{ marginTop: 4 }}>
+                                <UnitToggle base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }} packs={packs}
+                                  value={l.uomId ?? ""} label={`Unit for ${item.code}`} qty={Number(l.qty) || 0}
+                                  onChange={(id) => setLine(l.key, { uomId: id,
+                                    unitPrice: String(priceInUnit(packs, l.uomId, id, Number(l.unitPrice) || 0,
+                                      isSales && receiptRate(l.itemId) === null ? Number(item.sale_price) || null : null)) })} />
+                              </div>
+                            );
+                          })()}
                         </>
                       ) : "—"}
                     </td>

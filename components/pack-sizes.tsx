@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 type Uom = { id: string; code: string; name: string };
-type Pack = { key: number; uomId: string; factor: string };
+type Pack = { key: number; uomId: string; factor: string; price: string };
 
 /**
  * The packs an item is bought and sold in, each holding so many base units.
@@ -23,11 +23,11 @@ export function PackSizes({
 }: {
   uoms: Uom[];
   baseUomId: string;
-  initial: { uomId: string; factor: number }[];
+  initial: { uomId: string; factor: number; price?: number | null }[];
 }) {
   const pk = useTranslations("packSizes");
   const [packs, setPacks] = useState<Pack[]>(
-    initial.map((p, i) => ({ key: i, uomId: p.uomId, factor: String(p.factor) })),
+    initial.map((p, i) => ({ key: i, uomId: p.uomId, factor: String(p.factor), price: p.price == null ? "" : String(p.price) })),
   );
   const base = uoms.find((u) => u.id === baseUomId);
   const available = uoms.filter((u) => u.id !== baseUomId);
@@ -38,7 +38,7 @@ export function PackSizes({
   const payload = JSON.stringify(
     packs
       .filter((p) => p.uomId && Number(p.factor) > 0)
-      .map((p) => ({ uomId: p.uomId, factor: Number(p.factor) })),
+      .map((p) => ({ uomId: p.uomId, factor: Number(p.factor), price: p.price === "" ? null : Number(p.price) })),
   );
 
   return (
@@ -66,6 +66,12 @@ export function PackSizes({
               aria-label={pk("perPack")}
             />
             <span className="packrow-eq">{base?.code ?? pk("units")}</span>
+            <span className="packrow-eq">{pk("sellsAt")}</span>
+            <input
+              type="number" min="0" step="any" value={p.price} placeholder={pk("pricePlaceholder")}
+              onChange={(e) => set(p.key, { price: e.target.value })}
+              aria-label={pk("packPrice")}
+            />
             <button type="button" className="ghost tiny"
                     onClick={() => setPacks((ps) => ps.filter((x) => x.key !== p.key))}>
               {pk("remove")}
@@ -76,7 +82,7 @@ export function PackSizes({
 
       <button
         type="button" className="ghost tiny" style={{ marginTop: "0.4rem" }}
-        onClick={() => setPacks((ps) => [...ps, { key: Date.now(), uomId: "", factor: "" }])}
+        onClick={() => setPacks((ps) => [...ps, { key: Date.now(), uomId: "", factor: "", price: "" }])}
       >
         {pk("add")}
       </button>

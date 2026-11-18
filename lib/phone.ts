@@ -62,6 +62,8 @@ export type SellableItem = {
   item_group_id: string | null;
   /** Its options by attribute name — { Storage: "256 GB", Colour: "Black" }. */
   opts: Record<string, string> | null;
+  /** Part numbers, as typed and normalised (0213), for the till's search. */
+  parts: string[] | null;
 };
 
 export type ScannedUnit = {
@@ -101,6 +103,8 @@ async function sellable(companyId: string, locationId: string, term: string | nu
               join variant_option o on o.id = ivo.option_id
               join variant_attribute a on a.id = o.attribute_id
              where ivo.item_id = i.id) as opts,
+           (select array_agg(x) from item_part_number pn, unnest(array[pn.part_no, lower(pn.norm)]) x
+             where pn.item_id = i.id) as parts,
            case when i.photo_updated_at is not null
                   then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
                 when p.photo_updated_at is not null
@@ -116,7 +120,10 @@ async function sellable(companyId: string, locationId: string, term: string | nu
        and (${like}::text is null
             or i.barcode = ${term}
             or i.code ilike ${like} or i.name ilike ${like}
-            or p.name ilike ${like} or b.name ilike ${like})
+            or p.name ilike ${like} or b.name ilike ${like}
+            or exists (select 1 from item_part_number pn where pn.item_id = i.id
+                          and length(regexp_replace(${term}::text, '[^A-Za-z0-9]', '', 'g')) >= 3
+                          and pn.norm like '%' || upper(regexp_replace(${term}::text, '[^A-Za-z0-9]', '', 'g')) || '%'))
      order by (i.barcode = ${term}) desc nulls last,
               (not i.is_stocked or fn_qty_on_hand(${companyId}, i.id, ${locationId}) > 0) desc,
               coalesce(p.name, i.name), i.name

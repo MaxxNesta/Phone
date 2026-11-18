@@ -264,7 +264,9 @@ export function PosTill(props: {
     }
     // A barcode or SKU code naming exactly one product adds it.
     const lower = t.toLowerCase();
-    const byBarcode = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === lower);
+    const flat = t.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+    const byBarcode = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === lower
+      || (flat.length >= 3 && (i.parts ?? []).includes(flat)));
     if (byBarcode.length === 1) { await addItem(byBarcode[0]); setQ(""); return; }
     if (truncated) { setItems(r.items); searched.current = true; }
   });

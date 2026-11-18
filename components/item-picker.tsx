@@ -15,7 +15,16 @@ type Uom = { id: string; code: string; name: string };
 // Category depth is capped at two: Category, then Sub category.
 /** Exactly this item, as against merely containing the text. */
 const isExact = (i: PickerItem, q: string) =>
-  (i.barcode ?? "").toLowerCase() === q || i.code.toLowerCase() === q;
+  (i.barcode ?? "").toLowerCase() === q || i.code.toLowerCase() === q
+  || (i.parts ?? []).some((p) => p.norm === norm(q));
+
+/** A part number as it is matched: letters and digits only, upper case (0213's norm). */
+const norm = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+/** The part number this query names on this item, if any. */
+const partHit = (i: PickerItem, q: string) => {
+  const n = norm(q);
+  return n.length >= 3 ? (i.parts ?? []).find((p) => p.norm.includes(n)) ?? null : null;
+};
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
@@ -109,6 +118,7 @@ export function ItemPicker({
       i.name.toLowerCase().includes(q) ||
       (i.brand ?? "").toLowerCase().includes(q) ||
       (i.barcode ?? "").toLowerCase().includes(q) ||
+      partHit(i, q) !== null ||
       (asVariant(i.variant) ?? []).some(
         (v) => v.a.toLowerCase().includes(q) || v.o.toLowerCase().includes(q)));
     // A scanned barcode is an exact answer, not a search term. It sorts to
@@ -260,6 +270,7 @@ export function ItemPicker({
                   {i.brand && <span className="page-sub">{i.brand} · </span>}
                   {i.name}
                   <VariantTags variant={asVariant(i.variant)} labelled />
+                  {(() => { const p = partHit(i, query); return p && <span className="picker-part">{p.kind === "OEM" ? "OEM" : p.kind === "SUPPLIER" ? "Supplier" : "Equiv."} {p.no}</span>; })()}
                 </span>
                 <span className="picker-meta">
                   {i.is_stocked

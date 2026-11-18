@@ -442,7 +442,10 @@
     "units": "units",
     "remove": "Remove",
     "add": "+ Pack size",
-    "hint": "A carton of 24 means one carton moves 24 {unit} of stock. Prices on a line are per whatever unit that line names."
+    "hint": "A carton of 24 means one carton moves 24 {unit} of stock. Prices on a line are per whatever unit that line names.",
+    "sellsAt": "sells at",
+    "pricePlaceholder": "piece × size",
+    "packPrice": "Selling price per pack"
   },
   "photo": {
     "label": "Photo",
@@ -1605,7 +1608,12 @@
       "source": "Set by",
       "nPlanned": "{n} products · {m} set by hand",
       "noPoints": "No product has a reorder point yet — they appear once something sells or a minimum is set.",
-      "src": {"calc": "Calculated", "floor": "Floor", "minmax": "Min–max", "manual": "Manual"},
+      "src": {
+        "calc": "Calculated",
+        "floor": "Floor",
+        "minmax": "Min–max",
+        "manual": "Manual"
+      },
       "eyebrow": "Master data",
       "title": "Stock",
       "allWarehouses": "All warehouses",

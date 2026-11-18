@@ -10914,3 +10914,12 @@ table.ctable.stable td.r { padding-right: 14px; }
 .form.docsheet.hairline :is(input, select, textarea):focus-visible { outline: none; border-bottom-color: var(--focus); box-shadow: 0 1px 0 0 var(--focus); }
 .form.docsheet.hairline :is(input, select):disabled { background-color: transparent; opacity: 0.55; }
 .form.docsheet.hairline .sh-model { flex: 2; min-width: 240px; }
+
+/* A part number the search matched, under the name: what the counter typed. */
+.picker-part { display: block; margin-top: 2px; font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Part numbers: kind, number, maker and Remove on one line each. */
+.partrow { display: grid; grid-template-columns: 150px minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-top: 6px; }
+.partrow > * { min-width: 0; width: 100%; }
+.partrow > button { width: auto; }
+@media (max-width: 640px) { .partrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
