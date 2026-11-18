@@ -64,6 +64,9 @@ export type SellableItem = {
   opts: Record<string, string> | null;
   /** Part numbers, as typed and normalised (0213), for the till's search. */
   parts: string[] | null;
+  /** Its stock unit and the packs it sells in (a can, a foot). Empty for a phone. */
+  base_uom_id: string; uom_code: string;
+  packs: { uomId: string; code: string; factor: number; price: number | null }[];
 };
 
 export type ScannedUnit = {
@@ -105,6 +108,10 @@ async function sellable(companyId: string, locationId: string, term: string | nu
              where ivo.item_id = i.id) as opts,
            (select array_agg(x) from item_part_number pn, unnest(array[pn.part_no, lower(pn.norm)]) x
              where pn.item_id = i.id) as parts,
+           i.base_uom_id, (select u.code from uom u where u.id = i.base_uom_id) as uom_code,
+           coalesce((select json_agg(json_build_object('uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor::float,
+                                                      'price', iu.sale_price::float) order by iu.factor)
+                       from item_uom iu join uom pu on pu.id = iu.uom_id where iu.item_id = i.id), '[]'::json) as packs,
            case when i.photo_updated_at is not null
                   then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
                 when p.photo_updated_at is not null

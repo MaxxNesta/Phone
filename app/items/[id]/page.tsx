@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getStockMovements } from "@/lib/queries";
-import { partNumbersOn } from "@/lib/features";
+import { sparePartsOn } from "@/lib/features";
+import { PackLadder } from "@/components/pack-sizes";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 import { ItemThumb } from "@/components/item-thumb";
 import { HelpHint } from "@/components/help-hint";
@@ -78,7 +79,8 @@ export default async function ItemPage({
 
   if (!item) notFound();
 
-  const partNos = partNumbersOn(company)
+  const spareParts = sparePartsOn(company);
+  const partNos = spareParts
     ? await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no` : [];
   const [packs, prices, stock, movements, variants] = await Promise.all([
     sql`select u.code, iu.factor, iu.sale_price from item_uom iu
@@ -191,13 +193,18 @@ export default async function ItemPage({
                   {pk("onlyBase", { unit: item.uom_code })}
                 </span>
               ) : (
+                spareParts ? (
+                  <PackLadder base={item.uom_code} packs={packs.map((p) => ({ code: p.code, factor: Number(p.factor),
+                    price: p.sale_price == null ? null : Number(p.sale_price) }))} />
+                ) : (
                 <ul className="plainlist">
                   {packs.map((p) => (
                     <li key={p.code} className="code">
-                      1 {p.code} = {qty(p.factor)} {item.uom_code}{p.sale_price != null && <> · {pk("sellsAt")} {qty(p.sale_price)}</>}
+                      1 {p.code} = {qty(p.factor)} {item.uom_code}
                     </li>
                   ))}
                 </ul>
+                )
               )}
             </div>
             {partNos.length > 0 && (

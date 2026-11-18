@@ -100,7 +100,7 @@ export function UnitToggle({
                   title="Define a pack for this item">+</button>
         )}
       </span>
-      {picked.factor > 1 && (
+      {picked.factor !== 1 && (
         <span className="unitecho">
           {qty && qty > 0
             ? `${qty} ${picked.code} = ${round(qty * picked.factor)} ${base.code}`

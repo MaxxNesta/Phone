@@ -1,5 +1,6 @@
 "use client";
 
+import { UnitToggle, priceInUnit, type Pack } from "./unit-toggle";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
@@ -38,6 +39,11 @@ type Line = {
   itemGroupId: string | null;
   /** Given free: not charged, still leaves the shelf. The reason says why. */
   focReasonId: string | null;
+  /** The unit sold in (a can, a foot) and what the item offers; none for a phone. */
+  uomId?: string | null;
+  packs?: Pack[];
+  base?: { uomId: string; code: string };
+  listPrice?: number | null;
 };
 
 const newKey = () => Math.random().toString(36).slice(2);
@@ -232,7 +238,7 @@ export function PosTill(props: {
       return;
     }
     setLines((ls) => {
-      const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId);
+      const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId && !l.uomId);
       if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, l.onHand) } : l));
       return [...ls, {
         key: newKey(), itemId: item.id, name: item.model, variant: variantLine(item) || null, photo: item.photo,
@@ -240,6 +246,8 @@ export function PosTill(props: {
         tracksSerial: false, serial: null, qty: 1, onHand: item.is_stocked === false ? 9999 : item.on_hand,
         unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
         warrantyMonths: item.warranty_months, focReasonId: null,
+        ...((item.packs ?? []).length ? { packs: item.packs, base: { uomId: item.base_uom_id, code: item.uom_code },
+                                          listPrice: item.price, uomId: null } : {}),
       }];
     });
     setMessage(null);
@@ -283,10 +291,12 @@ export function PosTill(props: {
   const setLine = (key: string, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const removeLine = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
+  /** Stock units in one of the line's unit: 1 unless it is sold in a pack. */
+  const fac = (l: Line) => (l.uomId ? l.packs?.find((p) => p.uomId === l.uomId)?.factor ?? 1 : 1);
   const step = (l: Line, by: number) => {
     const next = l.qty + by;
     if (next <= 0) return removeLine(l.key);
-    setLine(l.key, { qty: Math.min(next, Math.max(l.onHand, 1)) });
+    setLine(l.key, { qty: Math.min(next, Math.max(l.onHand / fac(l), 1)) });
   };
   const clearCart = () => {
     if (!confirmClear) { setConfirmClear(true); window.setTimeout(() => setConfirmClear(false), 3500); return; }
@@ -370,7 +380,7 @@ export function PosTill(props: {
           priceIncludesTax: inclusive, memo: null,
           attempt,
           lines: lines.map((l) => ({
-            itemId: l.itemId, qty: l.qty, unitPrice: l.unitPrice, discountPct: l.focReasonId ? 0 : l.discountPct,
+            itemId: l.itemId, qty: l.qty, unitPrice: l.unitPrice, discountPct: l.focReasonId ? 0 : l.discountPct, uomId: l.uomId ?? null,
             taxCodeId: l.taxCodeId || null, serials: l.serial ? [l.serial] : [], warrantyMonths: l.warrantyMonths,
             focReasonId: l.focReasonId,
           })),
@@ -433,7 +443,7 @@ export function PosTill(props: {
                 <button type="button" aria-label={tr("oneLess")} onClick={() => step(l, -1)}><Minus size={13} /></button>
                 <span aria-live="polite">{l.qty}</span>
                 <button type="button" aria-label={tr("oneMore")} onClick={() => step(l, 1)}
-                  disabled={l.qty >= l.onHand}><Plus size={13} /></button>
+                  disabled={(l.qty + 1) * fac(l) > l.onHand}><Plus size={13} /></button>
               </span>
             )}
             <span className="pos3-line-price">
@@ -446,6 +456,13 @@ export function PosTill(props: {
               )}
             </span>
           </div>
+          {l.packs && l.base && (
+            <div className="pos3-line-unit">
+              <UnitToggle base={l.base} packs={l.packs} value={l.uomId ?? ""} qty={l.qty} label={`Unit for ${l.name}`}
+                onChange={(id) => setLine(l.key, { uomId: id,
+                  unitPrice: priceInUnit(l.packs!, l.uomId, id, l.unitPrice, l.listPrice ?? null) })} />
+            </div>
+          )}
           <div className="pos3-line-tools">
             <button type="button" className={`pos3-tool${l.focReasonId ? " on" : ""}`}
               disabled={props.focReasons.length === 0} aria-pressed={!!l.focReasonId}
@@ -471,6 +488,10 @@ export function PosTill(props: {
           {isOpen && (
             <div className="pos3-edit">
               {l.serial && <span className="pos3-edit-imei">IMEI <span className="m">{l.serial}</span></span>}
+              {l.packs && (
+                <label>Qty<input type="number" min={0} step="any" value={l.qty}
+                  onChange={(e) => setLine(l.key, { qty: Number(e.target.value) || 0 })} /></label>
+              )}
               <label>{tr("price")}<input type="number" min={0} value={l.unitPrice} autoFocus={noPrice}
                 onChange={(e) => setLine(l.key, { unitPrice: Number(e.target.value) || 0 })} /></label>
               {!l.focReasonId && (

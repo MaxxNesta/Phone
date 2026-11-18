@@ -1,7 +1,7 @@
 import { sql } from "./db";
 import { can, DISCOUNT_CEILING_PCT, type SessionUser } from "./auth-core";
 
-type Line = { itemId: string; unitPrice: number; discountPct?: number | null; focReasonId?: string | null; serials?: string[] };
+type Line = { itemId: string; unitPrice: number; discountPct?: number | null; focReasonId?: string | null; serials?: string[]; uomId?: string | null };
 export type PriceProblem = {
   key: "discountNeedsManager" | "priceNeedsManager" | "freeNeedsManager" | "belowCostNeedsManager";
   values: Record<string, string | number>;
@@ -53,6 +53,7 @@ export async function priceFacts(co: string, itemIds: string[], partnerId: strin
 export async function priceProblem(
   user: SessionUser | { role: SessionUser["role"] }, co: string, lines: Line[], partnerId: string | null = null,
   facts: (ids: string[]) => Promise<PriceFacts> = (ids) => priceFacts(co, ids, partnerId),
+  db: typeof sql = sql,
 ): Promise<PriceProblem | null> {
   if (can(user, "discount.unlimited")) return null;
   const pct = DISCOUNT_CEILING_PCT;
@@ -73,10 +74,26 @@ export async function priceProblem(
          and exists (select 1 from secondhand_intake i where i.serial_id = v.serial_id
                                                          and i.receipt_id = v.received_document_id)`) used.set(r.imei, r.cost);
   }
+  /* A line in a pack (a box, a foot of hose) is priced per pack; the list
+     and cost are per stock unit. Both sides are compared per stock unit, and
+     a pack with its own price (0213) is held to that price, not to the
+     piece price times the size: a box sold at its box price is no discount. */
+  const packOf = new Map<string, { factor: number; price: number | null }>();
+  const packed = lines.filter((l) => l.uomId);
+  if (packed.length) {
+    for (const r of await db`
+      select item_id, uom_id, factor::float as factor, sale_price::float as price from item_uom
+       where company_id = ${co} and item_id = any(${packed.map((l) => l.itemId)})`) {
+      packOf.set(`${r.item_id}|${r.uom_id}`, { factor: r.factor, price: r.price });
+    }
+  }
   for (const l of lines) {
-    const item = known.get(l.itemId);
-    if (!item) continue;
-    const charged = l.unitPrice * (1 - (l.discountPct ?? 0) / 100);
+    const known0 = known.get(l.itemId);
+    if (!known0) continue;
+    const pack = l.uomId ? packOf.get(`${l.itemId}|${l.uomId}`) : undefined;
+    const f = pack?.factor ?? 1;
+    const item = pack?.price != null ? { ...known0, price: pack.price / f } : known0;
+    const charged = l.unitPrice * (1 - (l.discountPct ?? 0) / 100) / f;
     const mine = (l.serials ?? []).map((x) => x.trim()).filter(Boolean);
     if (mine.length && mine.every((x) => used.has(x))) {
       const own = mine.reduce((t, x) => t + used.get(x)!, 0) / mine.length;
@@ -86,7 +103,7 @@ export async function priceProblem(
     if (item.price) {
       const floor = item.price * (1 - pct / 100);
       if (charged < floor - 0.005) {
-        return { key: "priceNeedsManager", values: { name: item.name, floor: Math.ceil(floor).toLocaleString("en-US"), pct } };
+        return { key: "priceNeedsManager", values: { name: item.name, floor: Math.ceil(floor * f).toLocaleString("en-US"), pct } };
       }
     }
     if (item.cost && charged < item.cost - 0.005) return { key: "belowCostNeedsManager", values: { name: item.name } };

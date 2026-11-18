@@ -212,7 +212,7 @@ export function ItemEditor({ item, action, tracking }: {
           {product && (
             <section className="ie-card" key={resetKey} onChange={() => { setSaved(false); setTouched(true); }}>
               <h3>Pack sizes &amp; photo</h3>
-              <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} />
+              <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} />
               {item.partNumbers && !isModel && <div style={{ marginTop: "var(--s2)" }}><PartNumbers initial={item.partNumbers} /></div>}
               <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
             </section>

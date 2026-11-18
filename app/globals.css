@@ -10923,3 +10923,33 @@ table.ctable.stable td.r { padding-right: 14px; }
 .partrow > * { min-width: 0; width: 100%; }
 .partrow > button { width: auto; }
 @media (max-width: 640px) { .partrow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+/* Pack ladder (spare parts): boxes inside boxes, the biggest outside, down to
+   the unit stock is counted in. Hairline boxes, indented one step each. */
+.ladder { margin-top: 10px; font-size: var(--t-sm); }
+.ladder-box { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--surface); }
+.ladder-box .ladder-box { margin-top: 8px; margin-left: 14px; background: var(--ground); }
+.ladder-box .ladder-box .ladder-box { background: var(--surface); }
+.ladder-box.base { border-style: dashed; }
+.ladder-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.ladder-head strong { font-weight: 600; color: var(--ink); }
+.ladder-base, .ladder-tag { color: var(--muted); }
+.ladder-tag { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.ladder-price { margin-left: auto; color: var(--ink-soft); }
+
+/* Till: the unit a line sells in (a can, a foot), under its quantity. */
+.pos3-line-unit { margin-top: 6px; }
+
+/* Till: the unit a line sells in, as a segmented control. The till's own
+   button styles are reset so the buttons read as one control. */
+.pos3-line-unit .unitpick, .pos3-line-unit .unittoggle { border: 0; box-shadow: none; background: none; padding: 0; }
+.pos3-line-unit .unittoggle { gap: 2px; padding: 2px; border-radius: 9px; background: var(--line-soft); }
+.pos3-line-unit .unittoggle button {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; min-height: 28px; padding: 0 12px; border-radius: 7px;
+  font-size: var(--t-sm); font-weight: 500; color: var(--ink-soft); cursor: pointer;
+}
+.pos3-line-unit .unittoggle button:hover:not(.on) { color: var(--ink); }
+.pos3-line-unit .unittoggle button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 0.1); }
+.pos3-line-unit .unittoggle button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.pos3-line-unit .unitecho { font-size: 0.75rem; color: var(--muted); }

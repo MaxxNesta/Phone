@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 type Uom = { id: string; code: string; name: string };
@@ -19,8 +19,10 @@ type Pack = { key: number; uomId: string; factor: string; price: string };
  * receipts saying 24.
  */
 export function PackSizes({
-  uoms, baseUomId, initial,
+  uoms, baseUomId, initial, spareParts = false,
 }: {
+  /** A spare-parts shop: a selling price per pack, and the ladder underneath. */
+  spareParts?: boolean;
   uoms: Uom[];
   baseUomId: string;
   initial: { uomId: string; factor: number; price?: number | null }[];
@@ -38,7 +40,7 @@ export function PackSizes({
   const payload = JSON.stringify(
     packs
       .filter((p) => p.uomId && Number(p.factor) > 0)
-      .map((p) => ({ uomId: p.uomId, factor: Number(p.factor), price: p.price === "" ? null : Number(p.price) })),
+      .map((p) => ({ uomId: p.uomId, factor: Number(p.factor), price: !spareParts || p.price === "" ? null : Number(p.price) })),
   );
 
   return (
@@ -66,12 +68,14 @@ export function PackSizes({
               aria-label={pk("perPack")}
             />
             <span className="packrow-eq">{base?.code ?? pk("units")}</span>
-            <span className="packrow-eq">{pk("sellsAt")}</span>
-            <input
-              type="number" min="0" step="any" value={p.price} placeholder={pk("pricePlaceholder")}
-              onChange={(e) => set(p.key, { price: e.target.value })}
-              aria-label={pk("packPrice")}
-            />
+            {spareParts && <>
+              <span className="packrow-eq">{pk("sellsAt")}</span>
+              <input
+                type="number" min="0" step="any" value={p.price} placeholder={pk("pricePlaceholder")}
+                onChange={(e) => set(p.key, { price: e.target.value })}
+                aria-label={pk("packPrice")}
+              />
+            </>}
             <button type="button" className="ghost tiny"
                     onClick={() => setPacks((ps) => ps.filter((x) => x.key !== p.key))}>
               {pk("remove")}
@@ -89,6 +93,46 @@ export function PackSizes({
       <span className="hint">
         {pk("hint", { unit: base?.code ?? pk("units") })}
       </span>
+      {spareParts && base && (
+        <PackLadder base={base.code} packs={packs
+          .filter((p) => p.uomId && Number(p.factor) > 0)
+          .map((p) => ({ code: uoms.find((u) => u.id === p.uomId)?.code ?? "?", factor: Number(p.factor),
+                         price: p.price === "" ? null : Number(p.price) }))} />
+      )}
     </div>
   );
+}
+
+const n4 = (n: number) => Number(n.toFixed(4)).toLocaleString("en-US", { maximumFractionDigits: 4 });
+
+/**
+ * The packs as boxes inside boxes, biggest outside: what one carton holds,
+ * down to the unit stock is counted in. Each box says how many of the next
+ * box it holds and how many stock units that is; a unit smaller than the
+ * stock unit (feet on an item counted in metres) sits inside it the same way.
+ */
+export function PackLadder({ base, packs }: {
+  base: string;
+  packs: { code: string; factor: number; price?: number | null }[];
+}) {
+  if (packs.length === 0) return null;
+  const all = [...packs, { code: base, factor: 1, price: null, isBase: true }]
+    .sort((a, b) => b.factor - a.factor) as { code: string; factor: number; price?: number | null; isBase?: boolean }[];
+  const level = (i: number): ReactNode => {
+    const u = all[i], next = all[i + 1];
+    return (
+      <div className={`ladder-box${u.isBase ? " base" : ""}`}>
+        <div className="ladder-head">
+          <strong>1 {u.code}</strong>
+          {next && <span>= {n4(u.factor / next.factor)} {next.code}</span>}
+          {!u.isBase && next && !next.isBase && <span className="ladder-base">= {n4(u.factor)} {base}</span>}
+          {!u.isBase && !next && <span className="ladder-base">= {n4(u.factor)} {base}</span>}
+          {u.isBase && <span className="ladder-tag">stock unit</span>}
+          {u.price != null && <span className="ladder-price">sells at {n4(u.price)}</span>}
+        </div>
+        {next && level(i + 1)}
+      </div>
+    );
+  };
+  return <div className="ladder" aria-label="Pack sizes, largest first">{level(0)}</div>;
 }
