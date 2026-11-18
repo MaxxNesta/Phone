@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
-import { Package, X } from "lucide-react";
-import type { ActionResult } from "@/lib/actions";
-import { lookupImei, previewSecondhandBuy, previewTradeIn, type PostingPreview } from "@/lib/secondhand-actions";
+import type { ActionResult, PickerItem } from "@/lib/actions";
+import { lookupImei } from "@/lib/secondhand-actions";
+import { ItemPicker } from "./item-picker";
 import { useNotice } from "@/components/toast";
 
-type Item = { id: string; code: string; name: string };
+type Catalog = { items: PickerItem[]; categories: never[]; uoms: never[] };
 type Opt = { id: string; code?: string; name: string };
 type Lookup = Awaited<ReturnType<typeof lookupImei>>;
 const money = (v: number) => Math.round(v || 0).toLocaleString("en-US");
@@ -88,6 +88,18 @@ function History({ info }: { info: Lookup | null }) {
   return null;
 }
 
+/** The model, found the way an invoice finds a product: search and categories. */
+function Model({ catalog, value, onPick }: { catalog: Catalog; value: string; onPick: (id: string) => void }) {
+  const [items, setItems] = useState(catalog.items);
+  return (
+    <div className="field sh-model"><label>Model</label>
+      <ItemPicker mode="purchase" items={items} categories={catalog.categories} uoms={catalog.uoms}
+        value={value} onPick={onPick} onCreated={(it) => { setItems((x) => [...x, it]); onPick(it.id); }} />
+      <input type="hidden" name="item_id" value={value} required />
+    </div>
+  );
+}
+
 /** The figures in one line in the commit bar, the total last. */
 function Totals({ rows, total, totalLabel }: { rows: [string, string][]; total: string; totalLabel: string }) {
   return (
@@ -98,79 +110,9 @@ function Totals({ rows, total, totalLabel }: { rows: [string, string][]; total: 
   );
 }
 
-const DOC: Record<string, string> = {
-  GOODS_RECEIPT: "Goods receipt", PURCHASE_INVOICE: "Purchase (bill)", SALES_INVOICE: "Sale",
-  SUPPLIER_PAYMENT: "Payment to seller", CUSTOMER_RECEIPT: "Receipt from customer",
-};
-
-/**
- * Review before posting: the engine posts it for real in a transaction that
- * is rolled back (previewSecondhandBuy / previewTradeIn), and this shows what
- * that wrote — each document's entries with their account codes, and the
- * phones that move. Post submits the form itself; nothing is saved before.
- */
-function useReview(run: (fd: FormData) => Promise<{ ok: true; preview: PostingPreview } | { error: string }>) {
-  const form = useRef<HTMLFormElement>(null);
-  const [review, setReview] = useState<PostingPreview | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const open = async () => {
-    if (!form.current?.reportValidity()) return;
-    setBusy(true); setProblem(null);
-    const r = await run(new FormData(form.current));
-    setBusy(false);
-    if ("error" in r) setProblem(r.error); else setReview(r.preview);
-  };
-  const post = () => { setReview(null); form.current?.requestSubmit(); };
-  return { form, review, busy, problem, open, post, close: () => setReview(null) };
-}
-
-function ReviewDialog({ preview, title, confirmLabel, onConfirm, onClose }: {
-  preview: PostingPreview; title: string; confirmLabel: string; onConfirm: () => void; onClose: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { ref.current?.showModal(); }, []);
-  return (
-    <dialog ref={ref} className="mp" onClose={onClose} aria-labelledby="sh-review-title">
-      <header className="mp-head">
-        <div><h2 id="sh-review-title">{title}</h2><p>Nothing is saved until you post.</p></div>
-        <button type="button" className="mp-x" aria-label="Close" onClick={() => ref.current?.close()}><X size={16} /></button>
-      </header>
-      <div className="mp-body">
-        {preview.stock.length > 0 && (
-          <section className="mp-stock" aria-label="Stock">
-            <Package size={16} aria-hidden="true" />
-            <span>{preview.stock.map((s) => `${s.qty > 0 ? "In" : "Out"}: ${s.item}${s.imei ? ` (${s.imei})` : ""}`).join(" · ")}</span>
-          </section>
-        )}
-        <div className="mp-ledger">
-          {preview.entries.map((e) => {
-            const dr = e.lines.reduce((t, l) => t + l.debit, 0), cr = e.lines.reduce((t, l) => t + l.credit, 0);
-            return (
-              <table key={e.docNo}>
-                <caption>{DOC[e.docType] ?? e.docType} <span className="m">{e.docNo}</span></caption>
-                <thead><tr><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
-                <tbody>{e.lines.map((l) => (
-                  <tr key={l.code + l.debit + l.credit}><td><span className="m">{l.code}</span> {l.name}</td>
-                    <td className="r">{l.debit ? money(l.debit) : ""}</td><td className="r">{l.credit ? money(l.credit) : ""}</td></tr>
-                ))}</tbody>
-                <tfoot><tr><td>Total</td><td className="r">{money(dr)}</td><td className="r">{money(cr)}</td></tr></tfoot>
-              </table>
-            );
-          })}
-        </div>
-      </div>
-      <footer className="mp-foot">
-        <button type="button" className="btn ghost" onClick={() => ref.current?.close()}>Back</button>
-        <button type="button" className="btn" onClick={onConfirm} autoFocus>{confirmLabel}</button>
-      </footer>
-    </dialog>
-  );
-}
-
-export function BuySecondhandForm({ action, items, locations, cashAccounts, today }: {
+export function BuySecondhandForm({ action, catalog, locations, cashAccounts, today }: {
   action: (p: unknown, fd: FormData) => Promise<ActionResult>;
-  items: Item[]; locations: Opt[]; cashAccounts: Opt[]; today: string;
+  catalog: Catalog; locations: Opt[]; cashAccounts: Opt[]; today: string;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   useNotice(state);
@@ -180,24 +122,20 @@ export function BuySecondhandForm({ action, items, locations, cashAccounts, toda
   const [payment, setPayment] = useState("NOW");
   const [checks, setChecks] = useState<Record<string, string>>({});
   const info = useImei(imei);
-  const r = useReview(previewSecondhandBuy);
+  const [itemId, setItemId] = useState("");
+  useEffect(() => { if (info?.unit?.item_id && !itemId) setItemId(info.unit.item_id); }, [info, itemId]);
 
   return (
-    <>
-      <form ref={r.form} action={formAction} className="form wide docsheet hairline">
+      <form action={formAction} className="form wide docsheet hairline">
         <input type="hidden" name="idempotency_key" value={key} />
         {state && "error" in state && <div className="alert">{state.error}</div>}
         <Seller label="Seller" />
         <div className="card">
           <div className="card-head"><h2>Phone</h2></div>
           <div className="card-body"><div className="row">
-            <div className="field" style={{ flex: 2 }}><label htmlFor="item_id">Model</label>
-              <select id="item_id" name="item_id" required defaultValue={info?.unit?.item_id ?? ""} key={info?.unit?.item_id ?? "none"}>
-                <option value="" disabled>Choose the model…</option>
-                {items.map((i) => <option key={i.id} value={i.id}>{i.name} · {i.code}</option>)}
-              </select></div>
             <div className="field"><label htmlFor="imei">IMEI</label>
               <input id="imei" name="imei" required value={imei} onChange={(e) => setImei(e.target.value)} inputMode="numeric" /></div>
+            <Model catalog={catalog} value={itemId} onPick={setItemId} />
           </div><History info={info} /></div>
         </div>
         <Inspection checks={checks} setChecks={setChecks} />
@@ -216,23 +154,18 @@ export function BuySecondhandForm({ action, items, locations, cashAccounts, toda
             <div className="field"><label htmlFor="doc_date">Date</label><input id="doc_date" name="doc_date" type="date" defaultValue={today} required /></div>
           </div></div>
         </div>
-        {r.problem && <div className="alert">{r.problem}</div>}
         <div className="form-commit sh-commit">
           <Totals rows={[["Phones", "1"], ["Payment", payment === "NOW" ? "Paid now" : "Owed to seller"]]}
             totalLabel="Buyback total" total={`${money(Number(price))} MMK`} />
-          <button type="button" onClick={r.open} disabled={pending || r.busy || !!info?.onShelf}>
-            {pending ? "Posting…" : r.busy ? "Working it out…" : "Review purchase"}</button>
+          <button type="submit" disabled={pending || !!info?.onShelf || !itemId}>{pending ? "Posting…" : "Post purchase"}</button>
         </div>
       </form>
-      {r.review && <ReviewDialog preview={r.review} title="Post this secondhand purchase?" confirmLabel="Post purchase"
-        onConfirm={r.post} onClose={r.close} />}
-    </>
   );
 }
 
-export function TradeInForm({ action, items, locations, cashAccounts, today, canPayOut }: {
+export function TradeInForm({ action, catalog, locations, cashAccounts, today, canPayOut }: {
   action: (p: unknown, fd: FormData) => Promise<ActionResult>;
-  items: Item[]; locations: Opt[]; cashAccounts: Opt[]; today: string; canPayOut: boolean;
+  catalog: Catalog; locations: Opt[]; cashAccounts: Opt[]; today: string; canPayOut: boolean;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(action as never, null);
   useNotice(state);
@@ -251,11 +184,11 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
   const allowance = (Number(inspected) || 0) + (Number(topUp) || 0);
   const diff = sale - (Number(inspected) || 0);
   const newOk = !!fresh?.onShelf;
-  const r = useReview(previewTradeIn);
+  const [oldItem, setOldItem] = useState("");
+  useEffect(() => { if (old?.unit?.item_id && !oldItem) setOldItem(old.unit.item_id); }, [old, oldItem]);
 
   return (
-    <>
-      <form ref={r.form} action={formAction} className="form wide docsheet hairline">
+      <form action={formAction} className="form wide docsheet hairline">
         <input type="hidden" name="idempotency_key" value={key} />
         {state && "error" in state && <div className="alert">{state.error}</div>}
         <Seller label="Customer" />
@@ -276,13 +209,9 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
           <div className="card">
             <div className="card-head"><h2>Customer&rsquo;s old phone</h2></div>
             <div className="card-body sh-stack">
-              <div className="field"><label htmlFor="item_id">Model</label>
-                <select id="item_id" name="item_id" required defaultValue={old?.unit?.item_id ?? ""} key={old?.unit?.item_id ?? "none"}>
-                  <option value="" disabled>Choose the model…</option>
-                  {items.map((i) => <option key={i.id} value={i.id}>{i.name} · {i.code}</option>)}
-                </select></div>
               <div className="field"><label htmlFor="imei">IMEI</label>
                 <input id="imei" name="imei" required value={oldImei} onChange={(e) => setOldImei(e.target.value)} /></div>
+              <Model catalog={catalog} value={oldItem} onPick={setOldItem} />
               <History info={old} />
               <div className="field"><label htmlFor="inspected_value">Inspected value (MMK)</label>
                 <input id="inspected_value" name="inspected_value" type="number" min="1" required value={inspected} onChange={(e) => setInspected(e.target.value)} />
@@ -310,18 +239,13 @@ export function TradeInForm({ action, items, locations, cashAccounts, today, can
             </label>
           )}</div>
         </div>
-        {r.problem && <div className="alert">{r.problem}</div>}
         <div className="form-commit sh-commit">
           <Totals
             rows={[["New phone", money(Number(newPrice))], ...(Number(topUp) ? [["Promotion", `− ${money(Number(topUp))}`] as [string, string]] : []),
                    ["Trade-in", `− ${money(Number(inspected))}`], ["Allowance", money(allowance)]]}
             totalLabel={diff >= 0 ? "Customer pays" : "Customer is owed"} total={`${money(Math.abs(diff))} MMK`} />
-          <button type="button" onClick={r.open} disabled={pending || r.busy || !newOk || !!old?.onShelf}>
-            {pending ? "Posting…" : r.busy ? "Working it out…" : "Review trade-in"}</button>
+          <button type="submit" disabled={pending || !newOk || !!old?.onShelf || !oldItem}>{pending ? "Posting…" : "Post trade-in"}</button>
         </div>
       </form>
-      {r.review && <ReviewDialog preview={r.review} title="Post this trade-in?" confirmLabel="Post trade-in"
-        onConfirm={r.post} onClose={r.close} />}
-    </>
   );
 }
