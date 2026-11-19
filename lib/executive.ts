@@ -29,7 +29,7 @@ export async function executiveData(co: string, from: string, to: string) {
   const prevFrom = shift(from, -span);
   const trendFrom = shift(to, -12) < prevFrom ? shift(to, -12) : prevFrom;
 
-  const [plRows, bal, stockRows, branchRows, expRows] = await Promise.all([
+  const [plRows, bal, stockRows, branchRows, expRows, hourRows, revRows] = await Promise.all([
     sql`
       select to_char(date_trunc('month', je.entry_date), 'YYYY-MM') as m,
              coalesce(w.parent_id, w.id) as branch,
@@ -71,6 +71,29 @@ export async function executiveData(co: string, from: string, to: string) {
        group by a.code, a.name
       having sum(jl.base_amount) <> 0
        order by 3 desc limit 6`,
+    /* When the shop is busy: sales by weekday and hour, in the shop's own
+       clock. Reads the (company, doc_type, posting_date) index; one row per
+       hour of the week, at most 168. */
+    sql`
+      select extract(isodow from t)::int as dow, extract(hour from t)::int as hour,
+             count(*)::int as sales, coalesce(sum(gross_total), 0)::float as amount
+        from (select d.gross_total,
+                     coalesce(d.posted_at, d.created_at) at time zone coalesce(c.timezone, 'Asia/Yangon') as t
+                from document d join company c on c.id = d.company_id
+               where d.company_id = ${co} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
+                 and d.posting_date >= ${from}::date and d.posting_date < ${to}::date) x
+       group by 1, 2`,
+    // Where revenue came from, by account, for the income flow.
+    sql`
+      select a.code, a.name, -sum(jl.base_amount)::float as amount
+        from journal_line jl
+        join journal_entry je on je.id = jl.journal_entry_id
+        join account a on a.id = jl.account_id
+       where jl.company_id = ${co} and a.account_type = 'REVENUE'
+         and je.entry_date >= ${from}::date and je.entry_date < ${to}::date
+       group by a.code, a.name
+      having sum(jl.base_amount) <> 0
+       order by 3 desc`,
   ]);
 
   const rows = plRows as unknown as { m: string; branch: string | null; rev: number; cogs: number; exp: number }[];
@@ -106,6 +129,8 @@ export async function executiveData(co: string, from: string, to: string) {
     cash: b.cash, ar: b.ar, arOverdue: b.ar_overdue, arOverdueN: b.ar_overdue_n,
     ap: b.ap, apDue7: b.ap_due7, negativeLines: b.negative_lines,
     expenses: expRows as unknown as { code: string; name: string; amount: number }[],
+    revenueBy: revRows as unknown as { code: string; name: string; amount: number }[],
+    hours: hourRows as unknown as { dow: number; hour: number; sales: number; amount: number }[],
     days: { dso, dio, dpo, ccc },
   };
 }

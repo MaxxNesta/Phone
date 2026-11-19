@@ -23,6 +23,12 @@ check("cost of sales = income statement", near(d.now.cogs, is.cogs), `${d.now.co
 check("expenses = income statement", near(d.now.exp, is.exp), `${d.now.exp} / ${is.exp}`);
 const branchSum = d.branches.reduce((t, b) => t + b.pl.rev, 0) + (d.unassigned?.rev ?? 0);
 check("branches add up to the company", near(branchSum, d.now.rev), `${branchSum}`);
+const srcSum = d.revenueBy.reduce((t, r) => t + r.amount, 0);
+check("revenue sources (income flow) add up to revenue", near(srcSum, d.now.rev), `${srcSum}`);
+const hourSum = d.hours.reduce((t, h) => t + h.sales, 0);
+const [{ n: invoices }] = await sql`select count(*)::int n from document where company_id = ${co.id} and doc_type = 'SALES_INVOICE'
+  and status = 'POSTED' and posting_date >= ${iso(from)}::date and posting_date < ${iso(to)}::date`;
+check("busy hours count every sale once", hourSum === invoices, `${hourSum} / ${invoices}`);
 const trendSum = d.trend.reduce((t, m) => t + m.rev, 0);
 check("12 months add up to the period", near(trendSum, d.now.rev), `${trendSum}`);
 await sql.end();
