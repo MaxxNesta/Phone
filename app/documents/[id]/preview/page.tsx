@@ -43,7 +43,11 @@ export default async function InvoicePreview({ params }: { params: Promise<{ id:
   const paid = allocated + atCounter;
   const linesSum = p.lines.reduce((t, l) => t + Number(l.net_amount ?? 0), 0);
   const discount = Math.max(0, linesSum - net);
-  const overdue = outstanding > 0 && doc.due_date && String(doc.due_date).slice(0, 10) < todayLocal();
+  // A date column arrives as a Date at local midnight; compare its calendar day, not its text.
+  const ymd = (v: unknown) => v instanceof Date
+    ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`
+    : String(v ?? "").slice(0, 10);
+  const overdue = outstanding > 0.005 && !!doc.due_date && ymd(doc.due_date) < todayLocal();
   const status = doc.status === "REVERSED" || doc.status === "VOID" ? { label: "Voided", tone: "mute" }
     : outstanding <= 0.005 ? { label: "Paid", tone: "ok" }
     : overdue ? { label: "Overdue", tone: "bad" }
