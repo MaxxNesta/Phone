@@ -11560,3 +11560,9 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .dl-panel .attachadd { display: grid; gap: 6px; }
 .dl-panel .attachadd :is(input[type="file"], input[type="text"]) { width: 100%; min-width: 0; font-size: 0.8125rem; }
 .dl-panel .attachrow { font-size: 0.8125rem; }
+
+/* Breathing room under the app's top bar, and the actions level with the
+   document's number rather than its back link, so the two rows of controls
+   — the app's and the document's — never read as one crowded strip. */
+.dl-head { padding-top: 16px; align-items: center; }
+@media (max-width: 760px) { .dl-head { padding-top: 8px; align-items: flex-start; } }
