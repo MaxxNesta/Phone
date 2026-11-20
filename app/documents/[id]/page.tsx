@@ -1455,6 +1455,17 @@ export default async function DocumentPage({
       <DocPanelSection title={isInvoice ? "Goods documents" : "Related documents"}>
         <DocPanelList items={linkedDocs} empty={isInvoice ? "No order, delivery or return is joined to this." : "Nothing is joined to this document."} />
       </DocPanelSection>
+      {/* The paper that came from outside — the supplier's bill, a signed
+          delivery note, a photo of the goods — beside the record it is about. */}
+      <DocPanelSection title={`Attachments${(attachments as unknown[]).length ? ` (${(attachments as unknown[]).length})` : ""}`}>
+        <DocumentAttachments
+          documentId={doc.id}
+          attachments={attachments as never}
+          upload={uploadAttachment}
+          remove={deleteAttachment}
+          storageReady={storageConfigured()}
+        />
+      </DocPanelSection>
       {advances.length > 0 && outstanding > 0 && (
         <div className="dl-advance">
           <strong>{money(advances.reduce((t, a) => t + Number(a.available), 0))} {doc.currency} advance available</strong>
@@ -1956,16 +1967,6 @@ export default async function DocumentPage({
         </div>
       )}
 
-      {/* The paper that came from outside, kept with the record it is about
-          — above the posting, because somebody checking a bill against its
-          scan is doing that before they read the journal lines. */}
-      <DocumentAttachments
-        documentId={doc.id}
-        attachments={attachments as never}
-        upload={uploadAttachment}
-        remove={deleteAttachment}
-        storageReady={storageConfigured()}
-      />
 
       {/* Back to the asset subledger, when this journal carries assets. */}
       <HrDocLinks documentId={doc.id} />

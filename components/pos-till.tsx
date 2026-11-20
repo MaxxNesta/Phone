@@ -687,28 +687,28 @@ export function PosTill(props: {
                   const inCart = lines.filter((l) => l.itemId === i.id).reduce((s, l) => s + l.qty, 0);
                   const st = cardState(i);
                   return (
-                    <article key={i.id} className={`pos3-card ${st}${i.photo ? "" : " nophoto"}`}>
+                    // The whole card adds it (or opens the IMEI picker): one large
+                    // target, no separate button to aim for.
+                    <button type="button" key={i.id} className={`pos3-card ${st}${i.photo ? "" : " nophoto"}`}
+                      onClick={() => addItem(i)} disabled={st === "out"}
+                      aria-label={tr(i.tracks_serial ? "selectUnitOf" : "addName", { name: `${i.model}${variantLine(i) ? ` ${variantLine(i)}` : ""}` })}>
                       {i.photo ? (
                         <span className="pos3-img"><img src={i.photo} alt="" loading="lazy" decoding="async" /></span>
                       ) : (
                         <span className="pos3-img pos3-tile" aria-hidden="true">{typeIcon(i.type)}</span>
                       )}
                       {inCart > 0 && <span className="pos3-badge" aria-label={tr("inCart", { n: inCart })}>{inCart}</span>}
-                      <div className="pos3-info">
-                        <h3 className="pos3-name">{i.model}</h3>
-                        {variantLine(i) && <p className="pos3-sub">{variantLine(i)}</p>}
-                        <div className="pos3-meta">
+                      <span className="pos3-info">
+                        <span className="pos3-name">{i.model}</span>
+                        {variantLine(i) && <span className="pos3-sub">{variantLine(i)}</span>}
+                        <span className="pos3-meta">
                           {i.price != null && i.price > 0
-                            ? <p className="pos3-price">{money(i.price)} <small>MMK</small></p>
-                            : <p className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> {tr("noPriceSet")}</p>}
+                            ? <span className="pos3-price">{money(i.price)} <small>MMK</small></span>
+                            : <span className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> {tr("noPriceSet")}</span>}
                           <span className={`pos3-stock ${st}`}>{st === "service" ? tr("service") : st === "out" ? tr("outOfStock") : tr("left", { n: i.on_hand })}</span>
-                        </div>
-                      </div>
-                      <button type="button" className="pos3-add" onClick={() => addItem(i)} disabled={st === "out"}
-                        aria-label={tr(i.tracks_serial ? "selectUnitOf" : "addName", { name: `${i.model}${variantLine(i) ? ` ${variantLine(i)}` : ""}` })}>
-                        <ShoppingCart size={15} aria-hidden="true" /> {st === "out" ? tr("unavailable") : i.tracks_serial ? tr("selectUnit") : tr("add")}
-                      </button>
-                    </article>
+                        </span>
+                      </span>
+                    </button>
                   );
                 })}
               </div>

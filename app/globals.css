@@ -11521,3 +11521,42 @@ table.ctable.stable td.r { padding-right: 14px; }
    fold; sticky at 12px once the page scrolls. */
 .pos3-cart { max-height: calc(100dvh - 96px); }
 @media (max-width: 1100px) { .pos3-cart { max-height: none; } }
+
+/* Till: the card is the button. Reset the app's filled-button look and keep
+   the card's own; the spans inside read as the blocks they were. */
+button.pos3-card {
+  width: 100%; height: auto; min-height: 0; margin: 0; font: inherit; text-align: left; cursor: pointer;
+  color: var(--ink); background: var(--surface); grid-template-rows: auto; align-content: start;
+  transition: box-shadow 150ms, border-color 150ms, transform 120ms ease-out;
+}
+button.pos3-card:hover:not(:disabled) { background: var(--surface); }
+button.pos3-card:active:not(:disabled) { transform: scale(0.985); }
+button.pos3-card:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+button.pos3-card:disabled { opacity: 0.55; cursor: not-allowed; }
+button.pos3-card.nophoto { grid-template-rows: auto; }
+.pos3-card .pos3-name, .pos3-card .pos3-sub, .pos3-card .pos3-price { display: block; }
+.pos3-card .pos3-sub { display: -webkit-box; }
+.pos3-card .pos3-price.none { display: inline-flex; }
+
+/* Document pages: on white, like the design; a lighter title and soft grey
+   for what is secondary, so the figures carry the weight. */
+.main:has(> .dl), .main:has(.dl) { background: var(--surface); }
+.dl { --dl-muted: color-mix(in srgb, var(--ink) 56%, transparent); }
+.dl-title h1 { font-weight: 600; font-size: 1.6rem; }
+.dl-sec-head h2, .dl-details .card-head h2, .dl-stack > .card > .card-head h2,
+.dl-stack > section > .card > .card-head h2, .dl-stack > .erp-card > .erp-card-head h2 { font-weight: 600; font-size: 1.3rem; }
+.dl-table th { color: var(--dl-muted); font-weight: 500; font-size: 0.875rem; }
+.dl-kv dt, .dl-sum dt { color: var(--dl-muted); }
+.dl-sum-total dt, .dl-sum-due dt { color: var(--ink); }
+.dl-tabs .dl-tab { color: var(--dl-muted); }
+.dl-tabs .dl-tab:hover, .dl-tabs .dl-tab.on { color: var(--ink); }
+
+/* Attachments in the side panel: no card, the form stacked to the width. */
+.dl-panel .card { border: 0; box-shadow: none; background: transparent; margin: 0; padding: 0; }
+.dl-panel .card-head { padding: 0 0 6px; border: 0; background: none; min-height: 0; display: block; }
+.dl-panel .card-head h2 { display: none; }
+.dl-panel .card-head .page-sub { font-size: 0.78rem; color: var(--dl-muted); }
+.dl-panel .card-body { padding: 0; }
+.dl-panel .attachadd { display: grid; gap: 6px; }
+.dl-panel .attachadd :is(input[type="file"], input[type="text"]) { width: 100%; min-width: 0; font-size: 0.8125rem; }
+.dl-panel .attachrow { font-size: 0.8125rem; }
