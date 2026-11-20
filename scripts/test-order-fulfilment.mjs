@@ -281,14 +281,30 @@ try {
   check("  the second sales order still expects all five", (await left(soB.id)) === 5, `${await left(soB.id)}`);
 
   // Two people at once, each giving the last five units to a different order.
+  //
+  // Made to overlap on purpose rather than hoped to: a transaction here holds
+  // every insert into fulfilment_link while both links run. Each reads what
+  // the line has free and then waits at its insert — so without a lock on the
+  // line itself both read "5 free" and both take it the moment the hold
+  // lifts. With the lock, the second waits on the line instead, reads 0 once
+  // the first commits, and is refused with the ordinary message.
   const poC = await order10(), poD = await order10();
   const last = await P.postGoodsReceipt({ ...base, lines: [{ itemId: item.id, qty: 5, unitCost: 50 }] });
   const lastL = await lineOf(last.id);
-  const race = await Promise.allSettled([poC, poD].map(async (o) => P.linkFulfilmentToOrder({ companyId: co.id,
-    lines: [{ fulfilmentLineId: lastL, orderLineId: await lineOf(o.id), qty: 5 }] })));
+  const targets = [await lineOf(poC.id), await lineOf(poD.id)];
+  let racing;
+  await sql.begin(async (tx) => {
+    await tx`lock table fulfilment_link in share row exclusive mode`;
+    racing = Promise.allSettled(targets.map((orderLineId) => P.linkFulfilmentToOrder({ companyId: co.id,
+      lines: [{ fulfilmentLineId: lastL, orderLineId, qty: 5 }] })));
+    await new Promise((r) => setTimeout(r, 1500));   // both are inside, waiting
+  });
+  const race = await racing;
   const won = race.filter((r) => r.status === "fulfilled").length;
+  const lost = race.find((r) => r.status === "rejected")?.reason?.message ?? "";
   const [given] = await sql`select coalesce(sum(qty), 0)::float as v from fulfilment_link where fulfilment_line_id = ${lastL}`;
-  check("two links racing for the same five: one wins", won === 1, `${won} succeeded`);
+  check("two links fired together for the same five: one wins", won === 1, `${won} succeeded`);
+  check("  the other is refused cleanly, not deadlocked", /not already allocated/.test(lost), lost.slice(0, 90) || "nothing refused");
   check("  and five were given, not ten", n(given.v) === 5, `${n(given.v)}`);
 
   // ---- the books are untouched by any of it -------------------------------
