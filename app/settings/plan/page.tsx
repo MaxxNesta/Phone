@@ -82,7 +82,7 @@ export default async function PackageAndSeats({ searchParams }: { searchParams: 
        order by u.is_active desc, u.name`,
     // What the company holds, read against the package's limits.
     sql`select count(*) filter (where parent_id is null)::int as branches,
-               count(*) filter (where is_stock_location)::int as warehouses
+               count(*) filter (where is_stock_location and not is_quarantine)::int as warehouses
           from location where company_id = ${co} and is_active`,
   ]) as [any[], any[], any[]];
 

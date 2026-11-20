@@ -57,8 +57,10 @@ export default async function NewStockTransfer() {
       <StockTransferForm
         action={createStockTransfer}
         items={d.items as never}
-        locations={d.locations as never}
-        toLocations={d.allLocations as never}
+        // Quarantine (0218) is offered at both ends: stock goes in when found
+        // faulty and comes out when released. The engine asks for a reason.
+        locations={[...d.locations, ...d.quarantineLocations] as never}
+        toLocations={[...d.allLocations, ...d.quarantineLocations] as never}
         stockByLocation={d.stockByLocation as never}
         shelfSerials={await sql`
           select item_id, location_id, imei from v_stock_serial

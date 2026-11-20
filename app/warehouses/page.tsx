@@ -9,7 +9,7 @@ import { getTranslations } from "next-intl/server";
 export type Location = {
   id: string; code: string; name: string; name_my: string | null;
   parent_id: string | null; parent_name: string | null;
-  is_stock_location: boolean; is_active: boolean;
+  is_stock_location: boolean; is_active: boolean; is_quarantine?: boolean;
 };
 export type LocationNode = Location & { depth: number };
 
@@ -75,7 +75,7 @@ export default async function Warehouses() {
       {(() => {
         const active = locations.filter((l) => l.is_active);
         const branches = active.filter((l) => !l.parent_id).length;
-        const warehouses = active.filter((l) => l.is_stock_location).length;
+        const warehouses = active.filter((l) => l.is_stock_location && !l.is_quarantine).length;
         const plan = ((company as { plan?: Plan }).plan ?? "STARTER") as Plan;
         const maxB = limitFor(plan, "branches"), maxW = limitFor(plan, "warehouses");
         const of = (n: number, max: number | null, one: string, many: string) =>

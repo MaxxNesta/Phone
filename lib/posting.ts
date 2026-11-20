@@ -2065,7 +2065,11 @@ async function claimSerials(
     }
     if (s.item_id !== itemId) throw new Error(`${sn} is a ${st.item_code}, not the item on this line.`);
     if (st.location_id !== locationId) {
-      throw new Error(`${sn} is at ${st.location_name}. Transfer it here first.`);
+      const [q] = await tx`select is_quarantine from location where id = ${st.location_id}`;
+      throw new Error(q?.is_quarantine
+        ? `${sn} is in quarantine (${st.location_name}): it was rejected or returned faulty. ` +
+          `Release it from quarantine first if it has been checked and found good.`
+        : `${sn} is at ${st.location_name}. Transfer it here first.`);
     }
     units.push({ serialId: s.id, serialNo: s.serial_no, lotId: st.stock_lot_id });
   }
@@ -6881,6 +6885,20 @@ export async function postStockTransfer(input: TransferInput, outer?: Transactio
     const receivedAt = input.receivedAt || docDate;
     const serialTrackedT = await serialTracking(tx, lines);
     assertSerials(lines, serialTrackedT, "transfer");
+
+    /* Quarantine (0218) is entered and left on purpose. Releasing a unit to
+       sale says it was checked and found good; moving one in says it was
+       found faulty. Either is a statement somebody makes, so it carries
+       their reason — the one record of why a phone that was refused at the
+       door is now on the shelf. */
+    const quarantineEnds = await tx`
+      select id from location where id in (${fromLocationId}, ${toLocationId}) and is_quarantine`;
+    if (quarantineEnds.length > 0 && !input.memo?.trim()) {
+      throw new Error(
+        quarantineEnds.some((q) => q.id === fromLocationId)
+          ? "Say why this stock is being released from quarantine — what was checked, and by whom."
+          : "Say why this stock is going into quarantine — what is wrong with it.");
+    }
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
     const fiscalYear = fyRows[0]?.fy ?? null;

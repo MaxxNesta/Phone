@@ -36,7 +36,7 @@ const N = 8000; // over the old ceiling of ~7,280
 
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
   const [grp] = await sql`select id from item_group where company_id = ${co.id} order by code limit 1`;
   const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;

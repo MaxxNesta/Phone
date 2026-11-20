@@ -24,7 +24,7 @@ export async function getPurchaseImportMaster(companyId: string, file: { refs: s
   const refs = file.refs.filter(Boolean).map((r) => r.trim().toLowerCase());
   const [suppliers, locations, items, payAccounts, known, history, stock, foc] = await Promise.all([
     sql`select id, code, name, payment_terms_days from business_partner where company_id = ${companyId} and is_supplier order by code`,
-    sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active order by name`,
+    sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active and not is_quarantine order by name`,
     sql`select id, code, name, is_active, tracks_serial, identity from item where company_id = ${companyId}`,
     sql`select id, code, name from account where company_id = ${companyId} and is_active and is_postable
            and (is_cash_account or is_bank_account) order by code`,

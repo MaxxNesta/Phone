@@ -38,7 +38,7 @@ class Rollback extends Error {}
 try {
   await sql.begin(async (tx) => {
     const [co] = await tx`select id, name from company order by created_at limit 1`;
-    const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+    const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
     const [supp] = await tx`select id from business_partner where company_id = ${co.id} and is_supplier and is_active order by code limit 1`;
     const [cust] = await tx`select id from business_partner where company_id = ${co.id} and is_customer and is_active and credit_limit is null order by code limit 1`;
     const [grp] = await tx`select id from item_group where company_id = ${co.id} order by code limit 1`;

@@ -45,7 +45,7 @@ try {
        and not exists (select 1 from item c where c.parent_item_id = i.id) order by code limit 1`)[0].code;
   const IMEI = await leaf("IMEI"), OPT = await leaf("OPTIONAL"), NONE = await leaf("NONE");
   const [cash] = await sql`select id from account where company_id = ${co.id} and code = '1110'`;
-  const [wh] = await sql`select id, name from location where company_id = ${co.id} and is_stock_location and is_active order by name limit 1`;
+  const [wh] = await sql`select id, name from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by name limit 1`;
 
   // Real-shaped IMEIs: fourteen digits and their check digit, so none is flagged as a typo.
   let body = 35693803564380n;

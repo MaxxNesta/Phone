@@ -9,7 +9,7 @@ import { useNotice } from "@/components/toast";
 type Location = {
   id: string; code: string; name: string; name_my: string | null;
   parent_id: string | null; parent_name: string | null;
-  is_stock_location: boolean; is_active: boolean;
+  is_stock_location: boolean; is_active: boolean; is_quarantine?: boolean;
   /** A branch's, printed on its receipts. */
   address?: string | null; phone?: string | null;
 };
@@ -161,7 +161,9 @@ export function LocationRow({
           </div>
         )}
         {" "}
-        {location.is_stock_location
+        {location.is_quarantine
+          ? <span className="pill warn" title={l("quarantineHint")}>{l("quarantineLower")}</span>
+          : location.is_stock_location
           ? <span className="pill ok">{l("warehouseLower")}</span>
           : <span className="pill">{l("branch")}</span>}
       </td>

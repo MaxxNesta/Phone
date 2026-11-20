@@ -62,7 +62,7 @@ const DAY = "2026-06-01";
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const locs = await sql`
-    select id, code from location where company_id = ${co.id} and is_stock_location order by code`;
+    select id, code from location where company_id = ${co.id} and is_stock_location and not is_quarantine order by code`;
   const loc = locs[0];
   const other = locs[1] ?? null;
 

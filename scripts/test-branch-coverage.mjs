@@ -62,7 +62,7 @@ try {
     branches.map((b) => b.code).join(", "));
 
   const wh = await sql`select id, code, parent_id from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and is_active
        -- A product with variants is a name for a group and cannot be

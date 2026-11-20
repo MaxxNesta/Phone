@@ -15,7 +15,7 @@ export default async function NewTradeIn() {
   const locs = await seenLocations();
   const [form, locations, cash, categories] = await Promise.all([
     getFormData(),
-    sql`select id, name from location where company_id = ${user.companyId} and is_stock_location and is_active
+    sql`select id, name from location where company_id = ${user.companyId} and is_stock_location and is_active and not is_quarantine
           ${locs ? sql`and id = any(${locs})` : sql``} order by code`,
     sql`select id, code, name from account where company_id = ${user.companyId} and is_cash_account and is_postable and is_active order by code`,
     allCategories(user.companyId),

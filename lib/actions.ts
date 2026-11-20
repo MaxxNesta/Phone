@@ -4272,8 +4272,9 @@ export async function getFormData() {
                 0 as sale_price
            from item i
            join uom u on u.id = i.base_uom_id
+           -- Quarantine (0218) is stock, but not stock anyone can sell or use.
            left join (select item_id, sum(qty_on_hand) as qty
-                        from v_stock_on_hand group by item_id) s on s.item_id = i.id
+                        from v_stock_on_hand where not is_quarantine group by item_id) s on s.item_id = i.id
           where i.company_id = ${co} and i.is_active
             -- A product with variants is a name for a group, not a thing on
             -- a shelf, and fn_document_line_not_parent refuses it at posting.
@@ -4281,7 +4282,7 @@ export async function getFormData() {
             -- voucher before being told the first line was never possible.
             and not exists (select 1 from item c where c.parent_item_id = i.id)
           order by i.code`,
-    sql`select id, code, name from location
+    sql`select id, code, name, is_quarantine from location
          where company_id = ${co} and is_stock_location and is_active order by code`,
     // Volume bands in force today, so the voucher previews the same discounts
     // the engine will apply.
@@ -4376,13 +4377,20 @@ export async function getFormData() {
   const seesCost = can(user, "cost.view") || can(user, "purchase.view");
   const itemsShown = seesCost ? items : items.map((i) => ({ ...i, next_cost: 0 }));
 
+  // Quarantine locations (0218) hold stock nobody may sell, so no form offers
+  // them as where it works. The few that act on that stock — a return to the
+  // supplier, a release, a write-off — ask for them by name.
+  const working = locations.filter((l) => !l.is_quarantine);
+  const held = locations.filter((l) => l.is_quarantine);
+
   return {
     customers, suppliers, items: itemsShown,
     // Where this person may work: their own branch's locations only. A form
     // with one location left shows it fixed. All of them, for the far end of
     // a transfer, which may be another branch.
-    locations: await onlyMyLocations(locations as unknown as { id: string }[]),
-    allLocations: locations,
+    locations: await onlyMyLocations(working as unknown as { id: string }[]),
+    allLocations: working,
+    quarantineLocations: await onlyMyLocations(held as unknown as { id: string }[]),
     volumeDiscounts, groups, uoms,
     salesmen, promotions, cashAccounts, focReasons, itemPrices, priceLevels, openInvoices,
     // Null until the first invoice of the year exists, since the format
@@ -4445,7 +4453,7 @@ async function assertLocationAllowed(
   const plan = c.plan as Plan;
   const [n] = await sql`
     select count(*) filter (where parent_id is null)::int as branches,
-           count(*) filter (where is_stock_location)::int as warehouses
+           count(*) filter (where is_stock_location and not is_quarantine)::int as warehouses
       from location
      where company_id = ${co} and is_active and id is distinct from ${excludeId}`;
   const name = plan.charAt(0) + plan.slice(1).toLowerCase();
@@ -4481,10 +4489,14 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
     await assertLocationAllowed(co,
       { branch: !parentId, warehouse: fd.get("is_stock_location") === "on" }, null);
 
-    await sql`
+    const [made] = await sql`
       insert into location (company_id, parent_id, code, name, name_my, is_stock_location)
       values (${co}, ${parentId}, ${code}, ${name}, ${str(fd, "name_my") || null},
-              ${fd.get("is_stock_location") === "on"})`;
+              ${fd.get("is_stock_location") === "on"})
+      returning id, is_stock_location`;
+    // A branch that now holds stock gets its quarantine (0218) alongside,
+    // so "move to quarantine" and "release" have somewhere to point.
+    if (made.is_stock_location && parentId) await sql`select fn_quarantine_location(${made.id})`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -4510,6 +4522,14 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
     if (!code) return { error: await m("codeRequired") };
     if (!name) return { error: await m("nameRequired") };
     if (parentId === id) return { error: await m("warehouseSelfParent") };
+
+    // A branch's quarantine (0218) can be renamed, but stays a stock location
+    // under its own branch: moving it would put rejected stock in another
+    // branch's keeping, and making it an office would leave stock nowhere.
+    const [q] = await sql`select parent_id from location where id = ${id} and company_id = ${co} and is_quarantine`;
+    if (q && (parentId !== q.parent_id || fd.get("is_stock_location") !== "on")) {
+      return { error: await m("quarantineStaysPut") };
+    }
 
     if (parentId) {
       const cycle = await sql`

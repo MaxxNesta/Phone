@@ -80,7 +80,7 @@ try {
     values (${co.id}, ${"PS-" + stamp}, ${"States Supplier " + stamp}, true)
     returning id`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
      order by code limit 1`;
   const [cash] = await sql`
     select id from account where company_id = ${co.id} and is_cash_account and is_active limit 1`;

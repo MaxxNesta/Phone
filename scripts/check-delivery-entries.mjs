@@ -34,7 +34,7 @@ const OCT = "2026-10-31", NOV = "2026-11-02";
 try {
   await sql.begin(async (tx) => {
     const [co] = await tx`select id from company order by created_at limit 1`;
-    const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+    const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
     const [grp] = await tx`select id from item_group where company_id = ${co.id} limit 1`;
     const [uom] = await tx`select id from uom where company_id = ${co.id} limit 1`;
     const [item] = await tx`insert into item (company_id, item_group_id, code, name, base_uom_id, serial, is_stocked)

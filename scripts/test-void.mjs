@@ -171,7 +171,7 @@ try {
     insert into business_partner (company_id, code, name, is_supplier)
     values (${co.id}, ${"VS-" + stamp}, ${"Void Supplier " + stamp}, true) returning id`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
      order by code limit 1`;
 
   const gr = await postGoodsReceipt({
@@ -418,7 +418,7 @@ try {
        and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id) limit 1`)[0];
   const vLoc = (await sql`
-    select id from location where company_id = ${co.id} and is_stock_location limit 1`)[0];
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine limit 1`)[0];
 
   const owedBy = async (partnerId) => Number((await sql`
     select coalesce(sum(outstanding), 0) as v from v_open_item
@@ -462,7 +462,7 @@ try {
        and not item.tracks_serial -- an IMEI phone needs a serial per unit
        and not exists (select 1 from item c where c.parent_item_id = item.id) limit 1`;
   const [ccWh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
      order by code limit 1`;
   const [ccSup] = await sql`
     select id from business_partner where company_id = ${co.id} and is_supplier limit 1`;

@@ -175,6 +175,8 @@ export async function scaffoldCompany(input: SetupInput) {
     await tx`
       insert into location (company_id, parent_id, code, name, is_stock_location)
       values (${co.id}, ${office.id}, 'MAIN-WH', ${input.warehouseName}, true)`;
+    // Where rejected and faulty stock waits, not for sale (0218).
+    await tx`select fn_quarantine_location(${office.id})`;
 
     // The shop sells Apple: the brand is there from the start.
     await tx`insert into brand (company_id, code, name) values (${co.id}, 'APPLE', 'Apple')`;

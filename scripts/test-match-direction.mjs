@@ -59,7 +59,7 @@ try {
     values (${co.id}, ${"MS-" + stamp}, ${"Match Supplier " + stamp}, true)
     returning id`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
      order by code limit 1`;
   const today = new Date().toISOString().slice(0, 10);
 

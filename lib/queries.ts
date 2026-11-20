@@ -36,7 +36,7 @@ export const getCompany = cache(async (): Promise<Company | null> => {
     select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules, features,
            to_char(access_until, 'YYYY-MM-DD') as access_until, access_status,
            (select count(*)::int from location l
-             where l.company_id = c.id and l.is_stock_location and l.is_active) as warehouses
+             where l.company_id = c.id and l.is_stock_location and l.is_active and not l.is_quarantine) as warehouses
       from company c order by created_at limit 1`;
   const c = rows[0];
   if (!c) return null;
@@ -4095,7 +4095,7 @@ export async function getBrands(companyId: string) {
 export async function getLocations(companyId: string) {
   return sql`
     select l.id, l.code, l.name, l.name_my, l.parent_id, l.is_stock_location, l.is_active,
-           l.address, l.phone, p.name as parent_name
+           l.is_quarantine, l.address, l.phone, p.name as parent_name
       from location l
       left join location p on p.id = l.parent_id
      where l.company_id = ${companyId}

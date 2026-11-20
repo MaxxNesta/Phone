@@ -75,7 +75,7 @@ try {
   }
 
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and not tracks_serial and is_active
        -- A product with variants is a name for a group and cannot be

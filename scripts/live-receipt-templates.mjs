@@ -74,7 +74,7 @@ async function setup() {
   const stamp = String(Date.now()).slice(-7);
   const state = { stamp, companyId: co.id, orig: { address: co.address, phone: co.phone }, users: {}, tokens: {} };
 
-  const br = async (code) => (await sql`select id, name, (select w.id from location w where w.parent_id = b.id and w.is_stock_location order by w.code limit 1) as wh
+  const br = async (code) => (await sql`select id, name, (select w.id from location w where w.parent_id = b.id and w.is_stock_location and not w.is_quarantine order by w.code limit 1) as wh
       from location b where company_id = ${co.id} and code = ${code}`)[0];
   const b2 = await br("BR2"), yg = await br("YGN");
   state.branches = { b2, yg };

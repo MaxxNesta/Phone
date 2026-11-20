@@ -72,7 +72,7 @@ try {
      values (${co.id}, ${grp.id}, '001', 'x', 'Refund test item', ${uom.id}) returning id`;
   const [supp] = await sql`insert into business_partner (company_id, code, name, is_supplier) values (${co.id}, 'RF-SUP', 'Refund supplier', true) returning id`;
   const [cust] = await sql`insert into business_partner (company_id, code, name, is_customer, payment_terms_days) values (${co.id}, 'RF-CUST', 'Refund customer', true, 30) returning id`;
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const today = new Date().toISOString().slice(0, 10);
   await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
     lines: [{ itemId: item.id, qty: 50, unitCost: 1000 }] });

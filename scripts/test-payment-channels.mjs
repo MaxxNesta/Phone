@@ -88,7 +88,7 @@ try {
   // ---- set up -------------------------------------------------------------
   await resetTransactions(sql);
   await sql`update number_series set next_value = 1`;
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const branchId = (await sql`select fn_location_branch(${loc.id}) as b`)[0].b;
   // Its own item and partners, removed at the end: master data is not this suite's to keep.
   const cleanMasters = async () => {
