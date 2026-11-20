@@ -289,12 +289,12 @@ export async function getOnboardingStatus(companyId: string) {
 
 // The invariants, run live. Every one of these should come back clean.
 export async function getHealth(companyId: string) {
-  const unbalanced = await sql`
-    select * from v_check_unbalanced_entries where company_id = ${companyId}`;
-  const inventory = await sql`
-    select * from v_check_inventory_reconciliation where company_id = ${companyId}`;
-  const [tb] = await sql`
-    select coalesce(sum(balance), 0) as total from v_trial_balance where company_id = ${companyId}`;
+  // Three independent checks, asked at once rather than one after another.
+  const [unbalanced, inventory, [tb]] = await Promise.all([
+    sql`select * from v_check_unbalanced_entries where company_id = ${companyId}`,
+    sql`select * from v_check_inventory_reconciliation where company_id = ${companyId}`,
+    sql`select coalesce(sum(balance), 0) as total from v_trial_balance where company_id = ${companyId}`,
+  ]);
 
   return {
     unbalanced: unbalanced.length,

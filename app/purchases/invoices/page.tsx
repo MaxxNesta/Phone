@@ -7,6 +7,7 @@ import {
 } from "@/lib/format";
 import { getCompany, getInvoiceList, getDocumentDrafts } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
+import { serverPage } from "@/lib/server-page";
 import { HelpHint } from "@/components/help-hint";
 import { getImportedInvoiceRows } from "@/lib/historical-purchases";
 
@@ -30,9 +31,10 @@ const TABS: Array<["" | ListStatus, string]> = [
 export default async function PurchaseInvoices({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; supplier?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { status, supplier } = await searchParams;
+  const sp = await searchParams;
+  const { status, supplier } = sp;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
@@ -113,7 +115,9 @@ export default async function PurchaseInvoices({
       outstanding: Number(i.outstanding),
       display: LABEL[i.display as ListStatus],
     },
-    node: (
+    // Built only when sent: of a long list, only the page on screen is.
+    get node() {
+      return (
       <tr className="link">
         <td className="code">
           {/* A draft has no document to open — the link goes back to the
@@ -160,8 +164,12 @@ export default async function PurchaseInvoices({
           )}
         </td>
       </tr>
-    ),
+      );
+    },
   }));
+
+  // Cut to the page on screen here, so only its rows are rendered and sent.
+  const page = serverPage(rows, sp, { key: "posting_date", dir: "desc" });
 
   return (
     <>
@@ -229,7 +237,8 @@ export default async function PurchaseInvoices({
             <span className="page-sub">{invoices.length} invoice{invoices.length === 1 ? "" : "s"}</span>
           </div>
           <DataTable
-            rows={rows}
+            rows={page.rows}
+            server={page.server}
             emptyLabel="No purchase invoices"
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}

@@ -11588,3 +11588,10 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .dl .docstat-icon { background: transparent; color: var(--dl-muted); }
 .dl .docstat-label, .dl .docstat-note { color: var(--dl-muted); }
 .dl .docstat-value { font-size: 1.25rem; font-weight: 600; }
+
+/* Executive: a tab not on screen, laid out in a box of no height so showing
+   it costs nothing (components/exec-tabs.tsx). */
+.xd-pane-off { height: 0; overflow: hidden; visibility: hidden; }
+/* A server-paged table's rows while the next page loads. */
+.dt-skel td { padding-top: 12px; padding-bottom: 12px; }
+.dt-skel .skel-row { display: block; height: 12px; width: 70%; }

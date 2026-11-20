@@ -7,6 +7,7 @@ import {
 } from "@/lib/format";
 import { getCompany, getOrderList, getDocumentDrafts } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
+import { serverPage } from "@/lib/server-page";
 import { HelpHint } from "@/components/help-hint";
 
 const toTime = (v: unknown) => (v ? new Date(v as string).getTime() : 0);
@@ -38,13 +39,19 @@ const isOverdue = (r: { display: string; due_date: unknown }) =>
 export default async function SalesOrders({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { status } = await searchParams;
+  const sp = await searchParams;
+  const { status } = sp;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const saved = (await getOrderList(company.id, "SALES_ORDER", await seenLocations())) as any[];
+  // Independent reads, so in parallel: one wait, not two.
+  const [savedAll, draftsAll] = await Promise.all([
+    seenLocations().then((locs) => getOrderList(company.id, "SALES_ORDER", locs)),
+    getDocumentDrafts(company.id, "SALES_ORDER"),
+  ]);
+  const saved = savedAll as any[];
 
   /**
    * Unfinished orders, in the same shape as the rest of the list.
@@ -54,7 +61,7 @@ export default async function SalesOrders({
    * not placeholders: nothing has been promised to anybody yet, which is why
    * the Draft pill has always existed and never had a row.
    */
-  const drafts = (await getDocumentDrafts(company.id, "SALES_ORDER")) as any[];
+  const drafts = draftsAll as any[];
   const draftRows = drafts.map((d) => ({
     document_id: d.id, id: d.id, draft_id: d.id as string,
     doc_no: null, posting_date: d.doc_date, due_date: null,
@@ -89,7 +96,9 @@ export default async function SalesOrders({
       gross_total: Number(o.gross_total),
       display: ORDER_STATUS_LABEL[o.display as OrderDisplayStatus],
     },
-    node: (
+    // Built only when sent: of a long list, only the page on screen is.
+    get node() {
+      return (
       <tr className="link">
         <td className="code">
           {/* A draft has no document to open — the link goes back to the
@@ -136,8 +145,12 @@ export default async function SalesOrders({
             : <Link href={`/sales/deliver?order=${o.document_id}`} className="btn ghost tiny">Deliver</Link>)}
         </td>
       </tr>
-    ),
+      );
+    },
   }));
+
+  // Cut to the page on screen here, so only its rows are rendered and sent.
+  const page = serverPage(rows, sp, { key: "posting_date", dir: "desc" });
 
   return (
     <div className="orders-page">
@@ -185,7 +198,8 @@ export default async function SalesOrders({
             <span className="page-sub">{orders.length} order{orders.length === 1 ? "" : "s"}</span>
           </div>
           <DataTable
-            rows={rows}
+            rows={page.rows}
+            server={page.server}
             emptyLabel="No sales orders"
             searchPlaceholder="Search orders…"
             defaultSort={{ key: "posting_date", dir: "desc" }}

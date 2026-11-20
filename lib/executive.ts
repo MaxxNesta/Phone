@@ -44,19 +44,24 @@ export async function executiveData(co: string, from: string, to: string) {
          and a.account_type in ('REVENUE', 'COGS', 'EXPENSE')
          and je.entry_date >= ${trendFrom}::date and je.entry_date < ${to}::date
        group by 1, 2`,
+    /* What stands today. Open invoices both ways in one pass over
+       v_open_item, each figure a filter on it, rather than five subqueries
+       that each walked the view again. */
     sql`
       select
         (select coalesce(sum(jl.base_amount), 0) from journal_line jl join account a on a.id = jl.account_id
           where jl.company_id = ${co} and a.is_cash_account)::float as cash,
-        (select coalesce(sum(outstanding), 0) from v_open_item where company_id = ${co} and doc_type = 'SALES_INVOICE' and outstanding > 0)::float as ar,
-        (select coalesce(sum(outstanding), 0) from v_open_item where company_id = ${co} and doc_type = 'SALES_INVOICE' and outstanding > 0 and days_overdue > 0)::float as ar_overdue,
-        (select count(*) from v_open_item where company_id = ${co} and doc_type = 'SALES_INVOICE' and outstanding > 0 and days_overdue > 0)::int as ar_overdue_n,
-        (select coalesce(sum(outstanding), 0) from v_open_item where company_id = ${co} and doc_type = 'PURCHASE_INVOICE' and outstanding > 0)::float as ap,
-        (select coalesce(sum(outstanding), 0) from v_open_item where company_id = ${co} and doc_type = 'PURCHASE_INVOICE' and outstanding > 0
-            and due_date <= fn_shop_today() + 7)::float as ap_due7,
-        (select count(*) from v_stock_on_hand where company_id = ${co} and qty_on_hand < 0)::int as negative_lines`,
+        coalesce(sum(o.outstanding) filter (where o.doc_type = 'SALES_INVOICE'), 0)::float as ar,
+        coalesce(sum(o.outstanding) filter (where o.doc_type = 'SALES_INVOICE' and o.days_overdue > 0), 0)::float as ar_overdue,
+        (count(*) filter (where o.doc_type = 'SALES_INVOICE' and o.days_overdue > 0))::int as ar_overdue_n,
+        coalesce(sum(o.outstanding) filter (where o.doc_type = 'PURCHASE_INVOICE'), 0)::float as ap,
+        coalesce(sum(o.outstanding) filter (where o.doc_type = 'PURCHASE_INVOICE' and o.due_date <= fn_shop_today() + 7), 0)::float as ap_due7
+        from v_open_item o
+       where o.company_id = ${co} and o.doc_type in ('SALES_INVOICE', 'PURCHASE_INVOICE') and o.outstanding > 0`,
+    // Stock by branch and the lines below zero, in one pass over the stock view.
     sql`
-      select coalesce(l.parent_id, l.id) as branch, sum(v.value_on_hand)::float as value
+      select coalesce(l.parent_id, l.id) as branch, sum(v.value_on_hand)::float as value,
+             (count(*) filter (where v.qty_on_hand < 0))::int as negative
         from v_stock_on_hand v join location l on l.id = v.location_id
        where v.company_id = ${co}
        group by 1`,
@@ -108,7 +113,9 @@ export async function executiveData(co: string, from: string, to: string) {
   const trend = monthsBetween(shift(to, -12), to).map((m) => ({ month: m, ...(byMonth.get(m) ?? zero()) }));
 
   const b = (bal as unknown as Record<string, number>[])[0];
-  const stockBy = new Map((stockRows as unknown as { branch: string; value: number }[]).map((r) => [r.branch, r.value]));
+  const stockList = stockRows as unknown as { branch: string; value: number; negative: number }[];
+  const stockBy = new Map(stockList.map((r) => [r.branch, r.value]));
+  const negativeLines = stockList.reduce((t, r) => t + r.negative, 0);
   const stock = [...stockBy.values()].reduce((t, v) => t + v, 0);
   const branches = (branchRows as unknown as { id: string; code: string; name: string }[]).map((br) => ({
     ...br, pl: byBranch.get(br.id) ?? zero(), stock: stockBy.get(br.id) ?? 0,
@@ -127,7 +134,7 @@ export async function executiveData(co: string, from: string, to: string) {
   return {
     now, before, trend, branches, unassigned, stock,
     cash: b.cash, ar: b.ar, arOverdue: b.ar_overdue, arOverdueN: b.ar_overdue_n,
-    ap: b.ap, apDue7: b.ap_due7, negativeLines: b.negative_lines,
+    ap: b.ap, apDue7: b.ap_due7, negativeLines,
     expenses: expRows as unknown as { code: string; name: string; amount: number }[],
     revenueBy: revRows as unknown as { code: string; name: string; amount: number }[],
     hours: hourRows as unknown as { dow: number; hour: number; sales: number; amount: number }[],

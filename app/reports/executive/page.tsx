@@ -8,6 +8,7 @@ import { resolvePeriod } from "@/lib/period";
 import { executiveData, type Pl } from "@/lib/executive";
 import { compact } from "@/components/stat";
 import { RankedBarChart } from "@/components/charts";
+import { ExecTabs } from "@/components/exec-tabs";
 import { ProfitColumns, Gauge, HealthRadar, BusyHours, IncomeFlow, type RadarAxis, type FlowNode, type FlowLink } from "@/components/exec-charts";
 
 /* The Executive page has a face of its own: IBM Plex Sans, true black on
@@ -56,7 +57,6 @@ export default async function Executive({ searchParams }: { searchParams: Promis
 
   const tab: Tab = TABS.find(([k]) => k === sp.tab)?.[0] ?? "overview";
   const period = resolvePeriod(sp.p ?? "1m");
-  const href = (o: { tab?: string; p?: string }) => `/reports/executive?${new URLSearchParams({ tab: o.tab ?? tab, p: o.p ?? period.key })}`;
   const [d, health] = await Promise.all([executiveData(company.id, period.from, period.to), getHealth(company.id)]);
 
   const gm = pctOf(gp(d.now), d.now.rev), nm = pctOf(net(d.now), d.now.rev);
@@ -233,19 +233,13 @@ export default async function Executive({ searchParams }: { searchParams: Promis
   const profitChart = <ProfitColumns months={d.trend.map((m) => ({ month: m.month, rev: m.rev, gp: gp(m) }))} />;
 
   return shell(
-    <>
-      <div className="xd-top">
-        <h1 className="xd-title">Executive</h1>
-        <nav className="xd-tabs" aria-label="Sections">
-          {TABS.map(([k, label]) => <Link key={k} href={href({ tab: k })} aria-current={k === tab ? "page" : undefined}>{label}</Link>)}
-        </nav>
-        <nav className="xd-spans" aria-label="Period">
-          {SPANS.map(([k, label]) => <Link key={k} href={href({ p: k })} aria-current={k === period.key ? "true" : undefined} title={k}>{label}</Link>)}
-        </nav>
-      </div>
-      <p className="xd-dateline">{company.name}, {period.label.toLowerCase()}, figures in MMK. Profit is read from the general ledger.</p>
-
-      {tab === "overview" && (
+    <ExecTabs
+      title={<h1 className="xd-title">Executive</h1>}
+      dateline={<p className="xd-dateline">{company.name}, {period.label.toLowerCase()}, figures in MMK. Profit is read from the general ledger.</p>}
+      initial={tab} period={period.key}
+      spans={SPANS.map(([key, label]) => ({ key, label }))}
+      tabs={[
+        { id: "overview", label: "Overview", content: (
         <>
           {hero}
           <div className="xd-split">
@@ -262,9 +256,8 @@ export default async function Executive({ searchParams }: { searchParams: Promis
             {section("Needs attention", null, attention)}
           </div>
         </>
-      )}
-
-      {tab === "profit" && (
+        ) },
+        { id: "profit", label: "Profit", content: (
         <>
           {hero}
           {section("Where the money went", `${period.label}, from revenue to net profit`, flowChart)}
@@ -289,9 +282,8 @@ export default async function Executive({ searchParams }: { searchParams: Promis
             </>)}
           </div>
         </>
-      )}
-
-      {tab === "cash" && (
+        ) },
+        { id: "cash", label: "Working capital", content: (
         <>
           <section className="xd-hero">
             <p className="xd-headline">
@@ -319,9 +311,8 @@ export default async function Executive({ searchParams }: { searchParams: Promis
             {section("Needs attention", null, attention)}
           </div>
         </>
-      )}
-
-      {tab === "branches" && (
+        ) },
+        { id: "branches", label: "Branches", content: (
         <>
           {section("Branches side by side", period.label, branchTable)}
           <div className="xd-split even">
@@ -329,7 +320,8 @@ export default async function Executive({ searchParams }: { searchParams: Promis
             {section("Net profit by branch", period.label, <RankedBarChart data={[...d.branches].sort((a, b) => net(b.pl) - net(a.pl)).map((b) => ({ label: b.name, value: net(b.pl) }))} />)}
           </div>
         </>
-      )}
-    </>,
+        ) },
+      ]}
+    />,
   );
 }
