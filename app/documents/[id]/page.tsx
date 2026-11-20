@@ -1158,7 +1158,10 @@ export default async function DocumentPage({
            /purchases/receive?order=, and that page renders the very same
            FulfillOrderForm this screen used to embed — so the inline copy was
            a second way into one form, sitting in a row meant for buttons. */
-        fulfilActions={canFulfil && sales && retail ? (
+        /* A retail shop with orders and deliveries switched on delivers like
+           any other: link or deliver, and billing from the order (deliver
+           later) stays beside them. Off, the invoice hands the goods over. */
+        fulfilActions={canFulfil && sales && retail && !ordersAndDeliveriesOn(company) ? (
           <Link href={`/sales/new?order=${doc.id}`} className="btn primary">
             <Truck size={15} aria-hidden="true" /> Create invoice
           </Link>
@@ -1176,6 +1179,9 @@ export default async function DocumentPage({
             >
               <Truck size={15} aria-hidden="true" /> {sales ? "Deliver goods" : "Receive goods"}
             </Link>
+            {sales && retail && (
+              <Link href={`/sales/new?order=${doc.id}`} className="btn">Create invoice</Link>
+            )}
           </>
         ) : null}
         /* Correcting an order and giving it up: both rare, one irreversible.
