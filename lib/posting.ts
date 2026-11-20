@@ -8813,7 +8813,69 @@ export async function applyAdvance(input: {
       // Lines so far sum to sign*advTotal - sign*total; the gap closes it.
       // Supplier (sign -1): a debt carried higher than the advance paying it
       // is a gain (credit).
-      const close = round4(sign * (total - advTotal));
+      let close = round4(sign * (total - advTotal));
+
+      /**
+       * Paid for before the goods came (IFRIC 22, docs/06 D-P6).
+       *
+       * Yuan paid in advance fixed what that part of the goods cost in kyat
+       * on the day it was paid: nothing about the money moved after that, so
+       * there is no exchange gain or loss on it. The goods were put on the
+       * shelf at the receipt's rate, so the gap between that and the
+       * advance's rate is a correction to what they cost — onto the stock
+       * still held, to cost of sales for what has been sold — the same walk
+       * a supplier's price correction takes. An advance paid after the goods
+       * had arrived was settling a debt, and keeps its exchange difference.
+       * A bill with no goods received against it yet has nothing to correct,
+       * and keeps it too.
+       */
+      if (isPayment && close !== 0) {
+        const receipts = await tx`
+          select gr.id, gr.posting_date::text as d from document gr
+           where gr.company_id = ${companyId} and gr.doc_type = 'GOODS_RECEIPT'
+             and gr.status = 'POSTED' and gr.reverses_document_id is null
+             and (fn_current_document(gr.source_document_id) = fn_current_document(${inv.id})
+               or gr.id = (select b.source_document_id from document b where b.id = ${inv.id}))`;
+        const arrived = receipts.map((r: any) => String(r.d)).sort()[0] ?? null;
+        if (arrived) {
+          let prepaid = 0;
+          for (const a of lines) {
+            const [p] = await tx`select posting_date::text as d from document where id = ${a.paymentId}`;
+            if (String(p.d) <= arrived) {
+              const s = split.get(a.paymentId)!;
+              prepaid = round4(prepaid + sign * (s.inv - s.adv));
+            }
+          }
+          const goodsLines = prepaid === 0 ? [] : await tx`
+            select dl.id, dl.net_amount::float as weight from document_line dl
+             where dl.document_id = any(${receipts.map((r: any) => r.id as string)})
+               and dl.base_qty > 0 and dl.net_amount > 0
+             order by dl.document_id, dl.line_no`;
+          if (goodsLines.length > 0) {
+            const shares = spreadByWeight(prepaid, goodsLines.map((g: any) => Number(g.weight)), 4);
+            for (const [i, g] of goodsLines.entries()) {
+              if (shares[i] === 0) continue;
+              const r = await addValueToReceiptLine(tx, {
+                companyId, documentId: doc.id as string, docDate, locationId: inv.location_id as string,
+                reason: `${docNo}: paid in advance at the advance's rate (IFRIC 22)`,
+                receiptLineId: g.id as string, amount: shares[i],
+              });
+              journal.push(...r.journal);
+              // Units that only ever covered a shortage cannot be walked to;
+              // their share is cost of sales, as for landed cost.
+              const left = round4(shares[i] - r.toInventory - r.toCogs);
+              if (left !== 0) {
+                const [cogs] = await tx`
+                  select fn_resolve_account_for_item(${companyId}, 'COGS',
+                         (select item_id from document_line where id = ${g.id})) as a`;
+                journal.push({ accountId: cogs.a as string, amount: left, locationId: inv.location_id as string | null });
+              }
+            }
+            close = round4(close - prepaid);
+          }
+        }
+      }
+
       if (close !== 0) {
         const role = close < 0 ? "FX_GAIN" : "FX_LOSS";
         const [acct] = await tx`select fn_system_account(${companyId}, ${role}) as a`;

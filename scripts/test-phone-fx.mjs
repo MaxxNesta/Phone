@@ -147,8 +147,46 @@ try {
     allocations: [{ paymentId: adv.id, amount: 1000 }] });
   check("bill settled by the advance", !(await open(pi2.id)));
   check("advance used up", !(await sql`select 1 from v_partner_advance where payment_id = ${adv.id}`)[0]);
-  check("gain: debt carried at 470, paid with yuan bought at 450",
-    r2((await bal("6340")) - gainBefore) === -20_000);
+  // Paid before the goods came (IFRIC 22): the yuan fixed their kyat cost on
+  // the day it was paid, so there is no exchange on it — the goods cost 450.
+  check("paid before the goods came: no exchange gain or loss on it",
+    r2((await bal("6340")) - gainBefore) === 0);
+  const chargerValue = async () => r2((await sql`select coalesce(sum(value_on_hand),0) v from v_stock_on_hand
+    where item_id = ${charger.id}`)[0].v);
+  check("…the chargers cost what the yuan cost: 10 × ¥100 at 450", (await chargerValue()) === 450_000,
+    String(await chargerValue()));
+
+  console.log("\n  advance paid after the goods arrived");
+  const NEXT = (await sql`select to_char(current_date + 1,'YYYY-MM-DD') as d`)[0].d;
+  const pi3 = await P.postPurchaseWithReceipt({ companyId: co.id, partnerId: sz.id, locationId: wh.id,
+    docDate: DAY, dueDate: DAY, currency: "CNY", exchangeRate: 470,
+    lines: [{ itemId: charger.id, qty: 10, unitPrice: 100 }] });
+  const adv2 = await P.postSupplierPayment({ companyId: co.id, partnerId: sz.id, docDate: NEXT,
+    cashAccountId: bank.id, currency: "CNY", exchangeRate: 450, locationId: wh.id, allocations: [], advance: 1000 });
+  const gain2 = await bal("6340");
+  await P.applyAdvance({ companyId: co.id, invoiceId: pi3.id, docDate: NEXT, allocations: [{ paymentId: adv2.id, amount: 1000 }] });
+  check("settling a debt already owed: the gap is exchange gain, as before", r2((await bal("6340")) - gain2) === -20_000);
+  check("…and those chargers keep their 470", (await chargerValue()) === 450_000 + 470_000);
+
+  console.log("\n  paid in advance, some already sold when the advance is applied");
+  const part = await ensure("FX-PART", "Screen protector", {});
+  const adv3 = await P.postSupplierPayment({ companyId: co.id, partnerId: sz.id, docDate: DAY,
+    cashAccountId: bank.id, currency: "CNY", exchangeRate: 450, locationId: wh.id, allocations: [], advance: 1000 });
+  const pi4 = await P.postPurchaseWithReceipt({ companyId: co.id, partnerId: sz.id, locationId: wh.id,
+    docDate: DAY, dueDate: DAY, currency: "CNY", exchangeRate: 470,
+    lines: [{ itemId: part.id, qty: 10, unitPrice: 100 }] });
+  await P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: wh.id, docDate: DAY, dueDate: DAY,
+    paymentType: "CREDIT", lines: [{ itemId: part.id, qty: 4, unitPrice: 60_000 }] });
+  const partValue = async () => r2((await sql`select coalesce(sum(value_on_hand),0) v from v_stock_on_hand where item_id = ${part.id}`)[0].v);
+  const cogsBefore = await bal("5110"), fx4 = await bal("6340");
+  const ap4 = await P.applyAdvance({ companyId: co.id, invoiceId: pi4.id, docDate: DAY, allocations: [{ paymentId: adv3.id, amount: 1000 }] });
+  check("the six held come down to 450 each", (await partValue()) === 6 * 45_000, String(await partValue()));
+  check("the four sold: their share to cost of sales", r2((await bal("5110")) - cogsBefore) === -8_000);
+  check("…and nothing to exchange", r2((await bal("6340")) - fx4) === 0);
+  await P.voidDocument({ documentId: ap4.id, reason: "test" });
+  check("void puts it all back", (await partValue()) === 6 * 47_000 && r2((await bal("5110")) - cogsBefore) === 0);
+  const [recon] = await sql`select coalesce(sum(value_on_hand),0)::float v from v_stock_on_hand where company_id = ${co.id}`;
+  check("inventory GL still equals the valued stock", r2(recon.v) === (await bal("1310")), `${r2(recon.v)} vs ${await bal("1310")}`);
 
   console.log("\n  return and sale");
   const pr = await P.postPurchaseReturn({ companyId: co.id, partnerId: sz.id, locationId: wh.id,
