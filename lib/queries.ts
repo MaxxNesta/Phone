@@ -1534,6 +1534,38 @@ export async function getDocument(id: string) {
   return doc ?? null;
 }
 
+/**
+ * The units a goods receipt refused (docs/06 D-P7): its lines that went to
+ * quarantine, each with why, what the supplier is to do, and the IMEIs it
+ * received. The IMEIs are read from the receipt's own RECEIVED events, so a
+ * unit that has since moved is still named as the one that arrived broken;
+ * `still_held` says which are in quarantine now, waiting to go back.
+ */
+export async function rejectedOnReceipt(receiptId: string) {
+  return sql`
+    select dl.id as line_id, dl.item_id, i.code as item_code, i.name as item_name,
+           dl.base_qty::float as qty, dl.entered_qty::float as entered_qty, dl.entered_uom_id as uom_id,
+           u.code as uom_code, dl.unit_price::float as unit_cost, dl.location_id,
+           dl.reject_reason, dl.reject_outcome, dl.source_line_id,
+           coalesce((
+             select json_agg(json_build_object('imei', s.serial_no,
+                      'stillHeld', exists (select 1 from v_stock_serial v
+                                            where v.serial_id = s.id and v.status = 'IN_STOCK'
+                                              and v.location_id = dl.location_id))
+                    order by s.serial_no)
+               from stock_serial_event e
+               join stock_serial s on s.id = e.serial_id
+               join stock_lot l on l.id = e.lot_id
+               join stock_movement sm on sm.id = l.stock_movement_id
+              where e.document_id = dl.document_id and e.event = 'RECEIVED'
+                and sm.document_line_id = dl.id), '[]'::json) as units
+      from document_line dl
+      join item i on i.id = dl.item_id
+      left join uom u on u.id = dl.entered_uom_id
+     where dl.document_id = ${receiptId} and dl.reject_reason is not null
+     order by dl.line_no`;
+}
+
 export async function getDocumentLines(id: string) {
   return sql`
     select dl.*, i.code as item_code, i.name as item_name,

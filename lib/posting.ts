@@ -267,6 +267,17 @@ export type FulfillmentLine = {
    * known IMEI is refused, as a new phone from a supplier never has history.
    */
   reacquire?: boolean;
+  /**
+   * Goods receipts only (docs/06 D-P7): these units arrived but were refused
+   * — broken, wrong model, missing parts. They are received all the same, at
+   * the same cost, because they are the supplier's goods in our hands and the
+   * order counts them as arrived; but they land in the branch's quarantine
+   * (0218), where nothing can sell them, until a return sends them back.
+   * The receiver says what is wrong, and whether the supplier is to replace
+   * them (the order expects them again once they go back) or credit them.
+   * A line of ten with one broken is two lines: nine, and one rejected.
+   */
+  rejected?: { reason: string; outcome: "REPLACE" | "CREDIT" } | null;
 
   /** Optional per-unit detail for a received serial: IMEI 2, the maker's
    *  serial, supplier warranty. Keyed by the serial it describes. */
@@ -4774,6 +4785,20 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
 
     const { companyId, partnerId, locationId, docDate } = input;
 
+  /* Units refused at the door (D-P7) land in the branch's quarantine (0218),
+     received like the rest but where nothing can sell them. Each refusal
+     says what is wrong and what the supplier is to do about it. */
+  for (const [i, l] of input.lines.entries()) {
+    if (!l.rejected) continue;
+    if (!l.rejected.reason?.trim()) throw new Error(`Line ${i + 1}: say what is wrong with the rejected goods.`);
+    if (l.rejected.outcome !== "REPLACE" && l.rejected.outcome !== "CREDIT") {
+      throw new Error(`Line ${i + 1}: choose whether the supplier replaces the rejected goods or credits them.`);
+    }
+  }
+  const quarantineId = input.lines.some((l) => l.rejected)
+    ? (await tx`select fn_quarantine_location(${locationId}) as q`)[0].q as string
+    : null;
+
   // Which of these items keep lot identity, read once for the document
   // rather than per line.
   const tracking = await batchTracking(tx, input.lines.map((l) => l.itemId)); const receivedAt = input.receivedAt || docDate;
@@ -4875,6 +4900,8 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
 
   for (const line of lines) {
     lineNo++;
+    // Where this line's goods physically land: rejected units in quarantine.
+    const at = line.rejected ? quarantineId! : locationId;
 
     const [item] = await tx`select id, code, name, is_stocked, base_uom_id from item where id = ${line.itemId}`;
     if (!item) throw new Error("Item not found");
@@ -4896,12 +4923,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       insert into document_line
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
-         net_amount, tax_amount, gross_amount, source_line_id, foc_reason_id)
+         net_amount, tax_amount, gross_amount, source_line_id, foc_reason_id,
+         reject_reason, reject_outcome)
       values
-        (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
+        (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${at},
          ${enteredQty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${unitCost},
          ${net}, 0, ${net}, ${line.sourceLineId ?? null},
-         ${unitCost === 0 ? line.focReasonId ?? null : null})
+         ${unitCost === 0 ? line.focReasonId ?? null : null},
+         ${line.rejected?.reason.trim() ?? null}, ${line.rejected?.outcome ?? null})
       returning id`;
 
     assertBatchGiven(item as never, tracking.get(line.itemId), line);
@@ -4911,7 +4940,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         (company_id, item_id, location_id, movement_date, qty,
          unit_cost, total_cost, document_id, document_line_id, batch_no, expiry_date)
       values
-        (${companyId}, ${line.itemId}, ${locationId}, ${docDate}::date,
+        (${companyId}, ${line.itemId}, ${at}, ${docDate}::date,
          ${baseQty}, ${baseUnitCost}, ${net}, ${doc.id}, ${docLine.id},
          ${line.batchNo?.trim() || null}, ${line.expiryDate || null})
       returning id`;
@@ -4924,13 +4953,13 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
     // Everything below the line is in base units: what was owed for goods
     // already gone, what reaches the shelf, and the layer it becomes.
     const { covered, variance, byAccount } = await settleNegativeStock(
-      tx, companyId, doc.id, line.itemId, locationId, baseQty, baseUnitCost, movement.id
+      tx, companyId, doc.id, line.itemId, at, baseQty, baseUnitCost, movement.id
     );
     const toShelf = round4(baseQty - covered);
     let lotId: string | null = null;
     if (toShelf > 0.0001) {
       lotId = await createFifoLot(
-        tx, companyId, line.itemId, locationId, receivedAt, baseUnitCost, toShelf, movement.id,
+        tx, companyId, line.itemId, at, receivedAt, baseUnitCost, toShelf, movement.id,
         { batchNo: line.batchNo, expiryDate: line.expiryDate });
     }
 
@@ -4991,7 +5020,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
                   where id = any(${back.map((k) => k.id as string)})`;
         await insertInChunks(tx, "stock_serial_event", back.map((k) => ({
           company_id: companyId, serial_id: k.id, event: "REACQUIRED",
-          document_id: doc.id, to_location_id: locationId, lot_id: lotId,
+          document_id: doc.id, to_location_id: at, lot_id: lotId,
         })));
         const reused = new Set(back.map((k) => k.serial_no as string));
         fresh = given.filter((sn) => !reused.has(sn));
@@ -5011,14 +5040,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         }), true);
         await insertInChunks(tx, "stock_serial_event", units.map((u) => ({
           company_id: companyId, serial_id: u.id, event: "RECEIVED",
-          document_id: doc.id, to_location_id: locationId, lot_id: lotId,
+          document_id: doc.id, to_location_id: at, lot_id: lotId,
         })));
       }
     }
 
     const inventory = await tx`
       select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${line.itemId}) as a`;
-    journal.push({ accountId: inventory[0].a, amount: net, locationId });
+    journal.push({ accountId: inventory[0].a, amount: net, locationId: at });
 
     /**
      * The sale charged a provisional figure; this receipt says what the goods
@@ -5137,7 +5166,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
               join document_line dl on dl.document_id = n.document_id
                                    and dl.item_id = n.item_id
              where n.company_id = ${companyId} and n.item_id = ${line.itemId}
-               and n.location_id = ${locationId}
+               and n.location_id = ${at}
                and n.expense_account_id is null
                and n.to_location_id is null`;
           if (lines.length === 1) {
@@ -5168,7 +5197,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
                       and ad.company_id = jl.company_id
                       and ad.role = 'INVENTORY'
                where n.company_id = ${companyId} and n.item_id = ${line.itemId}
-                 and n.location_id = ${locationId}
+                 and n.location_id = ${at}
                  and n.expense_account_id is null
                  and n.to_location_id is null
                  and jl.base_amount > 0
@@ -5181,7 +5210,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
             select d.doc_no from negative_stock n
               join document d on d.id = n.document_id
              where n.company_id = ${companyId} and n.item_id = ${line.itemId}
-               and n.location_id = ${locationId}
+               and n.location_id = ${at}
              order by n.created_at limit 1`;
           throw new Error(
             `${item.code} (${item.name}) went out short on `
@@ -5193,8 +5222,8 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
           );
         }
 
-        journal.push({ accountId: account, amount: part.amount, locationId });
-        journal.push({ accountId: inventory[0].a, amount: -part.amount, locationId });
+        journal.push({ accountId: account, amount: part.amount, locationId: at });
+        journal.push({ accountId: inventory[0].a, amount: -part.amount, locationId: at });
 
         /* Value only, no goods: this settles stock that was sold before
            anyone recorded it arriving, at what the receipt says it really
@@ -5204,7 +5233,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
             (company_id, item_id, location_id, movement_date, qty,
              unit_cost, total_cost, document_id, document_line_id)
           values
-            (${companyId}, ${line.itemId}, ${locationId}, ${docDate}::date,
+            (${companyId}, ${line.itemId}, ${at}, ${docDate}::date,
              0, 0, ${-part.amount}, ${doc.id}, ${docLine.id})`;
       }
     }

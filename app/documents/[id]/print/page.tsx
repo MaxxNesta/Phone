@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import {
-  getCompany, getDocument, getDocumentLines, getJournalForDocument,
+  getCompany, getDocument, getDocumentLines, getJournalForDocument, rejectedOnReceipt,
 } from "@/lib/queries";
 import { PrintableDocument, type PrintableDoc } from "@/components/printable-document";
 import { PrintButton } from "@/components/print-button";
@@ -61,11 +61,15 @@ const shortDate = (v: unknown) =>
     { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }) : "";
 
 export default async function DocumentPrint({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ slip?: string }>;
 }) {
   const { id } = await params;
+  // A goods receipt's refused units on their own paper, to go back to the
+  // supplier with them (docs/06 D-P7).
+  const rejectionSlip = (await searchParams)?.slip === "rejection";
   const user = await requireUser();
   const [company, doc] = await Promise.all([getCompany(), getDocument(id)]);
   // The same gate as the document itself: paper is no way round it.
@@ -91,6 +95,58 @@ export default async function DocumentPrint({
   // Deliveries, transfers and adjustments are valued at cost.
   const hideValue = ["DELIVERY", "STOCK_TRANSFER", "STOCK_ADJUSTMENT"].includes(d.doc_type)
     && !can(user, "cost.view");
+
+  if (rejectionSlip && d.doc_type === "GOODS_RECEIPT") {
+    const refused = await rejectedOnReceipt(id) as any[];
+    if (refused.length === 0) notFound();
+    const asks = new Set(refused.map((r) => r.reject_outcome));
+    const slip: PrintableDoc = {
+      company: { name: company.name, nameMy: company.name_my, currency: company.base_currency },
+      title: "Rejection note",
+      docNo: d.doc_no,
+      date: shortDate(d.doc_date),
+      reference: d.reference ?? null,
+      partnerLabel: "Supplier",
+      partner: d.partner_name ? {
+        code: d.partner_code, name: d.partner_name,
+        address: d.partner_address ?? null, township: d.partner_township ?? null,
+        phone: d.partner_phone ?? null,
+      } : null,
+      location: d.location_name ?? null,
+      memo: `These goods arrived on ${d.doc_no} and were refused. We ask you to `
+        + (asks.size > 1 ? "replace or credit them as marked on each line."
+          : asks.has("REPLACE") ? "replace them." : "credit them against your invoice."),
+      lines: refused.map((r, i) => ({
+        no: i + 1,
+        code: r.item_code,
+        name: r.item_name,
+        note: [
+          (r.units as any[]).length ? `IMEI ${(r.units as any[]).map((u) => u.imei).join(", ")}` : null,
+          `Fault: ${r.reject_reason}`,
+          asks.size > 1 ? (r.reject_outcome === "REPLACE" ? "Please replace" : "Please credit") : null,
+        ].filter(Boolean).join(" · "),
+        qty: Number(r.entered_qty),
+        uom: r.uom_code ?? null,
+        unitPrice: can(user, "cost.view") ? Number(r.unit_cost) : null,
+        amount: can(user, "cost.view") ? Number(r.unit_cost) * Number(r.entered_qty) : null,
+      })),
+      totals: [],
+      signatures: ["Handed back by", "Received by (supplier)"],
+    };
+    return (
+      <>
+        <div className="actions noprint" style={{ marginBottom: "0.5rem" }}>
+          <Link href={`/documents/${id}`} className="btn ghost tiny">
+            <ArrowLeft size={13} aria-hidden="true" /> Back to the document
+          </Link>
+          <PrintButton />
+        </div>
+        <div className="sheetwrap">
+          <PrintableDocument doc={slip} />
+        </div>
+      </>
+    );
+  }
 
   const printable: PrintableDoc = {
     company: { name: company.name, nameMy: company.name_my, currency: company.base_currency },

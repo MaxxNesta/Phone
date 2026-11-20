@@ -1902,6 +1902,7 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
 .sheet-table .c-uom { width: 16mm; }
 .sheet-table .c-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sheet-code { color: #666; margin-right: 2mm; }
+.sheet-line-note { white-space: normal; color: #333; font-size: 9pt; margin-top: 1mm; }
 
 /* A statement on paper. The sheet's own table is built for line items with a
    quantity and a price; a statement has a description and one figure, so the

@@ -56,7 +56,7 @@ import { voidWholeTradeIn } from "@/lib/secondhand-actions";
 import { DeleteButton } from "@/components/confirm-delete";
 import {
   getDocument,
-  getDocumentLines,
+  getDocumentLines, rejectedOnReceipt,
   getBrandsInUse,
   getDocumentBatches,
   getJournalForDocument,
@@ -550,6 +550,11 @@ export default async function DocumentPage({
       : { href: `/purchases/returns/new?source=${doc.id}`,
           label: "Records a supplier return, filled in from this receipt" };
   })();
+
+  // Units this receipt refused (D-P7), and how many still wait in quarantine.
+  const refused = doc.doc_type === "GOODS_RECEIPT" ? await rejectedOnReceipt(doc.id) as any[] : [];
+  const refusedHeld = refused.reduce((t, r) => t + ((r.units as any[]).length
+    ? (r.units as any[]).filter((u) => u.stillHeld).length : Number(r.qty)), 0);
 
     const needsSalesInvoice = doc.doc_type === "DELIVERY" && doc.status === "POSTED" && !stageDoc["SALES_INVOICE"];
 
@@ -1527,6 +1532,20 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
+          {refused.length > 0 && (
+            <div className="lc-gr">
+              <dl>
+                <div><dt>Refused on arrival</dt><dd>{refused.reduce((t, r) => t + Number(r.qty), 0)} unit{refused.reduce((t, r) => t + Number(r.qty), 0) === 1 ? "" : "s"}</dd></div>
+                <div><dt>Still in quarantine</dt><dd><strong>{refusedHeld}</strong></dd></div>
+              </dl>
+              <span className="lc-gr-actions">
+                <Link href={`/documents/${doc.id}/print?slip=rejection`} className="btn ghost tiny">Print rejection note</Link>
+                {refusedHeld > 0 && returnRoute && can(user, "purchase.post") && (
+                  <Link href={`${returnRoute.href}&refused=${doc.id}`} className="btn tiny lc-gr-primary">Return refused units</Link>
+                )}
+              </span>
+            </div>
+          )}
           {landedOn && isPi && applied.length > 0 && (
             <div className="lc-gr">
               <dl>
@@ -1742,7 +1761,10 @@ export default async function DocumentPage({
                                   <span className="dl-strong codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
                                   <small>{[l.item_code, multiBrand || l.brand_name ? l.brand_name : null,
                                     imeis > 0 ? `Sold by IMEI, ${imeis} scanned` : null].filter(Boolean).join(" · ")}
-                                    {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}</small>
+                                    {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}
+                                    {/* Refused at the door (D-P7): in quarantine, not on the shelf. */}
+                                    {l.reject_reason && <> · <span className="dl-pill warn" title="Received into quarantine, not for sale, until it goes back">
+                                      Refused: {l.reject_reason} · supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"}</span></>}</small>
                                 </span>
                               </span>
                             </td>

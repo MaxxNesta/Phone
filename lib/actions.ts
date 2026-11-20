@@ -2717,6 +2717,12 @@ function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
       source: l.source === "CONSIGNMENT" ? "CONSIGNMENT" as const : "OWNED" as const,
       consignorId: l.consignorId || null,
       ...serialFields(l),
+      // Units refused at the door (D-P7): the engine checks the reason and
+      // the outcome, and sends them to the branch's quarantine.
+      rejected: l.rejected ? {
+        reason: String(l.rejected.reason ?? ""),
+        outcome: (l.rejected.outcome === "REPLACE" || l.rejected.outcome === "CREDIT") ? l.rejected.outcome : ("" as never),
+      } : null,
     }))
     .filter((l) => l.itemId && l.qty > 0);
 

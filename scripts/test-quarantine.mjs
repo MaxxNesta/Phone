@@ -165,6 +165,40 @@ try {
   await sell([{ itemId: charger.id, qty: 9, unitPrice: 20_000 }]);
   check("released stock sells", (await onHand(charger.id, wh.id)) === 1);
 
+  console.log("\n  ten ordered, ten arrive, one broken");
+  const po = await P.postPurchaseOrder({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    lines: [{ itemId: phone.id, qty: 10, unitPrice: 1_000_000 }] });
+  const [poLine] = await sql`select id from document_line where document_id = ${po.id}`;
+  const imeis = Array.from({ length: 10 }, (_, i) => `QR-PO-${i + 1}`);
+  const grirBefore = await bal("1410");
+  const receiveTen = (rejected) => P.postGoodsReceipt({
+    companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY, sourceDocumentId: po.id,
+    lines: [
+      { itemId: phone.id, qty: 9, unitCost: 1_000_000, serials: imeis.slice(0, 9), sourceLineId: poLine.id },
+      { itemId: phone.id, qty: 1, unitCost: 1_000_000, serials: [imeis[9]], sourceLineId: poLine.id, rejected },
+    ],
+  });
+  await refuses("a rejection without a reason is refused",
+    () => receiveTen({ reason: " ", outcome: "REPLACE" }), /what is wrong/);
+  await refuses("a rejection without replace or credit is refused",
+    () => receiveTen({ reason: "Screen cracked", outcome: "" }), /replaces .* or credits/);
+  const gr = await receiveTen({ reason: "Screen cracked", outcome: "REPLACE" });
+  check("the nine are on the shelf", (await sql`select count(*)::int c from v_stock_serial
+    where imei like 'QR-PO-%' and status = 'IN_STOCK' and location_id = ${wh.id}`)[0].c === 9);
+  check("the broken one is in quarantine", (await unit(imeis[9]))?.location_id === qid
+    && (await unit(imeis[9]))?.status === "IN_STOCK");
+  const [rl] = await sql`select location_id, reject_reason, reject_outcome, base_qty::float q
+    from document_line where document_id = ${gr.id} and reject_reason is not null`;
+  check("the receipt line says why, and what the supplier will do",
+    rl?.reject_reason === "Screen cracked" && rl?.reject_outcome === "REPLACE" && rl?.location_id === qid && rl?.q === 1);
+  const [os] = await sql`select ordered::float o, fulfilled::float f, outstanding::float x
+    from v_order_outstanding where order_id = ${po.id}`;
+  check("the order counts all ten arrived", os?.f === 10 && os?.x === 0, JSON.stringify(os));
+  check("GR/IR carries all ten until billed or returned",
+    r2((await bal("1410")) - grirBefore) === -10_000_000, String(r2((await bal("1410")) - grirBefore)));
+  await refuses("the broken one cannot be sold",
+    () => sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: [imeis[9]] }]), /quarantine/);
+
   console.log("\n  reconciliation");
   check("trial balance balances", r2((await sql`select coalesce(sum(base_amount),0) v from journal_line jl
     join journal_entry je on je.id = jl.journal_entry_id where je.company_id = ${co.id}`)[0].v) === 0);

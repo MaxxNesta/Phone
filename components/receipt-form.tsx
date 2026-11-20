@@ -57,6 +57,14 @@ type Line = {
   serials?: UnitRow[];
   /** Optional tracking: this receipt records a serial for every unit. */
   withSerials?: boolean;
+  /**
+   * Some of what arrived is refused (docs/06 D-P7): broken, wrong model,
+   * missing parts. Still received — the order counts it as arrived — but
+   * posted as its own line into the branch's quarantine, where nothing can
+   * sell it, until a return sends it back. `serials` are the refused IMEIs,
+   * picked from this line's; `qty` is used for items without them.
+   */
+  reject?: { qty: string; serials: string[]; reason: string; outcome: "" | "REPLACE" | "CREDIT" };
   /** What the purchase order still owes on this line, when receiving one. */
   ordered?: number;
 };
@@ -360,19 +368,40 @@ export function ReceiptForm({
   const unbilledValue = unbilled.reduce((s, l) => s + amount(l), 0);
 
 
+  /** How many of a line's units are refused, by IMEI where it has them. */
+  const rejectedQty = (l: Line) => !l.reject ? 0
+    : named(l) ? l.reject.serials.filter((sn) => (l.serials ?? []).some((u) => u.serial.trim() === sn)).length
+    : Math.max(0, Number(l.reject.qty) || 0);
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({
-        itemId: l.itemId, qty: Number(l.qty), unitCost: Number(l.unitCost) || 0,
-        uomId: l.uomId || null,
-        sourceLineId: l.sourceLineId ?? null,
-        batchNo: l.batchNo?.trim() || null,
-        expiryDate: l.expiryDate || null,
-        serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial.trim()).filter(Boolean),
-        unitDetails: (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
-          .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
-      }))
+      .flatMap((l) => {
+        const units = (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim());
+        const refused = new Set(l.reject && named(l) ? l.reject.serials : []);
+        const rej = rejectedQty(l);
+        const common = {
+          itemId: l.itemId, unitCost: Number(l.unitCost) || 0,
+          uomId: l.uomId || null,
+          sourceLineId: l.sourceLineId ?? null,
+          batchNo: l.batchNo?.trim() || null,
+          expiryDate: l.expiryDate || null,
+        };
+        const part = (qty: number, rows: typeof units, rejected: Line["reject"] | null) => ({
+          ...common, qty,
+          serials: rows.map((x) => x.serial.trim()),
+          unitDetails: rows.filter((x) => x.imei2?.trim() || x.deviceSerial?.trim())
+            .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
+          ...(rejected ? { rejected: { reason: rejected.reason.trim(), outcome: rejected.outcome } } : {}),
+        });
+        // Nine to the shelf and one to quarantine: two lines answering the
+        // same order or bill line, so the order still counts ten arrived.
+        if (!l.reject || rej === 0) return [part(Number(l.qty), units, null)];
+        const kept = Number(l.qty) - rej;
+        return [
+          ...(kept > 0 ? [part(kept, units.filter((u) => !refused.has(u.serial.trim())), null)] : []),
+          part(rej, units.filter((u) => refused.has(u.serial.trim())), l.reject),
+        ];
+      })
   );
 
   // A phone line whose IMEI count is not its quantity cannot post; saying so
@@ -395,6 +424,9 @@ export function ReceiptForm({
   const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
     && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
   const tracked = lines.filter((l) => named(l) && Number(l.qty) > 0);
+  // A refusal says how many, what is wrong and what the supplier is to do.
+  const rejectIncomplete = lines.filter((l) => l.reject && l.itemId && (
+    rejectedQty(l) === 0 || rejectedQty(l) > Number(l.qty) || !l.reject.reason.trim() || !l.reject.outcome));
   // Why the courier charge, if switched on, is not ready to post.
   const [carriageBlock, setCarriageBlock] = useState<string | null>(null);
   const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
@@ -693,6 +725,15 @@ export function ReceiptForm({
                                   <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button>
                                 </span>
                               )}
+                              <span className="vavail">
+                                <button type="button" className="linkish"
+                                  onClick={() => setLine(l.key, { reject: l.reject ? undefined : { qty: "", serials: [], reason: "", outcome: "" } })}>
+                                  {l.reject ? "No rejects" : "Reject some"}
+                                </button>
+                              </span>
+                              {l.reject && rejectedQty(l) > 0 && (
+                                <span className="pill warn" style={{ marginLeft: 6 }}>{fmt(rejectedQty(l))} to quarantine</span>
+                              )}
                             </span>
                           </span>
                         ) : (
@@ -775,6 +816,10 @@ export function ReceiptForm({
                     {named(l) && (
                       <UnitsRow colSpan={lineCols} title={item?.name ?? ""} qty={q} rows={l.serials ?? []}
                         onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
+                    )}
+                    {l.reject && (
+                      <RejectRow colSpan={lineCols} line={l} tracked={named(l)} arrived={q}
+                        onChange={(reject) => setLine(l.key, { reject })} />
                     )}
                     {picking && (
                       <tr className="gr-pickrow">
@@ -923,12 +968,14 @@ export function ReceiptForm({
       </div>
 
       <div className="actions form-commit">
-        {(serialShort.length > 0 || carriageBlock) && (
+        {(serialShort.length > 0 || carriageBlock || rejectIncomplete.length > 0) && (
           <span className="commit-hint" role="status">
-            {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post" : carriageBlock}
+            {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post"
+              : rejectIncomplete.length > 0 ? "A rejection needs which units, what is wrong, and whether the supplier replaces or credits them"
+              : carriageBlock}
           </span>
         )}
-        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0 || !!carriageBlock}
+        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0 || !!carriageBlock || rejectIncomplete.length > 0}
           onClick={(e) => {
             if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }
           }}>
@@ -949,5 +996,66 @@ export function ReceiptForm({
       </div>
     </form>
     </>
+  );
+}
+
+
+/**
+ * What was refused on one receipt line, and why (docs/06 D-P7). The units
+ * still count as arrived; they go to the branch's quarantine instead of the
+ * shelf, and the return that sends them back is raised from the receipt.
+ */
+function RejectRow({ colSpan, line, tracked, arrived, onChange }: {
+  colSpan: number; line: Line; tracked: boolean; arrived: number;
+  onChange: (reject: NonNullable<Line["reject"]>) => void;
+}) {
+  const r = line.reject!;
+  const units = (line.serials ?? []).map((u) => u.serial.trim()).filter(Boolean);
+  const toggle = (sn: string) => onChange({ ...r, serials: r.serials.includes(sn) ? r.serials.filter((x) => x !== sn) : [...r.serials, sn] });
+  return (
+    <tr className="gr-reject">
+      <td colSpan={colSpan}>
+        <div className="card" style={{ margin: "6px 0 10px", borderColor: "var(--warn)" }}>
+          <div className="card-body">
+            <div className="row" style={{ alignItems: "flex-start" }}>
+              <div className="field" style={{ minWidth: 220 }}>
+                <label>{tracked ? "Which units are refused" : "How many are refused"}</label>
+                {tracked ? (
+                  units.length === 0 ? <span className="subline">Scan the IMEIs above first, then tick the refused ones.</span> : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+                      {units.map((sn) => (
+                        <label key={sn} className="check" style={{ fontWeight: 400 }}>
+                          <input type="checkbox" checked={r.serials.includes(sn)} onChange={() => toggle(sn)} /> {sn}
+                        </label>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  <input type="number" min="1" max={arrived || undefined} step="any" value={r.qty}
+                    onChange={(e) => onChange({ ...r, qty: e.target.value })} aria-label="Refused quantity" />
+                )}
+                <span className="hint">Of the {arrived} that arrived. They go to quarantine, not the shelf.</span>
+              </div>
+              <div className="field" style={{ flex: 2, minWidth: 240 }}>
+                <label>What is wrong *</label>
+                <input type="text" value={r.reason} placeholder="Screen cracked, does not power on, wrong colour…"
+                  onChange={(e) => onChange({ ...r, reason: e.target.value })} aria-label="What is wrong" />
+              </div>
+              <div className="field">
+                <label>The supplier will *</label>
+                <label className="check" style={{ fontWeight: 400 }}>
+                  <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "REPLACE"}
+                    onChange={() => onChange({ ...r, outcome: "REPLACE" })} /> Replace it — the order waits for another
+                </label>
+                <label className="check" style={{ fontWeight: 400 }}>
+                  <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "CREDIT"}
+                    onChange={() => onChange({ ...r, outcome: "CREDIT" })} /> Credit it — the order is done
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
