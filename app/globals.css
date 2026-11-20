@@ -11566,3 +11566,16 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
    — the app's and the document's — never read as one crowded strip. */
 .dl-head { padding-top: 16px; align-items: center; }
 @media (max-width: 760px) { .dl-head { padding-top: 8px; align-items: flex-start; } }
+
+/* Firmer text on document pages: secondary grey darkened, values a weight up. */
+.dl { --dl-muted: color-mix(in srgb, var(--ink) 72%, transparent); --dl-rule: color-mix(in srgb, var(--ink) 11%, transparent); }
+.dl-kv dd, .dl-sum dd { font-weight: 500; }
+.dl-table td { font-weight: 450; }
+.dl-meta, .dl-when { font-weight: 500; }
+
+/* The details block ruled like a form: a hairline under every row, the same
+   height in both columns, so the two sides line up as one balanced grid. */
+.dl-details-cols { gap: 0 40px; }
+.dl-kv > div { padding: 8px 0; min-height: 37px; border-bottom: 1px solid var(--dl-rule); align-items: center; }
+.dl-kv-wide > div { border-bottom: 1px solid var(--dl-rule); }
+.dl-table .dl-strong { font-weight: 600; }
