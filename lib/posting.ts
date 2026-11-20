@@ -5616,6 +5616,18 @@ async function linkFulfilmentIn(
   const { companyId } = input;
   const written: { fulfilmentLineId: string; orderLineId: string; qty: number }[] = [];
 
+  /* The receipt and delivery lines being given away, locked before anything
+     is read and in one fixed order. The order is locked per line below, but
+     two people linking the same receipt line to two different orders lock
+     two different orders — each would read the line as still free and both
+     would take it. Sorted, so two links over the same lines queue rather
+     than deadlock. */
+  await tx`
+    select id from document_line
+     where id = any(${[...new Set(input.lines.map((l) => l.fulfilmentLineId))].sort()}::uuid[])
+     order by id
+       for update`;
+
   for (const [i, l] of input.lines.entries()) {
     if (!(l.qty > 0)) throw new Error(`Line ${i + 1}: quantity must be more than nothing`);
 
@@ -5687,9 +5699,30 @@ async function linkFulfilmentIn(
 
     // And what this receipt line has left to give. Allocating the same units
     // to two orders is how one shipment closes two.
+    //
+    // Given away twice over, not once: by links already made, and — where the
+    // line was raised from a different order and no link speaks for that —
+    // the whole line, to that order. v_order_outstanding counts that line in
+    // full against its own order; leaving it out here offered a delivery
+    // raised from one order as entirely free to close another, and the same
+    // six units closed ten. Its own order is left out: posting a receipt
+    // from an order writes that very link.
     const [used] = await tx`
-      select coalesce(sum(qty), 0) as v from fulfilment_link
-       where fulfilment_line_id = ${l.fulfilmentLineId}`;
+      select coalesce((select sum(fl.qty) from fulfilment_link fl
+                        where fl.fulfilment_line_id = dl.id), 0)
+           + case when src.doc_type in ('PURCHASE_ORDER', 'SALES_ORDER')
+                   and fn_current_document(src.id) <> fn_current_document(${order.document_id})
+                   and not exists (select 1 from fulfilment_link fl2
+                                    where fl2.fulfilment_line_id = dl.id
+                                      and fl2.order_line_id is not distinct from dl.source_line_id)
+                  -- No more than that order line asked for: received 10 on
+                  -- an order for 6, the order takes 6 and 4 are free.
+                  then least(dl.base_qty, coalesce(ol.base_qty, dl.base_qty)) else 0 end as v
+        from document_line dl
+        join document d on d.id = dl.document_id
+        left join document_line ol on ol.id = dl.source_line_id
+        left join document src on src.id = coalesce(ol.document_id, d.source_document_id)
+       where dl.id = ${l.fulfilmentLineId}`;
     const spare = round4(Number(got.qty) - Number(used.v));
     if (spare + 0.0001 < l.qty) {
       throw new Error(

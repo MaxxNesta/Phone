@@ -2763,12 +2763,22 @@ export async function getLinkableFulfilments(companyId: string, orderId: string)
            d.id as "documentId", d.doc_no as "docNo",
            to_char(d.doc_date, 'YYYY-MM-DD') as "docDate",
            src.doc_no as "relatedNo",
+           -- What links took, and the whole line where another order it was
+           -- raised from already counts it: the engine's own reckoning, so a
+           -- delivery already closing one order is not offered to a second.
            (dl.base_qty
             - coalesce((select sum(fl.qty) from fulfilment_link fl
-                         where fl.fulfilment_line_id = dl.id), 0))::float as spare
+                         where fl.fulfilment_line_id = dl.id), 0)
+            - case when own.doc_type in ('PURCHASE_ORDER', 'SALES_ORDER')
+                    and not exists (select 1 from fulfilment_link fl2
+                                     where fl2.fulfilment_line_id = dl.id
+                                       and fl2.order_line_id is not distinct from dl.source_line_id)
+                   then least(dl.base_qty, coalesce(sl.base_qty, dl.base_qty)) else 0 end)::float as spare
       from document_line dl
       join document d on d.id = dl.document_id
       left join document src on src.id = d.source_document_id
+      left join document_line sl on sl.id = dl.source_line_id
+      left join document own on own.id = coalesce(sl.document_id, d.source_document_id)
      where d.company_id = ${companyId} and d.doc_type = ${fulfilmentType}
        and d.status = 'POSTED' and d.partner_id = ${order.partner_id}
        and dl.item_id = any(${open.map((l) => l.itemId)})
