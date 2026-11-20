@@ -2447,6 +2447,24 @@ async function salesReturnFrom(fd: FormData, co: string) {
   return { input, refund };
 }
 
+/**
+ * Records on an open warranty claim the return it led to (0221), in the
+ * return's own transaction so the two cannot disagree. A claim already
+ * pointing at another return keeps it; the second is refused.
+ */
+async function linkClaim(
+  tx: import("postgres").TransactionSql, co: string, claimId: string,
+  column: "return_document_id" | "supplier_return_document_id", documentId: string,
+) {
+  const [c] = await tx`
+    select claim_no, status, return_document_id, supplier_return_document_id
+      from warranty_claim where id = ${claimId} and company_id = ${co} for update`;
+  if (!c) throw new Error("That warranty claim does not exist.");
+  if (c.status !== "OPEN") throw new Error(`${c.claim_no} is closed.`);
+  if (c[column]) throw new Error(`${c.claim_no} already names a return for this.`);
+  await tx`update warranty_claim set ${tx(column)} = ${documentId} where id = ${claimId}`;
+}
+
 export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
   const user = await requirePermission("sales.return");
   let docId: string;
@@ -2457,7 +2475,13 @@ export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<A
     const { input, refund } = await salesReturnFrom(fd, co);
     if (refund && !(refund.amount > 0)) return { error: "Enter the amount to refund" };
     const tr = await serverT("pos");
-    const result = await postOnce(co, attemptKey(fd), (tx) => postReturnWithRefund(tx, input, user.id, refund, tr));
+    const claimId = str(fd, "claim_id") || null;
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const r = await postReturnWithRefund(tx, input, user.id, refund, tr);
+      // Taken back on a warranty claim (0221): the claim names the return.
+      if (claimId) await linkClaim(tx, co, claimId, "return_document_id", r.id);
+      return r;
+    });
 
     docId = result.id;
     toastMsg = result.refund
@@ -2603,17 +2627,23 @@ export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promis
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
-    const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseReturn({
-      companyId: co,
-      ...fxFields(fd),
-      partnerId: str(fd, "partner_id"),
-      locationId: str(fd, "location_id"),
-      docDate: str(fd, "doc_date"),
-      memo: str(fd, "memo") || null,
-      reference: str(fd, "reference") || null,
-      sourceDocumentId: str(fd, "source_document_id") || null,
-      lines,
-    }, tx));
+    const claimId = str(fd, "claim_id") || null;
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const r = await postPurchaseReturn({
+        companyId: co,
+        ...fxFields(fd),
+        partnerId: str(fd, "partner_id"),
+        locationId: str(fd, "location_id"),
+        docDate: str(fd, "doc_date"),
+        memo: str(fd, "memo") || null,
+        reference: str(fd, "reference") || null,
+        sourceDocumentId: str(fd, "source_document_id") || null,
+        lines,
+      }, tx);
+      // Sent to the supplier on a warranty claim (0221): the claim names it.
+      if (claimId) await linkClaim(tx, co, claimId, "supplier_return_document_id", r.id);
+      return r;
+    });
 
     docId = result.id;
     toastMsg = `Return ${result.docNo} posted`;

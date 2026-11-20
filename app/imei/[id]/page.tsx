@@ -8,6 +8,7 @@ import { shortDate } from "@/lib/format";
 import { SerialHoldForm } from "@/components/serial-hold-form";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { getTranslations } from "next-intl/server";
+import { sql } from "@/lib/db";
 
 export async function generateMetadata() {
   return { title: (await getTranslations("inventory"))("journey.title") };
@@ -169,6 +170,35 @@ export default async function ImeiJourney({ params }: { params: Promise<{ id: st
           {t("dev.holds")} {holds.map((h: any) => `${t.has(`dev.holdKind.${h.kind}`) ? t(`dev.holdKind.${h.kind}`) : h.kind.toLowerCase()} ${shortDate(h.created_at)}${h.released_at ? `–${shortDate(h.released_at)}` : ` ${t("dev.open")}`}`).join(", ")}
         </p>
       )}
+      <WarrantyClaims serialId={u.serial_id as string} companyId={user.companyId}
+        sold={u.status === "SOLD"}
+        mayOpen={can(user, "sales.return") || can(user, "inventory.manage")} />
     </>
+  );
+}
+
+/** The phone's warranty claims (0221), and a way to open one while none is open. */
+async function WarrantyClaims({ serialId, companyId, sold, mayOpen }: {
+  serialId: string; companyId: string; sold: boolean; mayOpen: boolean;
+}) {
+  const t = await getTranslations("inventory");
+  const claims = await sql`
+    select id, claim_no, claimed_on, fault, status, outcome from warranty_claim
+     where serial_id = ${serialId} and company_id = ${companyId} order by created_at desc`;
+  const open = claims.some((c) => c.status === "OPEN");
+  if (claims.length === 0 && !(sold && mayOpen)) return null;
+  return (
+    <p className="page-sub">
+      {t("claims.title")}:{" "}
+      {claims.map((c, i) => (
+        <span key={c.id as string}>
+          {i > 0 && ", "}
+          <Link href={`/inventory/warranty/claims/${c.id}`}>{c.claim_no}</Link>{" "}
+          {shortDate(c.claimed_on as string)} — {c.fault} ({c.status === "OPEN" ? t("claims.stOpen") : t(`claims.out.${c.outcome}`)})
+        </span>
+      ))}
+      {claims.length === 0 && t("claims.noneForPhone")}
+      {sold && mayOpen && !open && <> · <Link href={`/inventory/warranty/claims/new?serial=${serialId}`}>{t("claims.new")}</Link></>}
+    </p>
   );
 }

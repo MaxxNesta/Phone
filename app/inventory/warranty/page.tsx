@@ -1,7 +1,8 @@
 import { BranchScope } from "@/components/branch-scope";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
-import { requirePermission } from "@/lib/auth";
+import { requirePermission, can } from "@/lib/auth";
+import { sql } from "@/lib/db";
 import { warrantyLookup, warrantiesEnding } from "@/lib/phone";
 import { shortDate } from "@/lib/format";
 import { paginate } from "@/lib/paging";
@@ -28,11 +29,22 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
     : await warrantiesEnding(user.companyId, Number(ending) || 30, locs);
 
   const pg = paginate(rows, sp.page);
+  // Claims (0221): how many wait on someone, and which phones already have one.
+  const [{ open }] = await sql`select count(*)::int as open from warranty_claim
+                                where company_id = ${user.companyId} and status = 'OPEN'`;
+  const claimed = new Map((await sql`
+    select serial_id, id from warranty_claim
+     where company_id = ${user.companyId} and status = 'OPEN'
+       and serial_id = any(${pg.rows.map((r: any) => r.serial_id)})`).map((r) => [r.serial_id as string, r.id as string]));
+  const mayClaim = can(user, "sales.return") || can(user, "inventory.manage");
   return (
     <>
       <div className="page-head hero">
         <h1>{t("war.lookup")}</h1>
         <BranchScope />
+        <Link href="/inventory/warranty/claims" className="btn ghost tiny">
+          {t("claims.title")}{open > 0 ? ` · ${t("claims.openCount", { n: open })}` : ""}
+        </Link>
         <p className="page-sub">{t("war.sub")}</p>
       </div>
       <form className="card filters" method="get">
@@ -51,7 +63,7 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
         </div>
         <table>
           <thead>
-            <tr><th>{c("imei")}</th><th>{t("war.model")}</th><th>{t("war.customer")}</th><th>{t("war.invoice")}</th><th>{t("war.sold")}</th><th>{t("war.warranty")}</th><th>{t("war.expires")}</th><th>{c("status")}</th></tr>
+            <tr><th>{c("imei")}</th><th>{t("war.model")}</th><th>{t("war.customer")}</th><th>{t("war.invoice")}</th><th>{t("war.sold")}</th><th>{t("war.warranty")}</th><th>{t("war.expires")}</th><th>{c("status")}</th><th /></tr>
           </thead>
           <tbody>
             {pg.rows.map((r: any) => {
@@ -66,10 +78,16 @@ export default async function Warranty({ searchParams }: { searchParams: Promise
                   <td>{r.warranty_months ? t("war.months", { n: r.warranty_months }) : "—"}</td>
                   <td>{r.warranty_expiry ? shortDate(r.warranty_expiry) : "—"}</td>
                   <td>{st ? <span className={`pill ${st[1]}`}>{t(st[0])}</span> : (r.status ?? "").replace(/_/g, " ").toLowerCase() || "—"}</td>
+                  <td>
+                    {claimed.has(r.serial_id)
+                      ? <Link href={`/inventory/warranty/claims/${claimed.get(r.serial_id)}`}>{t("claims.openClaim")}</Link>
+                      : mayClaim && r.out_document_id
+                        ? <Link href={`/inventory/warranty/claims/new?serial=${r.serial_id}`}>{t("claims.new")}</Link> : null}
+                  </td>
                 </tr>
               );
             })}
-            {rows.length === 0 && <tr><td colSpan={8} className="page-sub">{q ? t("war.nothingFound") : t("war.noneEnding")}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={9} className="page-sub">{q ? t("war.nothingFound") : t("war.noneEnding")}</td></tr>}
           </tbody>
         </table>
         <Pager p={pg} params={sp} />

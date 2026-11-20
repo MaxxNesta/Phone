@@ -11,9 +11,9 @@ import { HelpHint } from "@/components/help-hint";
 export default async function NewPurchaseReturn({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string; refused?: string; outcome?: string }>;
+  searchParams: Promise<{ source?: string; refused?: string; outcome?: string; claim?: string }>;
 }) {
-  const { source, refused, outcome } = await searchParams;
+  const { source, refused, outcome, claim } = await searchParams;
   const d = await getFormData();
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
@@ -74,7 +74,29 @@ export default async function NewPurchaseReturn({
       })()
     : null;
 
-  const prefill = refusedPrefill ?? (source
+  /**
+   * Opened from a warranty claim (0221): the faulty phone goes from quarantine
+   * to the supplier it came from, under their warranty, at what it cost. The
+   * claim records the return.
+   */
+  const claimPrefill = claim ? await (async () => {
+    const [c] = await sql`
+      select c.id, c.claim_no, c.fault, c.item_id, c.supplier_id, s.serial_no, v.location_id, v.unit_cost
+        from warranty_claim c
+        join stock_serial s on s.id = c.serial_id
+        join v_stock_serial v on v.serial_id = c.serial_id
+        join location l on l.id = v.location_id and l.is_quarantine
+       where c.id = ${claim} and c.company_id = ${co.id} and c.status = 'OPEN' and v.status = 'IN_STOCK'`;
+    if (!c || !c.supplier_id) return null;
+    return {
+      sourceDocumentId: "", docNo: "", partnerId: String(c.supplier_id), locationId: String(c.location_id),
+      lines: [{ itemId: String(c.item_id), qty: "1", unitPrice: String(Number(c.unit_cost ?? 0)),
+                serials: [{ serial: String(c.serial_no) }] }],
+      memo: `Warranty claim ${c.claim_no}: ${c.fault}`, claimId: String(c.id),
+    };
+  })() : null;
+
+  const prefill = claimPrefill ?? refusedPrefill ?? (source
     ? await (async () => {
         // Either kind of source: a receipt still sitting in the clearing
         // account, or the bill that has since asked for money. Which one is
@@ -155,6 +177,7 @@ export default async function NewPurchaseReturn({
         serialPool={await sql`select item_id, imei, supplier_id as partner_id, received_document_id as document_id, location_id
                  from v_stock_serial where status = 'IN_STOCK' order by imei` as never}
         salesDocs={returnable as never}
+        stockByLocation={d.stockByLocation as never}
         prefill={prefill as never}
       />
     </>

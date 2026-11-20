@@ -53,7 +53,14 @@ export function ReturnForm({
   prefill,
   serialPool = [],
   channels,
+  stockByLocation,
 }: {
+  /**
+   * Stock per item per location. A supplier return takes goods off one shelf
+   * — quarantine, often (0218) — so what is short is short there, not across
+   * the company. Without it the company-wide figure is used, as before.
+   */
+  stockByLocation?: { item_id: string; location_id: string; qty_on_hand: string | number }[];
   /** Customer returns: payment methods by location, for paying money back now. */
   channels?: Record<string, Channel[]>;
   kind: "sales" | "purchase";
@@ -82,6 +89,10 @@ export function ReturnForm({
     lines: { itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; sourceLineId?: string | null }[];
     /** Why these goods go back, when the page knows: a refusal's fault. */
     memo?: string | null;
+    /** Sales returns: the goods come back faulty, and this is what is wrong. */
+    faulty?: string | null;
+    /** The warranty claim this return answers (0221); it records the return. */
+    claimId?: string | null;
   } | null;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -104,7 +115,7 @@ export function ReturnForm({
   const [locationId, setLocationId] = useState(prefill?.locationId || locations[0]?.id || "");
   const [docDate, setDocDate] = useState(today);
   const [sourceDocumentId, setSourceDocumentId] = useState(prefill?.sourceDocumentId ?? "");
-  const [faulty, setFaulty] = useState(false);
+  const [faulty, setFaulty] = useState(!!prefill?.faulty);
   const [receivedTime, setReceivedTime] = useState("");
   // Money back: kept as credit on the customer, or paid out now.
   const [refundMode, setRefundMode] = useState<"credit" | "now">("credit");
@@ -224,10 +235,14 @@ export function ReturnForm({
 
   // Only a purchase return removes stock — a sales return adds it, so
   // there's nothing to run short of.
+  const onHand = (item: Item) => stockByLocation
+    ? stockByLocation.filter((r) => r.item_id === item.id && r.location_id === locationId)
+        .reduce((t, r) => t + Number(r.qty_on_hand), 0)
+    : Number(item.on_hand);
   const shortages = lines.filter((l) => {
     if (isSales || !l.itemId) return false;
     const item = byId(l.itemId);
-    return item?.is_stocked && baseQty(l) > Number(item.on_hand);
+    return item?.is_stocked && baseQty(l) > onHand(item);
   });
 
   const openReview = async () => {
@@ -296,7 +311,7 @@ export function ReturnForm({
                 </label>
                 {faulty && (
                   <input type="text" name="faulty_reason" required placeholder="What is wrong — no sound, battery swells…"
-                    aria-label="What is wrong" style={{ marginTop: 6 }} />
+                    aria-label="What is wrong" style={{ marginTop: 6 }} defaultValue={prefill?.faulty ?? undefined} />
                 )}
               </div>
             )}
@@ -395,7 +410,7 @@ export function ReturnForm({
               )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
-                const short = !isSales && item?.is_stocked && baseQty(l) > Number(item.on_hand);
+                const short = !isSales && item?.is_stocked && baseQty(l) > onHand(item);
 
                 return (
                   <Fragment key={l.key}>
@@ -428,7 +443,7 @@ export function ReturnForm({
                         fmt(Number(item.next_cost))
                       ) : (
                         <span style={{ color: short ? "var(--bad)" : undefined }}>
-                          {item.is_stocked ? fmt(Number(item.on_hand)) : "service"}
+                          {item.is_stocked ? fmt(onHand(item)) : "service"}
                         </span>
                       )}
                     </td>
@@ -545,6 +560,7 @@ export function ReturnForm({
         <label htmlFor="memo">Note</label>
         <textarea id="memo" name="memo" rows={2} placeholder="Reason for the return — English or Myanmar"
           defaultValue={prefill?.memo ?? undefined} />
+        {prefill?.claimId && <input type="hidden" name="claim_id" value={prefill.claimId} />}
       </div>
 
       <div className="actions">

@@ -1396,7 +1396,7 @@
       "stActive": "Active",
       "stEnding": "Ending soon",
       "stExpired": "Expired",
-      "note": "Repairs and warranty claims are not built yet. A unit sent for repair is marked from its own page (Hold → Send to repair)."
+      "note": "A phone a customer brings back faulty gets a warranty claim: open one from its row here, or from the phone's own page."
     },
     "cons": {
       "title": "Consignment",
@@ -1915,6 +1915,49 @@
         "PURCHASE_RETURN": "Supplier return",
         "STOCK_TRANSFER": "Stock transfer",
         "STOCK_ADJUSTMENT": "Stock adjustment"
+      }
+    },
+    "claims": {
+      "title": "Warranty claims",
+      "sub": "Customers back with a phone that is not working: what is wrong, whether it was covered, and how it ended.",
+      "new": "Open a claim",
+      "newSub": "What covers this phone today, then what is wrong with it.",
+      "claim": "Claim",
+      "claimed": "Claimed",
+      "claimedOn": "Claimed {d} by {who}",
+      "phone": "Phone",
+      "fault": "What is wrong",
+      "faultPlaceholder": "No sound from the speaker, battery swells, screen flickers…",
+      "open": "Open the claim",
+      "openClaim": "Open claim",
+      "openCount": "{n} open",
+      "shopWarranty": "Our warranty",
+      "supplierWarranty": "Supplier's warranty",
+      "covered": "Covered until {d}",
+      "expired": "Ended {d}",
+      "noWarranty": "None",
+      "neverSold": "{imei} has never been sold, so there is no customer to claim for it.",
+      "phoneNow": "The phone now",
+      "returnDoc": "Taken back on",
+      "supplierReturnDoc": "Sent to supplier on",
+      "takeBack": "Take it back as faulty",
+      "toSupplier": "Send to the supplier",
+      "closeTitle": "Close the claim",
+      "outcome": "How it ended",
+      "note": "Note",
+      "notePlaceholder": "What was done — required if the claim is turned down",
+      "close": "Close the claim",
+      "stOpen": "Open",
+      "all": "All",
+      "yes": "Yes",
+      "no": "No",
+      "none": "No claims.",
+      "noneForPhone": "none",
+      "out": {
+        "REPAIRED": "Repaired",
+        "REPLACED": "Replaced",
+        "REFUNDED": "Refunded",
+        "REJECTED": "Turned down"
       }
     }
   },
