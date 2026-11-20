@@ -11,16 +11,10 @@ import { money } from "@/lib/format";
 import { Stat, compact } from "@/components/stat";
 import { SalesComboCard } from "@/components/sales-combo-card";
 import { ArrowRight } from "lucide-react";
-import { ShareDonut } from "@/components/charts";
-import { PeriodPicker } from "@/components/period-picker";
-import { resolvePeriod, DEFAULT_PERIOD } from "@/lib/period";
 import {
-  getTopCategories, getRevenueByRegion, getRevenueByBranch, getReceiptsByAccount, getRevenueByCustomerCategory, getSpendBySupplierCategory, getDocuments,
-  getHealth, salesLast30,
+  getDocuments, getHealth, salesLast30,
 } from "@/lib/queries";
 import { getLocale, getTranslations } from "next-intl/server";
-
-type Share = { id: string; name: string; revenue: number | string };
 
 /* Badge per document type in Recent activity, as on the business overview. */
 const TYPE_MARK: Record<string, { short: string; tint: string }> = {
@@ -53,66 +47,31 @@ const since = (at: string | null, on: string,
 const DOC_TYPES = new Set(["GOODS_RECEIPT", "PURCHASE_ORDER", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT",
   "SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT", "STOCK_TRANSFER", "STOCK_ADJUSTMENT"]);
 
-/* A breakdown where nothing has been filed is one slice reading "Not
-   categorised" — a circle around the whole company that tells nobody
-   anything. */
-const worthDrawing = (rows: { id: string }[]) =>
-  rows.length > 0 && !(rows.length === 1 && rows[0].id === "none");
-
 export default async function Dashboard({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const user = await currentUser();
   if (!user) return null;
   const t = await getTranslations("dashboard");
   // Dates in the reader's language: Burmese month names and digits under Myanmar.
   const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
-  const when = (p: { key: string; month: string | null; label: string }) =>
-    p.month ? t("periodMonth", { month: new Date(`${p.month}-01T00:00:00Z`).toLocaleDateString(dateLocale, { month: "long", year: "numeric", timeZone: "UTC" }) })
-      : t(`period.${p.key}`);
   const sp = await searchParams;
   const { denied } = sp;
   // The whole-business view is the owner's and manager's; everyone else
   // starts on the overview of their own work, carrying any refusal with them.
   if (!seesMainDashboard(user) || (user.seat && user.seat !== "package")) redirect(`${homeFor(user)}${denied ? `?denied=${encodeURIComponent(denied)}` : ""}`);
-  // Starter keeps the dashboard but not the accounting checks or the
-  // region and customer/supplier-type breakdowns (lib/plans.ts).
+  // Starter keeps the dashboard but not the accounting checks (lib/plans.ts).
   const company = await getCompany();
   const serials = serialTrackingOn(company);
   const advanced = !company || planIncludes(company.plan, "dashboard_advanced");
-  const none = Promise.resolve([] as never);
-  // One window per donut, as on the business overview: each card's period
-  // picker edits its own key in the URL and leaves the others alone.
-  const period = { cat: resolvePeriod(sp.cat), reg: resolvePeriod(sp.reg),
-                   cust: resolvePeriod(sp.cust), supp: resolvePeriod(sp.supp), branch: resolvePeriod(sp.branch), pay: resolvePeriod(sp.pay) };
-  const hrefWith = (key: string, value: string) => {
-    const next: Record<string, string> = {};
-    for (const [k, v] of Object.entries(sp)) if (v && k !== "denied") next[k] = v;
-    if (value === DEFAULT_PERIOD) delete next[key];
-    else next[key] = value;
-    const q = new URLSearchParams(next).toString();
-    return q ? `/?${q}` : "/";
-  };
   const co = user.companyId;
-  const [d, cats, regionRows, branchRows, payRows, custRows, suppRows, recentDocs, health, perf] = await Promise.all([
+  // The share-of donuts (category, region, branch, payment, customer and
+  // supplier type) live on /overview; six queries on every load made this,
+  // the page everyone opens first, slow to appear.
+  const [d, recentDocs, health, perf] = await Promise.all([
     seenLocations().then((locs) => retailDashboard(co, locs, serials)),
-    getTopCategories(co, period.cat.from, period.cat.to),
-    advanced ? getRevenueByRegion(co, period.reg.from, period.reg.to) : none,
-    seenLocations().then((locs) => getRevenueByBranch(co, period.branch.from, period.branch.to, locs)),
-    seenLocations().then((locs) => getReceiptsByAccount(co, period.pay.from, period.pay.to, locs)),
-    advanced ? getRevenueByCustomerCategory(co, period.cust.from, period.cust.to) : none,
-    advanced ? getSpendBySupplierCategory(co, period.supp.from, period.supp.to) : none,
     seenLocations().then((locs) => getDocuments(co, undefined, undefined, 5, locs, true)),
     advanced ? getHealth(co) : null,
     seenLocations().then((locs) => salesLast30(co, locs)),
   ]);
-  const categories = cats as unknown as Share[];
-  const regions = regionRows as unknown as Share[];
-  const branches = branchRows as unknown as Share[];
-  const payments = payRows as unknown as Share[];
-  // A shop whose customers have no region set has no use for a region chart;
-  // it is kept for the distributor who does, and the branch chart takes its place.
-  const hasRegions = !(regions.length === 0 || (regions.length === 1 && regions[0].id === "none"));
-  const custCategories = custRows as unknown as Share[];
-  const suppCategories = suppRows as unknown as Share[];
   const recent = recentDocs as unknown as {
     id: string; doc_type: string; doc_no: string | null; partner_name: string | null;
     gross_total: number | string; posted_at: string | null; posting_date: string;
@@ -243,60 +202,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         {serials && d.bad.length > 0 && (
           <Stat icon={<AlertTriangle size={20} />} tone="amber" label={t("mismatch")} value={d.bad.length}
             note={d.bad.map((b: any) => t("mismatchItem", { name: b.name, serials: b.serials, onHand: b.on_hand })).join("; ")} noteTone="down" />
-        )}
-      </div>
-
-      <div className="section-grid-2">
-        <div className="card">
-          <div className="card-head">
-            <span><h2>{t("byCategory")}</h2><span className="page-sub">{t("salesIn", { when: when(period.cat) })}</span></span>
-            <PeriodPicker current={period.cat} label={t("byCategoryLabel")} hrefFor={(k) => hrefWith("cat", k)} />
-          </div>
-          <div className="card-body"><ShareDonut data={categories} currency="MMK" /></div>
-        </div>
-        {hasRegions ? (
-          <div className="card">
-            <div className="card-head">
-              <span><h2>{t("byRegion")}</h2><span className="page-sub">{t("salesIn", { when: when(period.reg) })}</span></span>
-              <PeriodPicker current={period.reg} label={t("byRegionLabel")} hrefFor={(k) => hrefWith("reg", k)} />
-            </div>
-            <div className="card-body"><ShareDonut data={regions} currency="MMK" /></div>
-          </div>
-        ) : branches.length > 1 && (
-          <div className="card">
-            <div className="card-head">
-              <span><h2>{t("byBranch")}</h2><span className="page-sub">{t("salesIn", { when: when(period.branch) })}</span></span>
-              <PeriodPicker current={period.branch} label={t("byBranchLabel")} hrefFor={(k) => hrefWith("branch", k)} />
-            </div>
-            <div className="card-body"><ShareDonut data={branches} currency="MMK" /></div>
-          </div>
-        )}
-        {payments.length > 1 && (
-          <div className="card">
-            <div className="card-head">
-              <span><h2>{t("byPayment")}</h2><span className="page-sub">{t("receivedIn", { when: when(period.pay) })}</span></span>
-              <PeriodPicker current={period.pay} label={t("byPaymentLabel")} hrefFor={(k) => hrefWith("pay", k)} />
-            </div>
-            <div className="card-body"><ShareDonut data={payments} currency="MMK" /></div>
-          </div>
-        )}
-        {worthDrawing(custCategories) && (
-          <div className="card">
-            <div className="card-head">
-              <span><h2>{t("byCustomerType")}</h2><span className="page-sub">{t("revenueIn", { when: when(period.cust) })}</span></span>
-              <PeriodPicker current={period.cust} label={t("byCustomerTypeLabel")} hrefFor={(k) => hrefWith("cust", k)} />
-            </div>
-            <div className="card-body"><ShareDonut data={custCategories} currency="MMK" /></div>
-          </div>
-        )}
-        {worthDrawing(suppCategories) && (
-          <div className="card">
-            <div className="card-head">
-              <span><h2>{t("bySupplierType")}</h2><span className="page-sub">{t("purchasesIn", { when: when(period.supp) })}</span></span>
-              <PeriodPicker current={period.supp} label={t("bySupplierTypeLabel")} hrefFor={(k) => hrefWith("supp", k)} />
-            </div>
-            <div className="card-body"><ShareDonut data={suppCategories} currency="MMK" /></div>
-          </div>
         )}
       </div>
 
