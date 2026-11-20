@@ -84,7 +84,12 @@ report reads what it always read; the foreign figure is kyat over the rate.
 - Paying: amounts in the bill's currency; the bill comes down at its carrying
   rate, the bank at today's; the gap is FX gain or loss (both 6340 Exchange
   Rate Gain/Loss since the chart moved to four digits, 0203).
-- Advances in yuan: applied to a later yuan bill the same way.
+- Advances in yuan paid on or before the goods arrived fix what those goods
+  cost (IFRIC 22): applying one to the bill corrects the goods' cost by the
+  gap between the bill's rate and the advance's — onto stock held, to cost of
+  sales for what has sold — with no exchange on it. An advance paid after
+  the goods arrived settles a debt and keeps its exchange difference, as
+  does one applied to a bill with nothing received yet.
 - Purchase orders may be placed in the supplier's currency; a blank rate takes
   the one on file for the order date.
 - Returns and debit notes against a yuan bill go at that bill's rate, so the
@@ -92,11 +97,20 @@ report reads what it always read; the foreign figure is kyat over the rate.
 - `payment_allocation.amount` is the invoice side (kyat at the invoice's rate);
   `base_amount` the payment side (kyat at the payment's rate). Equal for every
   kyat document, so nothing that existed changes.
-- Not yet: unrealised FX revaluation of open yuan payables at month end; sales
-  in foreign currency.
+- Month-end revaluation (0222, 0223; Finance → Transactions → Exchange
+  revaluation): what suppliers are owed in a foreign currency, read from the
+  supplier ledger, and foreign cash and bank accounts, restated at the
+  month-end rate. The difference is unrealised exchange (6341, apart from
+  realised 6340), booked on the month end beside the balances (2160, 1150)
+  so neither the supplier ledger nor a bank stops agreeing with its detail,
+  and reversed the next day. Stock and advances for goods are not restated.
+  One standing run per month; a wrong rate is voided and run again. The
+  dashboard reminds an accountant while last month is undone.
+  `scripts/test-fx-revaluation.mjs`.
+- Not yet: sales in foreign currency.
 
-**D-P7. Damaged on arrival: quarantine, then return (agreed 2026-11-20, not
-built yet).** Ten ordered, ten arrive, one is broken. The design follows SAP
+**D-P7. Damaged on arrival: quarantine, then return (agreed 2026-11-20,
+built 2026-11-21, 0218–0220).** Ten ordered, ten arrive, one is broken. The design follows SAP
 (blocked stock, then a return delivery that reopens the order) and NetSuite
 (a status that cannot be sold, then a vendor return).
 - Goods receipt: each line records arrived, accepted and rejected, with a
@@ -133,11 +147,25 @@ built yet).** Ten ordered, ten arrive, one is broken. The design follows SAP
   takes the unit into quarantine, not back onto the shelf, and a purchase
   return then sends it to the supplier under the supplier warranty, or it is
   written off.
-- Needs: a not-for-sale flag on locations; rejected quantity, reason, IMEIs
-  and replace/credit on receipt lines; returns that count against the PO's
-  received quantity when marked replace (`v_order_outstanding` counts receipts
-  only today); quarantine out of available stock in the stock position; a
-  faulty choice on the sales return; a printable rejection slip.
+- As built: `location.is_quarantine`, one per branch (0218), made for every
+  branch with stock, with a branch's first warehouse and on first use. The
+  database refuses a sales order, invoice or delivery dated there and any
+  stock leaving it on a sale or delivery. Transfers in or out need a reason.
+  Forms, the till and imports do not offer it; item pickers count sellable
+  stock only; stock lists show it as its own location. A receipt line marked
+  `rejected` (0219) lands there; the receipt page shows it, prints a
+  rejection note and offers the return per outcome. A return line names the
+  receipt line it sends back, and a replace return reopens the order
+  (`v_order_outstanding`, 0220). `scripts/test-quarantine.mjs`.
+
+**D-P8. Warranty claims (0221, built 2026-11-21).** A customer back with a
+faulty phone opens a claim: the fault, whether the shop's and the supplier's
+warranties covered it on the day (kept, not recomputed), and how it ended —
+repaired, replaced, refunded, or turned down with a reason. It moves
+nothing; it names the customer return (faulty, into quarantine) and the
+supplier return it led to, each recorded on the claim in its own
+transaction. Inventory → Warranty lookup → Warranty claims, and from the
+phone's own page.
 
 ## Work list
 
