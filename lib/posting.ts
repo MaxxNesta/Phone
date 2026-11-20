@@ -12185,3 +12185,197 @@ export async function resettleConsignmentSale(input: {
       .map((r) => ({ id: r.id, docNo: r.doc_no, amount: Number(r.gross_total) }));
   });
 }
+
+// =========================================================================
+// Month-end revaluation of foreign balances (0223, docs/06 D-P6)
+// =========================================================================
+//
+// What suppliers are owed in yuan, and yuan held in cash or bank, restated
+// at the month-end rate. The difference is unrealised exchange (6341): it is
+// booked on the last day of the month, beside the balances (2160, 1150) so
+// neither the supplier ledger nor a bank account stops agreeing with its own
+// detail, and it is taken back the next morning. Settlement goes on at each
+// bill's own rate, and realised exchange is still booked when money moves.
+// Stock and advances paid for goods are not restated (IFRIC 22).
+
+export type FxRevaluationLine = {
+  kind: "PAYABLE" | "CASH";
+  accountId: string;
+  accountName: string;
+  partnerId: string | null;
+  partnerName: string | null;
+  currency: string;
+  /** Signed, as the ledger carries it: a payable is negative. */
+  fcBalance: number;
+  carried: number;
+  rate: number;
+  revalued: number;
+  /** revalued − carried: negative is more owed (a loss), positive a gain. */
+  difference: number;
+};
+
+/**
+ * The foreign balances open at the end of `periodEnd`, and what each comes
+ * to at the rates given (or the MARKET rate on file for that day). Reads
+ * only. A currency with no rate either way is named in `missingRates` and
+ * left out of `lines`, so a preview can ask for it.
+ */
+export async function planFxRevaluation(
+  input: { companyId: string; periodEnd: string; rates?: Record<string, number> },
+  outer?: TransactionSql,
+): Promise<{ lines: FxRevaluationLine[]; rates: Record<string, number>; missingRates: string[]; base: string }> {
+  return inTransaction(outer, async (tx) => {
+    const { companyId, periodEnd } = input;
+    const [co] = await tx`select base_currency from company where id = ${companyId}`;
+    const base = co.base_currency as string;
+    const scale = await currencyScale(tx, companyId);
+
+    const payables = await tx`
+      select jl.account_id, a.name as account_name, jl.partner_id, bp.name as partner_name,
+             jl.currency, sum(jl.amount)::float as fc, sum(jl.base_amount)::float as carried
+        from journal_line jl
+        join journal_entry je on je.id = jl.journal_entry_id
+        join account a on a.id = jl.account_id and a.subledger = 'SUPPLIER'
+        left join business_partner bp on bp.id = jl.partner_id
+       where jl.company_id = ${companyId} and jl.currency <> ${base}
+         and je.entry_date <= ${periodEnd}::date
+       group by jl.account_id, a.name, jl.partner_id, bp.name, jl.currency
+      having round(sum(jl.amount), 4) <> 0 or round(sum(jl.base_amount), 4) <> 0
+       order by bp.name, jl.currency`;
+    const cash = await tx`
+      select a.id as account_id, a.name as account_name, a.currency,
+             coalesce(sum(jl.amount) filter (where jl.currency = a.currency), 0)::float as fc,
+             coalesce(sum(jl.base_amount), 0)::float as carried
+        from account a
+        join journal_line jl on jl.account_id = a.id
+        join journal_entry je on je.id = jl.journal_entry_id and je.entry_date <= ${periodEnd}::date
+       where a.company_id = ${companyId} and a.currency is not null and a.currency <> ${base}
+         and a.subledger is null
+       group by a.id, a.name, a.currency
+      having round(coalesce(sum(jl.amount) filter (where jl.currency = a.currency), 0), 4) <> 0
+          or round(coalesce(sum(jl.base_amount), 0), 4) <> 0
+       order by a.code`;
+
+    const currencies = [...new Set([...payables, ...cash].map((r: any) => String(r.currency).trim()))];
+    const rates: Record<string, number> = {};
+    const missingRates: string[] = [];
+    for (const cur of currencies) {
+      const typed = Number(input.rates?.[cur] ?? 0);
+      if (typed > 0) { rates[cur] = typed; continue; }
+      const [r] = await tx`
+        select fn_exchange_rate(${companyId}, ${cur}, ${base}, 'MARKET', ${periodEnd}::date)::float as r`;
+      if (Number(r?.r) > 0) rates[cur] = Number(r.r); else missingRates.push(cur);
+    }
+
+    const lines: FxRevaluationLine[] = [];
+    const add = (kind: FxRevaluationLine["kind"], r: any) => {
+      const cur = String(r.currency).trim();
+      const rate = rates[cur];
+      if (!rate) return;
+      const revalued = roundMoney(Number(r.fc) * rate, scale);
+      const difference = roundMoney(revalued - Number(r.carried), scale);
+      if (Math.abs(difference) < 0.005) return;
+      lines.push({
+        kind, accountId: r.account_id, accountName: r.account_name,
+        partnerId: r.partner_id ?? null, partnerName: r.partner_name ?? null,
+        currency: cur, fcBalance: round4(Number(r.fc)), carried: round4(Number(r.carried)),
+        rate, revalued, difference,
+      });
+    };
+    for (const r of payables) add("PAYABLE", r);
+    for (const r of cash) add("CASH", r);
+    return { lines, rates, missingRates, base };
+  });
+}
+
+/**
+ * Posts the month-end revaluation: unrealised exchange on `periodEnd`, and
+ * its reversal the next day. One standing run per month end; to redo one,
+ * void it first. Both days must be in open periods.
+ */
+export async function postFxRevaluation(
+  input: { companyId: string; periodEnd: string; rates?: Record<string, number>; userId?: string | null },
+  outer?: TransactionSql,
+): Promise<{ id: string; lines: number }> {
+  return inTransaction(outer, async (tx) => {
+    const { companyId, periodEnd } = input;
+    await tx`select pg_advisory_xact_lock(hashtext('fx_revaluation:' || ${companyId}))`;
+    const [standing] = await tx`
+      select id from fx_revaluation where company_id = ${companyId} and period_end = ${periodEnd}::date and status = 'POSTED'`;
+    if (standing) throw new Error(`${periodEnd} has been revalued already. Void that run to run it again.`);
+
+    const plan = await planFxRevaluation(input, tx);
+    if (plan.missingRates.length > 0) {
+      throw new Error(`Enter the ${plan.missingRates.join(", ")} rate for ${periodEnd} — how many ${plan.base} one unit cost that day.`);
+    }
+    if (plan.lines.length === 0) throw new Error(`Nothing open in a foreign currency on ${periodEnd} needs restating.`);
+
+    const acct = async (role: string) => {
+      const [a] = await tx`select fn_system_account(${companyId}, ${role}) as a`;
+      if (!a?.a) throw new Error(`No account is set for ${role}. Set it under Settings.`);
+      return a.a as string;
+    };
+    const apAdj = await acct("FX_REVALUATION_AP");
+    const cashAdj = await acct("FX_REVALUATION_CASH");
+    const unrealised = await acct("FX_UNREALISED_LOSS");
+
+    const [{ next }] = await tx`select (${periodEnd}::date + 1)::text as next`;
+    const [run] = await tx`
+      insert into fx_revaluation (company_id, period_end, reversal_date, rates, created_by)
+      values (${companyId}, ${periodEnd}::date, ${next}::date, ${tx.json(plan.rates)}, ${input.userId ?? null})
+      returning id`;
+
+    const journal: JournalLine[] = [];
+    for (const l of plan.lines) {
+      journal.push({ accountId: l.kind === "PAYABLE" ? apAdj : cashAdj, amount: l.difference,
+                     partnerId: l.partnerId });
+      journal.push({ accountId: unrealised, amount: -l.difference });
+    }
+    const label = `Exchange revaluation at ${periodEnd}`;
+    const entryId = await writeJournal(tx, companyId, periodEnd, "FX_REVALUATION", run.id, label, journal);
+    const reversalId = await writeJournal(tx, companyId, next, "FX_REVALUATION", run.id,
+      `${label}, reversed`, journal.map((j) => ({ ...j, amount: -j.amount })));
+    await tx`update fx_revaluation set entry_id = ${entryId}, reversal_entry_id = ${reversalId} where id = ${run.id}`;
+    await insertInChunks(tx, "fx_revaluation_line", plan.lines.map((l) => ({
+      revaluation_id: run.id, kind: l.kind, account_id: l.accountId, partner_id: l.partnerId,
+      currency: l.currency, fc_balance: l.fcBalance, carried: l.carried, rate: l.rate,
+      revalued: l.revalued, difference: l.difference,
+    })));
+    return { id: run.id as string, lines: plan.lines.length };
+  });
+}
+
+/**
+ * Undoes a revaluation run so the month can be run again — a wrong rate, a
+ * bill posted late. Corrections are reversals: both its entries are undone
+ * by entries the other way on the same days, so both days must still be in
+ * open periods.
+ */
+export async function voidFxRevaluation(
+  input: { companyId: string; revaluationId: string; reason: string; userId?: string | null },
+  outer?: TransactionSql,
+) {
+  if (!input.reason?.trim()) throw new Error("Say why this revaluation is being voided.");
+  return inTransaction(outer, async (tx) => {
+    const [run] = await tx`
+      select * from fx_revaluation where id = ${input.revaluationId} and company_id = ${input.companyId} for update`;
+    if (!run) throw new Error("That revaluation does not exist.");
+    if (run.status !== "POSTED") throw new Error("That revaluation has been voided already.");
+    const undo = async (entryId: string, date: string, memo: string) => {
+      const lines = await tx`
+        select account_id, partner_id, location_id, base_amount::float as amount from journal_line
+         where journal_entry_id = ${entryId}`;
+      return writeJournal(tx, input.companyId, date, "FX_REVALUATION", run.id, memo,
+        lines.map((l: any) => ({ accountId: l.account_id, partnerId: l.partner_id, locationId: l.location_id,
+                                 amount: -Number(l.amount) })));
+    };
+    const pe = String((await tx`select ${run.period_end}::date::text as d`)[0].d);
+    const rd = String((await tx`select ${run.reversal_date}::date::text as d`)[0].d);
+    const v1 = await undo(run.entry_id, pe, `Exchange revaluation at ${pe} voided: ${input.reason.trim()}`);
+    const v2 = await undo(run.reversal_entry_id, rd, `Exchange revaluation at ${pe} voided (its reversal): ${input.reason.trim()}`);
+    await tx`update fx_revaluation set status = 'VOIDED', void_entry_id = ${v1}, void_reversal_entry_id = ${v2},
+               void_reason = ${input.reason.trim()}, voided_by = ${input.userId ?? null}, voided_at = now()
+             where id = ${run.id}`;
+    return { id: run.id as string };
+  });
+}

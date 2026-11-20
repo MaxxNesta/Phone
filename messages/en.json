@@ -143,7 +143,8 @@
     "salesReports": "Sales",
     "purchasingReports": "Purchasing",
     "inventoryReports": "Inventory",
-    "financeReports": "Finance"
+    "financeReports": "Finance",
+    "fxRevaluation": "Exchange revaluation"
   },
   "shell": {
     "appName": "Myanmar ERP",
@@ -1266,7 +1267,9 @@
     "byBranchLabel": "revenue by branch",
     "byPayment": "Payments by method",
     "byPaymentLabel": "payments by method",
-    "receivedIn": "Money received {when}"
+    "receivedIn": "Money received {when}",
+    "fxDue": "Last month's exchange revaluation ({d}) has not been run.",
+    "fxDueLink": "Run it"
   },
   "inventory": {
     "noCategoriesFirst": "No categories yet — add one first.",
@@ -2565,5 +2568,41 @@
     "saving": "Saving…",
     "save": "Save",
     "thisWeek": "now"
+  },
+  "finance": {
+    "fxr": {
+      "title": "Exchange revaluation",
+      "sub": "At month end, what is still owed or held in a foreign currency is restated at that day's rate. The difference is unrealised exchange, booked on the month end and taken back the next day.",
+      "monthEnd": "Month end",
+      "rateFor": "{cur} rate ({base} for one {cur})",
+      "ratePlaceholder": "Rate on the day",
+      "preview": "Preview",
+      "previewTitle": "What would be restated",
+      "posted": "What was restated",
+      "done": "Revalued for {d} by {who}, at",
+      "missing": "No {cur} rate is on file for {d}. Type it above and preview again.",
+      "what": "Balance",
+      "currency": "Currency",
+      "foreign": "Foreign amount",
+      "carried": "Carried at (kyat)",
+      "rate": "Month-end rate",
+      "revalued": "Worth now (kyat)",
+      "difference": "Unrealised",
+      "owed": "owed to supplier",
+      "held": "held",
+      "loss": "{v} loss",
+      "gain": "{v} gain",
+      "net": "Net",
+      "nothing": "Nothing open in a foreign currency at this month end.",
+      "post": "Post the revaluation for {d}",
+      "postNote": "Run it before the month is locked. A wrong rate is put right by voiding this run and running it again.",
+      "void": "Void this run",
+      "voidReason": "Why",
+      "voidPlaceholder": "Wrong rate, a bill posted late…",
+      "history": "Past runs",
+      "status": "Status",
+      "stPosted": "Posted",
+      "stVoided": "Voided"
+    }
   }
 }

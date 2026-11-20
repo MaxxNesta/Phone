@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, AlertTriangle, Check } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentUser, can, seesMainDashboard, homeFor } from "@/lib/auth";
+import { fxRevaluationDue } from "@/lib/fx-actions";
 import { getCompany } from "@/lib/queries";
 import { serialTrackingOn } from "@/lib/features";
 import { planIncludes } from "@/lib/plans";
@@ -98,12 +99,21 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const date = new Date().toLocaleDateString(dateLocale, {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Yangon" });
 
+  // Month-end exchange revaluation not run yet for last month (0223).
+  const fxDue = can(user, "accounting.post") ? await fxRevaluationDue().catch(() => null) : null;
+
   return (
     <>
       <div className="page-head hero">
         <h1>{t("title")}</h1>
         <p className="page-sub">{date}</p>
       </div>
+      {fxDue && (
+        <div className="alert warn" style={{ marginBottom: "var(--s3)" }}>
+          {t("fxDue", { d: fxDue.periodEnd })}{" "}
+          <Link href={`/finance/fx-revaluation?period=${fxDue.periodEnd}`} style={{ color: "var(--link)" }}>{t("fxDueLink")}</Link>
+        </div>
+      )}
 
 
       <div className="stats">

@@ -52,6 +52,10 @@ export const CHART = [
   ["1130", "AYA Bank (Cheque) Account",                "ASSET",     true,  { from: "13211", cash: true, bank: true }],
   ["1131", "CB Bank (Cheque) Account",                 "ASSET",     true,  { from: "13212", cash: true, bank: true }],
   ["1140", "Credit Card",                              "ASSET",     true,  { from: "13301", cash: true, bank: true }],
+  // Month-end restatement of foreign cash at the closing rate (0223): beside
+  // the cash accounts, so each still agrees with its statement. Nil except
+  // between a month-end entry and its reversal the next day.
+  ["1150", "Foreign Cash Revaluation",                 "ASSET",     true,  { added: true }],
   ["12",   "Receivables",                              "ASSET",     false, { under: "1-CA", from: ["135", "138"] }],
   ["1210", "Accounts Receivable",                      "ASSET",     true,  { from: "13501", control: true }],
   ["1220", "Advance (Other Department)",               "ASSET",     true,  { from: "13801" }],
@@ -122,6 +126,9 @@ export const CHART = [
   ["2140", "Accrued Expense",                          "LIABILITY", true,  { from: "21110" }],
   // What payroll owes staff until they are paid (HR settings, 0186).
   ["2150", "Salary Payable",                           "LIABILITY", true],
+  // The same for what suppliers are owed in yuan (0223), beside AP so the
+  // supplier ledger keeps agreeing with the open bills.
+  ["2160", "Foreign Payables Revaluation",             "LIABILITY", true,  { added: true }],
   ["22",   "Advances and Deferred Revenue",            "LIABILITY", false, { under: "2-CL", from: ["213"] }],
   // Taken from a customer before we billed them. Theirs until we do.
   ["2210", "Sale Advance",                             "LIABILITY", true,  { from: "21301" }],
@@ -283,6 +290,7 @@ export const SYSTEM = {
   FX_GAIN: "6340", FX_LOSS: "6340", ROUNDING_DIFFERENCE: "6321",
   // The month-end revaluation (0223), apart from what was realised.
   FX_UNREALISED_GAIN: "6341", FX_UNREALISED_LOSS: "6341",
+  FX_REVALUATION_CASH: "1150", FX_REVALUATION_AP: "2160",
   DELIVERY_INCOME: "4130",
 
   // Delivered goods wait here until the invoice recognises their cost; a
