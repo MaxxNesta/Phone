@@ -4,6 +4,7 @@ import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { ErpCopyNumber, ErpPrintButton } from "@/components/erp-doc-toolbar";
 import { ErpMore } from "@/components/erp-more";
 import type { ChainStage } from "@/components/erp-doc-shell";
+import { DocLayout, DocFlow, DocPanelSection } from "@/components/doc-layout";
 
 /**
  * The order screen: sales and purchase orders, which are the same document
@@ -68,8 +69,11 @@ export function ErpOrderForm({
   locationName, reference, memo, lines, netTotal, chain, related,
   banner, footer, badges, fulfilActions, menuActions, commitments,
   openLineCount, unitWord,
-  fulfilments = [], billing, backHref, backLabel,
+  fulfilments = [], billing, backHref, backLabel, activity, activityCount,
 }: {
+  /** Who did what, and when: its own tab in the tabbed layout. */
+  activity?: React.ReactNode;
+  activityCount?: number;
   config: OrderFormConfig;
   docId: string;
   docNo: string;
@@ -144,84 +148,8 @@ export function ErpOrderForm({
   const initials = config.typeLabel.split(/\s+/).map((w) => w[0]).join("").toUpperCase();
   const currentIndex = chain.findIndex((s) => s.doc?.doc_no === docNo);
 
-  return (
-    <div data-density="odoo" className="erp-form erp-doc">
-      <div className="erp-crumb">
-        {backHref && (
-          <>
-            <Link href={backHref} className="erp-crumb-link backlink">
-              <ArrowLeft size={13} aria-hidden="true" /> {backLabel ?? "Back"}
-            </Link>
-            <span className="erp-crumb-sep">/</span>
-          </>
-        )}
-        <Link href={config.listHref} className="erp-crumb-link">{config.listLabel}</Link>
-        <span className="erp-crumb-sep">/</span>
-        <span className="erp-crumb-here">{docNo}</span>
-        <ErpCopyNumber docNo={docNo} />
-      </div>
-
-
-      {chain.length > 0 && (
-        <div className="erp-pipeline" role="list" aria-label="Workflow">
-          {chain.map((stage, i) => {
-            const stageDone = !!stage.doc;
-            const here = i === currentIndex;
-            const many = (stage.docs?.length ?? 0) > 1;
-            const body = (
-              <>
-                {stage.label}
-                {/* One document shows its number; several show how many,
-                    because naming one of three is worse than naming none. */}
-                {many && !here && <span className="erp-stage-no">({stage.docs!.length})</span>}
-                {!many && stage.doc && !here && <span className="erp-stage-no">{stage.doc.doc_no}</span>}
-                {!stage.doc && stage.href && <span className="erp-stage-no">create</span>}
-              </>
-            );
-            return (
-              <div key={stage.type} role="listitem"
-                   className={`erp-stage ${here ? "here" : stageDone ? "done" : "todo"}${
-                     !stageDone && stage.href ? " next" : ""}${
-                     !stageDone && stage.optional ? " optional" : ""}`}
-                   title={!stageDone && stage.optional
-                     ? `${stage.label} is optional — this chain is valid without one`
-                     : undefined}
-                   aria-current={here ? "step" : undefined}>
-                {many && !here
-                  ? <a href="#fulfilments">{body}</a>
-                  : stage.doc && !here
-                    ? <Link href={`/documents/${stage.doc.id}`}>{body}</Link>
-                    : !stage.doc && stage.href
-                      ? <Link href={stage.href}>{body}</Link>
-                      : body}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* One sheet, the same frame every other document sits in. */}
-      <div className="erp-sheet-page">
-      <header className="doc-head">
-        <div className="doc-head-id">
-          <span className="erp-doc-type">{config.typeLabel}</span>
-          <div className="doc-head-line">
-            <h1>{docNo}</h1>
-            <span className={`pill ${status.toLowerCase()}`}>{status.charAt(0) + status.slice(1).toLowerCase()}</span>
-            {badges}
-          </div>
-          <p className="doc-head-sub">
-            {[partnerName, netTotal > 0 ? money(netTotal) : null, shortDate(docDate),
-              dueDate ? `expected ${shortDate(dueDate)}` : null].filter(Boolean).join("  ·  ")}
-          </p>
-        </div>
-        <div className="doc-head-actions">
-          {fulfilActions}
-          <ErpPrintButton docId={docId} />
-          {menuActions && <ErpMore>{menuActions}</ErpMore>}
-        </div>
-      </header>
-
+  const sections = (
+    <>
       {banner}
 
       {totalOrdered > 0 && (
@@ -388,6 +316,107 @@ export function ErpOrderForm({
       </section>
 
       {commitments}
+    </>
+  );
+
+  /* The tabbed layout, when the page hands the timeline over separately:
+     the order itself under Details, the timeline under Activity, and the
+     chain with what the order is joined to in the side panel. */
+  if (activity) {
+    return (
+      <DocLayout
+        backHref={backHref} backLabel={backLabel} listHref={config.listHref} listLabel={config.listLabel}
+        typeLabel={config.typeLabel} docNo={docNo} status={status} badges={badges}
+        summary={netTotal > 0 ? money(netTotal) : undefined}
+        actions={<>{fulfilActions}<ErpPrintButton docId={docId} />{menuActions && <ErpMore>{menuActions}</ErpMore>}</>}
+        tabs={[
+          { id: "details", label: "Details", content: <div className="dl-stack erp-doc">{sections}{footer}</div> },
+          { id: "activity", label: "Activity", count: activityCount, content: <div className="dl-stack">{activity}</div> },
+        ]}
+        panel={<>{chain.length > 0 && <DocPanelSection title="Flow"><DocFlow chain={chain} docNo={docNo} /></DocPanelSection>}{related}</>}
+      />
+    );
+  }
+
+  return (
+    <div data-density="odoo" className="erp-form erp-doc">
+      <div className="erp-crumb">
+        {backHref && (
+          <>
+            <Link href={backHref} className="erp-crumb-link backlink">
+              <ArrowLeft size={13} aria-hidden="true" /> {backLabel ?? "Back"}
+            </Link>
+            <span className="erp-crumb-sep">/</span>
+          </>
+        )}
+        <Link href={config.listHref} className="erp-crumb-link">{config.listLabel}</Link>
+        <span className="erp-crumb-sep">/</span>
+        <span className="erp-crumb-here">{docNo}</span>
+        <ErpCopyNumber docNo={docNo} />
+      </div>
+
+
+      {chain.length > 0 && (
+        <div className="erp-pipeline" role="list" aria-label="Workflow">
+          {chain.map((stage, i) => {
+            const stageDone = !!stage.doc;
+            const here = i === currentIndex;
+            const many = (stage.docs?.length ?? 0) > 1;
+            const body = (
+              <>
+                {stage.label}
+                {/* One document shows its number; several show how many,
+                    because naming one of three is worse than naming none. */}
+                {many && !here && <span className="erp-stage-no">({stage.docs!.length})</span>}
+                {!many && stage.doc && !here && <span className="erp-stage-no">{stage.doc.doc_no}</span>}
+                {!stage.doc && stage.href && <span className="erp-stage-no">create</span>}
+              </>
+            );
+            return (
+              <div key={stage.type} role="listitem"
+                   className={`erp-stage ${here ? "here" : stageDone ? "done" : "todo"}${
+                     !stageDone && stage.href ? " next" : ""}${
+                     !stageDone && stage.optional ? " optional" : ""}`}
+                   title={!stageDone && stage.optional
+                     ? `${stage.label} is optional — this chain is valid without one`
+                     : undefined}
+                   aria-current={here ? "step" : undefined}>
+                {many && !here
+                  ? <a href="#fulfilments">{body}</a>
+                  : stage.doc && !here
+                    ? <Link href={`/documents/${stage.doc.id}`}>{body}</Link>
+                    : !stage.doc && stage.href
+                      ? <Link href={stage.href}>{body}</Link>
+                      : body}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* One sheet, the same frame every other document sits in. */}
+      <div className="erp-sheet-page">
+      <header className="doc-head">
+        <div className="doc-head-id">
+          <span className="erp-doc-type">{config.typeLabel}</span>
+          <div className="doc-head-line">
+            <h1>{docNo}</h1>
+            <span className={`pill ${status.toLowerCase()}`}>{status.charAt(0) + status.slice(1).toLowerCase()}</span>
+            {badges}
+          </div>
+          <p className="doc-head-sub">
+            {[partnerName, netTotal > 0 ? money(netTotal) : null, shortDate(docDate),
+              dueDate ? `expected ${shortDate(dueDate)}` : null].filter(Boolean).join("  ·  ")}
+          </p>
+        </div>
+        <div className="doc-head-actions">
+          {fulfilActions}
+          <ErpPrintButton docId={docId} />
+          {menuActions && <ErpMore>{menuActions}</ErpMore>}
+        </div>
+      </header>
+
+      {sections}
       {related}
       {footer}
       </div>

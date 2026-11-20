@@ -1,5 +1,8 @@
 import { hasModule } from "@/lib/plans";
-import { DISPLAY_TZ } from "@/lib/format";
+import { DISPLAY_TZ, todayLocal } from "@/lib/format";
+import { DocSection, DocPanelSection, DocPaymentMeter, DocTimeline, DocPanelList, DocFlow,
+  type StatusTone, type DocEventIcon } from "@/components/doc-layout";
+import { Smartphone, Package } from "lucide-react";
 import { Fragment } from "react";
 import { FaDocLinks } from "@/components/fa-doc-links";
 import { HrDocLinks } from "@/components/hr-doc-links";
@@ -421,6 +424,18 @@ export default async function DocumentPage({
              and ${doc.doc_type} = 'DELIVERY'
         ) restorable`) as unknown as { units: number }[]
     : [{ units: 0 }];
+
+  /* Who the document is with, as the details block names them: how to reach
+     them and what credit they have. A read, nothing more. */
+  const [partnerInfo] = doc.partner_id ? ((await sql`
+    select phone, email, address, township, contact_person,
+           payment_terms_days::int as terms, credit_limit::float as credit_limit
+      from business_partner where id = ${doc.partner_id}`) as unknown as {
+        phone: string | null; email: string | null; address: string | null; township: string | null;
+        contact_person: string | null; terms: number | null; credit_limit: number | null }[]) : [];
+  const SALES_SIDE = new Set(["SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT", "SALES_RETURN", "CREDIT_NOTE", "CUSTOMER_REFUND"]);
+  const BUY_SIDE = new Set(["PURCHASE_ORDER", "GOODS_RECEIPT", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT", "PURCHASE_RETURN", "DEBIT_NOTE", "SUPPLIER_REFUND"]);
+  const partyWord = SALES_SIDE.has(doc.doc_type) ? "Customer" : BUY_SIDE.has(doc.doc_type) ? "Supplier" : "Partner";
 
   // What this document is genuinely linked to, in both directions. Shown
   // alongside the workflow pipeline rather than instead of it: the pipeline
@@ -965,16 +980,61 @@ export default async function DocumentPage({
     </>
   );
 
-  const footer = (
-    <DocumentFooter
-      activity={people.activity as never}
-      related={<RelatedDocumentsPanel related={related} />}
-      createdBy={{ name: people.doc?.created_by ?? null, initials: people.doc?.created_initials ?? null }}
-      postedBy={{ name: people.doc?.posted_by ?? null, initials: people.doc?.posted_initials ?? null }}
-      postedAt={people.doc?.posted_at ? String(people.doc.posted_at) : null}
-      createdAt={people.doc?.created_at ? String(people.doc.created_at) : null}
-    />
-  );
+  /*
+   * Payments, refunds: the money side of what this is joined to. On an invoice
+   * they are listed under Payments, beside the balance they moved, and left
+   * out of the side panel, so a link is never shown twice on one screen.
+   */
+  const MONEY_DOCS_REL = new Set(["CUSTOMER_RECEIPT", "SUPPLIER_PAYMENT", "CUSTOMER_REFUND", "SUPPLIER_REFUND"]);
+  const MONEY_LABELS = new Set(["Payments", "Payments made", "Receive payment", "Supplier payment", "Customer refund", "Supplier refund"]);
+  const isMoneyGroup = (g: { label: string; docs: { docType: string }[] }) =>
+    MONEY_LABELS.has(g.label) || (g.docs.length > 0 && g.docs.every((d) => MONEY_DOCS_REL.has(d.docType)));
+  const moneyRelated = {
+    source: related.source.filter(isMoneyGroup).filter((g) => g.docs.length > 0),
+    downstream: related.downstream.filter(isMoneyGroup).filter((g) => g.docs.length > 0),
+  };
+  const panelRelated = isInvoice
+    ? { source: related.source.filter((g) => !isMoneyGroup(g)), downstream: related.downstream.filter((g) => !isMoneyGroup(g)) }
+    : related;
+  const relatedNode = <RelatedDocumentsPanel related={panelRelated} />;
+  /** A date as YYYY-MM-DD, whatever the driver handed back. */
+  const ymd = (v: unknown): string => {
+    if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+    return String(v ?? "").slice(0, 10);
+  };
+  const stamp = (v: unknown): string => {
+    const t = String(v ?? "");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return shortDate(t);
+    const d = v instanceof Date ? v : new Date(t);
+    return Number.isNaN(d.getTime()) ? t : d.toLocaleString("en-GB", { timeZone: DISPLAY_TZ, day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  };
+  const EV_KIND: [RegExp, DocEventIcon][] = [[/CREAT/, "created"], [/POST/, "posted"], [/VOID|REVERS|CANCEL/, "voided"],
+    [/CORRECT|AMEND|VERSION/, "corrected"], [/PRINT/, "printed"], [/ATTACH/, "attached"], [/PAY|SETTLE|RECEIPT/, "paid"], [/RETURN/, "returned"]];
+  const logged = ((people.activity as any[]).length > 0 ? (people.activity as any[]) : [
+    ...(people.doc?.posted_at ? [{ kind: "POSTED", note: null, happened_at: people.doc.posted_at, actor: people.doc.posted_by }] : []),
+    ...(people.doc?.created_at ? [{ kind: "CREATED", note: null, happened_at: people.doc.created_at, actor: people.doc.created_by }] : []),
+  ]).map((e) => {
+    const kind = String(e.kind ?? "");
+    const icon = EV_KIND.find(([re]) => re.test(kind))?.[1] ?? "other";
+    const text = e.note ? String(e.note).replace(/^\w/, (c) => c.toLowerCase())
+      : icon === "created" ? `created ${label(doc.doc_type)} ${doc.doc_no ?? ""}`
+      : icon === "posted" ? `posted it${Number(doc.gross_total) > 0 ? ` for ${money(doc.gross_total)} ${doc.currency ?? ""}` : ""}`
+      : kind.toLowerCase().replace(/_/g, " ");
+    return { at: String(e.happened_at ?? ""), when: stamp(e.happened_at), who: String(e.actor ?? "Owner"), icon, text: text as React.ReactNode };
+  });
+  const loggedText = logged.map((e) => String(e.text)).join(" ");
+  // Payments and returns are their own documents: on the timeline as what the partner did.
+  const settledEvents = related.downstream.flatMap((g) => g.docs)
+    .filter((d) => (MONEY_DOCS_REL.has(d.docType) || /RETURN|CREDIT_NOTE|DEBIT_NOTE/.test(d.docType)) && !loggedText.includes(d.docNo))
+    .map((d) => ({
+      at: ymd(d.docDate), when: shortDate(d.docDate), who: String(doc.partner_name ?? "Partner"),
+      icon: (MONEY_DOCS_REL.has(d.docType) ? "paid" : "returned") as DocEventIcon,
+      text: <>{MONEY_DOCS_REL.has(d.docType) ? (/REFUND/.test(d.docType) ? "was refunded" : "paid") : /NOTE/.test(d.docType) ? "was credited" : "returned goods worth"}{" "}
+        {money(d.amount)} {doc.currency} (<Link href={`/documents/${d.id}`}>{d.docNo}</Link>){d.status === "REVERSED" ? ", since voided" : ""}</> as React.ReactNode,
+    }));
+  const timeline = [...logged, ...settledEvents].sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
+  const activityNode = <DocSection title="Activity"><DocTimeline events={timeline} /></DocSection>;
+  const activityCount = timeline.length;
 
   // Orders render on the ERP form. Only the two order types for now: the
   // shell is adopted screen by screen rather than switched on globally, so
@@ -1048,7 +1108,9 @@ export default async function DocumentPage({
           </>
         }
         badges={versionBadge}
-        footer={footer}
+        activity={activityNode}
+        activityCount={activityCount}
+        related={relatedNode}
         unitWord={unitWord ?? null}
         openLineCount={orderLines.length || undefined}
         /* Named from the same panel that always had them right, rather than
@@ -1124,6 +1186,17 @@ export default async function DocumentPage({
      button's explanation is its tooltip rather than a sentence in the page. */
   const headActions = (
     <>
+      {/* Money still owed on an invoice: the first thing anyone opening it does. */}
+      {isInvoice && outstanding > 0.005 && (
+        <Link
+          href={doc.doc_type === "SALES_INVOICE"
+            ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
+            : `/payables/pay?partner=${doc.partner_id}&invoice=${doc.id}`}
+          className="btn primary"
+        >
+          {doc.doc_type === "SALES_INVOICE" ? "Receive payment" : "Pay supplier"}
+        </Link>
+      )}
       {(needsInvoiceMatch || needsReceiptMatch) && (
         <Link
           href={needsInvoiceMatch
@@ -1195,13 +1268,202 @@ export default async function DocumentPage({
     </>
   );
 
+  /* Where the money stands, on an invoice: the advance waiting, then every
+     document that moved the balance — payments, returns, credits — with the
+     balance after each, ending at what is still owed. */
+  const docTotal = Number(doc.gross_total);
+  const credited = related.downstream.flatMap((g) => g.docs)
+    .filter((d) => /RETURN|CREDIT_NOTE|DEBIT_NOTE/.test(d.docType) && d.status === "POSTED")
+    .reduce((t, d) => t + Number(d.amount ?? 0), 0);
+  const paidAll = isInvoice ? Math.max(0, docTotal - outstanding - credited) : 0;
+  const overdue = isInvoice && outstanding > 0.005 && !!doc.due_date && ymd(doc.due_date) < todayLocal();
+  const moves = isInvoice ? [
+    ...[...moneyRelated.source, ...moneyRelated.downstream].flatMap((g) => g.docs).map((d) => ({
+      date: ymd(d.docDate), id: d.id as string | null, docNo: d.docNo, live: d.status === "POSTED",
+      what: /REFUND/.test(d.docType) ? "Refund paid" : isSalesInvoice ? "Payment received" : "Payment made",
+      how: /REFUND/.test(d.docType) ? "Money back, from a return" : isSalesInvoice ? "Customer receipt" : "Supplier payment",
+      // A refund pays back what a return credited; the return already moved this balance.
+      amount: /REFUND/.test(d.docType) ? 0 : -Number(d.amount ?? 0), shown: Number(d.amount ?? 0),
+    })),
+    ...related.downstream.flatMap((g) => g.docs).filter((d) => /RETURN|CREDIT_NOTE|DEBIT_NOTE/.test(d.docType)).map((d) => ({
+      date: ymd(d.docDate), id: d.id as string | null, docNo: d.docNo, live: d.status === "POSTED",
+      what: /CREDIT_NOTE/.test(d.docType) ? "Credit note" : /DEBIT_NOTE/.test(d.docType) ? "Debit note" : "Goods returned",
+      how: "Credited to the account", amount: -Number(d.amount ?? 0), shown: Number(d.amount ?? 0),
+    })),
+  ].sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0)) : [];
+  // What no document above accounts for — a counter sale's cash, taken with
+  // the sale — so the last balance is always the one the ledger holds.
+  const unexplained = isInvoice ? docTotal + moves.filter((m) => m.live).reduce((t, m) => t + m.amount, 0) - outstanding : 0;
+  if (isInvoice && unexplained > 0.5) moves.unshift({
+    date: ymd(doc.doc_date), id: null, docNo: "", live: true,
+    what: doc.payment_type === "CASH" ? "Paid with the sale" : "Settled",
+    how: doc.payment_channel_name ? String(doc.payment_channel_name) : doc.payment_type === "CASH" ? "At the counter" : "",
+    amount: -unexplained, shown: unexplained,
+  });
+  let runningBalance = docTotal;
+  // Goods still owed on this invoice, or a task about either half: said under the ledger.
+  const progressSays = !!progress && (
+    ((doc.to_deliver || !isSalesInvoice) && Number((progress.goods as any)?.outstanding ?? 0) > 0)
+    || !!(progress.goods as any)?.task || !!(progress.payment as any)?.task
+    // Goods billed with no receipt behind them: a bill's question. A counter sale hands its goods over itself.
+    || (!isSalesInvoice && !!(progress.goods as any)?.unmatched));
+  const paymentsNode = isInvoice ? (
+    <>
+          {advances.length > 0 && (
+            <ApplyAdvance
+              action={applyAdvanceAction}
+              invoiceId={doc.id}
+              invoiceNo={doc.doc_no ?? ""}
+              // A yuan bill is settled in yuan.
+              outstanding={doc.currency !== "MMK" ? outstanding / Number(doc.exchange_rate) : outstanding}
+              unit={doc.currency}
+              sales={doc.doc_type === "SALES_INVOICE"}
+              advances={advances.map((a) => ({
+                paymentId: String(a.payment_id),
+                docNo: String(a.doc_no),
+                docDate: String(a.doc_date),
+                available: Number(a.available),
+              }))}
+            />
+          )}
+      <DocSection title="Payments" end={<span className={`dl-pill ${overdue ? "bad" : outstanding > 0.005 ? "warn" : "ok"}`}>
+          {outstanding <= 0.005 ? "Paid" : overdue ? "Overdue" : paidAll + credited > 0 ? "Part paid" : "Unpaid"}</span>}>
+        <div className="dl-tablewrap">
+          <table className="dl-table">
+            <thead><tr><th style={{ width: 120 }}>Date</th><th>Document</th><th className="r">Amount</th><th className="r">Balance</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>{shortDate(doc.doc_date)}</td>
+                <td><span className="dl-strong">{doc.doc_no}</span> {isSalesInvoice ? "Invoice posted" : "Bill posted"}
+                  <small>{doc.payment_type === "CASH" ? "Cash sale" : "On credit"}</small></td>
+                <td className="r">{money(docTotal)}</td>
+                <td className="r">{money(docTotal)}</td>
+              </tr>
+              {moves.map((m, i) => {
+                if (m.live) runningBalance += m.amount;
+                return (
+                  <tr key={i} className={m.live ? undefined : "dl-void"}>
+                    <td>{shortDate(m.date)}</td>
+                    <td>{m.id ? <Link href={`/documents/${m.id}`} className="dl-strong">{m.docNo}</Link> : null} {m.what}
+                      <small>{m.how}{m.live ? "" : " · voided"}</small></td>
+                    <td className="r">{m.amount < 0 ? `– ${money(m.shown)}` : m.shown ? money(m.shown) : "—"}</td>
+                    <td className="r">{money(Math.max(0, runningBalance))}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot><tr><td colSpan={3}>Balance due</td><td className="r">{money(outstanding)}</td></tr></tfoot>
+          </table>
+        </div>
+        <p className="dl-quiet">Each payment and return is its own document with its own journal entry: open it from here.</p>
+      </DocSection>
+          {progress && progressSays && (
+            <InvoiceProgress
+              sales={isSalesInvoice}
+              handedOver={retail && isSalesInvoice && !doc.to_deliver}
+              goods={progress.goods as never}
+              payment={progress.payment as never}
+              unit={progress.unit}
+              receiveHref={isSalesInvoice
+                ? `/sales/deliver?invoice=${doc.id}`
+                : `/purchases/receive/new?match_invoice_id=${doc.id}`}
+              payHref={isSalesInvoice
+                ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
+                // The supplier travels with the invoice. Without it the
+                // settlement screen opens with nobody chosen, so it lists no
+                // bills at all — and the amount it had filled in is thrown
+                // away the moment somebody picks the supplier by hand.
+                : `/payables/pay?partner=${doc.partner_id}&invoice=${doc.id}`}
+            />
+          )}
+    </>
+  ) : null;
+  const paymentsCount = isInvoice ? moves.filter((m) => m.id).length : undefined;
+  /* What it did to the books — for those who may see cost or keep the books. */
+  const journalNode = seeJournal ? (
+    <>
+      {seeJournal && landedOn && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} documentId={doc.id} />}
+      {seeJournal && <FaDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
+      <DocSection title="Journal" caption={`${doc.doc_no ?? "This document"}'s own entries. Payments and returns carry theirs.`}>
+        {journal.length > 0 ? (
+          <div className="dl-tablewrap">
+            <table className="dl-table">
+              <thead><tr><th>Account</th><th className="r" style={{ width: 150 }}>Debit</th><th className="r" style={{ width: 150 }}>Credit</th></tr></thead>
+              <tbody>
+                <tr className="dl-group"><td colSpan={3}>Posted {shortDate(doc.posting_date)} · v{Number(doc.version ?? 1)}{doc.entry_no ? ` · ${doc.entry_no}` : ""}</td></tr>
+                {journal.map((l: any) => (
+                  <tr key={l.line_no}>
+                    <td><span className="dl-strong">{l.account_code}</span> {l.account_name}{l.memo && <small>{l.memo}</small>}</td>
+                    <td className="r">{Number(l.debit) ? money(l.debit) : ""}</td>
+                    <td className="r">{Number(l.credit) ? money(l.credit) : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><td>{totalDebit === totalCredit ? "Totals" : "OUT OF BALANCE"}</td><td className="r">{money(totalDebit)}</td><td className="r">{money(totalCredit)}</td></tr></tfoot>
+            </table>
+          </div>
+        ) : (
+          <p className="dl-quiet">{doc.entry_no ? "Nothing on this entry." : "This document type posts nothing to the ledger."}</p>
+        )}
+        {voidInfo?.doc_no && (
+          <p className="dl-quiet">Reversed by <Link href={`/documents/${voidInfo.id}`}>{voidInfo.doc_no}</Link>{voidInfo.doc_date ? ` on ${shortDate(voidInfo.doc_date)}` : ""}: its entry undoes this one.</p>
+        )}
+      </DocSection>
+    </>
+  ) : null;
+
   /* Who, how much, when — the line under the number. */
-  const summary = [
-    doc.partner_name ? String(doc.partner_name) : null,
-    Number(doc.gross_total) > 0 ? `${money(doc.gross_total)} ${doc.currency ?? ""}`.trim() : null,
-    shortDate(doc.doc_date),
-    isInvoice && doc.due_date ? `due ${shortDate(doc.due_date)}` : null,
-  ].filter(Boolean).join("  ·  ");
+  const summary = "";
+  /* What the pill says: an invoice says where its money stands; anything else
+     says whether it stands at all. */
+  const pill: { label: string; tone: StatusTone } = doc.status === "REVERSED" ? { label: "Voided", tone: "neutral" }
+    : doc.superseded_by_document_id ? { label: "Corrected", tone: "neutral" }
+    : isInvoice ? (outstanding <= 0.005 ? { label: "Paid", tone: "ok" } : overdue ? { label: "Overdue", tone: "bad" }
+      : paidAll + credited > 0.005 ? { label: "Part paid", tone: "warn" } : { label: "Unpaid", tone: "warn" })
+    : { label: String(doc.status), tone: doc.status === "POSTED" ? "info" : "neutral" };
+  const chainStages = chain.map((step) => ({
+    type: step,
+    label: label(step).replace(/\b\w/g, (c) => c.toUpperCase()),
+    doc: stageDoc[step] ?? null,
+    docs: stageDocs[step] ?? [],
+    href: stageDoc[step] ? null : nextStageHref(step),
+    optional: OPTIONAL_STAGE.has(step),
+  }));
+  const linkedDocs = [...panelRelated.source, ...panelRelated.downstream].flatMap((g) => g.docs.map((d) => ({ g: g.label, d })))
+    .filter(({ d }) => d.id !== doc.id)
+    .map(({ g, d }) => ({ id: d.id, title: d.docNo, sub: `${g} · ${shortDate(d.docDate)}${d.status === "REVERSED" ? " · voided" : ""}`,
+      end: Number(d.amount) ? `${money(d.amount)} ${doc.currency ?? ""}` : d.qty ? `${qty(String(d.qty))} units` : null, href: `/documents/${d.id}` }));
+  const panelNode = (
+    <>
+      {isInvoice && docTotal > 0 && (
+        <DocPanelSection title="Payment">
+          <DocPaymentMeter paid={paidAll} credited={credited} total={docTotal} outstanding={outstanding} overdue={overdue} unit={doc.currency ?? "MMK"} />
+        </DocPanelSection>
+      )}
+      {chainStages.length > 0 && (
+        <DocPanelSection title="Flow"><DocFlow chain={chainStages} docNo={doc.doc_no ?? ""} notes={{ [doc.doc_type]: shortDate(doc.doc_date) }} /></DocPanelSection>
+      )}
+      <DocPanelSection title="History">
+        <DocPanelList items={(versions.length ? versions : [{ id: doc.id, version: Number(doc.version ?? 1), gross_total: doc.gross_total,
+            superseded: false, reason: null, acted_at: people.doc?.posted_at ?? null, edited_by: people.doc?.posted_by ?? null } as any])
+          .slice().reverse().map((v: any) => ({
+            id: String(v.id), title: `v${v.version} · ${money(v.gross_total)} ${doc.currency ?? ""}`,
+            sub: `${v.superseded ? "Corrected" : v.id === doc.id ? "Stands now" : "Stands now"}${v.edited_by ? ` · ${v.edited_by}` : ""}${v.acted_at ? `, ${stamp(v.acted_at)}` : ""}${v.reason ? ` · ${v.reason}` : ""}`,
+            href: v.id === doc.id ? null : `/documents/${v.id}`,
+          }))} />
+      </DocPanelSection>
+      <DocPanelSection title={isInvoice ? "Goods documents" : "Related documents"}>
+        <DocPanelList items={linkedDocs} empty={isInvoice ? "No order, delivery or return is joined to this." : "Nothing is joined to this document."} />
+      </DocPanelSection>
+      {advances.length > 0 && outstanding > 0 && (
+        <div className="dl-advance">
+          <strong>{money(advances.reduce((t, a) => t + Number(a.available), 0))} {doc.currency} advance available</strong>
+          <span>Already paid by {doc.partner_name ?? (isSalesInvoice ? "the customer" : "you to the supplier")}.</span>
+          <a href="#payments">Apply it under Payments</a>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <ErpDocShell
@@ -1264,60 +1526,29 @@ export default async function DocumentPage({
               </span>
             </div>
           )}
-          {advances.length > 0 && (
-            <ApplyAdvance
-              action={applyAdvanceAction}
-              invoiceId={doc.id}
-              invoiceNo={doc.doc_no ?? ""}
-              // A yuan bill is settled in yuan.
-              outstanding={doc.currency !== "MMK" ? outstanding / Number(doc.exchange_rate) : outstanding}
-              unit={doc.currency}
-              sales={doc.doc_type === "SALES_INVOICE"}
-              advances={advances.map((a) => ({
-                paymentId: String(a.payment_id),
-                docNo: String(a.doc_no),
-                docDate: String(a.doc_date),
-                available: Number(a.available),
-              }))}
-            />
-          )}
-          {origin && <TransactionOrigin origin={origin} docNo={doc.doc_no ?? ""}
-                                        handedOver={retail && isSalesInvoice && !doc.to_deliver} />}
           {/* Tasks about one half of an invoice are shown in that half, with
               the figure they are about. Banner them as well and the same
               sentence appears twice, six inches apart. */}
           <TaskBanner tasks={tasks.filter((t: any) => !t.aspect)} />
-          {progress && (
-            <InvoiceProgress
-              sales={isSalesInvoice}
-              handedOver={retail && isSalesInvoice && !doc.to_deliver}
-              goods={progress.goods as never}
-              payment={progress.payment as never}
-              unit={progress.unit}
-              receiveHref={isSalesInvoice
-                ? `/sales/deliver?invoice=${doc.id}`
-                : `/purchases/receive/new?match_invoice_id=${doc.id}`}
-              payHref={isSalesInvoice
-                ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
-                // The supplier travels with the invoice. Without it the
-                // settlement screen opens with nobody chosen, so it lists no
-                // bills at all — and the amount it had filled in is thrown
-                // away the moment somebody picks the supplier by hand.
-                : `/payables/pay?partner=${doc.partner_id}&invoice=${doc.id}`}
-            />
-          )}
         </>
       }
       stats={statsNode}
       menuActions={voidNode ?? undefined}
-      footer={footer}
+      payments={paymentsNode}
+      paymentsCount={paymentsCount}
+      journal={journalNode}
+      activity={activityNode}
+      activityCount={activityCount}
+      panel={panelNode}
+      statusLabel={pill.label}
+      statusTone={pill.tone}
+      partner={doc.partner_name ? { name: String(doc.partner_name), href: doc.partner_id ? `/partners/${doc.partner_id}` : null } : null}
+      dateLabel={shortDate(doc.doc_date)}
+      dueLabel={isInvoice && doc.due_date ? shortDate(doc.due_date) : null}
+      dueLate={overdue}
       badges={
         <>
           {versionBadge}
-          {isInvoice && outstanding > 0 && (
-            <span className="pill warn">{money(outstanding)} outstanding</span>
-          )}
-          {isInvoice && outstanding === 0 && <span className="pill ok">Settled</span>}
           {match && (
             <span className={`pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : ""}`}>
               {match.state === "FULL" ? (movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`)
@@ -1365,6 +1596,167 @@ export default async function DocumentPage({
         </div>
       )}
 
+
+      {/* The details, before the lines: who it is with on the left — and how
+          to reach them — and the document's own facts on the right. */}
+      <section className="card dl-details">
+        <div className="card-head"><h2>{label(doc.doc_type).replace(/\b\w/g, (c) => c.toUpperCase())} details</h2></div>
+        <div className="card-body">
+          <div className="dl-details-cols">
+            <dl className="dl-kv">
+              <div><dt>{partyWord}</dt><dd>
+                {doc.partner_id
+                  ? <Link href={`/partners/${doc.partner_id}`} className="dl-link">{doc.partner_name}</Link>
+                  : "—"}
+                {doc.partner_code && <span className="dl-code"> {doc.partner_code}</span>}
+              </dd></div>
+              {partnerInfo?.contact_person && <div><dt>Contact</dt><dd>{partnerInfo.contact_person}</dd></div>}
+              <div><dt>Phone</dt><dd>{partnerInfo?.phone
+                ? <a href={`tel:${partnerInfo.phone.replace(/[^\d+]/g, "")}`} className="dl-link">{partnerInfo.phone}</a> : "—"}</dd></div>
+              <div><dt>Email</dt><dd>{partnerInfo?.email
+                ? <a href={`mailto:${partnerInfo.email}`} className="dl-link">{partnerInfo.email}</a> : "—"}</dd></div>
+              {(partnerInfo?.address || partnerInfo?.township) && (
+                <div><dt>Address</dt><dd className="wrap">{[partnerInfo.address, partnerInfo.township].filter(Boolean).join(", ")}</dd></div>
+              )}
+              {doc.partner_id && (
+                <div><dt>Credit</dt><dd>
+                  {partnerInfo?.terms ? `${partnerInfo.terms} days` : "Cash, no credit days"}
+                  {partnerInfo?.credit_limit ? ` · limit ${money(partnerInfo.credit_limit)}` : ""}
+                </dd></div>
+              )}
+              {doc.salesman_name && (
+                <div><dt>Salesman</dt><dd>{doc.salesman_code} · {doc.salesman_name}</dd></div>
+              )}
+            </dl>
+            <dl className="dl-kv">
+              <div><dt>Date</dt><dd>{shortDate(doc.doc_date)}
+                {String(doc.posting_date) !== String(doc.doc_date) && <span className="dl-code"> · posted {shortDate(doc.posting_date)}</span>}</dd></div>
+              <div><dt>Due</dt><dd>{doc.due_date ? shortDate(doc.due_date) : "—"}</dd></div>
+              {doc.reference && (
+                <div><dt>Reference</dt><dd className="m">{doc.reference}</dd></div>
+              )}
+              <div><dt>Warehouse</dt><dd>{doc.location_code ? `${doc.location_name}` : "—"}
+                {doc.location_code && <span className="dl-code"> {doc.location_code}</span>}</dd></div>
+              {isInvoiceDoc && doc.payment_type ? (
+                <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : "Credit")}</span>
+                  {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
+              ) : moneyAccounts.length > 0 || doc.payment_channel_name ? (
+                <div><dt>{doc.doc_type === "CASH_TRANSFER" ? "Accounts" : "Paid through"}</dt><dd>
+                  {doc.payment_channel_name && <span className="pill">{doc.payment_channel_name}</span>}
+                  {moneyAccounts.length > 0 && <span className="m"> {moneyAccounts.map((m) => `${m.code} · ${m.name}`).join(" → ")}</span>}
+                  {doc.payment_reference && <span className="m"> · {doc.payment_reference}</span>}</dd></div>
+              ) : null}
+              {isSi && (
+                <div>
+                  <dt>Fulfilment</dt>
+                  <dd>
+                    {/* "Take now" and "Deliver later" are two different
+                        promises to the customer: said on the invoice's face. */}
+                    {doc.to_deliver ? (
+                      <span className={`pill ${stageDoc["DELIVERY"] ? "ok" : "warn"}`}>
+                        {stageDoc["DELIVERY"] ? "Delivered" : "Delivery pending"}
+                      </span>
+                    ) : (
+                      <span className="pill ok">Taken now</span>
+                    )}
+                  </dd>
+                </div>
+              )}
+              {doc.currency !== "MMK" && (
+                <div><dt>Currency</dt><dd className="m">{doc.currency} @ {Number(doc.exchange_rate)}</dd></div>
+              )}
+              {doc.source_doc_no && (
+                <div><dt>Source</dt><dd>
+                  <Link href={`/documents/${doc.source_id}`} className="m dl-link">{doc.source_doc_no}</Link>
+                </dd></div>
+              )}
+            </dl>
+          </div>
+          {/* A remark is a sentence, not a field: across both columns. */}
+          {doc.memo && (
+            <dl className="dl-kv dl-kv-wide"><div><dt>Remark</dt><dd className="wrap">{doc.memo}</dd></div></dl>
+          )}
+        </div>
+      </section>
+
+      {lines.length > 0 && (() => {
+        const serialCount = new Map<string, number>();
+        for (const sr of docSerials as any[]) serialCount.set(String(sr.item_code), (serialCount.get(String(sr.item_code)) ?? 0) + 1);
+        const linesNet = (lines as any[]).reduce((t, l) => t + Number(l.net_amount ?? 0), 0);
+        const lineDiscount = Math.max(0, linesNet - Number(doc.net_total));
+        return (
+          <>
+            <DocSection title="Items" count={`${lines.length} line${lines.length === 1 ? "" : "s"}`} caption={hideValue ? null : `Figures in ${doc.currency ?? "MMK"}`}
+              end={isInvoice && credited > 0.005 ? <span className="dl-pill info">{credited + 0.5 >= docTotal ? "Returned" : "Partly returned"}</span> : undefined}>
+              <div className="dl-tablewrap">
+                <table className="dl-table">
+                  <thead><tr><th>Item</th><th className="r" style={{ width: 70 }}>Qty</th><th style={{ width: 70 }}>Unit</th>
+                    <th className="r" style={{ width: 130 }}>{valueLabel}</th><th className="r" style={{ width: 140 }}>Amount</th></tr></thead>
+                  <tbody>
+                    {lines.map((l: any) => {
+                      const batches = (docBatches as any[]).filter((b) => b.item_id === l.item_id);
+                      const imeis = serialCount.get(String(l.item_code)) ?? 0;
+                      return (
+                        <Fragment key={l.id}>
+                          <tr>
+                            <td>
+                              <span className="dl-item">
+                                <span className="dl-item-icon" aria-hidden="true">{imeis > 0 ? <Smartphone size={16} /> : <Package size={16} />}</span>
+                                <span className="dl-item-text">
+                                  <span className="dl-strong codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
+                                  <small>{[l.item_code, multiBrand || l.brand_name ? l.brand_name : null,
+                                    imeis > 0 ? `Sold by IMEI, ${imeis} scanned` : null].filter(Boolean).join(" · ")}
+                                    {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}</small>
+                                </span>
+                              </span>
+                            </td>
+                            <td className="r">{qty(l.entered_qty)}</td>
+                            <td>{l.uom_code ?? "—"}</td>
+                            <td className="r">{hideValue ? "—" : money(unitValue(l))}</td>
+                            <td className="r dl-strong">{hideValue ? "—" : money(l.net_amount)}</td>
+                          </tr>
+                        {batches.length > 0 && (
+                          <tr className="batchtrail">
+                            <td />
+                            <td colSpan={4}>
+                              {batches.map((b, i) => (
+                                <span key={`${b.batch_no}-${i}`} className="batchtrail-item">
+                                  <span className="code">{b.batch_no}</span>
+                                  {" "}{qty(Math.abs(Number(b.qty)))}
+                                  {b.expiry_date && (
+                                    <span className="batchtrail-exp"> · expires {b.expiry_date}</span>
+                                  )}
+                                </span>
+                              ))}
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                  {!hideValue && <tfoot><tr><td colSpan={4}>Subtotal</td><td className="r">{money(linesNet)}</td></tr></tfoot>}
+                </table>
+              </div>
+            </DocSection>
+            {!hideValue && docTotal > 0 && (
+              <DocSection title={isInvoice ? "Invoice" : "Totals"}>
+                <dl className="dl-sum">
+                  <div><dt>Subtotal</dt><dd>{lines.length} item{lines.length === 1 ? "" : "s"}</dd><dd>{money(linesNet)} {doc.currency}</dd></div>
+                  {lineDiscount > 0.5 && <div><dt>Discount</dt><dd /><dd>– {money(lineDiscount)} {doc.currency}</dd></div>}
+                  {(isInvoice || Number(doc.tax_total) !== 0) && (
+                    <div><dt>Commercial tax</dt><dd>{Number(doc.tax_total) ? "" : "No tax on this sale"}</dd><dd>{money(doc.tax_total)} {doc.currency}</dd></div>
+                  )}
+                  <div className="dl-sum-total"><dt>Total</dt><dd /><dd>{money(docTotal)} {doc.currency}</dd></div>
+                  {isInvoice && (
+                    <div className="dl-sum-due"><dt>Balance due</dt><dd>{money(outstanding)} {doc.currency}</dd><dd><a href="#payments">See payments</a></dd></div>
+                  )}
+                </dl>
+              </DocSection>
+            )}
+          </>
+        );
+      })()}
 
       {movesGoods && (
         <LinkToOrder
@@ -1548,195 +1940,7 @@ export default async function DocumentPage({
           Not shown where the two halves are: they carry the same three
           figures and the same action, and saying it twice on one screen is
           what made this page feel cluttered rather than thorough. */}
-      {isInvoice && !progress && (
-        <div className="erp-settle">
-          <div className="erp-settle-figs">
-            <div className="erp-settle-fig">
-              <span className="erp-settle-label">Total</span>
-              <span className="erp-settle-value">{money(doc.gross_total)}</span>
-            </div>
-            <div className="erp-settle-fig">
-              <span className="erp-settle-label">Paid</span>
-              <span className="erp-settle-value">
-                {money(Math.max(0, Number(doc.gross_total) - outstanding))}
-              </span>
-            </div>
-            <div className="erp-settle-fig">
-              <span className="erp-settle-label">Outstanding</span>
-              <span className={`erp-settle-value ${outstanding > 0 ? "due" : "clear"}`}>
-                {money(outstanding)}
-              </span>
-            </div>
-          </div>
-          {outstanding > 0 && (
-            <Link
-              href={
-                doc.doc_type === "SALES_INVOICE"
-                  ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
-                  : `/payables/pay?partner=${doc.partner_id}&invoice=${doc.id}`
-              }
-              className="erp-btn erp-btn-primary erp-settle-act"
-            >
-              {doc.doc_type === "SALES_INVOICE" ? "Receive payment" : "Pay supplier"}
-            </Link>
-          )}
-        </div>
-      )}
 
-      <div className="grid2">
-        <div className="card">
-          <div className="card-body">
-            {/* Pairs rather than a flat list of dt/dd.
-                Flat, the value column took whatever the card was wide — a
-                document number sat in a thousand pixels of nothing, and the
-                eye had to travel the width of the screen to read a date. In
-                pairs the panel fills the space it occupies, and each value
-                sits on a rule that says where the field ends. */}
-            <dl className="kv ruled">
-              <div><dt>Number</dt><dd className="m">{doc.doc_no ?? "—"}</dd></div>
-              <div><dt>Partner</dt><dd>{doc.partner_name ? `${doc.partner_code} · ${doc.partner_name}` : "—"}</dd></div>
-              <div><dt>Date</dt><dd>{shortDate(doc.doc_date)}</dd></div>
-              <div><dt>Location</dt><dd>{doc.location_code ? `${doc.location_code} · ${doc.location_name}` : "—"}</dd></div>
-              <div><dt>Posting</dt><dd>{shortDate(doc.posting_date)}</dd></div>
-              <div><dt>Currency</dt><dd className="m">{doc.currency} @ {Number(doc.exchange_rate)}</dd></div>
-              <div><dt>Due</dt><dd>{doc.due_date ? shortDate(doc.due_date) : "—"}</dd></div>
-              {isInvoiceDoc && doc.payment_type ? (
-                <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : "Credit")}</span>
-                  {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
-              ) : moneyAccounts.length > 0 || doc.payment_channel_name ? (
-                <div><dt>{doc.doc_type === "CASH_TRANSFER" ? "Accounts" : "Paid through"}</dt><dd>
-                  {doc.payment_channel_name && <span className="pill">{doc.payment_channel_name}</span>}
-                  {moneyAccounts.length > 0 && <span className="m"> {moneyAccounts.map((m) => `${m.code} · ${m.name}`).join(" → ")}</span>}
-                  {doc.payment_reference && <span className="m"> · {doc.payment_reference}</span>}</dd></div>
-              ) : null}
-              {doc.salesman_name && (
-                <div><dt>Salesman</dt><dd>{doc.salesman_code} · {doc.salesman_name}</dd></div>
-              )}
-              {doc.reference && (
-                <div><dt>Reference</dt><dd className="m">{doc.reference}</dd></div>
-              )}
-              {isSi && (
-                <div>
-                  <dt>Fulfilment</dt>
-                  <dd>
-                    {/* Which way this invoice was raised, and whether the
-                        goods have gone. "Take now" and "Deliver later" are
-                        two different promises to the customer, and an invoice
-                        that has not shipped yet should say so on its face
-                        rather than in the absence of a delivery link. */}
-                    {doc.to_deliver ? (
-                      <span className={`pill ${stageDoc["DELIVERY"] ? "ok" : "warn"}`}>
-                        {stageDoc["DELIVERY"] ? "Delivered" : "Delivery pending"}
-                      </span>
-                    ) : (
-                      <span className="pill ok">Taken now</span>
-                    )}
-                  </dd>
-                </div>
-              )}
-              <div>
-                <dt>Source</dt>
-                <dd>
-                  {doc.source_doc_no
-                    ? <Link href={`/documents/${doc.source_id}`} className="m" style={{ color: "var(--link)" }}>{doc.source_doc_no}</Link>
-                    : "—"}
-                </dd>
-              </div>
-              {/* Last and across both columns: a remark is a sentence, not a
-                  field, and squeezing it into half the width wraps it into a
-                  column of three-word lines. */}
-              {doc.memo && (
-                <div className="kv-wide"><dt>Remark</dt><dd className="wrap">{doc.memo}</dd></div>
-              )}
-            </dl>
-          </div>
-        </div>
-
-        {/* The old Downstream card lived here. It is gone because the
-            Related Documents panel above says the same thing and more: both
-            directions, and the headings that have nothing under them. Two
-            lists of the same links, disagreeing about which ones count, is
-            worse than either. */}
-      </div>
-
-      {lines.length > 0 && (
-        <section>
-          <div className="card">
-            <div className="card-head"><h2>Lines</h2></div>
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th><th>Item</th><th>Unit</th>
-                    <th className="r">Qty</th><th className="r">{valueLabel}</th><th className="r">Net</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((l: any) => {
-                    /* Which lots this line actually moved. On the way in it
-                       is what was typed; on the way out it is whichever
-                       layers the engine drew, which is the only record of
-                       what the customer was handed — and the thing a recall
-                       asks for. */
-                    const batches = (docBatches as any[])
-                      .filter((b) => b.item_id === l.item_id);
-                    return (
-                      <Fragment key={l.id}>
-                        <tr>
-                          <td className="code">{l.line_no}</td>
-                          <td className="wrap">
-                            {multiBrand && l.brand_name && <span className="page-sub">{l.brand_name} · </span>}
-                            <span className="codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
-                            {l.foc_reason && <> <span className="pill warn">{l.foc_reason}</span></>}
-                          </td>
-                          <td className="code">{l.uom_code ?? "—"}</td>
-                          <td className="r">{qty(l.entered_qty)}</td>
-                          <td className="r">{hideValue ? "—" : money(unitValue(l))}</td>
-                          <td className="r">{hideValue ? "—" : money(l.net_amount)}</td>
-                        </tr>
-                        {batches.length > 0 && (
-                          <tr className="batchtrail">
-                            <td />
-                            <td colSpan={5}>
-                              {batches.map((b, i) => (
-                                <span key={`${b.batch_no}-${i}`} className="batchtrail-item">
-                                  <span className="code">{b.batch_no}</span>
-                                  {" "}{qty(Math.abs(Number(b.qty)))}
-                                  {b.expiry_date && (
-                                    <span className="batchtrail-exp"> · expires {b.expiry_date}</span>
-                                  )}
-                                </span>
-                              ))}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={5}>Total</td>
-                    <td className="r">{money(doc.gross_total)}</td>
-                  </tr>
-                  {isInvoice && (
-                    <>
-                      <tr className="tot-sub">
-                        <td colSpan={5}>Paid</td>
-                        <td className="r">{money(Math.max(0, Number(doc.gross_total) - outstanding))}</td>
-                      </tr>
-                      <tr className="tot-due">
-                        <td colSpan={5}>Amount due</td>
-                        <td className="r">{money(outstanding)}</td>
-                      </tr>
-                    </>
-                  )}
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        </section>
-      )}
 
       {docSerials.length > 0 && (
         <div className="card">
@@ -1764,56 +1968,8 @@ export default async function DocumentPage({
       />
 
       {/* Back to the asset subledger, when this journal carries assets. */}
-      {seeJournal && landedOn && <LcDocLinks journalEntryId={doc.journal_entry_id ?? null} documentId={doc.id} />}
-      {seeJournal && <FaDocLinks journalEntryId={doc.journal_entry_id ?? null} />}
       <HrDocLinks documentId={doc.id} />
 
-      {seeJournal && <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>Posting</h2>
-            <span className="m" style={{ color: "var(--muted)" }}>
-              {doc.entry_no ? `Journal ${doc.entry_no}` : "This document type posts nothing"}
-            </span>
-          </div>
-          {journal.length > 0 ? (
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>#</th><th>Account</th><th>Name</th>
-                    <th className="r">Debit</th><th className="r">Credit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {journal.map((l: any) => (
-                    <tr key={l.line_no}>
-                      <td className="code">{l.line_no}</td>
-                      <td className="code">{l.account_code}</td>
-                      <td className="wrap">{l.account_name}</td>
-                      <td className="r dr">{Number(l.debit) ? money(l.debit) : ""}</td>
-                      <td className="r cr">{Number(l.credit) ? money(l.credit) : ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={3}>
-                      {totalDebit === totalCredit ? "Balanced" : "OUT OF BALANCE"}
-                    </td>
-                    <td className="r dr">{money(totalDebit)}</td>
-                    <td className="r cr">{money(totalCredit)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ) : (
-            <div className="empty">
-              Orders commit nothing to the ledger — they exist to be fulfilled and reported against.
-            </div>
-          )}
-        </div>
-      </section>}
     </ErpDocShell>
   );
 }

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ScanLine, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingCart, SlidersHorizontal,
-  Store, TriangleAlert,
+  Store, TriangleAlert, Smartphone, Tablet, Laptop, Watch, Headphones, Fan, CreditCard, Wrench, Package,
 } from "lucide-react";
 import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
 import type { ReceiptView } from "@/lib/receipt";
@@ -47,6 +47,15 @@ type Line = {
 };
 
 const newKey = () => Math.random().toString(36).slice(2);
+/** What kind of thing a card is, by its type, for a product with no photo. */
+const TYPE_ICON: [RegExp, typeof Package][] = [
+  [/phone/i, Smartphone], [/ipad|tablet/i, Tablet], [/mac|laptop|notebook/i, Laptop], [/watch/i, Watch],
+  [/earbud|audio|airpod|headphone|speaker/i, Headphones], [/fan/i, Fan], [/sim/i, CreditCard], [/service|charge/i, Wrench],
+];
+const typeIcon = (type: string | null) => {
+  const Icon = TYPE_ICON.find(([re]) => re.test(type ?? ""))?.[1] ?? Package;
+  return <Icon size={22} strokeWidth={1.6} />;
+};
 const maskImei = (s: string) => (s.length > 8 ? `${s.slice(0, 4)}•••••${s.slice(-3)}` : s);
 /** Cards drawn at a time: a shelf of thousands is not thousands of nodes. */
 const PAGE = 30;
@@ -679,8 +688,10 @@ export function PosTill(props: {
                   const st = cardState(i);
                   return (
                     <article key={i.id} className={`pos3-card ${st}${i.photo ? "" : " nophoto"}`}>
-                      {i.photo && (
+                      {i.photo ? (
                         <span className="pos3-img"><img src={i.photo} alt="" loading="lazy" decoding="async" /></span>
+                      ) : (
+                        <span className="pos3-img pos3-tile" aria-hidden="true">{typeIcon(i.type)}</span>
                       )}
                       {inCart > 0 && <span className="pos3-badge" aria-label={tr("inCart", { n: inCart })}>{inCart}</span>}
                       <div className="pos3-info">
@@ -735,6 +746,10 @@ export function PosTill(props: {
             {props.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
+          {/* Lines, the slip, payment and options scroll together; only the
+              warnings and Complete sale stay pinned, so a long sale never
+              squeezes its own lines into a strip. */}
+          <div className="pos3-scroll">
           <div className="pos3-lines">
             {lines.length === 0 && (
               <div className="pos3-empty">
@@ -923,6 +938,8 @@ export function PosTill(props: {
             </details>
           </div>
 
+          </div>
+          <div className="pos3-foot">
           {issues.length > 0 && (
             <ul className="pos3-issues" role="status">
               {issues.map((t) => <li key={t}><TriangleAlert size={14} aria-hidden="true" /> {t}</li>)}
@@ -931,6 +948,7 @@ export function PosTill(props: {
           <button type="button" className="complete" disabled={saving || lines.length === 0 || issues.length > 0} onClick={post}>
             {saving ? tr("posting") : tr("complete", { amount: money(totals.total) })}
           </button>
+          </div>
         </aside>
       </div>
 

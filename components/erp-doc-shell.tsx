@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ErpCopyNumber, ErpPrintButton, ErpReceiptButton } from "@/components/erp-doc-toolbar";
 import { ErpMore } from "@/components/erp-more";
+import { DocLayout, DocFlow, DocPanelSection, type StatusTone } from "@/components/doc-layout";
+import type { DocTab } from "@/components/doc-tabs";
 
 /**
  * The chrome every document sits in: breadcrumb, action bar with the chevron
@@ -47,7 +49,30 @@ export function ErpDocShell({
   docId, docNo, typeLabel, status, listHref, listLabel,
   chain, actions, menuActions, badges, children, backHref, backLabel,
   banner, stats, footer, receiptHref, headActions, summary,
+  payments, paymentsCount, journal, activity, activityCount, related, panelExtra,
+  panel, statusLabel, statusTone, partner, dateLabel, dueLabel, dueLate,
 }: {
+  /** The whole side panel, when the page builds it; otherwise the chain and related. */
+  panel?: React.ReactNode;
+  /** What the status pill says, when the page knows better than the posting status. */
+  statusLabel?: string;
+  statusTone?: StatusTone;
+  partner?: { name: string; href?: string | null } | null;
+  dateLabel?: string | null;
+  dueLabel?: string | null;
+  dueLate?: boolean;
+  /** Where the money stands: shown as its own tab when given (invoices). */
+  payments?: React.ReactNode;
+  paymentsCount?: number;
+  /** What it posted to the ledger: its own tab, for those who may see it. */
+  journal?: React.ReactNode;
+  /** Who did what, and when: its own tab. */
+  activity?: React.ReactNode;
+  activityCount?: number;
+  /** What it is joined to, kept in the side panel under the chain. */
+  related?: React.ReactNode;
+  /** Anything else the side panel should hold, under related documents. */
+  panelExtra?: React.ReactNode;
   /** The next step and the corrections, beside the number. */
   headActions?: React.ReactNode;
   /** Who, how much, when — one line under the number. */
@@ -88,6 +113,53 @@ export function ErpDocShell({
   footer?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  /*
+   * The tabbed layout. Details keeps the order the sheet always had — what it
+   * is and how it stands, what to do, what to know first, then the detail —
+   * and the three questions that are not about the document's own content
+   * get a tab each. A page that passes none of them (none does yet but this
+   * one) renders exactly the sections it always rendered, under Details.
+   */
+  if (payments || journal || activity || related) {
+    const tabs: DocTab[] = [
+      { id: "details", label: "Details", content: (
+        <div className="dl-stack">
+          {stats}
+          {actions && <div className="erp-actions">{actions}</div>}
+          {banner}
+          {children}
+          {footer}
+        </div>
+      ) },
+      ...(payments ? [{ id: "payments", label: "Payments", count: paymentsCount, content: <div className="dl-stack">{payments}</div> }] : []),
+      ...(journal ? [{ id: "journal", label: "Journal", content: <div className="dl-stack">{journal}</div> }] : []),
+      ...(activity ? [{ id: "activity", label: "Activity", count: activityCount, content: <div className="dl-stack">{activity}</div> }] : []),
+    ];
+    return (
+      <DocLayout
+        backHref={backHref} backLabel={backLabel} listHref={listHref} listLabel={listLabel}
+        typeLabel={typeLabel} docNo={docNo} status={statusLabel ?? status} statusTone={statusTone} badges={badges} summary={summary}
+        partner={partner} date={dateLabel} due={dueLabel} dueLate={dueLate}
+        actions={
+          <>
+            {headActions}
+            {receiptHref && <ErpReceiptButton href={receiptHref} />}
+            <ErpPrintButton docId={docId} />
+            {menuActions && <ErpMore>{menuActions}</ErpMore>}
+          </>
+        }
+        tabs={tabs}
+        panel={panel ?? (
+          <>
+            {chain.length > 0 && <DocPanelSection title="Flow"><DocFlow chain={chain} docNo={docNo} /></DocPanelSection>}
+            {related}
+            {panelExtra}
+          </>
+        )}
+      />
+    );
+  }
+
   const currentIndex = chain.findIndex((s) => s.doc?.doc_no === docNo);
 
   return (

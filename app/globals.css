@@ -11313,3 +11313,211 @@ table.ctable.stable td.r { padding-right: 14px; }
 .dp-lines { overflow-x: auto; }
 .dp-lines-bar { flex-wrap: wrap; }
 @media (max-width: 640px) { .dp-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dp-table { min-width: 460px; } }
+
+/* ========================================================== document ====
+   The posted-document layout (components/doc-layout.tsx, doc-tabs.tsx,
+   app/documents/[id]/page.tsx): header with the actions on the right, tabs
+   with one job each, the panel beside them. Fluid width — folding the side nav
+   hands its width to the document. Greys are mixed from --ink so dark mode
+   follows; every rule is scoped to .dl, so no other page changes. */
+.dl {
+  --dl-soft: color-mix(in srgb, var(--ink) 5.5%, transparent);
+  --dl-soft-2: color-mix(in srgb, var(--ink) 9%, transparent);
+  --dl-rule: color-mix(in srgb, var(--ink) 9%, transparent);
+  --dl-muted: color-mix(in srgb, var(--ink) 60%, transparent);
+  display: grid; gap: 0; min-width: 0; color: var(--ink); font-size: 0.9375rem;
+}
+.dl-who a, .dl-plist a, .dl-sum-due a { color: inherit; }
+/* The advance waiting on an invoice: blue, like every other notice here. */
+.dl .advbanner { background: color-mix(in srgb, var(--blue) 9%, transparent); border: 0; border-radius: 12px; color: var(--ink); }
+.dl .advbanner svg { color: var(--blue-ink); }
+.dl-quiet { margin: 0; color: var(--dl-muted); font-size: 0.8125rem; }
+.dl-strong { font-weight: 600; }
+
+/* Header */
+.dl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-bottom: 14px; }
+.dl-head-id { display: grid; gap: 4px; min-width: 0; }
+.dl-back { display: inline-flex; align-items: center; gap: 6px; width: fit-content; font-size: 0.9375rem; color: var(--dl-muted); }
+.dl-back:hover { color: var(--ink); }
+.dl-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dl-title h1 { margin: 0; font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.dl-meta { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; font-size: 0.9375rem; }
+.dl-dot { color: var(--dl-muted); }
+.dl-states { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.dl-who { display: inline-flex; align-items: center; gap: 8px; }
+.dl-avatar { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--dl-soft-2);
+  font-size: 0.625rem; font-weight: 600; letter-spacing: 0.02em; flex: none; }
+.dl-avatar.lg { width: 36px; height: 36px; font-size: 0.8125rem; }
+.dl-when { display: inline-flex; align-items: center; gap: 6px; }
+.dl-when svg { color: var(--dl-muted); }
+.dl-when.late { font-weight: 700; }
+.dl-pill { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; line-height: 1.35; white-space: nowrap; }
+.dl-pill.bad { background: var(--bad); color: #fff; }
+.dl-pill.warn { background: #F9D85A; color: #3B2F00; }
+.dl-pill.ok, .dl-pill.info { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue-ink); }
+.dl-pill.neutral { background: var(--dl-soft-2); color: var(--ink); }
+.dl-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.dl .dl-actions > :is(.btn, .erp-hbtn, a, button),
+.dl .dl-actions > .erp-more > .erp-hbtn,
+.dl .dl-actions > :not(.erp-more) > :is(a.btn, button.btn) {
+  height: 32px; min-height: 32px; padding: 0 12px; font-size: 0.875rem; font-weight: 500; line-height: 1;
+  border-radius: 8px; gap: 6px; display: inline-flex; align-items: center;
+  background: var(--dl-soft); color: var(--ink); border: 0; box-shadow: none;
+}
+.dl .dl-actions > :is(.btn, .erp-hbtn, a, button):hover,
+.dl .dl-actions > .erp-more > .erp-hbtn:hover { background: var(--dl-soft-2); }
+.dl .dl-actions > :is(a.btn.primary, a.primary, button.primary),
+.dl .dl-actions > :not(.erp-more) > :is(a.btn.primary, button.btn.primary) { background: var(--ink); color: var(--surface); }
+.dl .dl-actions :is(.btn, .erp-hbtn) svg { width: 15px; height: 15px; }
+
+/* Tabs */
+.dl-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--dl-rule); margin: 0 0 18px; overflow-x: auto; scrollbar-width: none; }
+.dl-tabs .dl-tab {
+  position: relative; background: transparent; color: var(--ink); border: 0; border-radius: 8px 8px 0 0;
+  padding: 10px 12px 9px; font-size: 0.9375rem; font-weight: 500; white-space: nowrap; min-height: 0; height: auto;
+}
+.dl-tabs .dl-tab:hover { background: var(--dl-soft); color: var(--ink); }
+.dl-tabs .dl-tab.on { background: var(--dl-soft); font-weight: 600; }
+.dl-tabs .dl-tab.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--ink); border-radius: 2px; }
+.dl-pane[hidden] { display: none; }
+
+/* Body */
+.dl-body { display: grid; gap: 32px; align-items: start; min-width: 0; }
+.dl-body.with-panel { grid-template-columns: minmax(0, 1fr) 310px; }
+.dl-main { min-width: 0; }
+.dl-panel { position: sticky; top: 12px; display: grid; gap: 18px; min-width: 0; }
+@media (max-width: 1100px) {
+  .dl-body.with-panel { grid-template-columns: minmax(0, 1fr); }
+  .dl-panel { position: static; border-top: 1px solid var(--dl-rule); padding-top: 18px; }
+}
+.dl-stack { display: grid; gap: 26px; min-width: 0; }
+.dl-stack > * { margin-top: 0; margin-bottom: 0; }
+
+/* Sections and tables */
+.dl-sec { display: grid; gap: 10px; min-width: 0; }
+.dl-sec-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dl-sec-head h2 { margin: 0; font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+.dl-count { font-size: 0.78rem; font-weight: 500; padding: 1px 9px; border-radius: 999px; background: var(--dl-soft-2); }
+.dl-caption { font-size: 0.8125rem; color: var(--dl-muted); }
+.dl-sec-end { margin-left: auto; }
+.dl-tablewrap { overflow-x: auto; }
+.dl-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; font-variant-numeric: tabular-nums; }
+.dl-table th { text-align: left; font-weight: 500; padding: 9px 12px; border-bottom: 1px solid var(--dl-rule); background: none; color: var(--ink); white-space: nowrap; }
+.dl-table td { padding: 10px 12px; border-bottom: 1px solid var(--dl-rule); vertical-align: middle; background: none; }
+.dl-table :is(th, td):first-child { padding-left: 0; }
+.dl-table :is(th, td):last-child { padding-right: 0; }
+.dl-table .r { text-align: right; }
+.dl-table td small { display: block; font-size: 0.78rem; color: var(--dl-muted); margin-top: 2px; }
+.dl-table tfoot td { font-weight: 700; border-bottom: 0; padding-top: 12px; }
+.dl-table tr.dl-group td { font-size: 0.78rem; font-weight: 600; padding-top: 8px; padding-bottom: 8px; }
+.dl-table tr.dl-void td { color: var(--dl-muted); text-decoration: line-through; }
+.dl-table a { color: inherit; }
+.dl-table a:hover { color: var(--link); }
+.dl-item { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dl-item-icon { color: var(--dl-muted); flex: none; display: inline-grid; }
+.dl-item-text { display: grid; min-width: 0; }
+.dl-item-text small { margin-top: 1px; }
+.dl-table .batchtrail td { padding-top: 0; font-size: 0.78rem; }
+
+/* Totals: label, note, amount */
+.dl-sum { margin: 0; display: grid; }
+.dl-sum > div { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 12px; padding: 7px 0; align-items: baseline; }
+.dl-sum dt { font-weight: 400; }
+.dl-sum dd { margin: 0; }
+.dl-sum dd:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.dl-sum-total { font-weight: 700; }
+.dl-sum-total dt { font-weight: 400; }
+.dl-sum-due { border-top: 1px solid var(--dl-rule); margin-top: 6px; padding-top: 14px !important; }
+.dl-sum-due dd:nth-child(2) { font-weight: 700; }
+.dl-sum-due a { font-weight: 500; }
+.dl-sum-due a:hover { color: var(--link); }
+
+/* The details block: compact, the partner left and the document right */
+.dl-details.card { border: 0; box-shadow: none; background: transparent; margin: 0; padding: 0; }
+.dl-details .card-head { padding: 0 0 8px; border: 0; min-height: 0; background: none; }
+.dl-details .card-head h2 { margin: 0; font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+.dl-details .card-body { padding: 0; display: grid; gap: 0; }
+.dl-details-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 36px; }
+@media (max-width: 760px) { .dl-details-cols { grid-template-columns: minmax(0, 1fr); } }
+.dl-kv { margin: 0; display: grid; align-content: start; }
+.dl-kv > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 4px 0; align-items: baseline; font-size: 0.875rem; }
+.dl-kv dt { color: var(--dl-muted); font-weight: 400; }
+.dl-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.dl-kv dd .pill { font-size: 0.72rem; padding: 1px 8px; }
+.dl-link { color: var(--link) !important; }
+.dl-link:hover { text-decoration: underline; }
+.dl-code { font-size: 0.8125rem; color: var(--dl-muted); }
+
+/* Side panel */
+.dl-psec { border: 0; }
+.dl-psec > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+  font-size: 0.9375rem; font-weight: 600; padding: 2px 0 10px; }
+.dl-psec > summary::-webkit-details-marker { display: none; }
+.dl-psec > summary svg { color: var(--dl-muted); transition: transform 150ms; transform: rotate(180deg); }
+.dl-psec:not([open]) > summary svg { transform: none; }
+.dl-psec-body { display: grid; gap: 8px; font-size: 0.875rem; }
+.dl-meter { height: 8px; border-radius: 999px; background: var(--dl-soft-2); overflow: hidden; }
+.dl-meter i { display: block; height: 100%; border-radius: 999px; background: var(--blue); }
+.dl-meter.open i, .dl-meter.late i { background: #F2C230; }
+.dl-meter-read, .dl-meter-due { margin: 0; }
+.dl-meter-wrap { display: grid; gap: 8px; }
+.dl-meter-due { font-size: 0.78rem; font-weight: 600; }
+.dl-flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.dl-flow-step { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding: 0 0 14px 14px; }
+.dl-flow-step::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--ink); border-radius: 2px; }
+.dl-flow-step:not(:last-child)::before { bottom: 4px; }
+.dl-flow-step:last-child { padding-bottom: 2px; }
+.dl-flow-dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; color: var(--dl-muted); }
+.dl-flow-step.done .dl-flow-dot { background: var(--ink); color: var(--surface); }
+.dl-flow-step.here .dl-flow-dot { color: var(--ink); }
+.dl-flow-step.optional .dl-flow-text, .dl-flow-step.todo .dl-flow-text { opacity: 0.6; }
+.dl-flow-text { display: grid; gap: 1px; min-width: 0; }
+.dl-flow-label { font-weight: 500; font-size: 0.9375rem; }
+.dl-flow-sub { font-size: 0.78rem; color: var(--dl-muted); display: inline-flex; align-items: center; gap: 4px; overflow-wrap: anywhere; }
+.dl-flow-sub.link { color: var(--link); }
+.dl-plist { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.dl-plist li > :is(a, div) { display: flex; align-items: center; gap: 10px; padding: 6px 8px; margin: 0 -8px; border-radius: 8px; }
+.dl-plist li > a:hover { background: var(--dl-soft); }
+.dl-plist-text { display: grid; min-width: 0; flex: 1; }
+.dl-plist-text small { font-size: 0.78rem; color: var(--dl-muted); }
+.dl-plist b { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dl-advance { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px; font-size: 0.875rem;
+  background: color-mix(in srgb, var(--blue) 10%, transparent); }
+.dl-advance a { color: var(--link); font-weight: 500; }
+
+/* Activity */
+.dl-time { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.dl-time > li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }
+.dl-time-card { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 10px; background: var(--dl-soft-2); font-size: 0.9375rem; }
+.dl-time-card svg { color: var(--dl-muted); flex: none; }
+.dl-time-card a { color: var(--link); }
+.dl-time-at { display: block; margin-top: 6px; font-size: 0.78rem; color: var(--dl-muted); }
+
+/* Till: the sale panel scrolls as one column — lines, slip, payment — and
+   only the warnings and Complete sale stay pinned at its foot. */
+.pos3-cart > .pos3-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; margin: 0 -16px; padding: 0 16px; }
+.pos3-scroll > .pos3-lines { flex: none; min-height: 96px; overflow: visible; }
+.pos3-cart > .pos3-foot { flex: none; display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.pos3-cart { overflow: hidden; }
+/* A card with no photo: what kind of thing it is, in the same tile. */
+.pos3-tile { color: var(--ink); background: var(--ground); }
+.pos3-tile svg { opacity: 0.75; }
+@media (max-width: 1100px) {
+  .pos3-cart { overflow: visible; }
+  .pos3-cart > .pos3-scroll { overflow: visible; margin: 0; padding: 0; }
+}
+
+/* Inside a document's tabs, the older cards (attachments, IMEIs, matching, the
+   order's progress and items) read as sections like the rest: no frame, the
+   same heading size. Their forms and buttons keep their own styles. */
+.dl-stack > :is(.card, section > .card, .erp-card) { border: 0; box-shadow: none; background: transparent; }
+.dl-stack > .card > .card-head, .dl-stack > section > .card > .card-head, .dl-stack > .erp-card > .erp-card-head { padding: 0 0 8px; border: 0; background: none; }
+.dl-stack > .card > .card-head h2, .dl-stack > section > .card > .card-head h2, .dl-stack > .erp-card > .erp-card-head h2 { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.01em; }
+.dl-stack > .card > .card-body, .dl-stack > .erp-card > .erp-card-body { padding-left: 0; padding-right: 0; }
+/* The till is black, white and blue: its "good" tone (stock in, free, a
+   discount) is the app blue, not green. Scoped to the till and its picker. */
+.pos3-page { --ok: var(--blue-ink); }
+/* Sized to the room below its own top, so Complete sale is never below the
+   fold; sticky at 12px once the page scrolls. */
+.pos3-cart { max-height: calc(100dvh - 96px); }
+@media (max-width: 1100px) { .pos3-cart { max-height: none; } }
