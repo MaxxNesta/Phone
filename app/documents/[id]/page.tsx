@@ -1,5 +1,6 @@
 import { hasModule } from "@/lib/plans";
 import { DISPLAY_TZ, todayLocal } from "@/lib/format";
+import { ordersAndDeliveriesOn } from "@/lib/features";
 import { DocSection, DocPanelSection, DocPaymentMeter, DocTimeline, DocPanelList, DocFlow,
   type StatusTone, type DocEventIcon } from "@/components/doc-layout";
 import { Smartphone, Package } from "lucide-react";
@@ -17,7 +18,6 @@ import { DocumentAttachments } from "@/components/document-attachments";
 import { uploadAttachment, deleteAttachment } from "@/lib/actions";
 import { storageConfigured } from "@/lib/r2";
 import { planVoid } from "@/lib/void";
-import { RelatedDocumentsPanel } from "@/components/related-documents";
 import { serialsOnDocument } from "@/lib/phone";
 import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
@@ -66,7 +66,8 @@ import {
   getOpenPurchaseOrders, getReceiptDraftForOrder,
   getChainDocuments,
   getDocumentAttachments,
-  getSettlingPayment,
+  getSettlingPayments,
+  getPaidInvoices,
   isGrirOutstanding,
   getMatchStatus,
   getStockByLocation,
@@ -227,7 +228,10 @@ export default async function DocumentPage({
   const company = await getCompany();
   const retail = Boolean(company?.retail_mode);
   const landedOn = hasModule(company, "landed_cost");
-  const chain = (CHAINS[doc.doc_type] ?? [doc.doc_type]).filter((s) => !(retail && s === "DELIVERY"));
+  // A delivery stage only where the shop does not use deliveries: a retail
+  // shop with orders and deliveries switched on delivers, and its chain
+  // must show (and link) the delivery like any other.
+  const chain = (CHAINS[doc.doc_type] ?? [doc.doc_type]).filter((s) => !(retail && !ordersAndDeliveriesOn(company) && s === "DELIVERY"));
   const totalDebit = journal.reduce((s: number, l: any) => s + Number(l.debit), 0);
   const totalCredit = journal.reduce((s: number, l: any) => s + Number(l.credit), 0);
 
@@ -251,16 +255,27 @@ export default async function DocumentPage({
    */
   const stageDocs: Record<string, { id: string; doc_no: string }[]> = {};
   const stageDoc: Record<string, { id: string; doc_no: string } | null> = {};
+  // A payment is joined to its chain by what it paid, not by a source
+  // document: trace back up from each bill it was applied to.
+  // ponytail: first 10 bills only; the panel's "Applied to" list has them all.
+  const isPayment = doc.doc_type === "SUPPLIER_PAYMENT" || doc.doc_type === "CUSTOMER_RECEIPT";
+  const flowDocs = isPayment
+    ? [...new Map((await Promise.all(((await getPaidInvoices(doc.id)) as any[]).slice(0, 10).map((i) => getChainDocuments(i.id))))
+        .flat().map((d: any) => [d.id, d])).values()]
+    : (chainDocuments as any[]);
   for (const step of chain) {
     if (step === "SUPPLIER_PAYMENT" || step === "CUSTOMER_RECEIPT") continue;
-    stageDocs[step] = (chainDocuments as any[]).filter((d) => d.doc_type === step);
+    stageDocs[step] = flowDocs.filter((d) => d.doc_type === step);
     stageDoc[step] = stageDocs[step][0] ?? null;
   }
-  const invoiceStage = stageDoc["PURCHASE_INVOICE"] ?? stageDoc["SALES_INVOICE"] ?? null;
+  const invoiceStep = chain.includes("PURCHASE_INVOICE") ? "PURCHASE_INVOICE" : "SALES_INVOICE";
   const paymentStep = chain.includes("SUPPLIER_PAYMENT") ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT";
   if (chain.includes(paymentStep)) {
-    stageDoc[paymentStep] = invoiceStage ? ((await getSettlingPayment(invoiceStage.id)) as any) : null;
-    stageDocs[paymentStep] = stageDoc[paymentStep] ? [stageDoc[paymentStep]!] : [];
+    // Every payment on every bill at the invoice stage: a bill paid in two
+    // goes, or two bills on one receipt, each show their own.
+    stageDocs[paymentStep] = (await getSettlingPayments((stageDocs[invoiceStep] ?? []).map((d) => d.id))) as any[];
+    if (isPayment && !stageDocs[paymentStep].some((d) => d.id === doc.id)) stageDocs[paymentStep].unshift({ id: doc.id, doc_no: doc.doc_no });
+    stageDoc[paymentStep] = stageDocs[paymentStep][0] ?? null;
   }
 
   // Only offer to match this document against its counterpart if it
@@ -386,7 +401,12 @@ export default async function DocumentPage({
   // settled that the ledger still holds open.
   // A counter sale handed the goods over itself: there is no delivery to
   // match it against, so no "not delivered" to report.
-  const match = (isGr || isPi || isDel || (isSi && !(retail && !doc.to_deliver)))
+  // One billed from a delivery (a retail shop with deliveries switched on) has one.
+  const fromDelivery = (chainDocuments as any[]).some((d) => d.doc_type === "DELIVERY");
+  // A counter sale handed the goods over itself: its delivery stage was not
+  // needed, not still owed.
+  const counterSale = isSi && retail && !doc.to_deliver && !fromDelivery;
+  const match = (isGr || isPi || isDel || (isSi && !(retail && !doc.to_deliver && !fromDelivery)))
     ? await getMatchStatus(doc.id) : null;
 
   // What voiding would do, and what stands in the way. The same analysis the
@@ -996,7 +1016,10 @@ export default async function DocumentPage({
   const panelRelated = isInvoice
     ? { source: related.source.filter((g) => !isMoneyGroup(g)), downstream: related.downstream.filter((g) => !isMoneyGroup(g)) }
     : related;
-  const relatedNode = <RelatedDocumentsPanel related={panelRelated} />;
+  const linkedDocs = [...panelRelated.source, ...panelRelated.downstream].flatMap((g) => g.docs.map((d) => ({ g: g.label, d })))
+    .filter(({ d }) => d.id !== doc.id)
+    .map(({ g, d }) => ({ id: d.id, title: d.docNo, sub: `${g} · ${shortDate(d.docDate)}${d.status === "REVERSED" ? " · voided" : ""}`,
+      end: Number(d.amount) ? `${money(d.amount)} ${doc.currency ?? ""}` : d.qty ? `${qty(String(d.qty))} units` : null, href: `/documents/${d.id}` }));
   /** A date as YYYY-MM-DD, whatever the driver handed back. */
   const ymd = (v: unknown): string => {
     if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
@@ -1110,7 +1133,7 @@ export default async function DocumentPage({
         badges={versionBadge}
         activity={activityNode}
         activityCount={activityCount}
-        related={relatedNode}
+        related={<DocPanelSection title="Related documents"><DocPanelList items={linkedDocs} empty="Nothing raised from this order yet" /></DocPanelSection>}
         unitWord={unitWord ?? null}
         openLineCount={orderLines.length || undefined}
         /* Named from the same panel that always had them right, rather than
@@ -1129,7 +1152,7 @@ export default async function DocumentPage({
           doc: stageDoc[step] ?? null,
           docs: stageDocs[step] ?? [],
           href: stageDoc[step] ? null : nextStageHref(step),
-          optional: OPTIONAL_STAGE.has(step),
+          optional: OPTIONAL_STAGE.has(step) || (counterSale && step === "DELIVERY"),
         }))}
         /* Receiving lives at one door now. The button below already pointed at
            /purchases/receive?order=, and that page renders the very same
@@ -1427,12 +1450,8 @@ export default async function DocumentPage({
     doc: stageDoc[step] ?? null,
     docs: stageDocs[step] ?? [],
     href: stageDoc[step] ? null : nextStageHref(step),
-    optional: OPTIONAL_STAGE.has(step),
+    optional: OPTIONAL_STAGE.has(step) || (counterSale && step === "DELIVERY"),
   }));
-  const linkedDocs = [...panelRelated.source, ...panelRelated.downstream].flatMap((g) => g.docs.map((d) => ({ g: g.label, d })))
-    .filter(({ d }) => d.id !== doc.id)
-    .map(({ g, d }) => ({ id: d.id, title: d.docNo, sub: `${g} · ${shortDate(d.docDate)}${d.status === "REVERSED" ? " · voided" : ""}`,
-      end: Number(d.amount) ? `${money(d.amount)} ${doc.currency ?? ""}` : d.qty ? `${qty(String(d.qty))} units` : null, href: `/documents/${d.id}` }));
   const panelNode = (
     <>
       {isInvoice && docTotal > 0 && (
@@ -1497,7 +1516,7 @@ export default async function DocumentPage({
         label: label(step).replace(/\b\w/g, (c) => c.toUpperCase()),
         doc: stageDoc[step] ?? null,
         href: stageDoc[step] ? null : nextStageHref(step),
-        optional: OPTIONAL_STAGE.has(step),
+        optional: OPTIONAL_STAGE.has(step) || (counterSale && step === "DELIVERY"),
       }))}
       banner={
         <>
@@ -1561,7 +1580,7 @@ export default async function DocumentPage({
         <>
           {versionBadge}
           {match && (
-            <span className={`pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : ""}`}>
+            <span className={`dl-pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : "neutral"}`}>
               {match.state === "FULL" ? (movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`)
                 : match.state === "PARTIAL" ? (movesGoods ? "Partly invoiced" : `Partly ${goodsWord}`)
                 : (movesGoods ? "Not invoiced" : `Not ${goodsWord}`)}
@@ -1840,7 +1859,7 @@ export default async function DocumentPage({
         <div className="card">
           <div className="card-head">
             <h2>{movesGoods ? "Invoiced" : Goods}</h2>
-            <span className={`pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : ""}`}>
+            <span className={`dl-pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : "neutral"}`}>
               {match.state === "FULL"
                 ? movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`
                 : match.state === "PARTIAL"

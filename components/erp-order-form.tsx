@@ -156,7 +156,7 @@ export function ErpOrderForm({
         <section className="erp-card">
           <div className="erp-card-head">
             <h2>{config.fulfilledLabel === "Delivered" ? "Delivery" : "Receiving"} progress</h2>
-            <span className={`pill plain ${complete ? "ok" : started ? "warn" : ""}`}>
+            <span className={`dl-pill ${complete ? "ok" : started ? "warn" : "neutral"}`}>
               {progressWord}
             </span>
           </div>
@@ -326,7 +326,8 @@ export function ErpOrderForm({
     return (
       <DocLayout
         backHref={backHref} backLabel={backLabel} listHref={config.listHref} listLabel={config.listLabel}
-        typeLabel={config.typeLabel} docNo={docNo} status={status} badges={badges}
+        typeLabel={config.typeLabel} docNo={docNo} status={status}
+        badges={<>{badges}{status === "POSTED" && totalOrdered > 0 && <span className={`dl-pill ${complete ? "ok" : started ? "warn" : "neutral"}`}>{progressWord}</span>}</>}
         summary={netTotal > 0 ? money(netTotal) : undefined}
         actions={<>{fulfilActions}<ErpPrintButton docId={docId} />{menuActions && <ErpMore>{menuActions}</ErpMore>}</>}
         tabs={[

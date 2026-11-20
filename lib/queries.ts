@@ -1709,9 +1709,8 @@ function versionsOf(documentId: string) {
  * Every document in this one's own chain — the real documents behind a
  * diagram like PO → GR → PI → Payment, so the detail page can link each
  * stage to whatever actually exists instead of just labelling the stage
- * names. Two separate walks, not one connected-component search: upward
- * via source_document_id is always a single deterministic path (a document
- * has at most one source), but a shared ancestor can have more than one
+ * names. Two separate walks, not one connected-component search: a
+ * shared ancestor can have more than one
  * child — a purchase order with two receipts, say. Expanding outward from
  * that ancestor would surface a *sibling's* invoice as if it belonged to
  * the receipt actually being viewed. Walking down only from the document
@@ -1726,26 +1725,54 @@ export async function getChainDocuments(documentId: string) {
   if (!self) return [];
   seen.set(self.id, self);
 
-  let cursor = self.source_document_id;
-  for (let hop = 0; hop < 3 && cursor; hop++) {
-    const [row] = (await sql`
-      select id, doc_type, doc_no, source_document_id
-        from document where id = fn_current_document(${cursor})`) as Row[];
-    if (!row || seen.has(row.id)) break;
-    seen.set(row.id, row);
-    cursor = row.source_document_id;
+  /* Three ways one document answers another, the same three the related
+     documents panel reads: the document's own source, a line raised from
+     another document's line (a receipt against a bill, a bill raised from an
+     order), and a fulfilment_link written when a receipt or delivery is
+     linked to its order afterwards. Walking only the first left a receipt
+     linked later with no order on its flow, and the order with no receipt. */
+  let up = [self.id];
+  for (let hop = 0; hop < 3 && up.length > 0; hop++) {
+    const rows = (await sql`
+      select id, doc_type, doc_no, source_document_id from document
+       where id in (
+         select fn_current_document(x.pid) from (
+           select c.source_document_id as pid from document c
+            where c.id = any(${up}::uuid[]) and c.source_document_id is not null
+           union
+           select pl.document_id from document_line cl
+             join document_line pl on pl.id = cl.source_line_id
+            where cl.document_id = any(${up}::uuid[])
+           union
+           select ol.document_id from fulfilment_link fl
+             join document_line fdl on fdl.id = fl.fulfilment_line_id
+             join document_line ol on ol.id = fl.order_line_id
+            where fdl.document_id = any(${up}::uuid[])) x)`) as Row[];
+    up = [];
+    for (const r of rows) if (!seen.has(r.id)) { seen.set(r.id, r); up.push(r.id); }
   }
 
   let frontier = [self.id];
   for (let hop = 0; hop < 3 && frontier.length > 0; hop++) {
     const rows = (await sql`
+      with mine as (
+        select v.id from document v
+          join document self on self.company_id = v.company_id and self.doc_no = v.doc_no
+         where self.id = any(${frontier}::uuid[]))
       select id, doc_type, doc_no, source_document_id
         from document
-       where source_document_id in (
-               select v.id from document v
-                 join document self on self.company_id = v.company_id
-                                   and self.doc_no = v.doc_no
-                where self.id = any(${frontier}::uuid[]))`) as Row[];
+       where superseded_by_document_id is null
+         and id in (
+           select c.id from document c where c.source_document_id in (select id from mine)
+           union
+           select cl.document_id from document_line cl
+             join document_line pl on pl.id = cl.source_line_id
+            where pl.document_id in (select id from mine)
+           union
+           select fdl.document_id from fulfilment_link fl
+             join document_line ol on ol.id = fl.order_line_id
+             join document_line fdl on fdl.id = fl.fulfilment_line_id
+            where ol.document_id in (select id from mine))`) as Row[];
     const next: string[] = [];
     for (const r of rows) {
       if (!seen.has(r.id)) {
@@ -2033,22 +2060,27 @@ export async function getRelatedDocuments(documentId: string): Promise<RelatedDo
 }
 
 /**
- * The payment that settled this invoice, if any — payments allocate against
- * invoices via payment_allocation, not source_document_id, so they sit
- * outside the chain getChainDocuments walks and need their own lookup.
+ * Every posted payment against any of these invoices, oldest first — an
+ * invoice paid in two goes, or two bills on one receipt, each with its own.
  */
-export async function getSettlingPayment(invoiceId: string) {
-  const [row] = await sql`
+export async function getSettlingPayments(invoiceIds: string[]) {
+  if (invoiceIds.length === 0) return [];
+  return sql`
     select d.id, d.doc_type, d.doc_no
+      from document d
+     where d.status = 'POSTED'
+       and d.id in (select pa.payment_id from payment_allocation pa
+                     where pa.invoice_id = any(${invoiceIds}::uuid[]))
+     order by d.posting_date, d.doc_no`;
+}
+
+/** The invoices a payment was applied to, for tracing it back up its chain. */
+export async function getPaidInvoices(paymentId: string) {
+  return sql`
+    select distinct d.id
       from payment_allocation pa
-      join document d on d.id = pa.payment_id
-     where pa.invoice_id = ${invoiceId}
-       -- A voided payment no longer settles anything, so it must not be
-       -- offered as the one that did.
-       and d.status = 'POSTED'
-     order by d.posting_date desc
-     limit 1`;
-  return row ?? null;
+      join document d on d.id = pa.invoice_id
+     where pa.payment_id = ${paymentId}`;
 }
 
 export async function getStock(companyId: string) {
