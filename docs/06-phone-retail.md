@@ -116,10 +116,28 @@ built yet).** Ten ordered, ten arrive, one is broken. The design follows SAP
   - Credit: the PO stays complete; the return comes off the receipt if not yet
     billed (the bill is then for 9) or off the bill if it is.
 - A supplier who refuses both: write the unit off from quarantine.
+- Selling: orders, deliveries, invoices and the till see only sellable stock.
+  The engine already refuses a serial at another location ("Transfer it here
+  first"); the flag adds the refusal for a sale, delivery or till sale at the
+  quarantine location itself, which also covers items without IMEIs. The
+  stock position shows quarantine in its own column, never as available, so a
+  sales order for 10 against 9 good units reads short 1. Delivered 9, the
+  order keeps 1 to deliver: replace fills it from the replacement; credit
+  leaves it to other stock or to closing the order's remainder. A
+  deliver-later invoice for 10 holds the tenth in 2230 until it goes, or is
+  credited if it never can.
+- Release: a unit found good after all is transferred back to sellable stock
+  with a reason (SAP's release from blocked stock); no other transfer out of
+  quarantine.
+- Customer returns of faulty phones use the same location: the sales return
+  takes the unit into quarantine, not back onto the shelf, and a purchase
+  return then sends it to the supplier under the supplier warranty, or it is
+  written off.
 - Needs: a not-for-sale flag on locations; rejected quantity, reason, IMEIs
   and replace/credit on receipt lines; returns that count against the PO's
   received quantity when marked replace (`v_order_outstanding` counts receipts
-  only today); a printable rejection slip.
+  only today); quarantine out of available stock in the stock position; a
+  faulty choice on the sales return; a printable rejection slip.
 
 ## Work list
 
