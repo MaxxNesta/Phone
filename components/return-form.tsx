@@ -104,6 +104,7 @@ export function ReturnForm({
   const [locationId, setLocationId] = useState(prefill?.locationId || locations[0]?.id || "");
   const [docDate, setDocDate] = useState(today);
   const [sourceDocumentId, setSourceDocumentId] = useState(prefill?.sourceDocumentId ?? "");
+  const [faulty, setFaulty] = useState(false);
   const [receivedTime, setReceivedTime] = useState("");
   // Money back: kept as credit on the customer, or paid out now.
   const [refundMode, setRefundMode] = useState<"credit" | "now">("credit");
@@ -283,6 +284,22 @@ export function ReturnForm({
               <WarehouseSelect locations={locations} id="location_id" name="location_id" required
                       value={locationId} onChange={(e) => setLocationId(e.target.value)} />
             </div>
+
+            {/* A faulty phone does not go back on the shelf (D-P7): it waits in
+                the branch's quarantine for the supplier or a write-off. */}
+            {isSales && (
+              <div className="field">
+                <label htmlFor="faulty">Condition</label>
+                <label className="check" style={{ fontWeight: 400 }}>
+                  <input id="faulty" type="checkbox" name="faulty" checked={faulty}
+                    onChange={(e) => setFaulty(e.target.checked)} /> Faulty — hold in quarantine, not for resale
+                </label>
+                {faulty && (
+                  <input type="text" name="faulty_reason" required placeholder="What is wrong — no sound, battery swells…"
+                    aria-label="What is wrong" style={{ marginTop: 6 }} />
+                )}
+              </div>
+            )}
 
             {(
               <div className="field">

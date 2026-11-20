@@ -290,6 +290,25 @@ try {
     (await entryOf(bill3.id, "2110")) === -700_000 && r2(await bal("1410")) === r2(grirPre3),
     `${await bal("1410")} vs ${grirPre3}`);
 
+  console.log("\n  a customer brings back a faulty phone");
+  const sold = await sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["QR-PO-1"] }]);
+  const back = (extra = {}) => P.postSalesReturn({ companyId: co.id, partnerId: cust.id, locationId: wh.id,
+    docDate: DAY, sourceDocumentId: sold.id, ...extra,
+    lines: [{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["QR-PO-1"] }] });
+  await refuses("faulty without saying what is wrong is refused", () => back({ faulty: { reason: "  " } }), /what is wrong/);
+  const sr = await back({ faulty: { reason: "Battery swells" } });
+  check("it comes back into quarantine, not onto the shelf", (await unit("QR-PO-1"))?.location_id === qid
+    && (await unit("QR-PO-1"))?.status === "IN_STOCK");
+  const [srDoc] = await sql`select location_id, memo from document where id = ${sr.id}`;
+  check("the return says so", srDoc.location_id === qid && /Faulty: Battery swells/.test(srDoc.memo ?? ""));
+  check("posted as any return: sales returns, cost of sales back, the phone at its cost",
+    (await entryOf(sr.id, "4180")) === 1_500_000 && (await entryOf(sr.id, "5110")) === -1_000_000
+    && (await entryOf(sr.id, "1310")) === 1_000_000);
+  await refuses("and it cannot be sold again", () => sell([{ itemId: phone.id, qty: 1, unitPrice: 1_400_000, serials: ["QR-PO-1"] }]), /quarantine/);
+  const toSupplier = await ret([{ itemId: phone.id, qty: 1, unitPrice: 1_000_000, serials: ["QR-PO-1"] }],
+    { memo: "Under supplier warranty: battery swells" });
+  check("it goes to the supplier from quarantine", (await unit("QR-PO-1"))?.status === "RETURNED_TO_SUPPLIER" && !!toSupplier.id);
+
   console.log("\n  reconciliation");
   check("trial balance balances", r2((await sql`select coalesce(sum(base_amount),0) v from journal_line jl
     join journal_entry je on je.id = jl.journal_entry_id where je.company_id = ${co.id}`)[0].v) === 0);

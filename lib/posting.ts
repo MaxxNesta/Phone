@@ -7161,6 +7161,13 @@ export type ReturnInput = {
   receivedAt?: string | null;
   /** Prices already contain the tax, as on the invoice being reversed. */
   priceIncludesTax?: boolean;
+  /**
+   * Sales returns only (docs/06 D-P7): the goods came back faulty. They go to
+   * the branch's quarantine (0218) instead of the shelf, where nothing can
+   * sell them again, until a return sends them to the supplier under its
+   * warranty or they are written off. The reason is kept on the return.
+   */
+  faulty?: { reason: string } | null;
   lines: ReturnLine[];
 };
 
@@ -7607,6 +7614,14 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
 
   return inTransaction(outer, async (tx) => {
     input = { ...input, lines: await returnInBaseUnits(tx, input.lines) };
+    // Faulty goods come back into quarantine, not onto the shelf (D-P7).
+    if (input.faulty) {
+      const reason = input.faulty.reason?.trim();
+      if (!reason) throw new Error("Say what is wrong with the faulty goods.");
+      const [{ q }] = await tx`select fn_quarantine_location(${input.locationId}) as q`;
+      input = { ...input, locationId: q as string,
+                memo: input.memo?.trim() ? `${input.memo.trim()} — Faulty: ${reason}` : `Faulty: ${reason}` };
+    }
     const { companyId, partnerId, locationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
     const serialTrackedR = await serialTracking(tx, input.lines);

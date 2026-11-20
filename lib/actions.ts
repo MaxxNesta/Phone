@@ -2434,6 +2434,8 @@ async function salesReturnFrom(fd: FormData, co: string) {
     memo: str(fd, "memo") || null,
     reference: str(fd, "reference") || null,
     sourceDocumentId: str(fd, "source_document_id") || null,
+    // Came back faulty (D-P7): into quarantine, not onto the shelf.
+    faulty: fd.get("faulty") === "on" ? { reason: str(fd, "faulty_reason") } : null,
     lines,
   };
   // Money paid back now, by payment channel. Blank amount is "everything the
