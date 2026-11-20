@@ -239,6 +239,9 @@ export const CHART = [
   ["6330", "Inventory Loss",                           "EXPENSE",   true,  { from: "61504" }],
   ["6331", "Office Use",                               "EXPENSE",   true,  { from: "61506" }],
   ["6340", "Exchange Rate Gain/Loss",                  "EXPENSE",   true,  { from: "66001" }],
+  // Month-end restatement of what is still owed in yuan (0222): not money
+  // gained or lost yet, and reversed the next day, so kept apart from 6340.
+  ["6341", "Unrealised Exchange Gain/Loss",            "EXPENSE",   true,  { added: true }],
   ["6350", "Warranty Service Expenses",                "EXPENSE",   true,  { from: "66002" }],
   ["64",   "Depreciation and Amortisation",            "EXPENSE",   false, { under: "6", from: ["663", "664", "665", "666"] }],
   ["6401", "Depreciation For Buildings",               "EXPENSE",   true],
@@ -278,6 +281,8 @@ export const SYSTEM = {
   // A rounding difference is a miscellaneous cost and stays one. The customer
   // keeps both exchange directions in one account.
   FX_GAIN: "6340", FX_LOSS: "6340", ROUNDING_DIFFERENCE: "6321",
+  // The month-end revaluation (0223), apart from what was realised.
+  FX_UNREALISED_GAIN: "6341", FX_UNREALISED_LOSS: "6341",
   DELIVERY_INCOME: "4130",
 
   // Delivered goods wait here until the invoice recognises their cost; a
