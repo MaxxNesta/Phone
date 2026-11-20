@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getFormData, createPurchaseReturn } from "@/lib/actions";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
-import { getReturnablePurchases, getCompany } from "@/lib/queries";
+import { getReturnablePurchases, getCompany, rejectedOnReceipt } from "@/lib/queries";
 import { ReturnForm } from "@/components/return-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
@@ -11,9 +11,9 @@ import { HelpHint } from "@/components/help-hint";
 export default async function NewPurchaseReturn({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string }>;
+  searchParams: Promise<{ source?: string; refused?: string; outcome?: string }>;
 }) {
-  const { source } = await searchParams;
+  const { source, refused, outcome } = await searchParams;
   const d = await getFormData();
   // The layout already read the company; this is that same cached read.
   const co = await getCompany();
@@ -29,7 +29,52 @@ export default async function NewPurchaseReturn({
    * known — and the whole point of coming here from there is not having to go
    * and find it.
    */
-  const prefill = source
+  /**
+   * Opened from a receipt's refused units (D-P7): the ones still in
+   * quarantine, by IMEI, at what they were received at, from quarantine.
+   * Units the supplier is replacing go back against the receipt even once it
+   * is billed — the bill stands, the supplier owes goods — so they name the
+   * receipt line they arrived on and the order expects them again. Units
+   * for credit go back against the bill once there is one, as any return.
+   */
+  const refusedPrefill = refused
+    ? await (async () => {
+        const [gr] = await sql`
+          select id, partner_id, doc_no from document
+           where id = ${refused} and company_id = ${co.id}
+             and doc_type = 'GOODS_RECEIPT' and status = 'POSTED'`;
+        if (!gr) return null;
+        const want = outcome === "CREDIT" ? "CREDIT" : "REPLACE";
+        const rows = ((await rejectedOnReceipt(gr.id)) as any[]).filter((r) => r.reject_outcome === want);
+        const [billed] = want === "CREDIT" ? await sql`
+          select d.id, d.doc_no from document d
+           where d.company_id = ${co.id} and d.doc_type = 'PURCHASE_INVOICE' and d.status = 'POSTED'
+             and (fn_current_document(d.source_document_id) = fn_current_document(${gr.id})
+               or d.id = fn_current_document((select source_document_id from document where id = ${gr.id})))
+           limit 1` : [];
+        const lines = rows.map((r) => {
+          const held = (r.units as any[]).filter((u) => u.stillHeld).map((u) => ({ serial: String(u.imei) }));
+          const qty = (r.units as any[]).length ? held.length : Number(r.qty) - Number(r.returned);
+          return {
+            itemId: String(r.item_id), qty: String(qty), unitPrice: String(Number(r.unit_cost)),
+            serials: held, sourceLineId: billed ? null : String(r.line_id), location: String(r.location_id),
+            reason: String(r.reject_reason),
+          };
+        }).filter((l) => Number(l.qty) > 0);
+        if (lines.length === 0) return null;
+        return {
+          sourceDocumentId: String(billed?.id ?? gr.id),
+          docNo: String(billed?.doc_no ?? gr.doc_no),
+          partnerId: String(gr.partner_id),
+          locationId: lines[0].location,
+          lines: lines.map(({ location, reason, ...l }) => l),
+          memo: `Refused on arrival (${gr.doc_no}): ${[...new Set(lines.map((l) => l.reason))].join("; ")}. `
+            + (want === "REPLACE" ? "Supplier to replace." : "Supplier to credit."),
+        };
+      })()
+    : null;
+
+  const prefill = refusedPrefill ?? (source
     ? await (async () => {
         // Either kind of source: a receipt still sitting in the clearing
         // account, or the bill that has since asked for money. Which one is
@@ -61,7 +106,7 @@ export default async function NewPurchaseReturn({
           })),
         };
       })()
-    : null;
+    : null);
 
   if (d.suppliers.length === 0 || categories.length === 0 || d.locations.length === 0) {
     return (
@@ -102,7 +147,8 @@ export default async function NewPurchaseReturn({
         action={createPurchaseReturn}
         partners={d.suppliers as never}
         items={d.items as never}
-        locations={d.locations as never}
+        // Faulty and refused goods go back from quarantine (0218).
+        locations={[...d.locations, ...d.quarantineLocations] as never}
         categories={categories}
         uoms={d.uoms as never}
         today={today}

@@ -21,7 +21,9 @@ type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
-type Line = { key: number; itemId: string; qty: string; unitPrice: string; uomId?: string | null; serials?: ScannedSerial[]; withSerials?: boolean };
+type Line = { key: number; itemId: string; qty: string; unitPrice: string; uomId?: string | null; serials?: ScannedSerial[]; withSerials?: boolean;
+  /** The receipt line these units go back against: refused on arrival (D-P7). */
+  sourceLineId?: string | null };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
   partner_id: string; rates?: Record<string, number>;
   /** A purchase made in a foreign currency, and its rate. */
@@ -77,7 +79,9 @@ export function ReturnForm({
    */
   prefill?: {
     sourceDocumentId: string; docNo: string; partnerId: string; locationId: string;
-    lines: { itemId: string; qty: string; unitPrice: string }[];
+    lines: { itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; sourceLineId?: string | null }[];
+    /** Why these goods go back, when the page knows: a refusal's fault. */
+    memo?: string | null;
   } | null;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -211,7 +215,8 @@ export function ReturnForm({
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
       .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0, uomId: l.uomId || null,
-                     serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial) }))
+                     serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial),
+                     sourceLineId: l.sourceLineId ?? null }))
   );
   const serialShort = lines.some((l) => named(l) && Number(l.qty) > 0
     && (l.serials?.length ?? 0) !== Number(l.qty));
@@ -521,7 +526,8 @@ export function ReturnForm({
 
       <div className="field">
         <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="Reason for the return — English or Myanmar" />
+        <textarea id="memo" name="memo" rows={2} placeholder="Reason for the return — English or Myanmar"
+          defaultValue={prefill?.memo ?? undefined} />
       </div>
 
       <div className="actions">

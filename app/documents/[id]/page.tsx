@@ -554,7 +554,7 @@ export default async function DocumentPage({
   // Units this receipt refused (D-P7), and how many still wait in quarantine.
   const refused = doc.doc_type === "GOODS_RECEIPT" ? await rejectedOnReceipt(doc.id) as any[] : [];
   const refusedHeld = refused.reduce((t, r) => t + ((r.units as any[]).length
-    ? (r.units as any[]).filter((u) => u.stillHeld).length : Number(r.qty)), 0);
+    ? (r.units as any[]).filter((u) => u.stillHeld).length : Math.max(0, Number(r.qty) - Number(r.returned))), 0);
 
     const needsSalesInvoice = doc.doc_type === "DELIVERY" && doc.status === "POSTED" && !stageDoc["SALES_INVOICE"];
 
@@ -1540,9 +1540,14 @@ export default async function DocumentPage({
               </dl>
               <span className="lc-gr-actions">
                 <Link href={`/documents/${doc.id}/print?slip=rejection`} className="btn ghost tiny">Print rejection note</Link>
-                {refusedHeld > 0 && returnRoute && can(user, "purchase.post") && (
-                  <Link href={`${returnRoute.href}&refused=${doc.id}`} className="btn tiny lc-gr-primary">Return refused units</Link>
-                )}
+                {refusedHeld > 0 && can(user, "purchase.post") && (["REPLACE", "CREDIT"] as const)
+                  .filter((o) => refused.some((r) => r.reject_outcome === o
+                    && ((r.units as any[]).length ? (r.units as any[]).some((u) => u.stillHeld) : Number(r.qty) > Number(r.returned))))
+                  .map((o) => (
+                    <Link key={o} href={`/purchases/returns/new?refused=${doc.id}&outcome=${o}`} className="btn tiny lc-gr-primary">
+                      {o === "REPLACE" ? "Send back for replacement" : "Send back for credit"}
+                    </Link>
+                  ))}
               </span>
             </div>
           )}

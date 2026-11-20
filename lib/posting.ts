@@ -7132,6 +7132,14 @@ export type ReturnLine = {
   uomId?: string | null;
   /** Set by returnInBaseUnits: the line as typed, kept for the document line. */
   entered?: { qty: number; uomId: string; factor: number };
+  /**
+   * Purchase returns: the line of the source receipt these goods go back
+   * against. Named for units refused on arrival (D-P7), so the return knows
+   * whether the supplier is replacing them — then the order expects them
+   * again (0220) and the return clears GR/IR even once the receipt is billed,
+   * because the supplier owes goods, not money.
+   */
+  sourceLineId?: string | null;
 };
 export type ReturnInput = {
   /**
@@ -7979,6 +7987,44 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
 
       againstReceipt = source.doc_type === "GOODS_RECEIPT";
 
+      /* Lines that name the receipt line they send back (D-P7). Each must be a
+         line of this source, and no line may go back more often than it came. */
+      const named = input.lines.filter((l) => l.sourceLineId);
+      let replacement = false;
+      if (named.length > 0) {
+        const srcLines = await tx`
+          select dl.id, dl.item_id, dl.base_qty::float as qty, dl.reject_outcome,
+                 coalesce((select sum(r.base_qty) from document_line r
+                             join document rd on rd.id = r.document_id
+                            where r.source_line_id = dl.id and rd.doc_type = 'PURCHASE_RETURN'
+                              and rd.status = 'POSTED' and rd.reverses_document_id is null), 0)::float as returned
+            from document_line dl
+           where dl.document_id = ${input.sourceDocumentId}
+             and dl.id = any(${named.map((l) => l.sourceLineId as string)})`;
+        const byLine = new Map(srcLines.map((r: any) => [r.id as string, r]));
+        const asked = new Map<string, number>();
+        for (const l of named) {
+          const r = byLine.get(l.sourceLineId!);
+          if (!r || r.item_id !== l.itemId) {
+            throw new Error(`That line is not a line of ${source.doc_no} for this item.`);
+          }
+          asked.set(r.id, (asked.get(r.id) ?? 0) + l.qty);
+        }
+        for (const [id, qty] of asked) {
+          const r = byLine.get(id);
+          if (qty > Number(r.qty) - Number(r.returned) + 0.0001) {
+            throw new Error(`Only ${Number(r.qty) - Number(r.returned)} of that line of ${source.doc_no} is left to send back.`);
+          }
+        }
+        const replacing = named.filter((l) => byLine.get(l.sourceLineId!)?.reject_outcome === "REPLACE");
+        if (replacing.length > 0 && (replacing.length !== input.lines.length || !againstReceipt)) {
+          throw new Error(
+            "Units going back for replacement are returned on their own, against the receipt they "
+            + "arrived on: the supplier owes goods for them, not money.");
+        }
+        replacement = replacing.length > 0;
+      }
+
       if (againstReceipt) {
         // A receipt that has been billed is a different conversation. The
         // supplier has asked for money, so what comes back is a credit
@@ -8012,7 +8058,10 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
                       where gr.id = ${input.sourceDocumentId}))
              )
            limit 1`;
-        if (billed.length > 0) {
+        // A unit sent back for replacement is the exception: the bill stands,
+        // because the supplier is sending another, so it is the accrual the
+        // return clears — and the replacement's receipt puts it back.
+        if (billed.length > 0 && !replacement) {
           throw new Error(
             `${source.doc_no} has already been billed by ${billed[0].doc_no}. `
             + `Return against that bill instead, so the credit lands where the `
@@ -8036,7 +8085,8 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
          * assertNotOverBilled replays them. Price and billable quantity come
          * out of the same function, so they cannot drift apart. A receipt
          * that has been billed never reaches here — the guard above refuses
-         * it — so returns are the only prior claim to replay.
+         * it — so returns are the only prior claim to replay. (A replacement
+         * return does, by design: it is priced from its own named line.)
          */
         const receiptLines = await tx`
           select dl.id, dl.item_id, dl.base_qty as qty, dl.net_amount as net
@@ -8057,7 +8107,7 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
         const carries = new Set(receiptLines.map((l: any) => l.item_id as string));
         lines = input.lines.map((l) => {
           if (!carries.has(l.itemId)) return l;
-          const got = draw(l.itemId, l.qty, null);
+          const got = draw(l.itemId, l.qty, l.sourceLineId ?? null);
           return {
             ...l,
             unitPrice: l.qty > 0 ? got.value / l.qty : 0,
@@ -8155,14 +8205,14 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
            entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
-           net_amount, tax_code_id, tax_amount, gross_amount)
+           net_amount, tax_code_id, tax_amount, gross_amount, source_line_id)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
            ${line.entered?.qty ?? line.qty}, ${line.entered?.uomId ?? item.base_uom_id},
            ${line.entered?.factor ?? 1}, ${line.qty}, ${round4(line.unitPrice * (line.entered?.factor ?? 1))},
            ${net}, ${splitsR[lineNo - 1].rate?.id ?? null},
            ${splitsR[lineNo - 1].tax},
-           ${round4(net + splitsR[lineNo - 1].tax)})
+           ${round4(net + splitsR[lineNo - 1].tax)}, ${line.sourceLineId ?? null})
         returning id`;
 
       const [movement] = await tx`

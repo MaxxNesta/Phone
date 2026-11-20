@@ -1547,6 +1547,10 @@ export async function rejectedOnReceipt(receiptId: string) {
            dl.base_qty::float as qty, dl.entered_qty::float as entered_qty, dl.entered_uom_id as uom_id,
            u.code as uom_code, dl.unit_price::float as unit_cost, dl.location_id,
            dl.reject_reason, dl.reject_outcome, dl.source_line_id,
+           coalesce((select sum(r.base_qty) from document_line r
+                       join document rd on rd.id = r.document_id
+                      where r.source_line_id = dl.id and rd.doc_type = 'PURCHASE_RETURN'
+                        and rd.status = 'POSTED' and rd.reverses_document_id is null), 0)::float as returned,
            coalesce((
              select json_agg(json_build_object('imei', s.serial_no,
                       'stillHeld', exists (select 1 from v_stock_serial v

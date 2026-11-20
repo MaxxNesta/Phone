@@ -84,6 +84,11 @@ try {
       join account a on a.id = jl.account_id
      where a.company_id = ${co.id} and a.code = ${code}`)[0].v);
   const unit = async (imei) => (await sql`select * from v_stock_serial where imei = ${imei}`)[0];
+  const entryOf = async (docId, code) => r2((await sql`
+    select coalesce(sum(jl.base_amount), 0) as v from document d
+      join journal_line jl on jl.journal_entry_id = d.journal_entry_id
+      join account a on a.id = jl.account_id
+     where d.id = ${docId} and a.code = ${code}`)[0].v);
   const onHand = async (itemId, locationId) => n((await sql`
     select coalesce(sum(qty_on_hand), 0) as q from v_stock_on_hand
      where item_id = ${itemId} and location_id = ${locationId}`)[0].q);
@@ -198,6 +203,92 @@ try {
     r2((await bal("1410")) - grirBefore) === -10_000_000, String(r2((await bal("1410")) - grirBefore)));
   await refuses("the broken one cannot be sold",
     () => sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: [imeis[9]] }]), /quarantine/);
+
+  console.log("\n  sent back for replacement, before the bill");
+  const ret = (lines, extra = {}) => P.postPurchaseReturn({
+    companyId: co.id, partnerId: supp.id, locationId: qid, docDate: DAY, ...extra, lines });
+  const outstanding = async (orderId) => n((await sql`
+    select coalesce(sum(outstanding), 0) v from v_order_outstanding where order_id = ${orderId}`)[0].v);
+  const [refusedLine] = await sql`select id from document_line where document_id = ${gr.id} and reject_outcome = 'REPLACE'`;
+  const [keptLine] = await sql`select id from document_line where document_id = ${gr.id} and reject_reason is null`;
+  await refuses("more than the refused line cannot go back against it",
+    () => ret([{ itemId: phone.id, qty: 2, unitPrice: 1_000_000, serials: [imeis[9], imeis[8]], sourceLineId: refusedLine.id }],
+      { sourceDocumentId: gr.id }), /left to send back|Not enough/);
+  await refuses("a replacement goes back on its own, not with other units",
+    () => ret([
+      { itemId: phone.id, qty: 1, unitPrice: 1_000_000, serials: [imeis[9]], sourceLineId: refusedLine.id },
+      { itemId: phone.id, qty: 1, unitPrice: 1_000_000, serials: [imeis[8]], sourceLineId: keptLine.id },
+    ], { sourceDocumentId: gr.id }), /on their own/);
+  const grirB = await bal("1410");
+  const r1 = await ret([{ itemId: phone.id, qty: 1, unitPrice: 1_000_000, serials: [imeis[9]], sourceLineId: refusedLine.id }],
+    { sourceDocumentId: gr.id, memo: "Screen cracked, for replacement" });
+  check("the broken phone has gone back", (await unit(imeis[9]))?.status === "RETURNED_TO_SUPPLIER");
+  check("quarantine is empty of it", (await onHand(phone.id, qid)) === 1, `${await onHand(phone.id, qid)} left (QR-IMEI-1 from earlier)`);
+  check("the return clears GR/IR for the unit, not the payable",
+    r2((await bal("1410")) - grirB) === 1_000_000 && (await entryOf(r1.id, "2110")) === 0);
+  check("the order expects one again", (await outstanding(po.id)) === 1);
+  await refuses("it cannot go back twice",
+    () => ret([{ itemId: phone.id, qty: 1, unitPrice: 1_000_000, serials: [imeis[9]], sourceLineId: refusedLine.id }],
+      { sourceDocumentId: gr.id }), /left to send back|returned|not in stock|in stock|is /);
+  const repl = await P.postGoodsReceipt({
+    companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY, sourceDocumentId: po.id,
+    lines: [{ itemId: phone.id, qty: 1, unitCost: 1_000_000, serials: ["QR-PO-11"], sourceLineId: poLine.id }],
+  });
+  check("the replacement arrives against the order, which is complete again", (await outstanding(po.id)) === 0 && !!repl.id);
+  const bill = await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    dueDate: DAY, goodsReceiptId: gr.id, lines: [{ itemId: phone.id, qty: 9, unitPrice: 1_000_000, sourceLineId: keptLine.id }] });
+  const [replLine] = await sql`select id from document_line where document_id = ${repl.id}`;
+  await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    dueDate: DAY, goodsReceiptId: repl.id, lines: [{ itemId: phone.id, qty: 1, unitPrice: 1_000_000, sourceLineId: replLine.id }] });
+  check("billed ten in all, GR/IR is back where it started", r2(await bal("1410")) === r2(grirBefore), `${await bal("1410")} vs ${grirBefore}`);
+  check("the supplier is owed nine on that bill, one on the replacement's", (await entryOf(bill.id, "2110")) === -9_000_000);
+
+  console.log("\n  sent back for replacement, after the bill");
+  const po2 = await P.postPurchaseOrder({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    lines: [{ itemId: phone.id, qty: 2, unitPrice: 800_000 }] });
+  const [po2Line] = await sql`select id from document_line where document_id = ${po2.id}`;
+  const gr2 = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    sourceDocumentId: po2.id, lines: [
+      { itemId: phone.id, qty: 1, unitCost: 800_000, serials: ["QR-B-1"], sourceLineId: po2Line.id },
+      { itemId: phone.id, qty: 1, unitCost: 800_000, serials: ["QR-B-2"], sourceLineId: po2Line.id,
+        rejected: { reason: "No sound", outcome: "REPLACE" } },
+    ] });
+  const gr2Lines = await sql`select id, reject_outcome from document_line where document_id = ${gr2.id} order by line_no`;
+  const bill2 = await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    dueDate: DAY, goodsReceiptId: gr2.id, lines: [{ itemId: phone.id, qty: 2, unitPrice: 800_000 }] });
+  const grirC = await bal("1410");
+  const r2b = await ret([{ itemId: phone.id, qty: 1, unitPrice: 800_000, serials: ["QR-B-2"], sourceLineId: gr2Lines[1].id }],
+    { sourceDocumentId: gr2.id });
+  check("billed already, the replacement still goes back against the receipt",
+    !!r2b.id && r2((await bal("1410")) - grirC) === 800_000 && (await entryOf(r2b.id, "2110")) === 0);
+  check("the bill stands at two", (await entryOf(bill2.id, "2110")) === -1_600_000);
+  check("the order expects one again", (await outstanding(po2.id)) === 1);
+  await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    sourceDocumentId: po2.id, lines: [{ itemId: phone.id, qty: 1, unitCost: 800_000, serials: ["QR-B-3"], sourceLineId: po2Line.id }] });
+  check("the replacement arrives and GR/IR is clear again", r2((await bal("1410")) - grirC) === 0 && (await outstanding(po2.id)) === 0);
+
+  console.log("\n  refused for credit");
+  const po3 = await P.postPurchaseOrder({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    lines: [{ itemId: phone.id, qty: 2, unitPrice: 700_000 }] });
+  const [po3Line] = await sql`select id from document_line where document_id = ${po3.id}`;
+  const grirPre3 = await bal("1410");
+  const gr3 = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    sourceDocumentId: po3.id, lines: [
+      { itemId: phone.id, qty: 1, unitCost: 700_000, serials: ["QR-C-1"], sourceLineId: po3Line.id },
+      { itemId: phone.id, qty: 1, unitCost: 700_000, serials: ["QR-C-2"], sourceLineId: po3Line.id,
+        rejected: { reason: "Wrong colour", outcome: "CREDIT" } },
+    ] });
+  const gr3Lines = await sql`select id from document_line where document_id = ${gr3.id} order by line_no`;
+  const grirD = await bal("1410");
+  await ret([{ itemId: phone.id, qty: 1, unitPrice: 700_000, serials: ["QR-C-2"], sourceLineId: gr3Lines[1].id }],
+    { sourceDocumentId: gr3.id });
+  check("unbilled: the credit comes off GR/IR", r2((await bal("1410")) - grirD) === 700_000);
+  check("and the order stays complete", (await outstanding(po3.id)) === 0);
+  const bill3 = await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    dueDate: DAY, goodsReceiptId: gr3.id, lines: [{ itemId: phone.id, qty: 1, unitPrice: 700_000, sourceLineId: gr3Lines[0].id }] });
+  check("the bill is for the one kept, and GR/IR is back where it was before the receipt",
+    (await entryOf(bill3.id, "2110")) === -700_000 && r2(await bal("1410")) === r2(grirPre3),
+    `${await bal("1410")} vs ${grirPre3}`);
 
   console.log("\n  reconciliation");
   check("trial balance balances", r2((await sql`select coalesce(sum(base_amount),0) v from journal_line jl
