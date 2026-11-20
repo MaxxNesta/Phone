@@ -11595,3 +11595,9 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 /* A server-paged table's rows while the next page loads. */
 .dt-skel td { padding-top: 12px; padding-bottom: 12px; }
 .dt-skel .skel-row { display: block; height: 12px; width: 70%; }
+
+/* The subscription notice from the provider's console (components/access-banner.tsx). */
+.access-banner { margin: 0 0 var(--s3); padding: 10px 14px; border-radius: 10px; font-weight: 600; font-size: 0.92rem; line-height: 1.4; }
+.access-banner.info { background: color-mix(in srgb, var(--blue, #0071e3) 12%, transparent); color: var(--blue-ink, #0058b0); }
+.access-banner.warn { background: #F9D85A; color: #3B2F00; }
+.access-banner.bad { background: var(--bad); color: #fff; }

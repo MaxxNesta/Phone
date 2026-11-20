@@ -14,6 +14,10 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   plan: Plan;
   /** Counter retail (the default here) or the trading flow — 0117. */
   retail_mode: boolean;
+  /** Set by the provider's console (0217): the subscription's last day, and
+   *  whether the shop may post (read_only and suspended may only look). */
+  access_until: string | null;
+  access_status: "active" | "grace" | "read_only" | "suspended";
   /** Active stock locations. One means nothing ever moves between them. */
   warehouses: number;
   /** The modules bought (0194); lib/plans.ts hasModule reads it. */
@@ -30,6 +34,7 @@ export type Company = { id: string; code: string; name: string; name_my: string 
 export const getCompany = cache(async (): Promise<Company | null> => {
   const rows = await sql<Company[]>`
     select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules, features,
+           to_char(access_until, 'YYYY-MM-DD') as access_until, access_status,
            (select count(*)::int from location l
              where l.company_id = c.id and l.is_stock_location and l.is_active) as warehouses
       from company c order by created_at limit 1`;

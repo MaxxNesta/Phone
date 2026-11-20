@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AccessBanner } from "@/components/access-banner";
 import { TopSearch } from "@/components/top-search";
 import { PlanMark } from "@/components/plan-mark";
 import { DeniedDialog } from "@/components/denied-dialog";
@@ -427,6 +428,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             )}
             {user && <DeniedDialog />}
             <div className="inner">
+              {user && company && <AccessBanner until={company.access_until} status={company.access_status} />}
               {dbError ? (
                 <div className="card">
                   <div className="card-head"><h2>{sh("dbUnavailableTitle")}</h2></div>

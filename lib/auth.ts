@@ -89,6 +89,20 @@ export async function requirePermission(p: Permission): Promise<SessionUser> {
   if (!can(u, p)) {
     throw new Error(`${ROLE_LABEL[u.role]} accounts cannot do this (${p}). Ask a manager.`);
   }
+  // A shop the provider has set to read-only or suspended (0217, from the
+  // console) may still look but not change anything. Every server action
+  // calls this first, so this one check covers every write.
+  if (!p.endsWith(".view")) {
+    const [c] = await sql`select access_status from company order by created_at limit 1`;
+    if (c && (c.access_status === "read_only" || c.access_status === "suspended")) {
+      // Tagged, because a production build hides an error's message from the
+      // browser but passes its digest on: app/error.tsx reads the tag and says
+      // why, instead of a bare "Application error".
+      const e = new Error("This shop is read-only until its subscription is renewed. Contact your provider.") as Error & { digest?: string };
+      e.digest = "SHOP_READ_ONLY";
+      throw e;
+    }
+  }
   return u;
 }
 
