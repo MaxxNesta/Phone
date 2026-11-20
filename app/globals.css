@@ -11579,3 +11579,12 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .dl-kv > div { padding: 8px 0; min-height: 37px; border-bottom: 1px solid var(--dl-rule); align-items: center; }
 .dl-kv-wide > div { border-bottom: 1px solid var(--dl-rule); }
 .dl-table .dl-strong { font-weight: 600; }
+
+/* A document's two or three figures (received, billed, still to bill) as
+   one quiet band of numbers, not three framed boxes. */
+.dl .docstats { gap: 0; border-top: 1px solid var(--dl-rule); border-bottom: 1px solid var(--dl-rule); }
+.dl .docstat { border: 0; border-radius: 0; background: transparent; box-shadow: none; padding: 12px 16px 12px 0; }
+.dl .docstat + .docstat { border-left: 1px solid var(--dl-rule); padding-left: 16px; }
+.dl .docstat-icon { background: transparent; color: var(--dl-muted); }
+.dl .docstat-label, .dl .docstat-note { color: var(--dl-muted); }
+.dl .docstat-value { font-size: 1.25rem; font-weight: 600; }

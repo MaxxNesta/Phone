@@ -1642,7 +1642,7 @@ export default async function DocumentPage({
             <dl className="dl-kv">
               <div><dt>Date</dt><dd>{shortDate(doc.doc_date)}
                 {String(doc.posting_date) !== String(doc.doc_date) && <span className="dl-code"> · posted {shortDate(doc.posting_date)}</span>}</dd></div>
-              <div><dt>Due</dt><dd>{doc.due_date ? shortDate(doc.due_date) : "—"}</dd></div>
+              {doc.due_date && <div><dt>Due</dt><dd>{shortDate(doc.due_date)}</dd></div>}
               {doc.reference && (
                 <div><dt>Reference</dt><dd className="m">{doc.reference}</dd></div>
               )}
