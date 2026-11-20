@@ -82,13 +82,44 @@ report reads what it always read; the foreign figure is kyat over the rate.
   kyat). A bill with no receipt, or one that receives as it posts, uses its own.
 - The payable's journal line carries the yuan amount and rate.
 - Paying: amounts in the bill's currency; the bill comes down at its carrying
-  rate, the bank at today's; the gap is FX gain (4100) or loss (6400).
+  rate, the bank at today's; the gap is FX gain or loss (both 6340 Exchange
+  Rate Gain/Loss since the chart moved to four digits, 0203).
 - Advances in yuan: applied to a later yuan bill the same way.
+- Purchase orders may be placed in the supplier's currency; a blank rate takes
+  the one on file for the order date.
+- Returns and debit notes against a yuan bill go at that bill's rate, so the
+  payable comes down at what it was carried at and no FX arises on them.
 - `payment_allocation.amount` is the invoice side (kyat at the invoice's rate);
   `base_amount` the payment side (kyat at the payment's rate). Equal for every
   kyat document, so nothing that existed changes.
 - Not yet: unrealised FX revaluation of open yuan payables at month end; sales
-  in foreign currency; purchase orders in foreign currency (they stay kyat).
+  in foreign currency.
+
+**D-P7. Damaged on arrival: quarantine, then return (agreed 2026-11-20, not
+built yet).** Ten ordered, ten arrive, one is broken. The design follows SAP
+(blocked stock, then a return delivery that reopens the order) and NetSuite
+(a status that cannot be sold, then a vendor return).
+- Goods receipt: each line records arrived, accepted and rejected, with a
+  reason and the rejected units' IMEIs. Accepted units go to the branch's
+  stock; rejected ones go to its quarantine location. Quarantine is still
+  stock, at cost, on the balance sheet, but a location flagged not for sale,
+  refused by the posting engine for sales, deliveries and the till and left
+  out of sellable stock. The PO shows 10 of 10 received.
+- On the rejected line the receiver chooses **replace** (the supplier sends
+  another) or **credit** (the supplier takes it off what is owed).
+- Purchase return, opened from the receipt with the line and IMEIs filled in,
+  takes the unit out of quarantine. It must be a return, not a debit note: a
+  debit note moves money only, and the unit has to leave stock.
+  - Replace: clears GR/IR for the unit, not the payable; the PO reopens 1
+    (when the return posts, as SAP's 122 does, not at the receipt); the
+    replacement arrives against the PO and the bill stays at 10.
+  - Credit: the PO stays complete; the return comes off the receipt if not yet
+    billed (the bill is then for 9) or off the bill if it is.
+- A supplier who refuses both: write the unit off from quarantine.
+- Needs: a not-for-sale flag on locations; rejected quantity, reason, IMEIs
+  and replace/credit on receipt lines; returns that count against the PO's
+  received quantity when marked replace (`v_order_outstanding` counts receipts
+  only today); a printable rejection slip.
 
 ## Work list
 
