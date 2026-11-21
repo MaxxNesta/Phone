@@ -1812,11 +1812,18 @@ export default async function DocumentPage({
                                   {/* Refused at the door (D-P7): in the warehouse's quarantine bin,
                                       not on the shelf. A line of its own under the name, so the
                                       row never grows sideways. */}
-                                  {l.reject_reason && (
-                                    <span className="line-subnote" title="Received into quarantine, not for sale, until it goes back">
-                                      <span><strong>Refused</strong> — {l.reject_reason}. Supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"} it; held in quarantine.</span>
-                                    </span>
-                                  )}
+                                  {l.reject_reason && (() => {
+                                    const r = refused.find((x) => x.source === "REFUSED" && x.line_id === l.id);
+                                    const held = !r ? 1 : (r.units as any[]).length
+                                      ? (r.units as any[]).filter((u) => u.stillHeld).length
+                                      : Math.max(0, Number(r.qty) - Number(r.returned));
+                                    return (
+                                      <span className="line-subnote" title="Received into quarantine, not for sale, until it goes back">
+                                        <span><strong>Refused</strong> — {l.reject_reason}. Supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"} {Number(l.base_qty) === 1 ? "it" : "them"};
+                                          {" "}{held > 0 ? "held in quarantine" : "sent back"}.</span>
+                                      </span>
+                                    );
+                                  })()}
                                   {/* Found faulty after the receipt was posted (0224): written
                                       against this line, moved to the bin since. */}
                                   {refused.filter((r) => r.source === "FOUND" && r.line_id === l.id).map((r, i) => {

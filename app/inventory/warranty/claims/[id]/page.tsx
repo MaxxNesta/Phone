@@ -99,7 +99,7 @@ export default async function Claim({ params }: { params: Promise<{ id: string }
           <dl className="facts">
             <dt>{t("claims.shopWarranty")}</dt><dd>{covered(c.in_warranty, c.warranty_until)}</dd>
             <dt>{t("claims.supplierWarranty")}</dt><dd>{c.supplier_name ?? "—"} {covered(c.supplier_in_warranty, c.supplier_warranty_until)}</dd>
-            <dt>{t("claims.phoneNow")}</dt><dd>{String(c.unit_status ?? "").replace(/_/g, " ").toLowerCase()}{c.unit_location ? ` · ${c.unit_location}` : ""}</dd>
+            <dt>{t("claims.phoneNow")}</dt><dd>{String(c.unit_status ?? "").replace(/_/g, " ").toLowerCase()}{c.unit_location && c.unit_status === "IN_STOCK" ? ` · ${c.unit_location}` : ""}</dd>
             <dt>{t("claims.returnDoc")}</dt><dd>{c.return_document_id ? link(`/documents/${c.return_document_id}`, c.return_no) : "—"}</dd>
             <dt>{t("claims.supplierReturnDoc")}</dt><dd>{c.supplier_return_document_id ? link(`/documents/${c.supplier_return_document_id}`, c.supplier_return_no) : "—"}</dd>
           </dl>

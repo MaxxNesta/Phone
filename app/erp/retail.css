@@ -373,3 +373,12 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 }
 .line-imeis-more > summary::-webkit-details-marker { display: none; }
 .line-imeis-more[open] > summary { display: none; }
+
+/* Choosing units is picking, not switching something on: a checkbox, not
+   the iOS switch globals.css gives a named checkbox (toggles.md). */
+.reject-imei input[type="checkbox"][name] {
+  appearance: auto; -webkit-appearance: checkbox;
+  width: 16px; height: 16px; border-radius: 3px; background: none; transition: none;
+}
+.reject-imei input[type="checkbox"][name]::before { content: none; }
+.reject-imei input[type="checkbox"][name]:checked { background: none; }

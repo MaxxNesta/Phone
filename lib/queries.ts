@@ -5736,6 +5736,27 @@ export async function getOrderProgress(orderId: string, docType: string) {
     credit(f.source_line_id as string | null, f.item_id as string, Number(f.qty));
   }
 
+  // A unit sent back for replacement (0220, 0224) is wanted again: it comes
+  // off the order line its receipt line answered, as in v_order_outstanding.
+  if (fulfilmentType === "GOODS_RECEIPT") {
+    const sentBack = await sql`
+      select order_line_id, sum(qty) as qty from (
+        select coalesce((select fl.order_line_id from fulfilment_link fl where fl.fulfilment_line_id = rl.id limit 1),
+                        rl.source_line_id) as order_line_id, retl.base_qty as qty
+          from document_line retl
+          join document rd on rd.id = retl.document_id
+          join document_line rl on rl.id = retl.source_line_id
+         where rd.doc_type = 'PURCHASE_RETURN' and rd.status = 'POSTED' and rd.reverses_document_id is null
+           and retl.for_replacement) x
+       where order_line_id = any(${[...mine]}::uuid[])
+       group by order_line_id`;
+    for (const b of sentBack) {
+      if (b.order_line_id && mine.has(b.order_line_id as string)) {
+        done.set(b.order_line_id as string, (done.get(b.order_line_id as string) ?? 0) - Number(b.qty));
+      }
+    }
+  }
+
   return lines.map((l: any) => {
     const ordered = Number(l.ordered);
     let got = done.get(l.id) ?? 0;

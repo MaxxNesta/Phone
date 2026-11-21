@@ -59,13 +59,13 @@ export function FaultReportForm({ receiptId, lines, preselect }: { receiptId: st
         </div>
         <div className="reject-grid" style={{ gridTemplateColumns: "minmax(240px, 1.4fr) minmax(240px, 1fr)" }}>
           <div className="field">
-            <label htmlFor="reason">Fault *</label>
+            <label htmlFor="reason">Fault</label>
             <input id="reason" name="reason" type="text" required
               placeholder="Battery drains overnight, no signal, camera fails…" />
             <span className="hint">Printed on the rejection note that goes back with them.</span>
           </div>
           <div className="field">
-            <label>The supplier will *</label>
+            <label>The supplier will</label>
             <div className="choice-list">
               <label className="choice">
                 <input type="radio" name="outcome" value="REPLACE" required defaultChecked />
