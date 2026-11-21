@@ -147,13 +147,18 @@ built 2026-11-21, 0218–0220).** Ten ordered, ten arrive, one is broken. The de
   takes the unit into quarantine, not back onto the shelf, and a purchase
   return then sends it to the supplier under the supplier warranty, or it is
   written off.
-- As built: `location.is_quarantine`, one per branch (0218), made for every
-  branch with stock, with a branch's first warehouse and on first use. The
+- As built: quarantine is a bin inside each warehouse ("Main Warehouse /
+  Quarantine", `location.is_quarantine`, 0218), made with the warehouse and
+  on first use. The building's stock is counted together — the Inventory
+  summary folds each bin into its warehouse and says how many units are in
+  quarantine; `v_stock_on_hand.warehouse_id` and `fn_stock_home` give the
+  warehouse a bin counts in — while anything that sells or picks leaves the
+  bin out. The
   database refuses a sales order, invoice or delivery dated there and any
   stock leaving it on a sale or delivery. Transfers in or out need a reason.
   Forms, the till and imports do not offer it; item pickers count sellable
   stock only; stock lists show it as its own location. A receipt line marked
-  `rejected` (0219) lands there; the receipt page shows it, prints a
+  `rejected` (0219) lands there; the receipt page shows it under its line, prints a
   rejection note and offers the return per outcome. A return line names the
   receipt line it sends back, and a replace return reopens the order
   (`v_order_outstanding`, 0220). `scripts/test-quarantine.mjs`.

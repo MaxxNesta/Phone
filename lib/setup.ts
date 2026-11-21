@@ -172,11 +172,11 @@ export async function scaffoldCompany(input: SetupInput) {
       insert into location (company_id, code, name, is_stock_location)
       values (${co.id}, 'MAIN', ${input.officeName}, false) returning id`;
 
-    await tx`
+    const [warehouse] = await tx`
       insert into location (company_id, parent_id, code, name, is_stock_location)
-      values (${co.id}, ${office.id}, 'MAIN-WH', ${input.warehouseName}, true)`;
-    // Where rejected and faulty stock waits, not for sale (0218).
-    await tx`select fn_quarantine_location(${office.id})`;
+      values (${co.id}, ${office.id}, 'MAIN-WH', ${input.warehouseName}, true) returning id`;
+    // Its quarantine bin: rejected and faulty stock waits there, not for sale (0218).
+    await tx`select fn_quarantine_location(${warehouse.id})`;
 
     // The shop sells Apple: the brand is there from the start.
     await tx`insert into brand (company_id, code, name) values (${co.id}, 'APPLE', 'Apple')`;

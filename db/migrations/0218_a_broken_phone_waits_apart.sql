@@ -6,7 +6,9 @@
 -- nobody can sell from. The same place takes a faulty phone a customer
 -- brings back, until it goes to the supplier or is written off.
 --
--- One quarantine location per branch, a warehouse under it, created the
+-- A quarantine bin inside every warehouse — "Main Warehouse / Quarantine" —
+-- so the stock in a building is all counted there, while anything that sells
+-- or picks leaves the bin out. Made with the warehouse, and in any case the
 -- first time it is needed (fn_quarantine_location). What it refuses is
 -- enforced here rather than in each screen: a sales order, invoice or
 -- delivery dated at it, and any goods leaving it on a sale or a delivery,
@@ -16,59 +18,74 @@
 alter table location add column if not exists is_quarantine boolean not null default false;
 
 comment on column location.is_quarantine is
-    'Stock held apart and not for sale: rejected on arrival or returned faulty. '
-    'Still valued stock. One per branch, created by fn_quarantine_location.';
+    'A bin inside a warehouse holding stock that is not for sale: rejected on arrival or '
+    'returned faulty. Still valued stock, counted in its warehouse. One per warehouse, '
+    'made by fn_quarantine_location.';
 
-alter table location drop constraint if exists location_quarantine_is_a_warehouse;
-alter table location add constraint location_quarantine_is_a_warehouse
+alter table location drop constraint if exists location_quarantine_is_a_bin;
+alter table location add constraint location_quarantine_is_a_bin
     check (not is_quarantine or (is_stock_location and parent_id is not null));
 
-create unique index if not exists location_one_quarantine_per_branch
+create unique index if not exists location_one_quarantine_per_warehouse
     on location (company_id, parent_id) where is_quarantine;
 
--- The branch's quarantine location, made on first use. Named after the
--- branch so a stock list reads "Yangon Quarantine", coded after it so the
+-- The warehouse's quarantine bin, made on first use. Named and coded after
+-- the warehouse, so a stock list reads "Main Warehouse / Quarantine" and the
 -- code is unique without anyone choosing one.
 create or replace function fn_quarantine_location(p_location uuid)
 returns uuid language plpgsql as $$
 declare
-    b      record;
+    w      record;
     q      uuid;
     code_  text;
     n      int := 1;
 begin
-    select l.id, l.company_id, l.code, l.name, l.name_my
-      into b
-      from location l where l.id = fn_location_branch(p_location);
-    if b.id is null then
-        raise exception 'No branch found for location %', p_location;
+    select l.id, l.company_id, l.code, l.name, l.name_my, l.is_stock_location, l.is_quarantine
+      into w
+      from location l where l.id = p_location;
+    if w.id is null then
+        raise exception 'No location %', p_location;
+    end if;
+    if w.is_quarantine then return w.id; end if;
+    if not w.is_stock_location then
+        raise exception 'Quarantine is a bin inside a warehouse; % is not one.', w.name;
     end if;
 
     select id into q from location
-     where company_id = b.company_id and parent_id = b.id and is_quarantine;
+     where company_id = w.company_id and parent_id = w.id and is_quarantine;
     if q is not null then return q; end if;
 
-    code_ := b.code || '-QRT';
-    while exists (select 1 from location where company_id = b.company_id and code = code_) loop
+    code_ := w.code || '-QRT';
+    while exists (select 1 from location where company_id = w.company_id and code = code_) loop
         n := n + 1;
-        code_ := b.code || '-QRT' || n;
+        code_ := w.code || '-QRT' || n;
     end loop;
 
     insert into location (company_id, parent_id, code, name, name_my, is_stock_location, is_quarantine)
-    values (b.company_id, b.id, code_, b.name || ' Quarantine', null, true, true)
+    values (w.company_id, w.id, code_, w.name || ' / Quarantine',
+            case when w.name_my is not null then w.name_my || ' / ချို့ယွင်းပစ္စည်းထားရာ' end, true, true)
     on conflict (company_id, parent_id) where is_quarantine do nothing
     returning id into q;
 
     -- Another transaction made it first.
     if q is null then
         select id into q from location
-         where company_id = b.company_id and parent_id = b.id and is_quarantine;
+         where company_id = w.company_id and parent_id = w.id and is_quarantine;
     end if;
     return q;
 end $$;
 
 comment on function fn_quarantine_location(uuid) is
-    'The quarantine location of the branch a location sits in; created on first use.';
+    'The quarantine bin inside a warehouse (the bin itself if given one); made on first use.';
+
+-- The warehouse a location counts in: itself, or for a quarantine bin the
+-- warehouse it sits in. Stock reports group by this, so a building's stock
+-- is one figure with its quarantine share beside it.
+create or replace function fn_stock_home(p_location uuid)
+returns uuid language sql stable as $$
+    select case when l.is_quarantine then l.parent_id else l.id end
+      from location l where l.id = p_location
+$$;
 
 -- Nothing is sold from quarantine: no sales document is dated there.
 create or replace function fn_document_not_from_quarantine() returns trigger
@@ -109,7 +126,9 @@ create trigger trg_stock_not_sold_from_quarantine
     for each row execute function fn_stock_not_sold_from_quarantine();
 
 -- Stock on hand says which rows are in quarantine, so a figure meant as
--- "can be sold" can leave them out while value totals keep them.
+-- "can be sold" can leave them out while value totals keep them, and which
+-- warehouse each row counts in (warehouse_id: a bin's is its parent's), so
+-- a building's stock is one figure.
 create or replace view v_stock_on_hand as
 select
     sm.company_id,
@@ -120,19 +139,20 @@ select
     l.code as location_code,
     sum(sm.qty)        as qty_on_hand,
     sum(sm.total_cost) as value_on_hand,
-    l.is_quarantine
+    l.is_quarantine,
+    case when l.is_quarantine then l.parent_id else l.id end as warehouse_id
   from stock_movement sm
   join item     i on i.id = sm.item_id
   join location l on l.id = sm.location_id
- group by sm.company_id, sm.item_id, i.code, i.name, sm.location_id, l.code, l.is_quarantine
+ group by sm.company_id, sm.item_id, i.code, i.name, sm.location_id, l.id, l.code, l.is_quarantine, l.parent_id
 having sum(sm.qty) <> 0 or sum(sm.total_cost) <> 0;
 
--- Every branch that already holds stock gets its quarantine now, so a form
--- that offers "move to quarantine" or "release" always has it to offer.
--- A branch made later gets one with its first warehouse (lib/actions.ts),
--- and fn_quarantine_location makes one in any case on first use.
-select fn_quarantine_location(b.id)
-  from location b
- where b.parent_id is null
-   and exists (select 1 from location w
-                where w.parent_id = b.id and w.is_stock_location and not w.is_quarantine);
+-- Every warehouse gets its bin now, so a form that offers "move to
+-- quarantine" or "release" always has it to offer. A warehouse made later
+-- gets one with it (lib/actions.ts, lib/setup.ts); fn_quarantine_location
+-- makes one in any case on first use. Bins of bins are not made: a stock
+-- location inside another stock location counts in that one.
+select fn_quarantine_location(w.id)
+  from location w
+ where w.is_stock_location and not w.is_quarantine
+   and not exists (select 1 from location p where p.id = w.parent_id and p.is_stock_location);

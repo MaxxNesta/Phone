@@ -101,18 +101,23 @@ try {
     companyId: co.id, fromLocationId: from, toLocationId: to, docDate: DAY, memo, lines,
   });
 
-  console.log("\n  the quarantine location");
+  console.log("\n  the quarantine bin");
   const [{ q: qid }] = await sql`select fn_quarantine_location(${wh.id}) as q`;
   const [{ q: qid2 }] = await sql`select fn_quarantine_location(${wh.id}) as q`;
   const [qloc] = await sql`select * from location where id = ${qid}`;
-  check("one per branch, made on first use and found after", qid === qid2);
-  check("a stock location under the branch, marked quarantine",
-    qloc.is_stock_location && qloc.is_quarantine && qloc.parent_id === wh.parent_id);
-  await refuses("a second quarantine in the same branch is refused",
+  check("one per warehouse, made with it and found after", qid === qid2);
+  check("a bin inside the warehouse, marked quarantine",
+    qloc.is_stock_location && qloc.is_quarantine && qloc.parent_id === wh.id);
+  await refuses("a second quarantine bin in the same warehouse is refused",
     () => sql`insert into location (company_id, parent_id, code, name, is_stock_location, is_quarantine)
-              values (${co.id}, ${wh.parent_id}, 'QR-DUP', 'Dup', true, true)`, /unique|duplicate/i);
+              values (${co.id}, ${wh.id}, 'QR-DUP', 'Dup', true, true)`, /unique|duplicate/i);
   await refuses("quarantine must hold stock",
-    () => sql`update location set is_stock_location = false where id = ${qid}`, /quarantine_is_a_warehouse/);
+    () => sql`update location set is_stock_location = false where id = ${qid}`, /quarantine_is_a_bin/);
+
+  const [home] = await sql`select fn_stock_home(${qid}) as w, fn_stock_home(${wh.id}) as w2`;
+  check("its stock counts in the warehouse", home.w === wh.id && home.w2 === wh.id);
+  await refuses("there is no quarantine for a branch office: it is a bin in a warehouse",
+    () => sql`select fn_quarantine_location(${wh.parent_id})`, /not one/);
 
   console.log("\n  stock goes in on purpose");
   await P.postGoodsReceipt({

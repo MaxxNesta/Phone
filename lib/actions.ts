@@ -4532,9 +4532,13 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
       values (${co}, ${parentId}, ${code}, ${name}, ${str(fd, "name_my") || null},
               ${fd.get("is_stock_location") === "on"})
       returning id, is_stock_location`;
-    // A branch that now holds stock gets its quarantine (0218) alongside,
-    // so "move to quarantine" and "release" have somewhere to point.
-    if (made.is_stock_location && parentId) await sql`select fn_quarantine_location(${made.id})`;
+    // A warehouse gets its quarantine bin (0218) with it, so "move to
+    // quarantine" and "release" have somewhere to point. A stock location
+    // inside another one is that one's shelf and counts in it: no bin of its own.
+    if (made.is_stock_location) {
+      const [p] = parentId ? await sql`select is_stock_location from location where id = ${parentId}` : [];
+      if (!p?.is_stock_location) await sql`select fn_quarantine_location(${made.id})`;
+    }
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -4561,9 +4565,9 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
     if (!name) return { error: await m("nameRequired") };
     if (parentId === id) return { error: await m("warehouseSelfParent") };
 
-    // A branch's quarantine (0218) can be renamed, but stays a stock location
-    // under its own branch: moving it would put rejected stock in another
-    // branch's keeping, and making it an office would leave stock nowhere.
+    // A warehouse's quarantine bin (0218) can be renamed, but stays a stock
+    // location inside its own warehouse: moving it would put rejected stock in
+    // another building's count, and making it an office would leave it nowhere.
     const [q] = await sql`select parent_id from location where id = ${id} and company_id = ${co} and is_quarantine`;
     if (q && (parentId !== q.parent_id || fd.get("is_stock_location") !== "on")) {
       return { error: await m("quarantineStaysPut") };
