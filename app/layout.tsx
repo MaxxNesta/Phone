@@ -142,7 +142,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           dangerouslySetInnerHTML={{
             __html:
               "try{if(localStorage.getItem('navCollapsed')==='true')"
-              + "document.body.dataset.navCollapsed='true'}catch(e){}",
+              + "document.body.dataset.navCollapsed='true'}catch(e){}"
+              // The till hides the sidebar behind its menu button (pos-nav.tsx):
+              // said before paint too, so the rail never flashes open over it.
+              + "if(location.pathname==='/pos'){document.body.dataset.pos='true';document.body.dataset.navCollapsed='false'}",
           }}
         />
         <DatePickerFix />

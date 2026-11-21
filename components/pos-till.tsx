@@ -10,6 +10,7 @@ import {
 import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
 import type { ReceiptView } from "@/lib/receipt";
 import { PosSaleDone } from "./pos-sale-done";
+import { PosNavToggle } from "./pos-nav";
 import { PosFilters } from "./pos-filters";
 import { PosUnitPicker, PosAddedConfirm } from "./pos-unit-picker";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
@@ -601,7 +602,7 @@ export function PosTill(props: {
 
       <div className="pos3-top">
         <div className="page-head hero">
-          <h1>{tr("title")}</h1>
+          <h1 className="pos-title"><PosNavToggle />{tr("title")}</h1>
         </div>
       </div>
 

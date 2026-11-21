@@ -11602,3 +11602,37 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .access-banner.info { background: color-mix(in srgb, var(--blue, #0071e3) 12%, transparent); color: var(--blue-ink, #0058b0); }
 .access-banner.warn { background: #F9D85A; color: #3B2F00; }
 .access-banner.bad { background: var(--bad); color: #fff; }
+
+/* ---------------------------------------------------------- The till ---
+   On the counter-sale page the sidebar is a drawer over the shelf, opened by
+   the menu button before the title (components/pos-nav.tsx). Wider screens
+   only: on a phone the top bar's own menu already does this. */
+.pos-navbtn, .pos-scrim { display: none; }
+.pos-title { display: flex; align-items: center; gap: 10px; }
+@media (min-width: 821px) {
+  .pos-navbtn {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink); cursor: pointer;
+  }
+  .pos-navbtn:hover { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); }
+  .pos-navbtn:focus-visible { outline: 2px solid var(--blue, #0071e3); outline-offset: 2px; }
+  body[data-pos="true"] .shell .sidebar {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
+    width: 264px; height: 100dvh;
+    transform: translateX(-100%); visibility: hidden;
+    box-shadow: 0 0 40px rgb(0 0 0 / 0.3);
+  }
+  body[data-pos="true"][data-pos-nav="open"] .shell .sidebar { transform: translateX(0); visibility: visible; }
+  /* Collapsing the rail means nothing for a drawer. */
+  body[data-pos="true"] .shell .sidebar .navcollapse-row { display: none; }
+  body[data-pos="true"] .pos-scrim {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgb(0 0 0 / 0.45); opacity: 0; pointer-events: none;
+  }
+  body[data-pos="true"][data-pos-nav="open"] .pos-scrim { opacity: 1; pointer-events: auto; }
+}
+@media (min-width: 821px) and (prefers-reduced-motion: no-preference) {
+  body[data-pos="true"] .shell .sidebar { transition: transform 220ms ease, visibility 220ms; }
+  body[data-pos="true"] .pos-scrim { transition: opacity 220ms ease; }
+}
