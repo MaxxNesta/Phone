@@ -1445,6 +1445,7 @@
     },
     "status": {
       "IN_STOCK": "In stock",
+      "QUARANTINE": "In quarantine (defective)",
       "RESERVED": "Reserved",
       "REPAIR": "In repair",
       "SOLD": "Sold",

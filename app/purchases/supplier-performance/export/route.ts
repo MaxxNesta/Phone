@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import {
   getCompany, getSupplierSpend, getSupplierCommitmentData, getSupplierFulfilment,
   getSupplierLeadTimeObservations, getSupplierPriceObservations,
-  getSupplierDeliveryCompleteness, getSupplierMatchingVariance,
+  getSupplierDeliveryCompleteness, getSupplierMatchingVariance, getSupplierQuality,
 } from "@/lib/queries";
 import { requireFeature } from "@/lib/plans";
 import { METRICS, CALC_VERSION, type MetricId } from "@/lib/supplier-metrics";
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   const from = asDate(q.get("from"))
     ?? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
 
-  const [spend, commitments, fulfilment, leadTimes, prices, completeness, variance] =
+  const [spend, commitments, fulfilment, leadTimes, prices, completeness, variance, quality] =
     await Promise.all([
       getSupplierSpend(company.id, from, to),
       getSupplierCommitmentData(company.id, from, to),
@@ -66,11 +66,12 @@ export async function GET(req: NextRequest) {
       getSupplierPriceObservations(company.id, from, to),
       getSupplierDeliveryCompleteness(company.id, from, to),
       getSupplierMatchingVariance(company.id, from, to),
+      getSupplierQuality(company.id, from, to),
     ]);
 
   const rows = buildPerformance({
     suppliers: spend, commitments, fulfilment, leadTimes, prices,
-    completeness, variance, cutoff: to,
+    completeness, variance, quality, cutoff: to,
   });
 
   const out: unknown[][] = [[

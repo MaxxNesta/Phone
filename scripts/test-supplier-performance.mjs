@@ -296,6 +296,30 @@ try {
       m.score === null && m.raw === null && Boolean(m.unavailable));
   }
 
+  // ---- quality from receipts: refused at the door, faulty after (D-P7) ---
+  // 21 received, 3 refused at receipt, 1 of the 18 accepted reported faulty.
+  {
+    const [qp] = buildPerformance({
+      suppliers: [{ partner_id: "q1", code: "Q", name: "Quality test", spend: "1", invoices: 1 }],
+      commitments: [], fulfilment: [], leadTimes: [], prices: [], completeness: [], variance: [],
+      quality: [{ partner_id: "q1", receipts: 5, received: 21, refused: 3, faulty: 1 }],
+      cutoff: "2026-11-30",
+    });
+    const qa = qp.metrics.quality_acceptance, df = qp.metrics.return_performance;
+    check("quality acceptance is units accepted at the door: 18 of 21",
+      Math.abs(qa.raw - (100 * 18) / 21) < 0.001 && qa.score !== null, `${qa.raw?.toFixed(1)}%`);
+    check("defect-free after receipt is accepted units never reported faulty: 17 of 18",
+      Math.abs(df.raw - 100 * (1 - 1 / 18)) < 0.001 && df.score !== null, `${df.raw?.toFixed(1)}%`);
+    const [few] = buildPerformance({
+      suppliers: [{ partner_id: "q2", code: "Q2", name: "Two receipts", spend: "1", invoices: 1 }],
+      commitments: [], fulfilment: [], leadTimes: [], prices: [], completeness: [], variance: [],
+      quality: [{ partner_id: "q2", receipts: 2, received: 4, refused: 1, faulty: 0 }],
+      cutoff: "2026-11-30",
+    });
+    check("two receipts are too few to score", few.metrics.quality_acceptance.score === null
+      && Boolean(few.metrics.quality_acceptance.unavailable));
+  }
+
   // ---- normalization boundaries ------------------------------------------
   console.log("\n  the scale itself\n");
 
@@ -313,7 +337,7 @@ try {
     ["on_time_delivery", "order_fulfillment", "lead_time_consistency"])?.length === 3);
   check("two is not", sanitizeAxes(["on_time_delivery", "order_fulfillment"]) === null);
   check("an unmeasurable axis is refused",
-    sanitizeAxes(["on_time_delivery", "order_fulfillment", "quality_acceptance"]) === null);
+    sanitizeAxes(["on_time_delivery", "order_fulfillment", "quantity_accuracy"]) === null);
   check("seven are trimmed to six", sanitizeAxes([
     "on_time_delivery", "order_fulfillment", "lead_time_consistency",
     "price_competitiveness", "price_stability", "delivery_completeness",

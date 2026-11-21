@@ -72,7 +72,7 @@ export default async function StockMovements({
   )) as unknown as Array<{
     id: string; movement_date: string; qty: string; unit_cost: string;
     total_cost: string; batch_no: string | null; doc_no: string | null;
-    doc_type: string; document_id: string | null; location_code: string;
+    doc_type: string; document_id: string | null; location_code: string; is_quarantine: boolean;
     item_code: string; item_name: string;
   }>;
 
@@ -115,7 +115,9 @@ export default async function StockMovements({
   const tableRows: DataRow[] = ordered.map((r) => ({
     key: r.id,
     searchText: [r.doc_no, r.doc_type, r.location_code, r.batch_no,
-                 r.item_code, r.item_name].filter(Boolean).join(" "),
+                 r.item_code, r.item_name, r.is_quarantine ? "defective quarantine" : null].filter(Boolean).join(" "),
+    // Into or out of a quarantine bin (0218) is defective stock; anywhere else, good stock.
+    facet: { condition: r.is_quarantine ? "DEFECTIVE" : "GOOD" },
     node: (
       <tr>
         <td className="code">{shortDate(r.movement_date)}</td>
@@ -135,6 +137,9 @@ export default async function StockMovements({
           )}
         </td>
         <td className="code">{r.location_code}</td>
+        <td>{r.is_quarantine
+          ? <span className="pill warn" title="Quarantine bin: defective, not for sale">Defective</span>
+          : <span className="pill plain">Good</span>}</td>
         <td className="code">
           {/* A revaluation moves value and no goods: the bill disagreed with
               the receipt and the difference went back onto stock that was
@@ -158,6 +163,7 @@ export default async function StockMovements({
     ...(!oneItem ? [{ key: "item", label: t("item") }] : []),
     { key: "document", label: c("document") },
     { key: "location", label: t("mov.location") },
+    { key: "condition", label: "Condition" },
     { key: "batch", label: t("mov.batch") },
     { key: "in", label: t("mov.in"), align: "r" as const },
     { key: "out", label: t("mov.out"), align: "r" as const },
@@ -275,6 +281,8 @@ export default async function StockMovements({
                   emptyLabel={t("mov.noMatches")}
                   searchPlaceholder={t("mov.searchPlaceholder")}
                   columns={columns}
+                  filters={[{ key: "condition", allLabel: "Good and defective",
+                              options: [{ value: "GOOD", label: "Good stock" }, { value: "DEFECTIVE", label: "Defective (quarantine)" }] }]}
                 />
               )}
             </div>

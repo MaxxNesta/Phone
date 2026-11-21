@@ -3909,7 +3909,7 @@ export async function getStockMovements(
     select sm.id, sm.movement_date, sm.qty, sm.unit_cost, sm.total_cost,
            sm.batch_no, sm.expiry_date, sm.created_at,
            d.doc_no, d.doc_type, d.id as document_id,
-           l.code as location_code,
+           l.code as location_code, l.is_quarantine,
            i.code as item_code, i.name as item_name
       from stock_movement sm
       left join document d on d.id = sm.document_id
@@ -5493,7 +5493,9 @@ export async function getTrialBalance(companyId: string) {
 
 // ------------------------------------------------- GR/IR line-level status --
 
-export type MatchedBy = { docId: string; docNo: string; docDate: string; qty: number; value: number };
+export type MatchedBy = { docId: string; docNo: string; docDate: string; qty: number; value: number;
+  /** A bill settles by billing; a purchase return by sending the goods back. */
+  kind?: "INVOICE" | "RETURN" };
 export type MatchLineStatus = {
   lineId: string;
   itemId: string;
@@ -5502,6 +5504,10 @@ export type MatchLineStatus = {
   uomCode: string | null;
   qty: number;          // what this line carries
   settled: number;      // how much of it the counterpart documents have covered
+  /** Goods receipt only: refused at the door (D-P7), so never to be billed. */
+  rejected: number;
+  /** Goods receipt only: sent back on a purchase return against this line. */
+  returned: number;
   remaining: number;
   matchedBy: MatchedBy[];
 };
@@ -5546,7 +5552,7 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
 
   const lines = await sql`
     select dl.id, dl.item_id, dl.base_qty as qty, dl.net_amount as net,
-           dl.source_line_id,
+           dl.source_line_id, dl.reject_reason is not null as rejected,
            i.code as item_code, i.name as item_name, u.code as uom_code
       from document_line dl
       join item i on i.id = dl.item_id
@@ -5554,6 +5560,21 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
      where dl.document_id = ${documentId}
      order by dl.line_no`;
   if (lines.length === 0) return null;
+
+  /* A receipt is settled two ways, not one. A bill settles what it bills;
+     a purchase return against the receipt settles what went back — the
+     engine's over-billing check counts it the same way (assertNotOverBilled),
+     so a unit sent back was never "awaiting invoice" here either. And a line
+     refused at the door (D-P7) is replaced or credited, never billed. One
+     query, on the document's source index. */
+  const returns = doc.doc_type === "GOODS_RECEIPT" ? await sql`
+    select d.id, d.doc_no, d.doc_date, dl.base_qty as qty, dl.source_line_id
+      from document_line dl
+      join document d on d.id = dl.document_id
+     where d.company_id = ${doc.company_id}
+       and d.doc_type = 'PURCHASE_RETURN' and d.status = 'POSTED'
+       and d.source_document_id = ${documentId}
+     order by d.posting_date, d.doc_no, dl.line_no` : [];
 
   // Counterpart documents in the order they posted, which is the order the
   // ledger settled them in.
@@ -5612,9 +5633,23 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
     }
   }
 
+  // What went back, against the line it went back against.
+  const returnedBy = new Map<string, number>();
+  for (const r of returns as any[]) {
+    if (!r.source_line_id) continue;
+    returnedBy.set(r.source_line_id, (returnedBy.get(r.source_line_id) ?? 0) + Number(r.qty));
+    const list = matchedBy.get(r.source_line_id) ?? [];
+    const existing = list.find((m) => m.docId === r.id);
+    if (existing) existing.qty += Number(r.qty);
+    else list.push({ docId: r.id, docNo: r.doc_no, docDate: String(r.doc_date), qty: Number(r.qty), value: 0, kind: "RETURN" });
+    matchedBy.set(r.source_line_id, list);
+  }
+
   const out: MatchLineStatus[] = lines.map((l: any) => {
     const qty = Number(l.qty);
     const done = settled.get(l.id) ?? 0;
+    const rejected = l.rejected ? qty : 0;
+    const returned = l.rejected ? 0 : Math.min(qty, returnedBy.get(l.id) ?? 0);
     return {
       lineId: l.id,
       itemId: l.item_id,
@@ -5623,13 +5658,15 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
       uomCode: l.uom_code ?? null,
       qty,
       settled: done,
-      remaining: Math.max(0, Math.round((qty - done) * 10000) / 10000),
-      matchedBy: matchedBy.get(l.id) ?? [],
+      rejected,
+      returned,
+      remaining: Math.max(0, Math.round((qty - rejected - returned - done) * 10000) / 10000),
+      matchedBy: (matchedBy.get(l.id) ?? []).map((m) => ({ kind: "INVOICE" as const, ...m })),
     };
   });
 
   const totalRemaining = out.reduce((s, l) => s + l.remaining, 0);
-  const totalSettled = out.reduce((s, l) => s + l.settled, 0);
+  const totalSettled = out.reduce((s, l) => s + l.settled + l.returned + l.rejected, 0);
 
   return {
     state: totalSettled === 0 ? "NONE" : totalRemaining === 0 ? "FULL" : "PARTIAL",
@@ -7109,6 +7146,29 @@ export async function getSupplierPriceObservations(
  * Only orders fully received within the period are eligible: one still
  * arriving has not yet failed to arrive at once.
  */
+/**
+ * Per supplier, over the goods receipts in the period: units received, units
+ * refused at the door (a refused receipt line, D-P7), and units reported
+ * faulty after the receipt posted (fault_report, 0224). One pass, grouped;
+ * the receipt's (company, type, date) index and fault_report's line index.
+ */
+export async function getSupplierQuality(companyId: string, from: string, to: string) {
+  return sql`
+    select gr.partner_id,
+           count(distinct gr.id)::int as receipts,
+           coalesce(sum(gl.base_qty), 0)::float as received,
+           coalesce(sum(gl.base_qty) filter (where gl.reject_reason is not null), 0)::float as refused,
+           coalesce(sum(f.qty), 0)::float as faulty
+      from document gr
+      join document_line gl on gl.document_id = gr.id
+      left join (select receipt_line_id, sum(qty) as qty from fault_report
+                  where company_id = ${companyId} group by receipt_line_id) f on f.receipt_line_id = gl.id
+     where gr.company_id = ${companyId} and gr.doc_type = 'GOODS_RECEIPT' and gr.status = 'POSTED'
+       and gr.partner_id is not null
+       and gr.doc_date >= ${from}::date and gr.doc_date <= ${to}::date
+     group by gr.partner_id` as unknown as Promise<{ partner_id: string; receipts: number; received: number; refused: number; faulty: number }[]>;
+}
+
 export async function getSupplierDeliveryCompleteness(
   companyId: string, from: string, to: string,
 ) {

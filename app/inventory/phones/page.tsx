@@ -16,7 +16,7 @@ export async function generateMetadata() {
   return { title: "IMEI Inventory" };
 }
 
-const STATUSES = ["IN_STOCK", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
+const STATUSES = ["IN_STOCK", "QUARANTINE", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
 
 type Search = Record<string, string | undefined>;
 
@@ -96,6 +96,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
         {kpi(<PackageCheck size={17} />, "In stock", k.available, share(k.available))}
         {k.available_used > 0 && kpi(<Recycle size={17} />, "Secondhand in stock", k.available_used, share(k.available_used))}
         {kpi(<Lock size={17} />, "Reserved", k.reserved, share(k.reserved))}
+        {k.quarantine > 0 && kpi(<Lock size={17} />, "In quarantine (defective)", k.quarantine, share(k.quarantine))}
         {kpi(<ShoppingBag size={17} />, "Sold", k.sold, share(k.sold))}
       </div>
 

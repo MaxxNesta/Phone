@@ -5,7 +5,7 @@ import { money, shortDate } from "@/lib/db";
 import {
   getCompany, getSupplierSpend, getSupplierCommitmentData, getSupplierFulfilment,
   getSupplierLeadTimeObservations, getSupplierPriceObservations,
-  getSupplierDeliveryCompleteness, getSupplierMatchingVariance,
+  getSupplierDeliveryCompleteness, getSupplierMatchingVariance, getSupplierQuality,
   getSupplierPerformanceSetting, getRadarPresets, getSupplierFulfilmentByMonth,
 } from "@/lib/queries";
 import { saveRadarPreset } from "@/lib/actions";
@@ -80,7 +80,7 @@ export default async function SupplierPerformancePage({
   const thresholds = resolveThresholds(stored?.thresholds);
   const targets = resolveTargets(stored?.targets);
 
-  const [spend, commitments, fulfilment, leadTimes, prices, completeness, variance] =
+  const [spend, commitments, fulfilment, leadTimes, prices, completeness, variance, quality] =
     await Promise.all([
       getSupplierSpend(company.id, from, to),
       getSupplierCommitmentData(company.id, from, to),
@@ -89,6 +89,7 @@ export default async function SupplierPerformancePage({
       getSupplierPriceObservations(company.id, from, to),
       getSupplierDeliveryCompleteness(company.id, from, to),
       getSupplierMatchingVariance(company.id, from, to),
+      getSupplierQuality(company.id, from, to),
     ]);
 
   // Suppliers that only appear on an order and never an invoice are added
@@ -96,7 +97,7 @@ export default async function SupplierPerformancePage({
   // about who is on the report.
   const rows = buildPerformance({
     suppliers: spend,
-    commitments, fulfilment, leadTimes, prices, completeness, variance,
+    commitments, fulfilment, leadTimes, prices, completeness, variance, quality,
     cutoff: to,
     thresholds,
     targets,
@@ -521,11 +522,10 @@ function UnavailableNote() {
         <div className="headwith">
           <strong>What this cannot measure yet</strong>
           <HelpHint label="Why these are blank">
-            Three of the ten metrics have no data behind them in this
-            database, so they are named rather than quietly dropped — a
-            dashboard showing seven axes where ten were promised makes
-            people wonder whether it is broken. Each needs something
-            recorded that is not recorded today:
+            {missing.length === 1 ? "One" : missing.length} of the {Object.keys(METRICS).length} metrics
+            {missing.length === 1 ? " has" : " have"} no data behind {missing.length === 1 ? "it" : "them"} in this
+            database, so {missing.length === 1 ? "it is" : "they are"} named rather than quietly dropped.
+            Each needs something recorded that is not recorded today:
             <ul>
               {missing.map((m) => (
                 <li key={m.id}>

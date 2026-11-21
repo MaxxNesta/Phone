@@ -716,7 +716,9 @@ export default async function DocumentPage({
   if (movesGoods && match) {
     const total = match.lines.reduce((t, l) => t + Number(l.qty), 0);
     const done = match.lines.reduce((t, l) => t + Number(l.settled), 0);
-    const left = Math.max(total - done, 0);
+    // Refused at the door or sent back on a return: never to be billed.
+    const out = match.lines.reduce((t, l) => t + Number(l.rejected) + Number(l.returned), 0);
+    const left = match.lines.reduce((t, l) => t + Number(l.remaining), 0);
     stats.push(
       { icon: PackageCheck, label: `Goods ${goodsWord}`, value: qty(String(total)),
         unit: unitWord, note: `on ${shortDate(doc.doc_date)}` },
@@ -724,7 +726,8 @@ export default async function DocumentPage({
         value: qty(String(done)), unit: unitWord,
         note: done === 0 ? "Not yet invoiced" : "Invoiced" },
       { icon: Clock, label: "Unbilled quantity", value: qty(String(left)), unit: unitWord,
-        note: left > 0 ? "Awaiting supplier invoice" : "Nothing outstanding",
+        note: left > 0 ? "Awaiting supplier invoice"
+          : out > 0 ? `Nothing outstanding. ${qty(String(out))} not billable (rejected or returned)` : "Nothing outstanding",
         tone: left > 0 ? "warn" : "ok" },
     );
   } else if (isInvoice && !progress) {
@@ -1562,17 +1565,17 @@ export default async function DocumentPage({
             const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
             const atDoor = refused.filter((r) => r.source === "REFUSED").reduce((t, r) => t + Number(r.qty), 0);
             const later = total - atDoor;
-            const what = [atDoor > 0 ? `${units(atDoor)} refused on arrival` : null,
-              later > 0 ? `${atDoor > 0 ? later : units(later)} found faulty later` : null].filter(Boolean).join(", ");
+            const what = [atDoor > 0 ? `${units(atDoor)} rejected at receipt` : null,
+              later > 0 ? `${units(later)} reported defective after receipt` : null].filter(Boolean).join("; ");
             return (
               <StatusBanner
                 tone={refusedHeld > 0 ? "warn" : "ok"}
                 title={refusedHeld > 0
-                  ? `${what} — ${refusedHeld === total ? (total === 1 ? "in" : "all in") : `${refusedHeld} still in`} quarantine`
-                  : `${what} — sent back to the supplier`}
+                  ? `${what}. ${refusedHeld === total ? "In quarantine." : `${refusedHeld} in quarantine, ${total - refusedHeld} returned to supplier.`}`
+                  : `${what}. Returned to supplier.`}
                 description={refusedHeld > 0
-                  ? "Held in this warehouse's quarantine bin, not for sale. Send them back, and hand the rejection note over with them."
-                  : "Nothing from this receipt is waiting in quarantine."}
+                  ? "Blocked stock. Not available for sale. Return to the supplier with the rejection note."
+                  : "No stock from this receipt in quarantine."}
                 actions={<>
                   <Link href={`/documents/${doc.id}/print?slip=rejection`} className="btn ghost tiny">Rejection note</Link>
                   {refusedHeld > 0 && can(user, "purchase.post") && (["REPLACE", "CREDIT"] as const)
@@ -1819,8 +1822,8 @@ export default async function DocumentPage({
                                       : Math.max(0, Number(r.qty) - Number(r.returned));
                                     return (
                                       <span className="line-subnote" title="Received into quarantine, not for sale, until it goes back">
-                                        <span><strong>Refused</strong> — {l.reject_reason}. Supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"} {Number(l.base_qty) === 1 ? "it" : "them"};
-                                          {" "}{held > 0 ? "held in quarantine" : "sent back"}.</span>
+                                        <span><strong>Rejected at receipt:</strong> {l.reject_reason}. Supplier to {l.reject_outcome === "REPLACE" ? "replace" : "credit"}.
+                                          {" "}{held > 0 ? "In quarantine." : "Returned to supplier."}</span>
                                       </span>
                                     );
                                   })()}
@@ -1832,9 +1835,8 @@ export default async function DocumentPage({
                                       : Math.max(0, Number(r.qty) - Number(r.returned));
                                     return (
                                       <span key={`f${i}`} className="line-subnote" title="Moved to quarantine after the receipt was posted">
-                                        <span><strong>Found faulty</strong> — {Number(r.qty)} of {Number(l.base_qty)}: {r.reject_reason}.
-                                          {" "}Supplier {r.reject_outcome === "REPLACE" ? "replaces" : "credits"} {Number(r.qty) === 1 ? "it" : "them"};
-                                          {" "}{held > 0 ? "held in quarantine" : "sent back"}.</span>
+                                        <span><strong>Reported defective after receipt ({Number(r.qty)} of {Number(l.base_qty)}):</strong> {r.reject_reason}. Supplier to {r.reject_outcome === "REPLACE" ? "replace" : "credit"}.
+                                          {" "}{held > 0 ? "In quarantine." : "Returned to supplier."}</span>
                                       </span>
                                     );
                                   })}
@@ -1989,7 +1991,8 @@ export default async function DocumentPage({
           </div>
           {/* How far along, before the line-by-line answer. */}
           {(() => {
-            const total = match.lines.reduce((t, l) => t + Number(l.qty), 0);
+            // Out of what is billable: refused and returned units never are.
+            const total = match.lines.reduce((t, l) => t + Number(l.qty) - Number(l.rejected ?? 0) - Number(l.returned ?? 0), 0);
             const done = Math.min(total, match.lines.reduce((t, l) => t + Number(l.settled), 0));
             const pct = total > 0 ? Math.round((done / total) * 100) : 0;
             return total > 0 ? (
@@ -2023,7 +2026,7 @@ export default async function DocumentPage({
                         <span className="code">{l.itemCode}</span> {l.itemName}
                       </td>
                       <td className="r">{qty(l.qty)}</td>
-                      <td className="r">{l.settled > 0 ? qty(l.settled) : "—"}</td>
+                      <td className="r">{l.settled > 0 ? qty(l.settled) : l.rejected > 0 ? <span className="dl-quiet">Rejected</span> : "—"}</td>
                       <td className="r">
                         {l.remaining > 0
                           ? <strong>{qty(l.remaining)}</strong>
@@ -2035,9 +2038,10 @@ export default async function DocumentPage({
                         <td className="wrap">
                           <Link href={`/documents/${m.docId}`}>{m.docNo}</Link>
                           {" · "}{shortDate(m.docDate)}
+                          {m.kind === "RETURN" && " · Returned to supplier"}
                         </td>
                         <td className="r">—</td>
-                        <td className="r">{qty(m.qty)}</td>
+                        <td className="r">{m.kind === "RETURN" ? <span className="dl-quiet">{qty(m.qty)} returned</span> : qty(m.qty)}</td>
                         <td className="r">—</td>
                       </tr>
                     ))}

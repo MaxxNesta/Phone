@@ -187,7 +187,8 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
            v.brand_name, ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour,
            v.location_id, v.location_name, br.name as branch_name,
            v.unit_cost::float as unit_cost, ${RETAIL_PRICE}::float as price,
-           v.status, v.received_date, (fn_shop_today() - v.received_date) as age_days,
+           -- In stock but in a quarantine bin (0218): defective, held apart, not for sale.
+           case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end as status, v.received_date, (fn_shop_today() - v.received_date) as age_days,
            v.supplier_name, v.customer_name, v.out_doc_no, v.out_date, v.warranty_expiry,
            v.was_returned, v.was_transferred, v.secondhand_grade
       from v_stock_serial v
@@ -205,10 +206,10 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
        and (${f.model ?? null}::text is null or v.model_name = ${f.model ?? null})
        and (${f.storage ?? null}::text is null or ${optionMatching(STORAGE_RE)} = ${f.storage ?? null})
        and (${f.colour ?? null}::text is null or ${optionMatching(COLOUR_RE)} = ${f.colour ?? null})
-       and (${f.status ?? null}::text is null or v.status = ${f.status ?? null})
+       and (${f.status ?? null}::text is null or case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end = ${f.status ?? null})
        and (${f.supplierId ?? null}::uuid is null or v.supplier_id = ${f.supplierId ?? null})
        and (${f.condition ?? null}::text is null or (${f.condition ?? null} = 'USED') = (v.secondhand_grade is not null))
-     order by v.status = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date, v.imei
+     order by case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date, v.imei
      limit ${size > 0 ? size : 500} offset ${offset}`;
   return Object.assign(rows, { total: rows.length ? Number((rows[0] as any).total_count) : 0 });
 }
@@ -225,9 +226,13 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
 const phoneStockOverview = cache(async (companyId: string) => {
   const [r] = await sql`
     with v as materialized (
-      select brand_name, model_name, supplier_id, supplier_name, status,
-             received_date, out_date, unit_cost, secondhand_grade is not null as used
-        from v_stock_serial where company_id = ${companyId}
+      -- Defective units in a quarantine bin (0218) are their own status here:
+      -- not "in stock" for selling, still stock for value.
+      select v.brand_name, v.model_name, v.supplier_id, v.supplier_name,
+             case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end as status,
+             v.received_date, v.out_date, v.unit_cost, v.secondhand_grade is not null as used
+        from v_stock_serial v left join location loc on loc.id = v.location_id
+       where v.company_id = ${companyId}
     ), opt as (
       select ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour
         from item i where i.company_id = ${companyId} and i.tracks_serial
@@ -248,12 +253,13 @@ const phoneStockOverview = cache(async (companyId: string) => {
       (select count(*) filter (where status = 'SOLD') from v)::int as sold,
       (select count(*) filter (where status = 'RESERVED') from v)::int as reserved,
       (select count(*) filter (where status = 'REPAIR') from v)::int as repair,
+      (select count(*) filter (where status = 'QUARANTINE') from v)::int as quarantine,
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today())) from v)::int as sold_month,
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today()) - interval '1 month'
                                  and out_date < date_trunc('month', fn_shop_today())) from v)::int as sold_last_month,
-      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0) from v)::float as value,
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR', 'QUARANTINE')), 0) from v)::float as value,
       (select count(*) filter (where status = 'IN_STOCK' and used) from v)::int as available_used,
-      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR') and used), 0) from v)::float as value_used`;
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR', 'QUARANTINE') and used), 0) from v)::float as value_used`;
   return r;
 });
 
@@ -268,11 +274,14 @@ export async function phoneStockFacets(companyId: string) {
 export async function serialDetail(companyId: string, serialId: string) {
   const [unit] = await sql`
     select v.*, ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour,
+           (select l.is_quarantine from location l where l.id = v.location_id) as in_quarantine,
            (v.received_date + make_interval(months => coalesce(v.supplier_warranty_months, 0)))::date
              as supplier_warranty_expiry
       from v_stock_serial v join item i on i.id = v.item_id
      where v.company_id = ${companyId} and v.serial_id = ${serialId}`;
   if (!unit) return null;
+  // Defective, held in a quarantine bin: its own status, as on the list (0218).
+  if (unit.status === "IN_STOCK" && unit.in_quarantine) unit.status = "QUARANTINE";
   const events = await sql`
     select e.event, e.created_at, e.note, d.id as document_id, d.doc_no, d.doc_type, d.status,
            d.partner_id, bp.name as partner_name,
@@ -643,7 +652,7 @@ export async function serialKpis(companyId: string) {
   const r = await phoneStockOverview(companyId);
   return { available: r.available as number, received_week: r.received_week as number,
            total: r.total as number, sold: r.sold as number,
-           reserved: r.reserved as number, repair: r.repair as number, sold_month: r.sold_month as number,
+           reserved: r.reserved as number, repair: r.repair as number, quarantine: r.quarantine as number, sold_month: r.sold_month as number,
            sold_last_month: r.sold_last_month as number, value: r.value as number,
            // New and secondhand on the shelf, counted and valued apart (0211).
            available_used: r.available_used as number, value_used: r.value_used as number };
@@ -681,20 +690,22 @@ export async function inventorySummary(companyId: string, f: {
      ${locs ? sql`and id = any(${locs})` : sql``} order by code`;
   const rows = await sql`
     with qty as (
-      select item_id, location_id, qty_on_hand::float as qty, value_on_hand::float as value
+      select item_id, location_id, qty_on_hand::float as qty, value_on_hand::float as value, is_quarantine
         from v_stock_on_hand where company_id = ${companyId}
          and (${f.locationId ?? null}::uuid is null or location_id = ${f.locationId ?? null})
          ${locs ? sql`and location_id = any(${locs})` : sql``}
     ),
     per as (
+      -- Defective units in a quarantine bin (0218): stock, not available.
       select item_id, sum(qty) as qty, sum(value) as value,
+             coalesce(sum(qty) filter (where is_quarantine), 0) as quarantine,
              jsonb_object_agg(location_id, qty) as by_loc
         from qty group by item_id
     )
     select i.id, i.code, i.name, coalesce(p.id, i.id) as model_id, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
            vp.canonical_item_id, coalesce(vp.members, 1)::int as members,
            g.name as category, coalesce(gp.name, g.name) as top_category, b.name as brand, i.tracks_serial, i.identity,
-           coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
+           coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, coalesce(per.quarantine, 0)::float as quarantine, per.by_loc,
            -- company_id first so stock_serial(company_id, item_id) is used per row.
            (select count(*)::int from stock_serial_hold h join stock_serial s on s.id = h.serial_id
              where s.company_id = i.company_id and s.item_id = i.id and h.released_at is null) as reserved,
@@ -733,7 +744,7 @@ export async function inventorySummary(companyId: string, f: {
      dashboard and Replenishment use — read once per request (lowStockToday). */
   const { byCode } = await lowStockToday(companyId);
   const withStatus = merged.map((r: any) => {
-    const available = Number(r.qty) - Number(r.reserved);
+    const available = Number(r.qty) - Number(r.reserved) - Number(r.quarantine ?? 0);
     const flagged = (r.codes as string[]).filter((c) => byCode.has(c));
     const reorderAt = flagged.length ? flagged.reduce((t, c) => t + (byCode.get(c) ?? 0), 0) : null;
     return { ...r, available, reorder_at: reorderAt,
@@ -881,7 +892,10 @@ export async function recentMovements(companyId: string, limit = 8, locs: string
  */
 export async function serialJourney(companyId: string, serialId: string) {
   const [unit] = await sql`
-    select v.serial_id, v.item_id, v.imei, v.imei2, v.device_serial, v.status, v.was_returned, v.hold_kind,
+    select v.serial_id, v.item_id, v.imei, v.imei2, v.device_serial, v.was_returned, v.hold_kind,
+           -- Defective, held in a quarantine bin: its own status, as on the list (0218).
+           case when v.status = 'IN_STOCK' and (select l.is_quarantine from location l where l.id = v.location_id)
+                then 'QUARANTINE' else v.status end as status,
            v.item_name, v.model_name, v.brand_name, v.location_id, v.location_name, v.notes,
            v.supplier_id, v.supplier_name, v.received_document_id, v.received_on, v.received_date,
            v.supplier_warranty_months,

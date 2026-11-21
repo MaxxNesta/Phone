@@ -180,6 +180,19 @@ export default async function Stock({
   const onHandOf = (itemId: string, companyWide: number) => allLocations ? companyWide : pick(qtyAt, itemId);
   const valueOf = (itemId: string, companyWide: number) => allLocations ? companyWide : pick(valueAt, itemId);
   const reservedOf = (itemId: string) => pick(reservedAt, itemId);
+  // Defective units in a warehouse's quarantine bin (0218): still stock,
+  // never for sale. All warehouses: inside on hand, so out of available.
+  // One warehouse: its bin is a location of its own, counted beside it.
+  const binParent = new Map((locations as unknown as { id: string; parent_id: string | null; is_quarantine: boolean }[])
+    .filter((l) => l.is_quarantine).map((l) => [l.id, l.parent_id]));
+  const quarantineAt = index(stockByLocation.filter((r) => binParent.has(r.location_id)), (r) => Number(r.qty_on_hand));
+  const quarantineOf = (itemId: string) => {
+    const per = quarantineAt.get(itemId);
+    if (!per) return 0;
+    let q = 0;
+    for (const [bin, n] of per) if (allLocations || binParent.get(bin) === selectedLocationId) q += n;
+    return q;
+  };
   const incomingOf = (itemId: string) => pick(incomingAt, itemId);
   // Every consigned row visible under the current location choice. The KPI
   // counts these rather than the whole company's, or picking a warehouse
@@ -217,8 +230,10 @@ export default async function Stock({
     const reservedQty = reservedOf(i.id);
     const incomingQty = incomingOf(i.id);
     const consignedQty = consignedOf(i.id);
-    const available = onHand - reservedQty;
-    return { ...i, onHand, valueOnHand, reservedQty, incomingQty, consignedQty, available,
+    const quarantineQty = quarantineOf(i.id);
+    const available = onHand - reservedQty - (allLocations ? quarantineQty : 0);
+    return { ...i, onHand, valueOnHand, reservedQty, incomingQty, consignedQty, available, quarantineQty,
+             quarantineInOnHand: allLocations,
              projected: available + incomingQty,
              model: (i.parent_item_id && byId.get(i.parent_item_id)?.name) || i.name,
              status: (onHand <= 0 ? "OUT" : lowIds.has(i.id) ? "LOW" : "IN") as StockRowItem["status"] };
@@ -316,6 +331,7 @@ export default async function Stock({
       itemGroupId: i.item_group_id, category, uomCode: i.uom_code,
       barcode: i.barcode, brandName: i.brand_name,
       onHand: i.onHand, consignedQty: i.consignedQty, reservedQty: i.reservedQty, available: i.available,
+      quarantineQty: i.quarantineQty, quarantineInOnHand: i.quarantineInOnHand,
       incomingQty: i.incomingQty, projected: i.projected, valueOnHand: i.valueOnHand, showCost: seeCost,
       lastCost: seeCost ? i.last_purchase_price : null, lastCostDocNo: seeCost ? i.last_purchase_doc_no : null,
       lastCostDocId: seeCost ? i.last_purchase_document_id : null,
