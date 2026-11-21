@@ -293,36 +293,100 @@ export async function serialDetail(companyId: string, serialId: string) {
 
 /** Every handset a document touched: received, sold, returned or moved by it. */
 export async function serialsOnDocument(documentId: string) {
-  // line_id: the line of this document the unit moved on, so a page can
-  // list each line's own IMEIs under it. A receipt's unit is tied through
-  // the layer its line made; a sale's or return's through the movement that
-  // took it. On a document composed for this one (a counter sale's
-  // delivery), its line's source is this document's line. Null where
-  // neither says, and the page falls back to the item.
+  // The handsets a document is about, and which of its lines each belongs
+  // to (line_id), so a page can list each line's own IMEIs under it.
+  //
+  // Stock often moves on a different document from the one a person looks
+  // at: an invoice billed from a delivery, a bill matched to a receipt, a
+  // delivery made later for an invoice, a counter sale's own delivery. So
+  // the handsets are read from this document and from the ones its lines
+  // are tied to either way (a line that names one of these lines, or a line
+  // one of these names), plus any composed for it. Each unit is placed on
+  // the line that moved it if that line is this document's; otherwise on
+  // this document's line it answers, by those same ties. Null where nothing
+  // ties it, and the caller falls back to the item.
   return sql`
-    select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code,
-           s.item_id, e.event,
-           (select case when dl.document_id = ${documentId}::uuid then dl.id else dl.source_line_id end
-              from stock_movement sm
-              join document_line dl on dl.id = sm.document_line_id
-             where sm.document_id = e.document_id
-               and sm.id = coalesce(
-                     (select si.stock_movement_id from stock_serial_issue si
-                        join stock_movement m on m.id = si.stock_movement_id
-                       where si.serial_id = s.id and m.document_id = e.document_id
-                       limit 1),
-                     (select l.stock_movement_id from stock_lot l where l.id = e.lot_id))
-             limit 1) as line_id
-      from stock_serial_event e
-      join stock_serial s on s.id = e.serial_id
-      join item i on i.id = s.item_id
-     -- The invoice's own, and the delivery or goods receipt composed for it
-     -- (a counter sale's delivery is where the handsets were recorded leaving).
-     where e.document_id = any(array(
-             select ${documentId}::uuid
-             union all
-             select id from document where lifecycle_owner_id = ${documentId}))
-     order by s.id, e.created_at`;
+    with mine as (
+      select id, source_line_id from document_line where document_id = ${documentId}::uuid
+    ),
+    composed as (
+      select id from document where lifecycle_owner_id = ${documentId}::uuid
+    ),
+    -- A document composed for this one (a bill's own receipt, a counter
+    -- sale's delivery) is made from these lines in order and names none of
+    -- them: its n-th line of an item answers this one's n-th line of it.
+    composed_map as (
+      select c.id as composed_line, m.id as my_line
+        from (select dl.id, dl.item_id, row_number() over (partition by dl.document_id, dl.item_id order by dl.line_no) rn
+                from document_line dl where dl.document_id in (select id from composed)) c
+        join (select id, item_id, row_number() over (partition by item_id order by line_no) rn
+                from document_line where document_id = ${documentId}::uuid) m
+          on m.item_id = c.item_id and m.rn = c.rn
+    ),
+    related as (
+      select ${documentId}::uuid as id
+      union select id from composed
+      union select dl.document_id from document_line dl where dl.source_line_id in (select id from mine)
+      union select dl.document_id from document_line dl where dl.id in (select source_line_id from mine)
+    ),
+    moved as (
+      select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code,
+             s.item_id, e.event, e.document_id,
+             -- The line that moved it: a receipt's through the layer its line
+             -- made, an issue's through the movement that took it.
+             (select sm.document_line_id from stock_movement sm
+               where sm.document_id = e.document_id
+                 and sm.id = coalesce(
+                       (select si.stock_movement_id from stock_serial_issue si
+                          join stock_movement m on m.id = si.stock_movement_id
+                         where si.serial_id = s.id and m.document_id = e.document_id
+                         limit 1),
+                       (select l.stock_movement_id from stock_lot l where l.id = e.lot_id))
+               limit 1) as moved_on
+        from stock_serial_event e
+        join stock_serial s on s.id = e.serial_id
+        join item i on i.id = s.item_id
+       where e.document_id in (select id from related)
+       order by s.id, (e.document_id = ${documentId}::uuid) desc, e.created_at
+    )
+    , placed as (
+      select m.*,
+             coalesce(
+               (select id from mine where id = m.moved_on),
+               (select dl.source_line_id from document_line dl
+                 where dl.id = m.moved_on and dl.source_line_id in (select id from mine)),
+               (select id from mine where source_line_id = m.moved_on limit 1),
+               (select my_line from composed_map where composed_line = m.moved_on)) as line_id
+        from moved m
+    )
+    -- A unit read off a document this one is only tied to (the receipt a
+    -- return names, say) belongs here only if it ties to one of these lines:
+    -- the receipt's other units are not this return's.
+    select serial_id, imei, imei2, item_code, item_id, event, line_id
+      from placed
+     where line_id is not null
+        or document_id = ${documentId}::uuid
+        or document_id in (select id from composed)`;
+}
+
+/**
+ * A document's handsets grouped under its lines (serialsOnDocument): each
+ * unit on the line it is tied to, else on the first line of its item; any
+ * whose item is not on the lines at all are returned apart.
+ */
+export function serialsByLine<T extends { line_id: string | null; item_id: string }>(
+  serials: T[], lines: { id: string; item_id: string | null }[],
+): { byLine: Map<string, T[]>; leftover: T[] } {
+  const ids = new Set(lines.map((l) => String(l.id)));
+  const byLine = new Map<string, T[]>();
+  const leftover: T[] = [];
+  for (const sr of serials) {
+    const own = sr.line_id && ids.has(String(sr.line_id)) ? String(sr.line_id)
+      : lines.find((l) => l.item_id === sr.item_id)?.id;
+    if (!own) { leftover.push(sr); continue; }
+    byLine.set(String(own), [...(byLine.get(String(own)) ?? []), sr]);
+  }
+  return { byLine, leftover };
 }
 
 /** IMEI, maker's serial, invoice number or customer name. */

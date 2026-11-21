@@ -19,7 +19,7 @@ import { DocumentAttachments } from "@/components/document-attachments";
 import { uploadAttachment, deleteAttachment } from "@/lib/actions";
 import { storageConfigured } from "@/lib/r2";
 import { planVoid } from "@/lib/void";
-import { serialsOnDocument } from "@/lib/phone";
+import { serialsOnDocument, serialsByLine } from "@/lib/phone";
 import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
@@ -1754,16 +1754,8 @@ export default async function DocumentPage({
         // Each line's own IMEIs, listed under it. A unit the query could not
         // tie to a line goes with the first line of its item; any left over
         // (an item not on the lines at all) keep the card at the bottom.
-        const lineIds = new Set((lines as any[]).map((l) => String(l.id)));
-        const serialsByLine = new Map<string, any[]>();
-        const unplaced: any[] = [];
-        for (const sr of docSerials as any[]) {
-          const own = sr.line_id && lineIds.has(String(sr.line_id)) ? String(sr.line_id)
-            : (lines as any[]).find((l) => l.item_id === sr.item_id)?.id;
-          if (!own) { unplaced.push(sr); continue; }
-          serialsByLine.set(String(own), [...(serialsByLine.get(String(own)) ?? []), sr]);
-        }
-        leftoverSerials = unplaced;
+        const placed = serialsByLine(docSerials as any[], lines as any[]);
+        leftoverSerials = placed.leftover;
         const linesNet = (lines as any[]).reduce((t, l) => t + Number(l.net_amount ?? 0), 0);
         const lineDiscount = Math.max(0, linesNet - Number(doc.net_total));
         return (
@@ -1777,7 +1769,7 @@ export default async function DocumentPage({
                   <tbody>
                     {lines.map((l: any) => {
                       const batches = (docBatches as any[]).filter((b) => b.item_id === l.item_id);
-                      const lineSerials = serialsByLine.get(String(l.id)) ?? [];
+                      const lineSerials = placed.byLine.get(String(l.id)) ?? [];
                       const imeis = lineSerials.length;
                       return (
                         <Fragment key={l.id}>
