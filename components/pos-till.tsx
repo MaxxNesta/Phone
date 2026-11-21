@@ -604,6 +604,26 @@ export function PosTill(props: {
         <div className="page-head hero">
           <h1 className="pos-title"><PosNavToggle />{tr("title")}</h1>
         </div>
+        {/* Where the sale is made: chosen when there are several, shown when
+              a cashier has only their own branch, so the till always says where. */}
+          <label className="pos3-branch">
+            <Store size={20} aria-hidden="true" />
+            <span className="pos3-branch-text">
+              <b>{here?.branch ?? here?.name}</b>
+              <small>{here?.branch ? here.name : tr("sellingFrom")}</small>
+            </span>
+            {props.locations.length > 1 && (
+              <>
+                <ChevronDown size={16} aria-hidden="true" />
+                <select aria-label={tr("sellingFrom")} value={locationId}
+                  onChange={(e) => { setLocationId(e.target.value); setPicking(null); }}>
+                  {props.locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.branch ? `${l.branch} · ${l.name}` : l.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
+          </label>
       </div>
 
       <div className="pos3">
@@ -628,26 +648,17 @@ export function PosTill(props: {
                 </button>
               )}
             </form>
-          {/* Where the sale is made: chosen when there are several, shown when
-              a cashier has only their own branch, so the till always says where. */}
-          <label className="pos3-branch">
-            <Store size={20} aria-hidden="true" />
-            <span className="pos3-branch-text">
-              <b>{here?.branch ?? here?.name}</b>
-              <small>{here?.branch ? here.name : tr("sellingFrom")}</small>
-            </span>
-            {props.locations.length > 1 && (
-              <>
-                <ChevronDown size={16} aria-hidden="true" />
-                <select aria-label={tr("sellingFrom")} value={locationId}
-                  onChange={(e) => { setLocationId(e.target.value); setPicking(null); }}>
-                  {props.locations.map((l) => (
-                    <option key={l.id} value={l.id}>{l.branch ? `${l.branch} · ${l.name}` : l.name}</option>
-                  ))}
-                </select>
-              </>
-            )}
-          </label>
+            <div className="pos3-bar-right">
+              <button type="button" className="pos3-filter-btn" aria-expanded={filtersOpen} aria-controls="pos3-filters"
+                onClick={() => setFiltersOpen((o) => !o)}>
+                <SlidersHorizontal size={16} aria-hidden="true" /> {tr("filters")}
+                {facets.active > 0 && <span className="pf-count">{facets.active}</span>}
+              </button>
+              <label className="pos3-instock">
+                <input type="checkbox" role="switch" checked={sel.inStockOnly} onChange={(e) => setFilters({ ...sel, inStockOnly: e.target.checked })} />
+                {tr("inStockOnly")}
+              </label>
+            </div>
           </div>
 
           <div className="pos3-bar">
@@ -657,17 +668,6 @@ export function PosTill(props: {
                 <button type="button" key={t.type} className="pos3-pill" aria-pressed={sel.type === t.type}
                   onClick={() => pickType(t.type)}>{t.type}</button>
               ))}
-            </div>
-            <div className="pos3-bar-right">
-              <button type="button" className="pos3-filter-btn" aria-expanded={filtersOpen} aria-controls="pos3-filters"
-                onClick={() => setFiltersOpen((o) => !o)}>
-                <SlidersHorizontal size={16} aria-hidden="true" /> {tr("filters")}
-                {facets.active > 0 && <span className="pf-count">{facets.active}</span>}
-              </button>
-              <label className="pos3-instock">
-                <input type="checkbox" checked={sel.inStockOnly} onChange={(e) => setFilters({ ...sel, inStockOnly: e.target.checked })} />
-                {tr("inStockOnly")}
-              </label>
             </div>
           </div>
 
@@ -734,7 +734,7 @@ export function PosTill(props: {
 
         <aside className="pos3-cart" id="pos-cart" aria-label={tr("currentSale")}>
           <div className="pos3-cart-head">
-            <h2><ShoppingCart size={18} aria-hidden="true" /> {tr("cart")}</h2>
+            <h2><ShoppingCart size={18} aria-hidden="true" /> {tr("currentSale")}</h2>
             <span className="subline">{tr("items", { n: totals.units })}</span>
             {lines.length > 0 && (
               <button type="button" className={`pos3-clear${confirmClear ? " sure" : ""}`} onClick={clearCart}>
@@ -754,7 +754,7 @@ export function PosTill(props: {
           <div className="pos3-lines">
             {lines.length === 0 && (
               <div className="pos3-empty">
-                <ShoppingCart size={28} aria-hidden="true" />
+                <ScanLine size={28} aria-hidden="true" />
                 <span>{tr("emptyCart")}</span>
               </div>
             )}
@@ -946,9 +946,17 @@ export function PosTill(props: {
               {issues.map((t) => <li key={t}><TriangleAlert size={14} aria-hidden="true" /> {t}</li>)}
             </ul>
           )}
-          <button type="button" className="complete" disabled={saving || lines.length === 0 || issues.length > 0} onClick={post}>
-            {saving ? tr("posting") : tr("complete", { amount: money(totals.total) })}
-          </button>
+          {/* The total on its own line, the action beside it, as the till reads. */}
+          <div className="pos3-totalbar">
+            <div className="pos3-totalfig">
+              <span>{tr("total")}{change > 0 ? ` · ${tr("changeToReturn")} ${fmtCents(change)}` : ""}</span>
+              <strong>{money(totals.total)} MMK</strong>
+            </div>
+            <button type="button" className="complete" disabled={saving || lines.length === 0 || issues.length > 0} onClick={post}
+              aria-label={tr("complete", { amount: money(totals.total) })}>
+              {saving ? tr("posting") : tr("completeShort")}
+            </button>
+          </div>
           </div>
         </aside>
       </div>

@@ -1107,6 +1107,7 @@
     "discountCeiling": "Line discounts up to {pct}%. More needs a manager.",
     "posting": "Posting…",
     "complete": "Complete sale · {amount} MMK",
+    "completeShort": "Complete sale",
     "viewCart": "View cart · {n, plural, one {# item} other {# items}}",
     "clearFilters": "Clear filters",
     "allProducts": "All products",
