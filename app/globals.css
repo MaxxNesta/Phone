@@ -11753,13 +11753,14 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 }
 
 /* ======================================================= returns, two columns ==
-   Customer and supplier returns as one white sheet: the details (underlined
-   fields, as on orders and invoices) and the lines on the left; on the right,
-   past a hairline, the receipt, each handset with its reason, the note, what
-   the return does and the post button. Close to the Astryx preview
+   Customer and supplier returns as one white sheet. Left: the details
+   (underlined fields, as on orders and invoices), the lines, each item going
+   back with its reason and IMEI, and the note. Right, past a hairline and kept
+   short: the source document with its counts, the return's total in a solid
+   block, what it does, and the post button. Close to the Astryx preview
    (2026-11-21). Markup in components/return-form.tsx. */
 .form.docsheet.rtn { padding: 0; }
-.rtn-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: stretch; }
+.rtn-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: stretch; }
 .rtn-main { display: flex; flex-direction: column; min-width: 0; padding: 8px 28px 24px; }
 .rtn-main > .card { margin: 0; padding: 20px 0; border-top: 1px solid var(--line-soft); }
 .rtn-main > .card:first-of-type { border-top: 0; }
@@ -11767,28 +11768,66 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 /* Plain section titles: no tinted strip. */
 .form.docsheet.rtn .card > .card-head { background: none; margin: 0 0 12px; padding: 0; border-radius: 0; }
 .form.docsheet.rtn .card > .card-head h2 { font-size: 1.0625rem; font-weight: 700; }
+.form.docsheet.rtn .card > .card-head h2 label { font: inherit; color: inherit; margin: 0; }
+/* Details: three across, so Date starts the second row. */
+@media (min-width: 1101px) { .rtn-main .doc-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.rtn-main .doc-fields .field.span-all { grid-column: 1 / -1; }
+
+/* The lines: the product photo before the name, where there is one. */
+.rtn-item { display: flex; align-items: center; gap: 10px; }
+
+
+/* Items going back: one row each, the IMEI entry opening under its row. */
+.rtn-units { display: flex; flex-direction: column; }
+.rtn-unit { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.rtn-unit:first-child { border-top: 0; padding-top: 0; }
+.rtn-unit-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; font-size: var(--t-sm); }
+.rtn-unit-code { font-weight: 600; }
+.rtn-unit-why { color: var(--ink); min-width: 0; }
+.rtn-unit-why .page-sub { font-size: inherit; color: var(--muted); }
+.rtn-unit-imei { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.rtn-unit-imei .vimei { padding-left: 0; }
+.rtn-unit-imei .linkish { font-size: var(--t-sm); padding: 0; min-height: 0; color: var(--link); }
+.rtn-unit .serialentry { max-width: 720px; }
+@media (max-width: 640px) { .rtn-unit-row { grid-template-columns: minmax(0, 1fr); } }
+.rtn-note { width: 100%; min-height: 64px; font-size: 0.875rem; line-height: 1.45; }
+
+/* The right column. */
 .rtn-side { display: flex; flex-direction: column; border-left: 1px solid var(--line-soft); padding: 8px 24px 24px; }
-.rtn-sec { display: flex; flex-direction: column; gap: 10px; padding: 20px 0; border-top: 1px solid var(--line-soft); }
+.rtn-sec { display: flex; flex-direction: column; gap: 12px; padding: 20px 0; border-top: 1px solid var(--line-soft); }
 .rtn-sec:first-child { border-top: 0; }
-.rtn-sec .field { margin: 0; }
-.rtn-sec textarea { min-height: 96px; font-size: 0.875rem; line-height: 1.45; }
-.rtn-side-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
-.rtn-side-head h2 { font-size: 1.0625rem; font-weight: 700; margin: 0; }
-.rtn-side-head strong { font-size: 1.0625rem; font-variant-numeric: tabular-nums; }
-.rtn-facts { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 0; font-size: var(--t-sm); }
+.rtn-side-title { font-size: 1.0625rem; font-weight: 700; margin: 0; }
+.rtn-docs { display: flex; flex-direction: column; gap: 4px; font-size: var(--t-sm); font-weight: 600; }
+.rtn-docs span { display: inline-flex; align-items: center; gap: 6px; }
+.rtn-docs svg { color: var(--muted); }
+/* The receipt's counts: an icon each, the figure at the right. */
+.rtn-counts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: var(--t-sm); }
+.rtn-counts li { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; }
+.rtn-counts svg { color: var(--muted); }
+.rtn-counts b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.rtn-counts li.bad svg { color: var(--bad); }
+.rtn-counts li.good svg { color: var(--link); }
+/* The total: a light box, the figure in ink. */
+.rtn-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 14px 16px;
+  border-radius: 10px; background: var(--line-soft); color: var(--ink); }
+.rtn-total span { font-size: var(--t-sm); font-weight: 600; }
+.rtn-total strong { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.rtn-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: var(--t-sm); }
 .rtn-facts dt { color: var(--muted); }
 .rtn-facts dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
-.rtn-side .rtn-post { width: 100%; min-height: 44px; }
+.rtn-side .rtn-post { width: 100%; min-height: 44px; background: var(--link); border-color: var(--link); color: #fff; }
+.rtn-side .rtn-post:hover:not(:disabled) { background: color-mix(in srgb, var(--link) 88%, #000); }
+.rtn-side .rtn-post:disabled { background: color-mix(in srgb, var(--link) 18%, var(--surface)); border-color: transparent; color: var(--link); }
+/* Money back: two radios, each with a line on what it does. */
+.rtn-radios { display: flex; flex-direction: column; gap: 8px; }
+.rtn-radio { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-weight: 400; margin: 0; }
+.rtn-radio input { margin-top: 3px; accent-color: var(--link); }
+.rtn-radio span { display: flex; flex-direction: column; gap: 2px; }
+.rtn-radio b { font-weight: 600; font-size: var(--t-sm); }
+.rtn-radio small { color: var(--muted); font-size: var(--t-sm); }
+.rtn-radio.off { opacity: 0.5; cursor: not-allowed; }
 .rtn-side .alert { margin: 0; }
-/* Each handset: the item, where it came from, why, and its IMEIs. */
-.rtn-unit { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line-soft); }
-.rtn-side-head + .rtn-unit { border-top: 0; padding-top: 2px; }
-.rtn-unit-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: var(--t-sm); }
-.rtn-unit-why { font-size: var(--t-sm); color: var(--ink); }
-.rtn-imeis { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-.rtn-imeis .vimei { padding-left: 0; }
-.rtn-imeis .linkish { font-size: var(--t-sm); padding: 0; min-height: 0; color: var(--link); }
-.rtn-side .serialentry { padding: 8px 10px; }
+
 /* Filled in from a receipt or claim: no search to start with, one click away. */
 .rtn-filled { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 0 12px; font-size: var(--t-sm); color: var(--muted); }
 .rtn-filled .linkish { display: inline-flex; align-items: center; gap: 4px; color: var(--link); font-weight: 500; }
@@ -11799,8 +11838,10 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .form.docsheet.rtn.rtn table.linetable > thead > tr > th,
 .form.docsheet.rtn.rtn table.linetable > tbody > tr > td { min-width: 0; width: auto; }
 .rtn-main .linetable td.narrow input { width: 100%; min-width: 56px; max-width: 160px; }
+.form.docsheet.rtn.rtn table.linetable > thead > tr > th.vc-qty { width: 72px; }
+.form.docsheet.rtn.rtn table.linetable > tbody > tr > td.narrow:has(input[aria-label="Quantity"]) { width: 72px; }
+.rtn-main .linetable td.narrow input[aria-label="Quantity"] { max-width: 64px; text-align: right; }
 .rtn-main .linetable td.narrow input[aria-label="Unit price"] { min-width: 112px; }
-.rtn-main .doc-fields .field.span-2 { grid-column: span 2; }
 /* Beside a 232px menu the lines need about 1280px before the column fits too. */
 @media (max-width: 1280px) {
   .rtn-layout { grid-template-columns: 1fr; }

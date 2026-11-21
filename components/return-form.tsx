@@ -16,7 +16,8 @@ import type { Channel } from "@/lib/payment-channels";
 import type { MoneyPreview } from "@/lib/refund";
 import { LineRemove } from "./line-remove";
 import { useNotice } from "@/components/toast";
-import { Copy, Plus, Building2, User, Warehouse as WarehouseIcon, FileText, CalendarDays, Clock, Hash, ShieldAlert } from "lucide-react";
+import { Copy, Plus, Building2, User, Warehouse as WarehouseIcon, FileText, CalendarDays, Clock, Hash, ShieldAlert,
+  PackageCheck, ClipboardList, XCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { HelpHint } from "@/components/help-hint";
 
 type Item = PickerItem;
@@ -302,7 +303,7 @@ export function ReturnForm({
       <div className="card doc-info">
         <div className="card-head"><h2>Return details</h2></div>
         <div className="card-body">
-          <div className="doc-fields cols-4">
+          <div className="doc-fields">
             <div className="field">
               <label htmlFor="partner_id">{isSales ? <User size={13} aria-hidden="true" /> : <Building2 size={13} aria-hidden="true" />}{isSales ? "Customer" : "Supplier"}</label>
               <PartnerPicker
@@ -386,7 +387,7 @@ export function ReturnForm({
             {/* A faulty phone does not go back on the shelf (D-P7): it waits in
                 the branch's quarantine for the supplier or a write-off. */}
             {isSales && (
-              <div className="field span-2">
+              <div className="field span-all">
                 <label htmlFor="faulty"><ShieldAlert size={13} aria-hidden="true" />Condition</label>
                 <label className="check" style={{ fontWeight: 400 }}>
                   <input id="faulty" type="checkbox" name="faulty" checked={faulty}
@@ -441,26 +442,29 @@ export function ReturnForm({
                   <tr key={l.key}>
                     <td style={{ minWidth: 150 }}>
                       {item ? (
-                        <>
-                          <div className="line-item-name">{item.name}</div>
-                          <span className="subline">
-                            {item.code}
-                            {named(l) && <> · <span className={n > 0 && n === (Number(l.qty) || 0) ? undefined : "low"}>{n} IMEI{n === 1 ? "" : "s"}</span></>}
+                        <div className="rtn-item">
+                          {item.photo && <span className="vthumb sm"><img src={item.photo} alt="" /></span>}
+                          <span>
+                            <div className="line-item-name">{item.name}</div>
+                            <span className="subline">
+                              {item.code}
+                              {named(l) && <> · <span className={n > 0 && n === (Number(l.qty) || 0) ? undefined : "low"}>{n} IMEI{n === 1 ? "" : "s"}</span></>}
+                            </span>
+                            {(item.packs ?? []).length > 0 && (() => {
+                              const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
+                                price: p.price == null ? null : Number(p.price) }));
+                              return (
+                                <div style={{ marginTop: 4 }}>
+                                  <UnitToggle base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }} packs={packs}
+                                    value={l.uomId ?? ""} label={`Unit for ${item.code}`} qty={Number(l.qty) || 0}
+                                    onChange={(id) => setLine(l.key, { uomId: id,
+                                      unitPrice: String(priceInUnit(packs, l.uomId, id, Number(l.unitPrice) || 0,
+                                        isSales && receiptRate(l.itemId) === null ? Number(item.sale_price) || null : null)) })} />
+                                </div>
+                              );
+                            })()}
                           </span>
-                          {(item.packs ?? []).length > 0 && (() => {
-                            const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
-                              price: p.price == null ? null : Number(p.price) }));
-                            return (
-                              <div style={{ marginTop: 4 }}>
-                                <UnitToggle base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }} packs={packs}
-                                  value={l.uomId ?? ""} label={`Unit for ${item.code}`} qty={Number(l.qty) || 0}
-                                  onChange={(id) => setLine(l.key, { uomId: id,
-                                    unitPrice: String(priceInUnit(packs, l.uomId, id, Number(l.unitPrice) || 0,
-                                      isSales && receiptRate(l.itemId) === null ? Number(item.sale_price) || null : null)) })} />
-                              </div>
-                            );
-                          })()}
-                        </>
+                        </div>
                       ) : "—"}
                     </td>
                     <td className="r">
@@ -516,65 +520,12 @@ export function ReturnForm({
         </div>
       </div>
 
-      {isSales && (
+      {/* Each handset going back: where it came from, why, and its IMEI. One
+          row each; the IMEI entry opens under its row. */}
+      {unitLines.length > 0 && (
         <div className="card">
-          <div className="card-head">
-            <h2>Money back</h2>
-          </div>
-          <div className="card-body pos-stack">
-            <div className="segmented" role="radiogroup" aria-label="Money back">
-              <button type="button" role="radio" aria-checked={refundMode === "credit"}
-                className={`seg${refundMode === "credit" ? " on" : ""}`} onClick={() => setRefundMode("credit")}>
-                Keep as credit
-              </button>
-              <button type="button" role="radio" aria-checked={refundMode === "now"}
-                className={`seg${refundMode === "now" ? " on" : ""}`}
-                disabled={methods.every((c) => !c.accountId)}
-                onClick={() => {
-                  setRefundMode("now");
-                  setRefund((r) => ({ ...r, channelId: r.channelId || cashMethod?.id || "", amount: r.amount || String(total || "") }));
-                }}>
-                Refund now
-              </button>
-            </div>
-            <input type="hidden" name="refund" value={refundMode} />
-            {refundMode === "credit" ? (
-              <span className="hint">
-                {sourceDocumentId
-                  ? "What the customer paid stays against the invoice; anything above what they owe can be refunded later from the return."
-                  : "The value goes on the customer's account, to use on a later sale or refund later."}
-              </span>
-            ) : (
-              <RefundFields channels={methods} value={refund} onChange={setRefund} />
-            )}
-          </div>
-        </div>
-      )}
-      </div>
-
-      {/* The right column: the receipt the goods came in on, each handset with
-          where it came from and why, the note, what the return does, and the
-          button that posts it. Under the form on a narrow screen. */}
-      <aside className="rtn-side">
-        {receipt && (
-          <section className="rtn-sec">
-            <div className="rtn-side-head">
-              <h2>{receipt.docNo}</h2>
-              {receipt.orderNo && <span className="pill">{receipt.orderNo}</span>}
-            </div>
-            <dl className="rtn-facts">
-              {receipt.ordered > 0 && <><dt>Ordered</dt><dd>{fmt(receipt.ordered)}</dd></>}
-              <dt>Received</dt><dd>{fmt(receipt.received)}</dd>
-              <dt>Rejected at receipt</dt><dd>{fmt(receipt.rejected)}</dd>
-              <dt>Defective after receipt</dt><dd>{fmt(receipt.found)}</dd>
-              <dt>Good, in stock</dt><dd>{fmt(Math.max(0, receipt.received - receipt.rejected - receipt.found))}</dd>
-            </dl>
-          </section>
-        )}
-
-        {unitLines.length > 0 && (
-          <section className="rtn-sec">
-            <div className="rtn-side-head"><h2>{isSales ? "Handsets coming back" : "Handsets going back"}</h2></div>
+          <div className="card-head"><h2>{isSales ? "Items coming back" : "Items going back"}</h2></div>
+          <div className="rtn-units">
             {unitLines.map((l) => {
               const item = byId(l.itemId)!;
               const serials = l.serials ?? [];
@@ -584,26 +535,28 @@ export function ReturnForm({
               const [what, ...why] = (l.origin ?? "").split(" · ");
               return (
                 <div key={l.key} className="rtn-unit">
-                  <div className="rtn-unit-head">
-                    <strong>{item.code}</strong>
-                    {l.origin && <span className="pill">{what}</span>}
+                  <div className="rtn-unit-row">
+                    <strong className="rtn-unit-code">{item.code}</strong>
+                    <span className="rtn-unit-why">
+                      {l.origin ? <>{what}{why.length > 0 && <span className="page-sub"> · {why.join(" · ")}</span>}</> : <span className="page-sub">{item.name}</span>}
+                    </span>
+                    {named(l) && done && !open && (
+                      <span className="rtn-unit-imei">
+                        {serials.map((x) => (
+                          <span key={x.serial} className="vimei">
+                            IMEI <span className="m">{x.serial}</span>
+                            <button type="button" className="vicon" aria-label={`Copy IMEI ${x.serial}`}
+                              onClick={() => navigator.clipboard?.writeText(x.serial)}><Copy size={14} /></button>
+                          </span>
+                        ))}
+                        <button type="button" className="linkish" onClick={() => toggleImei(l.key)}>Change</button>
+                      </span>
+                    )}
                   </div>
-                  {why.length > 0 && <div className="rtn-unit-why">{why.join(" · ")}</div>}
                   {item.identity === "OPTIONAL" && (
                     <TrackMode code={item.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
                   )}
-                  {named(l) && (done && !open ? (
-                    <div className="rtn-imeis">
-                      {serials.map((x) => (
-                        <span key={x.serial} className="vimei">
-                          IMEI <span className="m">{x.serial}</span>
-                          <button type="button" className="vicon" aria-label={`Copy IMEI ${x.serial}`}
-                            onClick={() => navigator.clipboard?.writeText(x.serial)}><Copy size={14} /></button>
-                        </span>
-                      ))}
-                      <button type="button" className="linkish" onClick={() => toggleImei(l.key)}>Change</button>
-                    </div>
-                  ) : (
+                  {named(l) && (!done || open) && (
                     <SerialEntry
                       label="IMEIs"
                       qty={q}
@@ -620,25 +573,83 @@ export function ReturnForm({
                       })}
                       onDone={open ? () => toggleImei(l.key) : undefined}
                     />
-                  ))}
+                  )}
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {isSales && (
+        <div className="card">
+          <div className="card-head">
+            <h2>Money back</h2>
+          </div>
+          <div className="card-body pos-stack">
+            <div className="rtn-radios" role="radiogroup" aria-label="Money back">
+              <label className="rtn-radio">
+                <input type="radio" name="refund_mode" checked={refundMode === "credit"} onChange={() => setRefundMode("credit")} />
+                <span><b>Keep as credit</b><small>The value stays on the customer&rsquo;s account.</small></span>
+              </label>
+              <label className={`rtn-radio${methods.every((c) => !c.accountId) ? " off" : ""}`}>
+                <input type="radio" name="refund_mode" checked={refundMode === "now"}
+                  disabled={methods.every((c) => !c.accountId)}
+                  onChange={() => {
+                    setRefundMode("now");
+                    setRefund((r) => ({ ...r, channelId: r.channelId || cashMethod?.id || "", amount: r.amount || String(total || "") }));
+                  }} />
+                <span><b>Refund now</b><small>Pay the money back from cash or a payment method.</small></span>
+              </label>
+            </div>
+            <input type="hidden" name="refund" value={refundMode} />
+            {refundMode === "credit" ? (
+              // The radio already says where the value goes; against an invoice
+              // there is more to say.
+              sourceDocumentId ? (
+                <span className="hint">
+                  What the customer paid stays against the invoice; anything above what they owe can be refunded later from the return.
+                </span>
+              ) : null
+            ) : (
+              <RefundFields channels={methods} value={refund} onChange={setRefund} />
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-head"><h2><label htmlFor="memo">Note</label></h2></div>
+        <textarea id="memo" name="memo" rows={2} className="rtn-note" placeholder="Reason for the return, English or Myanmar"
+          defaultValue={prefill?.memo ?? undefined} />
+        {prefill?.claimId && <input type="hidden" name="claim_id" value={prefill.claimId} />}
+      </div>
+      </div>
+
+      {/* The right column: the document the goods came in on, then what this
+          return does and the button that posts it. */}
+      <aside className="rtn-side">
+        {receipt && (
+          <section className="rtn-sec">
+            <h2 className="rtn-side-title">Source document</h2>
+            <div className="rtn-docs">
+              <span><FileText size={14} aria-hidden="true" />{receipt.docNo}</span>
+              {receipt.orderNo && <span><ClipboardList size={14} aria-hidden="true" />{receipt.orderNo}</span>}
+            </div>
+            <ul className="rtn-counts">
+              {receipt.ordered > 0 && <li><ClipboardList size={15} aria-hidden="true" /><span>Ordered</span><b>{fmt(receipt.ordered)}</b></li>}
+              <li><PackageCheck size={15} aria-hidden="true" /><span>Received</span><b>{fmt(receipt.received)}</b></li>
+              <li className="bad"><XCircle size={15} aria-hidden="true" /><span>Rejected at receipt</span><b>{fmt(receipt.rejected)}</b></li>
+              <li className="bad"><AlertTriangle size={15} aria-hidden="true" /><span>Defective after receipt</span><b>{fmt(receipt.found)}</b></li>
+              <li className="good"><CheckCircle2 size={15} aria-hidden="true" /><span>Good, in stock</span><b>{fmt(Math.max(0, receipt.received - receipt.rejected - receipt.found))}</b></li>
+            </ul>
           </section>
         )}
 
         <section className="rtn-sec">
-          <div className="field">
-            <label htmlFor="memo">Note</label>
-            <textarea id="memo" name="memo" rows={4} placeholder="Reason for the return, English or Myanmar"
-              defaultValue={prefill?.memo ?? undefined} />
-            {prefill?.claimId && <input type="hidden" name="claim_id" value={prefill.claimId} />}
-          </div>
-        </section>
-
-        <section className="rtn-sec">
-          <div className="rtn-side-head">
-            <h2>This return</h2>
+          <h2 className="rtn-side-title">Return summary</h2>
+          <div className="rtn-total">
+            <span>Return total</span>
             <strong>{fmt(total)} {sourceFc ?? "MMK"}</strong>
           </div>
           <dl className="rtn-facts">
