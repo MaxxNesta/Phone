@@ -11654,6 +11654,15 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 /* The app's clock, language and initials float at the top right of every
    page; the header leaves them their room and "Selling from" sits beside it. */
 @media (min-width: 901px) { .pos3-page .pos3-top { padding-right: 480px; } }
+/* Tablet: the bar stays in the header row instead of pushing title and branch
+   down a row; the clock drops the date to make room. Phones keep it above. */
+@media (min-width: 761px) and (max-width: 900px) {
+  .main.main:has(.pos3-page .page-head.hero) > .topbar { position: absolute; top: 16px; right: 16px; width: auto; margin: 0; padding: 0; }
+  .main:has(.pos3-page) > .topbar .tillclock { min-width: 0; }
+  .main:has(.pos3-page) > .topbar .tillclock-day { display: none; }
+  .pos3-page .pos3-top { padding-right: 330px; }
+  .pos3-page .pos3-top .page-head h1 { white-space: nowrap; }
+}
 .pos3-page .pos3-top .page-head.hero { min-height: 0; flex: 1 1 auto; }
 .pos3-page .pos3-top h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
 .pos3-page .pos3-branch { border: 0; background: none; box-shadow: none; padding: 4px 6px; min-height: 0; width: auto; gap: 8px; color: var(--pos-ink); }
