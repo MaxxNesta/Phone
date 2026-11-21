@@ -11791,6 +11791,12 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .rtn-unit .serialentry { max-width: 720px; }
 @media (max-width: 640px) { .rtn-unit-row { grid-template-columns: minmax(0, 1fr); } }
 .rtn-note { width: 100%; min-height: 64px; font-size: 0.875rem; line-height: 1.45; }
+/* Stock adjustments share this layout: a found lot's batch and expiry on one
+   row, and a loss's cost shown, not typed (FIFO decides it). */
+.rtn-lot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.rtn-lot input[type="text"] { width: 200px; }
+.rtn-lot input[type="date"] { width: 170px; }
+.rtn-fixed { display: block; text-align: right; color: var(--muted); padding-right: 8px; }
 
 /* The right column. */
 .rtn-side { display: flex; flex-direction: column; border-left: 1px solid var(--line-soft); padding: 8px 24px 24px; }

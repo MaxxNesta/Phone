@@ -1555,11 +1555,17 @@ export async function rejectedOnReceipt(receiptId: string) {
                        join document rd on rd.id = r.document_id
                       where r.source_line_id = dl.id and rd.doc_type = 'PURCHASE_RETURN'
                         and rd.status = 'POSTED' and rd.reverses_document_id is null), 0)::float as returned,
+           coalesce((select -sum(w.base_qty) from document_line w
+                       join document wd on wd.id = w.document_id
+                      where w.source_line_id = dl.id and wd.doc_type = 'STOCK_ADJUSTMENT'
+                        and wd.status = 'POSTED' and wd.reverses_document_id is null), 0)::float as written_off,
            coalesce((
              select json_agg(json_build_object('imei', s.serial_no,
                       'stillHeld', exists (select 1 from v_stock_serial v
                                             where v.serial_id = s.id and v.status = 'IN_STOCK'
-                                              and v.location_id = dl.location_id))
+                                              and v.location_id = dl.location_id),
+                      'writtenOff', exists (select 1 from v_stock_serial v
+                                             where v.serial_id = s.id and v.status = 'WRITTEN_OFF'))
                     order by s.serial_no)
                from stock_serial_event e
                join stock_serial s on s.id = e.serial_id
@@ -1578,14 +1584,27 @@ export async function rejectedOnReceipt(receiptId: string) {
            sum(fr.qty)::float, sum(fr.qty)::float, i.base_uom_id,
            bu.code, dl.unit_price::float, fr.bin_location_id,
            fr.reason, fr.outcome, dl.source_line_id, dl.line_no,
-           -- No units named: what is no longer in the bin has gone back.
+           -- No units named: what is no longer in the bin has gone back,
+           -- less what a write-off (0225) took out of it.
            case when bool_and(fr.serial_id is null)
-                then greatest(sum(fr.qty) - fn_qty_on_hand(dl.company_id, dl.item_id, fr.bin_location_id), 0)
+                then greatest(sum(fr.qty) - fn_qty_on_hand(dl.company_id, dl.item_id, fr.bin_location_id)
+                              - coalesce((select -sum(w.base_qty) from document_line w
+                       join document wd on wd.id = w.document_id
+                      where w.source_line_id = dl.id and w.location_id = fr.bin_location_id
+                        and wd.doc_type = 'STOCK_ADJUSTMENT' and wd.status = 'POSTED'
+                        and wd.reverses_document_id is null), 0), 0)
                 else 0 end::float,
+           coalesce((select -sum(w.base_qty) from document_line w
+                       join document wd on wd.id = w.document_id
+                      where w.source_line_id = dl.id and w.location_id = fr.bin_location_id
+                        and wd.doc_type = 'STOCK_ADJUSTMENT' and wd.status = 'POSTED'
+                        and wd.reverses_document_id is null), 0)::float,
            coalesce(json_agg(json_build_object('imei', s.serial_no,
                       'stillHeld', exists (select 1 from v_stock_serial v
                                             where v.serial_id = s.id and v.status = 'IN_STOCK'
-                                              and v.location_id = fr.bin_location_id))
+                                              and v.location_id = fr.bin_location_id),
+                      'writtenOff', exists (select 1 from v_stock_serial v
+                                             where v.serial_id = s.id and v.status = 'WRITTEN_OFF'))
                     order by s.serial_no) filter (where s.id is not null), '[]'::json)
       from fault_report fr
       join document_line dl on dl.id = fr.receipt_line_id

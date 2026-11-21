@@ -56,7 +56,8 @@ export default async function NewPurchaseReturn({
            limit 1` : [];
         const lines = rows.map((r) => {
           const held = (r.units as any[]).filter((u) => u.stillHeld).map((u) => ({ serial: String(u.imei) }));
-          const qty = (r.units as any[]).length ? held.length : Number(r.qty) - Number(r.returned);
+          const qty = (r.units as any[]).length ? held.length
+            : Number(r.qty) - Number(r.returned) - Number(r.written_off ?? 0);
           return {
             itemId: String(r.item_id), qty: String(qty), unitPrice: String(Number(r.unit_cost)),
             serials: held, sourceLineId: billed ? null : String(r.line_id), location: String(r.location_id),

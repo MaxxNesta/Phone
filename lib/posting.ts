@@ -6668,6 +6668,9 @@ export type AdjustmentLine = {
   expiryDate?: string | null;
   /** The units lost, for a decrease of a serial-tracked item. */
   serials?: string[];
+  /** A write-off of defective stock names the receipt line it arrived on,
+   *  so that receipt can say what became of it. */
+  sourceLineId?: string | null;
 };
 export type AdjustmentInput = {
   companyId: string;
@@ -6677,6 +6680,12 @@ export type AdjustmentInput = {
   reference?: string | null;
   /** When a found-stock line actually arrived, if more precise than docDate. */
   receivedAt?: string | null;
+  /**
+   * Damaged or scrapped stock written off (Path B): charged to Inventory
+   * Damage (0225) rather than the adjustment account a count difference
+   * uses. Only takes stock away.
+   */
+  writeOff?: boolean;
   lines: AdjustmentLine[];
 };
 
@@ -6702,6 +6711,12 @@ async function _postStockAdjustment(
   if (lines.length === 0) throw new Error("An adjustment needs at least one line");
   // Signed: a stock loss is a negative quantity by design.
   assertLines(lines, { signedQty: true });
+  if (input.writeOff && lines.some((l) => l.qty > 0)) {
+    throw new Error("A write-off only takes stock away. Use a count adjustment for stock found.");
+  }
+  // Where the loss is charged: Inventory Damage for a write-off, the
+  // adjustment account for a count difference.
+  const offsetRole = input.writeOff ? "INVENTORY_DAMAGE" : "STOCK_ADJUSTMENT";
 
   {
     const { companyId, locationId, docDate } = input;
@@ -6794,12 +6809,13 @@ async function _postStockAdjustment(
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
            entered_qty, entered_uom_id, base_qty, unit_price, net_amount, gross_amount,
-           batch_no, expiry_date)
+           batch_no, expiry_date, source_line_id)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
            ${line.qty}, ${item.base_uom_id}, ${line.qty}, ${unitCost}, ${totalCost}, ${totalCost},
            ${line.qty > 0 ? (line.batchNo?.trim() || null) : null},
-           ${line.qty > 0 ? (line.expiryDate || null) : null})
+           ${line.qty > 0 ? (line.expiryDate || null) : null},
+           ${line.sourceLineId ?? null})
         returning id`;
 
       const [movement] = await tx`
@@ -6814,7 +6830,7 @@ async function _postStockAdjustment(
       if (plan) {
         {
           const adjAcct = await tx`
-            select fn_system_account(${companyId}, 'STOCK_ADJUSTMENT') as a`;
+            select fn_system_account(${companyId}, ${offsetRole}) as a`;
           const ids = await recordFifoConsumption(
             tx, companyId, movement.id, plan, adjAcct[0].a as string);
           if (units) {
@@ -6833,7 +6849,7 @@ async function _postStockAdjustment(
     }
 
     netValue = round4(netValue);
-    const adj = await tx`select fn_system_account(${companyId}, 'STOCK_ADJUSTMENT') as a`;
+    const adj = await tx`select fn_system_account(${companyId}, ${offsetRole}) as a`;
     journal.push({ accountId: adj[0].a, amount: -netValue, locationId });
 
     const entryId = await writeJournal(

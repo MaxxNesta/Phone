@@ -6959,6 +6959,8 @@ function parseAdjustmentLines(fd: FormData): AdjustmentLine[] {
       batchNo: l.batchNo ? String(l.batchNo) : null,
       expiryDate: l.expiryDate ? String(l.expiryDate) : null,
       serials: serialFields(l).serials,
+      // Checked against the company's receipts before posting (createStockAdjustment).
+      sourceLineId: typeof l.sourceLineId === "string" && /^[0-9a-f-]{36}$/i.test(l.sourceLineId) ? l.sourceLineId : null,
     }))
     .filter((l) => l.itemId && l.qty !== 0);
 }
@@ -6975,8 +6977,22 @@ export async function createStockAdjustment(_prev: unknown, fd: FormData): Promi
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
+    const writeOff = str(fd, "reason") === "DAMAGE";
+    // A line may name the receipt line its stock arrived on; only a goods
+    // receipt line of this company, for the same item, is kept.
+    const linked = lines.filter((l) => l.sourceLineId);
+    if (linked.length > 0) {
+      const ok = await sql`
+        select dl.id, dl.item_id from document_line dl join document d on d.id = dl.document_id
+         where dl.id = any(${linked.map((l) => l.sourceLineId!)}::uuid[])
+           and d.company_id = ${co} and d.doc_type = 'GOODS_RECEIPT'`;
+      for (const l of linked) {
+        if (!ok.some((r) => r.id === l.sourceLineId && r.item_id === l.itemId)) l.sourceLineId = null;
+      }
+    }
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postStockAdjustment({
+      writeOff,
       companyId: co,
       locationId: str(fd, "location_id"),
       docDate: str(fd, "doc_date"),

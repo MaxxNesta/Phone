@@ -572,8 +572,29 @@ export default async function DocumentPage({
                   and not exists (select 1 from fault_report fr where fr.serial_id = e.serial_id))
               else dl.base_qty > coalesce((select sum(fr.qty) from fault_report fr where fr.receipt_line_id = dl.id), 0)
               end) as any` : [];
-  const refusedHeld = refused.reduce((t, r) => t + ((r.units as any[]).length
-    ? (r.units as any[]).filter((u) => u.stillHeld).length : Math.max(0, Number(r.qty) - Number(r.returned))), 0);
+  /** Where a defect row's units are now: still in quarantine, written off
+   *  (0225), or back with the supplier. */
+  const defectSplit = (r: any) => {
+    const us = r.units as any[];
+    if (us.length) {
+      const held = us.filter((u) => u.stillHeld).length;
+      const off = us.filter((u) => u.writtenOff).length;
+      return { held, off, back: us.length - held - off };
+    }
+    const off = Number(r.written_off ?? 0);
+    const back = Number(r.returned);
+    return { held: Math.max(0, Number(r.qty) - back - off), off, back };
+  };
+  /** "In quarantine." / "Written off." / "1 in quarantine, 1 returned to supplier." */
+  const defectWords = (sp: { held: number; off: number; back: number }) => {
+    const parts = [sp.held > 0 ? ["in quarantine", sp.held] : null, sp.back > 0 ? ["returned to supplier", sp.back] : null,
+      sp.off > 0 ? ["written off", sp.off] : null].filter(Boolean) as [string, number][];
+    if (parts.length === 0) return "";
+    if (parts.length === 1) return parts[0][0][0].toUpperCase() + parts[0][0].slice(1) + ".";
+    const t = parts.map(([w, k]) => `${k} ${w}`).join(", ");
+    return t[0].toUpperCase() + t.slice(1) + ".";
+  };
+  const refusedHeld = refused.reduce((t, r) => t + defectSplit(r).held, 0);
 
     const needsSalesInvoice = doc.doc_type === "DELIVERY" && doc.status === "POSTED" && !stageDoc["SALES_INVOICE"];
 
@@ -1570,22 +1591,24 @@ export default async function DocumentPage({
             return (
               <StatusBanner
                 tone={refusedHeld > 0 ? "warn" : "ok"}
-                title={refusedHeld > 0
-                  ? `${what}. ${refusedHeld === total ? "In quarantine." : `${refusedHeld} in quarantine, ${total - refusedHeld} returned to supplier.`}`
-                  : `${what}. Returned to supplier.`}
+                title={`${what}. ${defectWords(refused.reduce((a, r) => {
+                  const sp = defectSplit(r); return { held: a.held + sp.held, off: a.off + sp.off, back: a.back + sp.back };
+                }, { held: 0, off: 0, back: 0 }))}`}
                 description={refusedHeld > 0
-                  ? "Blocked stock. Not available for sale. Return to the supplier with the rejection note."
+                  ? "Blocked stock. Not available for sale. Return to the supplier with the rejection note, or write it off if they will not take it back."
                   : "No stock from this receipt in quarantine."}
                 actions={<>
                   <Link href={`/documents/${doc.id}/print?slip=rejection`} className="btn ghost tiny">Rejection note</Link>
                   {refusedHeld > 0 && can(user, "purchase.post") && (["REPLACE", "CREDIT"] as const)
-                    .filter((o) => refused.some((r) => r.reject_outcome === o
-                      && ((r.units as any[]).length ? (r.units as any[]).some((u) => u.stillHeld) : Number(r.qty) > Number(r.returned))))
+                    .filter((o) => refused.some((r) => r.reject_outcome === o && defectSplit(r).held > 0))
                     .map((o) => (
                       <Link key={o} href={`/purchases/returns/new?refused=${doc.id}&outcome=${o}`} className="btn tiny">
                         {o === "REPLACE" ? "Send back for replacement" : "Send back for credit"}
                       </Link>
                     ))}
+                  {refusedHeld > 0 && can(user, "inventory.manage") && (
+                    <Link href={`/inventory/adjustments?writeoff=${doc.id}`} className="btn ghost tiny">Write off</Link>
+                  )}
                 </>}
               />
             );
@@ -1817,26 +1840,22 @@ export default async function DocumentPage({
                                       row never grows sideways. */}
                                   {l.reject_reason && (() => {
                                     const r = refused.find((x) => x.source === "REFUSED" && x.line_id === l.id);
-                                    const held = !r ? 1 : (r.units as any[]).length
-                                      ? (r.units as any[]).filter((u) => u.stillHeld).length
-                                      : Math.max(0, Number(r.qty) - Number(r.returned));
+                                    const where = r ? defectWords(defectSplit(r)) : "In quarantine.";
                                     return (
                                       <span className="line-subnote" title="Received into quarantine, not for sale, until it goes back">
                                         <span><strong>Rejected at receipt:</strong> {l.reject_reason}. Supplier to {l.reject_outcome === "REPLACE" ? "replace" : "credit"}.
-                                          {" "}{held > 0 ? "In quarantine." : "Returned to supplier."}</span>
+                                          {" "}{where}</span>
                                       </span>
                                     );
                                   })()}
                                   {/* Found faulty after the receipt was posted (0224): written
                                       against this line, moved to the bin since. */}
                                   {refused.filter((r) => r.source === "FOUND" && r.line_id === l.id).map((r, i) => {
-                                    const held = (r.units as any[]).length
-                                      ? (r.units as any[]).filter((u) => u.stillHeld).length
-                                      : Math.max(0, Number(r.qty) - Number(r.returned));
+                                    const where = defectWords(defectSplit(r));
                                     return (
                                       <span key={`f${i}`} className="line-subnote" title="Moved to quarantine after the receipt was posted">
                                         <span><strong>Reported defective after receipt ({Number(r.qty)} of {Number(l.base_qty)}):</strong> {r.reject_reason}. Supplier to {r.reject_outcome === "REPLACE" ? "replace" : "credit"}.
-                                          {" "}{held > 0 ? "In quarantine." : "Returned to supplier."}</span>
+                                          {" "}{where}</span>
                                       </span>
                                     );
                                   })}
