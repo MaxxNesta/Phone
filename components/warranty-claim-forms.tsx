@@ -14,7 +14,7 @@ export function OpenClaimForm({ serialId }: { serialId: string }) {
         {state?.error && <div className="alert">{state.error}</div>}
         <input type="hidden" name="serial_id" value={serialId} />
         <div className="field">
-          <label htmlFor="fault">{t("claims.fault")} *</label>
+          <label htmlFor="fault">{t("claims.fault")}</label>
           <textarea id="fault" name="fault" rows={3} required placeholder={t("claims.faultPlaceholder")} />
         </div>
         <button className="btn" disabled={pending}>{t("claims.open")}</button>
@@ -34,12 +34,15 @@ export function CloseClaimForm({ claimId }: { claimId: string }) {
         {state?.error && <div className="alert">{state.error}</div>}
         <input type="hidden" name="claim_id" value={claimId} />
         <div className="field">
-          <label>{t("claims.outcome")} *</label>
-          {(["REPAIRED", "REPLACED", "REFUNDED", "REJECTED"] as const).map((o) => (
-            <label key={o} className="check" style={{ fontWeight: 400 }}>
-              <input type="radio" name="outcome" value={o} required /> {t(`claims.out.${o}`)}
-            </label>
-          ))}
+          <label>{t("claims.outcome")}</label>
+          <div className="choice-list" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+            {(["REPAIRED", "REPLACED", "REFUNDED", "REJECTED"] as const).map((o) => (
+              <label key={o} className="choice">
+                <input type="radio" name="outcome" value={o} required />
+                <span>{t(`claims.out.${o}`)}<small>{t(`claims.outSub.${o}`)}</small></span>
+              </label>
+            ))}
+          </div>
         </div>
         <div className="field">
           <label htmlFor="note">{t("claims.note")}</label>

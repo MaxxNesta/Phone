@@ -1,4 +1,5 @@
 "use client";
+import { StatusBanner } from "@/components/status-banner";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
@@ -187,9 +188,9 @@ export function StockTransferForm({
 
           {sameLocation && <div className="alert" style={{ marginTop: "0.75rem" }}>{t("tr.twoDifferent")}</div>}
           {!sameLocation && (releasing || holding) && (
-            <div className="alert warn" style={{ marginTop: "0.75rem" }}>
-              {releasing ? t("tr.releaseHint") : t("tr.intoQuarantineHint")}
-            </div>
+            <StatusBanner tone={releasing ? "info" : "warn"} className="mt-banner"
+              title={releasing ? t("tr.releaseTitle") : t("tr.intoQuarantineTitle")}
+              description={releasing ? t("tr.releaseHint") : t("tr.intoQuarantineHint")} />
           )}
         </div>
       </div>

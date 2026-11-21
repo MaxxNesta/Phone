@@ -1,9 +1,11 @@
+import { shortDate } from "@/lib/format";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { Banknote, TrendingUp, Smartphone, Users, Package, Clock, ShieldAlert, AlertTriangle, Check } from "lucide-react";
 import { redirect } from "next/navigation";
 import { currentUser, can, seesMainDashboard, homeFor } from "@/lib/auth";
 import { fxRevaluationDue } from "@/lib/fx-actions";
+import { StatusBanner } from "@/components/status-banner";
 import { getCompany } from "@/lib/queries";
 import { serialTrackingOn } from "@/lib/features";
 import { planIncludes } from "@/lib/plans";
@@ -109,10 +111,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <p className="page-sub">{date}</p>
       </div>
       {fxDue && (
-        <div className="alert warn" style={{ marginBottom: "var(--s3)" }}>
-          {t("fxDue", { d: fxDue.periodEnd })}{" "}
-          <Link href={`/finance/fx-revaluation?period=${fxDue.periodEnd}`} style={{ color: "var(--link)" }}>{t("fxDueLink")}</Link>
-        </div>
+        <StatusBanner tone="warn" title={t("fxDue", { d: shortDate(fxDue.periodEnd) })}
+          actions={<Link href={`/finance/fx-revaluation?period=${fxDue.periodEnd}`} className="btn tiny">{t("fxDueLink")}</Link>} />
       )}
 
 

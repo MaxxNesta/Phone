@@ -742,7 +742,7 @@
     "branch": "Branch",
     "warehouseLower": "warehouse",
     "quarantineLower": "quarantine",
-    "quarantineHint": "Held apart, not for sale: rejected on arrival or returned faulty. Made automatically, one per branch.",
+    "quarantineHint": "A bin inside the warehouse for stock that is not for sale: refused on arrival or returned faulty. Counted in the warehouse's stock. Made with each warehouse.",
     "standsAlone": "— none, stands on its own —",
     "noBranches": "No branches yet — add one first so this warehouse belongs to it",
     "branchHint": "Which branch this warehouse belongs to. One branch can hold many warehouses.",
@@ -925,7 +925,7 @@
     "ownBranch": "That would put it inside its own branch",
     "selfParent": "A category cannot sit under itself",
     "warehouseSelfParent": "A warehouse cannot sit under itself",
-    "quarantineStaysPut": "A quarantine location stays a warehouse under its own branch. You can change its code or name.",
+    "quarantineStaysPut": "A quarantine bin stays inside its own warehouse. You can change its code or name.",
     "itemInUse": "This item has documents or stock history against it — deactivate it instead of deleting",
     "brandInUse": "This brand is used by one or more items — deactivate it instead of deleting",
     "partnerInUse": "This partner has documents against them — deactivate instead of deleting",
@@ -1338,7 +1338,9 @@
       "oneImeiPerHandset": "Pick one IMEI per handset moving.",
       "post": "Post transfer",
       "postNote": "Leaves the source at its FIFO cost and reopens at the destination at that same cost.",
-      "addItems": "Add products to the transfer"
+      "addItems": "Add products to the transfer",
+      "releaseTitle": "Releasing from quarantine",
+      "intoQuarantineTitle": "Moving into quarantine"
     },
     "neg": {
       "title": "Negative stock — pending reconciliation",
@@ -1961,6 +1963,22 @@
         "REPLACED": "Replaced",
         "REFUNDED": "Refunded",
         "REJECTED": "Turned down"
+      },
+      "nextWithCustomer": "The phone is still with the customer",
+      "nextWithCustomerSub": "Take it back as faulty: it goes into the warehouse's quarantine bin, not back on the shelf.",
+      "nextInQuarantine": "The phone is in quarantine ({where})",
+      "nextToSupplierCovered": "{who}'s warranty covers it until {d}: send it back to them.",
+      "nextToSupplierExpired": "The supplier's warranty has ended. Send it back anyway if they will take it, or write it off.",
+      "nextClose": "Waiting to be closed",
+      "nextCloseSub": "Close the claim once the customer has their phone, a replacement or their money.",
+      "closedAs": "Closed — {outcome}",
+      "thePhone": "The phone and the complaint",
+      "coverAndTrail": "Cover and what happened",
+      "outSub": {
+        "REPAIRED": "Fixed and handed back to the customer.",
+        "REPLACED": "The customer was given another phone.",
+        "REFUNDED": "The customer was paid back.",
+        "REJECTED": "Not covered, or not a fault. Say why."
       }
     }
   },
@@ -2602,7 +2620,12 @@
       "history": "Past runs",
       "status": "Status",
       "stPosted": "Posted",
-      "stVoided": "Voided"
+      "stVoided": "Voided",
+      "doneTitle": "Revalued at {d}: {net}",
+      "reversedOn": "Taken back on {d}.",
+      "missingTitle": "No {cur} rate for this month end",
+      "readyTitle": "Ready to post for {d}: {net}",
+      "voidOpen": "Void this run…"
     }
   }
 }

@@ -6,6 +6,7 @@ import { shortDate } from "@/lib/format";
 import { getTranslations } from "next-intl/server";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { CloseClaimForm } from "@/components/warranty-claim-forms";
+import { StatusBanner, StatusBadge } from "@/components/status-banner";
 
 /**
  * One warranty claim (0221): what is wrong, whether it was covered when it
@@ -38,8 +39,26 @@ export default async function Claim({ params }: { params: Promise<{ id: string }
 
   const acts = c.status === "OPEN" && (can(user, "sales.return") || can(user, "inventory.manage"));
   const covered = (on: boolean, until: unknown) => until
-    ? <span className={`pill ${on ? "ok" : "reversed"}`}>{on ? t("claims.covered", { d: shortDate(until as string) }) : t("claims.expired", { d: shortDate(until as string) })}</span>
-    : <span className="pill">{t("claims.noWarranty")}</span>;
+    ? <StatusBadge tone={on ? "ok" : "bad"}>{on ? t("claims.covered", { d: shortDate(until as string) }) : t("claims.expired", { d: shortDate(until as string) })}</StatusBadge>
+    : <StatusBadge>{t("claims.noWarranty")}</StatusBadge>;
+  const link = (href: string, text: string) => <Link href={href}>{text}</Link>;
+
+  // What the claim is waiting on, and the one step that answers it.
+  const withCustomer = c.unit_status === "SOLD" && !c.return_document_id;
+  const inQuarantine = c.unit_in_quarantine && c.unit_status === "IN_STOCK" && !c.supplier_return_document_id;
+  const next = c.status !== "OPEN" ? null
+    : withCustomer ? {
+        title: t("claims.nextWithCustomer"), description: t("claims.nextWithCustomerSub"),
+        action: can(user, "sales.return") ? <Link href={`/sales/returns/new?claim=${c.id}`} className="btn tiny">{t("claims.takeBack")}</Link> : null,
+      }
+    : inQuarantine ? {
+        title: t("claims.nextInQuarantine", { where: c.unit_location ?? "" }),
+        description: c.supplier_in_warranty
+          ? t("claims.nextToSupplierCovered", { who: c.supplier_name ?? "—", d: shortDate(c.supplier_warranty_until) })
+          : t("claims.nextToSupplierExpired"),
+        action: can(user, "purchase.post") ? <Link href={`/purchases/returns/new?claim=${c.id}`} className={`btn tiny${c.supplier_in_warranty ? "" : " ghost"}`}>{t("claims.toSupplier")}</Link> : null,
+      }
+    : { title: t("claims.nextClose"), description: t("claims.nextCloseSub"), action: null };
 
   return (
     <>
@@ -50,47 +69,43 @@ export default async function Claim({ params }: { params: Promise<{ id: string }
       ]} />
       <div className="page-head">
         <h1>{t("claims.claim")} {c.claim_no}{" "}
-          <span className={`pill ${c.status === "OPEN" ? "warn" : "ok"}`}>
+          <StatusBadge tone={c.status === "OPEN" ? "warn" : c.outcome === "REJECTED" ? "bad" : "ok"}>
             {c.status === "OPEN" ? t("claims.stOpen") : t(`claims.out.${c.outcome}`)}
-          </span>
+          </StatusBadge>
         </h1>
         <p className="page-sub">{t("claims.claimedOn", { d: shortDate(c.claimed_on), who: c.opened_by_name ?? "—" })}</p>
       </div>
 
-      <div className="card">
-        <div className="card-body">
-          <dl className="kv">
-            <dt>{t("claims.phone")}</dt><dd><Link style={{ color: "var(--link)" }} href={`/imei/${c.serial_id}`} className="m">{c.imei}</Link> · {c.item_name}</dd>
+      {c.status === "CLOSED" ? (
+        <StatusBanner tone={c.outcome === "REJECTED" ? "bad" : "ok"}
+          title={t("claims.closedAs", { outcome: t(`claims.out.${c.outcome}`) })}
+          description={[c.outcome_note, `${shortDate(c.closed_on)}${c.closed_by_name ? ` · ${c.closed_by_name}` : ""}`].filter(Boolean).join(" — ")} />
+      ) : next && acts ? (
+        <StatusBanner tone={next.action ? "warn" : "info"} title={next.title} description={next.description} actions={next.action} />
+      ) : null}
+
+      <div className="split-2">
+        <div className="card"><div className="card-body">
+          <h2 className="card-title">{t("claims.thePhone")}</h2>
+          <dl className="facts">
+            <dt>{t("claims.phone")}</dt><dd>{link(`/imei/${c.serial_id}`, c.imei)} · {c.item_name}</dd>
             <dt>{t("war.customer")}</dt><dd>{c.customer_name ?? "—"}</dd>
-            <dt>{t("war.invoice")}</dt><dd>{c.sale_document_id ? <Link style={{ color: "var(--link)" }} href={`/documents/${c.sale_document_id}`}>{c.sale_no}</Link> : "—"}</dd>
+            <dt>{t("war.invoice")}</dt><dd>{c.sale_document_id ? link(`/documents/${c.sale_document_id}`, c.sale_no) : "—"}</dd>
             <dt>{t("claims.fault")}</dt><dd><strong>{c.fault}</strong></dd>
+          </dl>
+        </div></div>
+        <div className="card"><div className="card-body">
+          <h2 className="card-title">{t("claims.coverAndTrail")}</h2>
+          <dl className="facts">
             <dt>{t("claims.shopWarranty")}</dt><dd>{covered(c.in_warranty, c.warranty_until)}</dd>
             <dt>{t("claims.supplierWarranty")}</dt><dd>{c.supplier_name ?? "—"} {covered(c.supplier_in_warranty, c.supplier_warranty_until)}</dd>
             <dt>{t("claims.phoneNow")}</dt><dd>{String(c.unit_status ?? "").replace(/_/g, " ").toLowerCase()}{c.unit_location ? ` · ${c.unit_location}` : ""}</dd>
-            <dt>{t("claims.returnDoc")}</dt><dd>{c.return_document_id ? <Link style={{ color: "var(--link)" }} href={`/documents/${c.return_document_id}`}>{c.return_no}</Link> : "—"}</dd>
-            <dt>{t("claims.supplierReturnDoc")}</dt><dd>{c.supplier_return_document_id ? <Link style={{ color: "var(--link)" }} href={`/documents/${c.supplier_return_document_id}`}>{c.supplier_return_no}</Link> : "—"}</dd>
-            {c.status === "CLOSED" && (<>
-              <dt>{t("claims.outcome")}</dt>
-              <dd>{t(`claims.out.${c.outcome}`)}{c.outcome_note ? ` — ${c.outcome_note}` : ""} · {shortDate(c.closed_on)}{c.closed_by_name ? `, ${c.closed_by_name}` : ""}</dd>
-            </>)}
+            <dt>{t("claims.returnDoc")}</dt><dd>{c.return_document_id ? link(`/documents/${c.return_document_id}`, c.return_no) : "—"}</dd>
+            <dt>{t("claims.supplierReturnDoc")}</dt><dd>{c.supplier_return_document_id ? link(`/documents/${c.supplier_return_document_id}`, c.supplier_return_no) : "—"}</dd>
           </dl>
-        </div>
+        </div></div>
       </div>
 
-      {acts && (
-        <div className="actions" style={{ margin: "var(--s3) 0" }}>
-          {/* Still with the customer: take it back, faulty, into quarantine. */}
-          {c.unit_status === "SOLD" && !c.return_document_id && can(user, "sales.return") && (
-            <Link href={`/sales/returns/new?claim=${c.id}`} className="btn">{t("claims.takeBack")}</Link>
-          )}
-          {/* In quarantine: send it to the supplier under their warranty. */}
-          {c.unit_in_quarantine && c.unit_status === "IN_STOCK" && !c.supplier_return_document_id && can(user, "purchase.post") && (
-            <Link href={`/purchases/returns/new?claim=${c.id}`} className={`btn${c.supplier_in_warranty ? "" : " ghost"}`}>
-              {t("claims.toSupplier")}
-            </Link>
-          )}
-        </div>
-      )}
       {acts && <CloseClaimForm claimId={c.id} />}
     </>
   );

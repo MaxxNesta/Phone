@@ -54,9 +54,9 @@ export default async function Claims({ searchParams }: { searchParams: Promise<{
                 <td>{r.item_name}</td>
                 <td>{r.customer_name ?? "—"}</td>
                 <td className="wrap">{r.fault}</td>
-                <td><span className={`pill ${r.in_warranty ? "ok" : "reversed"}`}>{r.in_warranty ? t("claims.yes") : t("claims.no")}</span></td>
-                <td><span className={`pill ${r.supplier_in_warranty ? "ok" : "reversed"}`}>{r.supplier_in_warranty ? t("claims.yes") : t("claims.no")}</span></td>
-                <td>{r.status === "OPEN" ? <span className="pill warn">{t("claims.stOpen")}</span> : t(`claims.out.${r.outcome}`)}</td>
+                <td><span className="sbadge" data-tone={r.in_warranty ? "ok" : "bad"}>{r.in_warranty ? t("claims.yes") : t("claims.no")}</span></td>
+                <td><span className="sbadge" data-tone={r.supplier_in_warranty ? "ok" : "bad"}>{r.supplier_in_warranty ? t("claims.yes") : t("claims.no")}</span></td>
+                <td><span className="sbadge" data-tone={r.status === "OPEN" ? "warn" : r.outcome === "REJECTED" ? "bad" : "ok"}>{r.status === "OPEN" ? t("claims.stOpen") : t(`claims.out.${r.outcome}`)}</span></td>
               </tr>
             ))}
             {rows.length === 0 && <tr><td colSpan={9} className="page-sub">{t("claims.none")}</td></tr>}

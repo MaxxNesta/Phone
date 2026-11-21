@@ -5,6 +5,7 @@ import { planFxRevaluation } from "@/lib/posting";
 import { shortDate } from "@/lib/format";
 import { getTranslations } from "next-intl/server";
 import { PostRevaluation, VoidRevaluation } from "@/components/fx-revaluation-forms";
+import { StatusBanner } from "@/components/status-banner";
 
 /**
  * Month-end exchange revaluation (0223, docs/06 D-P6).
@@ -33,7 +34,7 @@ export default async function FxRevaluation({ searchParams }: {
   }
 
   const [standing] = await sql`
-    select r.*, u.name as by_name from fx_revaluation r left join app_user u on u.id = r.created_by
+    select r.*, r.reversal_date::text as reversal_date, u.name as by_name from fx_revaluation r left join app_user u on u.id = r.created_by
      where r.company_id = ${user.companyId} and r.period_end = ${periodEnd}::date and r.status = 'POSTED'`;
   const posted = standing ? await sql`
     select l.*, a.name as account_name, bp.name as partner_name
@@ -83,13 +84,19 @@ export default async function FxRevaluation({ searchParams }: {
       </form>
 
       {standing && (
-        <div className="hintbar" style={{ marginBottom: "var(--s3)" }}>
-          {t("fxr.done", { d: shortDate(periodEnd), who: standing.by_name ?? "—" })}{" "}
-          {Object.entries(standing.rates as Record<string, number>).map(([c, r]) => `${c} ${r}`).join(", ")}
-        </div>
+        <StatusBanner tone="ok"
+          title={t("fxr.doneTitle", { d: shortDate(periodEnd), net: total < 0 ? t("fxr.loss", { v: money(-total) }) : t("fxr.gain", { v: money(total) }) })}
+          description={`${t("fxr.done", { d: shortDate(periodEnd), who: standing.by_name ?? "—" })} ${Object.entries(standing.rates as Record<string, number>).map(([c, r]) => `${c} ${r}`).join(", ")}. ${t("fxr.reversedOn", { d: shortDate(standing.reversal_date) })}`} />
       )}
       {!standing && plan!.missingRates.length > 0 && (
-        <div className="alert">{t("fxr.missing", { cur: plan!.missingRates.join(", "), d: shortDate(periodEnd) })}</div>
+        <StatusBanner tone="warn" title={t("fxr.missingTitle", { cur: plan!.missingRates.join(", ") })}
+          description={t("fxr.missing", { cur: plan!.missingRates.join(", "), d: shortDate(periodEnd) })} />
+      )}
+      {mayPost && !standing && rows.length > 0 && plan!.missingRates.length === 0 && (
+        <StatusBanner tone="info"
+          title={t("fxr.readyTitle", { d: shortDate(periodEnd), net: total < 0 ? t("fxr.loss", { v: money(-total) }) : t("fxr.gain", { v: money(total) }) })}
+          description={t("fxr.postNote")}
+          actions={<PostRevaluation periodEnd={periodEnd} rates={plan!.rates} label={t("fxr.post", { d: shortDate(periodEnd) })} />} />
       )}
 
       <div className="card" style={{ overflowX: "auto" }}>
@@ -109,8 +116,10 @@ export default async function FxRevaluation({ searchParams }: {
                 <td className="r">{money(Math.abs(r.carried))}</td>
                 <td className="r">{r.rate}</td>
                 <td className="r">{money(Math.abs(r.revalued))}</td>
-                <td className="r" style={{ color: r.difference < 0 ? "var(--bad)" : "var(--ok)" }}>
-                  {r.difference < 0 ? t("fxr.loss", { v: money(-r.difference) }) : t("fxr.gain", { v: money(r.difference) })}
+                <td className="r">
+                  <span className="sbadge" data-tone={r.difference < 0 ? "bad" : "ok"}>
+                    {r.difference < 0 ? t("fxr.loss", { v: money(-r.difference) }) : t("fxr.gain", { v: money(r.difference) })}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -123,13 +132,12 @@ export default async function FxRevaluation({ searchParams }: {
         </table>
       </div>
 
-      {mayPost && !standing && rows.length > 0 && plan!.missingRates.length === 0 && (
-        <div style={{ margin: "var(--s3) 0" }}>
-          <PostRevaluation periodEnd={periodEnd} rates={plan!.rates} />
-          <p className="page-sub">{t("fxr.postNote")}</p>
-        </div>
+      {mayPost && standing && (
+        <details className="card" style={{ margin: "var(--s3) 0" }}>
+          <summary className="card-body" style={{ cursor: "pointer", fontWeight: 600 }}>{t("fxr.voidOpen")}</summary>
+          <div className="card-body" style={{ paddingTop: 0 }}><VoidRevaluation id={standing.id} /></div>
+        </details>
       )}
-      {mayPost && standing && <div style={{ margin: "var(--s3) 0" }}><VoidRevaluation id={standing.id} /></div>}
 
       {history.length > 0 && (
         <div className="card" style={{ overflowX: "auto" }}>

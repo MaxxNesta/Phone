@@ -15,7 +15,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
-import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink } from "lucide-react";
+import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink, AlertTriangle } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 import { LineRemove } from "./line-remove";
@@ -728,11 +728,11 @@ export function ReceiptForm({
                               <span className="vavail">
                                 <button type="button" className="linkish"
                                   onClick={() => setLine(l.key, { reject: l.reject ? undefined : { qty: "", serials: [], reason: "", outcome: "" } })}>
-                                  {l.reject ? "No rejects" : "Reject some"}
+                                  {l.reject ? "Cancel refusal" : "Refuse some"}
                                 </button>
                               </span>
                               {l.reject && rejectedQty(l) > 0 && (
-                                <span className="pill warn" style={{ marginLeft: 6 }}>{fmt(rejectedQty(l))} to quarantine</span>
+                                <span className="sbadge" data-tone="warn" style={{ marginLeft: 6 }}>{fmt(rejectedQty(l))} to quarantine</span>
                               )}
                             </span>
                           </span>
@@ -971,7 +971,7 @@ export function ReceiptForm({
         {(serialShort.length > 0 || carriageBlock || rejectIncomplete.length > 0) && (
           <span className="commit-hint" role="status">
             {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post"
-              : rejectIncomplete.length > 0 ? "A rejection needs which units, what is wrong, and whether the supplier replaces or credits them"
+              : rejectIncomplete.length > 0 ? "A refusal needs which units, what is wrong, and whether the supplier replaces or credits them"
               : carriageBlock}
           </span>
         )}
@@ -1012,44 +1012,55 @@ function RejectRow({ colSpan, line, tracked, arrived, onChange }: {
   const r = line.reject!;
   const units = (line.serials ?? []).map((u) => u.serial.trim()).filter(Boolean);
   const toggle = (sn: string) => onChange({ ...r, serials: r.serials.includes(sn) ? r.serials.filter((x) => x !== sn) : [...r.serials, sn] });
+  const n = tracked ? r.serials.filter((sn) => units.includes(sn)).length : Math.max(0, Number(r.qty) || 0);
   return (
     <tr className="gr-reject">
       <td colSpan={colSpan}>
-        <div className="card" style={{ margin: "6px 0 10px", borderColor: "var(--warn)" }}>
-          <div className="card-body">
-            <div className="row" style={{ alignItems: "flex-start" }}>
-              <div className="field" style={{ minWidth: 220 }}>
-                <label>{tracked ? "Which units are refused" : "How many are refused"}</label>
-                {tracked ? (
-                  units.length === 0 ? <span className="subline">Scan the IMEIs above first, then tick the refused ones.</span> : (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
-                      {units.map((sn) => (
-                        <label key={sn} className="check" style={{ fontWeight: 400 }}>
-                          <input type="checkbox" checked={r.serials.includes(sn)} onChange={() => toggle(sn)} /> {sn}
-                        </label>
-                      ))}
-                    </div>
-                  )
-                ) : (
-                  <input type="number" min="1" max={arrived || undefined} step="any" value={r.qty}
-                    onChange={(e) => onChange({ ...r, qty: e.target.value })} aria-label="Refused quantity" />
-                )}
-                <span className="hint">Of the {arrived} that arrived. They go to quarantine, not the shelf.</span>
-              </div>
-              <div className="field" style={{ flex: 2, minWidth: 240 }}>
-                <label>What is wrong *</label>
-                <input type="text" value={r.reason} placeholder="Screen cracked, does not power on, wrong colour…"
-                  onChange={(e) => onChange({ ...r, reason: e.target.value })} aria-label="What is wrong" />
-              </div>
-              <div className="field">
-                <label>The supplier will *</label>
-                <label className="check" style={{ fontWeight: 400 }}>
+        <div className="reject-panel">
+          <div className="reject-panel-head">
+            <AlertTriangle size={16} aria-hidden="true" style={{ color: "#B07F00" }} />
+            Refused on arrival{n > 0 ? ` — ${n} of ${arrived}` : ""}
+            <span className="page-sub" style={{ fontWeight: 400, marginLeft: 4 }}>
+              Still received, into this warehouse&rsquo;s quarantine bin, not for sale.
+            </span>
+          </div>
+          <div className="reject-grid">
+            <div className="field">
+              <label>{tracked ? "Which units" : "How many"} *</label>
+              {tracked ? (
+                units.length === 0 ? <span className="subline">Scan the IMEIs above first, then tap the refused ones.</span> : (
+                  <div className="reject-imeis">
+                    {units.map((sn) => (
+                      <label key={sn} className="reject-imei">
+                        <input type="checkbox" checked={r.serials.includes(sn)} onChange={() => toggle(sn)} /> {sn}
+                      </label>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <input type="number" min="1" max={arrived || undefined} step="any" value={r.qty}
+                  onChange={(e) => onChange({ ...r, qty: e.target.value })} aria-label="Refused quantity" />
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor={`reject-reason-${line.key}`}>What is wrong *</label>
+              <input id={`reject-reason-${line.key}`} type="text" value={r.reason}
+                placeholder="Screen cracked, does not power on, wrong colour…"
+                onChange={(e) => onChange({ ...r, reason: e.target.value })} aria-label="What is wrong" />
+              <span className="hint">Printed on the rejection note.</span>
+            </div>
+            <div className="field">
+              <label>The supplier will *</label>
+              <div className="choice-list">
+                <label className="choice">
                   <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "REPLACE"}
-                    onChange={() => onChange({ ...r, outcome: "REPLACE" })} /> Replace it — the order waits for another
+                    onChange={() => onChange({ ...r, outcome: "REPLACE" })} />
+                  <span>Replace it<small>The order waits for another once it goes back.</small></span>
                 </label>
-                <label className="check" style={{ fontWeight: 400 }}>
+                <label className="choice">
                   <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "CREDIT"}
-                    onChange={() => onChange({ ...r, outcome: "CREDIT" })} /> Credit it — the order is done
+                    onChange={() => onChange({ ...r, outcome: "CREDIT" })} />
+                  <span>Credit it<small>The order is done; the bill or return covers it.</small></span>
                 </label>
               </div>
             </div>

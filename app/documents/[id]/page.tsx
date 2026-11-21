@@ -1,3 +1,4 @@
+import { StatusBanner } from "@/components/status-banner";
 import { hasModule } from "@/lib/plans";
 import { DISPLAY_TZ, todayLocal } from "@/lib/format";
 import { ordersAndDeliveriesOn } from "@/lib/features";
@@ -1532,25 +1533,32 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
-          {refused.length > 0 && (
-            <div className="lc-gr">
-              <dl>
-                <div><dt>Refused on arrival</dt><dd>{refused.reduce((t, r) => t + Number(r.qty), 0)} unit{refused.reduce((t, r) => t + Number(r.qty), 0) === 1 ? "" : "s"}</dd></div>
-                <div><dt>Still in quarantine</dt><dd><strong>{refusedHeld}</strong></dd></div>
-              </dl>
-              <span className="lc-gr-actions">
-                <Link href={`/documents/${doc.id}/print?slip=rejection`} className="btn ghost tiny">Print rejection note</Link>
-                {refusedHeld > 0 && can(user, "purchase.post") && (["REPLACE", "CREDIT"] as const)
-                  .filter((o) => refused.some((r) => r.reject_outcome === o
-                    && ((r.units as any[]).length ? (r.units as any[]).some((u) => u.stillHeld) : Number(r.qty) > Number(r.returned))))
-                  .map((o) => (
-                    <Link key={o} href={`/purchases/returns/new?refused=${doc.id}&outcome=${o}`} className="btn tiny lc-gr-primary">
-                      {o === "REPLACE" ? "Send back for replacement" : "Send back for credit"}
-                    </Link>
-                  ))}
-              </span>
-            </div>
-          )}
+          {refused.length > 0 && (() => {
+            const total = refused.reduce((t, r) => t + Number(r.qty), 0);
+            const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
+            return (
+              <StatusBanner
+                tone={refusedHeld > 0 ? "warn" : "ok"}
+                title={refusedHeld > 0
+                  ? `${units(total)} refused on arrival — ${refusedHeld === total ? "all" : refusedHeld} still in quarantine`
+                  : `${units(total)} refused on arrival — sent back to the supplier`}
+                description={refusedHeld > 0
+                  ? "Held in this warehouse's quarantine bin, not for sale. Send them back, and hand the rejection note over with them."
+                  : "Nothing from this receipt is waiting in quarantine."}
+                actions={<>
+                  <Link href={`/documents/${doc.id}/print?slip=rejection`} className="btn ghost tiny">Rejection note</Link>
+                  {refusedHeld > 0 && can(user, "purchase.post") && (["REPLACE", "CREDIT"] as const)
+                    .filter((o) => refused.some((r) => r.reject_outcome === o
+                      && ((r.units as any[]).length ? (r.units as any[]).some((u) => u.stillHeld) : Number(r.qty) > Number(r.returned))))
+                    .map((o) => (
+                      <Link key={o} href={`/purchases/returns/new?refused=${doc.id}&outcome=${o}`} className="btn tiny">
+                        {o === "REPLACE" ? "Send back for replacement" : "Send back for credit"}
+                      </Link>
+                    ))}
+                </>}
+              />
+            );
+          })()}
           {landedOn && isPi && applied.length > 0 && (
             <div className="lc-gr">
               <dl>
@@ -1766,10 +1774,15 @@ export default async function DocumentPage({
                                   <span className="dl-strong codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
                                   <small>{[l.item_code, multiBrand || l.brand_name ? l.brand_name : null,
                                     imeis > 0 ? `Sold by IMEI, ${imeis} scanned` : null].filter(Boolean).join(" · ")}
-                                    {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}
-                                    {/* Refused at the door (D-P7): in quarantine, not on the shelf. */}
-                                    {l.reject_reason && <> · <span className="dl-pill warn" title="Received into quarantine, not for sale, until it goes back">
-                                      Refused: {l.reject_reason} · supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"}</span></>}</small>
+                                    {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}</small>
+                                  {/* Refused at the door (D-P7): in the warehouse's quarantine bin,
+                                      not on the shelf. A line of its own under the name, so the
+                                      row never grows sideways. */}
+                                  {l.reject_reason && (
+                                    <span className="line-subnote" title="Received into quarantine, not for sale, until it goes back">
+                                      <span><strong>Refused</strong> — {l.reject_reason}. Supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"} it; held in quarantine.</span>
+                                    </span>
+                                  )}
                                 </span>
                               </span>
                             </td>
