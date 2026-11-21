@@ -357,3 +357,19 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 .reject-panel-head .page-sub { font-size: var(--t-sm); }
 /* The 44px touch floor is for text inputs; the whole chip or card is the target here. */
 .reject-panel .reject-imei input, .choice input { min-height: 0; height: auto; }
+
+/* A line's own IMEIs, under its name: small chips, each to its history. */
+.line-imeis { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+.line-imei {
+  display: inline-flex; align-items: center; padding: 0.05rem 0.5rem; border-radius: 999px;
+  font-size: var(--t-xs); line-height: 1.6; font-variant-numeric: tabular-nums;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none;
+}
+.line-imei:hover { border-color: var(--ink); }
+.line-imeis-more { display: contents; }
+.line-imeis-more > summary {
+  list-style: none; cursor: pointer; font-size: var(--t-xs); line-height: 1.6;
+  padding: 0.05rem 0.5rem; border-radius: 999px; color: var(--link);
+}
+.line-imeis-more > summary::-webkit-details-marker { display: none; }
+.line-imeis-more[open] > summary { display: none; }

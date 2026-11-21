@@ -196,6 +196,9 @@ export default async function DocumentPage({
     ]);
   // A line names its brand only once the shop carries more than one.
   const multiBrand = brandsInUse.length > 1;
+  // IMEIs not shown under any line (set while the lines render); all of them
+  // where there are no lines to show them under.
+  let leftoverSerials: any[] = docSerials as any[];
 
   // Goods already in and a bill already waiting for them, from this order's
   // supplier: shown on the receive form this page carries, since receiving
@@ -1748,8 +1751,19 @@ export default async function DocumentPage({
       </section>
 
       {lines.length > 0 && (() => {
-        const serialCount = new Map<string, number>();
-        for (const sr of docSerials as any[]) serialCount.set(String(sr.item_code), (serialCount.get(String(sr.item_code)) ?? 0) + 1);
+        // Each line's own IMEIs, listed under it. A unit the query could not
+        // tie to a line goes with the first line of its item; any left over
+        // (an item not on the lines at all) keep the card at the bottom.
+        const lineIds = new Set((lines as any[]).map((l) => String(l.id)));
+        const serialsByLine = new Map<string, any[]>();
+        const unplaced: any[] = [];
+        for (const sr of docSerials as any[]) {
+          const own = sr.line_id && lineIds.has(String(sr.line_id)) ? String(sr.line_id)
+            : (lines as any[]).find((l) => l.item_id === sr.item_id)?.id;
+          if (!own) { unplaced.push(sr); continue; }
+          serialsByLine.set(String(own), [...(serialsByLine.get(String(own)) ?? []), sr]);
+        }
+        leftoverSerials = unplaced;
         const linesNet = (lines as any[]).reduce((t, l) => t + Number(l.net_amount ?? 0), 0);
         const lineDiscount = Math.max(0, linesNet - Number(doc.net_total));
         return (
@@ -1763,7 +1777,8 @@ export default async function DocumentPage({
                   <tbody>
                     {lines.map((l: any) => {
                       const batches = (docBatches as any[]).filter((b) => b.item_id === l.item_id);
-                      const imeis = serialCount.get(String(l.item_code)) ?? 0;
+                      const lineSerials = serialsByLine.get(String(l.id)) ?? [];
+                      const imeis = lineSerials.length;
                       return (
                         <Fragment key={l.id}>
                           <tr>
@@ -1773,7 +1788,7 @@ export default async function DocumentPage({
                                 <span className="dl-item-text">
                                   <span className="dl-strong codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
                                   <small>{[l.item_code, multiBrand || l.brand_name ? l.brand_name : null,
-                                    imeis > 0 ? `Sold by IMEI, ${imeis} scanned` : null].filter(Boolean).join(" · ")}
+                                    imeis > 0 ? `${imeis} IMEI${imeis === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ")}
                                     {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}</small>
                                   {/* Refused at the door (D-P7): in the warehouse's quarantine bin,
                                       not on the shelf. A line of its own under the name, so the
@@ -1783,6 +1798,24 @@ export default async function DocumentPage({
                                       <span><strong>Refused</strong> — {l.reject_reason}. Supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"} it; held in quarantine.</span>
                                     </span>
                                   )}
+                                  {/* This line's handsets, each to its own history. */}
+                                  {imeis > 0 && (() => {
+                                    const chip = (s: any) => (
+                                      <Link key={s.serial_id} href={`/imei/${s.serial_id}`} className="line-imei"
+                                        title={s.imei2 ? `IMEI 2 ${s.imei2}` : undefined}>{s.imei}</Link>
+                                    );
+                                    return (
+                                      <span className="line-imeis">
+                                        {lineSerials.slice(0, 12).map(chip)}
+                                        {imeis > 12 && (
+                                          <details className="line-imeis-more">
+                                            <summary>+{imeis - 12} more</summary>
+                                            <span className="line-imeis">{lineSerials.slice(12).map(chip)}</span>
+                                          </details>
+                                        )}
+                                      </span>
+                                    );
+                                  })()}
                                 </span>
                               </span>
                             </td>
@@ -2018,11 +2051,11 @@ export default async function DocumentPage({
           what made this page feel cluttered rather than thorough. */}
 
 
-      {docSerials.length > 0 && (
+      {leftoverSerials.length > 0 && (
         <div className="card">
-          <div className="card-head"><h2>IMEIs</h2><span className="page-sub">{docSerials.length} handset{docSerials.length === 1 ? "" : "s"}</span></div>
+          <div className="card-head"><h2>IMEIs</h2><span className="page-sub">{leftoverSerials.length} handset{leftoverSerials.length === 1 ? "" : "s"}</span></div>
           <div className="card-body imei-chips">
-            {(docSerials as any[]).map((s) => (
+            {(leftoverSerials as any[]).map((s) => (
               <Link key={s.serial_id} href={`/imei/${s.serial_id}`} className="chip m"
                 title={`${s.item_code}${s.imei2 ? ` · IMEI 2 ${s.imei2}` : ""}`}>
                 {s.imei}

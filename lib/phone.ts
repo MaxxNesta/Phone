@@ -293,8 +293,26 @@ export async function serialDetail(companyId: string, serialId: string) {
 
 /** Every handset a document touched: received, sold, returned or moved by it. */
 export async function serialsOnDocument(documentId: string) {
+  // line_id: the line of this document the unit moved on, so a page can
+  // list each line's own IMEIs under it. A receipt's unit is tied through
+  // the layer its line made; a sale's or return's through the movement that
+  // took it. On a document composed for this one (a counter sale's
+  // delivery), its line's source is this document's line. Null where
+  // neither says, and the page falls back to the item.
   return sql`
-    select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code, e.event
+    select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code,
+           s.item_id, e.event,
+           (select case when dl.document_id = ${documentId}::uuid then dl.id else dl.source_line_id end
+              from stock_movement sm
+              join document_line dl on dl.id = sm.document_line_id
+             where sm.document_id = e.document_id
+               and sm.id = coalesce(
+                     (select si.stock_movement_id from stock_serial_issue si
+                        join stock_movement m on m.id = si.stock_movement_id
+                       where si.serial_id = s.id and m.document_id = e.document_id
+                       limit 1),
+                     (select l.stock_movement_id from stock_lot l where l.id = e.lot_id))
+             limit 1) as line_id
       from stock_serial_event e
       join stock_serial s on s.id = e.serial_id
       join item i on i.id = s.item_id
