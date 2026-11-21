@@ -142,6 +142,21 @@ try {
       { itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: w1 }] });
   await expectLines("invoice that delivers itself", swd.id, [w2, w1]);
 
+  console.log("\n  serial numbers, not IMEIs");
+  await setRetail(true);
+  const mac = await item("IL-MAC", "IMEI lines laptop", { tracks_serial: true, identity: "SERIAL" });
+  const m1 = ["C02-IL-0001", "C02-IL-0002"], m2 = ["C02-IL-0003"];
+  const grM = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY, lines: [
+    { itemId: mac.id, qty: 2, unitCost: 4_000_000, serials: m1 },
+    { itemId: phone.id, qty: 1, unitCost: 900_000, serials: ["IL-MIX-1"] },
+    { itemId: mac.id, qty: 1, unitCost: 4_100_000, serials: m2 }] });
+  await expectLines("receipt of laptops and a phone: each line its own", grM.id, [m1, ["IL-MIX-1"], m2]);
+  const saleM = await P.postRetailSale({ companyId: co.id, partnerId: cust.id, locationId: wh.id, docDate: DAY, dueDate: DAY,
+    paymentType: "CASH", lines: [{ itemId: mac.id, qty: 1, unitPrice: 5_000_000, serials: [m2[0]] },
+                                 { itemId: mac.id, qty: 1, unitPrice: 5_000_000, serials: [m1[1]] }] });
+  await expectLines("sale of laptops by serial number", saleM.id, [m2, [m1[1]]]);
+  await setRetail(false);
+
   console.log("\n  moving stock");
   const [t1, t2] = [imeis(1), imeis(1)];
   await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,

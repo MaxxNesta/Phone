@@ -818,7 +818,7 @@ export function ReceiptForm({
                         onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
                     )}
                     {l.reject && (
-                      <RejectRow colSpan={lineCols} line={l} tracked={named(l)} arrived={q}
+                      <RejectRow colSpan={lineCols} line={l} tracked={named(l)} imei={modeOf(l) === "IMEI"} arrived={q}
                         onChange={(reject) => setLine(l.key, { reject })} />
                     )}
                     {picking && (
@@ -1005,8 +1005,8 @@ export function ReceiptForm({
  * still count as arrived; they go to the branch's quarantine instead of the
  * shelf, and the return that sends them back is raised from the receipt.
  */
-function RejectRow({ colSpan, line, tracked, arrived, onChange }: {
-  colSpan: number; line: Line; tracked: boolean; arrived: number;
+function RejectRow({ colSpan, line, tracked, imei, arrived, onChange }: {
+  colSpan: number; line: Line; tracked: boolean; imei: boolean; arrived: number;
   onChange: (reject: NonNullable<Line["reject"]>) => void;
 }) {
   const r = line.reject!;
@@ -1028,7 +1028,7 @@ function RejectRow({ colSpan, line, tracked, arrived, onChange }: {
             <div className="field">
               <label>{tracked ? "Which units" : "How many"} *</label>
               {tracked ? (
-                units.length === 0 ? <span className="subline">Scan the IMEIs above first, then tap the refused ones.</span> : (
+                units.length === 0 ? <span className="subline">Scan the {imei ? "IMEIs" : "serial numbers"} above first, then tap the refused ones.</span> : (
                   <div className="reject-imeis">
                     {units.map((sn) => (
                       <label key={sn} className="reject-imei">

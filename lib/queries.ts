@@ -1543,7 +1543,7 @@ export async function getDocument(id: string) {
  */
 export async function rejectedOnReceipt(receiptId: string) {
   return sql`
-    select dl.id as line_id, dl.item_id, i.code as item_code, i.name as item_name,
+    select dl.id as line_id, dl.item_id, i.code as item_code, i.name as item_name, i.identity as item_identity,
            dl.base_qty::float as qty, dl.entered_qty::float as entered_qty, dl.entered_uom_id as uom_id,
            u.code as uom_code, dl.unit_price::float as unit_cost, dl.location_id,
            dl.reject_reason, dl.reject_outcome, dl.source_line_id,
@@ -1572,7 +1572,7 @@ export async function rejectedOnReceipt(receiptId: string) {
 
 export async function getDocumentLines(id: string) {
   return sql`
-    select dl.*, i.code as item_code, i.name as item_name,
+    select dl.*, i.code as item_code, i.name as item_name, i.identity as item_identity,
            u.code as uom_code, f.name as foc_reason, b.name as brand_name
       from document_line dl
       left join item i on i.id = dl.item_id

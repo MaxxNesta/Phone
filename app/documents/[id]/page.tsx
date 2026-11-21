@@ -1780,7 +1780,9 @@ export default async function DocumentPage({
                                 <span className="dl-item-text">
                                   <span className="dl-strong codetip" data-code={l.item_code ?? ""}>{l.item_name ?? l.description ?? "—"}</span>
                                   <small>{[l.item_code, multiBrand || l.brand_name ? l.brand_name : null,
-                                    imeis > 0 ? `${imeis} IMEI${imeis === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ")}
+                                    imeis > 0 ? (l.item_identity === "IMEI"
+                                      ? `${imeis} IMEI${imeis === 1 ? "" : "s"}`
+                                      : `${imeis} serial number${imeis === 1 ? "" : "s"}`) : null].filter(Boolean).join(" · ")}
                                     {l.foc_reason && <> · <span className="dl-pill warn">{l.foc_reason}</span></>}</small>
                                   {/* Refused at the door (D-P7): in the warehouse's quarantine bin,
                                       not on the shelf. A line of its own under the name, so the
@@ -1794,7 +1796,8 @@ export default async function DocumentPage({
                                   {imeis > 0 && (() => {
                                     const chip = (s: any) => (
                                       <Link key={s.serial_id} href={`/imei/${s.serial_id}`} className="line-imei"
-                                        title={s.imei2 ? `IMEI 2 ${s.imei2}` : undefined}>{s.imei}</Link>
+                                        title={[s.imei2 ? `IMEI 2 ${s.imei2}` : null, s.device_serial ? `Serial ${s.device_serial}` : null]
+                                          .filter(Boolean).join(" · ") || undefined}>{s.imei}</Link>
                                     );
                                     return (
                                       <span className="line-imeis">
@@ -2045,11 +2048,11 @@ export default async function DocumentPage({
 
       {leftoverSerials.length > 0 && (
         <div className="card">
-          <div className="card-head"><h2>IMEIs</h2><span className="page-sub">{leftoverSerials.length} handset{leftoverSerials.length === 1 ? "" : "s"}</span></div>
+          <div className="card-head"><h2>IMEIs and serial numbers</h2><span className="page-sub">{leftoverSerials.length} unit{leftoverSerials.length === 1 ? "" : "s"}</span></div>
           <div className="card-body imei-chips">
             {(leftoverSerials as any[]).map((s) => (
               <Link key={s.serial_id} href={`/imei/${s.serial_id}`} className="chip m"
-                title={`${s.item_code}${s.imei2 ? ` · IMEI 2 ${s.imei2}` : ""}`}>
+                title={[s.item_code, s.imei2 ? `IMEI 2 ${s.imei2}` : null, s.device_serial ? `Serial ${s.device_serial}` : null].filter(Boolean).join(" · ")}>
                 {s.imei}
               </Link>
             ))}

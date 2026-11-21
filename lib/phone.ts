@@ -330,8 +330,8 @@ export async function serialsOnDocument(documentId: string) {
       union select dl.document_id from document_line dl where dl.id in (select source_line_id from mine)
     ),
     moved as (
-      select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code,
-             s.item_id, e.event, e.document_id,
+      select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, s.device_serial, i.code as item_code,
+             i.identity, s.item_id, e.event, e.document_id,
              -- The line that moved it: a receipt's through the layer its line
              -- made, an issue's through the movement that took it.
              (select sm.document_line_id from stock_movement sm
@@ -362,7 +362,7 @@ export async function serialsOnDocument(documentId: string) {
     -- A unit read off a document this one is only tied to (the receipt a
     -- return names, say) belongs here only if it ties to one of these lines:
     -- the receipt's other units are not this return's.
-    select serial_id, imei, imei2, item_code, item_id, event, line_id
+    select serial_id, imei, imei2, device_serial, item_code, identity, item_id, event, line_id
       from placed
      where line_id is not null
         or document_id = ${documentId}::uuid

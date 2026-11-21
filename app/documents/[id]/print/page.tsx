@@ -121,7 +121,7 @@ export default async function DocumentPrint({
         code: r.item_code,
         name: r.item_name,
         note: [
-          (r.units as any[]).length ? `IMEI ${(r.units as any[]).map((u) => u.imei).join(", ")}` : null,
+          (r.units as any[]).length ? `${r.item_identity === "IMEI" ? "IMEI" : "Serial"} ${(r.units as any[]).map((u) => u.imei).join(", ")}` : null,
           `Fault: ${r.reject_reason}`,
           asks.size > 1 ? (r.reject_outcome === "REPLACE" ? "Please replace" : "Please credit") : null,
         ].filter(Boolean).join(" · "),
