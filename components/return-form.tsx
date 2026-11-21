@@ -23,7 +23,12 @@ type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
 type Line = { key: number; itemId: string; qty: string; unitPrice: string; uomId?: string | null; serials?: ScannedSerial[]; withSerials?: boolean;
   /** The receipt line these units go back against: refused on arrival (D-P7). */
-  sourceLineId?: string | null };
+  sourceLineId?: string | null;
+  /** Where this line's units came from, when sent back from a receipt:
+   *  "Rejected at receipt · <reason>" or "Reported defective after receipt · <reason>". */
+  origin?: string | null;
+  /** How many of them this line may send back: its own units in quarantine. */
+  available?: number | null };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
   partner_id: string; rates?: Record<string, number>;
   /** A purchase made in a foreign currency, and its rate. */
@@ -86,7 +91,8 @@ export function ReturnForm({
    */
   prefill?: {
     sourceDocumentId: string; docNo: string; partnerId: string; locationId: string;
-    lines: { itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; sourceLineId?: string | null }[];
+    lines: { itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; sourceLineId?: string | null;
+             origin?: string | null; available?: number | null }[];
     /** Why these goods go back, when the page knows: a refusal's fault. */
     memo?: string | null;
     /** Sales returns: the goods come back faulty, and this is what is wrong. */
@@ -420,6 +426,7 @@ export function ReturnForm({
                         <>
                           <div className="line-item-name">{item.name}</div>
                           <span className="subline">{item.code}</span>
+                          {l.origin && <div className="subline" style={{ color: "var(--ink)", fontWeight: 500 }}>{l.origin}</div>}
                           {(item.packs ?? []).length > 0 && (() => {
                             const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
                               price: p.price == null ? null : Number(p.price) }));
@@ -442,9 +449,15 @@ export function ReturnForm({
                       ) : isSales ? (
                         fmt(Number(item.next_cost))
                       ) : (
+                        l.available != null ? (
+                          // Sent back from a receipt: this line's own units, not the
+                          // whole bin's stock repeated on every line.
+                          <span>{fmt(l.available)}<span className="subline" style={{ display: "block" }}>this line</span></span>
+                        ) : (
                         <span style={{ color: short ? "var(--bad)" : undefined }}>
                           {item.is_stocked ? fmt(onHand(item)) : "service"}
                         </span>
+                        )
                       )}
                     </td>
                     <td className="narrow">

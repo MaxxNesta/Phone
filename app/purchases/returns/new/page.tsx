@@ -59,6 +59,9 @@ export default async function NewPurchaseReturn({
             itemId: String(r.item_id), qty: String(qty), unitPrice: String(Number(r.unit_cost)),
             serials: held, sourceLineId: billed ? null : String(r.line_id), location: String(r.location_id),
             reason: String(r.reject_reason), found: r.source === "FOUND",
+            // Each line says where its units came from, and counts only its own.
+            origin: `${r.source === "FOUND" ? "Reported defective after receipt" : "Rejected at receipt"} · ${String(r.reject_reason)}`,
+            available: qty,
           };
         }).filter((l) => Number(l.qty) > 0);
         if (lines.length === 0) return null;
@@ -68,10 +71,11 @@ export default async function NewPurchaseReturn({
           partnerId: String(gr.partner_id),
           locationId: lines[0].location,
           lines: lines.map(({ location, reason, found, ...l }) => l),
-          memo: `${lines.every((l) => l.found) ? "Found faulty after receipt"
-                   : lines.some((l) => l.found) ? "Refused on arrival or found faulty after receipt"
-                   : "Refused on arrival"} (${gr.doc_no}): ${[...new Set(lines.map((l) => l.reason))].join("; ")}. `
-            + (want === "REPLACE" ? "Supplier to replace." : "Supplier to credit."),
+          // One sentence per reason, said the same way the receipt says it.
+          memo: [
+            ...[...new Set(lines.filter((l) => !l.found).map((l) => l.reason))].map((r) => `Rejected at receipt: ${r}.`),
+            ...[...new Set(lines.filter((l) => l.found).map((l) => l.reason))].map((r) => `Reported defective after receipt: ${r}.`),
+          ].join(" ") + ` (${gr.doc_no}) ` + (want === "REPLACE" ? "Supplier to replace." : "Supplier to credit."),
         };
       })()
     : null;
