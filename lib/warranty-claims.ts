@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { sql } from "./db";
-import { requireUser, can } from "./auth";
+import { requireUser, can, assertShopWritable } from "./auth";
 import type { SessionUser } from "./auth-core";
 
 /**
@@ -26,6 +26,8 @@ async function requireClaimRights(): Promise<SessionUser> {
   if (!can(user, "sales.return") && !can(user, "inventory.manage")) {
     throw new Error("Only someone who takes returns or manages stock can record a warranty claim.");
   }
+  // Checks rights its own way, so it asks about read-only itself.
+  await assertShopWritable();
   return user;
 }
 

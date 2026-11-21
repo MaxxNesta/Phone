@@ -17,7 +17,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse, advAppliedByInvoice } from "./queries";
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, planIncludes, type Plan, type Feature, MODULES, isCore, addonAllowed } from "./plans";
-import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
+import { requirePermission, requireUser, can, permissionForDocument, assertShopWritable } from "./auth";
 import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
 import { courierBill } from "./courier-payables";
@@ -5510,6 +5510,7 @@ async function mayTouchDocument(doc: Record<string, unknown>) {
 
 export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requireUser();
+  await assertShopWritable();
   try {
     const co = await companyId();
     const documentId = str(fd, "document_id");
@@ -5578,6 +5579,7 @@ export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<Ac
 /** Removes the row, then the object. Nothing here is posted, so nothing is reversed. */
 export async function deleteAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requireUser();
+  await assertShopWritable();
   try {
     const co = await companyId();
     const id = str(fd, "attachment_id");

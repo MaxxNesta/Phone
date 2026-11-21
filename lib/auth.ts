@@ -84,25 +84,31 @@ export async function requireUser(): Promise<SessionUser> {
   return u;
 }
 
+/**
+ * Refuses any change while the provider's console has this shop read-only or
+ * suspended (0217). requirePermission calls it for every permission that is
+ * not a ".view"; an action that checks rights its own way (can() after
+ * requireUser) must call it too, or it writes straight past the block.
+ * Tagged, because a production build hides an error's message from the
+ * browser but passes its digest on: app/error.tsx reads the tag and says why.
+ */
+export async function assertShopWritable(): Promise<void> {
+  const [c] = await sql`select access_status from company order by created_at limit 1`;
+  if (c && (c.access_status === "read_only" || c.access_status === "suspended")) {
+    const e = new Error("This shop is read-only until its subscription is renewed. Contact your provider.") as Error & { digest?: string };
+    e.digest = "SHOP_READ_ONLY";
+    throw e;
+  }
+}
+
 export async function requirePermission(p: Permission): Promise<SessionUser> {
   const u = await requireUser();
   if (!can(u, p)) {
     throw new Error(`${ROLE_LABEL[u.role]} accounts cannot do this (${p}). Ask a manager.`);
   }
-  // A shop the provider has set to read-only or suspended (0217, from the
-  // console) may still look but not change anything. Every server action
-  // calls this first, so this one check covers every write.
-  if (!p.endsWith(".view")) {
-    const [c] = await sql`select access_status from company order by created_at limit 1`;
-    if (c && (c.access_status === "read_only" || c.access_status === "suspended")) {
-      // Tagged, because a production build hides an error's message from the
-      // browser but passes its digest on: app/error.tsx reads the tag and says
-      // why, instead of a bare "Application error".
-      const e = new Error("This shop is read-only until its subscription is renewed. Contact your provider.") as Error & { digest?: string };
-      e.digest = "SHOP_READ_ONLY";
-      throw e;
-    }
-  }
+  // A shop the provider has set to read-only or suspended may still look
+  // but not change anything (assertShopWritable).
+  if (!p.endsWith(".view")) await assertShopWritable();
   return u;
 }
 

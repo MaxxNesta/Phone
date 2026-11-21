@@ -3,7 +3,7 @@
 import { str } from "./input";
 import { revalidatePath } from "next/cache";
 import { sql } from "./db";
-import { requirePermission, requireUser, can } from "./auth";
+import { requirePermission, requireUser, can, assertShopWritable } from "./auth";
 
 type Result = { error: string } | { ok: string } | null;
 
@@ -54,6 +54,7 @@ async function rateKeeper() {
   if (!can(user, "purchase.post") && !can(user, "accounting.post") && !can(user, "settings.manage")) {
     throw new Error("Your role cannot record exchange rates. Ask a manager.");
   }
+  await assertShopWritable();
   return user;
 }
 
