@@ -7,6 +7,7 @@ import { getReturnablePurchases, getCompany, rejectedOnReceipt } from "@/lib/que
 import { ReturnForm } from "@/components/return-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { DocHeading } from "@/components/doc-heading";
 
 export default async function NewPurchaseReturn({
   searchParams,
@@ -173,18 +174,18 @@ export default async function NewPurchaseReturn({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Supplier returns", href: "/purchases/returns" },
-        ...(prefill ? [{ label: prefill.docNo, href: `/documents/${prefill.sourceDocumentId}` }] : []),
-        { label: "Supplier return" },
-      ]} />
-      <div className="page-head">
-        <h1>Supplier return</h1>
+      <DocHeading
+        back={prefill?.sourceDocumentId
+          ? { href: `/documents/${prefill.sourceDocumentId}`, label: `Back to ${prefill.docNo}` }
+          : { href: "/purchases/returns", label: "Back to supplier returns" }}
+        trail={[{ label: "Supplier returns", href: "/purchases/returns" },
+                ...(prefill?.sourceDocumentId ? [{ label: prefill.docNo, href: `/documents/${prefill.sourceDocumentId}` }] : [])]}
+        title="New supplier return" status="New">
         <HelpHint>
-          Goods go back and what&rsquo;s owed drops — one document for both.{" "}
+          Goods go back and what&rsquo;s owed drops: one document for both.{" "}
           <Link href="/documents?type=PURCHASE_RETURN" style={{ color: "var(--link)" }}>Past returns</Link>
         </HelpHint>
-      </div>
+      </DocHeading>
 
       <ReturnForm
         kind="purchase"

@@ -8,6 +8,7 @@ import { ReturnForm } from "@/components/return-form";
 import { channelsAt } from "@/lib/payment-channels";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { DocHeading } from "@/components/doc-heading";
 
 export default async function NewSalesReturn({
   searchParams,
@@ -72,18 +73,14 @@ export default async function NewSalesReturn({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Customer returns", href: "/sales/returns" },
-        { label: "Customer return" },
-      ]} />
-      <div className="page-head">
-        <h1>Customer return</h1>
+      <DocHeading back={{ href: "/sales/returns", label: "Back to customer returns" }}
+        trail={[{ label: "Customer returns", href: "/sales/returns" }]}
+        title="New customer return" status="New">
         <HelpHint>
-          Goods come back and the customer owes less — one document for
-          both.{" "}
+          Goods come back and the customer owes less: one document for both.{" "}
           <Link href="/documents?type=SALES_RETURN" style={{ color: "var(--link)" }}>Past returns</Link>
         </HelpHint>
-      </div>
+      </DocHeading>
 
       <ReturnForm
         kind="sales"

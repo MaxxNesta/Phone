@@ -11753,28 +11753,25 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 }
 
 /* ======================================================= returns, two columns ==
-   Customer and supplier returns: the form on the left, what the return does
-   and the button that posts it on the right (the Astryx preview, 2026-11-21).
-   Markup in components/return-form.tsx. */
-/* The form is the frame only; the sheet look moves to the left column. */
-.form.docsheet:has(> .rtn-layout) { background: none; border: 0; padding: 0; box-shadow: none; }
-.rtn-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
-.rtn-main {
-  display: flex; flex-direction: column; min-width: 0; background: var(--surface); border: 1px solid var(--line);
-  border-radius: 10px; padding: 4px 28px 22px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-}
-.rtn-main > .card, .rtn-main > .field { margin: 0; padding: 22px 0; border-top: 1px solid var(--line-soft); }
-.rtn-main > :first-child { border-top: 0; }
-/* Section strips start at the sheet's edge, the first flush with its top, as on the other document forms. */
-.form.docsheet .rtn-main > .card > .card-head { margin-left: -28px; padding-left: 28px; }
-.rtn-main { padding-top: 0; }
-.rtn-main > div.card:first-of-type { padding-top: 0; }
-.rtn-main > div.card:first-of-type > .card-head { border-top-left-radius: 9px; }
-.rtn-side {
-  position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; padding: 18px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
-}
-.rtn-side hr { border: 0; border-top: 1px solid var(--line-soft); margin: 4px 0; width: 100%; }
+   Customer and supplier returns as one white sheet: the details (underlined
+   fields, as on orders and invoices) and the lines on the left; on the right,
+   past a hairline, the receipt, each handset with its reason, the note, what
+   the return does and the post button. Close to the Astryx preview
+   (2026-11-21). Markup in components/return-form.tsx. */
+.form.docsheet.rtn { padding: 0; }
+.rtn-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: stretch; }
+.rtn-main { display: flex; flex-direction: column; min-width: 0; padding: 8px 28px 24px; }
+.rtn-main > .card { margin: 0; padding: 20px 0; border-top: 1px solid var(--line-soft); }
+.rtn-main > .card:first-of-type { border-top: 0; }
+.rtn-main > .alert { margin: 16px 0 0; }
+/* Plain section titles: no tinted strip. */
+.form.docsheet.rtn .card > .card-head { background: none; margin: 0 0 12px; padding: 0; border-radius: 0; }
+.form.docsheet.rtn .card > .card-head h2 { font-size: 1.0625rem; font-weight: 700; }
+.rtn-side { display: flex; flex-direction: column; border-left: 1px solid var(--line-soft); padding: 8px 24px 24px; }
+.rtn-sec { display: flex; flex-direction: column; gap: 10px; padding: 20px 0; border-top: 1px solid var(--line-soft); }
+.rtn-sec:first-child { border-top: 0; }
+.rtn-sec .field { margin: 0; }
+.rtn-sec textarea { min-height: 96px; font-size: 0.875rem; line-height: 1.45; }
 .rtn-side-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
 .rtn-side-head h2 { font-size: 1.0625rem; font-weight: 700; margin: 0; }
 .rtn-side-head strong { font-size: 1.0625rem; font-variant-numeric: tabular-nums; }
@@ -11783,18 +11780,33 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .rtn-facts dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 .rtn-side .rtn-post { width: 100%; min-height: 44px; }
 .rtn-side .alert { margin: 0; }
-/* Where the units came from: a quiet label and the reason, under the code. */
-.rtn-origin { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px; font-size: var(--t-sm); color: var(--ink); }
-/* IMEI and serial rows under a line: a real cell across the table, in line
-   with the item, folded to one line once every unit is named. */
-.linetable tr.rtn-sub > td { padding-top: 0; padding-bottom: 12px; border-top: 0; }
-.rtn-sub .vimei { padding-left: 0; }
-.rtn-sub .serialentry { max-width: 720px; }
-/* Beside the sidebar the lines fit the column instead of scrolling sideways. */
+/* Each handset: the item, where it came from, why, and its IMEIs. */
+.rtn-unit { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.rtn-side-head + .rtn-unit { border-top: 0; padding-top: 2px; }
+.rtn-unit-head { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: var(--t-sm); }
+.rtn-unit-why { font-size: var(--t-sm); color: var(--ink); }
+.rtn-imeis { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.rtn-imeis .vimei { padding-left: 0; }
+.rtn-imeis .linkish { font-size: var(--t-sm); padding: 0; min-height: 0; color: var(--link); }
+.rtn-side .serialentry { padding: 8px 10px; }
+/* Filled in from a receipt or claim: no search to start with, one click away. */
+.rtn-filled { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 4px 0 12px; font-size: var(--t-sm); color: var(--muted); }
+.rtn-filled .linkish { display: inline-flex; align-items: center; gap: 4px; color: var(--link); font-weight: 500; }
+/* Beside the side column the lines fit instead of scrolling sideways. */
 .rtn-main .linetable { min-width: 0; width: 100%; }
-.rtn-main .linetable td.narrow input { width: 100%; min-width: 72px; max-width: 150px; }
-.rtn-main .linetable td.narrow:has(input[aria-label="Unit price"]) { min-width: 120px; }
-@media (max-width: 1100px) {
+.rtn-main .linetable td, .rtn-main .linetable th { padding-left: 8px; padding-right: 8px; }
+.rtn-main .linetable td.narrow { width: auto; }
+.form.docsheet.rtn.rtn table.linetable > thead > tr > th,
+.form.docsheet.rtn.rtn table.linetable > tbody > tr > td { min-width: 0; width: auto; }
+.rtn-main .linetable td.narrow input { width: 100%; min-width: 56px; max-width: 160px; }
+.rtn-main .linetable td.narrow input[aria-label="Unit price"] { min-width: 112px; }
+.rtn-main .doc-fields .field.span-2 { grid-column: span 2; }
+/* Beside a 232px menu the lines need about 1280px before the column fits too. */
+@media (max-width: 1280px) {
   .rtn-layout { grid-template-columns: 1fr; }
-  .rtn-side { position: static; }
+  .rtn-main { padding-left: 20px; padding-right: 20px; }
+  .rtn-side { border-left: 0; border-top: 1px solid var(--line-soft); padding: 8px 20px 24px; }
+}
+@media (max-width: 640px) {
+  .rtn-main, .rtn-side { padding-left: 16px; padding-right: 16px; }
 }
