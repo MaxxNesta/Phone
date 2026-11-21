@@ -1542,11 +1542,15 @@ export async function getDocument(id: string) {
  * `still_held` says which are in quarantine now, waiting to go back.
  */
 export async function rejectedOnReceipt(receiptId: string) {
+  // Two kinds of row (D-P7): units refused at the door, each a receipt line of
+  // its own received straight into quarantine (source REFUSED); and units
+  // that passed the door and were found faulty later (0224, source FOUND),
+  // written beside the line they came in on and moved to the bin since.
   return sql`
-    select dl.id as line_id, dl.item_id, i.code as item_code, i.name as item_name, i.identity as item_identity,
+    select 'REFUSED' as source, dl.id as line_id, dl.item_id, i.code as item_code, i.name as item_name, i.identity as item_identity,
            dl.base_qty::float as qty, dl.entered_qty::float as entered_qty, dl.entered_uom_id as uom_id,
            u.code as uom_code, dl.unit_price::float as unit_cost, dl.location_id,
-           dl.reject_reason, dl.reject_outcome, dl.source_line_id,
+           dl.reject_reason, dl.reject_outcome, dl.source_line_id, dl.line_no,
            coalesce((select sum(r.base_qty) from document_line r
                        join document rd on rd.id = r.document_id
                       where r.source_line_id = dl.id and rd.doc_type = 'PURCHASE_RETURN'
@@ -1567,7 +1571,30 @@ export async function rejectedOnReceipt(receiptId: string) {
       join item i on i.id = dl.item_id
       left join uom u on u.id = dl.entered_uom_id
      where dl.document_id = ${receiptId} and dl.reject_reason is not null
-     order by dl.line_no`;
+
+    union all
+
+    select 'FOUND', dl.id, dl.item_id, i.code, i.name, i.identity,
+           sum(fr.qty)::float, sum(fr.qty)::float, i.base_uom_id,
+           bu.code, dl.unit_price::float, fr.bin_location_id,
+           fr.reason, fr.outcome, dl.source_line_id, dl.line_no,
+           -- No units named: what is no longer in the bin has gone back.
+           case when bool_and(fr.serial_id is null)
+                then greatest(sum(fr.qty) - fn_qty_on_hand(dl.company_id, dl.item_id, fr.bin_location_id), 0)
+                else 0 end::float,
+           coalesce(json_agg(json_build_object('imei', s.serial_no,
+                      'stillHeld', exists (select 1 from v_stock_serial v
+                                            where v.serial_id = s.id and v.status = 'IN_STOCK'
+                                              and v.location_id = fr.bin_location_id))
+                    order by s.serial_no) filter (where s.id is not null), '[]'::json)
+      from fault_report fr
+      join document_line dl on dl.id = fr.receipt_line_id
+      join item i on i.id = dl.item_id
+      left join uom bu on bu.id = i.base_uom_id
+      left join stock_serial s on s.id = fr.serial_id
+     where dl.document_id = ${receiptId}
+     group by dl.id, i.id, bu.code, fr.bin_location_id, fr.reason, fr.outcome
+     order by line_no, source desc`;
 }
 
 export async function getDocumentLines(id: string) {

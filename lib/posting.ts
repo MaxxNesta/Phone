@@ -7947,6 +7947,8 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
     // brought them in or the invoice that billed for them — the mirror of
     // the sales return above.
     let againstReceipt = false;
+    /** Every line goes back for replacement (refused or found faulty, REPLACE). */
+    let replacementReturn = false;
 
     /**
      * What each returned line is worth.
@@ -8031,13 +8033,28 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
             throw new Error(`Only ${Number(r.qty) - Number(r.returned)} of that line of ${source.doc_no} is left to send back.`);
           }
         }
-        const replacing = named.filter((l) => byLine.get(l.sourceLineId!)?.reject_outcome === "REPLACE");
+        // Found faulty after the receipt was posted (0224): the same choice,
+        // written beside the line rather than on it.
+        const reports = await tx`
+          select fr.receipt_line_id, s.serial_no, fr.outcome, fr.qty::float as qty
+            from fault_report fr left join stock_serial s on s.id = fr.serial_id
+           where fr.receipt_line_id = any(${named.map((l) => l.sourceLineId as string)})`;
+        const replacedLater = (l: ReturnLine) => {
+          const mine = reports.filter((r: any) => r.receipt_line_id === l.sourceLineId && r.outcome === "REPLACE");
+          if (mine.length === 0) return false;
+          const sn = l.serials ?? [];
+          return sn.length > 0
+            ? sn.every((x) => mine.some((r: any) => r.serial_no === x))
+            : mine.reduce((t: number, r: any) => t + Number(r.qty), 0) >= l.qty - 0.0001;
+        };
+        const replacing = named.filter((l) => byLine.get(l.sourceLineId!)?.reject_outcome === "REPLACE" || replacedLater(l));
         if (replacing.length > 0 && (replacing.length !== input.lines.length || !againstReceipt)) {
           throw new Error(
             "Units going back for replacement are returned on their own, against the receipt they "
             + "arrived on: the supplier owes goods for them, not money.");
         }
         replacement = replacing.length > 0;
+        replacementReturn = replacement;
       }
 
       if (againstReceipt) {
@@ -8220,14 +8237,15 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
            entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
-           net_amount, tax_code_id, tax_amount, gross_amount, source_line_id)
+           net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, for_replacement)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
            ${line.entered?.qty ?? line.qty}, ${line.entered?.uomId ?? item.base_uom_id},
            ${line.entered?.factor ?? 1}, ${line.qty}, ${round4(line.unitPrice * (line.entered?.factor ?? 1))},
            ${net}, ${splitsR[lineNo - 1].rate?.id ?? null},
            ${splitsR[lineNo - 1].tax},
-           ${round4(net + splitsR[lineNo - 1].tax)}, ${line.sourceLineId ?? null})
+           ${round4(net + splitsR[lineNo - 1].tax)}, ${line.sourceLineId ?? null},
+           ${replacementReturn && !!line.sourceLineId})
         returning id`;
 
       const [movement] = await tx`
@@ -12439,5 +12457,125 @@ export async function voidFxRevaluation(
                void_reason = ${input.reason.trim()}, voided_by = ${input.userId ?? null}, voided_at = now()
              where id = ${run.id}`;
     return { id: run.id as string };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// A fault found after the receipt was posted (0224, docs/06 D-P7)
+// ---------------------------------------------------------------------------
+//
+// The phone passed the door and failed the next day's test. Its receipt is
+// posted and does not change; the finding is written beside it — the receipt
+// line it came in on, what is wrong, replace or credit — and the unit moves
+// into its warehouse's quarantine bin by an ordinary transfer. From there it
+// goes back to the supplier exactly as a unit refused at the door does.
+
+export type FaultReportInput = {
+  companyId: string;
+  receiptId: string;
+  reason: string;
+  outcome: "REPLACE" | "CREDIT";
+  userId?: string | null;
+  /** Per receipt line: the units (serial-tracked) or how many (otherwise). */
+  lines: { receiptLineId: string; serials?: string[]; qty?: number }[];
+};
+
+export async function reportFaulty(input: FaultReportInput, outer?: TransactionSql) {
+  const reason = input.reason?.trim();
+  if (!reason) throw new Error("Say what is wrong with it.");
+  if (input.outcome !== "REPLACE" && input.outcome !== "CREDIT") throw new Error("Choose replace or credit.");
+  const wanted = input.lines
+    .map((l) => ({ ...l, serials: (l.serials ?? []).map((s) => s.trim()).filter(Boolean) }))
+    .filter((l) => l.serials.length > 0 || Number(l.qty) > 0);
+  if (wanted.length === 0) throw new Error("Choose the units that are faulty.");
+
+  return inTransaction(outer, async (tx) => {
+    const { companyId } = input;
+    const [gr] = await tx`
+      select id, doc_no from document
+       where id = ${input.receiptId} and company_id = ${companyId}
+         and doc_type = 'GOODS_RECEIPT' and status = 'POSTED'`;
+    if (!gr) throw new Error("Only a posted goods receipt can have units reported faulty.");
+    const [today] = await tx`select fn_shop_today()::text as d`;
+
+    // Units grouped by where they are now: one transfer per warehouse.
+    type Move = { from: string; lines: TransferLine[]; reports: { lineId: string; serialNo?: string; qty: number }[] };
+    const moves = new Map<string, Move>();
+    const moveAt = (from: string) => {
+      if (!moves.has(from)) moves.set(from, { from, lines: [], reports: [] });
+      return moves.get(from)!;
+    };
+
+    for (const w of wanted) {
+      const [rl] = await tx`
+        select dl.id, dl.item_id, dl.location_id, dl.base_qty::float as qty, dl.reject_reason,
+               i.code, i.name, i.tracks_serial
+          from document_line dl join item i on i.id = dl.item_id
+         where dl.id = ${w.receiptLineId} and dl.document_id = ${gr.id}`;
+      if (!rl) throw new Error("That line is not on this receipt.");
+      if (rl.reject_reason) throw new Error(`${rl.code} on this line was refused on arrival and is already in quarantine.`);
+
+      if (rl.tracks_serial) {
+        if (w.serials.length === 0) throw new Error(`Choose which ${rl.code} units are faulty.`);
+        const units = await tx`
+          select s.id, s.serial_no, v.status, v.location_id, v.location_name, l.is_quarantine,
+                 exists (select 1 from stock_serial_event e
+                           join stock_lot lot on lot.id = e.lot_id
+                           join stock_movement sm on sm.id = lot.stock_movement_id
+                          where e.serial_id = s.id and e.event = 'RECEIVED'
+                            and sm.document_line_id = ${rl.id}) as on_line,
+                 exists (select 1 from fault_report fr where fr.serial_id = s.id) as reported
+            from stock_serial s
+            join v_stock_serial v on v.serial_id = s.id
+            left join location l on l.id = v.location_id
+           where s.company_id = ${companyId} and s.serial_no = any(${w.serials})`;
+        for (const sn of w.serials) {
+          const u = units.find((x) => x.serial_no === sn);
+          if (!u || !u.on_line) throw new Error(`${sn} did not arrive on this line of ${gr.doc_no}.`);
+          if (u.reported) throw new Error(`${sn} has already been reported faulty.`);
+          if (u.status !== "IN_STOCK") throw new Error(u.status === "SOLD"
+            ? `${sn} is already sold — a sold phone comes back as a customer return, into quarantine.`
+            : `${sn} is ${SERIAL_STATUS[u.status] ?? String(u.status).toLowerCase()}, so it is not on the shelf to report.`);
+          if (u.is_quarantine) throw new Error(`${sn} is already in quarantine.`);
+          const m = moveAt(u.location_id);
+          const tl = m.lines.find((x) => x.itemId === rl.item_id);
+          if (tl) { tl.qty++; tl.serials!.push(sn); } else m.lines.push({ itemId: rl.item_id, qty: 1, serials: [sn] });
+          m.reports.push({ lineId: rl.id, serialNo: sn, qty: 1 });
+        }
+      } else {
+        const qty = Number(w.qty);
+        const [done] = await tx`
+          select coalesce(sum(qty), 0)::float as q from fault_report where receipt_line_id = ${rl.id}`;
+        if (qty > rl.qty - Number(done.q)) {
+          throw new Error(`${rl.code}: ${rl.qty} arrived on this line and ${done.q} already reported — ${qty} is more than that.`);
+        }
+        const m = moveAt(rl.location_id);
+        m.lines.push({ itemId: rl.item_id, qty });
+        m.reports.push({ lineId: rl.id, qty });
+      }
+    }
+
+    const transfers: string[] = [];
+    for (const m of moves.values()) {
+      const [bin] = await tx`select fn_quarantine_location(${m.from}) as id`;
+      const t = await postStockTransfer({
+        companyId, fromLocationId: m.from, toLocationId: bin.id, docDate: today.d,
+        reference: gr.doc_no,
+        memo: `Found faulty after receipt ${gr.doc_no}: ${reason}. Supplier to ${input.outcome === "REPLACE" ? "replace" : "credit"}.`,
+        lines: m.lines,
+      }, tx);
+      transfers.push(t.id);
+      for (const r of m.reports) {
+        await tx`
+          insert into fault_report
+            (company_id, receipt_line_id, serial_id, qty, reason, outcome, bin_location_id,
+             transfer_document_id, created_by)
+          values
+            (${companyId}, ${r.lineId},
+             ${r.serialNo ? (await tx`select id from stock_serial where company_id = ${companyId} and serial_no = ${r.serialNo}`)[0].id : null},
+             ${r.qty}, ${reason}, ${input.outcome}, ${bin.id}, ${t.id}, ${input.userId ?? null})`;
+      }
+    }
+    return { transferIds: transfers };
   });
 }

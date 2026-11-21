@@ -173,6 +173,8 @@ export default async function ImeiJourney({ params }: { params: Promise<{ id: st
       <WarrantyClaims serialId={u.serial_id as string} companyId={user.companyId}
         sold={u.status === "SOLD"}
         mayOpen={can(user, "sales.return") || can(user, "inventory.manage")} />
+      <FoundFaulty serialId={u.serial_id as string} companyId={user.companyId}
+        mayReport={can(user, "inventory.manage")} />
     </>
   );
 }
@@ -199,6 +201,48 @@ async function WarrantyClaims({ serialId, companyId, sold, mayOpen }: {
       ))}
       {claims.length === 0 && t("claims.noneForPhone")}
       {sold && mayOpen && !open && <> · <Link href={`/inventory/warranty/claims/new?serial=${serialId}`}>{t("claims.new")}</Link></>}
+    </p>
+  );
+}
+
+/**
+ * Found faulty after its receipt (0224): what was found, or — for a phone
+ * still on the shelf — a way to report it against the receipt it came in on.
+ */
+async function FoundFaulty({ serialId, companyId, mayReport }: { serialId: string; companyId: string; mayReport: boolean }) {
+  const t = await getTranslations("inventory");
+  const [f] = await sql`
+    select fr.reason, fr.outcome, fr.created_at, d.id as gr_id, d.doc_no
+      from fault_report fr join document_line dl on dl.id = fr.receipt_line_id join document d on d.id = dl.document_id
+     where fr.serial_id = ${serialId} and fr.company_id = ${companyId}`;
+  if (f) {
+    return (
+      <p className="page-sub">
+        {t("fault.found", { d: shortDate(f.created_at as string), reason: f.reason as string })}{" "}
+        <Link href={`/documents/${f.gr_id}`}>{f.doc_no as string}</Link>{" "}
+        ({f.outcome === "REPLACE" ? t("fault.replace") : t("fault.credit")})
+      </p>
+    );
+  }
+  if (!mayReport) return null;
+  const [r] = await sql`
+    select d.id, d.doc_no from stock_serial_event e
+      join stock_lot lot on lot.id = e.lot_id
+      join stock_movement sm on sm.id = lot.stock_movement_id
+      join document_line dl on dl.id = sm.document_line_id and dl.reject_reason is null
+      join document d on d.id = dl.document_id and d.doc_type = 'GOODS_RECEIPT' and d.status = 'POSTED'
+      join v_stock_serial v on v.serial_id = e.serial_id and v.status = 'IN_STOCK'
+      join location l on l.id = v.location_id and not l.is_quarantine
+     where e.serial_id = ${serialId} and e.event = 'RECEIVED' and e.company_id = ${companyId}
+     limit 1`;
+  if (!r) return null;
+  const [s] = await sql`select serial_no from stock_serial where id = ${serialId}`;
+  return (
+    <p className="page-sub">
+      {t("fault.ask")}{" "}
+      <Link href={`/purchases/receive/${r.id}/faulty?serial=${encodeURIComponent(s.serial_no as string)}`}>
+        {t("fault.report", { doc: r.doc_no as string })}
+      </Link>
     </p>
   );
 }

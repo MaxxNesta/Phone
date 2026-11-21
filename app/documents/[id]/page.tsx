@@ -557,6 +557,21 @@ export default async function DocumentPage({
 
   // Units this receipt refused (D-P7), and how many still wait in quarantine.
   const refused = doc.doc_type === "GOODS_RECEIPT" ? await rejectedOnReceipt(doc.id) as any[] : [];
+  // Units of this receipt still on the shelf, which could yet be found faulty (0224).
+  const [reportable] = doc.doc_type === "GOODS_RECEIPT" && doc.status === "POSTED" ? await sql`
+    select exists (
+      select 1 from document_line dl join item i on i.id = dl.item_id
+       where dl.document_id = ${doc.id} and dl.reject_reason is null and i.is_stocked
+         and case when i.tracks_serial then exists (
+               select 1 from stock_serial_event e
+                 join stock_lot lot on lot.id = e.lot_id
+                 join stock_movement sm on sm.id = lot.stock_movement_id
+                 join v_stock_serial v on v.serial_id = e.serial_id and v.status = 'IN_STOCK'
+                 join location vl on vl.id = v.location_id and not vl.is_quarantine
+                where e.event = 'RECEIVED' and sm.document_line_id = dl.id
+                  and not exists (select 1 from fault_report fr where fr.serial_id = e.serial_id))
+              else dl.base_qty > coalesce((select sum(fr.qty) from fault_report fr where fr.receipt_line_id = dl.id), 0)
+              end) as any` : [];
   const refusedHeld = refused.reduce((t, r) => t + ((r.units as any[]).length
     ? (r.units as any[]).filter((u) => u.stillHeld).length : Math.max(0, Number(r.qty) - Number(r.returned))), 0);
 
@@ -1265,6 +1280,12 @@ export default async function DocumentPage({
           {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
         </Link>
       )}
+      {reportable?.any && can(user, "inventory.manage") && (
+        <Link href={`/purchases/receive/${doc.id}/faulty`} className="btn ghost"
+          title="A unit from this receipt failed after it was received: write it down and move it to quarantine.">
+          Report faulty
+        </Link>
+      )}
       {isTradeIn && (
         <DeleteButton action={voidWholeTradeIn} label="Undo whole trade-in" confirmLabel="Undo trade-in"
           pendingLabel="Undoing…" className="btn ghost" confirmClassName="danger-solid"
@@ -1539,12 +1560,16 @@ export default async function DocumentPage({
           {refused.length > 0 && (() => {
             const total = refused.reduce((t, r) => t + Number(r.qty), 0);
             const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
+            const atDoor = refused.filter((r) => r.source === "REFUSED").reduce((t, r) => t + Number(r.qty), 0);
+            const later = total - atDoor;
+            const what = [atDoor > 0 ? `${units(atDoor)} refused on arrival` : null,
+              later > 0 ? `${atDoor > 0 ? later : units(later)} found faulty later` : null].filter(Boolean).join(", ");
             return (
               <StatusBanner
                 tone={refusedHeld > 0 ? "warn" : "ok"}
                 title={refusedHeld > 0
-                  ? `${units(total)} refused on arrival — ${refusedHeld === total ? "all" : refusedHeld} still in quarantine`
-                  : `${units(total)} refused on arrival — sent back to the supplier`}
+                  ? `${what} — ${refusedHeld === total ? (total === 1 ? "in" : "all in") : `${refusedHeld} still in`} quarantine`
+                  : `${what} — sent back to the supplier`}
                 description={refusedHeld > 0
                   ? "Held in this warehouse's quarantine bin, not for sale. Send them back, and hand the rejection note over with them."
                   : "Nothing from this receipt is waiting in quarantine."}
@@ -1792,6 +1817,20 @@ export default async function DocumentPage({
                                       <span><strong>Refused</strong> — {l.reject_reason}. Supplier {l.reject_outcome === "REPLACE" ? "replaces" : "credits"} it; held in quarantine.</span>
                                     </span>
                                   )}
+                                  {/* Found faulty after the receipt was posted (0224): written
+                                      against this line, moved to the bin since. */}
+                                  {refused.filter((r) => r.source === "FOUND" && r.line_id === l.id).map((r, i) => {
+                                    const held = (r.units as any[]).length
+                                      ? (r.units as any[]).filter((u) => u.stillHeld).length
+                                      : Math.max(0, Number(r.qty) - Number(r.returned));
+                                    return (
+                                      <span key={`f${i}`} className="line-subnote" title="Moved to quarantine after the receipt was posted">
+                                        <span><strong>Found faulty</strong> — {Number(r.qty)} of {Number(l.base_qty)}: {r.reject_reason}.
+                                          {" "}Supplier {r.reject_outcome === "REPLACE" ? "replaces" : "credits"} {Number(r.qty) === 1 ? "it" : "them"};
+                                          {" "}{held > 0 ? "held in quarantine" : "sent back"}.</span>
+                                      </span>
+                                    );
+                                  })}
                                   {/* This line's handsets, each to its own history. */}
                                   {imeis > 0 && (() => {
                                     const chip = (s: any) => (

@@ -1980,6 +1980,13 @@
         "REFUNDED": "The customer was paid back.",
         "REJECTED": "Not covered, or not a fault. Say why."
       }
+    },
+    "fault": {
+      "found": "Found faulty on {d}: {reason}. Written against",
+      "replace": "supplier replaces",
+      "credit": "supplier credits",
+      "ask": "Failed a check before it was sold?",
+      "report": "Report faulty against {doc}"
     }
   },
   "picker": {

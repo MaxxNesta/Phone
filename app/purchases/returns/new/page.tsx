@@ -58,7 +58,7 @@ export default async function NewPurchaseReturn({
           return {
             itemId: String(r.item_id), qty: String(qty), unitPrice: String(Number(r.unit_cost)),
             serials: held, sourceLineId: billed ? null : String(r.line_id), location: String(r.location_id),
-            reason: String(r.reject_reason),
+            reason: String(r.reject_reason), found: r.source === "FOUND",
           };
         }).filter((l) => Number(l.qty) > 0);
         if (lines.length === 0) return null;
@@ -67,8 +67,10 @@ export default async function NewPurchaseReturn({
           docNo: String(billed?.doc_no ?? gr.doc_no),
           partnerId: String(gr.partner_id),
           locationId: lines[0].location,
-          lines: lines.map(({ location, reason, ...l }) => l),
-          memo: `Refused on arrival (${gr.doc_no}): ${[...new Set(lines.map((l) => l.reason))].join("; ")}. `
+          lines: lines.map(({ location, reason, found, ...l }) => l),
+          memo: `${lines.every((l) => l.found) ? "Found faulty after receipt"
+                   : lines.some((l) => l.found) ? "Refused on arrival or found faulty after receipt"
+                   : "Refused on arrival"} (${gr.doc_no}): ${[...new Set(lines.map((l) => l.reason))].join("; ")}. `
             + (want === "REPLACE" ? "Supplier to replace." : "Supplier to credit."),
         };
       })()

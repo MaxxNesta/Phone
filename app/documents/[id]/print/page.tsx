@@ -113,7 +113,8 @@ export default async function DocumentPrint({
         phone: d.partner_phone ?? null,
       } : null,
       location: d.location_name ?? null,
-      memo: `These goods arrived on ${d.doc_no} and were refused. We ask you to `
+      memo: `These goods arrived on ${d.doc_no} and ${refused.every((r) => r.source === "FOUND") ? "were found faulty after receipt"
+          : refused.some((r) => r.source === "FOUND") ? "were refused or found faulty after receipt" : "were refused"}. We ask you to `
         + (asks.size > 1 ? "replace or credit them as marked on each line."
           : asks.has("REPLACE") ? "replace them." : "credit them against your invoice."),
       lines: refused.map((r, i) => ({
@@ -122,7 +123,7 @@ export default async function DocumentPrint({
         name: r.item_name,
         note: [
           (r.units as any[]).length ? `${r.item_identity === "IMEI" ? "IMEI" : "Serial"} ${(r.units as any[]).map((u) => u.imei).join(", ")}` : null,
-          `Fault: ${r.reject_reason}`,
+          `${r.source === "FOUND" ? "Found faulty" : "Fault"}: ${r.reject_reason}`,
           asks.size > 1 ? (r.reject_outcome === "REPLACE" ? "Please replace" : "Please credit") : null,
         ].filter(Boolean).join(" · "),
         qty: Number(r.entered_qty),

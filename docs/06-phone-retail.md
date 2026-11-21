@@ -110,7 +110,7 @@ report reads what it always read; the foreign figure is kyat over the rate.
 - Not yet: sales in foreign currency.
 
 **D-P7. Damaged on arrival: quarantine, then return (agreed 2026-11-20,
-built 2026-11-21, 0218–0220).** Ten ordered, ten arrive, one is broken. The design follows SAP
+built 2026-11-21, 0218–0220, 0224).** Ten ordered, ten arrive, one is broken. The design follows SAP
 (blocked stock, then a return delivery that reopens the order) and NetSuite
 (a status that cannot be sold, then a vendor return).
 - Goods receipt: each line records arrived, accepted and rejected, with a
@@ -162,6 +162,22 @@ built 2026-11-21, 0218–0220).** Ten ordered, ten arrive, one is broken. The de
   rejection note and offers the return per outcome. A return line names the
   receipt line it sends back, and a replace return reopens the order
   (`v_order_outstanding`, 0220). `scripts/test-quarantine.mjs`.
+- Found faulty after the receipt was posted (0224, built 2026-11-21): the
+  receipt does not change. **Report faulty** (on the receipt, or on the IMEI
+  page of a unit still on the shelf) writes a `fault_report` against the
+  receipt line the unit came in on — what is wrong, replace or credit — and
+  moves it into its warehouse's quarantine bin by a transfer that names the
+  receipt. From there it goes back exactly as a refused unit: the receipt
+  page shows it under its line, the rejection note lists it, and the return
+  opens filled in. A replace return goes against the receipt even once it is
+  billed and reopens the order (`document_line.for_replacement`, which now
+  drives `v_order_outstanding` for both kinds); a credit goes against the bill
+  once there is one. A unit already sold is not reported here — it comes back
+  as a customer return through a warranty claim (D-P8).
+- The three moments, side by side: seen while entering the receipt → refuse
+  it on the line; found on the shelf after posting → Report faulty; found by
+  the customer after sale → warranty claim, customer return into quarantine,
+  then to the supplier.
 
 **D-P8. Warranty claims (0221, built 2026-11-21).** A customer back with a
 faulty phone opens a claim: the fault, whether the shop's and the supplier's

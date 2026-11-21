@@ -295,6 +295,68 @@ try {
     (await entryOf(bill3.id, "2110")) === -700_000 && r2(await bal("1410")) === r2(grirPre3),
     `${await bal("1410")} vs ${grirPre3}`);
 
+  console.log("\n  found faulty after the receipt was posted (0224)");
+  const po4 = await P.postPurchaseOrder({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    lines: [{ itemId: phone.id, qty: 3, unitPrice: 800_000 }] });
+  const [po4Line] = await sql`select id from document_line where document_id = ${po4.id}`;
+  const gr4 = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    sourceDocumentId: po4.id, lines: [
+      { itemId: phone.id, qty: 3, unitCost: 800_000, serials: ["QR-F-1", "QR-F-2", "QR-F-3"], sourceLineId: po4Line.id },
+    ] });
+  const [gr4Line] = await sql`select id from document_line where document_id = ${gr4.id}`;
+  const bill4 = await P.postPurchaseInvoice({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    dueDate: DAY, goodsReceiptId: gr4.id, lines: [{ itemId: phone.id, qty: 3, unitPrice: 800_000, sourceLineId: gr4Line.id }] });
+  const report = (serials, outcome = "REPLACE", reason = "Battery drains overnight", lineId = gr4Line.id) =>
+    P.reportFaulty({ companyId: co.id, receiptId: gr4.id, reason, outcome, lines: [{ receiptLineId: lineId, serials }] });
+  await refuses("a report says what is wrong", () => report(["QR-F-2"], "REPLACE", "  "), /what is wrong/);
+  await refuses("a unit from another receipt is not reported here", () => report(["QR-PO-2"]), /did not arrive on this line/);
+  const stock4 = await bal("1310");
+  const f1 = await report(["QR-F-2"]);
+  check("the faulty phone moves to quarantine by a transfer", (await unit("QR-F-2"))?.location_id === qid && f1.transferIds.length === 1);
+  const [t4] = await sql`select memo, reference, to_location_id from document where id = ${f1.transferIds[0]}`;
+  check("the transfer names the receipt and the fault",
+    t4?.to_location_id === qid && t4?.reference !== null && /Found faulty after receipt .*Battery drains overnight/.test(t4?.memo ?? ""), t4?.memo);
+  const [fr] = await sql`select fr.*, s.serial_no from fault_report fr join stock_serial s on s.id = fr.serial_id
+    where fr.receipt_line_id = ${gr4Line.id}`;
+  check("written against the receipt line it came in on", fr?.serial_no === "QR-F-2" && fr?.outcome === "REPLACE" && fr?.bin_location_id === qid);
+  check("the receipt itself is unchanged, and stock value too",
+    (await sql`select count(*)::int c from document_line where document_id = ${gr4.id}`)[0].c === 1 && (await bal("1310")) === stock4);
+  check("the order is still complete until it goes back", (await outstanding(po4.id)) === 0);
+  await refuses("it cannot be reported twice", () => report(["QR-F-2"]), /already been reported/);
+  await refuses("it cannot be sold", () => sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["QR-F-2"] }]), /quarantine/);
+  const grirF = await bal("1410");
+  const rf = await ret([{ itemId: phone.id, qty: 1, unitPrice: 800_000, serials: ["QR-F-2"], sourceLineId: gr4Line.id }],
+    { sourceDocumentId: gr4.id, memo: "Found faulty after receipt: battery" });
+  const [rfl] = await sql`select for_replacement from document_line where document_id = ${rf.id}`;
+  check("billed already, it still goes back against the receipt for replacement",
+    r2((await bal("1410")) - grirF) === 800_000 && (await entryOf(rf.id, "2110")) === 0 && rfl?.for_replacement === true);
+  check("the order expects one again", (await outstanding(po4.id)) === 1);
+  check("the bill stands at three", (await entryOf(bill4.id, "2110")) === -2_400_000);
+
+  await report(["QR-F-3"], "CREDIT", "Camera fails");
+  check("found faulty for credit, in quarantine", (await unit("QR-F-3"))?.location_id === qid);
+  await refuses("for credit, once billed, it does not go back against the receipt",
+    () => ret([{ itemId: phone.id, qty: 1, unitPrice: 800_000, serials: ["QR-F-3"], sourceLineId: gr4Line.id }],
+      { sourceDocumentId: gr4.id }), /bill|invoice/i);
+  const rc = await ret([{ itemId: phone.id, qty: 1, unitPrice: 800_000, serials: ["QR-F-3"] }], { sourceDocumentId: bill4.id });
+  check("it goes back against the bill: the supplier owes the credit", (await entryOf(rc.id, "2110")) === 800_000);
+  check("and the order does not wait for it", (await outstanding(po4.id)) === 1);
+  const sold4 = await sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["QR-F-1"] }]);
+  await refuses("a sold phone is not reported against its receipt", () => report(["QR-F-1"]), /customer return/);
+
+  const grC = await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: wh.id, docDate: DAY,
+    lines: [{ itemId: charger.id, qty: 5, unitCost: 10_000 }] });
+  const [grCLine] = await sql`select id from document_line where document_id = ${grC.id}`;
+  const qC = await onHand(charger.id, qid);
+  await refuses("no more than arrived on the line",
+    () => P.reportFaulty({ companyId: co.id, receiptId: grC.id, reason: "Frayed cable", outcome: "CREDIT",
+      lines: [{ receiptLineId: grCLine.id, qty: 6 }] }), /more than that/);
+  await P.reportFaulty({ companyId: co.id, receiptId: grC.id, reason: "Frayed cable", outcome: "CREDIT",
+    lines: [{ receiptLineId: grCLine.id, qty: 2 }] });
+  check("untracked: two chargers counted into quarantine", (await onHand(charger.id, qid)) === qC + 2);
+  check("and written down with the count", n((await sql`select sum(qty) q from fault_report where receipt_line_id = ${grCLine.id}`)[0].q) === 2);
+  void sold4;
+
   console.log("\n  a customer brings back a faulty phone");
   const sold = await sell([{ itemId: phone.id, qty: 1, unitPrice: 1_500_000, serials: ["QR-PO-1"] }]);
   const back = (extra = {}) => P.postSalesReturn({ companyId: co.id, partnerId: cust.id, locationId: wh.id,
