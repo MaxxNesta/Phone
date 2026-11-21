@@ -45,7 +45,8 @@ export default async function NewPurchaseReturn({
              and doc_type = 'GOODS_RECEIPT' and status = 'POSTED'`;
         if (!gr) return null;
         const want = outcome === "CREDIT" ? "CREDIT" : "REPLACE";
-        const rows = ((await rejectedOnReceipt(gr.id)) as any[]).filter((r) => r.reject_outcome === want);
+        const all = (await rejectedOnReceipt(gr.id)) as any[];
+        const rows = all.filter((r) => r.reject_outcome === want);
         const [billed] = want === "CREDIT" ? await sql`
           select d.id, d.doc_no from document d
            where d.company_id = ${co.id} and d.doc_type = 'PURCHASE_INVOICE' and d.status = 'POSTED'
@@ -65,7 +66,22 @@ export default async function NewPurchaseReturn({
           };
         }).filter((l) => Number(l.qty) > 0);
         if (lines.length === 0) return null;
+        // What the receipt holds, for the sidebar: one read. Refused units are
+        // receipt lines of their own (0218); faults found later are reports
+        // beside the line (0224); ordered is the order lines this receipt answers.
+        const [held] = await sql`
+          select coalesce(sum(dl.base_qty), 0)::float as received,
+                 (select coalesce(sum(o.base_qty), 0)::float from document_line o
+                   where o.id in (select source_line_id from document_line where document_id = ${gr.id})) as ordered,
+                 (select o.doc_no from document o
+                   where o.id = (select source_document_id from document where id = ${gr.id})
+                     and o.doc_type = 'PURCHASE_ORDER') as order_no
+            from document_line dl where dl.document_id = ${gr.id}`;
+        const count = (src: string) => all.filter((r) => r.source === src).reduce((t, r) => t + Number(r.qty), 0);
         return {
+          receipt: { docNo: String(gr.doc_no), orderNo: held.order_no ? String(held.order_no) : null,
+                     ordered: Number(held.ordered), received: Number(held.received),
+                     rejected: count("REFUSED"), found: count("FOUND"), replace: want === "REPLACE" },
           sourceDocumentId: String(billed?.id ?? gr.id),
           docNo: String(billed?.doc_no ?? gr.doc_no),
           partnerId: String(gr.partner_id),

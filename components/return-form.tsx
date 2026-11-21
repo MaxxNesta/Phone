@@ -16,6 +16,7 @@ import type { Channel } from "@/lib/payment-channels";
 import type { MoneyPreview } from "@/lib/refund";
 import { LineRemove } from "./line-remove";
 import { useNotice } from "@/components/toast";
+import { Check, Copy } from "lucide-react";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -99,6 +100,9 @@ export function ReturnForm({
     faulty?: string | null;
     /** The warranty claim this return answers (0221); it records the return. */
     claimId?: string | null;
+    /** Sent back from a receipt's defects: what that receipt holds, for the sidebar. */
+    receipt?: { docNo: string; orderNo: string | null; ordered: number; received: number;
+                rejected: number; found: number; replace: boolean } | null;
   } | null;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -132,6 +136,9 @@ export function ReturnForm({
   const [review, setReview] = useState<MoneyPreview | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
+  // IMEI panels opened again after every phone on the line was named.
+  const [imeiOpen, setImeiOpen] = useState<number[]>([]);
+  const toggleImei = (key: number) => setImeiOpen((ks) => (ks.includes(key) ? ks.filter((k) => k !== key) : [...ks, key]));
   // A refusal from the real posting closes the review so the reason shows.
   useEffect(() => { if (state && "error" in state) setReview(null); }, [state]);
 
@@ -236,6 +243,9 @@ export function ReturnForm({
                      serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial),
                      sourceLineId: l.sourceLineId ?? null }))
   );
+  const units = lines.reduce((t, l) => t + (l.itemId ? baseQty(l) : 0), 0);
+  const blocked = lines.reduce((t, l) => t + (l.itemId && l.origin ? baseQty(l) : 0), 0);
+  const receipt = prefill?.receipt ?? null;
   const serialShort = lines.some((l) => named(l) && Number(l.qty) > 0
     && (l.serials?.length ?? 0) !== Number(l.qty));
 
@@ -282,6 +292,8 @@ export function ReturnForm({
 
       <input type="hidden" name="lines" value={payload} />
 
+      <div className="rtn-layout">
+      <div className="rtn-main">
       <div className="card">
         <div className="card-head">
           <h2>{isSales ? "Customer" : "Supplier"} and date</h2>
@@ -421,12 +433,20 @@ export function ReturnForm({
                 return (
                   <Fragment key={l.key}>
                   <tr>
-                    <td style={{ minWidth: 240 }}>
+                    <td style={{ minWidth: 200 }}>
                       {item ? (
                         <>
                           <div className="line-item-name">{item.name}</div>
                           <span className="subline">{item.code}</span>
-                          {l.origin && <div className="subline" style={{ color: "var(--ink)", fontWeight: 500 }}>{l.origin}</div>}
+                          {l.origin && (() => {
+                            const [what, ...why] = l.origin.split(" · ");
+                            return (
+                              <div className="rtn-origin">
+                                <span className="pill">{what}</span>
+                                {why.length > 0 && <span>{why.join(" · ")}</span>}
+                              </div>
+                            );
+                          })()}
                           {(item.packs ?? []).length > 0 && (() => {
                             const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
                               price: p.price == null ? null : Number(p.price) }));
@@ -452,7 +472,7 @@ export function ReturnForm({
                         l.available != null ? (
                           // Sent back from a receipt: this line's own units, not the
                           // whole bin's stock repeated on every line.
-                          <span>{fmt(l.available)}<span className="subline" style={{ display: "block" }}>this line</span></span>
+                          <span>{fmt(l.available)}<span className="subline" style={{ display: "block" }}>blocked</span></span>
                         ) : (
                         <span style={{ color: short ? "var(--bad)" : undefined }}>
                           {item.is_stocked ? fmt(onHand(item)) : "service"}
@@ -480,33 +500,56 @@ export function ReturnForm({
                     </td>
                   </tr>
                   {item?.identity === "OPTIONAL" && (
-                    <tr className="batchrow">
+                    <tr className="rtn-sub">
                       <td colSpan={6}>
                         <TrackMode code={item.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
                       </td>
                     </tr>
                   )}
-                  {item && named(l) && (
-                    <tr className="batchrow">
-                      <td colSpan={6}>
-                        <SerialEntry
-                          label={`${item.code} — ${isSales ? "which handsets came back" : "which handsets go back"}`}
-                          qty={Number(l.qty) || 0}
-                          value={l.serials ?? []}
-                          suggestions={serialPool
-                            .filter((u) => u.item_id === item.id && u.partner_id === partnerId
-                              && (!isSales || !sourceDocumentId || u.document_id === sourceDocumentId)
-                              && (isSales || !locationId || u.location_id === locationId))
-                            .map((u) => u.imei)}
-                          onChange={(v) => setLine(l.key, {
-                            serials: v,
-                            ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
-                              ? { qty: String(v.length) } : {}),
-                          })}
-                        />
-                      </td>
-                    </tr>
-                  )}
+                  {item && named(l) && (() => {
+                    const serials = l.serials ?? [];
+                    const q = Number(l.qty) || 0;
+                    const done = q > 0 && serials.length === q;
+                    const open = imeiOpen.includes(l.key);
+                    return (
+                      <tr className="rtn-sub">
+                        <td colSpan={6}>
+                          {done && !open && q === 1 ? (
+                            <span className="vimei">
+                              IMEI: <span className="m">{serials[0].serial}</span>
+                              <button type="button" className="vicon" aria-label="Copy IMEI"
+                                onClick={() => navigator.clipboard?.writeText(serials[0].serial)}><Copy size={14} /></button>
+                              <span className="vsep">|</span>
+                              <button type="button" className="linkish" onClick={() => toggleImei(l.key)}>Change</button>
+                            </span>
+                          ) : done && !open ? (
+                            <button type="button" className="vimei-sum ok" aria-expanded={false} onClick={() => toggleImei(l.key)}>
+                              <Check size={14} aria-hidden="true" />
+                              <span className="m vimei-list">{serials.map((x) => x.serial).join(", ")}</span>
+                              <span className="linkish">Edit</span>
+                            </button>
+                          ) : (
+                            <SerialEntry
+                              label={`${item.code}: ${isSales ? "which handsets came back" : "which handsets go back"}`}
+                              qty={q}
+                              value={serials}
+                              suggestions={serialPool
+                                .filter((u) => u.item_id === item.id && u.partner_id === partnerId
+                                  && (!isSales || !sourceDocumentId || u.document_id === sourceDocumentId)
+                                  && (isSales || !locationId || u.location_id === locationId))
+                                .map((u) => u.imei)}
+                              onChange={(v) => setLine(l.key, {
+                                serials: v,
+                                ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
+                                  ? { qty: String(v.length) } : {}),
+                              })}
+                              onDone={open ? () => toggleImei(l.key) : undefined}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })()}
                   </Fragment>
                 );
               })}
@@ -526,13 +569,6 @@ export function ReturnForm({
           </span>
         </div>
       </div>
-
-      {shortages.length > 0 && (
-        <div className="alert">
-          Not enough stock on hand to return{" "}
-          {shortages.map((l) => byId(l.itemId)?.code).join(", ")}. Reduce the quantity.
-        </div>
-      )}
 
       {isSales && (
         <div className="card">
@@ -576,9 +612,59 @@ export function ReturnForm({
         {prefill?.claimId && <input type="hidden" name="claim_id" value={prefill.claimId} />}
       </div>
 
-      <div className="actions">
+      </div>
+
+      {/* What the return does, and the button that posts it: beside the lines
+          on a wide screen, under them on a narrow one. */}
+      <aside className="rtn-side">
+        {receipt && (
+          <>
+            <div className="rtn-side-head">
+              <h2>{receipt.docNo}</h2>
+              {receipt.orderNo && <span className="pill">{receipt.orderNo}</span>}
+            </div>
+            <dl className="rtn-facts">
+              {receipt.ordered > 0 && <><dt>Ordered</dt><dd>{fmt(receipt.ordered)}</dd></>}
+              <dt>Received</dt><dd>{fmt(receipt.received)}</dd>
+              <dt>Rejected at receipt</dt><dd>{fmt(receipt.rejected)}</dd>
+              <dt>Defective after receipt</dt><dd>{fmt(receipt.found)}</dd>
+              <dt>Good, in stock</dt><dd>{fmt(Math.max(0, receipt.received - receipt.rejected - receipt.found))}</dd>
+            </dl>
+            <hr />
+          </>
+        )}
+        <div className="rtn-side-head">
+          <h2>This return</h2>
+          <strong>{fmt(total)} {sourceFc ?? "MMK"}</strong>
+        </div>
+        <dl className="rtn-facts">
+          <dt>Against</dt>
+          <dd>{sourceDoc ? sourceDoc.doc_no : "No document"}</dd>
+          <dt>{isSales ? "Units coming back" : "Units going back"}</dt>
+          <dd>{fmt(units)}{blocked > 0 ? ` (${fmt(blocked)} blocked)` : ""}</dd>
+          {isSales ? (
+            <>
+              <dt>Stock in</dt><dd>{faulty ? "Quarantine, not for resale" : "Back on the shelf"}</dd>
+              <dt>Money back</dt><dd>{refundMode === "credit" ? "Kept as credit" : "Refunded now"}</dd>
+            </>
+          ) : (
+            <>
+              <dt>Stock out</dt><dd>{fmt(total)} at cost</dd>
+              {sourceIsReceipt
+                ? <><dt>Accrual cleared</dt><dd>{fmt(total)} received not invoiced</dd></>
+                : sourceDoc ? <><dt>Supplier owes</dt><dd>{fmt(total)} less</dd></> : null}
+              {receipt?.replace && receipt.orderNo && units > 0 && <><dt>Replacements</dt><dd>{receipt.orderNo} waits for {fmt(units)}</dd></>}
+            </>
+          )}
+        </dl>
+        {shortages.length > 0 && (
+          <div className="alert">
+            Not enough stock on hand to return{" "}
+            {shortages.map((l) => byId(l.itemId)?.code).join(", ")}. Reduce the quantity.
+          </div>
+        )}
         {serialShort && <span className="low" role="status">Name one IMEI per handset.</span>}
-        <button type="submit" disabled={pending || reviewing || total === 0 || shortages.length > 0 || serialShort}>
+        <button type="submit" className="rtn-post" disabled={pending || reviewing || total === 0 || shortages.length > 0 || serialShort}>
           {pending ? "Posting…" : reviewing ? "Checking…" : isSales ? "Review return" : "Post purchase return"}
         </button>
         <span className="page-sub">
@@ -586,6 +672,7 @@ export function ReturnForm({
             ? "Stock returns to inventory; revenue and what the customer owes both reverse."
             : "Stock leaves inventory; what's owed to the supplier drops."}
         </span>
+      </aside>
       </div>
       {review && (
         <MoneyPreviewDialog preview={review} busy={pending}
