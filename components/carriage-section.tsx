@@ -11,8 +11,8 @@ const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 
 
 /**
  * The courier's charge for bringing these goods in, on the receipt itself.
- * Off unless switched on: most receipts have no charge to add, and the
- * section stays one quiet line until somebody has one. On, it posts with the
+ * Starts on "bill comes later", which posts nothing here: the charge is
+ * spread once the receipt is posted. On, it posts with the
  * receipt — Dr Carriage Inward / Cr Payable (Other) under the courier, then
  * spread onto the items — so they arrive at what they really cost.
  */
@@ -24,7 +24,9 @@ export function CarriageSection({ couriers, units, base, onBlocked, paidFrom = [
   paidFrom?: { id: string; label: string }[];
 }) {
   // The question the receiver can answer: is there a courier charge, and is its bill here?
-  const [mode, setMode] = useState<"none" | "now" | "later">("none");
+  // Starts on "comes later" (owner, 2026-11-22): charges are usually spread after
+  // the receipt posts, by Record carriage inward or a full landed cost.
+  const [mode, setMode] = useState<"none" | "now" | "later">("later");
   const on = mode === "now";
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<Spread>("EQUAL");
@@ -65,7 +67,7 @@ export function CarriageSection({ couriers, units, base, onBlocked, paidFrom = [
       {mode === "later" && (
         <p className="receive-explain carriage-later">
           Post the receipt as it is. When the courier&rsquo;s bill arrives, open this receipt and choose
-          <strong> Record carriage inward</strong>; the charge is added to these items then.
+          <strong> Record carriage inward</strong>, or <strong>Add landed cost</strong> for duty, freight and other import bills; the charges are added to these items then.
         </p>
       )}
 
