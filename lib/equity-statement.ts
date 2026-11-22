@@ -1,7 +1,7 @@
 import { sql } from "./db";
 
 /**
- * Statement of changes in equity, month by month through one year: for each
+ * Statement of changes in equity, month by month through one fiscal year: for each
  * month, the balance on the first day, what moved it, and the balance on the
  * last day, in four columns (capital, accumulated profit/(loss), other
  * changes, total).
@@ -30,9 +30,14 @@ export type EquityMonth = {
 };
 export type Cols = { capital: number; accumulated: number; other: number; total: number };
 
-export async function equityStatement(companyId: string, year: number, throughMonth: number) {
-  const start = `${year}-01-01`;
-  const end = new Date(Date.UTC(year, throughMonth, 0)).toISOString().slice(0, 10);
+/**
+ * From `start` (the first day of a fiscal year, YYYY-MM-DD) for `months`
+ * months: a fiscal year that starts in April runs April to March, and its
+ * opening balance is everything before 1 April.
+ */
+export async function equityStatement(companyId: string, start: string, months: number) {
+  const y0 = Number(start.slice(0, 4)), m0 = Number(start.slice(5, 7)) - 1;
+  const end = new Date(Date.UTC(y0, m0 + months, 0)).toISOString().slice(0, 10);
   const rows = await sql`
     with roles as (
       select role, account_id from system_account where company_id = ${companyId}
@@ -73,9 +78,9 @@ export async function equityStatement(companyId: string, year: number, throughMo
     total: 0,
   };
   bal.total = bal.capital + bal.accumulated + bal.other;
-  const months: EquityMonth[] = [];
-  for (let k = 0; k < throughMonth; k++) {
-    const month = `${year}-${String(k + 1).padStart(2, "0")}-01`;
+  const out: EquityMonth[] = [];
+  for (let k = 0; k < months; k++) {
+    const month = new Date(Date.UTC(y0, m0 + k, 1)).toISOString().slice(0, 10);
     const r = { ...z, ...(by.get(month) ?? {}) } as typeof z;
     const opening = bal;
     const closing: Cols = {
@@ -86,9 +91,9 @@ export async function equityStatement(companyId: string, year: number, throughMo
       total: 0,
     };
     closing.total = closing.capital + closing.accumulated + closing.other;
-    months.push({ month, opening, profit: r.profit, fx: r.fx, retained: r.retained, capitalIn: r.capital,
+    out.push({ month, opening, profit: r.profit, fx: r.fx, retained: r.retained, capitalIn: r.capital,
       drawings: r.drawings, other: r.other, closing });
     bal = closing;
   }
-  return months;
+  return out;
 }
