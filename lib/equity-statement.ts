@@ -1,15 +1,14 @@
 import { sql } from "./db";
 
 /**
- * Statement of changes in equity, period by period through one fiscal year:
- * for each of the company's own fiscal periods, the balance on its first day,
- * what moved it, and the balance on its last day, in four columns (capital,
- * accumulated profit/(loss), other changes, total).
+ * Statement of changes in equity, month by month through one calendar year:
+ * for each month, the balance on its first day, what moved it, and the
+ * balance on its last day, in four columns (capital, accumulated
+ * profit/(loss), other changes, total).
  *
- * Periods are the company's, not calendar months: a year that starts on
- * 1 April runs April to March; one that starts on 29 August runs 29 August
- * to 28 September, and so on. Every journal entry is already tied to its
- * fiscal period, so a period's movement is exact whatever the start day.
+ * Always the calendar year, 1 January to 31 December, in calendar months
+ * (owner's decision, 2026-11-22), whatever day a company's fiscal year
+ * starts on: one standard period for every company.
  *
  * Read from the ledger, never stored. Profit is counted from the income and
  * expense accounts as it is earned, so a year-end close (which only moves
@@ -38,15 +37,16 @@ export type EquityMonth = {
 export type Cols = { capital: number; accumulated: number; other: number; total: number };
 
 /**
- * One fiscal year's periods that have begun by `through` (YYYY-MM-DD): the
- * whole year for a past one, up to the current period for the year in progress.
+ * One calendar year's months that have begun by `through` (YYYY-MM-DD): all
+ * twelve for a past year, up to the current month for the year in progress.
  */
-export async function equityStatement(companyId: string, fiscalYearId: string, through: string) {
-  const periods = (await sql`
-    select id, start_date::text as s, end_date::text as e from fiscal_period
-     where company_id = ${companyId} and fiscal_year_id = ${fiscalYearId} and start_date <= ${through}::date
-     order by start_date`) as unknown as { id: string; s: string; e: string }[];
-  if (periods.length === 0) return [];
+export async function equityStatement(companyId: string, year: number, through: string) {
+  const last = through.slice(0, 4) === String(year) ? Number(through.slice(5, 7)) : 12;
+  const periods = Array.from({ length: last }, (_, k) => {
+    const s = new Date(Date.UTC(year, k, 1)).toISOString().slice(0, 10);
+    const e = new Date(Date.UTC(year, k + 1, 0)).toISOString().slice(0, 10);
+    return { id: s, s, e };
+  });
   const yearStart = periods[0].s;
   const end = periods[periods.length - 1].e;
 
@@ -55,7 +55,8 @@ export async function equityStatement(companyId: string, fiscalYearId: string, t
       select role, account_id from system_account where company_id = ${companyId}
     ),
     lines as (
-      select case when je.entry_date < ${yearStart}::date then null else je.fiscal_period_id end as p,
+      select case when je.entry_date < ${yearStart}::date then null
+                  else date_trunc('month', je.entry_date)::date end as p,
              a.account_type, a.id, a.name, -l.base_amount as amt
         from journal_line l
         join journal_entry je on je.id = l.journal_entry_id

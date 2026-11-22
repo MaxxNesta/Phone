@@ -19,28 +19,28 @@ const fig = (n: number) => {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
 
 /**
- * Statement of changes in equity (2026-11-22): period by period through a
- * fiscal year (the company's own periods, whatever day its year starts),
+ * Statement of changes in equity (2026-11-22): month by month through a
+ * calendar year, 1 January to 31 December, for every company,
  * how capital, accumulated profit and other equity moved, each month opening
  * where the last one closed. Figures from the ledger (lib/equity-statement).
  */
-export default async function Page({ searchParams }: { searchParams: Promise<{ fy?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const user = await requirePermission("accounting.view");
   const co = await getCompany();
   const today = todayLocal();
-  const { fy } = await searchParams;
-  // The company's fiscal years that have begun, newest first.
-  const years = (await sql`
-    select id, code, start_date::text as s, end_date::text as e from fiscal_year
-     where company_id = ${user.companyId} and start_date <= ${today}::date
-     order by start_date desc`) as unknown as { id: string; code: string; s: string; e: string }[];
-  const year = years.find((x) => x.id === fy) ?? years.find((x) => x.s <= today && today <= x.e) ?? years[0];
-  if (!year) return <div className="empty">No fiscal year is set up yet.</div>;
-  // The year's own periods, up to the current one for the year we are in.
-  const months = await equityStatement(user.companyId, year.id, today);
-  if (months.length === 0) return <div className="empty">This fiscal year has no periods set up.</div>;
+  const thisYear = Number(today.slice(0, 4));
+  // Calendar years back to the first one the ledger has, newest first.
+  const [{ first }] = await sql`
+    select coalesce(extract(year from min(entry_date))::int, ${thisYear}) as first
+      from journal_entry where company_id = ${user.companyId}`;
+  const firstYear = Math.min(Number(first), thisYear);
+  const years = Array.from({ length: thisYear - firstYear + 1 }, (_, i) => thisYear - i);
+  const { year: y } = await searchParams;
+  const year = years.includes(Number(y)) ? Number(y) : thisYear;
+  // January to December; to this month for the year in progress.
+  const months = await equityStatement(user.companyId, year, today);
 
-  /** "1 Apr 2026", "29 Aug 2026": the period's own first or last day. */
+  /** "1 Jan 2026", "31 Dec 2026". */
   const day = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
   const row = (label: string, c: Cols | null, kind: "bal" | "move", key: string, single?: { col: keyof Cols; v: number }) => (
     <tr key={key} className={kind === "bal" ? "soce-bal" : undefined}>
@@ -67,9 +67,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
       </nav>
 
       <form className="soce-filter" method="get">
-        <label htmlFor="fy">Fiscal year</label>
-        <select id="fy" name="fy" defaultValue={year.id}>
-          {years.map((v) => <option key={v.id} value={v.id}>{v.code}</option>)}
+        <label htmlFor="year">Year</label>
+        <select id="year" name="year" defaultValue={String(year)}>
+          {years.map((v) => <option key={v} value={v}>{v}</option>)}
         </select>
         <button type="submit" className="btn ghost tiny">Show</button>
       </form>
@@ -78,7 +78,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
         <div className="soce-title">
           <strong>{co?.name ?? ""}</strong>
           <span>Statement of Changes in Equity</span>
-          <span className="page-sub">Fiscal year {year.code}: {day(months[0].start)} to {day(months[months.length - 1].end)} · MMK</span>
+          <span className="page-sub">{day(months[0].start)} to {day(months[months.length - 1].end)} · MMK</span>
         </div>
         <div className="tablewrap">
           <table className="soce-table">
@@ -90,8 +90,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
             {months.map((m) => (
               <tbody key={m.start}>
                 {row(`Balance as at ${day(m.start)}`, m.opening, "bal", "o")}
-                {/* "Month" where periods are calendar months; "Period" for a year that starts mid-month. */}
-                {row(`Net Profit/(Loss) for the ${m.start.endsWith("-01") ? "Month" : "Period"}`, null, "move", "p", { col: "accumulated", v: m.profit })}
+                {row("Net Profit/(Loss) for the Month", null, "move", "p", { col: "accumulated", v: m.profit })}
                 {Math.round(m.fx) !== 0 && row("Exchange rate gain/(loss)", null, "move", "fx", { col: "accumulated", v: m.fx })}
                 {Math.round(m.retained) !== 0 && row("Adjustment to retained earnings", null, "move", "re", { col: "accumulated", v: m.retained })}
                 {Math.round(m.capitalIn) !== 0 && row("Capital introduced/(withdrawn)", null, "move", "c", { col: "capital", v: m.capitalIn })}
