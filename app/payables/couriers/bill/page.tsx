@@ -4,7 +4,7 @@ import { sql } from "@/lib/db";
 import { seenLocations } from "@/lib/branch-scope";
 import { postedReceipts, landedCostTypes } from "@/lib/landed-cost-queries";
 import { previewCourierBillAction, recordCourierBillAction } from "@/lib/courier-actions";
-import { Breadcrumbs } from "@/components/breadcrumbs";
+import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
 import { CourierBillForm } from "@/components/courier-bill-form";
 import { moneyAccounts } from "@/lib/courier-payables";
@@ -28,13 +28,17 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
   const label = (role: string) => accounts.find((a) => a.role === role)?.label ?? null;
 
   return (
-    <div className="ie">
-      <Breadcrumbs trail={[{ label: "Payables", href: "/payables" }, { label: types.length > 1 ? "Landed costs" : "Carriage inward", href: "/payables?view=couriers" }, { label: types.length > 1 ? "Record import cost" : "Record carriage inward" }]} />
-      <header className="ie-title">
+    <>
+      {/* The heading every new document has (returns, adjustments): back, trail, title, New. */}
+      <DocHeading
+        back={{ href: "/payables?view=couriers", label: types.length > 1 ? "Landed costs" : "Carriage inward" }}
+        trail={[{ label: "Payables", href: "/payables" },
+                { label: types.length > 1 ? "Landed costs" : "Carriage inward", href: "/payables?view=couriers" }]}
+        title={types.length > 1 ? "Record import cost" : "Record carriage inward"} status="New">
         {types.length > 1
-          ? <h1>Record import cost <HelpHint label="About import costs">One cost for goods already received: carriage, customs duty, insurance or another type in use. It is added to the phones&rsquo; cost and reaches cost of sales only as each phone sells. Carriage is booked through Carriage Inward; any other cost owed goes straight to the phones, and one paid now waits in Landed Cost Clearing for the moment it takes to spread. For several costs on one shipment, use Add landed cost.</HelpHint></h1>
-          : <h1>Record carriage inward <HelpHint label="About carriage inward">Carriage inward is everything paid to a third party to bring these goods in: the car or driver fee, and any freight, customs and clearance the forwarder handles and bills as one amount. It is added to the phones&rsquo; cost and reaches cost of sales only as each phone sells. Booked to Carriage Inward, owed in Payable (Other) or paid now, and spread onto the phones of the goods receipt in the same step.</HelpHint></h1>}
-      </header>
+          ? <HelpHint label="About import costs">One cost for goods already received: carriage, customs duty, insurance or another type in use. It is added to the phones&rsquo; cost and reaches cost of sales only as each phone sells. Carriage is booked through Carriage Inward; any other cost owed goes straight to the phones, and one paid now waits in Landed Cost Clearing for the moment it takes to spread. For several costs on one shipment, use Add landed cost.</HelpHint>
+          : <HelpHint label="About carriage inward">Carriage inward is everything paid to a third party to bring these goods in: the car or driver fee, and any freight, customs and clearance the forwarder handles and bills as one amount. It is added to the phones&rsquo; cost and reaches cost of sales only as each phone sells. Booked to Carriage Inward, owed in Payable (Other) or paid now, and spread onto the phones of the goods receipt in the same step.</HelpHint>}
+      </DocHeading>
       <CourierBillForm
         action={recordCourierBillAction}
         preview={previewCourierBillAction}
@@ -49,6 +53,6 @@ export default async function RecordCourierBill({ searchParams }: { searchParams
         initialReceiptId={gr}
         today={todayLocal()}
       />
-    </div>
+    </>
   );
 }

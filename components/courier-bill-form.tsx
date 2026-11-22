@@ -81,6 +81,8 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
             </div>
           </div>
         )}
+        {/* A heading first, as on the adjustment and return forms, so the fields do not sit on the edge. */}
+        <div className="card-head"><h2>{carriage ? "Courier's bill" : "The bill"}</h2></div>
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">
@@ -226,6 +228,7 @@ export function CarriagePreview({ shares, title, costLabel, details, note, posti
   const groups = [...shares.reduce((m, s) => m.set(s.receiptNo, [...(m.get(s.receiptNo) ?? []), s]), new Map<string, PreviewShare[]>())];
   const [open, setOpen] = useState<Set<string>>(() => new Set(groups.slice(0, 1).map(([no]) => no)));
   const allOpen = open.size === groups.length;
+  const [tab, setTab] = useState<"items" | "voucher">("items");
   const total = shares.reduce((s, x) => s + x.amount, 0);
   /** "+10,000" when every unit gets the same, otherwise the range. */
   const each = (list: PreviewShare[]) => {
@@ -250,9 +253,26 @@ export function CarriagePreview({ shares, title, costLabel, details, note, posti
         <button type="button" className="cbp-x" onClick={onBack} aria-label="Close"><X size={18} aria-hidden="true" /></button>
       </header>
 
+      {/* The figures in one quiet line, then two tabs: where it lands, and the voucher as entered. */}
+      <dl className="cbp-facts" aria-label="Allocation summary">
+        {[
+          { value: String(groups.length), label: groups.length === 1 ? "Goods receipt" : "Goods receipts" },
+          { value: units(shares).toLocaleString("en-US"), label: "Units" },
+          { value: shares.length ? `${each(shares)} MMK` : "—", label: `${costLabel} per unit` },
+          { value: `${fmt(total)} MMK`, label: "Total spread" },
+        ].map(({ value, label }) => (
+          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+        ))}
+      </dl>
+      <nav className="dl-tabs cbp-tabs" role="tablist" aria-label="Preview">
+        {([["items", "Items"], ["voucher", "Voucher"]] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} id={`cbp-tab-${id}`} aria-controls={`cbp-pane-${id}`}
+            className={tab === id ? "dl-tab on" : "dl-tab"} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </nav>
+
       <div className="cbp-scroll">
-        <section className="cbp-card">
-          <h3>Voucher details</h3>
+        <section id="cbp-pane-voucher" role="tabpanel" aria-labelledby="cbp-tab-voucher" hidden={tab !== "voucher"}>
           <dl className="cbp-details">
             {details.map(({ icon: Icon, label, value }) => (
               <div key={label}><dt><Icon size={13} aria-hidden="true" />{label}</dt><dd title={value}>{value}</dd></div>
@@ -261,23 +281,9 @@ export function CarriagePreview({ shares, title, costLabel, details, note, posti
           </dl>
         </section>
 
-        <section className="cbp-card cbp-summary" aria-label="Allocation summary">
-          {[
-            { icon: FileText, value: String(groups.length), label: groups.length === 1 ? "Goods receipt" : "Goods receipts" },
-            { icon: Smartphone, value: units(shares).toLocaleString("en-US"), label: "Units" },
-            { icon: Layers, value: shares.length ? `${each(shares)} MMK` : "—", label: `${costLabel} per unit` },
-            { icon: Hash, value: `${fmt(total)} MMK`, label: "Total spread" },
-          ].map(({ icon: Icon, value, label }) => (
-            <div key={label} className="cbp-stat">
-              <span className="cbp-tile"><Icon size={18} aria-hidden="true" /></span>
-              <span><strong>{value}</strong><span className="page-sub">{label}</span></span>
-            </div>
-          ))}
-        </section>
-
-        <section className="cbp-card">
+        <section id="cbp-pane-items" role="tabpanel" aria-labelledby="cbp-tab-items" hidden={tab !== "items"}>
           <div className="cbp-groups-head">
-            <div><h3>By goods receipt</h3><p className="page-sub">{applied ? "Each phone or line\u2019s cost before, its share, and its cost now." : <>Each phone or line&rsquo;s cost now, its share, and its cost after posting.</>}</p></div>
+            <p className="page-sub">{applied ? "Each phone or line’s cost before, its share, and its cost now." : <>Each phone or line&rsquo;s cost now, its share, and its cost after posting.</>}</p>
             {groups.length > 1 && (
               <button type="button" className="ghost tiny" onClick={() => setOpen(allOpen ? new Set() : new Set(groups.map(([no]) => no)))}>
                 <ChevronDown size={14} aria-hidden="true" style={{ transform: allOpen ? "rotate(180deg)" : undefined }} />

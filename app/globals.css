@@ -11875,3 +11875,40 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .soce-table tr.soce-bal td:first-child { padding-left: 10px; }
 .soce-table tbody tr.soce-bal:last-child td { border-top: 1px solid var(--line); border-bottom: 3px double var(--line); }
 .soce-table tbody + tbody tr:first-child td { padding-top: 16px; }
+
+/* ===================================================== carriage preview ====
+   Astryx look (2026-11-22): one white sheet, hairline rules, no card inside a
+   card. The figures sit in one quiet line; Items and Voucher are tabs, the
+   document page's tabs. Scoped to the preview; nothing else changes. */
+.cbp-body {
+  --dl-soft: color-mix(in srgb, var(--ink) 5.5%, transparent);
+  --dl-rule: color-mix(in srgb, var(--ink) 9%, transparent);
+  --dl-muted: color-mix(in srgb, var(--ink) 60%, transparent);
+}
+.cbp-facts { display: flex; flex-wrap: wrap; gap: 0; margin: 0; padding: 4px 24px 14px; }
+.cbp-facts > div { padding: 0 20px; min-width: 0; }
+.cbp-facts > div:first-child { padding-left: 0; }
+.cbp-facts > div + div { border-left: 1px solid var(--dl-rule); }
+.cbp-facts dt { font-size: var(--t-xs); color: var(--dl-muted); margin-bottom: 2px; }
+.cbp-facts dd { margin: 0; font-size: 1.0625rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cbp-tabs { margin: 0 24px; }
+.cbp-scroll { gap: 0; padding-top: 14px; }
+.cbp-groups-head { align-items: center; }
+.cbp-groups-head p { flex: 1 1 auto; }
+/* Groups: a ruled header row and its table, not a box. */
+.cbp-group { border: 0; border-radius: 0; border-top: 1px solid var(--dl-rule); }
+.cbp-group:last-child { border-bottom: 1px solid var(--dl-rule); }
+.cbp-group + .cbp-group { margin-top: 0; }
+.cbp-group-row { background: transparent; border-radius: 0; }
+.cbp-group[data-open] .cbp-group-row { background: transparent; border-bottom: 0; }
+.cbp-group-row:hover { background: var(--dl-soft); }
+.cbp-pill { background: var(--dl-soft); color: var(--ink); border: 0; }
+.cbp-group table thead th { background: transparent; border-bottom: 1px solid var(--dl-rule); color: var(--dl-muted); font-weight: 500; }
+.cbp-group table td { border-bottom: 1px solid var(--dl-rule); }
+.cbp-group table tbody tr:last-child td { border-bottom: 0; }
+/* Voucher: label above a plain value on a hairline, as the document page reads. */
+.cbp-details { gap: 16px 24px; }
+.cbp-details dt svg { color: var(--dl-muted); opacity: 1; }
+.cbp-details dd { background: transparent; border: 0; border-bottom: 1px solid var(--dl-rule); border-radius: 0; padding: 4px 0 8px; min-height: 0; }
+/* A tab's panel stays hidden whatever display a page style gives sections. */
+.cbp-scroll [hidden] { display: none !important; }
