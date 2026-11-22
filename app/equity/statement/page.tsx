@@ -19,8 +19,8 @@ const fig = (n: number) => {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
 
 /**
- * Statement of changes in equity (2026-11-22): month by month through a
- * fiscal year (the company's own: April to March for a Myanmar shop),
+ * Statement of changes in equity (2026-11-22): period by period through a
+ * fiscal year (the company's own periods, whatever day its year starts),
  * how capital, accumulated profit and other equity moved, each month opening
  * where the last one closed. Figures from the ledger (lib/equity-statement).
  */
@@ -36,16 +36,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
      order by start_date desc`) as unknown as { id: string; code: string; s: string; e: string }[];
   const year = years.find((x) => x.id === fy) ?? years.find((x) => x.s <= today && today <= x.e) ?? years[0];
   if (!year) return <div className="empty">No fiscal year is set up yet.</div>;
-  // Up to this month for the year we are in; the whole year for a past one.
-  const last = today < year.e ? today : year.e;
-  const span = (Number(last.slice(0, 4)) - Number(year.s.slice(0, 4))) * 12 + Number(last.slice(5, 7)) - Number(year.s.slice(5, 7)) + 1;
-  const months = await equityStatement(user.companyId, year.s, span);
+  // The year's own periods, up to the current one for the year we are in.
+  const months = await equityStatement(user.companyId, year.id, today);
+  if (months.length === 0) return <div className="empty">This fiscal year has no periods set up.</div>;
 
-  const lastDay = (m: string) => {
-    const d = new Date(`${m}T00:00:00Z`);
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  };
-  const name = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+  /** "1 Apr 2026", "29 Aug 2026": the period's own first or last day. */
+  const day = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
   const row = (label: string, c: Cols | null, kind: "bal" | "move", key: string, single?: { col: keyof Cols; v: number }) => (
     <tr key={key} className={kind === "bal" ? "soce-bal" : undefined}>
       <td>{label}</td>
@@ -82,7 +78,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
         <div className="soce-title">
           <strong>{co?.name ?? ""}</strong>
           <span>Statement of Changes in Equity</span>
-          <span className="page-sub">Fiscal year {year.code}: {name(months[0].month)} to {name(months[months.length - 1].month)} · MMK</span>
+          <span className="page-sub">Fiscal year {year.code}: {day(months[0].start)} to {day(months[months.length - 1].end)} · MMK</span>
         </div>
         <div className="tablewrap">
           <table className="soce-table">
@@ -92,15 +88,16 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ f
                 <th className="r">Other Changes</th><th className="r">Total</th></tr>
             </thead>
             {months.map((m) => (
-              <tbody key={m.month}>
-                {row(`Balance as at 1 ${name(m.month)}`, m.opening, "bal", "o")}
-                {row("Net Profit/(Loss) for the Month", null, "move", "p", { col: "accumulated", v: m.profit })}
+              <tbody key={m.start}>
+                {row(`Balance as at ${day(m.start)}`, m.opening, "bal", "o")}
+                {/* "Month" where periods are calendar months; "Period" for a year that starts mid-month. */}
+                {row(`Net Profit/(Loss) for the ${m.start.endsWith("-01") ? "Month" : "Period"}`, null, "move", "p", { col: "accumulated", v: m.profit })}
                 {Math.round(m.fx) !== 0 && row("Exchange rate gain/(loss)", null, "move", "fx", { col: "accumulated", v: m.fx })}
                 {Math.round(m.retained) !== 0 && row("Adjustment to retained earnings", null, "move", "re", { col: "accumulated", v: m.retained })}
                 {Math.round(m.capitalIn) !== 0 && row("Capital introduced/(withdrawn)", null, "move", "c", { col: "capital", v: m.capitalIn })}
                 {row("Drawing", null, "move", "d", { col: "accumulated", v: m.drawings })}
                 {Math.round(m.other) !== 0 && row("Other changes", null, "move", "x", { col: "other", v: m.other })}
-                {row(`Balance as at ${lastDay(m.month)} ${name(m.month)}`, m.closing, "bal", "c2")}
+                {row(`Balance as at ${day(m.end)}`, m.closing, "bal", "c2")}
               </tbody>
             ))}
           </table>
