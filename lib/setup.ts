@@ -76,7 +76,9 @@ export async function scaffoldCompany(input: SetupInput) {
     endYear.setFullYear(endYear.getFullYear() + 1);
     endYear.setDate(endYear.getDate() - 1);
 
-    const label = `${start.getFullYear()}-${String((start.getFullYear() + 1) % 100).padStart(2, "0")}`;
+    // A calendar year is "2026"; one that straddles two is "2026-27".
+    const label = start.getMonth() === 0 && start.getDate() === 1 ? String(start.getFullYear())
+      : `${start.getFullYear()}-${String((start.getFullYear() + 1) % 100).padStart(2, "0")}`;
 
     const [fy] = await tx`
       insert into fiscal_year (company_id, code, start_date, end_date)

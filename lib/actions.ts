@@ -5810,7 +5810,8 @@ export async function openFiscalYear(fd: FormData) {
     if (!edge?.start) throw new Error("Set up the company first");
     const [y] = await tx`
       insert into fiscal_year (company_id, code, start_date, end_date)
-      values (${co}, to_char(${edge.start}::date, 'YYYY') || '-' || to_char(${edge.start}::date + interval '1 year', 'YY'),
+      values (${co}, case when to_char(${edge.start}::date, 'MM-DD') = '01-01' then to_char(${edge.start}::date, 'YYYY')
+                          else to_char(${edge.start}::date, 'YYYY') || '-' || to_char(${edge.start}::date + interval '1 year', 'YY') end,
               ${edge.start}::date, (${edge.start}::date + interval '1 year' - interval '1 day')::date)
       returning id, code`;
     await tx`
