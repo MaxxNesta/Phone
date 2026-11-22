@@ -57,8 +57,19 @@ async function overLimit(req: NextRequest, user: { id: string; companyId: string
   }
 }
 
+/**
+ * Web cache deception: /account/check.css must never render /account. The
+ * app has no files of its own outside /_next/static (excluded below), so a
+ * path ending in an extension is never a real page; refused before anything
+ * renders, and never stored by a cache in front.
+ */
+const LOOKS_LIKE_A_FILE = /\.[A-Za-z0-9]{1,10}$/;
+
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  if (LOOKS_LIKE_A_FILE.test(path)) {
+    return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+  }
   // The layout needs the path to know which shell to draw; headers are the
   // only channel from here to a server component.
   const headers = new Headers(req.headers);
@@ -69,7 +80,12 @@ export async function middleware(req: NextRequest) {
   const csp = contentSecurityPolicy(nonce);
   headers.set("x-nonce", nonce);
   headers.set("content-security-policy", csp);
-  const withCsp = (res: NextResponse) => { res.headers.set("Content-Security-Policy", csp); return res; };
+  // Every page is somebody's data: no shared cache (a CDN, a proxy) may keep it.
+  const withCsp = (res: NextResponse) => {
+    res.headers.set("Content-Security-Policy", csp);
+    res.headers.set("Cache-Control", "private, no-store");
+    return res;
+  };
   // Sign-in switched off: no login page, everyone acts as the owner.
   if (!authRequired()) {
     if (path === "/login") return withCsp(NextResponse.redirect(new URL("/", req.url)));
@@ -115,7 +131,8 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   runtime: "nodejs",
-  // Everything but Next's own assets and files with an extension (fonts,
-  // icons). Item photos are served by a route and so are covered.
-  matcher: ["/((?!_next/|favicon.ico|.*\\.[a-z0-9]+$).*)"],
+  // Everything but Next's own built assets, which live only under /_next.
+  // A path is not skipped for ending in .css or .png: that is what cache
+  // deception relies on (/account/check.css), and it skipped the sign-in check.
+  matcher: ["/((?!_next/static/|_next/image|favicon.ico).*)"],
 };
