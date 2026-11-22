@@ -9568,6 +9568,8 @@ export type ImportRow = {
   name: string;
   itemId: string | null;
   categoryId: string;
+  /** From the category; NONE where the company has serial tracking off. */
+  identity?: string;
   brandId: string | null;
   uomId: string;
   /** The item's own piece of the code. `code` is composed from it by trigger
@@ -9632,11 +9634,16 @@ export async function importItems(input: {
     // unique.
     const key = (groupId: string, serial: string) => `${groupId}|${serial}`;
     const idOf = new Map<string, string>();
+    // Each unit is tracked the way its category says (an iPhone by IMEI), as
+    // the product form does; nothing is tracked where the company switched
+    // serial numbers off (0200).
+    const [feat] = await tx`select coalesce((features->>'serial_tracking')::boolean, true) as on from company where id = ${companyId}`;
     for (let i = 0; i < fresh.length; i += 1000) {
       const made = await tx`insert into item ${tx(fresh.slice(i, i + 1000).map((r) => ({
         company_id: companyId, item_group_id: r.categoryId, serial: r.serial, name: r.name,
         barcode: r.barcode || null, brand_id: r.brandId, base_uom_id: r.uomId,
         is_stocked: true, import_batch_id: batch.id,
+        identity: feat.on ? (r.identity ?? "NONE") : "NONE",
       })))} returning id, item_group_id, serial`;
       for (const m of made) idOf.set(key(m.item_group_id as string, m.serial as string), m.id as string);
     }

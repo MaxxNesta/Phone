@@ -81,7 +81,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
 export type MasterData = {
   items: { id: string; code: string; serial: string; name: string; barcode: string | null;
            item_group_id: string; brand_id: string | null; base_uom_id: string }[];
-  categories: { id: string; code: string; name: string; parent_id: string | null }[];
+  categories: { id: string; code: string; name: string; parent_id: string | null; identity?: string | null }[];
   brands: { id: string; code: string; name: string }[];
   uoms: { id: string; code: string; name: string }[];
 };
@@ -122,6 +122,8 @@ export type PlannedRow = {
   itemId: string | null;        // set when the barcode matches an existing item
   isNew: boolean;
   categoryId: string;
+  /** How each unit is told apart, from its category as the product form does: IMEI, SERIAL, OPTIONAL or NONE. */
+  identity: string;
   brandId: string | null;
   uomId: string;
   /**
@@ -518,7 +520,7 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
           ` Register it below, or correct the sheet.`, "Category");
     }
 
-    let sub: { id: string; code: string; name: string } | undefined;
+    let sub: MasterData["categories"][number] | undefined;
     if (subText) {
       if (category) {
         const siblings = master.categories.filter((c) => c.parent_id === category.id);
@@ -678,6 +680,7 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
       itemId: existing?.id ?? null,
       isNew: !existing,
       categoryId: group!.id,
+      identity: group!.identity || "NONE",
       brandId,
       uomId: uom!.id,
       serial,
