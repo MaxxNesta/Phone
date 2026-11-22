@@ -88,6 +88,12 @@
      sprawl read as sloppiness even when no single value was wrong. Nine
      steps, in rem so browser zoom and OS text scaling still work. */
   --t-2xs:  0.6875rem;  /* 11px — uppercase micro labels, table headers */
+  /* Interface scale: 1 on phones and tablets, 0.85 on computer screens
+     (below). Everything scales together, as browser zoom does. Full-height
+     layouts use --full-h, which undoes the scale so they still fill the window. */
+  --ui-zoom: 1;
+  --full-h: calc(100vh / var(--ui-zoom));
+  --full-dh: calc(100dvh / var(--ui-zoom));
   --t-xs:   0.75rem;    /* 12px — pills, tiny buttons */
   --t-sm:   0.8125rem;  /* 13px — hints, notes, nav items */
   --t-md:   0.875rem;   /* 14px — tables and dense data, the workhorse */
@@ -175,7 +181,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------------------------------------------------------------- shell -- */
 
-.shell { display: flex; min-height: 100vh; }
+.shell { display: flex; min-height: var(--full-h); }
 
 .sidebar {
   width: 208px;
@@ -188,7 +194,7 @@ a { color: inherit; text-decoration: none; }
   gap: var(--s5);
   position: sticky;
   top: 0;
-  height: 100vh;
+  height: var(--full-h);
   overflow-y: auto;
 }
 
@@ -290,7 +296,7 @@ a { color: inherit; text-decoration: none; }
      strip this replaces never once applied. */
   .shell .sidebar {
     position: fixed; top: var(--navbar-h); bottom: 0; left: 0; z-index: 60;
-    width: min(290px, 86vw); height: calc(100dvh - var(--navbar-h));
+    width: min(290px, 86vw); height: calc(var(--full-dh) - var(--navbar-h));
     transform: translateX(-100%);
     box-shadow: 0 0 40px rgb(0 0 0 / 0.35);
   }
@@ -4573,7 +4579,7 @@ tbody tr.row-selected > td:first-child { box-shadow: inset 2px 0 0 var(--brand);
 
 /* ---------------------------------------------------------- sign-in -- */
 
-main.bare { min-height: 100vh; display: grid; place-items: center; padding: var(--s3); }
+main.bare { min-height: var(--full-h); display: grid; place-items: center; padding: var(--s3); }
 .login-wrap { width: 100%; max-width: 400px; display: flex; flex-direction: column; align-items: center; }
 /* The company's initial in the sidebar's own tile, so this is plainly the same app. */
 .login-mark {
@@ -5268,7 +5274,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 
 .pos3-work { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
 .pos3-work.with-filters { grid-template-columns: 224px minmax(0, 1fr); }
-.pos3-filter-col { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.pos3-filter-col { position: sticky; top: 12px; max-height: calc(var(--full-h) - 24px); overflow-y: auto; }
 .pos3-results { min-width: 0; }
 .pos3-count { margin: 0 0 8px; font-size: 0.8125rem; color: var(--muted); }
 
@@ -5352,7 +5358,7 @@ span.dt-step[aria-disabled="true"] { opacity: 0.35; }
 /* The cart. */
 .pos3-cart {
   position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px;
-  max-height: calc(100vh - 24px); padding: 16px; border-radius: 18px; overflow-y: auto;
+  max-height: calc(var(--full-h) - 24px); padding: 16px; border-radius: 18px; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--line-soft); box-shadow: 0 8px 24px rgb(0 0 0 / 0.05);
 }
 .pos3-cart-head { display: flex; align-items: center; gap: 10px; }
@@ -6492,7 +6498,7 @@ button.danger-solid:hover { opacity: 0.9; }
 .rt-switch { display: flex; justify-content: space-between; align-items: center; gap: 12px; cursor: pointer; min-height: 32px; }
 .rt-switch > span { display: flex; flex-direction: column; gap: 2px; }
 .rt-preview-col { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 8px; }
-.rt-preview-col .rc-preview { max-height: calc(100vh - 140px); overflow: auto; }
+.rt-preview-col .rc-preview { max-height: calc(var(--full-h) - 140px); overflow: auto; }
 .rt-preview-label { font-size: var(--t-sm); color: var(--muted); }
 .rt-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--t-sm); }
 .rt-msg { margin: 0 20px 12px; }
@@ -6878,7 +6884,7 @@ table.ctable .subline { font-size: 0.72rem; }
    list scrolls and scrolls on its own inside. */
 .cpanel {
   position: sticky; top: 8px; z-index: 5;
-  height: calc(100vh - 96px); min-height: 420px;
+  height: calc(var(--full-h) - 96px); min-height: 420px;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.08);
@@ -7115,7 +7121,7 @@ button.pf2-save:disabled { opacity: 0.4; }
 @media (min-width: 1100px) {
   .pf2-grid.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); align-items: start; }
   .pf2-side { position: sticky; top: 70px; }
-  .pf2-side .pf2-preview { max-height: calc(100vh - 86px); display: flex; flex-direction: column; }
+  .pf2-side .pf2-preview { max-height: calc(var(--full-h) - 86px); display: flex; flex-direction: column; }
   .pf2-side .pf2-tablewrap { flex: 1; min-height: 0; overflow: auto; }
 }
 @media (max-width: 1099px) { .pf2-grid.split .pf2-col { max-width: none; } }
@@ -7528,11 +7534,11 @@ td .gr-trackmode + .gr-imei { margin-left: 8px; }
 .imei-pill.warn { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
 
 /* The drawer: one, on the right, over the page. */
-/* The same card as the customer panel: rounded, under the top bar, 100vh − 96px
+/* The same card as the customer panel: rounded, under the top bar, var(--full-h) − 96px
    tall (.cpanel), not edge to edge. */
 .imei-drawer {
   position: fixed; top: 60px; right: 16px; z-index: 40; width: min(500px, calc(100vw - 32px));
-  height: calc(100vh - 96px); min-height: 420px;
+  height: calc(var(--full-h) - 96px); min-height: 420px;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg);
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.08);
   display: flex; flex-direction: column; overflow: hidden; outline: none;
@@ -8069,7 +8075,7 @@ a.fac-cell:hover { background: color-mix(in srgb, var(--fa-blue) 4%, transparent
 .fac-chip.exception { --k: var(--fa-red); } .fac-chip.disposal, .fac-chip.transfer { --k: var(--fa-amber); }
 .fac-more { font-size: 0.66rem; color: var(--muted); padding-left: 2px; }
 
-.fac-panel { position: sticky; top: var(--s3); padding: var(--s3); margin: 0; max-height: calc(100vh - 2 * var(--s3)); overflow: auto; }
+.fac-panel { position: sticky; top: var(--s3); padding: var(--s3); margin: 0; max-height: calc(var(--full-h) - 2 * var(--s3)); overflow: auto; }
 .fac-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s2); margin-bottom: var(--s2); }
 .fac-panel-head h2 { margin: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .fac-panel-head p { margin: 2px 0 0; color: var(--muted); font-size: var(--t-sm); }
@@ -8125,7 +8131,7 @@ a.fac-cell:hover { background: color-mix(in srgb, var(--fa-blue) 4%, transparent
 /* Fixed assets: journal reconciliation */
 .far-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 460px); gap: var(--s3); align-items: start; }
 .far-layout > .card { margin: 0; }
-.far-panel { position: sticky; top: var(--s3); padding: var(--s3); margin: 0; max-height: calc(100vh - 2 * var(--s3)); overflow: auto; }
+.far-panel { position: sticky; top: var(--s3); padding: var(--s3); margin: 0; max-height: calc(var(--full-h) - 2 * var(--s3)); overflow: auto; }
 .far-table tr[aria-current] > td { background: color-mix(in srgb, var(--fa-blue) 6%, transparent); }
 .far-memo { max-width: 22rem; color: var(--muted); font-size: var(--t-sm); }
 .far-acct { font-family: var(--mono); color: var(--link); text-decoration: none; }
@@ -8513,7 +8519,7 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
 /* Edit line: a sheet in black, grey and white. */
 .le-overlay { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px;
   background: rgb(0 0 0 / 0.32); }
-.le { width: min(560px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column;
+.le { width: min(560px, 100%); max-height: calc(var(--full-dh) - 32px); display: flex; flex-direction: column;
   background: var(--surface); color: var(--ink); border-radius: 16px; overflow: hidden;
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.24), 0 0 0 0.5px rgb(0 0 0 / 0.08); }
 .le-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line-soft); }
@@ -8855,7 +8861,7 @@ td.ledger-desc .clip { display: block; overflow: hidden; text-overflow: ellipsis
    Header and footer stay put; the phones scroll between them. Icons sit in
    soft blue tiles, so the figures beside them carry the weight. */
 dialog.cbp {
-  width: min(64rem, calc(100vw - 32px)); max-height: min(52rem, calc(100vh - 32px));
+  width: min(64rem, calc(100vw - 32px)); max-height: min(52rem, calc(var(--full-h) - 32px));
   padding: 0; border: 0; border-radius: 18px; color: var(--ink);
   background: var(--surface);
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.22), 0 0 0 0.5px color-mix(in srgb, var(--link) 22%, transparent);
@@ -9897,7 +9903,7 @@ table.fay.fay-sched tbody tr.fay-unit > th.fay-first { padding-left: 2.2rem; bac
 .sc-menu small { color: var(--muted); font-weight: 400; font-size: var(--t-xs); }
 .sc-wrap[data-full] { background: var(--surface); padding: 28px 36px; overflow: auto;
   background-image: radial-gradient(color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1px); background-size: 18px 18px; }
-.sc-wrap[data-full] .sc-svg { max-height: calc(100vh - 56px); width: auto; max-width: 100%; margin: 0 auto; }
+.sc-wrap[data-full] .sc-svg { max-height: calc(var(--full-h) - 56px); width: auto; max-width: 100%; margin: 0 auto; }
 .sc-panel { position: relative; }
 .sc-close { position: absolute; top: 12px; right: 12px; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: var(--muted); }
 .sc-close:hover { background: var(--line-soft); color: var(--ink); }
@@ -10387,7 +10393,7 @@ tfoot tr.tot-due td { font-weight: 700; border-top: 0; }
 /* The cart takes the full height of the window, so the lines have room and
    the total and Complete sale stay at the bottom where the hand expects them. */
 @media (min-width: 901px) {
-  .pos3-cart { height: calc(100vh - 24px); max-height: none; }
+  .pos3-cart { height: calc(var(--full-h) - 24px); max-height: none; }
   .pos3-lines { min-height: 0; }
 }
 
@@ -10589,7 +10595,7 @@ dialog.denied::backdrop { background: rgb(0 0 0 / .35); backdrop-filter: blur(2p
 .ppl-add { display: flex; align-items: center; gap: 0.45rem; margin: 0.6rem 0 0.4rem; padding: 0.55rem 0.7rem; border-radius: 10px;
   color: var(--ink); font-weight: 500; text-decoration: none; border: 1px dashed var(--line); }
 .ppl-add:hover, .ppl-add.on { background: var(--line-soft); }
-.ppl-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: calc(100vh - 240px); overflow-y: auto; }
+.ppl-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: calc(var(--full-h) - 240px); overflow-y: auto; }
 .ppl-row { display: flex; align-items: center; gap: 0.7rem; padding: 0.55rem 0.6rem; border-radius: 10px; color: var(--ink); text-decoration: none; }
 .ppl-row:hover { background: var(--line-soft); }
 .ppl-row.on { background: color-mix(in srgb, var(--ink) 6%, transparent); }
@@ -11520,7 +11526,7 @@ table.ctable.stable td.r { padding-right: 14px; }
 .pos3-page { --ok: var(--blue-ink); }
 /* Sized to the room below its own top, so Complete sale is never below the
    fold; sticky at 12px once the page scrolls. */
-.pos3-cart { max-height: calc(100dvh - 96px); }
+.pos3-cart { max-height: calc(var(--full-dh) - 96px); }
 @media (max-width: 1100px) { .pos3-cart { max-height: none; } }
 
 /* Till: the card is the button. Reset the app's filled-button look and keep
@@ -11619,7 +11625,7 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
   .pos-navbtn:focus-visible { outline: 2px solid var(--blue, #0071e3); outline-offset: 2px; }
   body[data-pos="true"] .shell .sidebar {
     position: fixed; top: 0; bottom: 0; left: 0; z-index: 60;
-    width: 264px; height: 100dvh;
+    width: 264px; height: var(--full-dh);
     transform: translateX(-100%); visibility: hidden;
     box-shadow: 0 0 40px rgb(0 0 0 / 0.3);
   }
@@ -11718,7 +11724,7 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 /* the sale: a column, not a card */
 .pos3-page .pos3-cart {
   border-radius: 0; border: 0; border-left: 1px solid var(--pos-line); box-shadow: none; background: #fff;
-  padding: 0; gap: 0; position: sticky; top: 0; height: calc(100dvh - 72px); max-height: none;
+  padding: 0; gap: 0; position: sticky; top: 0; height: calc(var(--full-dh) - 72px); max-height: none;
 }
 .pos3-page .pos3-cart-head { padding: 16px 16px 8px; }
 .pos3-page .pos3-cart-head h2 { font-size: 1.0625rem; font-weight: 700; color: var(--pos-ink); }
@@ -11912,3 +11918,13 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .cbp-details dd { background: transparent; border: 0; border-bottom: 1px solid var(--dl-rule); border-radius: 0; padding: 4px 0 8px; min-height: 0; }
 /* A tab's panel stays hidden whatever display a page style gives sections. */
 .cbp-scroll [hidden] { display: none !important; }
+
+/* ============================================================ scale ====
+   The owner prefers the browser's 85% (2026-11-22): text smaller, the whole
+   page more balanced. Built in for computer screens; phones and the till on a
+   tablet stay at 100% so touch targets keep their size. Change --ui-zoom here
+   to try another scale. */
+@media (min-width: 1100px) {
+  :root { --ui-zoom: 0.85; }
+  html { zoom: var(--ui-zoom); }
+}
