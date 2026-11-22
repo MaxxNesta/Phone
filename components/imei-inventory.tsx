@@ -254,7 +254,8 @@ function Overview({ d, label, onTab }: { d: ImeiDrawerData; label: (s: string) =
         {u.parts.length > 0 && <div><dt>Variant Attributes</dt><dd className="imei-chips">{u.parts.map((p) => <span key={p.a} title={p.a}>{p.o}</span>)}</dd></div>}
         <div><dt>Status</dt><dd><StatusPill s={u.status} label={label(u.status)} />{u.wasReturned && <span className="imei-pill warn">Returned before</span>}</dd></div>
         {u.supplier && <div><dt>Supplier</dt><dd>{u.supplier}</dd></div>}
-        {u.customer && <div><dt>Customer</dt><dd>{u.customer} · <Doc id={u.outDocId} no={u.outDocNo} /></dd></div>}
+        {/* Who has it now: a customer only when it was sold; a supplier return's partner is the supplier. */}
+        {u.customer && <div><dt>{u.status === "SOLD" ? "Customer" : u.status === "RETURNED_TO_SUPPLIER" ? "Returned to" : u.status === "WRITTEN_OFF" ? "Written off" : "Issued to"}</dt><dd>{u.customer} · <Doc id={u.outDocId} no={u.outDocNo} /></dd></div>}
         <div><dt>Warranty</dt><dd>{warranty
           ? <>{warranty >= today ? "Active" : "Expired"} · {u.warrantyExpiry ? "Customer, until" : "Supplier, until"} {warranty}</>
           : "—"}</dd></div>

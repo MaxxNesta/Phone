@@ -4,7 +4,11 @@ import { ArrowRight, Factory, FileText, Package, Warehouse, ReceiptText, Store, 
 import { requireUser, can } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { serialJourney } from "@/lib/phone";
-import { shortDate } from "@/lib/format";
+import { shortDate, DISPLAY_TZ } from "@/lib/format";
+
+/** 14:05:09, in the shop's own zone. */
+const timeSec = (d: string | Date) => new Date(d).toLocaleTimeString("en-GB", {
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: DISPLAY_TZ });
 import { SerialHoldForm } from "@/components/serial-hold-form";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { getTranslations } from "next-intl/server";
@@ -35,20 +39,36 @@ export default async function ImeiJourney({ params }: { params: Promise<{ id: st
   const { unit: u, events, holds } = d;
   const status = (s: string) => (t.has(`status.${s}`) ? t(`status.${s}`) : s);
   const bill = u.bill as Ref, invoice = u.invoice as Ref;
-  const sold = !!u.out_document_id;
+  // How it left, if it has: sold to a customer, sent back to the supplier,
+  // written off, or issued some other way. Only a sale has an invoice and a
+  // customer; a supplier return's partner is the supplier.
+  const exit: "sold" | "returned" | "writtenOff" | "issued" | null =
+    u.status === "SOLD" ? "sold" : u.status === "RETURNED_TO_SUPPLIER" ? "returned"
+      : u.status === "WRITTEN_OFF" ? "writtenOff" : u.out_document_id ? "issued" : null;
+  const gone = exit !== null;
   const options = (u.options as string[] | null) ?? [];
+  const outDoc = exit === "sold" && invoice
+    ? { no: invoice.no, href: `/documents/${invoice.id}` }
+    : gone ? { no: u.out_doc_no as string, href: `/documents/${u.out_document_id}` } : null;
 
-  /* Supplier → bill → receipt → where it was kept → invoice → customer. A
-     step not reached yet stays in the row, faded, so the path reads the same
-     for every phone. */
+  /* Supplier → bill → receipt → where it was kept → the document it left on →
+     who has it. A step not reached yet stays in the row, faded, so the path
+     reads the same for every phone. */
   const steps: { icon: React.ReactNode; label: string; value: string | null; href: string | null; here?: boolean }[] = [
     { icon: <Factory size={18} />, label: t("journey.supplier"), value: u.supplier_name, href: null },
     { icon: <FileText size={18} />, label: t("journey.purchaseInvoice"), value: bill?.no ?? null, href: bill ? `/documents/${bill.id}` : null },
     { icon: <Package size={18} />, label: t("journey.goodsReceipt"), value: u.received_on, href: u.received_document_id ? `/documents/${u.received_document_id}` : null },
-    { icon: <Warehouse size={18} />, label: sold ? t("journey.keptAt") : t("journey.nowAt"), value: u.location_name, href: null, here: !sold },
-    { icon: <ReceiptText size={18} />, label: t("journey.salesInvoice"), value: invoice?.no ?? (sold ? u.out_doc_no : null),
-      href: invoice ? `/documents/${invoice.id}` : sold ? `/documents/${u.out_document_id}` : null },
-    { icon: <Store size={18} />, label: t("journey.customer"), value: u.customer_name, href: null, here: sold },
+    { icon: <Warehouse size={18} />, label: gone ? t("journey.keptAt") : t("journey.nowAt"), value: u.location_name, href: null, here: !gone },
+    { icon: <ReceiptText size={18} />,
+      label: exit === "returned" ? t("journey.supplierReturn") : exit === "writtenOff" ? t("journey.writeOff")
+        : exit === "issued" ? t("journey.issuedOn") : t("journey.salesInvoice"),
+      value: outDoc?.no ?? null, href: outDoc?.href ?? null },
+    exit === "returned"
+      ? { icon: <Factory size={18} />, label: t("journey.backWithSupplier"), value: u.customer_name ?? u.supplier_name, href: null, here: true }
+      : exit === "writtenOff"
+        ? { icon: <Store size={18} />, label: t("journey.ended"), value: t("journey.writtenOff"), href: null, here: true }
+        : { icon: <Store size={18} />, label: exit === "issued" ? t("journey.issuedTo") : t("journey.customer"),
+            value: gone ? u.customer_name : null, href: null, here: gone },
   ];
 
   // Every document the phone was on, once, oldest first.
@@ -57,7 +77,7 @@ export default async function ImeiJourney({ params }: { params: Promise<{ id: st
     if (e.document_id && !docs.has(e.document_id)) docs.set(e.document_id, { id: e.document_id, no: e.doc_no, type: e.doc_type, date: e.doc_date, party: e.partner_name });
   }
   if (bill && !docs.has(bill.id)) docs.set(bill.id, { id: bill.id, no: bill.no, type: "PURCHASE_INVOICE", date: u.received_date, party: u.supplier_name });
-  if (invoice && !docs.has(invoice.id)) docs.set(invoice.id, { id: invoice.id, no: invoice.no, type: "SALES_INVOICE", date: u.out_date, party: u.customer_name });
+  if (exit === "sold" && invoice && !docs.has(invoice.id)) docs.set(invoice.id, { id: invoice.id, no: invoice.no, type: "SALES_INVOICE", date: u.out_date, party: u.customer_name });
   const docType = (k: string) => (t.has(`journey.doc.${k}`) ? t(`journey.doc.${k}`) : k.replace(/_/g, " ").toLowerCase());
   const warranty = (months: number | null, to: string | null) =>
     months && to ? t("dev.monthsTo", { months, date: shortDate(to) }) : "—";
@@ -92,8 +112,11 @@ export default async function ImeiJourney({ params }: { params: Promise<{ id: st
         <dl className="ij-facts">
           <div><dt>{t("journey.received")}</dt><dd>{u.received_date ? shortDate(u.received_date) : "—"}</dd></div>
           <div><dt>{t("dev.supplierWarranty")}</dt><dd>{warranty(u.supplier_warranty_months, u.supplier_warranty_expiry)}</dd></div>
-          <div><dt>{t("journey.sold")}</dt><dd>{u.out_date ? shortDate(u.out_date) : "—"}</dd></div>
-          <div><dt>{t("dev.customerWarranty")}</dt><dd>{warranty(u.warranty_months, u.warranty_expiry)}</dd></div>
+          <div><dt>{exit === "returned" ? t("journey.returned") : exit === "writtenOff" ? t("journey.writtenOff")
+            : exit === "issued" ? t("journey.issuedOn") : t("journey.sold")}</dt><dd>{u.out_date ? shortDate(u.out_date) : "—"}</dd></div>
+          {exit !== "returned" && exit !== "writtenOff" && (
+            <div><dt>{t("dev.customerWarranty")}</dt><dd>{warranty(u.warranty_months, u.warranty_expiry)}</dd></div>
+          )}
         </dl>
       </section>
 
@@ -127,7 +150,8 @@ export default async function ImeiJourney({ params }: { params: Promise<{ id: st
                     : t.has(`dev.ev.${e.event}`) ? t(`dev.ev.${e.event}`) : e.event;
                   return (
                     <tr key={i} className={e.status === "REVERSED" ? "ij-voided" : undefined}>
-                      <td>{shortDate(e.created_at)}</td>
+                      {/* The day, and the moment to the second: two moves on one day read in order. */}
+                      <td>{shortDate(e.created_at)}<div className="subline m">{timeSec(e.created_at)}</div></td>
                       <td className="code">{e.document_id ? <Link href={`/documents/${e.document_id}`}>{e.doc_no}</Link> : "—"}</td>
                       <td className="wrap">
                         {what}{e.status === "REVERSED" && ` ${t("dev.voided")}`}
