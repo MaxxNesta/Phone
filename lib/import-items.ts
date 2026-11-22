@@ -29,12 +29,22 @@ import { checkSpreadsheet, checkRowCount } from "./upload-limits";
  * is entered as the stock document it actually is.
  */
 
-import { composeItemCode } from "./item-code";
+import { composeItemCode, modelItemCode, optionLabel, MODEL_CODE } from "./item-code";
 
 export const IMPORT_COLUMNS = [
   "No", "Barcode", "Stock ID", "Stock Name", "Category", "Sub Category", "Brand", "Unit",
-  "Selling price",
+  "Selling price", "Model", "Model Code",
 ] as const;
+
+/*
+ * Variants. A row with a Model is one variant of that model; rows with the
+ * same Model in the same category are one product, made the way the product
+ * form makes it. The options come from columns headed with the company's own
+ * variant attributes (Storage, Color, Size…), matched by name or code; an
+ * option must already exist under Settings → Variants, as a category must.
+ * A model already in the catalogue gets the new variants; a variant already
+ * there (same options) is left alone.
+ */
 
 /**
  * Columns a row cannot do without. "No" is a convenience for the reader,
@@ -80,10 +90,15 @@ const HEADER_ALIASES: Record<string, string[]> = {
 
 export type MasterData = {
   items: { id: string; code: string; serial: string; name: string; barcode: string | null;
-           item_group_id: string; brand_id: string | null; base_uom_id: string }[];
+           item_group_id: string; brand_id: string | null; base_uom_id: string;
+           parent_item_id?: string | null; code_is_manual?: boolean }[];
   categories: { id: string; code: string; name: string; parent_id: string | null; identity?: string | null }[];
   brands: { id: string; code: string; name: string }[];
   uoms: { id: string; code: string; name: string }[];
+  attributes?: { id: string; code: string; name: string; sort_order: number; identities: string[] | null }[];
+  options?: { id: string; attribute_id: string; code: string; name: string; physical_value: string }[];
+  /** Which options each existing variant carries. */
+  variantOptions?: { item_id: string; option_id: string }[];
 };
 
 /**
@@ -134,7 +149,16 @@ export type PlannedRow = {
    */
   serial: string;
   code: string;
+  /** The code is the serial as written (a typed or model-numbered code), not category + serial. */
+  codeIsManual?: boolean;
   serialAssigned: boolean;      // true when the sheet did not say
+  /** Set on a Model row: the product it is a variant of, and its options. */
+  model?: {
+    key: string; name: string;
+    /** The model already in the catalogue, or null when this import makes it. */
+    parentId: string | null; parentSerial: string; parentManual: boolean;
+    optionIds: string[]; attributeIds: string[]; nameIsCustom: boolean;
+  };
   /**
    * What this item sells for, if the sheet said. Written to the first price
    * level exactly as the new-item form writes it, so an imported catalogue
@@ -401,6 +425,44 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
   );
   const itemByCode = new Map(master.items.map((i) => [norm(i.code), i]));
 
+  // ---- variants: which columns are options, and what is already there -----
+  const attributes = master.attributes ?? [];
+  const attrRank = new Map(attributes.map((a, i) => [a.id, i]));
+  const optionCols = attributes
+    .filter((a) => !canonical.has(norm(a.name)) && !canonical.has(norm(a.code)))
+    .map((a) => ({ a, at: indexOf.get(norm(a.name)) ?? indexOf.get(norm(a.code)) }))
+    .filter((c): c is { a: (typeof attributes)[number]; at: number } => c.at !== undefined);
+  const optionsOf = new Map<string, Map<string, NonNullable<MasterData["options"]>[number]>>();
+  for (const o of master.options ?? []) {
+    const m = optionsOf.get(o.attribute_id) ?? new Map();
+    // Spaces ignored too: a sheet says 256GB where the option is called 256 GB.
+    for (const k of [o.name, o.code, o.physical_value]) if (k) { m.set(norm(k), o); m.set(norm(k).replace(/\s+/g, ""), o); }
+    optionsOf.set(o.attribute_id, m);
+  }
+  const optionById = new Map((master.options ?? []).map((o) => [o.id, o]));
+  const comboKey = (ids: string[]) => [...ids].sort().join("+");
+  const optionsByItem = new Map<string, string[]>();
+  for (const v of master.variantOptions ?? []) optionsByItem.set(v.item_id, [...(optionsByItem.get(v.item_id) ?? []), v.option_id]);
+  /** Existing variants by model and options: parent id + combo -> the variant. */
+  const existingVariant = new Map<string, MasterData["items"][number]>();
+  for (const i of master.items) {
+    if (i.parent_item_id) existingVariant.set(`${i.parent_item_id}|${comboKey(optionsByItem.get(i.id) ?? [])}`, i);
+  }
+  /** Models seen in this file, by category + model name. */
+  const models = new Map<string, { parentId: string | null; parentSerial: string; parentManual: boolean;
+                                   parentCode: string; next: number; combos: Map<string, number> }>();
+  const nextModelNumber = new Map<string, number>();
+  const takeModelCode = (prefix: string): string => {
+    let n = nextModelNumber.get(prefix) ?? (master.items
+      .map((i) => i.code.toUpperCase())
+      .filter((c) => c.startsWith(prefix) && /^[0-9]{1,12}$/.test(c.slice(prefix.length)))
+      .reduce((max, c) => Math.max(max, Number(c.slice(prefix.length))), 0) + 1);
+    let code = modelItemCode(prefix, n);
+    while (itemByCode.has(norm(code)) || seenCode.has(norm(code))) code = modelItemCode(prefix, ++n);
+    nextModelNumber.set(prefix, n + 1);
+    return code;
+  };
+
   /**
    * The next free number in a category, for rows that name no Stock ID.
    *
@@ -472,12 +534,15 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
     const brandText = has("Brand") ? cell(r, "Brand") : "";
     const unitText = cell(r, "Unit");
     const priceText = has("Selling price") ? cell(r, "Selling price") : "";
+    const modelText = has("Model") ? cell(r, "Model") : "";
+    const modelCodeText = has("Model Code") ? cell(r, "Model Code").toUpperCase() : "";
 
     // ---- the identifier ---------------------------------------------------
     // One of the two, not both. Which one is the company's business: a tin of
     // milk has a barcode from the factory and probably no code of its own; a
     // sack of rice packed here has a code and no barcode at all.
-    if (!barcode && !stockId) {
+    // A Model row is told apart by its model and options instead.
+    if (!barcode && !stockId && !modelText) {
       add("This row has neither a Barcode nor a Stock ID. One of them is needed — it is "
         + "what tells this item apart from every other, and what matches a row against an "
         + "item already here.", "Stock ID");
@@ -493,7 +558,7 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
       add(`Barcode "${barcode}" contains characters that are not allowed.`, "Barcode");
     }
 
-    if (!name) add("Stock Name is empty.", "Stock Name");
+    if (!name && !modelText) add("Stock Name is empty.", "Stock Name");
 
     // ---- stock id ---------------------------------------------------------
     // Kept narrow deliberately. This becomes part of the item's code, which is
@@ -583,6 +648,103 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
       } else if (n > 0) {
         salePrice = n;
       }
+    }
+
+    // ---- a variant of a model ----------------------------------------------
+    if (modelText) {
+      if (modelCodeText && !MODEL_CODE.test(modelCodeText)) {
+        add(`Model Code "${modelCodeText}" may hold only letters, digits, dot, dash, underscore and slash.`, "Model Code");
+      }
+      // Its options, one per option column the row fills in.
+      const picked: NonNullable<MasterData["options"]>[number][] = [];
+      for (const { a, at } of optionCols) {
+        const v = (r[at] ?? "").trim();
+        if (!v) continue;
+        const o = optionsOf.get(a.id)?.get(norm(v)) ?? optionsOf.get(a.id)?.get(norm(v).replace(/\s+/g, ""));
+        if (!o) {
+          const known = [...new Set(optionsOf.get(a.id)?.values() ?? [])];
+          add(`${a.name} "${v}" is not one of the ${a.name} options.` + didYouMean(v, known) +
+              ` Add it under Settings → Variants first, or correct the sheet.`, a.name);
+        } else picked.push(o);
+      }
+      if (picked.length === 0 && errors.length === errorsBefore) {
+        add(`Model "${modelText}" names no options. Fill in at least one option column ` +
+            `(${optionCols.map((c) => c.a.name).join(", ") || "none on this sheet; add a column headed with an option such as Color"}).`, "Model");
+      }
+      if (errors.length > errorsBefore || !group || !uom) continue;
+
+      const ordered = [...picked].sort((x, y) => (attrRank.get(x.attribute_id) ?? 0) - (attrRank.get(y.attribute_id) ?? 0));
+      const optionIds = ordered.map((o) => o.id);
+      const attributeIds = ordered.map((o) => o.attribute_id);
+      const attrOf = (id: string) => attributes.find((a) => a.id === id)!;
+      // A cellular iPad has an IMEI where the Wi-Fi one has only a serial, as on the form.
+      const identity = (group.identity === "SERIAL" && ordered.some((o) => /cellular/i.test(o.name))) ? "IMEI" : (group.identity || "NONE");
+      const off = attributeIds.map(attrOf).find((a) => a.identities && !a.identities.includes(identity));
+      if (off) { add(`${off.name} is not offered for products tracked by ${identity}.`, off.name); continue; }
+
+      // The model: from earlier in this file, from the catalogue, or new.
+      const key = `${group.id}|${norm(modelText)}`;
+      let m = models.get(key);
+      if (!m) {
+        const parent = master.items.find((i) => !i.parent_item_id && i.item_group_id === group.id && norm(i.name) === norm(modelText)
+          && master.items.some((c) => c.parent_item_id === i.id));
+        if (parent) {
+          m = { parentId: parent.id, parentSerial: parent.serial, parentManual: Boolean(parent.code_is_manual), parentCode: parent.code, next: 0, combos: new Map() };
+        } else {
+          const manual = Boolean(modelCodeText);
+          const pSerial = manual ? modelCodeText : takeNextSerial(group.id, group.code);
+          const pCode = manual ? modelCodeText : composeItemCode(group.code, pSerial);
+          if (itemByCode.has(norm(pCode)) || seenCode.has(norm(pCode))) {
+            add(`Model Code ${pCode} is already an item's code. Use another Model Code.`, "Model Code"); continue;
+          }
+          seenCode.set(norm(pCode), rowNo);
+          m = { parentId: null, parentSerial: pSerial, parentManual: manual, parentCode: pCode, next: 0, combos: new Map() };
+        }
+        models.set(key, m);
+      }
+      const ck = comboKey(optionIds);
+      const label = ordered.map((o) => optionLabel(attrOf(o.attribute_id).name, o.name)).join(" / ");
+      if (m.combos.has(ck)) {
+        add(`${modelText} ${label} is already on row ${m.combos.get(ck)}. A variant belongs on one row.`, "Model"); continue;
+      }
+      m.combos.set(ck, rowNo);
+      const existingV = (barcode ? itemByBarcode.get(barcode) : undefined)
+        ?? (m.parentId ? existingVariant.get(`${m.parentId}|${ck}`) : undefined);
+      if (existingV) {
+        warnings.push({ row: rowNo, message: `${existingV.name} already exists and is left as it is.` });
+      }
+      // Its code: typed, numbered under the model code, or the model's code and the options'.
+      let vSerial: string, vManual = true;
+      if (existingV) { vSerial = existingV.serial; vManual = Boolean(existingV.code_is_manual); }
+      else if (stockId) vSerial = stockId.toUpperCase();
+      else if (modelCodeText) vSerial = takeModelCode(modelCodeText);
+      else vSerial = `${m.parentCode}-${ordered.map((o) => o.code).join("-")}`.toUpperCase();
+      const vCode = existingV ? existingV.code : vManual ? vSerial : composeItemCode(group.code, vSerial);
+      if (!existingV) {
+        const taken = itemByCode.get(norm(vCode));
+        const clash = seenCode.get(norm(vCode));
+        if (taken || clash) {
+          add(`The code ${vCode} is already ${taken ? `"${taken.name}"'s` : `on row ${clash}`}. Give this variant a Stock ID.`, "Stock ID");
+          continue;
+        }
+        seenCode.set(norm(vCode), rowNo);
+      }
+      if (barcode) {
+        const seen = seenBarcode.get(barcode);
+        if (seen) { add(`Barcode ${barcode} is already on row ${seen}.`, "Barcode"); continue; }
+        seenBarcode.set(barcode, rowNo);
+      }
+      rows.push({
+        row: rowNo, barcode, name: existingV?.name ?? (name || `${modelText} ${label}`),
+        itemId: existingV?.id ?? null, isNew: !existingV,
+        categoryId: group.id, identity, brandId, uomId: uom.id,
+        serial: vSerial, code: vCode, codeIsManual: vManual, serialAssigned: !stockId, salePrice,
+        unitName: uom.name, categoryName: category ? category.name : group.name,
+        subCategoryName: sub ? sub.name : null, brandName,
+        model: { key, name: modelText, parentId: m.parentId, parentSerial: m.parentSerial, parentManual: m.parentManual,
+                 optionIds, attributeIds, nameIsCustom: Boolean(name) },
+      });
+      continue;
     }
 
     // ---- the item this row refers to --------------------------------------

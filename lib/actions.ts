@@ -1,7 +1,7 @@
 "use server";
 import { str, num } from "./input";
 import { todayLocal } from "@/lib/format";
-import { ordersAndDeliveriesOn, serialTrackingOn } from "./features";
+import { ordersAndDeliveriesOn, serialTrackingOn, sparePartsOn } from "./features";
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
@@ -7928,10 +7928,26 @@ export async function runItemImport(
  * that arrives already formatted is the only fix that works by default rather
  * than by the user remembering.
  */
-export async function itemImportTemplate(): Promise<{ base64: string }> {
+export async function itemImportTemplate(industry?: string, format: "xlsx" | "csv" = "xlsx"):
+  Promise<{ base64?: string; csv?: string; industry: string }> {
   await requirePermission("items.manage");
-  const { buildImportTemplate } = await import("./read-spreadsheet");
-  return { base64: await buildImportTemplate() };
+  const { buildImportTemplate, importTemplateRows, IMPORT_INDUSTRIES } = await import("./read-spreadsheet");
+  const co = await companyId();
+  // Which shop this is decides the examples, unless someone picked another:
+  // spare parts where part numbers are on, phones where IMEIs are, else general.
+  const [c] = await sql`select features from company where id = ${co}`;
+  const picked = (Object.keys(IMPORT_INDUSTRIES) as (keyof typeof IMPORT_INDUSTRIES)[]).find((k) => k === industry)
+    ?? (sparePartsOn(c) ? "parts" : serialTrackingOn(c) ? "phone" : "general");
+  // This company's own variant options become columns, so the sheet is the one it can import.
+  const options = (await sql`select name, code from variant_attribute where company_id = ${co} and is_active
+                              order by sort_order, name`) as unknown as { name: string; code: string }[];
+  if (format === "csv") {
+    const { header, examples } = importTemplateRows(picked, options);
+    const q = (v: string | number) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const NL = String.fromCharCode(10);
+    return { csv: [header, ...examples].map((r) => r.map(q).join(",")).join(NL) + NL, industry: picked };
+  }
+  return { base64: await buildImportTemplate(picked, options), industry: picked };
 }
 
 // ------------------------------------------ cash / bank receipt import --

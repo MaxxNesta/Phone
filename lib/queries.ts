@@ -6349,15 +6349,22 @@ export async function getOwnedStockForItems(companyId: string, itemIds: string[]
  * can say anything about a file.
  */
 export async function getImportMasterData(companyId: string) {
-  const [items, categories, brands, uoms] = await Promise.all([
-    sql`select id, code, serial, name, barcode, item_group_id, brand_id, base_uom_id
+  const [items, categories, brands, uoms, attributes, options, variantOptions] = await Promise.all([
+    sql`select id, code, serial, name, barcode, item_group_id, brand_id, base_uom_id, parent_item_id, code_is_manual
           from item where company_id = ${companyId} and is_active`,
     sql`select id, code, name, parent_id, identity from item_group
           where company_id = ${companyId} and is_active`,
     sql`select id, code, name from brand where company_id = ${companyId} and is_active`,
     sql`select id, code, name from uom where company_id = ${companyId} and is_active`,
+    // What a product can vary by (Storage, Colour…), for the Model rows of the sheet.
+    sql`select id, code, name, sort_order, identities from variant_attribute
+          where company_id = ${companyId} and is_active order by sort_order, name`,
+    sql`select id, attribute_id, code, name, physical_value from variant_option
+          where company_id = ${companyId} and is_active`,
+    sql`select o.item_id, o.option_id from item_variant_option o join item i on i.id = o.item_id
+          where i.company_id = ${companyId} and i.is_active`,
   ]);
-  return { items, categories, brands, uoms };
+  return { items, categories, brands, uoms, attributes, options, variantOptions };
 }
 
 /**

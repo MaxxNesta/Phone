@@ -9577,6 +9577,11 @@ export type ImportRow = {
   serial: string;
   /** What it sells for, where the sheet said. Null is an unpriced item. */
   salePrice?: number | null;
+  /** The serial is the whole code (typed, or numbered under a model code). */
+  codeIsManual?: boolean;
+  /** A variant: the model it belongs to (made here when parentId is null) and its options. */
+  model?: { key: string; name: string; parentId: string | null; parentSerial: string; parentManual: boolean;
+            optionIds: string[]; attributeIds: string[]; nameIsCustom: boolean };
 };
 
 /**
@@ -9638,14 +9643,52 @@ export async function importItems(input: {
     // the product form does; nothing is tracked where the company switched
     // serial numbers off (0200).
     const [feat] = await tx`select coalesce((features->>'serial_tracking')::boolean, true) as on from company where id = ${companyId}`;
+    // Models first: each new one once, as the product form makes it (not sold
+    // itself; its variants are). An existing model is reused as it is.
+    const parentOf = new Map<string, string>();
+    for (const r of rows) {
+      if (!r.model) continue;
+      if (r.model.parentId) { parentOf.set(r.model.key, r.model.parentId); continue; }
+      if (parentOf.has(r.model.key)) continue;
+      const [p] = await tx`
+        insert into item (company_id, item_group_id, serial, code_is_manual, name, brand_id, base_uom_id,
+                          is_stocked, import_batch_id, identity)
+        values (${companyId}, ${r.categoryId}, ${r.model.parentSerial}, ${r.model.parentManual}, ${r.model.name},
+                ${r.brandId}, ${r.uomId}, true, ${batch.id}, ${feat.on ? (r.identity ?? "NONE") : "NONE"})
+        returning id`;
+      parentOf.set(r.model.key, p.id as string);
+    }
+    // What each model varies by, in the attributes' own order; added to an
+    // existing model only where it did not vary by that before.
+    const varies = new Map<string, Set<string>>();
+    for (const r of rows) if (r.model) {
+      const s = varies.get(parentOf.get(r.model.key)!) ?? new Set<string>();
+      r.model.attributeIds.forEach((a) => s.add(a));
+      varies.set(parentOf.get(r.model.key)!, s);
+    }
+    const attrRows = [...varies].flatMap(([itemId, ids]) => [...ids].map((attributeId, k) =>
+      ({ item_id: itemId, attribute_id: attributeId, sort_order: k })));
+    if (attrRows.length) {
+      await tx`insert into item_variant_attribute ${tx(attrRows)} on conflict (item_id, attribute_id) do nothing`;
+    }
+
     for (let i = 0; i < fresh.length; i += 1000) {
       const made = await tx`insert into item ${tx(fresh.slice(i, i + 1000).map((r) => ({
         company_id: companyId, item_group_id: r.categoryId, serial: r.serial, name: r.name,
         barcode: r.barcode || null, brand_id: r.brandId, base_uom_id: r.uomId,
         is_stocked: true, import_batch_id: batch.id,
         identity: feat.on ? (r.identity ?? "NONE") : "NONE",
+        code_is_manual: Boolean(r.codeIsManual),
+        parent_item_id: r.model ? parentOf.get(r.model.key)! : null,
+        name_is_custom: Boolean(r.model?.nameIsCustom),
+        valuation_method: r.model ? "FIFO" : "WEIGHTED_AVERAGE",
       })))} returning id, item_group_id, serial`;
       for (const m of made) idOf.set(key(m.item_group_id as string, m.serial as string), m.id as string);
+    }
+    const optionRows = fresh.flatMap((r) => (r.model?.optionIds ?? []).map((optionId) =>
+      ({ item_id: idOf.get(key(r.categoryId, r.serial))!, option_id: optionId })));
+    for (let i = 0; i < optionRows.length; i += 5000) {
+      await tx`insert into item_variant_option ${tx(optionRows.slice(i, i + 5000))}`;
     }
 
     // The same write the new-item form makes: a sale price belongs to a
