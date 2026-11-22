@@ -1,7 +1,7 @@
 "use server";
 import { str, num } from "./input";
 import { todayLocal } from "@/lib/format";
-import { ordersAndDeliveriesOn } from "./features";
+import { ordersAndDeliveriesOn, serialTrackingOn, sparePartsOn } from "./features";
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
@@ -17,7 +17,7 @@ import { planVoucherImport, voucherColumns, type VoucherMasterData, type Voucher
 import { getImportMasterData, getVoucherImportMasterData, getPendingDeliveryLines, getBrandsInUse, advAppliedByInvoice } from "./queries";
 import { scaffoldCompany } from "./setup";
 import { limitFor, planSwitchable, planIncludes, type Plan, type Feature, MODULES, isCore, addonAllowed } from "./plans";
-import { requirePermission, requireUser, can, permissionForDocument } from "./auth";
+import { requirePermission, requireUser, can, permissionForDocument, assertShopWritable } from "./auth";
 import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
 import { courierBill } from "./courier-payables";
@@ -28,7 +28,7 @@ import { sniff, ATTACHMENT_SNIFF } from "./upload-limits";
 import { asRegion } from "./regions";
 import {
   postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postRetailSale, postPurchaseWithReceipt,
-  postCreditNote, postDebitNote,
+  postCreditNote, postDebitNote, postSupplierRefund,
   postSalesOrder, postPurchaseOrder, postDelivery, postGoodsReceipt,
   postSupplierPayment, postCustomerReceipt,
   postCashVoucher, postBankVoucher, postJournalVoucher,
@@ -112,6 +112,14 @@ function dateTime(fd: FormData, dateKey: string, timeKey: string): string {
   const date = str(fd, dateKey);
   const time = str(fd, timeKey);
   return time ? `${date}T${time}` : date;
+}
+
+/** A weight in kg from a form: null when blank, refused unless above zero. */
+function weightKg(fd: FormData): number | null | "bad" {
+  const v = String(fd.get("weight_kg") ?? "").trim();
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 10000) / 10000 : "bad";
 }
 
 /** A month count from a form, or null when left blank. */
@@ -688,12 +696,12 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
     /* The packs this item is bought and sold in, named at creation rather
        than discovered later on the edit panel. Same shape the edit path
        reads, so one component serves both. */
-    let newPacks: { uomId: string; factor: number }[] = [];
+    let newPacks: { uomId: string; factor: number; price: number | null }[] = [];
     const rawNewPacks = str(fd, "packs");
     if (rawNewPacks) {
       try {
         newPacks = (JSON.parse(rawNewPacks) as any[])
-          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor), price: packPrice(p.price) }))
           .filter((p) => p.uomId && p.factor > 0);
       } catch {
         return { error: await m("packsUnreadable") };
@@ -817,6 +825,10 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       return { error: await m("modelCodeInvalid") };
     }
 
+    // Per unit, copied to every variant (a charger box weighs what its model does).
+    const newWeight = weightKg(fd);
+    if (newWeight === "bad") return { error: "Weight must be a number of kg above zero, or left blank." };
+
     // Before the transaction: re-encoding is the slow part and the part most
     // likely to be refused, and an unreadable file should fail the save rather
     // than hold a write open while sharp works.
@@ -824,8 +836,12 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
     // How each unit is named: IMEI, serial number, or not at all. The older
     // yes/no switch still means IMEI where a form sends only that.
-    const identity = (["IMEI", "SERIAL", "OPTIONAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
-      ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
+    // A company with serial numbers switched off counts every product (0200).
+    const [feat] = await sql`select features from company where id = ${co}`;
+    // A service or charge (not stocked) is never tracked unit by unit either.
+    const identity = !serialTrackingOn(feat) || fd.get("is_stocked") === null ? "NONE"
+      : (["IMEI", "SERIAL", "OPTIONAL", "NONE"] as const).find((v) => v === str(fd, "identity"))
+        ?? (fd.get("tracks_serial") !== null ? "IMEI" : "NONE");
 
     // An option not offered for this kind of product — Memory on an iPhone —
     // is refused here as well as hidden on the form.
@@ -855,7 +871,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       const [item] = await tx`
         insert into item
           (company_id, item_group_id, brand_id, serial, code, code_is_manual, name, name_my, base_uom_id, is_stocked,
-           tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months)
+           tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months, weight_kg)
         values
           (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${singleModel !== null || singleManual},
            ${name}, ${str(fd, "name_my") || null},
@@ -865,13 +881,13 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            ${fd.get("tracks_batch") !== null},
            ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
            ${identity}, ${months(fd, "warranty_months")},
-           ${months(fd, "supplier_warranty_months")})
+           ${months(fd, "supplier_warranty_months")}, ${newWeight})
         returning id`;
 
       for (const p of newPacks) {
         await tx`
-          insert into item_uom (company_id, item_id, uom_id, factor)
-          values (${co}, ${item.id}, ${p.uomId}, ${p.factor})`;
+          insert into item_uom (company_id, item_id, uom_id, factor, sale_price)
+          values (${co}, ${item.id}, ${p.uomId}, ${p.factor}, ${p.price})`;
       }
 
       if (photo && "set" in photo) {
@@ -1016,6 +1032,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
               identity: childIdentity,
               warranty_months: months(fd, "warranty_months"),
               supplier_warranty_months: months(fd, "supplier_warranty_months"),
+              weight_kg: newWeight,
               duplicate_ack_by: dupOf.has(at) ? me.id : null,
               duplicate_ack_at: dupOf.has(at) ? new Date() : null,
             },
@@ -1040,7 +1057,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            the price. A carton of shirts is a carton of each size; a
            pack left only on the parent would apply to nothing. */
         const packRows = planned.flatMap((p) => newPacks.map((pk) =>
-          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor })));
+          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor, sale_price: pk.price })));
         for (let i = 0; i < packRows.length; i += 5000) {
           await tx`insert into item_uom ${tx(packRows.slice(i, i + 5000))}`;
         }
@@ -1096,12 +1113,13 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
        Replacing the list cannot disturb a posted document — every line
        carries the factor it used, so a carton that becomes 20s next year
        leaves last year's receipts saying 24. */
-    let packs: { uomId: string; factor: number }[] = [];
+    let packs: { uomId: string; factor: number; price: number | null; barcode: string | null }[] = [];
     const rawPacks = str(fd, "packs");
     if (rawPacks) {
       try {
         packs = (JSON.parse(rawPacks) as any[])
-          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor) }))
+          .map((p) => ({ uomId: String(p.uomId ?? ""), factor: Number(p.factor), price: packPrice(p.price),
+                         barcode: String(p.barcode ?? "").trim().slice(0, 64) || null }))
           .filter((p) => p.uomId && p.uomId !== uomId && p.factor > 0);
       } catch {
         return { error: await m("packsUnreadable") };
@@ -1116,6 +1134,8 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
       }
     }
 
+    const weight = weightKg(fd);
+    if (weight === "bad") return { error: "Weight must be a number of kg above zero, or left blank." };
     const photo = await photoFrom(fd);
     /** The object the old picture lived in, removed once the row is safely
      *  saved. Set inside the transaction, acted on after it. */
@@ -1129,16 +1149,37 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
           is_stocked = ${fd.get("is_stocked") !== null},
           is_active = ${fd.get("is_active") === "on"}
         where id = ${id} and company_id = ${co}`;
+      // Only when the form carries it: a model's page has no weight of its own.
+      if (fd.has("weight_kg")) {
+        await tx`update item set weight_kg = ${weight} where id = ${id} and company_id = ${co}`;
+      }
 
       // Only when the form actually carried the field, so a caller that
       // does not know about packs cannot wipe them.
       if (rawPacks) {
         await tx`delete from item_uom where item_id = ${id}`;
         for (const p of packs) {
+          if (p.barcode) {
+            // A box's barcode must not be some product's own barcode: a scan would mean two things.
+            const [clash] = await tx`select code from item where company_id = ${co} and barcode = ${p.barcode}`;
+            if (clash) throw new Error(`Barcode ${p.barcode} is already ${clash.code}'s own barcode.`);
+            const [other] = await tx`select i.code from item_uom iu join item i on i.id = iu.item_id
+                                      where iu.company_id = ${co} and iu.barcode = ${p.barcode} and iu.item_id <> ${id}`;
+            if (other) throw new Error(`Barcode ${p.barcode} is already on a pack of ${other.code}.`);
+          }
           await tx`
-            insert into item_uom (company_id, item_id, uom_id, factor)
-            values (${co}, ${id}, ${p.uomId}, ${p.factor})`;
+            insert into item_uom (company_id, item_id, uom_id, factor, sale_price, barcode)
+            values (${co}, ${id}, ${p.uomId}, ${p.factor}, ${p.price}, ${p.barcode})`;
         }
+      }
+      // The unit purchases start in (0214): the stock unit, a pack, or a unit of its family.
+      if (fd.has("purchase_uom_id")) {
+        const buy = str(fd, "purchase_uom_id") || null;
+        if (buy) {
+          const [ok] = await tx`select 1 from v_item_pack where item_id = ${id} and uom_id = ${buy}`;
+          if (!ok) throw new Error("Bought in has to be one of this product's packs.");
+        }
+        await tx`update item set purchase_uom_id = ${buy} where id = ${id} and company_id = ${co}`;
       }
 
       // Left alone unless the picker said otherwise. A form submitted with
@@ -1292,6 +1333,43 @@ async function postNote(
   // Outside the try, as every posting action here does: redirect() throws to
   // do its work, and catching it would turn a success into an error message.
   redirectWithToast(`/documents/${docId}`, `${isCredit ? "Credit" : "Debit"} note posted`);
+}
+
+/**
+ * What a debit note would post, before it is posted: the note is posted for
+ * real inside a transaction that is always rolled back, so the allocation
+ * shown is the engine's own (stock held, cost of sales, price variance) and
+ * cannot drift from what Post does. Nothing is kept, numbers included.
+ */
+export async function previewDebitNote(input: {
+  sourceDocumentId: string; partnerId: string; docDate: string; amount: number;
+  taxCodeId: string | null; category: string; reason: string;
+}): Promise<{ lines: { code: string; name: string; amount: number }[] } | { error: string }> {
+  await requirePermission("purchase.post");
+  const co = await companyId();
+  const done = new Error("preview");
+  let lines: { code: string; name: string; amount: number }[] = [];
+  try {
+    await sql.begin(async (tx) => {
+      const r = await postDebitNote({
+        companyId: co, partnerId: input.partnerId, docDate: input.docDate,
+        sourceDocumentId: input.sourceDocumentId, amount: Number(input.amount),
+        taxCodeId: input.taxCodeId || null, category: input.category as never,
+        reason: input.reason?.trim() || "Preview",
+      }, tx);
+      lines = (await tx`
+        select a.code, a.name, sum(jl.base_amount)::float as amount
+          from journal_line jl
+          join journal_entry je on je.id = jl.journal_entry_id
+          join account a on a.id = jl.account_id
+         where je.source_id = ${(r as { id: string }).id}
+         group by a.code, a.name order by sum(jl.base_amount) desc, a.code`) as never;
+      throw done;
+    });
+  } catch (e) {
+    if (e !== done) return { error: e instanceof Error ? e.message : String(e) };
+  }
+  return { lines };
 }
 
 /** The customer owes less, and no goods came back. */
@@ -1673,6 +1751,29 @@ export async function createBrandInline(
  * once when the item is created and the sheet importer refuses to guess
  * "Btl" into "Bottle" — and why a unit in use is retired rather than deleted.
  */
+/**
+ * A unit's rules from the form (0214), when the form carried them: what it
+ * equals in a reference unit, and whole numbers only. One level of reference:
+ * the reference has none of its own, and a unit others refer to takes none.
+ */
+async function unitRules(fd: FormData, co: string, id: string | null) {
+  if (!fd.has("unit_rules")) return null;
+  const refId = str(fd, "ref_uom_id") || null;
+  const qty = refId ? Number(str(fd, "ref_qty")) : null;
+  if (refId) {
+    if (!(qty! > 0)) throw new Error("Say how much of the reference unit one of this unit is, e.g. 0.3048.");
+    if (refId === id) throw new Error("A unit cannot be its own reference.");
+    const [ref] = await sql`select ref_uom_id from uom where id = ${refId} and company_id = ${co}`;
+    if (!ref) throw new Error("Choose the reference unit again.");
+    if (ref.ref_uom_id) throw new Error("The reference has to be a base measure (M, L, KG), not one defined from another.");
+    if (id) {
+      const [used] = await sql`select code from uom where ref_uom_id = ${id} limit 1`;
+      if (used) throw new Error(`${used.code} is defined from this unit, so this one stays a reference.`);
+    }
+  }
+  return { refId, qty, whole: fd.get("whole_numbers") === "on" };
+}
+
 export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
   const code = str(fd, "code").toUpperCase();
@@ -1687,9 +1788,11 @@ export async function createUnit(_prev: unknown, fd: FormData): Promise<ActionRe
     const dup = await sql`select 1 from uom where company_id = ${co} and code = ${code}`;
     if (dup.length) return { error: await m("codeUsed", { code }) };
 
+    const rules = await unitRules(fd, co, null);
     await sql`
-      insert into uom (company_id, code, name, name_my)
-      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null})`;
+      insert into uom (company_id, code, name, name_my, ref_uom_id, ref_qty, whole_numbers)
+      values (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
+              ${rules?.refId ?? null}, ${rules?.qty ?? null}, ${rules?.whole ?? false})`;
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -1722,6 +1825,11 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
         code = ${code}, name = ${name}, name_my = ${str(fd, "name_my") || null},
         is_active = ${fd.get("is_active") === "on"}
       where id = ${id} and company_id = ${co}`;
+    const rules = await unitRules(fd, co, id);
+    if (rules) {
+      await sql`update uom set ref_uom_id = ${rules.refId}, ref_qty = ${rules.qty}, whole_numbers = ${rules.whole}
+                 where id = ${id} and company_id = ${co}`;
+    }
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -1729,6 +1837,55 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
 
   revalidatePath("/items/units");
   redirectWithToast("/items/units", await m("unitUpdated"));
+}
+
+/**
+ * The usual measures in one click (0214): length from M, volume from L,
+ * weight from KG, and pieces whole. A code the shop already has is left as
+ * it is, apart from gaining its reference if it had none.
+ */
+export async function addStandardUnits(_prev: unknown, _fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
+  const STD: [string, string, string | null, number | null, boolean][] = [
+    ["M", "Metre", null, null, false], ["CM", "Centimetre", "M", 0.01, false], ["MM", "Millimetre", "M", 0.001, false],
+    ["IN", "Inch", "M", 0.0254, false], ["FT", "Foot", "M", 0.3048, false], ["YD", "Yard", "M", 0.9144, false],
+    ["L", "Litre", null, null, false], ["ML", "Millilitre", "L", 0.001, false], ["GAL", "Gallon (US)", "L", 3.785412, false],
+    ["KG", "Kilogram", null, null, false], ["G", "Gram", "KG", 0.001, false], ["LB", "Pound", "KG", 0.453592, false],
+    ["PCS", "Piece", null, null, true], ["SET", "Set", null, null, true], ["PAIR", "Pair", null, null, true],
+  ];
+  // Myanmar first on screen (lib/uom-labels.ts): the name the counter says.
+  const MY: Record<string, string> = {
+    M: "မီတာ", CM: "စင်တီမီတာ", MM: "မီလီမီတာ", IN: "လက်မ", FT: "ပေ", YD: "ကိုက်",
+    L: "လီတာ", ML: "မီလီလီတာ", GAL: "ဂါလံ", KG: "ကီလိုဂရမ်", G: "ဂရမ်", LB: "ပေါင်",
+    PCS: "ခု", SET: "စုံ", PAIR: "ရံ",
+  };
+  let added = 0;
+  try {
+    const co = await companyId();
+    await sql.begin(async (tx) => {
+      for (const [code, name, ref, qty, whole] of STD) {
+        const [have] = await tx`select id, ref_uom_id from uom where company_id = ${co} and code = ${code}`;
+        if (have) await tx`update uom set name_my = coalesce(name_my, ${MY[code]}) where id = ${have.id}`;
+        const [r] = ref ? await tx`select id, ref_uom_id from uom where company_id = ${co} and code = ${ref}` : [];
+        const refId = r && !r.ref_uom_id ? r.id : null;
+        if (!have) {
+          await tx`insert into uom (company_id, code, name, name_my, ref_uom_id, ref_qty, whole_numbers)
+                   values (${co}, ${code}, ${name}, ${MY[code]}, ${refId}, ${refId ? qty : null}, ${whole})`;
+          added++;
+          continue;
+        } else if (whole) {
+          await tx`update uom set whole_numbers = true where id = ${have.id}`;
+        } else if (refId && !have.ref_uom_id
+                   && !(await tx`select 1 from uom where ref_uom_id = ${have.id} limit 1`).length) {
+          await tx`update uom set ref_uom_id = ${refId}, ref_qty = ${qty} where id = ${have.id}`;
+        }
+      }
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/units");
+  redirectWithToast("/items/units", added ? `${added} standard units added` : "Standard units already in place");
 }
 
 /**
@@ -1815,7 +1972,11 @@ export type PickerItem = {
   base_uom_id?: string;
   /** The packs this item is bought and sold in. Empty for an item handled
    *  only in its own unit, which is most of a catalogue. */
-  packs?: { uomId: string; code: string; factor: string | number }[];
+  packs?: { uomId: string; code: string; factor: string | number; price?: string | number | null; barcode?: string | null; whole?: boolean }[];
+  /** The unit purchase lines start in (0214); null for the stock unit. */
+  purchase_uom_id?: string | null;
+  /** The stock unit takes whole numbers only (0214). */
+  whole?: boolean;
   /** Whether goods of this item arrive in identifiable lots, and whether
    *  those lots have a shelf life. A receipt form asks for what these say. */
   tracks_batch?: boolean; tracks_expiry?: boolean;
@@ -1829,6 +1990,8 @@ export type PickerItem = {
   variant?: unknown;
   /** What a scanner reads off the packet. */
   barcode?: string | null;
+  /** Part numbers (OEM, equivalents, supplier codes), with `norm` the number without spaces or dashes. */
+  parts?: { no: string; kind: string; norm: string }[] | null;
   /** The product a variant belongs to — "iPhone 18 Pro Max". Null for an item with no variants. */
   model?: string | null;
   /** Its picture, or its product's. */
@@ -1943,6 +2106,14 @@ export async function createItemInline(
 
 // --------------------------------------------------------------- invoices --
 
+/** A pack's own selling price, or null for "piece price times the size". */
+function packPrice(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!(n >= 0)) throw new Error("A pack price cannot be negative");
+  return n;
+}
+
 function parseLines(fd: FormData): InvoiceLine[] {
   const raw = String(fd.get("lines") ?? "[]");
   let parsed: unknown;
@@ -1957,6 +2128,9 @@ function parseLines(fd: FormData): InvoiceLine[] {
     .map((l: any) => ({
       itemId: String(l.itemId ?? ""),
       qty: Number(l.qty),
+      // The unit the quantity and price are in. Dropped here, a line typed
+      // in boxes posted as that many pieces.
+      uomId: l.uomId ? String(l.uomId) : null,
       unitPrice: Number(l.unitPrice),
       discountPct: Number(l.discountPct) || 0,
       // Which commercial tax this line carries. A blank means the form did
@@ -2083,7 +2257,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // Retail: the invoice is the hand-over, so it moves the stock itself and
     // no delivery exists (docs/06-phone-retail.md, D-P1). Consigned goods
     // still go through the delivery, which is the only path that settles them.
-    const [mode] = await sql`select retail_mode from company where id = ${co}`;
+    const [mode] = await sql`select retail_mode, features from company where id = ${co}`;
     // Only a take-now sale: "we deliver now" records its delivery like any shop.
     // With orders and deliveries switched off (lib/features.ts) every retail
     // sale is take-now and deliver-later is refused.
@@ -2279,6 +2453,8 @@ async function salesReturnFrom(fd: FormData, co: string) {
     memo: str(fd, "memo") || null,
     reference: str(fd, "reference") || null,
     sourceDocumentId: str(fd, "source_document_id") || null,
+    // Came back faulty (D-P7): into quarantine, not onto the shelf.
+    faulty: fd.get("faulty") === "on" ? { reason: str(fd, "faulty_reason") } : null,
     lines,
   };
   // Money paid back now, by payment channel. Blank amount is "everything the
@@ -2288,6 +2464,24 @@ async function salesReturnFrom(fd: FormData, co: string) {
         reference: str(fd, "refund_reference") || null, accountId: str(fd, "refund_account_id") || null }
     : null;
   return { input, refund };
+}
+
+/**
+ * Records on an open warranty claim the return it led to (0221), in the
+ * return's own transaction so the two cannot disagree. A claim already
+ * pointing at another return keeps it; the second is refused.
+ */
+async function linkClaim(
+  tx: import("postgres").TransactionSql, co: string, claimId: string,
+  column: "return_document_id" | "supplier_return_document_id", documentId: string,
+) {
+  const [c] = await tx`
+    select claim_no, status, return_document_id, supplier_return_document_id
+      from warranty_claim where id = ${claimId} and company_id = ${co} for update`;
+  if (!c) throw new Error("That warranty claim does not exist.");
+  if (c.status !== "OPEN") throw new Error(`${c.claim_no} is closed.`);
+  if (c[column]) throw new Error(`${c.claim_no} already names a return for this.`);
+  await tx`update warranty_claim set ${tx(column)} = ${documentId} where id = ${claimId}`;
 }
 
 export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -2300,7 +2494,13 @@ export async function createSalesReturn(_prev: unknown, fd: FormData): Promise<A
     const { input, refund } = await salesReturnFrom(fd, co);
     if (refund && !(refund.amount > 0)) return { error: "Enter the amount to refund" };
     const tr = await serverT("pos");
-    const result = await postOnce(co, attemptKey(fd), (tx) => postReturnWithRefund(tx, input, user.id, refund, tr));
+    const claimId = str(fd, "claim_id") || null;
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const r = await postReturnWithRefund(tx, input, user.id, refund, tr);
+      // Taken back on a warranty claim (0221): the claim names the return.
+      if (claimId) await linkClaim(tx, co, claimId, "return_document_id", r.id);
+      return r;
+    });
 
     docId = result.id;
     toastMsg = result.refund
@@ -2354,8 +2554,8 @@ function refundFrom(fd: FormData) {
 
 async function refundScope(co: string, returnId: string) {
   const [r] = await sql`select partner_id, location_id from document
-                         where id = ${returnId} and company_id = ${co} and doc_type = 'SALES_RETURN'`;
-  if (!r) throw new Error("That return no longer exists");
+                         where id = ${returnId} and company_id = ${co} and doc_type in ('SALES_RETURN', 'CREDIT_NOTE')`;
+  if (!r) throw new Error("That return or credit note no longer exists");
   await assertMyBranch(r.location_id as string | null);
   return r.partner_id as string;
 }
@@ -2378,6 +2578,39 @@ export async function createCustomerRefund(_prev: unknown, fd: FormData): Promis
   revalidatePath("/");
   revalidatePath("/documents");
   revalidatePath("/receivables");
+  revalidatePath("/finance/payments");
+  redirectWithToast(`/documents/${docId}`, toastMsg);
+}
+
+/**
+ * A supplier paying back what a debit note left owing on a bill already
+ * paid (0206). Raised from the note; the money comes into a cash or bank
+ * account and the bill climbs back to zero.
+ */
+export async function createSupplierRefund(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("purchase.post");
+  let docId: string;
+  let toastMsg = "Refund recorded";
+  try {
+    const co = await companyId();
+    const noteId = str(fd, "note_id");
+    const [n] = await sql`select location_id from document
+                           where id = ${noteId} and company_id = ${co} and doc_type = 'DEBIT_NOTE'`;
+    if (!n) return { error: "That debit note no longer exists" };
+    await assertMyBranch(n.location_id as string | null);
+    const cashAccountId = str(fd, "cash_account_id");
+    if (!cashAccountId) return { error: "Choose the cash or bank account the money came into" };
+    const r = await postOnce(co, attemptKey(fd), (tx) => postSupplierRefund({
+      companyId: co, noteId, docDate: str(fd, "doc_date"), cashAccountId,
+      amount: num(fd, "amount"), reference: str(fd, "reference") || null,
+    }, tx));
+    docId = r.id;
+    toastMsg = `Refund ${r.docNo} recorded`;
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/documents");
+  revalidatePath("/payables");
   revalidatePath("/finance/payments");
   redirectWithToast(`/documents/${docId}`, toastMsg);
 }
@@ -2413,17 +2646,23 @@ export async function createPurchaseReturn(_prev: unknown, fd: FormData): Promis
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
-    const result = await postOnce(co, attemptKey(fd), (tx) => postPurchaseReturn({
-      companyId: co,
-      ...fxFields(fd),
-      partnerId: str(fd, "partner_id"),
-      locationId: str(fd, "location_id"),
-      docDate: str(fd, "doc_date"),
-      memo: str(fd, "memo") || null,
-      reference: str(fd, "reference") || null,
-      sourceDocumentId: str(fd, "source_document_id") || null,
-      lines,
-    }, tx));
+    const claimId = str(fd, "claim_id") || null;
+    const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      const r = await postPurchaseReturn({
+        companyId: co,
+        ...fxFields(fd),
+        partnerId: str(fd, "partner_id"),
+        locationId: str(fd, "location_id"),
+        docDate: str(fd, "doc_date"),
+        memo: str(fd, "memo") || null,
+        reference: str(fd, "reference") || null,
+        sourceDocumentId: str(fd, "source_document_id") || null,
+        lines,
+      }, tx);
+      // Sent to the supplier on a warranty claim (0221): the claim names it.
+      if (claimId) await linkClaim(tx, co, claimId, "supplier_return_document_id", r.id);
+      return r;
+    });
 
     docId = result.id;
     toastMsg = `Return ${result.docNo} posted`;
@@ -2507,6 +2746,8 @@ function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
     .map((l: any) => ({
       itemId: String(l.itemId ?? ""),
       qty: Number(l.qty),
+      // Dropped here, a receipt typed in cartons stocked that many pieces.
+      uomId: l.uomId ? String(l.uomId) : null,
       unitCost: l.unitCost ? Number(l.unitCost) : undefined,
       // The lot these goods arrived under. The engine requires it for an
       // item that tracks batches and ignores it for one that does not.
@@ -2527,6 +2768,12 @@ function parseFulfillmentLines(fd: FormData): FulfillmentLine[] {
       source: l.source === "CONSIGNMENT" ? "CONSIGNMENT" as const : "OWNED" as const,
       consignorId: l.consignorId || null,
       ...serialFields(l),
+      // Units refused at the door (D-P7): the engine checks the reason and
+      // the outcome, and sends them to the branch's quarantine.
+      rejected: l.rejected ? {
+        reason: String(l.rejected.reason ?? ""),
+        outcome: (l.rejected.outcome === "REPLACE" || l.rejected.outcome === "CREDIT") ? l.rejected.outcome : ("" as never),
+      } : null,
     }))
     .filter((l) => l.itemId && l.qty > 0);
 
@@ -2631,7 +2878,7 @@ export async function createPurchaseOrder(_prev: unknown, fd: FormData): Promise
 }
 
 export async function createDelivery(_prev: unknown, fd: FormData): Promise<ActionResult> {
-  await requirePermission("sales.post");
+  const user = await requirePermission("sales.post");
   let docId: string;
   let toastMsg = "Delivery posted";
 
@@ -2640,6 +2887,14 @@ export async function createDelivery(_prev: unknown, fd: FormData): Promise<Acti
     const lines = parseFulfillmentLines(fd);
 
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
+    // Nothing but free goods, for no order or invoice: a standalone giveaway
+    // (sample, promotion), stock leaving at the company's expense with no
+    // sale — so its cost goes to the reason's account, not cost of sales.
+    // That is authorised by someone who manages stock, not by whoever is at
+    // the counter. A free item given with a sale needs no such sign-off.
+    if (!str(fd, "source_document_id") && lines.every((l) => l.focReasonId) && !can(user, "inventory.manage")) {
+      return { error: "Every line is free and there is no sale behind it, so this is a giveaway. Ask a manager (or whoever manages stock) to post it." };
+    }
     if (!str(fd, "partner_id")) return { error: "Choose a customer" };
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
@@ -2739,10 +2994,10 @@ export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promi
 
 /** The courier charge a receiving form carries, read and checked once. */
 function carriageFields(user: Parameters<typeof can>[0], fd: FormData):
-  { error: string } | { carriage: { partnerId: string; amount: number; method: "VALUE" | "EQUAL"; reference: string | null; paidFromAccountId: string | null } | null } {
+  { error: string } | { carriage: { partnerId: string; amount: number; method: "VALUE" | "EQUAL" | "WEIGHT"; reference: string | null; paidFromAccountId: string | null } | null } {
   const carriage = str(fd, "carriage_on") === "1" ? {
     partnerId: str(fd, "carriage_partner_id"), amount: num(fd, "carriage_amount"),
-    method: str(fd, "carriage_method") === "VALUE" ? "VALUE" as const : "EQUAL" as const,
+    method: (["VALUE", "WEIGHT"] as const).find((m) => m === str(fd, "carriage_method")) ?? "EQUAL" as const,
     reference: str(fd, "carriage_reference") || null,
     paidFromAccountId: str(fd, "carriage_paid") === "1" ? str(fd, "carriage_paid_from") || null : null,
   } : null;
@@ -4052,11 +4307,19 @@ export async function getFormData() {
                 -- can offer them without a second round trip per item.
                 coalesce((
                   select json_agg(json_build_object(
-                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor)
-                         order by iu.factor)
-                    from item_uom iu join uom pu on pu.id = iu.uom_id
+                           'uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor, 'price', iu.sale_price,
+                           'barcode', iu.barcode, 'whole', pu.whole_numbers)
+                         order by iu.standard, iu.factor desc)
+                    from v_item_pack iu join uom pu on pu.id = iu.uom_id
                    where iu.item_id = i.id
                 ), '[]'::json) as packs,
+                -- What a purchase line starts in (0214): oil by the DRUM.
+                i.purchase_uom_id,
+                (select bu.whole_numbers from uom bu where bu.id = i.base_uom_id) as whole,
+                -- The numbers a part is asked for by (0213): OEM, other
+                -- brands', the supplier's. Searched by the picker.
+                (select json_agg(json_build_object('no', pn.part_no, 'kind', pn.kind, 'norm', pn.norm) order by pn.kind, pn.part_no)
+                   from item_part_number pn where pn.item_id = i.id) as parts,
                 coalesce(s.qty, 0) as on_hand,
                 coalesce((
                   select unit_cost from v_stock_lot_open
@@ -4066,8 +4329,9 @@ export async function getFormData() {
                 0 as sale_price
            from item i
            join uom u on u.id = i.base_uom_id
+           -- Quarantine (0218) is stock, but not stock anyone can sell or use.
            left join (select item_id, sum(qty_on_hand) as qty
-                        from v_stock_on_hand group by item_id) s on s.item_id = i.id
+                        from v_stock_on_hand where not is_quarantine group by item_id) s on s.item_id = i.id
           where i.company_id = ${co} and i.is_active
             -- A product with variants is a name for a group, not a thing on
             -- a shelf, and fn_document_line_not_parent refuses it at posting.
@@ -4075,7 +4339,7 @@ export async function getFormData() {
             -- voucher before being told the first line was never possible.
             and not exists (select 1 from item c where c.parent_item_id = i.id)
           order by i.code`,
-    sql`select id, code, name from location
+    sql`select id, code, name, is_quarantine from location
          where company_id = ${co} and is_stock_location and is_active order by code`,
     // Volume bands in force today, so the voucher previews the same discounts
     // the engine will apply.
@@ -4090,7 +4354,7 @@ export async function getFormData() {
            from item_group g
            left join item_group p on p.id = g.parent_id
           where g.company_id = ${co} order by g.code`,
-    sql`select id, code, name from uom where company_id = ${co} and is_active order by code`,
+    sql`select id, code, name, name_my from uom where company_id = ${co} and is_active order by code`,
 
     sql`select id, code, name, name_my, commission_pct from salesman
          where company_id = ${co} and is_active order by code`,
@@ -4170,13 +4434,20 @@ export async function getFormData() {
   const seesCost = can(user, "cost.view") || can(user, "purchase.view");
   const itemsShown = seesCost ? items : items.map((i) => ({ ...i, next_cost: 0 }));
 
+  // Quarantine locations (0218) hold stock nobody may sell, so no form offers
+  // them as where it works. The few that act on that stock — a return to the
+  // supplier, a release, a write-off — ask for them by name.
+  const working = locations.filter((l) => !l.is_quarantine);
+  const held = locations.filter((l) => l.is_quarantine);
+
   return {
     customers, suppliers, items: itemsShown,
     // Where this person may work: their own branch's locations only. A form
     // with one location left shows it fixed. All of them, for the far end of
     // a transfer, which may be another branch.
-    locations: await onlyMyLocations(locations as unknown as { id: string }[]),
-    allLocations: locations,
+    locations: await onlyMyLocations(working as unknown as { id: string }[]),
+    allLocations: working,
+    quarantineLocations: await onlyMyLocations(held as unknown as { id: string }[]),
     volumeDiscounts, groups, uoms,
     salesmen, promotions, cashAccounts, focReasons, itemPrices, priceLevels, openInvoices,
     // Null until the first invoice of the year exists, since the format
@@ -4239,7 +4510,7 @@ async function assertLocationAllowed(
   const plan = c.plan as Plan;
   const [n] = await sql`
     select count(*) filter (where parent_id is null)::int as branches,
-           count(*) filter (where is_stock_location)::int as warehouses
+           count(*) filter (where is_stock_location and not is_quarantine)::int as warehouses
       from location
      where company_id = ${co} and is_active and id is distinct from ${excludeId}`;
   const name = plan.charAt(0) + plan.slice(1).toLowerCase();
@@ -4275,10 +4546,18 @@ export async function createLocation(_prev: unknown, fd: FormData): Promise<Acti
     await assertLocationAllowed(co,
       { branch: !parentId, warehouse: fd.get("is_stock_location") === "on" }, null);
 
-    await sql`
+    const [made] = await sql`
       insert into location (company_id, parent_id, code, name, name_my, is_stock_location)
       values (${co}, ${parentId}, ${code}, ${name}, ${str(fd, "name_my") || null},
-              ${fd.get("is_stock_location") === "on"})`;
+              ${fd.get("is_stock_location") === "on"})
+      returning id, is_stock_location`;
+    // A warehouse gets its quarantine bin (0218) with it, so "move to
+    // quarantine" and "release" have somewhere to point. A stock location
+    // inside another one is that one's shelf and counts in it: no bin of its own.
+    if (made.is_stock_location) {
+      const [p] = parentId ? await sql`select is_stock_location from location where id = ${parentId}` : [];
+      if (!p?.is_stock_location) await sql`select fn_quarantine_location(${made.id})`;
+    }
   } catch (e) {
     if (isUniqueViolation(e)) return { error: await m("codeUsed", { code }) };
     return { error: e instanceof Error ? e.message : String(e) };
@@ -4304,6 +4583,14 @@ export async function updateLocation(_prev: unknown, fd: FormData): Promise<Acti
     if (!code) return { error: await m("codeRequired") };
     if (!name) return { error: await m("nameRequired") };
     if (parentId === id) return { error: await m("warehouseSelfParent") };
+
+    // A warehouse's quarantine bin (0218) can be renamed, but stays a stock
+    // location inside its own warehouse: moving it would put rejected stock in
+    // another building's count, and making it an office would leave it nowhere.
+    const [q] = await sql`select parent_id from location where id = ${id} and company_id = ${co} and is_quarantine`;
+    if (q && (parentId !== q.parent_id || fd.get("is_stock_location") !== "on")) {
+      return { error: await m("quarantineStaysPut") };
+    }
 
     if (parentId) {
       const cycle = await sql`
@@ -4692,6 +4979,24 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         }
       }
       if (code !== item.code) await tx`update item set serial = ${code}, code_is_manual = true where id = ${id} and company_id = ${co}`;
+      // Part numbers (0213), only when the form carried them: replaced whole.
+      if (fd.has("part_numbers")) {
+        const KINDS = ["OEM", "EQUIVALENT", "SUPPLIER"];
+        const seen = new Set<string>();
+        const rows = (JSON.parse(str(fd, "part_numbers") || "[]") as { kind?: string; no?: string; maker?: string }[])
+          .map((p) => ({ kind: KINDS.includes(String(p.kind)) ? String(p.kind) : "OEM",
+                         no: String(p.no ?? "").trim().slice(0, 60), maker: String(p.maker ?? "").trim().slice(0, 60) || null }))
+          .filter((p) => {
+            const k = p.kind + p.no.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+            if (!p.no.replace(/[^A-Za-z0-9]/g, "") || seen.has(k)) return false;
+            seen.add(k); return true;
+          });
+        await tx`delete from item_part_number where item_id = ${id} and company_id = ${co}`;
+        for (const p of rows) {
+          await tx`insert into item_part_number (company_id, item_id, part_no, kind, maker)
+                   values (${co}, ${id}, ${p.no}, ${p.kind}, ${p.maker})`;
+        }
+      }
       for (const level of levels) {
         if (!(level.id in prices)) continue;
         const raw = String(prices[level.id] ?? "").trim();
@@ -5224,6 +5529,7 @@ async function mayTouchDocument(doc: Record<string, unknown>) {
 
 export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requireUser();
+  await assertShopWritable();
   try {
     const co = await companyId();
     const documentId = str(fd, "document_id");
@@ -5292,6 +5598,7 @@ export async function uploadAttachment(_prev: unknown, fd: FormData): Promise<Ac
 /** Removes the row, then the object. Nothing here is posted, so nothing is reversed. */
 export async function deleteAttachment(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requireUser();
+  await assertShopWritable();
   try {
     const co = await companyId();
     const id = str(fd, "attachment_id");
@@ -5522,7 +5829,8 @@ export async function openFiscalYear(fd: FormData) {
     if (!edge?.start) throw new Error("Set up the company first");
     const [y] = await tx`
       insert into fiscal_year (company_id, code, start_date, end_date)
-      values (${co}, to_char(${edge.start}::date, 'YYYY') || '-' || to_char(${edge.start}::date + interval '1 year', 'YY'),
+      values (${co}, case when to_char(${edge.start}::date, 'MM-DD') = '01-01' then to_char(${edge.start}::date, 'YYYY')
+                          else to_char(${edge.start}::date, 'YYYY') || '-' || to_char(${edge.start}::date + interval '1 year', 'YY') end,
               ${edge.start}::date, (${edge.start}::date + interval '1 year' - interval '1 day')::date)
       returning id, code`;
     await tx`
@@ -6671,6 +6979,8 @@ function parseAdjustmentLines(fd: FormData): AdjustmentLine[] {
       batchNo: l.batchNo ? String(l.batchNo) : null,
       expiryDate: l.expiryDate ? String(l.expiryDate) : null,
       serials: serialFields(l).serials,
+      // Checked against the company's receipts before posting (createStockAdjustment).
+      sourceLineId: typeof l.sourceLineId === "string" && /^[0-9a-f-]{36}$/i.test(l.sourceLineId) ? l.sourceLineId : null,
     }))
     .filter((l) => l.itemId && l.qty !== 0);
 }
@@ -6687,8 +6997,22 @@ export async function createStockAdjustment(_prev: unknown, fd: FormData): Promi
     if (lines.length === 0) return { error: "Add at least one line with a quantity" };
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
+    const writeOff = str(fd, "reason") === "DAMAGE";
+    // A line may name the receipt line its stock arrived on; only a goods
+    // receipt line of this company, for the same item, is kept.
+    const linked = lines.filter((l) => l.sourceLineId);
+    if (linked.length > 0) {
+      const ok = await sql`
+        select dl.id, dl.item_id from document_line dl join document d on d.id = dl.document_id
+         where dl.id = any(${linked.map((l) => l.sourceLineId!)}::uuid[])
+           and d.company_id = ${co} and d.doc_type = 'GOODS_RECEIPT'`;
+      for (const l of linked) {
+        if (!ok.some((r) => r.id === l.sourceLineId && r.item_id === l.itemId)) l.sourceLineId = null;
+      }
+    }
 
     const result = await postOnce(co, attemptKey(fd), (tx) => postStockAdjustment({
+      writeOff,
       companyId: co,
       locationId: str(fd, "location_id"),
       docDate: str(fd, "doc_date"),
@@ -6994,6 +7318,15 @@ export async function updateAccount(_prev: unknown, fd: FormData): Promise<Actio
       return {
         error: `This account has ${posted.n} posting${posted.n === 1 ? "" : "s"} against it, so its type can no longer change — that would move settled history between the balance sheet and the income statement.`,
       };
+    }
+
+    // Carriage inward is part of what the goods cost: it is always presented
+    // under cost of goods sold, never among operating expenses, whether or not
+    // anything has posted to it yet.
+    if (type !== "COGS") {
+      const [ci] = await sql`select 1 from system_account
+                              where company_id = ${co} and account_id = ${id} and role = 'CARRIAGE_INWARD'`;
+      if (ci) return { error: "Carriage Inward is part of the cost of the goods, so it stays a Cost of Goods Sold account." };
     }
 
     if (!isActive && current.is_active) {
@@ -7595,10 +7928,26 @@ export async function runItemImport(
  * that arrives already formatted is the only fix that works by default rather
  * than by the user remembering.
  */
-export async function itemImportTemplate(): Promise<{ base64: string }> {
+export async function itemImportTemplate(industry?: string, format: "xlsx" | "csv" = "xlsx"):
+  Promise<{ base64?: string; csv?: string; industry: string }> {
   await requirePermission("items.manage");
-  const { buildImportTemplate } = await import("./read-spreadsheet");
-  return { base64: await buildImportTemplate() };
+  const { buildImportTemplate, importTemplateRows, IMPORT_INDUSTRIES } = await import("./read-spreadsheet");
+  const co = await companyId();
+  // Which shop this is decides the examples, unless someone picked another:
+  // spare parts where part numbers are on, phones where IMEIs are, else general.
+  const [c] = await sql`select features from company where id = ${co}`;
+  const picked = (Object.keys(IMPORT_INDUSTRIES) as (keyof typeof IMPORT_INDUSTRIES)[]).find((k) => k === industry)
+    ?? (sparePartsOn(c) ? "parts" : serialTrackingOn(c) ? "phone" : "general");
+  // This company's own variant options become columns, so the sheet is the one it can import.
+  const options = (await sql`select name, code from variant_attribute where company_id = ${co} and is_active
+                              order by sort_order, name`) as unknown as { name: string; code: string }[];
+  if (format === "csv") {
+    const { header, examples } = importTemplateRows(picked, options);
+    const q = (v: string | number) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const NL = String.fromCharCode(10);
+    return { csv: [header, ...examples].map((r) => r.map(q).join(",")).join(NL) + NL, industry: picked };
+  }
+  return { base64: await buildImportTemplate(picked, options), industry: picked };
 }
 
 // ------------------------------------------ cash / bank receipt import --

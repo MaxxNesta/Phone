@@ -1,12 +1,13 @@
 "use client";
 import { todayLocal } from "@/lib/format";
+import { csvCell } from "@/lib/csv";
 
 import { Download } from "lucide-react";
 
 /** Rows to a CSV file, in the browser: what is on screen is what is saved. */
 export function toCsv(rows: (string | number)[][]) {
   return rows
-    .map((r) => r.map((v) => { const c = String(v ?? ""); return /[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c; }).join(","))
+    .map((r) => r.map(csvCell).join(","))
     .join("\n");
 }
 

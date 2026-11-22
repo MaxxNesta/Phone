@@ -23,7 +23,13 @@ export default async function NewCreditNote({
     ? await sql`
         select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as doc_date,
                d.partner_id, p.name as partner_name, d.gross_total,
-               coalesce((select outstanding from v_open_item where document_id = d.id), 0) as outstanding
+               coalesce((select outstanding from v_open_item where document_id = d.id), 0) as outstanding,
+               -- What is left of the sale after earlier returns and notes: a
+               -- note may reach past what is owed (paid invoices) up to here.
+               d.gross_total - coalesce((select sum(rr.gross_total) from document rr
+                  where fn_current_document(rr.source_document_id) = fn_current_document(d.id)
+                    and rr.doc_type in ('SALES_RETURN', 'CREDIT_NOTE') and rr.status = 'POSTED'
+                    and rr.reversed_by_document_id is null and rr.reverses_document_id is null), 0) as remaining
           from document d
           join business_partner p on p.id = d.partner_id
          where d.id = ${invoice} and d.company_id = ${co.id}

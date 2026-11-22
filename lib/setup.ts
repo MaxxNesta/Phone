@@ -38,7 +38,7 @@ type ChartRow = [
   name: string,
   type: AccountType,
   postable: boolean,
-  flags?: { control?: boolean; cash?: boolean; bank?: boolean; under?: string; added?: boolean },
+  flags?: { control?: boolean; cash?: boolean; bank?: boolean; under?: string; added?: boolean; from?: string | string[] },
 ];
 
 const chart = CHART as ChartRow[];
@@ -76,7 +76,9 @@ export async function scaffoldCompany(input: SetupInput) {
     endYear.setFullYear(endYear.getFullYear() + 1);
     endYear.setDate(endYear.getDate() - 1);
 
-    const label = `${start.getFullYear()}-${String((start.getFullYear() + 1) % 100).padStart(2, "0")}`;
+    // A calendar year is "2026"; one that straddles two is "2026-27".
+    const label = start.getMonth() === 0 && start.getDate() === 1 ? String(start.getFullYear())
+      : `${start.getFullYear()}-${String((start.getFullYear() + 1) % 100).padStart(2, "0")}`;
 
     const [fy] = await tx`
       insert into fiscal_year (company_id, code, start_date, end_date)
@@ -172,9 +174,11 @@ export async function scaffoldCompany(input: SetupInput) {
       insert into location (company_id, code, name, is_stock_location)
       values (${co.id}, 'MAIN', ${input.officeName}, false) returning id`;
 
-    await tx`
+    const [warehouse] = await tx`
       insert into location (company_id, parent_id, code, name, is_stock_location)
-      values (${co.id}, ${office.id}, 'MAIN-WH', ${input.warehouseName}, true)`;
+      values (${co.id}, ${office.id}, 'MAIN-WH', ${input.warehouseName}, true) returning id`;
+    // Its quarantine bin: rejected and faulty stock waits there, not for sale (0218).
+    await tx`select fn_quarantine_location(${warehouse.id})`;
 
     // The shop sells Apple: the brand is there from the start.
     await tx`insert into brand (company_id, code, name) values (${co.id}, 'APPLE', 'Apple')`;

@@ -67,7 +67,7 @@ try {
   // Two branches, each with a warehouse under it if it has one.
   const branches = await sql`
     select b.id, b.name, b.address, b.phone,
-           coalesce((select w.id from location w where w.parent_id = b.id and w.is_stock_location and w.is_active order by w.code limit 1),
+           coalesce((select w.id from location w where w.parent_id = b.id and w.is_stock_location and not w.is_quarantine and w.is_active order by w.code limit 1),
                     case when b.is_stock_location then b.id end) as stock_id
       from location b where b.company_id = ${co.id} and b.parent_id is null and b.is_active order by b.code`;
   const [b1, b2] = branches.filter((b) => b.stock_id);

@@ -79,7 +79,7 @@ try {
     );
   }
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and not tracks_serial and is_active
        -- A product with variants is a name for a group and cannot be
@@ -105,7 +105,7 @@ try {
      where a.is_control and a.account_type = 'LIABILITY' and jl.company_id = ${co.id}`)[0].v);
   const inventory = async () => n((await sql`select coalesce(sum(jl.base_amount), 0)::float v
      from journal_line jl join account a on a.id = jl.account_id
-     where a.code = '14101' and jl.company_id = ${co.id}`)[0].v);
+     where a.code = '1310' and jl.company_id = ${co.id}`)[0].v);
   const onHand = async () => n((await sql`select coalesce(sum(qty), 0)::float q
      from stock_movement where company_id = ${co.id} and item_id = ${item.id}`)[0].q);
   const billable = async () => (await Q.getOpenGoodsReceipts(co.id))

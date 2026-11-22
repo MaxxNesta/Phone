@@ -44,8 +44,8 @@ try {
     select code from item i where company_id = ${co.id} and is_active and identity = ${identity} and is_stocked
        and not exists (select 1 from item c where c.parent_item_id = i.id) order by code limit 1`)[0].code;
   const IMEI = await leaf("IMEI"), OPT = await leaf("OPTIONAL"), NONE = await leaf("NONE");
-  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '13101'`;
-  const [wh] = await sql`select id, name from location where company_id = ${co.id} and is_stock_location and is_active order by name limit 1`;
+  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '1110'`;
+  const [wh] = await sql`select id, name from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by name limit 1`;
 
   // Real-shaped IMEIs: fourteen digits and their check digit, so none is flagged as a typo.
   let body = 35693803564380n;
@@ -127,9 +127,12 @@ try {
   const [mixed] = await sql`select gross_total::float as t, memo from document where doc_no = ${r[0].invoiceNo ?? ""}`;
   check("posted at the discounted total", r[0].status === "posted" && Math.abs(mixed?.t - 200_000) < 1, JSON.stringify({ r: r[0], mixed }));
   check("a serial on a no-serial item stays on the bill as a note", /NOTE1/.test(mixed?.memo ?? ""));
+  // NET (0204): the discount comes off what the goods cost, not to 5130.
   const [disc] = await sql`select coalesce(sum(-jl.base_amount), 0)::float as d from journal_line jl join account a on a.id = jl.account_id
-    where a.code = '51201' and jl.journal_entry_id in (select journal_entry_id from document where doc_no = ${r[0].invoiceNo ?? ""})`;
-  check("the discount reaches 51201", Math.abs(disc.d - 30_000) < 1, String(disc.d));
+    where a.code = '5130' and jl.journal_entry_id in (select journal_entry_id from document where doc_no = ${r[0].invoiceNo ?? ""})`;
+  const [cost] = await sql`select coalesce(sum(dl.stock_cost), 0)::float as c from document_line dl
+    join document d on d.id = dl.document_id where d.doc_no = ${r[0].invoiceNo ?? ""}`;
+  check("the discount lowers the cost, nothing to 5130", disc.d === 0 && Math.abs(cost.c - 200_000) < 1, `5130 ${disc.d}, stock cost ${cost.c}`);
 
   console.log("\n  A failure rolls back that invoice only; a retry posts nothing twice\n");
   const taken = s1[0];  // already in stock from the first bill
@@ -152,7 +155,7 @@ try {
   const [supFoc] = await sql`select id from foc_reason where company_id = ${co.id} and applies_to = 'PURCHASE'`;
   const [saleFoc] = await sql`select id from foc_reason where company_id = ${co.id} and applies_to = 'SALE' order by code limit 1`;
   check("a supplier FOC reason exists, classed under 51202", !!supFoc
-    && (await sql`select a.code from foc_reason f join account a on a.id = f.account_id where f.id = ${supFoc.id}`)[0]?.code === "51202");
+    && (await sql`select a.code from foc_reason f join account a on a.id = f.account_id where f.id = ${supFoc.id}`)[0]?.code === "5140");
   const focImei = next();
   a = await plan(bill("t-foc", "07/01/2026", [[IMEI, 2, 900_000, [next(), next()]], [IMEI, 1, 0, [focImei]]]));
   check("a line at nothing is read as FOC", a.plan[0].lines[1].free && !a.plan[0].lines[0].free && invoiceStatus(a.plan[0], a.mapping) === "ready",
@@ -166,7 +169,7 @@ try {
   check("the free unit is in stock at zero cost", focLot?.c === 0, JSON.stringify(focLot));
   check("the supplier is owed only for what was charged", await owing(r[0].invoiceNo) === 1_800_000);
   const [inv] = await sql`select coalesce(sum(jl.base_amount), 0)::float as v from journal_line jl join account ac on ac.id = jl.account_id
-    where ac.code = '14101' and jl.journal_entry_id in (select journal_entry_id from document where source_ref = 't-foc')`;
+    where ac.code = '1310' and jl.journal_entry_id in (select journal_entry_id from document where source_ref = 't-foc')`;
   check("stock value rises by the charged goods only", inv.v === 1_800_000, String(inv.v));
 
   // A bill of nothing but free goods: stock arrives, nothing is owed, nothing is valued.

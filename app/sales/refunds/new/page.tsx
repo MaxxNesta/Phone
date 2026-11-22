@@ -25,9 +25,9 @@ export default async function NewRefund({ searchParams }: { searchParams: Promis
       <div className="page-head">
         <h1>Refund a customer</h1>
         <HelpHint>
-          Pays back what a return left owed to the customer — in cash, by bank transfer or to their wallet. The money
+          Pays back what a return or credit note left owed to the customer — in cash, by bank transfer or to their wallet. The money
           leaves the account the payment method is set to at the return&rsquo;s branch, and the customer&rsquo;s balance
-          comes back to zero. Revenue is not touched: the return already reversed it.
+          comes back to zero. Revenue is not touched: the return or note already reversed it.
         </HelpHint>
       </div>
       <RefundForm action={createCustomerRefund} returns={rows as never} channels={channels}

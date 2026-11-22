@@ -2,13 +2,15 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import type { ActionResult } from "@/lib/actions";
+import { previewDebitNote, type ActionResult } from "@/lib/actions";
 import { useNotice } from "@/components/toast";
 
 type Invoice = {
   id: string; doc_no: string; doc_date: string;
   partner_id: string; partner_name: string;
   gross_total: string; outstanding: string;
+  /** What is left of the invoice after earlier returns and notes (credit notes; kyat bills). */
+  remaining?: string;
   /** A bill owed in a foreign currency is reduced in that currency. */
   currency?: string; exchange_rate?: number;
 };
@@ -42,6 +44,14 @@ export function NoteForm({
   const [amount, setAmount] = useState("");
   const [taxCodeId, setTaxCodeId] = useState("");
   const [category, setCategory] = useState("");
+  const [docDate, setDocDate] = useState(today);
+  const [reason, setReason] = useState("");
+  // The engine's own allocation for a supplier's price discount, posted and
+  // rolled back (previewDebitNote). Any change to the note makes it stale.
+  const [preview, setPreview] = useState<{ code: string; name: string; amount: number }[] | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const stale = () => { setPreview(null); setPreviewError(null); };
 
   // In the bill's own currency: a yuan bill is reduced in yuan, and the
   // engine takes it off at the bill's rate.
@@ -52,8 +62,21 @@ export function NoteForm({
   const rate = Number(taxCodes.find((t) => t.id === taxCodeId)?.rate ?? 0);
   const tax = rate > 0 ? Math.round((net * rate) / 100) : 0;
   const gross = net + tax;
-  const tooMuch = gross > owed + 0.0001;
+  // A credit note may pass what is owed, up to what is left of the sale: the
+  // customer who already paid is owed the rest back, and Refund pays it.
+  const cap = invoice.remaining != null ? Number(invoice.remaining) / fxRate : owed;
+  const tooMuch = gross > cap + 0.0001;
+  const owedBack = Math.max(0, gross - owed);
   const isCredit = kind === "credit";
+  const isPriceDiscount = !isCredit && category === "DISCOUNT";
+
+  const review = async () => {
+    setReviewing(true); setPreviewError(null);
+    const res = await previewDebitNote({ sourceDocumentId: invoice.id, partnerId: invoice.partner_id, docDate,
+      amount: net, taxCodeId: taxCodeId || null, category, reason });
+    setReviewing(false);
+    if ("error" in res) setPreviewError(res.error); else setPreview(res.lines);
+  };
 
   return (
     <form action={formAction} className="form wide docsheet">
@@ -82,7 +105,8 @@ export function NoteForm({
             </div>
             <div className="field">
               <label htmlFor="doc_date">Note date</label>
-              <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />
+              <input id="doc_date" name="doc_date" type="date" value={docDate} required
+                onChange={(e) => { setDocDate(e.target.value); stale(); }} />
             </div>
             <div className="field">
               <label htmlFor="reference">Reference</label>
@@ -107,14 +131,14 @@ export function NoteForm({
               <label htmlFor="amount">Amount before tax ({unit})</label>
               <input
                 id="amount" name="amount" type="number" min="0" step="any" required
-                value={amount} onChange={(e) => setAmount(e.target.value)}
+                value={amount} onChange={(e) => { setAmount(e.target.value); stale(); }}
               />
             </div>
             {taxCodes.length > 0 && (
               <div className="field">
                 <label htmlFor="tax_code_id">Tax to give back</label>
                 <select id="tax_code_id" name="tax_code_id" value={taxCodeId}
-                        onChange={(e) => setTaxCodeId(e.target.value)}>
+                        onChange={(e) => { setTaxCodeId(e.target.value); stale(); }}>
                   <option value="">None</option>
                   {taxCodes.filter((t) => Number(t.rate) > 0).map((t) => (
                     <option key={t.id} value={t.id}>{t.code} · {Number(t.rate)}%</option>
@@ -135,7 +159,7 @@ export function NoteForm({
           <div className="field" style={{ marginTop: "0.6rem" }}>
             <label htmlFor="category">What kind of correction</label>
             <select id="category" name="category" required
-                    value={category} onChange={(e) => setCategory(e.target.value)}>
+                    value={category} onChange={(e) => { setCategory(e.target.value); stale(); }}>
               <option value="">Choose one…</option>
               <option value="BILLING_ERROR">
                 {isCredit
@@ -146,7 +170,7 @@ export function NoteForm({
               <option value="DISCOUNT">
                 {isCredit
                   ? "Discount — a reduction agreed after the invoice"
-                  : "Reduction agreed — short shipment, allowance, late penalty"}
+                  : "Price discount — agreed after the bill (lowers what the goods cost)"}
               </option>
               <option value="RETURN">
                 {isCredit
@@ -190,6 +214,7 @@ export function NoteForm({
             <label htmlFor="reason">Why</label>
             <input
               id="reason" name="reason" type="text" required
+              value={reason} onChange={(e) => setReason(e.target.value)}
               placeholder={isCredit
                 ? "Short delivery billed in full — 10 boxes never sent"
                 : "Two cartons short on arrival — supplier agreed the deduction"}
@@ -207,30 +232,58 @@ export function NoteForm({
               </span>
             )}
             <span style={{ color: "var(--muted)" }}>
-              {isCredit ? "Customer will owe" : "We will owe"}
+              {owedBack > 0 ? (isCredit ? "Customer is owed back" : "Supplier owes us back") : isCredit ? "Customer will owe" : "We will owe"}
             </span>
-            <span className="big">{money(Math.max(0, owed - gross))} {unit}</span>
+            <span className="big">{money(owedBack > 0 ? owedBack : Math.max(0, owed - gross))} {unit}</span>
           </div>
         </div>
       </div>
 
+      {isPriceDiscount && net > 0 && !tooMuch && (
+        <div className="card">
+          <div className="card-head"><h2>Allocation</h2>
+            <span className="page-sub">Where the discount lands: the goods still held, cost of sales for those sold, price variance for any not yet received</span>
+          </div>
+          <div className="card-body">
+            {preview ? (
+              <table className="linetable">
+                <thead><tr><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>
+                <tbody>
+                  {preview.map((l) => (
+                    <tr key={l.code}><td>{l.code} · {l.name}</td>
+                      <td className="r">{l.amount > 0 ? money(l.amount) : ""}</td>
+                      <td className="r">{l.amount < 0 ? money(-l.amount) : ""}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <button type="button" className="btn ghost" onClick={review} disabled={reviewing}>
+                {reviewing ? "Working it out…" : "Review allocation"}
+              </button>
+            )}
+            {previewError && <div className="alert" style={{ marginTop: 8 }}>{previewError}</div>}
+          </div>
+        </div>
+      )}
+
       {tooMuch && (
         <div className="alert">
-          That is more than the {money(owed)} still owing. A note cannot take an
-          invoice below nothing — {isCredit
-            ? "refund what was overpaid instead, or reduce the amount."
-            : "reduce the amount, or raise it against another bill."}
+          {isCredit
+            ? <>That is more than the {money(cap)} left of this sale after earlier returns and notes. Reduce the amount.</>
+            : <>That is more than the {money(owed)} still owing. A note cannot take a bill below nothing — reduce the amount, or raise it against another bill.</>}
         </div>
       )}
 
       <div className="actions">
-        <button type="submit" disabled={pending || tooMuch || net <= 0 || !category}>
+        <button type="submit" disabled={pending || tooMuch || net <= 0 || !category || (isPriceDiscount && !preview)}>
           {pending ? "Posting…" : `Post ${isCredit ? "credit" : "debit"} note`}
         </button>
         <span className="page-sub">
           {isCredit
-            ? "Dr Sales Return / Cr Accounts Receivable. No stock moves — goods coming back is a return."
-            : "Dr Accounts Payable / Cr Purchase Return. No stock moves — goods going back is a return."}
+            ? `Dr ${category === "DISCOUNT" ? "Sales Discounts" : "Sales Returns"} / Cr Accounts Receivable. No stock moves — goods coming back is a return.${owedBack > 0 ? " The customer is owed the difference: refund it from the posted note." : ""}`
+            : isPriceDiscount
+              ? (preview ? "Posts exactly the allocation above. No stock moves; only its cost." : "Review the allocation first.")
+              : "Dr Accounts Payable / Cr Purchase Return. No stock moves — goods going back is a return."}
         </span>
       </div>
     </form>

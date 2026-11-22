@@ -234,6 +234,7 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   ["/payables", "accounting.view"],
   // The ratios read the balance sheet, so they open with the books, not with sales reports.
   ["/reports/financial-ratios", "accounting.view"],
+  ["/reports/executive", "accounting.view"],
   ["/reports", "reports.view"],
   ["/sales/reports", "reports.view"],
   ["/sales", "sales.view"],
@@ -242,6 +243,7 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   // A landed cost shows and changes what stock cost, so cost visibility,
   // not purchasing, is what opens it.
   ["/purchases/landed-costs", "cost.view"],
+  ["/purchases/landed-cost-clearing", "cost.view"],
   ["/purchases", "purchase.view"],
   // Revenue against cost of sales and margin, and stock value by age.
   ["/inventory/intelligence", "cost.view"],
@@ -269,7 +271,7 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
  */
 const DOCUMENT_PERMISSIONS: Record<string, Permission> = {
   SALES_ORDER: "sales.view", SALES_INVOICE: "sales.view", SALES_RETURN: "sales.view",
-  CUSTOMER_RECEIPT: "sales.view", CUSTOMER_REFUND: "sales.view", CREDIT_NOTE: "sales.view",
+  CUSTOMER_RECEIPT: "sales.view", CUSTOMER_REFUND: "sales.view", CREDIT_NOTE: "sales.view", SUPPLIER_REFUND: "purchase.view",
   PURCHASE_ORDER: "purchase.view", GOODS_RECEIPT: "purchase.view", PURCHASE_INVOICE: "purchase.view",
   PURCHASE_RETURN: "purchase.view", SUPPLIER_PAYMENT: "purchase.view", DEBIT_NOTE: "purchase.view",
   CONSIGNMENT_RECEIPT: "purchase.view", LANDED_COST: "cost.view",

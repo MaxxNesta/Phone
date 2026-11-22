@@ -45,7 +45,7 @@ const n = (v) => Number(v ?? 0);
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and not tracks_serial and is_active
        -- A product with variants is a name for a group and cannot be

@@ -44,7 +44,7 @@ async function run(side) {
      where o.partner_id = ${pick.partner_id} and o.doc_type = ${docType} and coalesce(o.currency, 'MMK') = 'MMK' and o.outstanding > 10
      order by d.posting_date, d.doc_no limit 2`;
   const [a, b] = inv;
-  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '13101'`;
+  const [cash] = await sql`select id from account where company_id = ${co.id} and code = '1110'`;
   console.log(`${side} · ${co.name} · ${a.doc_no} owes ${a.outstanding}, ${b.doc_no} owes ${b.outstanding}`);
 
   const glOf = (tx, role) => tx`

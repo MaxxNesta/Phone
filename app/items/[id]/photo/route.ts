@@ -24,6 +24,7 @@ import { publicUrl } from "@/lib/r2";
  * that the address of a photo is this app's to decide. Moving buckets, or
  * putting a signed URL in front of one, then changes one file.
  */
+// nosemgrep: route-handler-without-permission -- product photos are public pictures (the bucket is public); the path is gated by the middleware.
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }

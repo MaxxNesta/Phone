@@ -193,7 +193,10 @@ export async function saveUser(_prev: Result, fd: FormData): Promise<Result> {
                password_hash = coalesce(${hash}, password_hash)
          where id = ${id} and company_id = ${admin.companyId}`;
       // A deactivated account or a changed password ends its sessions now.
-      if (!active || hash) await sql`delete from user_session where user_id = ${id}`;
+      if (!active || hash) await sql`
+        with gone as (delete from user_session where user_id = ${id} returning sign_in_id)
+        update user_sign_in l set signed_out_at = now(), ended_by = 'REVOKED'
+          from gone g where l.id = g.sign_in_id and l.signed_out_at is null`;
     } else {
       if (!hash) return { error: "A new account needs a password." };
       await sql`

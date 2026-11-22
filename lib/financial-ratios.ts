@@ -83,22 +83,22 @@ async function totalsAt(db: Sql, companyId: string, dates: string[], branchId: s
     here as (select id from location where company_id = ${companyId} and (id = ${branchId} or parent_id = ${branchId})),
     daily as (
       select je.entry_date as d,
-        coalesce(sum(jl.base_amount) filter (where '13' = any(x.codes)), 0) as ca,
-        coalesce(sum(jl.base_amount) filter (where '13' = any(x.codes) and x.money), 0) as cash,
+        coalesce(sum(jl.base_amount) filter (where x.codes && array['11','12','13','14','15']), 0) as ca,
+        coalesce(sum(jl.base_amount) filter (where x.codes && array['11','12','13','14','15'] and x.money), 0) as cash,
         coalesce(sum(jl.base_amount) filter (where 'AR_CONTROL' = any(x.roles)), 0) as ar,
         coalesce(sum(jl.base_amount) filter (where 'INVENTORY' = any(x.roles)), 0) as inv,
-       -coalesce(sum(jl.base_amount) filter (where '21' = any(x.codes)), 0) as cl,
+       -coalesce(sum(jl.base_amount) filter (where x.codes && array['21','22','23','24','26']), 0) as cl,
        -coalesce(sum(jl.base_amount) filter (where 'AP_CONTROL' = any(x.roles)), 0) as ap,
-       -coalesce(sum(jl.base_amount) filter (where '23' = any(x.codes)), 0) as debt,
+       -coalesce(sum(jl.base_amount) filter (where x.codes && array['25','26']), 0) as debt,
         coalesce(sum(jl.base_amount) filter (where x.t = 'ASSET'), 0) as assets,
        -coalesce(sum(jl.base_amount) filter (where x.t = 'LIABILITY'), 0) as liab,
        -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE'
-                   and ('41' = any(x.codes) or '43' = any(x.codes)) and not '413' = any(x.codes)), 0) as sales,
+                   and '41' = any(x.codes)), 0) as sales,
        -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE'
-                   and not (('41' = any(x.codes) or '43' = any(x.codes)) and not '413' = any(x.codes))), 0) as other_inc,
+                   and not '41' = any(x.codes)), 0) as other_inc,
         coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'COGS'), 0) as cogs,
-        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and not '67' = any(x.codes)), 0) as opex,
-        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and '67' = any(x.codes)), 0) as interest,
+        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and not '69' = any(x.codes)), 0) as opex,
+        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and '69' = any(x.codes)), 0) as interest,
         -- Money in from customers, and what suppliers billed: the turnovers' numerators.
        -coalesce(sum(jl.base_amount) filter (where 'AR_CONTROL' = any(x.roles) and jl.base_amount < 0
                    and je.source_type = 'CUSTOMER_RECEIPT'), 0) as collected,

@@ -193,7 +193,7 @@ export function ConsignmentHub({
               {suppliers.length === 0 && (
                 <div style={{ fontSize: "var(--erp-text-xs)", color: "var(--warn)", marginTop: "0.25rem", maxWidth: 260 }}>
                   {t("cons.everySupplierHas")}{" "}
-                  <a href="/partners?role=supplier" style={{ color: "var(--link)" }}>{t("cons.masterSuppliers")}</a>{" "}
+                  <Link href="/partners?role=supplier" style={{ color: "var(--link)" }}>{t("cons.masterSuppliers")}</Link>{" "}
                   {t("cons.toMakeAnother")}
                 </div>
               )}

@@ -49,7 +49,7 @@ const near = (a, b) => Math.abs(n(a) - n(b)) < 0.01;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and not tracks_serial and is_active
        -- A product with variants is a name for a group and cannot be
@@ -115,7 +115,7 @@ try {
       });
     }
 
-    const cogsBefore = await balance("51108");
+    const cogsBefore = await balance("5110");
     const invBefore = await inventoryBalance();
 
     const bill = await P.postPurchaseInvoice({
@@ -127,8 +127,8 @@ try {
     return {
       gr, bill,
       toInventory: round(await inventoryBalance() - invBefore),
-      toCogs: round(await balance("51108") - cogsBefore),
-      ppv: round(await balance("59907")),
+      toCogs: round(await balance("5110") - cogsBefore),
+      ppv: round(await balance("5940")),
     };
   };
   const round = (v) => Math.round(n(v) * 100) / 100;
@@ -187,12 +187,12 @@ try {
        and reach cost of sales when an invoice bills them
        (docs/03-decisions.md, D8) — what is being checked here is the cost
        they were relieved at, which is the same figure either way. */
-    const cogsBefore = await balance("14303");
+    const cogsBefore = await balance("1420");
     await P.postDelivery({
       companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today,
       lines: [{ itemId: item.id, qty: 5, unitPrice: 500 }],
     });
-    const relieved = round(await balance("14303") - cogsBefore);
+    const relieved = round(await balance("1420") - cogsBefore);
     check("goods issued after the correction cost 130, not 100",
       near(relieved, 650), `cost of sale ${relieved}`);
     check("  and the 15 left are worth 1,950",
@@ -267,7 +267,7 @@ try {
   {
     await fresh();
     const [other] = await sql`select id from location
-       where company_id = ${co.id} and is_stock_location and is_active
+       where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
          and id <> ${loc.id} order by code limit 1`;
 
     const gr = await P.postGoodsReceipt({
@@ -283,7 +283,7 @@ try {
       docDate: today, lines: [{ itemId: item.id, qty: 8 }],
     });
 
-    const cogsBefore = await balance("51108");
+    const cogsBefore = await balance("5110");
     const invBefore = await inventoryBalance();
 
     await P.postPurchaseInvoice({
@@ -293,7 +293,7 @@ try {
     });
 
     const toInv = round(await inventoryBalance() - invBefore);
-    const toCogs = round(await balance("51108") - cogsBefore);
+    const toCogs = round(await balance("5110") - cogsBefore);
 
     check("all 600 goes to inventory — none of it was sold",
       near(toInv, 600), `inventory +${toInv}`);
@@ -305,12 +305,12 @@ try {
 
     // The eight that moved carry the corrected cost too, or selling them from
     // the second warehouse would relieve inventory at the old figure.
-    const cogsBefore2 = await balance("14303");
+    const cogsBefore2 = await balance("1420");
     await P.postDelivery({
       companyId: co.id, partnerId: cust.id, locationId: other.id, docDate: today,
       lines: [{ itemId: item.id, qty: 8, unitPrice: 500 }],
     });
-    const relieved = round(await balance("14303") - cogsBefore2);
+    const relieved = round(await balance("1420") - cogsBefore2);
     check("  selling them from the other warehouse costs 130 each",
       near(relieved, 1040), `cost of sale ${relieved}`);
   }
@@ -369,9 +369,9 @@ try {
     // re-chart would. The correction must still land where the sale did.
     const [other] = await sql`
       select id, code from account where company_id = ${co.id}
-         and code = ${"51110"} limit 1`;
+         and code = ${"5120"} limit 1`;
     const [grp] = await sql`select item_group_id from item where id = ${item.id}`;
-    const before5000 = await balance("51108");
+    const before5000 = await balance("5110");
     if (other && grp?.item_group_id) {
       await sql`
         insert into account_determination (company_id, role, account_id, item_group_id)
@@ -385,11 +385,11 @@ try {
       lines: [{ itemId: item.id, qty: 20, unitPrice: 130, sourceLineId: grLine.id }],
     });
 
-    const moved = round(await balance("51108") - before5000);
+    const moved = round(await balance("5110") - before5000);
     check("  the correction adjusts that account, not today's mapping",
       near(moved, 240), `5000 moved by ${moved}`);
     check("  and nothing landed in the re-mapped account",
-      near(await balance("51110"), 0), `5030 ${await balance("51110")}`);
+      near(await balance("5120"), 0), `5030 ${await balance("5120")}`);
 
     // Put the chart back so later runs are unaffected.
     if (other && grp?.item_group_id) {

@@ -1,14 +1,16 @@
 "use client";
 
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ScanLine, X, Minus, Plus, Trash2, Gift, ChevronDown, ShoppingCart, SlidersHorizontal,
-  Store, TriangleAlert,
+  Store, TriangleAlert, Smartphone, Tablet, Laptop, Watch, Headphones, Fan, CreditCard, Wrench, Package,
 } from "lucide-react";
 import { posSearchAction, posUnitsAction, posPostSale, posReceiptAction, type PosSale } from "@/lib/pos-actions";
 import type { ReceiptView } from "@/lib/receipt";
 import { PosSaleDone } from "./pos-sale-done";
+import { PosNavToggle } from "./pos-nav";
 import { PosFilters } from "./pos-filters";
 import { PosUnitPicker, PosAddedConfirm } from "./pos-unit-picker";
 import type { SellableItem, ScannedUnit } from "@/lib/phone";
@@ -38,9 +40,23 @@ type Line = {
   itemGroupId: string | null;
   /** Given free: not charged, still leaves the shelf. The reason says why. */
   focReasonId: string | null;
+  /** The unit sold in (a can, a foot) and what the item offers; none for a phone. */
+  uomId?: string | null;
+  packs?: Pack[];
+  base?: { uomId: string; code: string };
+  listPrice?: number | null;
 };
 
 const newKey = () => Math.random().toString(36).slice(2);
+/** What kind of thing a card is, by its type, for a product with no photo. */
+const TYPE_ICON: [RegExp, typeof Package][] = [
+  [/phone/i, Smartphone], [/ipad|tablet/i, Tablet], [/mac|laptop|notebook/i, Laptop], [/watch/i, Watch],
+  [/earbud|audio|airpod|headphone|speaker/i, Headphones], [/fan/i, Fan], [/sim/i, CreditCard], [/service|charge/i, Wrench],
+];
+const typeIcon = (type: string | null) => {
+  const Icon = TYPE_ICON.find(([re]) => re.test(type ?? ""))?.[1] ?? Package;
+  return <Icon size={22} strokeWidth={1.6} />;
+};
 const maskImei = (s: string) => (s.length > 8 ? `${s.slice(0, 4)}•••••${s.slice(-3)}` : s);
 /** Cards drawn at a time: a shelf of thousands is not thousands of nodes. */
 const PAGE = 30;
@@ -224,7 +240,7 @@ export function PosTill(props: {
     else scan.current?.focus();
   };
 
-  const addItem = async (item: SellableItem) => {
+  const addItem = async (item: SellableItem, uomId: string | null = null) => {
     if (item.tracks_serial) {
       const units = (await posUnitsAction(item.id, locationId))
         .filter((u) => u.status === "IN_STOCK" && !lines.some((l) => l.serial === u.imei));
@@ -232,13 +248,18 @@ export function PosTill(props: {
       return;
     }
     setLines((ls) => {
-      const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId);
-      if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, l.onHand) } : l));
+      // A box and a loose piece of the same product are two lines.
+      const same = ls.find((l) => l.itemId === item.id && !l.tracksSerial && !l.focReasonId && (l.uomId ?? null) === uomId);
+      if (same) return ls.map((l) => (l === same ? { ...l, qty: Math.min(l.qty + 1, Math.max(l.onHand / fac(l), 1)) } : l));
+      const st = startLine(item, item.price ?? 0, { uomId });
       return [...ls, {
         key: newKey(), itemId: item.id, name: item.model, variant: variantLine(item) || null, photo: item.photo,
-        tracksSerial: false, serial: null, qty: 1, onHand: item.on_hand,
-        unitPrice: item.price ?? 0, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
+        // A service has no stock: any quantity may be sold.
+        tracksSerial: false, serial: null, qty: 1, onHand: item.is_stocked === false ? 9999 : item.on_hand,
+        unitPrice: st.price, discountPct: 0, taxCodeId: noTax, itemGroupId: item.item_group_id,
         warrantyMonths: item.warranty_months, focReasonId: null,
+        ...((item.packs ?? []).length ? { packs: item.packs, base: { uomId: item.base_uom_id, code: item.uom_code },
+                                          listPrice: item.price, uomId: st.uomId } : {}),
       }];
     });
     setMessage(null);
@@ -263,8 +284,13 @@ export function PosTill(props: {
     }
     // A barcode or SKU code naming exactly one product adds it.
     const lower = t.toLowerCase();
-    const byBarcode = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === lower);
+    const flat = t.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+    const byBarcode = r.items.filter((i) => i.barcode === t || i.code.toLowerCase() === lower
+      || (flat.length >= 3 && (i.parts ?? []).includes(flat)));
     if (byBarcode.length === 1) { await addItem(byBarcode[0]); setQ(""); return; }
+    // A box's own barcode adds one box (0214).
+    const packed = r.items.find((i) => (i.packs ?? []).some((p) => p.barcode === t));
+    if (packed) { await addItem(packed, (packed.packs ?? []).find((p) => p.barcode === t)!.uomId); setQ(""); return; }
     if (truncated) { setItems(r.items); searched.current = true; }
   });
 
@@ -280,10 +306,12 @@ export function PosTill(props: {
   const setLine = (key: string, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   const removeLine = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
+  /** Stock units in one of the line's unit: 1 unless it is sold in a pack. */
+  const fac = (l: Line) => (l.uomId ? l.packs?.find((p) => p.uomId === l.uomId)?.factor ?? 1 : 1);
   const step = (l: Line, by: number) => {
     const next = l.qty + by;
     if (next <= 0) return removeLine(l.key);
-    setLine(l.key, { qty: Math.min(next, Math.max(l.onHand, 1)) });
+    setLine(l.key, { qty: Math.min(next, Math.max(l.onHand / fac(l), 1)) });
   };
   const clearCart = () => {
     if (!confirmClear) { setConfirmClear(true); window.setTimeout(() => setConfirmClear(false), 3500); return; }
@@ -367,7 +395,7 @@ export function PosTill(props: {
           priceIncludesTax: inclusive, memo: null,
           attempt,
           lines: lines.map((l) => ({
-            itemId: l.itemId, qty: l.qty, unitPrice: l.unitPrice, discountPct: l.focReasonId ? 0 : l.discountPct,
+            itemId: l.itemId, qty: l.qty, unitPrice: l.unitPrice, discountPct: l.focReasonId ? 0 : l.discountPct, uomId: l.uomId ?? null,
             taxCodeId: l.taxCodeId || null, serials: l.serial ? [l.serial] : [], warrantyMonths: l.warrantyMonths,
             focReasonId: l.focReasonId,
           })),
@@ -430,7 +458,7 @@ export function PosTill(props: {
                 <button type="button" aria-label={tr("oneLess")} onClick={() => step(l, -1)}><Minus size={13} /></button>
                 <span aria-live="polite">{l.qty}</span>
                 <button type="button" aria-label={tr("oneMore")} onClick={() => step(l, 1)}
-                  disabled={l.qty >= l.onHand}><Plus size={13} /></button>
+                  disabled={(l.qty + 1) * fac(l) > l.onHand}><Plus size={13} /></button>
               </span>
             )}
             <span className="pos3-line-price">
@@ -443,6 +471,13 @@ export function PosTill(props: {
               )}
             </span>
           </div>
+          {l.packs && l.base && (
+            <div className="pos3-line-unit">
+              <UnitToggle base={l.base} packs={l.packs} value={l.uomId ?? ""} qty={l.qty} label={`Unit for ${l.name}`}
+                onChange={(id) => setLine(l.key, { uomId: id,
+                  unitPrice: priceInUnit(l.packs!, l.uomId, id, l.unitPrice, l.listPrice ?? null) })} />
+            </div>
+          )}
           <div className="pos3-line-tools">
             <button type="button" className={`pos3-tool${l.focReasonId ? " on" : ""}`}
               disabled={props.focReasons.length === 0} aria-pressed={!!l.focReasonId}
@@ -468,6 +503,10 @@ export function PosTill(props: {
           {isOpen && (
             <div className="pos3-edit">
               {l.serial && <span className="pos3-edit-imei">IMEI <span className="m">{l.serial}</span></span>}
+              {l.packs && (
+                <label>Qty<input type="number" min={0} step="any" value={l.qty}
+                  onChange={(e) => setLine(l.key, { qty: Number(e.target.value) || 0 })} /></label>
+              )}
               <label>{tr("price")}<input type="number" min={0} value={l.unitPrice} autoFocus={noPrice}
                 onChange={(e) => setLine(l.key, { unitPrice: Number(e.target.value) || 0 })} /></label>
               {!l.focReasonId && (
@@ -563,8 +602,28 @@ export function PosTill(props: {
 
       <div className="pos3-top">
         <div className="page-head hero">
-          <h1>{tr("title")}</h1>
+          <h1 className="pos-title"><PosNavToggle />{tr("title")}</h1>
         </div>
+        {/* Where the sale is made: chosen when there are several, shown when
+              a cashier has only their own branch, so the till always says where. */}
+          <label className="pos3-branch">
+            <Store size={20} aria-hidden="true" />
+            <span className="pos3-branch-text">
+              <b>{here?.branch ?? here?.name}</b>
+              <small>{here?.branch ? here.name : tr("sellingFrom")}</small>
+            </span>
+            {props.locations.length > 1 && (
+              <>
+                <ChevronDown size={16} aria-hidden="true" />
+                <select aria-label={tr("sellingFrom")} value={locationId}
+                  onChange={(e) => { setLocationId(e.target.value); setPicking(null); }}>
+                  {props.locations.map((l) => (
+                    <option key={l.id} value={l.id}>{l.branch ? `${l.branch} · ${l.name}` : l.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
+          </label>
       </div>
 
       <div className="pos3">
@@ -589,26 +648,17 @@ export function PosTill(props: {
                 </button>
               )}
             </form>
-          {/* Where the sale is made: chosen when there are several, shown when
-              a cashier has only their own branch, so the till always says where. */}
-          <label className="pos3-branch">
-            <Store size={20} aria-hidden="true" />
-            <span className="pos3-branch-text">
-              <b>{here?.branch ?? here?.name}</b>
-              <small>{here?.branch ? here.name : tr("sellingFrom")}</small>
-            </span>
-            {props.locations.length > 1 && (
-              <>
-                <ChevronDown size={16} aria-hidden="true" />
-                <select aria-label={tr("sellingFrom")} value={locationId}
-                  onChange={(e) => { setLocationId(e.target.value); setPicking(null); }}>
-                  {props.locations.map((l) => (
-                    <option key={l.id} value={l.id}>{l.branch ? `${l.branch} · ${l.name}` : l.name}</option>
-                  ))}
-                </select>
-              </>
-            )}
-          </label>
+            <div className="pos3-bar-right">
+              <button type="button" className="pos3-filter-btn" aria-expanded={filtersOpen} aria-controls="pos3-filters"
+                onClick={() => setFiltersOpen((o) => !o)}>
+                <SlidersHorizontal size={16} aria-hidden="true" /> {tr("filters")}
+                {facets.active > 0 && <span className="pf-count">{facets.active}</span>}
+              </button>
+              <label className="pos3-instock">
+                <input type="checkbox" role="switch" checked={sel.inStockOnly} onChange={(e) => setFilters({ ...sel, inStockOnly: e.target.checked })} />
+                {tr("inStockOnly")}
+              </label>
+            </div>
           </div>
 
           <div className="pos3-bar">
@@ -618,17 +668,6 @@ export function PosTill(props: {
                 <button type="button" key={t.type} className="pos3-pill" aria-pressed={sel.type === t.type}
                   onClick={() => pickType(t.type)}>{t.type}</button>
               ))}
-            </div>
-            <div className="pos3-bar-right">
-              <button type="button" className="pos3-filter-btn" aria-expanded={filtersOpen} aria-controls="pos3-filters"
-                onClick={() => setFiltersOpen((o) => !o)}>
-                <SlidersHorizontal size={16} aria-hidden="true" /> {tr("filters")}
-                {facets.active > 0 && <span className="pf-count">{facets.active}</span>}
-              </button>
-              <label className="pos3-instock">
-                <input type="checkbox" checked={sel.inStockOnly} onChange={(e) => setFilters({ ...sel, inStockOnly: e.target.checked })} />
-                {tr("inStockOnly")}
-              </label>
             </div>
           </div>
 
@@ -649,26 +688,28 @@ export function PosTill(props: {
                   const inCart = lines.filter((l) => l.itemId === i.id).reduce((s, l) => s + l.qty, 0);
                   const st = cardState(i);
                   return (
-                    <article key={i.id} className={`pos3-card ${st}${i.photo ? "" : " nophoto"}`}>
-                      {i.photo && (
+                    // The whole card adds it (or opens the IMEI picker): one large
+                    // target, no separate button to aim for.
+                    <button type="button" key={i.id} className={`pos3-card ${st}${i.photo ? "" : " nophoto"}`}
+                      onClick={() => addItem(i)} disabled={st === "out"}
+                      aria-label={tr(i.tracks_serial ? "selectUnitOf" : "addName", { name: `${i.model}${variantLine(i) ? ` ${variantLine(i)}` : ""}` })}>
+                      {i.photo ? (
                         <span className="pos3-img"><img src={i.photo} alt="" loading="lazy" decoding="async" /></span>
+                      ) : (
+                        <span className="pos3-img pos3-tile" aria-hidden="true">{typeIcon(i.type)}</span>
                       )}
                       {inCart > 0 && <span className="pos3-badge" aria-label={tr("inCart", { n: inCart })}>{inCart}</span>}
-                      <div className="pos3-info">
-                        <h3 className="pos3-name">{i.model}</h3>
-                        {variantLine(i) && <p className="pos3-sub">{variantLine(i)}</p>}
-                        <div className="pos3-meta">
+                      <span className="pos3-info">
+                        <span className="pos3-name">{i.model}</span>
+                        {variantLine(i) && <span className="pos3-sub">{variantLine(i)}</span>}
+                        <span className="pos3-meta">
                           {i.price != null && i.price > 0
-                            ? <p className="pos3-price">{money(i.price)} <small>MMK</small></p>
-                            : <p className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> {tr("noPriceSet")}</p>}
-                          <span className={`pos3-stock ${st}`}>{st === "out" ? tr("outOfStock") : tr("left", { n: i.on_hand })}</span>
-                        </div>
-                      </div>
-                      <button type="button" className="pos3-add" onClick={() => addItem(i)} disabled={st === "out"}
-                        aria-label={tr(i.tracks_serial ? "selectUnitOf" : "addName", { name: `${i.model}${variantLine(i) ? ` ${variantLine(i)}` : ""}` })}>
-                        <ShoppingCart size={15} aria-hidden="true" /> {st === "out" ? tr("unavailable") : i.tracks_serial ? tr("selectUnit") : tr("add")}
-                      </button>
-                    </article>
+                            ? <span className="pos3-price">{money(i.price)} <small>MMK</small></span>
+                            : <span className="pos3-price none"><TriangleAlert size={13} aria-hidden="true" /> {tr("noPriceSet")}</span>}
+                          <span className={`pos3-stock ${st}`}>{st === "service" ? tr("service") : st === "out" ? tr("outOfStock") : tr("left", { n: i.on_hand })}</span>
+                        </span>
+                      </span>
+                    </button>
                   );
                 })}
               </div>
@@ -693,7 +734,7 @@ export function PosTill(props: {
 
         <aside className="pos3-cart" id="pos-cart" aria-label={tr("currentSale")}>
           <div className="pos3-cart-head">
-            <h2><ShoppingCart size={18} aria-hidden="true" /> {tr("cart")}</h2>
+            <h2><ShoppingCart size={18} aria-hidden="true" /> {tr("currentSale")}</h2>
             <span className="subline">{tr("items", { n: totals.units })}</span>
             {lines.length > 0 && (
               <button type="button" className={`pos3-clear${confirmClear ? " sure" : ""}`} onClick={clearCart}>
@@ -706,10 +747,14 @@ export function PosTill(props: {
             {props.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
+          {/* Lines, the slip, payment and options scroll together; only the
+              warnings and Complete sale stay pinned, so a long sale never
+              squeezes its own lines into a strip. */}
+          <div className="pos3-scroll">
           <div className="pos3-lines">
             {lines.length === 0 && (
               <div className="pos3-empty">
-                <ShoppingCart size={28} aria-hidden="true" />
+                <ScanLine size={28} aria-hidden="true" />
                 <span>{tr("emptyCart")}</span>
               </div>
             )}
@@ -894,14 +939,25 @@ export function PosTill(props: {
             </details>
           </div>
 
+          </div>
+          <div className="pos3-foot">
           {issues.length > 0 && (
             <ul className="pos3-issues" role="status">
               {issues.map((t) => <li key={t}><TriangleAlert size={14} aria-hidden="true" /> {t}</li>)}
             </ul>
           )}
-          <button type="button" className="complete" disabled={saving || lines.length === 0 || issues.length > 0} onClick={post}>
-            {saving ? tr("posting") : tr("complete", { amount: money(totals.total) })}
-          </button>
+          {/* The total on its own line, the action beside it, as the till reads. */}
+          <div className="pos3-totalbar">
+            <div className="pos3-totalfig">
+              <span>{tr("total")}{change > 0 ? ` · ${tr("changeToReturn")} ${fmtCents(change)}` : ""}</span>
+              <strong>{money(totals.total)} MMK</strong>
+            </div>
+            <button type="button" className="complete" disabled={saving || lines.length === 0 || issues.length > 0} onClick={post}
+              aria-label={tr("complete", { amount: money(totals.total) })}>
+              {saving ? tr("posting") : tr("completeShort")}
+            </button>
+          </div>
+          </div>
         </aside>
       </div>
 

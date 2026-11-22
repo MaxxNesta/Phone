@@ -1,4 +1,6 @@
 import { seenLocations } from "@/lib/branch-scope";
+import { serialTrackingOn } from "@/lib/features";
+import { getCompany } from "@/lib/queries";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
@@ -29,6 +31,7 @@ export default async function Partner({ params, searchParams }: {
 
   // A customer's dealings at other branches stay out of view for someone who sees only their own.
   const locs = await seenLocations();
+  const serials = serialTrackingOn(await getCompany());
   const [phones, docs] = await Promise.all([
     sql`
       select s.id as serial_id, s.serial_no as imei, i.name as item_name, e.event,
@@ -63,7 +66,8 @@ export default async function Partner({ params, searchParams }: {
         </p>
       </div>
 
-      <div className="card">
+      {/* The IMEI units this customer bought or returned: only where serial numbers are on. */}
+      {serials && <div className="card">
         <div className="card-head"><h2>{t("phones")}</h2><span className="page-sub">{phones.length}</span></div>
         <div className="tablewrap">
           <table>
@@ -84,7 +88,7 @@ export default async function Partner({ params, searchParams }: {
           </table>
           <Pager p={pgUnits} params={sp} name="units" />
         </div>
-      </div>
+      </div>}
 
       <div className="card">
         <div className="card-head"><h2>{t("documents")}</h2></div>

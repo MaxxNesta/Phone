@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { setSidebarCollapsed, useSidebarCollapsed } from "@/components/sidebar-collapse";
@@ -57,8 +57,15 @@ export function NavLink({
   return (
     <Link href={href} className="navlink" data-active={active} data-sub={sub || undefined}>
       {children}
+      <Pending />
     </Link>
   );
+}
+
+/** Lit the moment its link is clicked, until the page arrives: the nav answers at once. */
+function Pending() {
+  const { pending } = useLinkStatus();
+  return <span className="nav-pending" data-on={pending || undefined} aria-hidden="true" />;
 }
 
 /**

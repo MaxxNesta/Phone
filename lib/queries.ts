@@ -14,6 +14,10 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   plan: Plan;
   /** Counter retail (the default here) or the trading flow — 0117. */
   retail_mode: boolean;
+  /** Set by the provider's console (0217): the subscription's last day, and
+   *  whether the shop may post (read_only and suspended may only look). */
+  access_until: string | null;
+  access_status: "active" | "grace" | "read_only" | "suspended";
   /** Active stock locations. One means nothing ever moves between them. */
   warehouses: number;
   /** The modules bought (0194); lib/plans.ts hasModule reads it. */
@@ -21,15 +25,18 @@ export type Company = { id: string; code: string; name: string; name_my: string 
   /** The company's own package; `plan` above is the reader's level (0198). */
   company_plan: Plan;
   /** The reader's seat: package, or the one module they see. */
-  seat: string };
+  seat: string;
+  /** Switched-on features (0200); read through lib/features.ts. */
+  features: import("./features").CompanyFeatures };
 
 /** The company. Once per request: the layout, the page and the signed-in
  *  owner all ask, and the answer cannot change between them. */
 export const getCompany = cache(async (): Promise<Company | null> => {
   const rows = await sql<Company[]>`
-    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules,
+    select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules, features,
+           to_char(access_until, 'YYYY-MM-DD') as access_until, access_status,
            (select count(*)::int from location l
-             where l.company_id = c.id and l.is_stock_location and l.is_active) as warehouses
+             where l.company_id = c.id and l.is_stock_location and l.is_active and not l.is_quarantine) as warehouses
       from company c order by created_at limit 1`;
   const c = rows[0];
   if (!c) return null;
@@ -287,12 +294,12 @@ export async function getOnboardingStatus(companyId: string) {
 
 // The invariants, run live. Every one of these should come back clean.
 export async function getHealth(companyId: string) {
-  const unbalanced = await sql`
-    select * from v_check_unbalanced_entries where company_id = ${companyId}`;
-  const inventory = await sql`
-    select * from v_check_inventory_reconciliation where company_id = ${companyId}`;
-  const [tb] = await sql`
-    select coalesce(sum(balance), 0) as total from v_trial_balance where company_id = ${companyId}`;
+  // Three independent checks, asked at once rather than one after another.
+  const [unbalanced, inventory, [tb]] = await Promise.all([
+    sql`select * from v_check_unbalanced_entries where company_id = ${companyId}`,
+    sql`select * from v_check_inventory_reconciliation where company_id = ${companyId}`,
+    sql`select coalesce(sum(balance), 0) as total from v_trial_balance where company_id = ${companyId}`,
+  ]);
 
   return {
     unbalanced: unbalanced.length,
@@ -1527,9 +1534,91 @@ export async function getDocument(id: string) {
   return doc ?? null;
 }
 
+/**
+ * The units a goods receipt refused (docs/06 D-P7): its lines that went to
+ * quarantine, each with why, what the supplier is to do, and the IMEIs it
+ * received. The IMEIs are read from the receipt's own RECEIVED events, so a
+ * unit that has since moved is still named as the one that arrived broken;
+ * `still_held` says which are in quarantine now, waiting to go back.
+ */
+export async function rejectedOnReceipt(receiptId: string) {
+  // Two kinds of row (D-P7): units refused at the door, each a receipt line of
+  // its own received straight into quarantine (source REFUSED); and units
+  // that passed the door and were found faulty later (0224, source FOUND),
+  // written beside the line they came in on and moved to the bin since.
+  return sql`
+    select 'REFUSED' as source, dl.id as line_id, dl.item_id, i.code as item_code, i.name as item_name, i.identity as item_identity,
+           dl.base_qty::float as qty, dl.entered_qty::float as entered_qty, dl.entered_uom_id as uom_id,
+           u.code as uom_code, dl.unit_price::float as unit_cost, dl.location_id,
+           dl.reject_reason, dl.reject_outcome, dl.source_line_id, dl.line_no,
+           coalesce((select sum(r.base_qty) from document_line r
+                       join document rd on rd.id = r.document_id
+                      where r.source_line_id = dl.id and rd.doc_type = 'PURCHASE_RETURN'
+                        and rd.status = 'POSTED' and rd.reverses_document_id is null), 0)::float as returned,
+           coalesce((select -sum(w.base_qty) from document_line w
+                       join document wd on wd.id = w.document_id
+                      where w.source_line_id = dl.id and wd.doc_type = 'STOCK_ADJUSTMENT'
+                        and wd.status = 'POSTED' and wd.reverses_document_id is null), 0)::float as written_off,
+           coalesce((
+             select json_agg(json_build_object('imei', s.serial_no,
+                      'stillHeld', exists (select 1 from v_stock_serial v
+                                            where v.serial_id = s.id and v.status = 'IN_STOCK'
+                                              and v.location_id = dl.location_id),
+                      'writtenOff', exists (select 1 from v_stock_serial v
+                                             where v.serial_id = s.id and v.status = 'WRITTEN_OFF'))
+                    order by s.serial_no)
+               from stock_serial_event e
+               join stock_serial s on s.id = e.serial_id
+               join stock_lot l on l.id = e.lot_id
+               join stock_movement sm on sm.id = l.stock_movement_id
+              where e.document_id = dl.document_id and e.event = 'RECEIVED'
+                and sm.document_line_id = dl.id), '[]'::json) as units
+      from document_line dl
+      join item i on i.id = dl.item_id
+      left join uom u on u.id = dl.entered_uom_id
+     where dl.document_id = ${receiptId} and dl.reject_reason is not null
+
+    union all
+
+    select 'FOUND', dl.id, dl.item_id, i.code, i.name, i.identity,
+           sum(fr.qty)::float, sum(fr.qty)::float, i.base_uom_id,
+           bu.code, dl.unit_price::float, fr.bin_location_id,
+           fr.reason, fr.outcome, dl.source_line_id, dl.line_no,
+           -- No units named: what is no longer in the bin has gone back,
+           -- less what a write-off (0225) took out of it.
+           case when bool_and(fr.serial_id is null)
+                then greatest(sum(fr.qty) - fn_qty_on_hand(dl.company_id, dl.item_id, fr.bin_location_id)
+                              - coalesce((select -sum(w.base_qty) from document_line w
+                       join document wd on wd.id = w.document_id
+                      where w.source_line_id = dl.id and w.location_id = fr.bin_location_id
+                        and wd.doc_type = 'STOCK_ADJUSTMENT' and wd.status = 'POSTED'
+                        and wd.reverses_document_id is null), 0), 0)
+                else 0 end::float,
+           coalesce((select -sum(w.base_qty) from document_line w
+                       join document wd on wd.id = w.document_id
+                      where w.source_line_id = dl.id and w.location_id = fr.bin_location_id
+                        and wd.doc_type = 'STOCK_ADJUSTMENT' and wd.status = 'POSTED'
+                        and wd.reverses_document_id is null), 0)::float,
+           coalesce(json_agg(json_build_object('imei', s.serial_no,
+                      'stillHeld', exists (select 1 from v_stock_serial v
+                                            where v.serial_id = s.id and v.status = 'IN_STOCK'
+                                              and v.location_id = fr.bin_location_id),
+                      'writtenOff', exists (select 1 from v_stock_serial v
+                                             where v.serial_id = s.id and v.status = 'WRITTEN_OFF'))
+                    order by s.serial_no) filter (where s.id is not null), '[]'::json)
+      from fault_report fr
+      join document_line dl on dl.id = fr.receipt_line_id
+      join item i on i.id = dl.item_id
+      left join uom bu on bu.id = i.base_uom_id
+      left join stock_serial s on s.id = fr.serial_id
+     where dl.document_id = ${receiptId}
+     group by dl.id, i.id, bu.code, fr.bin_location_id, fr.reason, fr.outcome
+     order by line_no, source desc`;
+}
+
 export async function getDocumentLines(id: string) {
   return sql`
-    select dl.*, i.code as item_code, i.name as item_name,
+    select dl.*, i.code as item_code, i.name as item_name, i.identity as item_identity,
            u.code as uom_code, f.name as foc_reason, b.name as brand_name
       from document_line dl
       left join item i on i.id = dl.item_id
@@ -1707,9 +1796,8 @@ function versionsOf(documentId: string) {
  * Every document in this one's own chain — the real documents behind a
  * diagram like PO → GR → PI → Payment, so the detail page can link each
  * stage to whatever actually exists instead of just labelling the stage
- * names. Two separate walks, not one connected-component search: upward
- * via source_document_id is always a single deterministic path (a document
- * has at most one source), but a shared ancestor can have more than one
+ * names. Two separate walks, not one connected-component search: a
+ * shared ancestor can have more than one
  * child — a purchase order with two receipts, say. Expanding outward from
  * that ancestor would surface a *sibling's* invoice as if it belonged to
  * the receipt actually being viewed. Walking down only from the document
@@ -1724,26 +1812,54 @@ export async function getChainDocuments(documentId: string) {
   if (!self) return [];
   seen.set(self.id, self);
 
-  let cursor = self.source_document_id;
-  for (let hop = 0; hop < 3 && cursor; hop++) {
-    const [row] = (await sql`
-      select id, doc_type, doc_no, source_document_id
-        from document where id = fn_current_document(${cursor})`) as Row[];
-    if (!row || seen.has(row.id)) break;
-    seen.set(row.id, row);
-    cursor = row.source_document_id;
+  /* Three ways one document answers another, the same three the related
+     documents panel reads: the document's own source, a line raised from
+     another document's line (a receipt against a bill, a bill raised from an
+     order), and a fulfilment_link written when a receipt or delivery is
+     linked to its order afterwards. Walking only the first left a receipt
+     linked later with no order on its flow, and the order with no receipt. */
+  let up = [self.id];
+  for (let hop = 0; hop < 3 && up.length > 0; hop++) {
+    const rows = (await sql`
+      select id, doc_type, doc_no, source_document_id from document
+       where id in (
+         select fn_current_document(x.pid) from (
+           select c.source_document_id as pid from document c
+            where c.id = any(${up}::uuid[]) and c.source_document_id is not null
+           union
+           select pl.document_id from document_line cl
+             join document_line pl on pl.id = cl.source_line_id
+            where cl.document_id = any(${up}::uuid[])
+           union
+           select ol.document_id from fulfilment_link fl
+             join document_line fdl on fdl.id = fl.fulfilment_line_id
+             join document_line ol on ol.id = fl.order_line_id
+            where fdl.document_id = any(${up}::uuid[])) x)`) as Row[];
+    up = [];
+    for (const r of rows) if (!seen.has(r.id)) { seen.set(r.id, r); up.push(r.id); }
   }
 
   let frontier = [self.id];
   for (let hop = 0; hop < 3 && frontier.length > 0; hop++) {
     const rows = (await sql`
+      with mine as (
+        select v.id from document v
+          join document self on self.company_id = v.company_id and self.doc_no = v.doc_no
+         where self.id = any(${frontier}::uuid[]))
       select id, doc_type, doc_no, source_document_id
         from document
-       where source_document_id in (
-               select v.id from document v
-                 join document self on self.company_id = v.company_id
-                                   and self.doc_no = v.doc_no
-                where self.id = any(${frontier}::uuid[]))`) as Row[];
+       where superseded_by_document_id is null
+         and id in (
+           select c.id from document c where c.source_document_id in (select id from mine)
+           union
+           select cl.document_id from document_line cl
+             join document_line pl on pl.id = cl.source_line_id
+            where pl.document_id in (select id from mine)
+           union
+           select fdl.document_id from fulfilment_link fl
+             join document_line ol on ol.id = fl.order_line_id
+             join document_line fdl on fdl.id = fl.fulfilment_line_id
+            where ol.document_id in (select id from mine))`) as Row[];
     const next: string[] = [];
     for (const r of rows) {
       if (!seen.has(r.id)) {
@@ -1784,6 +1900,7 @@ const REL_LABEL: Record<string, string> = {
   SALES_INVOICE: "Sales invoice",
   CUSTOMER_RECEIPT: "Receive payment",
   CUSTOMER_REFUND: "Customer refund",
+  SUPPLIER_REFUND: "Supplier refund",
   SALES_RETURN: "Customer return",
   PURCHASE_ORDER: "Purchase order",
   GOODS_RECEIPT: "Goods receipt",
@@ -2030,22 +2147,27 @@ export async function getRelatedDocuments(documentId: string): Promise<RelatedDo
 }
 
 /**
- * The payment that settled this invoice, if any — payments allocate against
- * invoices via payment_allocation, not source_document_id, so they sit
- * outside the chain getChainDocuments walks and need their own lookup.
+ * Every posted payment against any of these invoices, oldest first — an
+ * invoice paid in two goes, or two bills on one receipt, each with its own.
  */
-export async function getSettlingPayment(invoiceId: string) {
-  const [row] = await sql`
+export async function getSettlingPayments(invoiceIds: string[]) {
+  if (invoiceIds.length === 0) return [];
+  return sql`
     select d.id, d.doc_type, d.doc_no
+      from document d
+     where d.status = 'POSTED'
+       and d.id in (select pa.payment_id from payment_allocation pa
+                     where pa.invoice_id = any(${invoiceIds}::uuid[]))
+     order by d.posting_date, d.doc_no`;
+}
+
+/** The invoices a payment was applied to, for tracing it back up its chain. */
+export async function getPaidInvoices(paymentId: string) {
+  return sql`
+    select distinct d.id
       from payment_allocation pa
-      join document d on d.id = pa.payment_id
-     where pa.invoice_id = ${invoiceId}
-       -- A voided payment no longer settles anything, so it must not be
-       -- offered as the one that did.
-       and d.status = 'POSTED'
-     order by d.posting_date desc
-     limit 1`;
-  return row ?? null;
+      join document d on d.id = pa.invoice_id
+     where pa.payment_id = ${paymentId}`;
 }
 
 export async function getStock(companyId: string) {
@@ -2618,9 +2740,13 @@ export async function getGrirPositions(companyId: string) {
     getOpenGoodsReceipts(companyId, null) as unknown as Promise<
       { lines: { qty: number; unitPrice: number }[] }[]>,
   ]);
-  const total = (ds: { lines: { qty: number; unitPrice: number }[] }[]) =>
-    ds.reduce((s, d) => s + d.lines.reduce((t, l) => t + l.qty * l.unitPrice, 0), 0);
+  return grirTotals(invoices, receipts);
+}
 
+type OpenDocs = { lines: { qty: number; unitPrice: number }[] }[];
+/** The two GRIR positions from lists already loaded in full (getOpenPurchaseInvoices / getOpenGoodsReceipts with no limit). */
+export function grirTotals(invoices: OpenDocs, receipts: OpenDocs) {
+  const total = (ds: OpenDocs) => ds.reduce((s, d) => s + d.lines.reduce((t, l) => t + l.qty * l.unitPrice, 0), 0);
   return { awaited: total(invoices), unbilled: total(receipts) };
 }
 
@@ -2724,12 +2850,22 @@ export async function getLinkableFulfilments(companyId: string, orderId: string)
            d.id as "documentId", d.doc_no as "docNo",
            to_char(d.doc_date, 'YYYY-MM-DD') as "docDate",
            src.doc_no as "relatedNo",
+           -- What links took, and the whole line where another order it was
+           -- raised from already counts it: the engine's own reckoning, so a
+           -- delivery already closing one order is not offered to a second.
            (dl.base_qty
             - coalesce((select sum(fl.qty) from fulfilment_link fl
-                         where fl.fulfilment_line_id = dl.id), 0))::float as spare
+                         where fl.fulfilment_line_id = dl.id), 0)
+            - case when own.doc_type in ('PURCHASE_ORDER', 'SALES_ORDER')
+                    and not exists (select 1 from fulfilment_link fl2
+                                     where fl2.fulfilment_line_id = dl.id
+                                       and fl2.order_line_id is not distinct from dl.source_line_id)
+                   then least(dl.base_qty, coalesce(sl.base_qty, dl.base_qty)) else 0 end)::float as spare
       from document_line dl
       join document d on d.id = dl.document_id
       left join document src on src.id = d.source_document_id
+      left join document_line sl on sl.id = dl.source_line_id
+      left join document own on own.id = coalesce(sl.document_id, d.source_document_id)
      where d.company_id = ${companyId} and d.doc_type = ${fulfilmentType}
        and d.status = 'POSTED' and d.partner_id = ${order.partner_id}
        and dl.item_id = any(${open.map((l) => l.itemId)})
@@ -3506,7 +3642,7 @@ export async function getVariantProfitability(
   return sql`
     with revenue as (
       select dl.item_id, sum(dl.base_qty) as qty_sold,
-             sum(dl.net_amount) as revenue
+             sum(coalesce(dl.revenue_amount, dl.net_amount)) as revenue
         from document_line dl
         join document d on d.id = dl.document_id
        where d.company_id = ${companyId}
@@ -3792,7 +3928,7 @@ export async function getStockMovements(
     select sm.id, sm.movement_date, sm.qty, sm.unit_cost, sm.total_cost,
            sm.batch_no, sm.expiry_date, sm.created_at,
            d.doc_no, d.doc_type, d.id as document_id,
-           l.code as location_code,
+           l.code as location_code, l.is_quarantine,
            i.code as item_code, i.name as item_name
       from stock_movement sm
       left join document d on d.id = sm.document_id
@@ -4041,7 +4177,7 @@ export async function getBrands(companyId: string) {
 export async function getLocations(companyId: string) {
   return sql`
     select l.id, l.code, l.name, l.name_my, l.parent_id, l.is_stock_location, l.is_active,
-           l.address, l.phone, p.name as parent_name
+           l.is_quarantine, l.address, l.phone, p.name as parent_name
       from location l
       left join location p on p.id = l.parent_id
      where l.company_id = ${companyId}
@@ -4273,7 +4409,7 @@ export async function getTopItems(
   return sql`
     select i.id, i.code, i.name,
            sum(dl.base_qty) as qty,
-           sum(dl.net_amount) as revenue
+           sum(coalesce(dl.revenue_amount, dl.net_amount)) as revenue
       from document_line dl
       join document d on d.id = dl.document_id
       join item i on i.id = dl.item_id
@@ -4303,7 +4439,7 @@ export async function getTopCategories(
     select coalesce(g.id::text, 'none')          as id,
            coalesce(g.name, 'Uncategorised')     as name,
            sum(dl.base_qty)                      as qty,
-           sum(dl.net_amount)                    as revenue
+           sum(coalesce(dl.revenue_amount, dl.net_amount))                    as revenue
       from document_line dl
       join document d on d.id = dl.document_id
       join item i on i.id = dl.item_id
@@ -4313,7 +4449,7 @@ export async function getTopCategories(
        and d.status = 'POSTED'
        and d.posting_date >= ${from}::date and d.posting_date < ${to}::date
      group by 1, 2
-     having sum(dl.net_amount) > 0
+     having sum(coalesce(dl.revenue_amount, dl.net_amount)) > 0
      order by revenue desc
      limit ${limit}`;
 }
@@ -4975,7 +5111,7 @@ async function totalsAt(db: Sql, companyId: string, dates: string[]) {
             union all
             select p.id, p.parent_id, p.code from tree p join up on p.id = up.parent_id
           )
-          select code from up where code in ('1-CA', '2-CL', '13', '21') limit 1
+          select code from up where code in ('1-CA', '2-CL', '11', '12', '13', '14', '15', '21', '22', '23', '24', '26') limit 1
         ) h on true
     ),
     closes as (
@@ -4989,9 +5125,9 @@ async function totalsAt(db: Sql, companyId: string, dates: string[]) {
          coalesce(sum(jl.base_amount) filter (where jl.account_id in (select account_id from ctl where role = 'INVENTORY')), 0) as inv,
          coalesce(sum(jl.base_amount) filter (where jl.account_id in (select account_id from ctl where role = 'AR_CONTROL')), 0) as ar,
         -coalesce(sum(jl.base_amount) filter (where jl.account_id in (select account_id from ctl where role = 'AP_CONTROL')), 0) as ap,
-         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '13')), 0) as ca,
-        -coalesce(sum(jl.base_amount) filter (where h.heading in ('2-CL', '21')), 0) as cl,
-         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '13')
+         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '11', '12', '13', '14', '15')), 0) as ca,
+        -coalesce(sum(jl.base_amount) filter (where h.heading in ('2-CL', '21', '22', '23', '24', '26')), 0) as cl,
+         coalesce(sum(jl.base_amount) filter (where h.heading in ('1-CA', '11', '12', '13', '14', '15')
                     and jl.account_id in (select account_id from ctl where role = 'INVENTORY')), 0) as ca_inv
         from journal_line jl
         join journal_entry je on je.id = jl.journal_entry_id
@@ -5376,7 +5512,9 @@ export async function getTrialBalance(companyId: string) {
 
 // ------------------------------------------------- GR/IR line-level status --
 
-export type MatchedBy = { docId: string; docNo: string; docDate: string; qty: number; value: number };
+export type MatchedBy = { docId: string; docNo: string; docDate: string; qty: number; value: number;
+  /** A bill settles by billing; a purchase return by sending the goods back. */
+  kind?: "INVOICE" | "RETURN" };
 export type MatchLineStatus = {
   lineId: string;
   itemId: string;
@@ -5385,6 +5523,10 @@ export type MatchLineStatus = {
   uomCode: string | null;
   qty: number;          // what this line carries
   settled: number;      // how much of it the counterpart documents have covered
+  /** Goods receipt only: refused at the door (D-P7), so never to be billed. */
+  rejected: number;
+  /** Goods receipt only: sent back on a purchase return against this line. */
+  returned: number;
   remaining: number;
   matchedBy: MatchedBy[];
 };
@@ -5429,7 +5571,7 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
 
   const lines = await sql`
     select dl.id, dl.item_id, dl.base_qty as qty, dl.net_amount as net,
-           dl.source_line_id,
+           dl.source_line_id, dl.reject_reason is not null as rejected,
            i.code as item_code, i.name as item_name, u.code as uom_code
       from document_line dl
       join item i on i.id = dl.item_id
@@ -5437,6 +5579,21 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
      where dl.document_id = ${documentId}
      order by dl.line_no`;
   if (lines.length === 0) return null;
+
+  /* A receipt is settled two ways, not one. A bill settles what it bills;
+     a purchase return against the receipt settles what went back — the
+     engine's over-billing check counts it the same way (assertNotOverBilled),
+     so a unit sent back was never "awaiting invoice" here either. And a line
+     refused at the door (D-P7) is replaced or credited, never billed. One
+     query, on the document's source index. */
+  const returns = doc.doc_type === "GOODS_RECEIPT" ? await sql`
+    select d.id, d.doc_no, d.doc_date, dl.base_qty as qty, dl.source_line_id
+      from document_line dl
+      join document d on d.id = dl.document_id
+     where d.company_id = ${doc.company_id}
+       and d.doc_type = 'PURCHASE_RETURN' and d.status = 'POSTED'
+       and d.source_document_id = ${documentId}
+     order by d.posting_date, d.doc_no, dl.line_no` : [];
 
   // Counterpart documents in the order they posted, which is the order the
   // ledger settled them in.
@@ -5495,9 +5652,23 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
     }
   }
 
+  // What went back, against the line it went back against.
+  const returnedBy = new Map<string, number>();
+  for (const r of returns as any[]) {
+    if (!r.source_line_id) continue;
+    returnedBy.set(r.source_line_id, (returnedBy.get(r.source_line_id) ?? 0) + Number(r.qty));
+    const list = matchedBy.get(r.source_line_id) ?? [];
+    const existing = list.find((m) => m.docId === r.id);
+    if (existing) existing.qty += Number(r.qty);
+    else list.push({ docId: r.id, docNo: r.doc_no, docDate: String(r.doc_date), qty: Number(r.qty), value: 0, kind: "RETURN" });
+    matchedBy.set(r.source_line_id, list);
+  }
+
   const out: MatchLineStatus[] = lines.map((l: any) => {
     const qty = Number(l.qty);
     const done = settled.get(l.id) ?? 0;
+    const rejected = l.rejected ? qty : 0;
+    const returned = l.rejected ? 0 : Math.min(qty, returnedBy.get(l.id) ?? 0);
     return {
       lineId: l.id,
       itemId: l.item_id,
@@ -5506,13 +5677,15 @@ export async function getMatchStatus(documentId: string): Promise<MatchStatus | 
       uomCode: l.uom_code ?? null,
       qty,
       settled: done,
-      remaining: Math.max(0, Math.round((qty - done) * 10000) / 10000),
-      matchedBy: matchedBy.get(l.id) ?? [],
+      rejected,
+      returned,
+      remaining: Math.max(0, Math.round((qty - rejected - returned - done) * 10000) / 10000),
+      matchedBy: (matchedBy.get(l.id) ?? []).map((m) => ({ kind: "INVOICE" as const, ...m })),
     };
   });
 
   const totalRemaining = out.reduce((s, l) => s + l.remaining, 0);
-  const totalSettled = out.reduce((s, l) => s + l.settled, 0);
+  const totalSettled = out.reduce((s, l) => s + l.settled + l.returned + l.rejected, 0);
 
   return {
     state: totalSettled === 0 ? "NONE" : totalRemaining === 0 ? "FULL" : "PARTIAL",
@@ -5617,6 +5790,27 @@ export async function getOrderProgress(orderId: string, docType: string) {
 
   for (const f of fulfilled) {
     credit(f.source_line_id as string | null, f.item_id as string, Number(f.qty));
+  }
+
+  // A unit sent back for replacement (0220, 0224) is wanted again: it comes
+  // off the order line its receipt line answered, as in v_order_outstanding.
+  if (fulfilmentType === "GOODS_RECEIPT") {
+    const sentBack = await sql`
+      select order_line_id, sum(qty) as qty from (
+        select coalesce((select fl.order_line_id from fulfilment_link fl where fl.fulfilment_line_id = rl.id limit 1),
+                        rl.source_line_id) as order_line_id, retl.base_qty as qty
+          from document_line retl
+          join document rd on rd.id = retl.document_id
+          join document_line rl on rl.id = retl.source_line_id
+         where rd.doc_type = 'PURCHASE_RETURN' and rd.status = 'POSTED' and rd.reverses_document_id is null
+           and retl.for_replacement) x
+       where order_line_id = any(${[...mine]}::uuid[])
+       group by order_line_id`;
+    for (const b of sentBack) {
+      if (b.order_line_id && mine.has(b.order_line_id as string)) {
+        done.set(b.order_line_id as string, (done.get(b.order_line_id as string) ?? 0) - Number(b.qty));
+      }
+    }
   }
 
   return lines.map((l: any) => {
@@ -6155,15 +6349,22 @@ export async function getOwnedStockForItems(companyId: string, itemIds: string[]
  * can say anything about a file.
  */
 export async function getImportMasterData(companyId: string) {
-  const [items, categories, brands, uoms] = await Promise.all([
-    sql`select id, code, serial, name, barcode, item_group_id, brand_id, base_uom_id
+  const [items, categories, brands, uoms, attributes, options, variantOptions] = await Promise.all([
+    sql`select id, code, serial, name, barcode, item_group_id, brand_id, base_uom_id, parent_item_id, code_is_manual
           from item where company_id = ${companyId} and is_active`,
-    sql`select id, code, name, parent_id from item_group
+    sql`select id, code, name, parent_id, identity from item_group
           where company_id = ${companyId} and is_active`,
     sql`select id, code, name from brand where company_id = ${companyId} and is_active`,
     sql`select id, code, name from uom where company_id = ${companyId} and is_active`,
+    // What a product can vary by (Storage, Colour…), for the Model rows of the sheet.
+    sql`select id, code, name, sort_order, identities from variant_attribute
+          where company_id = ${companyId} and is_active order by sort_order, name`,
+    sql`select id, attribute_id, code, name, physical_value from variant_option
+          where company_id = ${companyId} and is_active`,
+    sql`select o.item_id, o.option_id from item_variant_option o join item i on i.id = o.item_id
+          where i.company_id = ${companyId} and i.is_active`,
   ]);
-  return { items, categories, brands, uoms };
+  return { items, categories, brands, uoms, attributes, options, variantOptions };
 }
 
 /**
@@ -6523,7 +6724,7 @@ export async function getLedgerDetails(
              case when jl.base_amount > 0 then  jl.base_amount else 0 end::float as debit,
              case when jl.base_amount < 0 then -jl.base_amount else 0 end::float as credit,
              -- The other side: the accounts on the opposite side of this line,
-             -- largest first, each with its amount (a sale reads 41101 Sales).
+             -- largest first, each with its amount (a sale reads 4110 Sales).
              (select json_agg(json_build_object('account', oa.code || ' ' || oa.name, 'amount', abs(o.amt),
                                                 'money', case when oa.is_bank_account then 'Bank' when oa.is_cash_account then 'Cash' end)
                       order by abs(o.amt) desc)
@@ -6971,6 +7172,29 @@ export async function getSupplierPriceObservations(
  * Only orders fully received within the period are eligible: one still
  * arriving has not yet failed to arrive at once.
  */
+/**
+ * Per supplier, over the goods receipts in the period: units received, units
+ * refused at the door (a refused receipt line, D-P7), and units reported
+ * faulty after the receipt posted (fault_report, 0224). One pass, grouped;
+ * the receipt's (company, type, date) index and fault_report's line index.
+ */
+export async function getSupplierQuality(companyId: string, from: string, to: string) {
+  return sql`
+    select gr.partner_id,
+           count(distinct gr.id)::int as receipts,
+           coalesce(sum(gl.base_qty), 0)::float as received,
+           coalesce(sum(gl.base_qty) filter (where gl.reject_reason is not null), 0)::float as refused,
+           coalesce(sum(f.qty), 0)::float as faulty
+      from document gr
+      join document_line gl on gl.document_id = gr.id
+      left join (select receipt_line_id, sum(qty) as qty from fault_report
+                  where company_id = ${companyId} group by receipt_line_id) f on f.receipt_line_id = gl.id
+     where gr.company_id = ${companyId} and gr.doc_type = 'GOODS_RECEIPT' and gr.status = 'POSTED'
+       and gr.partner_id is not null
+       and gr.doc_date >= ${from}::date and gr.doc_date <= ${to}::date
+     group by gr.partner_id` as unknown as Promise<{ partner_id: string; receipts: number; received: number; refused: number; faulty: number }[]>;
+}
+
 export async function getSupplierDeliveryCompleteness(
   companyId: string, from: string, to: string,
 ) {
@@ -7655,7 +7879,7 @@ export async function getInventoryCogsReconciliation(
     return codes;
   })();
   /* Carriage inward left in expense for the period: a courier's bill booked to
-     51110 and not (yet) spread onto the goods it brought (0162). Net, so what
+     5120 and not (yet) spread onto the goods it brought (0162). Net, so what
      was spread back onto inventory is not counted twice. */
   const p_carriage = (async () => {
     if (!roles.carriage) return null;
@@ -7902,7 +8126,7 @@ export async function getSalesBreakdown(
            sum(coalesce(dl.discount_amount, 0)
              + coalesce(dl.volume_discount_amount, 0)
              + coalesce(dl.invoice_discount_amount, 0)) as discount,
-           sum(case when dl.foc_reason_id is null then dl.net_amount else 0 end) as revenue,
+           sum(coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)) as revenue,
            sum(case when dl.foc_reason_id is not null then dl.base_qty else 0 end) as free_qty,
            count(distinct d.id)::int as invoices
       from document_line dl
@@ -8067,7 +8291,7 @@ export async function getSalesOverview(
          ${branch(sql`d.location_id`)}`) as unknown as Array<{ returned: string }>;
 
     const [rev] = (await sql`
-      select coalesce(sum(case when dl.foc_reason_id is null then dl.net_amount else 0 end), 0) as net,
+      select coalesce(sum(coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)), 0) as net,
              coalesce(sum(case when dl.foc_reason_id is null then dl.base_qty else 0 end), 0) as units,
              coalesce(sum(coalesce(dl.discount_amount, 0)
                         + coalesce(dl.volume_discount_amount, 0)
@@ -8132,7 +8356,7 @@ export async function getSalesOverview(
       ),
       rev as (
         select to_char(d.posting_date, 'YYYY-MM') as month,
-               sum(case when dl.foc_reason_id is null then dl.net_amount else 0 end) as net
+               sum(coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)) as net
           from document_line dl
           join document d on d.id = dl.document_id
          where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE'
@@ -8346,7 +8570,7 @@ export async function getSalesPivotFacts(
               join variant_attribute a on a.id = o.attribute_id
              where ivo.item_id = i.id) as opts,
            case when dl.foc_reason_id is null then dl.base_qty else 0 end::float as qty,
-           case when dl.foc_reason_id is null then dl.net_amount else 0 end::float as revenue,
+           coalesce(dl.revenue_amount, case when dl.foc_reason_id is null then dl.net_amount else 0 end)::float as revenue,
            coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                       where a.invoice_line_id = dl.id), 0)::float as cost
       from document_line dl
@@ -8465,7 +8689,7 @@ export async function getRefundableReturns(companyId: string, locs: string[] | n
                         where f.source_document_id = d.id and f.doc_type = 'CUSTOMER_REFUND'
                           and f.status = 'POSTED'), 0)::float as refunded
         from document d
-       where d.company_id = ${companyId} and d.doc_type = 'SALES_RETURN' and d.status = 'POSTED'
+       where d.company_id = ${companyId} and d.doc_type in ('SALES_RETURN', 'CREDIT_NOTE') and d.status = 'POSTED'
          and d.reversed_by_document_id is null
          ${locs ? sql`and d.location_id = any(${locs})` : sql``}
          ${onlyId ? sql`and d.id = ${onlyId}` : sql``}
@@ -8592,8 +8816,8 @@ export async function getSalesSeries(
     ),
     s as (
       select date_trunc(${unit}, d.posting_date)::date as b,
-             sum(dl.net_amount) as revenue,
-             sum(dl.net_amount - coalesce(c.cost, 0)) as profit,
+             sum(coalesce(dl.revenue_amount, dl.net_amount)) as revenue,
+             sum(coalesce(dl.revenue_amount, dl.net_amount) - coalesce(c.cost, 0)) as profit,
              count(distinct case when bp.code = 'WALKIN' then d.id::text else d.partner_id::text end) as customers
         from document d
         join business_partner bp on bp.id = d.partner_id

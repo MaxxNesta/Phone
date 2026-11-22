@@ -11,6 +11,7 @@ const ICON: Record<string, React.ComponentType<{ size?: number }>> = {
   SALES_RETURN: RotateCcw,
   CUSTOMER_RECEIPT: Wallet,
   CUSTOMER_REFUND: Wallet,
+  SUPPLIER_REFUND: Wallet,
   PURCHASE_ORDER: ClipboardList,
   GOODS_RECEIPT: Package,
   PURCHASE_INVOICE: Receipt,

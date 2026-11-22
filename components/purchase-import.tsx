@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, FileSpreadsheet, Info, PackageCheck, X } from "lucide-react";
-import { FileDrop } from "./file-drop";
+import { AlertCircle, Check, ChevronDown, ChevronRight, CircleCheck, CircleSlash, ClipboardPaste, Info, PackageCheck, X } from "lucide-react";
 import { previewInvoicePosting, previewPurchaseImport, runPurchaseImport, type PurchaseImportResult, type SourceFormat } from "@/lib/purchase-import-actions";
 import { previewSalesImport, previewSalesInvoicePosting, runSalesImport } from "@/lib/sales-import-actions";
 import type { PostedResult, PostingPreview } from "@/lib/purchase-import";
@@ -59,14 +58,13 @@ const SIDE = {
 
 /**
  * Purchase or sales invoices from the old system's Excel report, posted as real documents.
- * Upload or paste, review each invoice (supplier or customer and warehouse matched by
+ * Paste from Excel (file upload is off), review each invoice (supplier or customer and warehouse matched by
  * name, a guess confirmed once for every invoice that uses it), then post:
  * each invoice with its goods receipt or delivery, as one entered by hand with "goods
  * arriving with this bill" or "delivered now" — the only way an import moves stock.
  */
 export function PurchaseImport({ side = "purchase" }: { side?: "purchase" | "sales" }) {
   const T = SIDE[side];
-  const [mode, setMode] = useState<"upload" | "paste">("upload");
   const [file, setFile] = useState<Source | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +167,7 @@ export function PurchaseImport({ side = "purchase" }: { side?: "purchase" | "sal
   return (
     <div className="pimp">
       <ol className="pimp-steps" aria-label="Steps">
-        {[mode === "paste" ? "Paste report" : "Upload report", "Review", "Post"].map((s, i) => (
+        {["Paste report", "Review", "Post"].map((s, i) => (
           <li key={s} data-state={step > i + 1 ? "done" : step === i + 1 ? "now" : "next"} aria-current={step === i + 1 ? "step" : undefined}>
             <span className="pimp-dot">{step > i + 1 ? <Check size={14} aria-hidden="true" /> : i + 1}</span>{s}
           </li>
@@ -179,17 +177,8 @@ export function PurchaseImport({ side = "purchase" }: { side?: "purchase" | "sal
       {step === 1 && (
         <section className="card">
           <div className="card-body">
-            <div className="segmented pimp-mode" role="radiogroup" aria-label="How to add the report">
-              {([["upload", "Upload Excel file", FileSpreadsheet], ["paste", "Paste from Excel", ClipboardPaste]] as const).map(([k, label, Icon]) => (
-                <button key={k} type="button" role="radio" aria-checked={mode === k} className={`seg${mode === k ? " on" : ""}`}
-                  onClick={() => { setMode(k); setError(null); }}>
-                  <Icon size={15} aria-hidden="true" /> {label}
-                </button>
-              ))}
-            </div>
-            {mode === "upload"
-              ? <FileDrop onPick={onPick} onClear={restart} picked={file?.name ?? null} busy={reading} accept=".xlsx" />
-              : <PasteSheet busy={reading} onRead={(text) => onPick({ content: text, format: "tsv", name: "Pasted from Excel" })} />}
+            {/* Pasting only: file upload is switched off. */}
+            <PasteSheet busy={reading} onRead={(text) => onPick({ content: text, format: "tsv", name: "Pasted from Excel" })} />
             <p className="pimp-note"><Info size={14} aria-hidden="true" /><span>The {T.report}. Each invoice starts with its <strong>Docid</strong> row;
               the IMEIs sit under each line. {T.lead}</span></p>
             {error && <div className="alert" style={{ marginTop: 12 }}>{error}</div>}
@@ -483,7 +472,7 @@ function Done({ side, result, busy, onRetry, onBack, onRestart }: {
             {busy ? "Retrying…" : `Retry ${failed.length} failed`}
           </button>
         )}
-        <button type="button" className="ghost" onClick={onRestart}>Import another file</button>
+        <button type="button" className="ghost" onClick={onRestart}>Import another report</button>
         <Link className="btn" href={T.list}>{T.listLabel}</Link>
       </div>
     </section>

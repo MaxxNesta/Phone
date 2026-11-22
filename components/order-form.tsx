@@ -4,7 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { AwaitingLine } from "@/lib/queries";
-import { UnitToggle, AddPackInline } from "@/components/unit-toggle";
+import { UnitToggle, AddPackInline, startLine } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
@@ -188,11 +188,12 @@ export function OrderForm({
     const item = byId(itemId);
     // A sale is quoted from the price list at the customer's level; a
     // purchase suggests what the goods last cost.
-    const price = !item ? 0 : isSales ? priceFor(itemId) : Number(item.next_cost);
+    const st = startLine(item, !item ? 0 : isSales ? priceFor(itemId) : Number(item.next_cost) || 0, { buying: !isSales });
     setLine(key, {
-      itemId, unitPrice: price > 0 ? String(price) : "",
-      // A carton of the old item is not a carton of the new one.
-      uomId: "",
+      itemId, unitPrice: st.price > 0 ? String(st.price) : "",
+      // A carton of the old item is not a carton of the new one; a purchase
+      // starts in the product's buying unit.
+      uomId: st.uomId ?? "",
     });
   }
 
@@ -230,11 +231,11 @@ export function OrderForm({
     setLines((ls) => {
       let next = [...ls];
       for (const p of picks) {
-        const at = next.find((l) => l.itemId === p.itemId);
-        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
         const item = byId(p.itemId);
-        const price = !item ? 0 : isSales ? priceFor(p.itemId) : Number(item.next_cost);
-        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "", uomId: "" };
+        const st = startLine(item, !item ? 0 : isSales ? priceFor(p.itemId) : Number(item.next_cost) || 0, { uomId: p.uomId, buying: !isSales });
+        const at = next.find((l) => l.itemId === p.itemId && (l.uomId || null) === st.uomId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: st.price > 0 ? String(st.price) : "", uomId: st.uomId ?? "" };
         const blank = next.find((l) => !l.itemId);
         next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
           : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];

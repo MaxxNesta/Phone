@@ -48,7 +48,7 @@ export type PosSale = {
   priceIncludesTax: boolean;
   memo: string | null;
   lines: Array<{
-    itemId: string; qty: number; unitPrice: number; discountPct: number;
+    itemId: string; qty: number; unitPrice: number; discountPct: number; uomId?: string | null;
     taxCodeId: string | null; serials: string[]; warrantyMonths: number | null;
     /** Given free: not charged, still leaves stock; the reason names the expense. */
     focReasonId?: string | null;
@@ -89,6 +89,8 @@ export async function posPostSale(sale: PosSale): Promise<PosResult> {
       .filter((l) => l.itemId && l.qty > 0)
       .map((l) => ({
         itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice),
+        // A can of oil, a foot of hose: the engine converts to the stock unit.
+        uomId: l.uomId && isUuid(l.uomId) ? l.uomId : null,
         discountPct: Number(l.discountPct) || 0, taxCodeId: l.taxCodeId || null,
         serials: l.serials.length ? l.serials : undefined,
         warrantyMonths: l.warrantyMonths,

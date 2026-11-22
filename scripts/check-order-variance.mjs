@@ -28,7 +28,7 @@ const ok = (c, m) => { assert.ok(c, m); n++; console.log("  ✓", m); };
 
 const [co] = await sql`select id, name from company`;
 const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier and is_active order by code limit 1`;
-const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
 // Plain items without serials, so the receipt needs no IMEI.
 const items = await sql`select id from item where company_id = ${co.id} and is_active and is_stocked and not tracks_serial and not tracks_batch
                           and not exists (select 1 from item c where c.parent_item_id = item.id) order by code limit 3`;

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Banknote, Receipt, Calculator, Smartphone, TrendingUp, Users, ScanLine } from "lucide-react";
+import { Banknote, Receipt, Calculator, Smartphone, Package, TrendingUp, Users, ScanLine } from "lucide-react";
+import { serialTrackingOn } from "@/lib/features";
 import { getLocale, getTranslations } from "next-intl/server";
 import { requirePermission, can } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
@@ -21,7 +22,9 @@ export default async function SalesOverview() {
   const t = await getTranslations("overview");
   const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
   const locs = await seenLocations();
-  const [d, perf, company] = await Promise.all([salesOverview(user.companyId, locs), salesLast30(user.companyId, locs), getCompany()]);
+  const company = await getCompany();
+  const serials = serialTrackingOn(company);
+  const [d, perf] = await Promise.all([salesOverview(user.companyId, locs, serials), salesLast30(user.companyId, locs)]);
   const seeCost = can(user, "cost.view");
   const { kpi } = d;
   const gp = kpi.revenue - kpi.cost;
@@ -42,7 +45,7 @@ export default async function SalesOverview() {
         <KpiCard icon={<Banknote size={16} aria-hidden="true" />} label={t("todaysSales")} value={money(kpi.revenue)} unit="MMK" hint={t("todaysSalesHint")} />
         <KpiCard icon={<Receipt size={16} aria-hidden="true" />} label={t("salesCount")} value={kpi.sales} hint={t("salesCountHint")} />
         <KpiCard icon={<Calculator size={16} aria-hidden="true" />} label={t("avgSale")} value={money(kpi.sales ? kpi.revenue / kpi.sales : 0)} unit="MMK" hint={t("avgSaleHint")} />
-        <KpiCard icon={<Smartphone size={16} aria-hidden="true" />} label={t("phonesSold")} value={kpi.phones} hint={t("phonesSoldHint")} />
+        <KpiCard icon={serials ? <Smartphone size={16} aria-hidden="true" /> : <Package size={16} aria-hidden="true" />} label={t(serials ? "phonesSold" : "unitsSold")} value={kpi.phones} hint={t(serials ? "phonesSoldHint" : "unitsSoldHint")} />
         {seeCost && (
           <KpiCard icon={<TrendingUp size={16} aria-hidden="true" />} label={t("grossProfit")} value={money(gp)} unit="MMK"
             hint={t("grossProfitHint", { pct: kpi.revenue ? ((gp / kpi.revenue) * 100).toFixed(1) : "0" })} />
@@ -99,7 +102,7 @@ export default async function SalesOverview() {
         <div className="card">
           <div className="card-head"><h2>{t("topModels")}</h2><span className="page-sub">{t("last30")}</span></div>
           <div className="card-body">
-            {d.top.length === 0 && <p className="page-sub">{t("noPhones")}</p>}
+            {d.top.length === 0 && <p className="page-sub">{t(serials ? "noPhones" : "nothingSold")}</p>}
             {d.top.map((m) => (
               <div className="listrow" key={m.model}>
                 <span className="grow prod-text"><div className="prod-name clamp2" title={m.model}>{m.model}</div><div className="prod-sub">{t("sold", { n: m.sold })}</div></span>

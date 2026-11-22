@@ -9,7 +9,7 @@ import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source
 import { priceLines, type VolumeBand } from "@/lib/discount";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
-import { UnitToggle } from "./unit-toggle";
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
@@ -336,6 +336,9 @@ export function SalesVoucher({
   const agreedFrom = lines.find((l) => l.agreedPrice != null && l.orderId)
     ?? null;
 
+  const packsOf = (item: PickerItem): Pack[] => (item.packs ?? []).map((p) =>
+    ({ uomId: p.uomId, code: p.code, factor: Number(p.factor), price: p.price == null ? null : Number(p.price) }));
+
   const setLine = (key: number, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
 
@@ -554,18 +557,21 @@ export function SalesVoucher({
 
   // A product chosen from the search: its own row if it is already on the
   // voucher (one more of it), otherwise a new row at the customer's price.
-  function addProduct(itemId: string, qty = 1) {
+  function addProduct(itemId: string, qty = 1, uomId: string | null = null) {
     setLines((ls) => {
       const it = items.find((i) => i.id === itemId);
-      const at = ls.find((l) => l.itemId === itemId && !l.orderLineId && !l.sourceLineId);
+      // A box and a loose piece of the same product are two lines.
+      const at = ls.find((l) => l.itemId === itemId && !l.orderLineId && !l.sourceLineId && (l.uomId || null) === uomId);
       if (at && !it?.tracks_serial) return ls.map((l) => (l === at ? { ...l, qty: String((Number(l.qty) || 0) + qty) } : l));
       if (at) return ls;
-      const p = priceFor(itemId);
+      const st = startLine(it, priceFor(itemId), { uomId });
+      const p = st.price;
       const blank = ls.find((l) => !l.itemId);
       const line: Line = {
         key: blank?.key ?? Math.max(0, ...ls.map((l) => l.key)) + 1, itemId,
         qty: it?.tracks_serial ? "0" : String(qty),
         unitPrice: p > 0 ? String(p) : "", discountPct: "", focQty: "", focReasonId: "", source: "OWNED",
+        ...(st.uomId ? { uomId: st.uomId } : {}),
       };
       if (it?.tracks_serial) setImeiOpen((k) => [...k, line.key]);
       return blank ? ls.map((l) => (l === blank ? line : l)) : [...ls, line];
@@ -781,6 +787,11 @@ export function SalesVoucher({
   useEffect(() => {
     if (paymentType === "CASH") setCashIn(String(total));
   }, [paymentType, total]);
+  // Credit takes nothing now: the whole amount goes on account. A part
+  // payment later is a customer receipt, not a field here.
+  useEffect(() => {
+    if (paymentType === "CREDIT") setCashIn("");
+  }, [paymentType]);
 
   // Discount is netted into the unit price. Trade discount posts nothing of
   // its own — only settlement discount gets an account.
@@ -1258,7 +1269,7 @@ export function SalesVoucher({
           // form is dropped by the browser — Enter would post the voucher.
           <>
             <AddItemsBar items={items} categories={categories}
-              onAdd={(picks: Pick[]) => picks.forEach((p) => addProduct(p.itemId, p.qty))}
+              onAdd={(picks: Pick[]) => picks.forEach((p) => addProduct(p.itemId, p.qty, p.uomId ?? null))}
               onEnter={scanUnit} available={onHandHere} stockToggle
               title="Add items from available stock" sub="Tick several, set how many, add them together" />
             {scanMsg && <p className="hint low" role="status" style={{ padding: "0 16px" }}>{scanMsg}</p>}
@@ -1559,9 +1570,14 @@ export function SalesVoucher({
                       <div className="le-field">Unit
                         <UnitToggle
                           base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
-                          packs={(item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor) }))}
+                          packs={packsOf(item)}
                           value={l.uomId ?? ""}
-                          onChange={(id: string | null) => setLine(l.key, { uomId: id ?? undefined })}
+                          onChange={(id: string | null) => setLine(l.key, {
+                            uomId: id ?? undefined,
+                            // An agreed price stays; a suggested one follows the unit.
+                            ...(l.agreedPrice != null ? {} : {
+                              unitPrice: String(priceInUnit(packsOf(item), l.uomId, id, Number(l.unitPrice) || 0, priceFor(l.itemId))) }),
+                          })}
                           disabled={!!l.sourceLineId}
                           label={`Unit for ${item.code}`}
                           qty={Number(l.qty) || 0}
@@ -1689,24 +1705,13 @@ export function SalesVoucher({
       </div>
 
       <div className="grid2">
-        <div className="card">
-          <div className="card-head"><h2>Payment &amp; delivery</h2></div>
+        <div className="card paycard">
+          <div className="card-head">
+            <h2>Payment</h2>
+            <span className={`pill ${paymentType === "CASH" ? "ok" : "info"}`}>{paymentType === "CASH" ? "Cash" : "Credit"}</span>
+          </div>
           <div className="card-body">
-            <div className="row">
-              {/* Not "delivery fee": this screen already uses delivery for the
-                  document recording stock leaving the warehouse, which happens
-                  on a counter sale too, so a field of that name reads as
-                  something owed on every sale.
-
-                  Disabled rather than removed, so the charge stays visible as
-                  something this screen can do — and that is load-bearing, not
-                  cosmetic. A disabled input is left out of the submission
-                  entirely, so the action sees no field at all, which is the
-                  one case it reads as "bill whatever the delivery charged".
-                  While this was always enabled, a blank box posted a charge of
-                  zero and billing a delivery that carried one silently dropped
-                  it: measured, a delivery carrying 7,500 billed at 10,000 with
-                  a fee of 0. */}
+            {fulfilment && <div className="row">
               {(() => {
                 // A counter sale carries nothing anywhere, so there is no charge to ask about.
                 if (!fulfilment) return null;
@@ -1727,12 +1732,24 @@ export function SalesVoucher({
               </div>
                 );
               })()}
-              <div className="field">
-                <label htmlFor="cash_in">Cash in</label>
-                <input id="cash_in" name="cash_in" type="number" min="0" step="any"
-                  value={cashIn} onChange={(e) => setCashIn(e.target.value)} />
-                <span className="hint">Taken now — creates a receipt against this invoice</span>
+            </div>}
+
+            {paymentType === "CREDIT" ? (
+              /* On credit: nothing to fill in. The whole amount goes on the
+                 customer's account, due when the header says. */
+              <div className="paycard-note">
+                <p>The full amount goes on <strong>{customer?.name ?? "the customer"}</strong>&rsquo;s account
+                  {dueDate ? <>, due <strong>{day(dueDate)}</strong></> : ""}. Nothing is taken now.</p>
               </div>
+            ) : (
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="cash_in">Paid in full</label>
+                  <input id="cash_in" name="cash_in" type="number" min="0" step="any"
+                    value={cashIn} onChange={(e) => setCashIn(e.target.value)}
+                    readOnly className="readonly" />
+                  <span className="hint">The invoice total, taken now: nothing is left owing.</span>
+                </div>
               {payChannels.length > 0 ? (
                 <>
                   <div className="field">
@@ -1772,13 +1789,12 @@ export function SalesVoucher({
                   </select>
                 </div>
               )}
-            </div>
+              </div>
+            )}
 
-            <div className="totalbar" style={{ marginTop: "0.5rem", paddingRight: 0 }}>
-              <span style={{ color: "var(--muted)" }}>Balance on account</span>
-              <span className="big" style={{ color: balance > 0 ? "var(--cr)" : "var(--ok)" }}>
-                {fmt(balance)}
-              </span>
+            <div className="paycard-balance">
+              <span>{balance > 0 ? "Owed on account" : "Nothing owed"}</span>
+              <strong className={balance > 0 ? "owed" : "clear"}>{fmt(Math.max(0, balance))}</strong>
             </div>
           </div>
         </div>

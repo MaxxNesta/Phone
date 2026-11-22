@@ -7,11 +7,18 @@ import { asVariant } from "./variant-tags";
 import { useTranslations } from "next-intl";
 
 type Node = { id: string; name: string; parent_id: string | null };
-export type Pick = { itemId: string; qty: number };
+export type Pick = { itemId: string; qty: number; uomId?: string | null };
 type Filters = { category: string; brand: string; model: string; opts: Record<string, string> };
 const NONE: Filters = { category: "", brand: "", model: "", opts: {} };
 
 /** "iPhone 13 · 128 GB · Midnight" — the model and what sets this one apart. */
+/** The part number the search matched, said the way the counter reads it. */
+function partOf(i: PickerItem, q: string) {
+  const n = q.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const p = n.length >= 3 ? (i.parts ?? []).find((x) => x.norm.includes(n)) : null;
+  return p ? `${p.kind === "OEM" ? "OEM" : p.kind === "SUPPLIER" ? "Supplier" : "Equiv."} ${p.no}` : null;
+}
+
 export function itemLabel(i: PickerItem) {
   const v = asVariant(i.variant) ?? [];
   return i.model && v.length ? [i.model, ...v.map((x) => x.o)].join(" · ") : i.name;
@@ -89,7 +96,8 @@ export function AddItemsBar({
     for (const [a, o] of Object.entries(f.opts)) if (o && !v.some((x) => x.a === a && x.o === o)) return false;
     const t = term.trim().toLowerCase();
     if (!t) return true;
-    return [i.code, i.name, i.barcode ?? "", i.model ?? "", i.brand ?? "", ...v.map((x) => x.o)]
+    return [i.code, i.name, i.barcode ?? "", i.model ?? "", i.brand ?? "", ...v.map((x) => x.o),
+            ...(i.parts ?? []).flatMap((p) => [p.no, p.norm])]
       .some((s) => s.toLowerCase().includes(t));
   };
 
@@ -112,7 +120,12 @@ export function AddItemsBar({
     if (!t) return;
     if (onEnter && (await onEnter(t))) { setQ(""); setMsg(null); setListing(false); box.current?.focus(); return; }
     // A scanned barcode or a typed code means one item: it goes straight on.
-    const exact = items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase());
+    const flat = t.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    // A box's own barcode adds one box (0214).
+    const packed = items.find((i) => (i.packs ?? []).some((p) => p.barcode === t));
+    if (packed) { add([{ itemId: packed.id, qty: 1, uomId: (packed.packs ?? []).find((p) => p.barcode === t)!.uomId }]); return; }
+    const exact = items.filter((i) => i.barcode === t || i.code.toLowerCase() === t.toLowerCase()
+      || (flat.length >= 3 && (i.parts ?? []).some((p) => p.norm === flat)));
     const pick = exact.length === 1 ? exact[0] : hits[hi];
     if (pick) add([{ itemId: pick.id, qty: 1 }]);
     else setMsg(pk("nothingMatchesTerm", { term: t }));
@@ -170,7 +183,7 @@ export function AddItemsBar({
                   onMouseEnter={() => setHi(n)} onClick={() => add([{ itemId: i.id, qty: 1 }])}>
                   <Thumb i={i} />
                   <span className="aib-name"><strong>{itemLabel(i)}</strong>
-                    <small>{[i.brand, i.code].filter(Boolean).join(" · ")}</small></span>
+                    <small>{[i.brand, i.code, partOf(i, q)].filter(Boolean).join(" · ")}</small></span>
                   <span className={`aib-avail${avail(i) > 0 ? " ok" : ""}`}>{avail(i)} {availLabel.toLowerCase()}</span>
                 </button>
               ))}

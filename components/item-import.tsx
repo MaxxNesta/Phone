@@ -20,6 +20,7 @@ type PlannedRow = {
   serial: string; code: string; serialAssigned: boolean; salePrice: number | null;
   unitName: string; categoryName: string; subCategoryName: string | null;
   brandName: string | null;
+  model?: { name: string; parentId: string | null };
 };
 type Plan = {
   rows: PlannedRow[];
@@ -29,12 +30,8 @@ type Plan = {
   summary: { rows: number; newItems: number; existingItems: number };
 };
 
-const TEMPLATE_HEADER = "No,Barcode,Stock ID,Stock Name,Category,Sub Category,Brand,Unit,Selling price";
-const TEMPLATE_EXAMPLE = [
-  '1,8851234567890,Item001,Coca-Cola 300ml,Beverages,Soft Drinks,Coca-Cola,Bottle',
-  '2,8851234567891,Item002,Sprite 300ml,Beverages,Soft Drinks,Sprite,Bottle',
-  '3,10001,,T-Shirt Black L,Clothing,,,Piece',
-].join("\n");
+/** Kinds of shop the template's example rows can be drawn for; "" lets this shop's own switches decide. */
+const INDUSTRIES = ["", "phone", "apparel", "optical", "parts", "general"] as const;
 
 export function ItemImport({ action }: {
   action: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -50,6 +47,7 @@ export function ItemImport({ action }: {
   const [readError, setReadError] = useState<string | null>(null);
   const [picked, setPicked] = useState(false);
   const [gettingTemplate, startTemplate] = useTransition();
+  const [industry, setIndustry] = useState("");
   const [addingBrands, startBrands] = useTransition();
   const [pendingName, setPendingName] = useState<string | null>(null);
   const [checking, startChecking] = useTransition();
@@ -69,8 +67,8 @@ export function ItemImport({ action }: {
     startTemplate(async () => {
       setReadError(null);
       try {
-        const { base64 } = await itemImportTemplate();
-        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+        const { base64 } = await itemImportTemplate(industry || undefined, "xlsx");
+        const bytes = Uint8Array.from(atob(base64 ?? ""), (c) => c.charCodeAt(0));
         save(
           new Blob([bytes], {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -84,8 +82,10 @@ export function ItemImport({ action }: {
   }
 
   function downloadCsvTemplate() {
-    save(new Blob([`${TEMPLATE_HEADER}\n${TEMPLATE_EXAMPLE}\n`], { type: "text/csv;charset=utf-8" }),
-         "item-import-template.csv");
+    startTemplate(async () => {
+      const { csv: text } = await itemImportTemplate(industry || undefined, "csv");
+      save(new Blob([text ?? ""], { type: "text/csv;charset=utf-8" }), "item-import-template.csv");
+    });
   }
 
   function onPick(u: Upload) {
@@ -148,6 +148,12 @@ export function ItemImport({ action }: {
             />
 
             <div className="row" style={{ alignItems: "flex-end", marginTop: "0.75rem" }}>
+              <div className="field" style={{ maxWidth: 260 }}>
+                <label htmlFor="tpl-industry">{t("templateFor")}</label>
+                <select id="tpl-industry" value={industry} onChange={(e) => setIndustry(e.target.value)}>
+                  {INDUSTRIES.map((v) => <option key={v} value={v}>{t(v ? `industry_${v}` : "industryThisShop")}</option>)}
+                </select>
+              </div>
               <div className="actions">
                 <button type="button" onClick={downloadTemplate} disabled={gettingTemplate}>
                   {gettingTemplate ? t("preparing") : t("downloadExcel")}
@@ -325,7 +331,7 @@ export function ItemImport({ action }: {
                             )}
                           </td>
                           <td className="code"><strong>{r.code}</strong></td>
-                          <td className="wrap">{r.name}</td>
+                          <td className="wrap">{r.name}{r.model && <div className="subline">{t("variantOf", { model: r.model.name })}</div>}</td>
                           <td style={{ color: "var(--muted)" }}>{r.categoryName}</td>
                           <td style={{ color: "var(--muted)" }}>{r.subCategoryName ?? "—"}</td>
                           <td style={{ color: "var(--muted)" }}>{r.brandName ?? "—"}</td>

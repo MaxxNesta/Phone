@@ -16,14 +16,24 @@ export * from "./auth-core";
 // ------------------------------------------------------------- sessions --
 
 export async function createSession(userId: string) {
-  // Ended sessions are deleted rather than left to pile up.
-  await sql`delete from user_session where expires_at < now()
-              or last_seen_at < now() - make_interval(mins => ${SESSION_IDLE_MINUTES})`;
+  // Ended sessions are deleted rather than left to pile up; their sign-in
+  // rows are stamped first, at the last activity, as timed out (0202).
+  await sql`
+    with gone as (
+      delete from user_session where expires_at < now()
+          or last_seen_at < now() - make_interval(mins => ${SESSION_IDLE_MINUTES})
+      returning sign_in_id, last_seen_at)
+    update user_sign_in l set signed_out_at = g.last_seen_at, ended_by = 'TIMEOUT'
+      from gone g where l.id = g.sign_in_id and l.signed_out_at is null`;
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_HOURS * 3600_000);
   await sql`
-    insert into user_session (user_id, token_hash, expires_at)
-    values (${userId}, ${tokenHash(token)}, ${expires})`;
+    with log as (
+      insert into user_sign_in (company_id, user_id)
+      select company_id, id from app_user where id = ${userId}
+      returning id)
+    insert into user_session (user_id, token_hash, expires_at, sign_in_id)
+    values (${userId}, ${tokenHash(token)}, ${expires}, (select id from log))`;
   await sql`update app_user set last_login_at = now() where id = ${userId}`;
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true, sameSite: "lax", path: "/", expires,
@@ -34,7 +44,11 @@ export async function createSession(userId: string) {
 export async function endSession() {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await sql`delete from user_session where token_hash = ${tokenHash(token)}`;
+  // Signing out stamps the sign-in row (0202) as the session goes.
+  if (token) await sql`
+    with gone as (delete from user_session where token_hash = ${tokenHash(token)} returning sign_in_id)
+    update user_sign_in l set signed_out_at = now(), ended_by = 'SIGN_OUT'
+      from gone g where l.id = g.sign_in_id and l.signed_out_at is null`;
   jar.delete(SESSION_COOKIE);
 }
 
@@ -50,7 +64,10 @@ export const currentUser = cache(async (): Promise<SessionUser | null> => {
   if (!authRequired()) {
     const owner = await ownerUser();
     if (!owner || !previewAllowed()) return owner;
-    const jar = await cookies();
+    // Outside a request (a script calling an action) there is no browser and
+    // so no role being previewed: plain owner.
+    let jar: Awaited<ReturnType<typeof cookies>>;
+    try { jar = await cookies(); } catch { return owner; }
     const as = jar.get(PREVIEW_ROLE_COOKIE)?.value;
     if (!as || !(ROLES as readonly string[]).includes(as)) return owner;
     // A branch id means "works at this branch only"; none means all branches.
@@ -67,11 +84,31 @@ export async function requireUser(): Promise<SessionUser> {
   return u;
 }
 
+/**
+ * Refuses any change while the provider's console has this shop read-only or
+ * suspended (0217). requirePermission calls it for every permission that is
+ * not a ".view"; an action that checks rights its own way (can() after
+ * requireUser) must call it too, or it writes straight past the block.
+ * Tagged, because a production build hides an error's message from the
+ * browser but passes its digest on: app/error.tsx reads the tag and says why.
+ */
+export async function assertShopWritable(): Promise<void> {
+  const [c] = await sql`select access_status from company order by created_at limit 1`;
+  if (c && (c.access_status === "read_only" || c.access_status === "suspended")) {
+    const e = new Error("This shop is read-only until its subscription is renewed. Contact your provider.") as Error & { digest?: string };
+    e.digest = "SHOP_READ_ONLY";
+    throw e;
+  }
+}
+
 export async function requirePermission(p: Permission): Promise<SessionUser> {
   const u = await requireUser();
   if (!can(u, p)) {
     throw new Error(`${ROLE_LABEL[u.role]} accounts cannot do this (${p}). Ask a manager.`);
   }
+  // A shop the provider has set to read-only or suspended may still look
+  // but not change anything (assertShopWritable).
+  if (!p.endsWith(".view")) await assertShopWritable();
   return u;
 }
 

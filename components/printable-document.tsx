@@ -4,6 +4,8 @@ export type PrintLine = {
   no: number;
   code?: string | null;
   name: string;
+  /** A second line under the name that wraps: IMEIs, a fault, a request. */
+  note?: string | null;
   qty?: number | null;
   uom?: string | null;
   unitPrice?: number | null;
@@ -118,6 +120,7 @@ export function PrintableDocument({ doc }: { doc: PrintableDoc }) {
                 <td>
                   {l.code && <span className="m sheet-code">{l.code}</span>}
                   {l.name}
+                  {l.note && <div className="sheet-line-note">{l.note}</div>}
                 </td>
                 <td className="c-num">{l.qty != null ? l.qty : ""}</td>
                 <td className="c-uom">{l.uom ?? ""}</td>

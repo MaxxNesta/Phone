@@ -53,7 +53,7 @@ try {
   const P = await import("../lib/posting.ts");
   const { physicalKey, repeats } = await import("../lib/variant-identity.ts");
 
-  let [loc, loc2] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 2`;
+  let [loc, loc2] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 2`;
   if (!loc2) {
     [loc2] = await sql`insert into location (company_id, code, name, is_stock_location)
                        values (${co.id}, 'OPT-WH2', 'Optional test stock', true) returning id`;

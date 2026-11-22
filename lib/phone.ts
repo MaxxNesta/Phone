@@ -36,10 +36,15 @@ const optionMatching = (re: string) => sql`
 const STORAGE_RE = "storage|capacity|rom|memory";
 const COLOUR_RE = "colou?r";
 
+// The till's price: the RETAIL level, or where a shop named its levels
+// otherwise (S1, S2…) the first one — the same rule the price guard and the
+// invoice default use (lib/actions.ts), so the till and the guard agree.
 const RETAIL_PRICE = sql`
   (select ip.price from item_price ip
      join price_level pl on pl.id = ip.price_level_id
-    where ip.item_id = i.id and pl.code = 'RETAIL' and ip.valid_from <= fn_shop_today()
+    where ip.item_id = i.id and ip.valid_from <= fn_shop_today()
+      and pl.id = (select l.id from price_level l where l.company_id = i.company_id
+                    order by (l.code = 'RETAIL') desc, l.sort_order, l.code limit 1)
     order by ip.valid_from desc limit 1)`;
 
 // ----------------------------------------------------------------- POS ----
@@ -49,12 +54,21 @@ export type SellableItem = {
   model: string; brand: string | null; variant: string | null;
   tracks_serial: boolean; on_hand: number; price: number | null; warranty_months: number | null;
   photo: string | null;
+  /** False for a service or charge (Error Fee): no stock, never out. */
+  is_stocked: boolean;
   /** Its type — iPhone, Mac, Accessories: the top category. */
   type: string | null;
   /** Its own category, which a quantity discount band can be scoped to. */
   item_group_id: string | null;
   /** Its options by attribute name — { Storage: "256 GB", Colour: "Black" }. */
   opts: Record<string, string> | null;
+  /** Part numbers, as typed and normalised (0213), for the till's search. */
+  parts: string[] | null;
+  /** Its stock unit and the packs it sells in (a can, a foot). Empty for a phone. */
+  base_uom_id: string; uom_code: string;
+  packs: { uomId: string; code: string; factor: number; price: number | null; barcode: string | null; whole: boolean }[];
+  /** The stock unit takes whole numbers only. */
+  whole: boolean;
 };
 
 export type ScannedUnit = {
@@ -84,7 +98,7 @@ async function sellable(companyId: string, locationId: string, term: string | nu
   const like = term ? `%${term}%` : null;
   return sql<SellableItem[]>`
     select i.id, i.code, i.name, i.barcode, coalesce(p.name, i.name) as model, i.item_group_id,
-           b.name as brand, ${VARIANT_LABEL} as variant, i.tracks_serial,
+           b.name as brand, ${VARIANT_LABEL} as variant, i.tracks_serial, i.is_stocked,
            fn_qty_on_hand(${companyId}, i.id, ${locationId})::float as on_hand,
            ${RETAIL_PRICE}::float as price, i.warranty_months,
            (select t.name from item_group g join item_group t on t.id = coalesce(g.parent_id, g.id)
@@ -94,6 +108,14 @@ async function sellable(companyId: string, locationId: string, term: string | nu
               join variant_option o on o.id = ivo.option_id
               join variant_attribute a on a.id = o.attribute_id
              where ivo.item_id = i.id) as opts,
+           (select array_agg(x) from item_part_number pn, unnest(array[pn.part_no, lower(pn.norm)]) x
+             where pn.item_id = i.id) as parts,
+           i.base_uom_id, (select u.code from uom u where u.id = i.base_uom_id) as uom_code,
+           coalesce((select json_agg(json_build_object('uomId', iu.uom_id, 'code', pu.code, 'factor', iu.factor::float,
+                                                      'price', iu.sale_price::float, 'barcode', iu.barcode, 'whole', pu.whole_numbers)
+                                     order by iu.standard, iu.factor desc)
+                       from v_item_pack iu join uom pu on pu.id = iu.uom_id where iu.item_id = i.id), '[]'::json) as packs,
+           (select bu.whole_numbers from uom bu where bu.id = i.base_uom_id) as whole,
            case when i.photo_updated_at is not null
                   then '/items/' || i.id || '/photo?v=' || to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS')
                 when p.photo_updated_at is not null
@@ -102,15 +124,20 @@ async function sellable(companyId: string, locationId: string, term: string | nu
       from item i
       left join item p on p.id = i.parent_item_id
       left join brand b on b.id = coalesce(p.brand_id, i.brand_id)
-     where i.company_id = ${companyId} and i.is_active and i.is_stocked
+     -- Services (not stocked) are sold here too: an Error Fee has no shelf.
+     where i.company_id = ${companyId} and i.is_active
        -- A product with variants is a heading, not something on a shelf.
        and not exists (select 1 from item c where c.parent_item_id = i.id)
        and (${like}::text is null
             or i.barcode = ${term}
+            or exists (select 1 from item_uom pb where pb.item_id = i.id and pb.barcode = ${term})
             or i.code ilike ${like} or i.name ilike ${like}
-            or p.name ilike ${like} or b.name ilike ${like})
+            or p.name ilike ${like} or b.name ilike ${like}
+            or exists (select 1 from item_part_number pn where pn.item_id = i.id
+                          and length(regexp_replace(${term}::text, '[^A-Za-z0-9]', '', 'g')) >= 3
+                          and pn.norm like '%' || upper(regexp_replace(${term}::text, '[^A-Za-z0-9]', '', 'g')) || '%'))
      order by (i.barcode = ${term}) desc nulls last,
-              fn_qty_on_hand(${companyId}, i.id, ${locationId}) > 0 desc,
+              (not i.is_stocked or fn_qty_on_hand(${companyId}, i.id, ${locationId}) > 0) desc,
               coalesce(p.name, i.name), i.name
      limit ${term ? SEARCH_LIMIT : SHELF_LIMIT}`;
 }
@@ -134,6 +161,8 @@ export async function unitsOnShelf(companyId: string, itemId: string, locationId
 export type PhoneStockFilter = {
   q?: string; locationId?: string; brand?: string; model?: string;
   storage?: string; colour?: string; status?: string; supplierId?: string;
+  /** New stock, or secondhand (bought back or traded in, 0209). */
+  condition?: "NEW" | "USED";
   /** The locations the reader may see (seenLocations); null for every one. */
   locs?: string[] | null;
 };
@@ -158,9 +187,10 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
            v.brand_name, ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour,
            v.location_id, v.location_name, br.name as branch_name,
            v.unit_cost::float as unit_cost, ${RETAIL_PRICE}::float as price,
-           v.status, v.received_date, (fn_shop_today() - v.received_date) as age_days,
+           -- In stock but in a quarantine bin (0218): defective, held apart, not for sale.
+           case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end as status, v.received_date, (fn_shop_today() - v.received_date) as age_days,
            v.supplier_name, v.customer_name, v.out_doc_no, v.out_date, v.warranty_expiry,
-           v.was_returned, v.was_transferred
+           v.was_returned, v.was_transferred, v.secondhand_grade
       from v_stock_serial v
       join item i on i.id = v.item_id
       left join item p on p.id = i.parent_item_id
@@ -176,9 +206,10 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
        and (${f.model ?? null}::text is null or v.model_name = ${f.model ?? null})
        and (${f.storage ?? null}::text is null or ${optionMatching(STORAGE_RE)} = ${f.storage ?? null})
        and (${f.colour ?? null}::text is null or ${optionMatching(COLOUR_RE)} = ${f.colour ?? null})
-       and (${f.status ?? null}::text is null or v.status = ${f.status ?? null})
+       and (${f.status ?? null}::text is null or case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end = ${f.status ?? null})
        and (${f.supplierId ?? null}::uuid is null or v.supplier_id = ${f.supplierId ?? null})
-     order by v.status = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date, v.imei
+       and (${f.condition ?? null}::text is null or (${f.condition ?? null} = 'USED') = (v.secondhand_grade is not null))
+     order by case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end = 'IN_STOCK' desc, v.model_name, v.item_name, v.received_date, v.imei
      limit ${size > 0 ? size : 500} offset ${offset}`;
   return Object.assign(rows, { total: rows.length ? Number((rows[0] as any).total_count) : 0 });
 }
@@ -195,9 +226,13 @@ export async function phoneStock(companyId: string, f: PhoneStockFilter & { page
 const phoneStockOverview = cache(async (companyId: string) => {
   const [r] = await sql`
     with v as materialized (
-      select brand_name, model_name, supplier_id, supplier_name, status,
-             received_date, out_date, unit_cost
-        from v_stock_serial where company_id = ${companyId}
+      -- Defective units in a quarantine bin (0218) are their own status here:
+      -- not "in stock" for selling, still stock for value.
+      select v.brand_name, v.model_name, v.supplier_id, v.supplier_name,
+             case when v.status = 'IN_STOCK' and loc.is_quarantine then 'QUARANTINE' else v.status end as status,
+             v.received_date, v.out_date, v.unit_cost, v.secondhand_grade is not null as used
+        from v_stock_serial v left join location loc on loc.id = v.location_id
+       where v.company_id = ${companyId}
     ), opt as (
       select ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour
         from item i where i.company_id = ${companyId} and i.tracks_serial
@@ -218,10 +253,13 @@ const phoneStockOverview = cache(async (companyId: string) => {
       (select count(*) filter (where status = 'SOLD') from v)::int as sold,
       (select count(*) filter (where status = 'RESERVED') from v)::int as reserved,
       (select count(*) filter (where status = 'REPAIR') from v)::int as repair,
+      (select count(*) filter (where status = 'QUARANTINE') from v)::int as quarantine,
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today())) from v)::int as sold_month,
       (select count(*) filter (where status = 'SOLD' and out_date >= date_trunc('month', fn_shop_today()) - interval '1 month'
                                  and out_date < date_trunc('month', fn_shop_today())) from v)::int as sold_last_month,
-      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR')), 0) from v)::float as value`;
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR', 'QUARANTINE')), 0) from v)::float as value,
+      (select count(*) filter (where status = 'IN_STOCK' and used) from v)::int as available_used,
+      (select coalesce(sum(unit_cost) filter (where status in ('IN_STOCK', 'RESERVED', 'REPAIR', 'QUARANTINE') and used), 0) from v)::float as value_used`;
   return r;
 });
 
@@ -236,11 +274,14 @@ export async function phoneStockFacets(companyId: string) {
 export async function serialDetail(companyId: string, serialId: string) {
   const [unit] = await sql`
     select v.*, ${optionMatching(STORAGE_RE)} as storage, ${optionMatching(COLOUR_RE)} as colour,
+           (select l.is_quarantine from location l where l.id = v.location_id) as in_quarantine,
            (v.received_date + make_interval(months => coalesce(v.supplier_warranty_months, 0)))::date
              as supplier_warranty_expiry
       from v_stock_serial v join item i on i.id = v.item_id
      where v.company_id = ${companyId} and v.serial_id = ${serialId}`;
   if (!unit) return null;
+  // Defective, held in a quarantine bin: its own status, as on the list (0218).
+  if (unit.status === "IN_STOCK" && unit.in_quarantine) unit.status = "QUARANTINE";
   const events = await sql`
     select e.event, e.created_at, e.note, d.id as document_id, d.doc_no, d.doc_type, d.status,
            d.partner_id, bp.name as partner_name,
@@ -261,18 +302,107 @@ export async function serialDetail(companyId: string, serialId: string) {
 
 /** Every handset a document touched: received, sold, returned or moved by it. */
 export async function serialsOnDocument(documentId: string) {
+  // The handsets a document is about, and which of its lines each belongs
+  // to (line_id), so a page can list each line's own IMEIs under it.
+  //
+  // Stock often moves on a different document from the one a person looks
+  // at: an invoice billed from a delivery, a bill matched to a receipt, a
+  // delivery made later for an invoice, a counter sale's own delivery. So
+  // the handsets are read from this document and from the ones its lines
+  // are tied to either way (a line that names one of these lines, or a line
+  // one of these names), plus any composed for it. Each unit is placed on
+  // the line that moved it if that line is this document's; otherwise on
+  // this document's line it answers, by those same ties. Null where nothing
+  // ties it, and the caller falls back to the item.
   return sql`
-    select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, i.code as item_code, e.event
-      from stock_serial_event e
-      join stock_serial s on s.id = e.serial_id
-      join item i on i.id = s.item_id
-     -- The invoice's own, and the delivery or goods receipt composed for it
-     -- (a counter sale's delivery is where the handsets were recorded leaving).
-     where e.document_id = any(array(
-             select ${documentId}::uuid
-             union all
-             select id from document where lifecycle_owner_id = ${documentId}))
-     order by s.id, e.created_at`;
+    with mine as (
+      select id, source_line_id from document_line where document_id = ${documentId}::uuid
+    ),
+    composed as (
+      select id from document where lifecycle_owner_id = ${documentId}::uuid
+    ),
+    -- A document composed for this one (a bill's own receipt, a counter
+    -- sale's delivery) is made from these lines in order and names none of
+    -- them: its n-th line of an item answers this one's n-th line of it.
+    composed_map as (
+      select c.id as composed_line, m.id as my_line
+        from (select dl.id, dl.item_id, row_number() over (partition by dl.document_id, dl.item_id order by dl.line_no) rn
+                from document_line dl where dl.document_id in (select id from composed)) c
+        join (select id, item_id, row_number() over (partition by item_id order by line_no) rn
+                from document_line where document_id = ${documentId}::uuid) m
+          on m.item_id = c.item_id and m.rn = c.rn
+    ),
+    related as (
+      select ${documentId}::uuid as id
+      union select id from composed
+      union select dl.document_id from document_line dl where dl.source_line_id in (select id from mine)
+      union select dl.document_id from document_line dl where dl.id in (select source_line_id from mine)
+    ),
+    moved as (
+      select distinct on (s.id) s.id as serial_id, s.serial_no as imei, s.imei2, s.device_serial, i.code as item_code,
+             i.identity, s.item_id, e.event, e.document_id,
+             -- The line that moved it: a receipt's through the layer its line
+             -- made, an issue's through the movement that took it.
+             (select sm.document_line_id from stock_movement sm
+               where sm.document_id = e.document_id
+                 and sm.id = coalesce(
+                       (select si.stock_movement_id from stock_serial_issue si
+                          join stock_movement m on m.id = si.stock_movement_id
+                         where si.serial_id = s.id and m.document_id = e.document_id
+                         limit 1),
+                       (select l.stock_movement_id from stock_lot l where l.id = e.lot_id))
+               limit 1) as moved_on
+        from stock_serial_event e
+        join stock_serial s on s.id = e.serial_id
+        join item i on i.id = s.item_id
+       where e.document_id in (select id from related)
+       order by s.id, (e.document_id = ${documentId}::uuid) desc, e.created_at
+    )
+    , placed as (
+      select m.*,
+             coalesce(
+               (select id from mine where id = m.moved_on),
+               (select dl.source_line_id from document_line dl
+                 where dl.id = m.moved_on and dl.source_line_id in (select id from mine)),
+               (select id from mine where source_line_id = m.moved_on limit 1),
+               (select my_line from composed_map where composed_line = m.moved_on)) as line_id
+        from moved m
+    )
+    -- A unit read off a document this one is only tied to (the receipt a
+    -- return names, say) belongs here only if it ties to one of these lines:
+    -- the receipt's other units are not this return's.
+    --
+    -- A document that moved handsets itself (a return, a write-off, a
+    -- delivery) lists only those: a write-off of one phone against a receipt
+    -- line of five is about that one, not the five the line received.
+    select serial_id, imei, imei2, device_serial, item_code, identity, item_id, event, line_id
+      from placed
+     where (line_id is not null
+        or document_id = ${documentId}::uuid
+        or document_id in (select id from composed))
+       and (document_id = ${documentId}::uuid
+        or document_id in (select id from composed)
+        or not exists (select 1 from stock_serial_event own where own.document_id = ${documentId}::uuid))`;
+}
+
+/**
+ * A document's handsets grouped under its lines (serialsOnDocument): each
+ * unit on the line it is tied to, else on the first line of its item; any
+ * whose item is not on the lines at all are returned apart.
+ */
+export function serialsByLine<T extends { line_id: string | null; item_id: string }>(
+  serials: T[], lines: { id: string; item_id: string | null }[],
+): { byLine: Map<string, T[]>; leftover: T[] } {
+  const ids = new Set(lines.map((l) => String(l.id)));
+  const byLine = new Map<string, T[]>();
+  const leftover: T[] = [];
+  for (const sr of serials) {
+    const own = sr.line_id && ids.has(String(sr.line_id)) ? String(sr.line_id)
+      : lines.find((l) => l.item_id === sr.item_id)?.id;
+    if (!own) { leftover.push(sr); continue; }
+    byLine.set(String(own), [...(byLine.get(String(own)) ?? []), sr]);
+  }
+  return { byLine, leftover };
 }
 
 /** IMEI, maker's serial, invoice number or customer name. */
@@ -347,8 +477,8 @@ export async function phoneSales(companyId: string, from: string, to: string,
       select d.id as doc_id, d.posting_date, d.partner_id, d.salesman_id, d.location_id,
              dl.item_id, s.serial_no,
              case when s.id is null then dl.base_qty else 1 end as qty,
-             case when s.id is null then dl.net_amount
-                  else dl.net_amount / nullif(dl.base_qty, 0) end as revenue,
+             case when s.id is null then coalesce(dl.revenue_amount, dl.net_amount)
+                  else coalesce(dl.revenue_amount, dl.net_amount) / nullif(dl.base_qty, 0) end as revenue,
              case when s.id is null
                   then coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                                   where a.invoice_line_id = dl.id), 0)
@@ -430,17 +560,20 @@ export async function phoneStockSummary(companyId: string, locs: string[] | null
 
 // ------------------------------------------------------------ dashboard ----
 
-export async function retailDashboard(companyId: string, locs: string[] | null = null) {
+export async function retailDashboard(companyId: string, locs: string[] | null = null, serials = true) {
   // Someone who sees only their own branch gets its figures only (seenLocations).
+  // col is one of three fixed column names, never input.
   const at = (col: "location_id" | "d.location_id" | "s.location_id") =>
-    locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``;
+    locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``; // nosemgrep: sql-unsafe-dynamic
   const range = (from: ReturnType<typeof sql>, to: ReturnType<typeof sql> = sql`fn_shop_today()`) =>
     saleRows(companyId, from, to, locs);
+  // What "sold" counts: phones where IMEI is on, every unit where it is off.
+  const sold = serials ? sql`r.phones` : sql`r.units`;
   const [[today], [yesterday], [month], [stock], [ar], [aged], low, week, topModels, aging, recent, ending, bad] =
     await Promise.all([
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost,
-                 coalesce(sum(r.phones), 0)::int as phones from (${range(sql`fn_shop_today()`)}) r`,
-      sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.phones), 0)::int as phones
+                 coalesce(sum(${sold}), 0)::int as phones from (${range(sql`fn_shop_today()`)}) r`,
+      sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(${sold}), 0)::int as phones
             from (${range(sql`fn_shop_today() - 1`, sql`fn_shop_today() - 1`)}) r`,
       sql`select coalesce(sum(r.revenue), 0)::float as revenue, coalesce(sum(r.cost), 0)::float as cost
             from (${range(sql`date_trunc('month', fn_shop_today())::date`)}) r`,
@@ -450,19 +583,26 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
             from v_open_item where company_id = ${companyId} and doc_type = 'SALES_INVOICE'
              and outstanding > 0.005
              ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}`,
-      sql`select count(*)::int as n from v_stock_serial
-           where company_id = ${companyId} and status = 'IN_STOCK' and received_date < fn_shop_today() - 90
-             ${at("location_id")}`,
+      // Aged stock: phones by unit where IMEI is on; otherwise the quantity
+      // still sitting in FIFO lots received over 90 days ago (any product).
+      serials
+        ? sql`select count(*)::int as n from v_stock_serial
+               where company_id = ${companyId} and status = 'IN_STOCK' and received_date < fn_shop_today() - 90
+                 ${at("location_id")}`
+        : sql`select coalesce(sum(qty_remaining), 0)::int as n from v_stock_lot_open
+               where company_id = ${companyId} and qty_remaining > 0
+                 and (received_date at time zone 'Asia/Yangon')::date < fn_shop_today() - 90
+                 ${at("location_id")}`,
       // At or under the reorder point: the Stock page's list, worst first.
       lowStockToday(companyId).then((r) => r.rows.slice(0, 5)),
       sql`select to_char(d, 'YYYY-MM-DD') as day, to_char(d, 'Dy') as label,
                  coalesce((select sum(r.revenue) from (${range(sql`fn_shop_today() - 6`)}) r
                             where r.posting_date = d), 0)::float as revenue
             from generate_series(fn_shop_today() - 6, fn_shop_today(), interval '1 day') d order by d`,
-      sql`select coalesce(p.name, i.name) as model, sum(r.phones)::int as sold, sum(r.revenue)::float as revenue
+      sql`select coalesce(p.name, i.name) as model, sum(${sold})::int as sold, sum(r.revenue)::float as revenue
             from (${range(sql`fn_shop_today() - 30`)}) r
             join item i on i.id = r.item_id left join item p on p.id = i.parent_item_id
-           where i.tracks_serial group by 1 order by 2 desc, 3 desc limit 5`,
+           where (i.tracks_serial or not ${serials}) group by 1 having sum(${sold}) > 0 order by 2 desc, 3 desc limit 5`,
       sql`select case when fn_shop_today() - received_date <= 30 then '0–30 days'
                       when fn_shop_today() - received_date <= 60 then '31–60 days'
                       when fn_shop_today() - received_date <= 90 then '61–90 days'
@@ -502,10 +642,11 @@ export async function retailDashboard(companyId: string, locs: string[] | null =
 function saleRows(companyId: string, from: ReturnType<typeof sql>, to: ReturnType<typeof sql>,
                   locs: string[] | null = null) {
   return sql`
-    select d.posting_date, dl.item_id, dl.net_amount as revenue,
+    select d.posting_date, dl.item_id, coalesce(dl.revenue_amount, dl.net_amount) as revenue,
            coalesce((select sum(a.qty * a.unit_cost) from sales_cost_allocation a
                       where a.invoice_line_id = dl.id), 0) as cost,
-           case when i.tracks_serial then dl.base_qty else 0 end as phones
+           case when i.tracks_serial then dl.base_qty else 0 end as phones,
+           dl.base_qty as units
       from document d
       join document_line dl on dl.document_id = d.id
       join item i on i.id = dl.item_id
@@ -519,8 +660,10 @@ export async function serialKpis(companyId: string) {
   const r = await phoneStockOverview(companyId);
   return { available: r.available as number, received_week: r.received_week as number,
            total: r.total as number, sold: r.sold as number,
-           reserved: r.reserved as number, repair: r.repair as number, sold_month: r.sold_month as number,
-           sold_last_month: r.sold_last_month as number, value: r.value as number };
+           reserved: r.reserved as number, repair: r.repair as number, quarantine: r.quarantine as number, sold_month: r.sold_month as number,
+           sold_last_month: r.sold_last_month as number, value: r.value as number,
+           // New and secondhand on the shelf, counted and valued apart (0211).
+           available_used: r.available_used as number, value_used: r.value_used as number };
 }
 
 /**
@@ -555,20 +698,22 @@ export async function inventorySummary(companyId: string, f: {
      ${locs ? sql`and id = any(${locs})` : sql``} order by code`;
   const rows = await sql`
     with qty as (
-      select item_id, location_id, qty_on_hand::float as qty, value_on_hand::float as value
+      select item_id, location_id, qty_on_hand::float as qty, value_on_hand::float as value, is_quarantine
         from v_stock_on_hand where company_id = ${companyId}
          and (${f.locationId ?? null}::uuid is null or location_id = ${f.locationId ?? null})
          ${locs ? sql`and location_id = any(${locs})` : sql``}
     ),
     per as (
+      -- Defective units in a quarantine bin (0218): stock, not available.
       select item_id, sum(qty) as qty, sum(value) as value,
+             coalesce(sum(qty) filter (where is_quarantine), 0) as quarantine,
              jsonb_object_agg(location_id, qty) as by_loc
         from qty group by item_id
     )
     select i.id, i.code, i.name, coalesce(p.id, i.id) as model_id, coalesce(p.name, i.name) as model, ${VARIANT_LABEL} as variant,
            vp.canonical_item_id, coalesce(vp.members, 1)::int as members,
            g.name as category, coalesce(gp.name, g.name) as top_category, b.name as brand, i.tracks_serial, i.identity,
-           coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, per.by_loc,
+           coalesce(per.qty, 0) as qty, coalesce(per.value, 0) as value, coalesce(per.quarantine, 0)::float as quarantine, per.by_loc,
            -- company_id first so stock_serial(company_id, item_id) is used per row.
            (select count(*)::int from stock_serial_hold h join stock_serial s on s.id = h.serial_id
              where s.company_id = i.company_id and s.item_id = i.id and h.released_at is null) as reserved,
@@ -607,7 +752,7 @@ export async function inventorySummary(companyId: string, f: {
      dashboard and Replenishment use — read once per request (lowStockToday). */
   const { byCode } = await lowStockToday(companyId);
   const withStatus = merged.map((r: any) => {
-    const available = Number(r.qty) - Number(r.reserved);
+    const available = Number(r.qty) - Number(r.reserved) - Number(r.quarantine ?? 0);
     const flagged = (r.codes as string[]).filter((c) => byCode.has(c));
     const reorderAt = flagged.length ? flagged.reduce((t, c) => t + (byCode.get(c) ?? 0), 0) : null;
     return { ...r, available, reorder_at: reorderAt,
@@ -755,7 +900,10 @@ export async function recentMovements(companyId: string, limit = 8, locs: string
  */
 export async function serialJourney(companyId: string, serialId: string) {
   const [unit] = await sql`
-    select v.serial_id, v.item_id, v.imei, v.imei2, v.device_serial, v.status, v.was_returned, v.hold_kind,
+    select v.serial_id, v.item_id, v.imei, v.imei2, v.device_serial, v.was_returned, v.hold_kind,
+           -- Defective, held in a quarantine bin: its own status, as on the list (0218).
+           case when v.status = 'IN_STOCK' and (select l.is_quarantine from location l where l.id = v.location_id)
+                then 'QUARANTINE' else v.status end as status,
            v.item_name, v.model_name, v.brand_name, v.location_id, v.location_name, v.notes,
            v.supplier_id, v.supplier_name, v.received_document_id, v.received_on, v.received_date,
            v.supplier_warranty_months,

@@ -6,6 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { requirePermission, can } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
 import { purchasesOverview } from "@/lib/overviews";
+import { serialTrackingOn } from "@/lib/features";
 import { money } from "@/lib/format";
 import { KpiCard } from "@/components/kpi-card";
 
@@ -21,7 +22,8 @@ export default async function PurchasesOverview() {
   const t = await getTranslations("overview");
   const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
   const see = { payables: can(user, "accounting.view"), stock: can(user, "inventory.view") };
-  const d = await purchasesOverview(user.companyId, await seenLocations(), see);
+  const serials = serialTrackingOn(await getCompany());
+  const d = await purchasesOverview(user.companyId, await seenLocations(), see, serials);
   const day = (s: string, o: Intl.DateTimeFormatOptions) => new Date(`${s}T00:00:00Z`).toLocaleDateString(dateLocale, { ...o, timeZone: "UTC" });
   const p = d.payables;
   const company = await getCompany();
@@ -110,7 +112,7 @@ export default async function PurchasesOverview() {
             <div className="card">
               <div className="card-head"><h2>{t("lowStock")}</h2><Link href={lowHref}>{t("viewAll")}</Link></div>
               <div className="card-body">
-                <p className="page-sub ov-sub">{t("lowStockSub")}</p>
+                <p className="page-sub ov-sub">{t(serials ? "lowStockSub" : "lowStockSubAny")}</p>
                 {d.low.length === 0 && <p className="page-sub">{t("nothingLow")}</p>}
                 {d.low.map((l) => (
                   <div className="listrow" key={l.name}>

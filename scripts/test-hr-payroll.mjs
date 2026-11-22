@@ -67,7 +67,7 @@ try {
       const [a] = await tx`select id, is_control from account where company_id = ${co.id} and code = ${code} and is_postable`;
       assert.ok(a && !a.is_control, `account ${code}`); return a.id;
     };
-    const [advA, payA, salA, taxA] = [await acct("17101"), await acct("21108"), await acct("61252"), await acct("21109")];
+    const [advA, payA, salA, taxA] = [await acct("1910"), await acct("2120"), await acct("6110"), await acct("2130")];
     const [cash] = await tx`select id from account where company_id = ${co.id} and is_cash_account and is_postable and is_active order by code limit 1`;
     const [branch] = await tx`select id from location where company_id = ${co.id} and parent_id is null and is_active order by code limit 1`;
     await tx`insert into hr_setting (company_id, advance_account_id, payable_account_id, basic_account_id, allowance_account_id,

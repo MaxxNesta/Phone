@@ -53,7 +53,7 @@ const n = (v) => Number(v ?? 0);
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and not tracks_serial and is_active
        -- A product with variants is a name for a group and cannot be
@@ -216,6 +216,96 @@ try {
   await P.reopenOrder({ companyId: co.id, documentId: po2.id, reason: "supplier will ship after all" });
   check("re-opening puts it back", n((await state(po2.id)).outstanding) === 100,
     `${n((await state(po2.id)).outstanding)}`);
+
+  // ---- 4. one shipment cannot close two orders ----------------------------
+  //
+  // A receipt raised from one order already counts in full against it. The
+  // link check counted only links made afterwards, so it offered that receipt
+  // as entirely free, and the same six units closed a second order too.
+
+  console.log("\n  goods already answering one order cannot be given to a second\n");
+  const refusedWith = async (fn) => { try { await fn(); return null; } catch (e) { return e.message; } };
+  const lineOf = async (docId) => (await sql`select id from document_line where document_id = ${docId} order by line_no`)[0].id;
+  const left = async (orderId) => n((await state(orderId)).outstanding);
+  const order10 = () => P.postPurchaseOrder({ ...base, dueDate: past, lines: [{ itemId: item.id, qty: 10, unitPrice: 50 }] });
+
+  const poA = await order10(), poB = await order10();
+  const grA = await P.postGoodsReceipt({ ...base, sourceDocumentId: poA.id,
+    lines: [{ itemId: item.id, qty: 6, unitCost: 50, sourceLineId: await lineOf(poA.id) }] });
+  const grAL = await lineOf(grA.id);
+  const fromOther = await refusedWith(async () => P.linkFulfilmentToOrder({ companyId: co.id,
+    lines: [{ fulfilmentLineId: grAL, orderLineId: await lineOf(poB.id), qty: 4 }] }));
+  check("a receipt raised from one order is refused for a second", !!fromOther, fromOther ?? "ACCEPTED — six units closed two orders");
+  check("  the second order still expects all ten", (await left(poB.id)) === 10, `${await left(poB.id)}`);
+  check("  the first keeps its six", (await left(poA.id)) === 4, `${await left(poA.id)} outstanding`);
+  check("  and it is not offered to the second",
+    !(await Q.getLinkableFulfilments(co.id, poB.id)).candidates.some((c) => c.lineId === grAL));
+
+  // A receipt posted on its own links as before — up to what it holds.
+  const loose = await P.postGoodsReceipt({ ...base, lines: [{ itemId: item.id, qty: 6, unitCost: 50 }] });
+  const looseL = await lineOf(loose.id);
+  await P.linkFulfilmentToOrder({ companyId: co.id, lines: [{ fulfilmentLineId: looseL, orderLineId: await lineOf(poB.id), qty: 4 }] });
+  check("a receipt posted on its own still links", (await left(poB.id)) === 6, `${await left(poB.id)}`);
+  const over = await refusedWith(async () => P.linkFulfilmentToOrder({ companyId: co.id,
+    lines: [{ fulfilmentLineId: looseL, orderLineId: await lineOf(poA.id), qty: 4 }] }));
+  check("  but only what it has left — 2 of its 6", !!over, over ?? "ACCEPTED 4");
+  await P.linkFulfilmentToOrder({ companyId: co.id, lines: [{ fulfilmentLineId: looseL, orderLineId: await lineOf(poA.id), qty: 2 }] });
+  check("  and those 2 can answer another order", (await left(poA.id)) === 2, `${await left(poA.id)}`);
+  check("  after which it is offered nowhere",
+    !(await Q.getLinkableFulfilments(co.id, poA.id)).candidates.some((c) => c.lineId === looseL));
+
+  // Received more than was ordered: the order takes what it asked for, and
+  // only the rest is free.
+  const po6 = await P.postPurchaseOrder({ ...base, dueDate: past, lines: [{ itemId: item.id, qty: 6, unitPrice: 50 }] });
+  const big = await P.postGoodsReceipt({ ...base, sourceDocumentId: po6.id,
+    lines: [{ itemId: item.id, qty: 10, unitCost: 50, sourceLineId: await lineOf(po6.id) }] });
+  const bigL = await lineOf(big.id);
+  const poE = await order10();
+  const five = await refusedWith(async () => P.linkFulfilmentToOrder({ companyId: co.id,
+    lines: [{ fulfilmentLineId: bigL, orderLineId: await lineOf(poE.id), qty: 5 }] }));
+  check("10 received on an order for 6: 5 more is refused", !!five, five ?? "ACCEPTED 5");
+  await P.linkFulfilmentToOrder({ companyId: co.id, lines: [{ fulfilmentLineId: bigL, orderLineId: await lineOf(poE.id), qty: 4 }] });
+  check("  the 4 over can answer another order", (await left(poE.id)) === 6, `${await left(poE.id)}`);
+  check("  and the first order is still filled", (await left(po6.id)) === 0, `${await left(po6.id)}`);
+
+  // Sales, the same rule.
+  const [cust] = await sql`select id from business_partner where company_id = ${co.id} and is_customer order by code limit 1`;
+  const sbase = { ...base, partnerId: cust.id };
+  const so5 = () => P.postSalesOrder({ ...sbase, dueDate: past, lines: [{ itemId: item.id, qty: 5, unitPrice: 90 }] });
+  const soA = await so5(), soB = await so5();
+  const delA = await P.postDelivery({ ...sbase, sourceDocumentId: soA.id,
+    lines: [{ itemId: item.id, qty: 3, sourceLineId: await lineOf(soA.id) }] });
+  const delTwice = await refusedWith(async () => P.linkFulfilmentToOrder({ companyId: co.id,
+    lines: [{ fulfilmentLineId: await lineOf(delA.id), orderLineId: await lineOf(soB.id), qty: 2 }] }));
+  check("a delivery raised from one sales order is refused for a second", !!delTwice, delTwice ?? "ACCEPTED");
+  check("  the second sales order still expects all five", (await left(soB.id)) === 5, `${await left(soB.id)}`);
+
+  // Two people at once, each giving the last five units to a different order.
+  //
+  // Made to overlap on purpose rather than hoped to: a transaction here holds
+  // every insert into fulfilment_link while both links run. Each reads what
+  // the line has free and then waits at its insert — so without a lock on the
+  // line itself both read "5 free" and both take it the moment the hold
+  // lifts. With the lock, the second waits on the line instead, reads 0 once
+  // the first commits, and is refused with the ordinary message.
+  const poC = await order10(), poD = await order10();
+  const last = await P.postGoodsReceipt({ ...base, lines: [{ itemId: item.id, qty: 5, unitCost: 50 }] });
+  const lastL = await lineOf(last.id);
+  const targets = [await lineOf(poC.id), await lineOf(poD.id)];
+  let racing;
+  await sql.begin(async (tx) => {
+    await tx`lock table fulfilment_link in share row exclusive mode`;
+    racing = Promise.allSettled(targets.map((orderLineId) => P.linkFulfilmentToOrder({ companyId: co.id,
+      lines: [{ fulfilmentLineId: lastL, orderLineId, qty: 5 }] })));
+    await new Promise((r) => setTimeout(r, 1500));   // both are inside, waiting
+  });
+  const race = await racing;
+  const won = race.filter((r) => r.status === "fulfilled").length;
+  const lost = race.find((r) => r.status === "rejected")?.reason?.message ?? "";
+  const [given] = await sql`select coalesce(sum(qty), 0)::float as v from fulfilment_link where fulfilment_line_id = ${lastL}`;
+  check("two links fired together for the same five: one wins", won === 1, `${won} succeeded`);
+  check("  the other is refused cleanly, not deadlocked", /not already allocated/.test(lost), lost.slice(0, 90) || "nothing refused");
+  check("  and five were given, not ten", n(given.v) === 5, `${n(given.v)}`);
 
   // ---- the books are untouched by any of it -------------------------------
 

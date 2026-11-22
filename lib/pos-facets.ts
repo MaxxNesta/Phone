@@ -14,6 +14,10 @@ export type FacetItem = {
   id: string; type: string | null; model: string; variant: string | null; brand: string | null;
   code: string; barcode: string | null; on_hand: number; price: number | null;
   opts: Record<string, string> | null;
+  /** False for a service or charge: it has no stock and is always available. */
+  is_stocked?: boolean;
+  /** Part numbers it is asked for by, as typed and without dashes (0213). */
+  parts?: string[] | null;
 };
 
 export type Selection = {
@@ -46,7 +50,7 @@ export function matchesText(i: FacetItem, q: string): boolean {
   const words = q.toLowerCase().split(/[\s,]+/).filter(Boolean);
   if (words.length === 0) return true;
   const hay = squash([i.model, i.variant ?? "", i.brand ?? "", i.code, i.barcode ?? "",
-    ...Object.values(i.opts ?? {})].join(" "));
+    ...Object.values(i.opts ?? {}), ...(i.parts ?? [])].join(" "));
   return words.every((w) => hay.includes(squash(w)));
 }
 
@@ -55,8 +59,9 @@ type Skip = { models?: boolean; attr?: string; type?: boolean };
 /** Whether an item passes every filter, except those named in `skip`. */
 export function passes(i: FacetItem, s: Selection, skip: Skip = {}): boolean {
   if (!skip.type && s.type && i.type !== s.type) return false;
-  if (s.inStockOnly && i.on_hand <= 0) return false;
-  if (s.lowOnly && !(i.on_hand > 0 && i.on_hand <= LOW_STOCK)) return false;
+  // A service is always available: "in stock only" keeps it; "low stock" never lists it.
+  if (s.inStockOnly && i.is_stocked !== false && i.on_hand <= 0) return false;
+  if (s.lowOnly && !(i.is_stocked !== false && i.on_hand > 0 && i.on_hand <= LOW_STOCK)) return false;
   if (!matchesText(i, s.q)) return false;
   if (!skip.models && s.models.length > 0 && !s.models.includes(i.model)) return false;
   for (const [attr, chosen] of Object.entries(s.opts)) {
@@ -178,7 +183,9 @@ export function toggleValue(s: Selection, attr: string | "model", value: string)
 export const clearFilters = (s: Selection): Selection => ({ ...s, models: [], opts: {}, lowOnly: false });
 
 /** A card's state for the grid: how it is drawn and whether it can be added. */
-export function cardState(i: Pick<FacetItem, "on_hand" | "price">): "out" | "low" | "ok" {
+export function cardState(i: Pick<FacetItem, "on_hand" | "price" | "is_stocked">): "out" | "low" | "ok" | "service" {
+  // A service or charge has no stock to run out of.
+  if (i.is_stocked === false) return "service";
   return i.on_hand <= 0 ? "out" : i.on_hand <= LOW_STOCK ? "low" : "ok";
 }
 

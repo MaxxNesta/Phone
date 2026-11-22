@@ -30,7 +30,7 @@ try {
        where i.company_id = ${co.id} and i.is_stocked and not i.tracks_serial and not i.tracks_batch and s.qty_on_hand >= 20
        order by s.qty_on_hand desc limit 1`;
     const acct = async (code) => (await tx`select id from account where company_id = ${co.id} and code = ${code}`)[0].id;
-    const BND = await acct("21303"), GSNI = await acct("14303");
+    const BND = await acct("2230"), GSNI = await acct("1420");
     const [rev] = await tx`select fn_resolve_account_for_item(${co.id}, 'REVENUE', ${item.id}) as a`;
     const sum = async (docIds, accountId) => Number((await tx`
       select coalesce(sum(jl.base_amount), 0) as s from journal_line jl join journal_entry je on je.id = jl.journal_entry_id

@@ -3,12 +3,14 @@
 import { useActionState, useState } from "react";
 import type { ActionResult } from "@/lib/actions";
 import { ConfirmDelete } from "./confirm-delete";
+import { UnitRules } from "./unit-rules";
 import { useTranslations } from "next-intl";
 import { useNotice } from "@/components/toast";
 
 type Unit = {
   id: string; code: string; name: string; name_my: string | null;
   is_active: boolean; items?: number;
+  ref_uom_id?: string | null; ref_qty?: number | null; ref_code?: string | null; whole_numbers?: boolean;
 };
 
 export function UnitRow({
@@ -17,7 +19,10 @@ export function UnitRow({
   deleteAction,
   deactivateAction,
   activateAction,
+  rulesFrom,
 }: {
+  /** A spare-parts shop: every unit, for the Equals and Whole rules (0214). */
+  rulesFrom?: Unit[];
   unit: Unit;
   updateAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
   deleteAction: (prev: unknown, fd: FormData) => Promise<ActionResult>;
@@ -53,7 +58,7 @@ export function UnitRow({
   if (editing) {
     return (
       <tr>
-        <td colSpan={5}>
+        <td colSpan={rulesFrom ? 7 : 5}>
           <form action={formAction} className="form" style={{ padding: "0.5rem 0" }}>
             {state && "error" in state && <div className="alert">{state.error}</div>}
             <input type="hidden" name="id" value={unit.id} />
@@ -71,6 +76,7 @@ export function UnitRow({
                 <input name="name_my" type="text" defaultValue={unit.name_my ?? ""} />
               </div>
             </div>
+            {rulesFrom && <UnitRules units={rulesFrom} self={unit} refId={unit.ref_uom_id} refQty={unit.ref_qty} whole={unit.whole_numbers} />}
             {inUse && (
               <div className="hint" style={{ marginTop: "0.4rem" }}>
                 {unit.items} item{unit.items === 1 ? "" : "s"} count in this unit. Renaming it
@@ -95,9 +101,11 @@ export function UnitRow({
     <tr>
       <td className="code">{unit.code}</td>
       <td className="wrap">
-        {unit.name}
-        {unit.name_my && <div className="subline">{unit.name_my}</div>}
+        {/* Myanmar first, English after (lib/uom-labels.ts). */}
+        {unit.name_my ? <>{unit.name_my}<div className="subline">{unit.name}</div></> : unit.name}
       </td>
+      {rulesFrom && <td className="r">{unit.ref_code ? `${Number(unit.ref_qty)} ${unit.ref_code}` : ""}</td>}
+      {rulesFrom && <td>{unit.whole_numbers ? <span className="pill neutral">Whole</span> : ""}</td>}
       <td className="r">{unit.items || ""}</td>
       <td>{unit.is_active ? <span className="pill ok">{pt("activeLower")}</span> : <span className="pill warn">{pt("inactiveLower")}</span>}</td>
       <td>

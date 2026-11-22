@@ -1,4 +1,5 @@
 "use client";
+import { StatusBanner } from "@/components/status-banner";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
@@ -14,7 +15,7 @@ import { useNotice } from "@/components/toast";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
-type Location = { id: string; code: string; name: string };
+type Location = { id: string; code: string; name: string; is_quarantine?: boolean };
 type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
 type Line = { key: number; itemId: string; qty: string; serials?: ScannedSerial[]; withSerials?: boolean };
 
@@ -123,6 +124,10 @@ export function StockTransferForm({
     && (l.serials?.length ?? 0) !== Number(l.qty));
 
   const sameLocation = fromLocationId && toLocationId && fromLocationId === toLocationId;
+  // Quarantine at either end is a statement — released after a check, or
+  // held because something is wrong — so the description becomes its reason.
+  const releasing = !!locations.find((l) => l.id === fromLocationId)?.is_quarantine;
+  const holding = !!destinations.find((l) => l.id === toLocationId)?.is_quarantine;
 
   const [negativeConfirmed, setNegativeConfirmed] = useState(false);
   // The engine requires a reason alongside the confirmation. Confirming
@@ -182,6 +187,11 @@ export function StockTransferForm({
           </div>
 
           {sameLocation && <div className="alert" style={{ marginTop: "0.75rem" }}>{t("tr.twoDifferent")}</div>}
+          {!sameLocation && (releasing || holding) && (
+            <StatusBanner tone={releasing ? "info" : "warn"} className="mt-banner"
+              title={releasing ? t("tr.releaseTitle") : t("tr.intoQuarantineTitle")}
+              description={releasing ? t("tr.releaseHint") : t("tr.intoQuarantineHint")} />
+          )}
         </div>
       </div>
 
@@ -315,7 +325,8 @@ export function StockTransferForm({
 
       <div className="field">
         <label htmlFor="memo">{c("note")}</label>
-        <textarea id="memo" name="memo" rows={2} placeholder={t("tr.notePlaceholder")} />
+        <textarea id="memo" name="memo" rows={2} required={releasing || holding}
+          placeholder={releasing ? t("tr.releaseHint") : holding ? t("tr.intoQuarantineHint") : t("tr.notePlaceholder")} />
       </div>
 
       <div className="actions">

@@ -82,7 +82,7 @@ export const SEATS: { key: Seat; name: string; roles: string[] | null }[] = [
 /** Module seats, in order. */
 export const MODULE_SEATS = ["sales", "purchases", "inventory", "accounting"] as const;
 /** Add-ons a module seat still sees: they live inside its module's menu. */
-const SEAT_ADDONS: Record<string, Module[]> = { purchases: ["landed_cost"], accounting: ["equity", "fixed_assets"] };
+const SEAT_ADDONS: Record<string, Module[]> = { purchases: ["landed_cost"], accounting: ["equity", "fixed_assets", "management"] };
 export const seatAllows = (seat: Seat, role: string) => {
   const s = SEATS.find((x) => x.key === seat);
   return !!s && (s.roles === null || s.roles.includes(role));
@@ -96,7 +96,7 @@ export const capPlan = (seat: Plan | null | undefined, company: Plan): Plan =>
   seat && planRank(seat) < planRank(company) ? seat : company;
 
 /** Add-ons that need Standard or Advanced underneath (2026-11-14). */
-export const STANDARD_UP_ADDONS: Module[] = ["fixed_assets", "landed_cost"];
+export const STANDARD_UP_ADDONS: Module[] = ["fixed_assets", "landed_cost", "management"];
 export const addonAllowed = (plan: Plan, m: Module) => !STANDARD_UP_ADDONS.includes(m) || plan !== "STARTER";
 
 /**
@@ -169,7 +169,7 @@ const FEATURES: Record<Feature, Plan[]> = {
  * package. Dashboard, products, partners, documents and settings come with
  * every purchase. Counter Sale is part of Sales.
  */
-export type Module = "sales" | "purchases" | "inventory" | "landed_cost" | "accounting" | "fixed_assets" | "hr" | "equity" | "logistics";
+export type Module = "sales" | "purchases" | "inventory" | "landed_cost" | "accounting" | "fixed_assets" | "hr" | "equity" | "logistics" | "management";
 
 /**
  * Every package includes the core: selling, buying, stock and the books.
@@ -187,8 +187,8 @@ export const MODULES: { key: Module; name: string; covers: string }[] = [
   { key: "accounting", name: "Accounting", covers: "Cash and bank, journals, ledger, financial reports" },
   { key: "fixed_assets", name: "Fixed Assets", covers: "Asset register, depreciation" },
   { key: "hr", name: "HR & Payroll", covers: "Employees, advances, payroll, payslips" },
-  { key: "equity", name: "Equity", covers: "Shareholders, capital, share transfers" },
   { key: "logistics", name: "Logistics", covers: "Routes, delivery trips, vehicles, drivers" },
+  { key: "management", name: "Management Reports", covers: "Executive dashboard: profit, cash, working capital and branches at a glance" },
 ];
 
 /**
@@ -204,6 +204,8 @@ export function hasModule(company: { modules?: string[] | null; plan?: Plan; sea
     if (!SEAT_ADDONS[seat]?.includes(m)) return false;
   }
   if (isCore(m)) return true;
+  // Equity is part of Standard and Advanced (2026-11-22), not an add-on.
+  if (m === "equity") return !company?.plan || company.plan !== "STARTER";
   if (company?.plan && !addonAllowed(company.plan, m)) return false;
   return !company?.modules || company.modules.includes(m);
 }
@@ -230,6 +232,7 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; note?: st
     { label: "Inventory aging", in: FEATURES.inventory_aging },
     { label: "Inventory turnover, days of stock and stock cover", in: FEATURES.inventory_analysis },
     { label: "Dashboard accounting health and breakdowns", in: FEATURES.dashboard_advanced },
+    { label: "Equity: shareholders, capital and the statement of changes in equity", in: ["BUSINESS", "ENTERPRISE"] },
   ] },
   { group: "Advanced", lines: [
     { label: "Replenishment planning", in: FEATURES.replenishment },

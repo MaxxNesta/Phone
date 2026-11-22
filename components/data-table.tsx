@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { csvCell } from "@/lib/csv";
 import { useRouter } from "next/navigation";
 import { Columns3, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, X } from "lucide-react";
 import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
@@ -102,6 +103,8 @@ export function DataTable({
   server?: {
     total: number; page: number; pageSize: number; q: string;
     sort: { key: string; dir: "asc" | "desc" } | null; filters: Record<string, string>;
+    /** The date window in force, read back from dp, dfrom and dto. */
+    dates?: DateRange;
   };
   /** Controls of the page's own, placed in this table's bar: after the search
    *  (a warehouse, a scope) and at its far end (a view switch). */
@@ -180,7 +183,7 @@ export function DataTable({
     startNav(() => router.replace(`${window.location.pathname}${qs ? `?${qs}` : ""}`, { scroll: false }));
   };
   const [moreOpen, setMoreOpen] = useState(false);
-  const [dates, setDates] = useState<DateRange>(ANY_DATE);
+  const [dates, setDates] = useState<DateRange>(server?.dates ?? ANY_DATE);
   const hasDates = useMemo(
     () => rows.some((r) => typeof r.sort?.[dateKey] === "number" && (r.sort[dateKey] as number) > 0),
     [rows, dateKey]);
@@ -296,10 +299,7 @@ export function DataTable({
    * see".
    */
   function exportCsv() {
-    const quote = (v: string | number | null | undefined) => {
-      const t = v === null || v === undefined ? "" : String(v);
-      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
+    const quote = csvCell;
     const fields = [
       ...visibleColumns.filter((c) => c.label.trim() !== ""),
       ...csvExtra,
@@ -411,7 +411,9 @@ export function DataTable({
           </div>
         )}
 
-        {hasDates && <DateFilter value={dates} onChange={setDates} />}
+        {hasDates && <DateFilter value={dates} onChange={server
+          ? (d) => { setDates(d); nav({ dp: d.preset || null, dfrom: d.from || null, dto: d.to || null }); }
+          : setDates} />}
 
         <span className="dt-spacer" />
         {toolbarEnd}
@@ -479,7 +481,7 @@ export function DataTable({
       )}
 
       <div className="tablewrap">
-        <table className={[tableClassName, scope].filter(Boolean).join(" ")} style={navigating ? { opacity: 0.55 } : undefined} aria-busy={navigating || undefined}>
+        <table className={[tableClassName, scope].filter(Boolean).join(" ")} style={navigating && !server ? { opacity: 0.55 } : undefined} aria-busy={navigating || undefined}>
           <thead>
             <tr>
               {columns.map((c) => (
@@ -499,10 +501,19 @@ export function DataTable({
             </tr>
           </thead>
           <tbody>
-            {shown.map((r) => (
-              <Fragment key={r.key}>{r.node}</Fragment>
-            ))}
-            {sorted.length === 0 && (
+            {/* Server mode, while the next page is on its way: rows in the
+                table's own columns, so nothing jumps when it lands. One cell
+                per column, as the column-hiding rule counts them. */}
+            {navigating && server
+              ? Array.from({ length: Math.max(3, Math.min(shown.length || pageSize, pageSize)) }, (_, i) => (
+                  <tr key={`skel-${i}`} className="dt-skel" aria-hidden="true">
+                    {columns.map((c) => <td key={c.key}><span className="skel skel-row" /></td>)}
+                  </tr>
+                ))
+              : shown.map((r) => (
+                  <Fragment key={r.key}>{r.node}</Fragment>
+                ))}
+            {!navigating && sorted.length === 0 && (
               <tr>
                 <td colSpan={visibleColumns.length} className="empty">
                   {q ? dt("noMatches") : emptyLabel ?? dt("empty")}

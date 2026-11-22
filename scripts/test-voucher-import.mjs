@@ -169,7 +169,7 @@ try {
   // thing.
   const [wh] = await sql`
     select code, name from location
-     where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   if (wh) {
     const p = await plan(row({ branch: wh.name }));
     check("a warehouse named as the branch is refused, and points at its branch",

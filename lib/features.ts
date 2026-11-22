@@ -1,23 +1,36 @@
 /**
- * Sales orders and deliveries in a retail shop: a developer switch, never a
- * setting in the app. Change the constant and redeploy.
+ * What a company has switched on (0200: company.features). Set per company by
+ * the provider — scripts/set-package.mjs now, the console later — never a
+ * constant here, so one codebase serves phone shops, counter shops and
+ * distributors alike.
  *
- *   true  — the Sales menu shows Sales orders, Deliveries and Shipped not
- *           invoiced, and a sales invoice offers every fulfilment choice:
- *           customer takes now, we deliver now, deliver later, already
- *           delivered.
- *   false — counter only (the default, 2026-11-07): those menu items are hidden
- *           and every invoice hands the goods over itself (one document).
- *
- * Both settings post correctly, so flipping it needs no recheck: sales and
- * cost of sales are recognised on the invoice either way, including deliver
- * later (migration 0178). scripts/check-delivery-entries.mjs proves the
- * entries. A wholesale company (retail_mode off) always has them.
+ *   serialTracking    IMEI and serial numbers. Absent means on: every shop so
+ *                     far sells phones. Off hides the IMEI menus, the product
+ *                     tracking choice and the phone tiles; products are then
+ *                     counted, not named.
+ *   ordersDeliveries  Sales orders, deliveries and deliver-later. Absent means
+ *                     the old rule: on for a wholesale company, off at retail.
+ *                     Off: every invoice hands the goods over itself. Both post
+ *                     correctly (0178; scripts/check-delivery-entries.mjs).
  */
-export const ORDERS_AND_DELIVERIES = false;
+export type CompanyFeatures = { serial_tracking?: boolean; orders_deliveries?: boolean; spare_parts?: boolean };
+type HasFeatures = { retail_mode?: boolean | null; features?: CompanyFeatures | null } | null | undefined;
 
-export function ordersAndDeliveriesOn(company: { retail_mode?: boolean | null } | null | undefined) {
-  return !company?.retail_mode || ORDERS_AND_DELIVERIES;
+export function serialTrackingOn(company: HasFeatures) {
+  return company?.features?.serial_tracking ?? true;
+}
+
+/**
+ * A spare-parts shop (0213): part numbers (OEM, equivalents, supplier codes),
+ * a selling price per pack, and the pack ladder (1 CTN = 10 BOX = 120 PCS)
+ * on the product. Absent means off: phone shops see none of it.
+ */
+export function sparePartsOn(company: HasFeatures) {
+  return company?.features?.spare_parts ?? false;
+}
+
+export function ordersAndDeliveriesOn(company: HasFeatures) {
+  return company?.features?.orders_deliveries ?? !company?.retail_mode;
 }
 
 /**

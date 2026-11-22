@@ -5,7 +5,9 @@ const LABEL: Record<string, string> = {
 };
 
 /** How each unit is named, and the warranties, for one item on its detail page. */
-export function PhoneSettings({ item, embedded = false }: {
+export function PhoneSettings({ item, embedded = false, serial = true }: {
+  /** IMEI and serial numbers switched on for the company. Off: warranty only; tracking stays as it is. */
+  serial?: boolean;
   /** Inside the item editor's form: its fields only, saved with the rest. */
   embedded?: boolean;
   item: { id: string; tracks_serial: boolean; identity?: string; warranty_months: number | null;
@@ -16,10 +18,10 @@ export function PhoneSettings({ item, embedded = false }: {
   const identity = item.identity ?? (item.tracks_serial ? "IMEI" : "NONE");
   return (
     <Wrap embedded={embedded}>
-      <div className={embedded ? undefined : "card-head"}>{embedded ? <h3>Tracking &amp; warranty</h3> : <h2>Tracking &amp; warranty</h2>}</div>
+      <div className={embedded ? undefined : "card-head"}>{embedded ? <h3>{serial ? "Tracking & warranty" : "Warranty"}</h3> : <h2>{serial ? "Tracking & warranty" : "Warranty"}</h2>}</div>
       <div className="card-body filter-row">
         <input type="hidden" name="id" value={item.id} />
-        <div className="field">
+        {!serial ? <input type="hidden" name="identity" value={identity} /> : <div className="field">
           <label htmlFor="ps-id">Tracked by{variants > 0 ? ` — all ${variants} variants` : ""}</label>
           {/* Once stock has moved, only Optional can still be chosen: it takes
               named and counted units alike, so nothing on the shelf is wrong. */}
@@ -29,7 +31,7 @@ export function PhoneSettings({ item, embedded = false }: {
               .filter(([v]) => !(variants === 0 && item.has_moved) || v === identity || v === "OPTIONAL")
               .map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-        </div>
+        </div>}
         <div className="field">
           <label htmlFor="ps-w">Customer warranty (months)</label>
           <input id="ps-w" name="warranty_months" type="number" min="0" max="120"
@@ -42,7 +44,7 @@ export function PhoneSettings({ item, embedded = false }: {
         </div>
         {!embedded && <button className="btn">Save</button>}
       </div>
-      <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
+      {serial && <p className="hint" style={{ padding: "0 var(--s3) var(--s3)" }}>
         IMEI for iPhone and cellular iPad or Watch; serial number for Mac, Wi-Fi iPad and AirPods;
         quantity only for accessories. Optional serial records serials when available, e.g. Apple Watch: each receipt
         gives a serial for every unit or just a count.
@@ -50,7 +52,7 @@ export function PhoneSettings({ item, embedded = false }: {
         {variants > 0 && ` ${item.variants_tracked} of ${variants} variants are tracked unit by unit.`}
         {(item.variants_moved ?? 0) > 0 && ` ${item.variants_moved} already have stock history and keep their setting, unless the choice is Optional serial.`}
         {variants === 0 && item.has_moved && " Once stock has moved, tracking can only change to Optional serial: units already on the shelf keep how they were recorded."}
-      </p>
+      </p>}
     </Wrap>
   );
 }

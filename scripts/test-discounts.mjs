@@ -172,7 +172,7 @@ console.log("\n  posted, and the invoice remembers why\n");
     insert into business_partner (company_id, code, name, is_supplier)
     values (${co.id}, ${"VS-" + stamp}, ${"Vol Supplier " + stamp}, true) returning id`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
      order by code limit 1`;
 
   // Scoped to this test's own item. An unscoped quantity band is company-wide
@@ -278,7 +278,7 @@ console.log("\n  free of charge, which is not a discount\n");
     insert into business_partner (company_id, code, name, is_supplier)
     values (${co.id}, ${"FS-" + stamp}, ${"Foc Supplier " + stamp}, true) returning id`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
      order by code limit 1`;
   const [sample] = await sql`
     select id from foc_reason where company_id = ${co.id} and code = 'SAMPLE'`;

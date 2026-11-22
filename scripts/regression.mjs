@@ -28,7 +28,7 @@ if (!url && existsSync(".env")) {
   }
 }
 if (!url) { console.error("DATABASE_URL is not set"); process.exit(1); }
-const sql = postgres(url, { ssl: "require", prepare: false, max: 1, onnotice: () => {} });
+const sql = postgres(url, { ssl: url.includes("localhost") ? false : "require", prepare: false, max: 1, onnotice: () => {} });
 const [co] = await sql`select name from company order by created_at limit 1`;
 if (!/DEV/i.test(co?.name ?? "")) {
   console.error(`Refusing: the company here is "${co?.name}", not a DEV database.`);

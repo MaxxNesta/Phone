@@ -8,8 +8,9 @@ import { CancelTransfer } from "@/components/share-transfer-form";
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const TYPE: Record<string, string> = { ISSUE: "Issue", PURCHASE: "Purchase", TRANSFER: "Transfer" };
 const SHARE: Record<string, string> = { EQUITY: "Equity", PREFERENCE: "Preference" };
-export type EquityTab = "shareholders" | "transfers" | "balance" | "ledger";
-const TABS: [EquityTab, string][] = [["shareholders", "Shareholders"], ["transfers", "Share transfers"], ["balance", "Balance"], ["ledger", "Ledger"]];
+export type EquityTab = "shareholders" | "transfers" | "balance" | "ledger" | "statement";
+export const TABS: [EquityTab, string][] = [["shareholders", "Shareholders"], ["transfers", "Share transfers"], ["balance", "Balance"], ["ledger", "Ledger"],
+  ["statement", "Changes in equity"]];
 
 /**
  * Who owns the company. Four views of one record, each at its own address

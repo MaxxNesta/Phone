@@ -23,7 +23,7 @@ const item = await one(sql`select id from item where company_id = ${co.id} and c
 if (!item) throw new Error("Run demo-thai-january.mjs first");
 const loc = await one(sql`select id from location where company_id = ${co.id} and code = 'MAIN-WH'`);
 const acct = async (code) => (await one(sql`select id from account where company_id = ${co.id} and code = ${code}`)).id;
-const MMQR = await acct("13207"), KBZ = await acct("13202"), UAB = await acct("13201");
+const MMQR = await acct("1126"), KBZ = await acct("1121"), UAB = await acct("1120");
 const cust = async (code) => (await one(sql`select id from business_partner where company_id = ${co.id} and code = ${code}`)).id;
 
 /** A sale, its goods to follow, the old reference kept. */
@@ -60,7 +60,7 @@ if (process.argv.includes("--advance")) {
 if (process.argv.includes("--adjust")) {
   const doc = await P.postJournalVoucher({ companyId: co.id, docDate: "2026-01-31", locationId: loc.id,
     memo: "Example accrual: January salary owed, not yet paid (not from the old ledger)", reference: "demo-adj-1",
-    lines: [{ accountId: await acct("61252"), amount: 3_000_000 }, { accountId: await acct("21108"), amount: -3_000_000 }] });
+    lines: [{ accountId: await acct("6110"), amount: 3_000_000 }, { accountId: await acct("2120"), amount: -3_000_000 }] });
   await sql`update document set is_adjusting = true where id = ${doc.id}`;
   console.log("adjusting entry", doc.docNo);
   await sql.end(); process.exit(0);

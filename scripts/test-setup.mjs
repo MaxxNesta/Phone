@@ -91,7 +91,7 @@ try {
     insert into business_partner (company_id, code, name, is_supplier)
     values (${co.id}, 'S1', 'Test Supplier', true) returning id`;
   const [loc] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location limit 1`;
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine limit 1`;
 
   const pi = await postPurchaseInvoice({
     companyId: co.id, partnerId: sup.id, locationId: loc.id,

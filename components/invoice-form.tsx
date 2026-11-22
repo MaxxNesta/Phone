@@ -9,6 +9,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { TrackMode } from "./track-mode";
 import { CarriageSection } from "./carriage-section";
 import type { AwaitingLine } from "@/lib/queries";
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
@@ -205,6 +206,9 @@ export function InvoiceForm({
   const [docDate, setDocDate] = useState(restored?.docDate ?? today);
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
   const [cashOut, setCashOut] = useState(restored?.cashOut ?? "");
+  // How this bill is settled: on credit (nothing paid now), paid in full
+  // (the amount follows the total, nothing left owing) or part paid.
+  const [payMode, setPayMode] = useState<"credit" | "full" | "part">(Number(restored?.cashOut) > 0 ? "part" : "credit");
   const [cashAccountId, setCashAccountId] = useState("");
   const [matchedGrId, setMatchedGrId] = useState("");
   /**
@@ -394,12 +398,13 @@ export function InvoiceForm({
 
   function pickItem(key: number, itemId: string) {
     const item = byId(itemId);
-    const price = !item ? "" : isSales ? item.sale_price : item.next_cost;
+    const st = startLine(item, Number(!item ? 0 : isSales ? item.sale_price : item.next_cost) || 0, { buying: !isSales });
     // Changing the item detaches the line from the receipt line it was
     // prefilled from — that reference belonged to the old item.
     setLine(key, {
       itemId,
-      unitPrice: Number(price) > 0 ? String(Number(price)) : "",
+      unitPrice: st.price > 0 ? String(st.price) : "",
+      uomId: st.uomId ?? undefined,
       sourceLineId: undefined,
     });
   }
@@ -416,6 +421,8 @@ export function InvoiceForm({
     setFromOrderId(null);
     const p = partners.find((x) => x.id === id);
     if (p && p.payment_terms_days > 0) setDueDate(addDays(docDate, p.payment_terms_days));
+    // A supplier who gives no credit is paid on the spot.
+    if (p && kind === "purchase") setPayMode(p.payment_terms_days > 0 ? "credit" : "full");
   }
 
   /**
@@ -435,11 +442,12 @@ export function InvoiceForm({
     setLines((ls) => {
       let next = [...ls];
       for (const p of picks) {
-        const at = next.find((l) => l.itemId === p.itemId);
-        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
         const item = byId(p.itemId);
-        const price = !item ? 0 : Number(isSales ? item.sale_price : item.next_cost);
-        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "" };
+        const st = startLine(item, !item ? 0 : Number(isSales ? item.sale_price : item.next_cost) || 0, { uomId: p.uomId, buying: !isSales });
+        // A box and a loose piece of the same product are two lines.
+        const at = next.find((l) => l.itemId === p.itemId && (l.uomId || null) === st.uomId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: st.price > 0 ? String(st.price) : "", uomId: st.uomId ?? undefined };
         const blank = next.find((l) => !l.itemId);
         next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
           : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];
@@ -599,6 +607,13 @@ export function InvoiceForm({
     : [];
 
   const orderBehind = matchedGr?.lines.find((gl) => gl.orderId) ?? null;
+
+  // Paid in full follows the total; on credit pays nothing now.
+  useEffect(() => {
+    if (isSales) return;
+    if (payMode === "full") setCashOut(String(total));
+    else if (payMode === "credit") setCashOut("");
+  }, [payMode, total, isSales]);
 
   const cashOverpaid = !isSales && Number(cashOut) > total;
   const leavesBalance = !isSales && Number(cashOut) < total;
@@ -1226,6 +1241,27 @@ export function InvoiceForm({
                       <input type="number" min="0" step="any" value={l.unitPrice} readOnly={!!l.orderLineId}
                         onChange={(e) => setLine(l.key, { unitPrice: e.target.value })} />
                     </label>
+                    {item && (item.packs ?? []).length > 0 && (() => {
+                      const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
+                        price: p.price == null ? null : Number(p.price) }));
+                      return (
+                        <div className="le-field">Unit
+                          <UnitToggle
+                            base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
+                            packs={packs}
+                            value={l.uomId ?? ""}
+                            onChange={(id) => setLine(l.key, {
+                              uomId: id ?? undefined,
+                              unitPrice: String(priceInUnit(packs, l.uomId, id, Number(l.unitPrice) || 0,
+                                                            isSales ? Number(item.sale_price) || null : null)),
+                            })}
+                            disabled={!!(l.sourceLineId || l.orderLineId)}
+                            label={`Unit for ${item.code}`}
+                            qty={Number(l.qty) || 0}
+                          />
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <section className="le-sec">
@@ -1261,7 +1297,7 @@ export function InvoiceForm({
                       <label className="le-check">
                         <input type="checkbox" checked={freeOn}
                           onChange={(e) => setLine(l.key, e.target.checked ? { hasFree: true } : { hasFree: false, focQty: "" })} />
-                        <span><strong>Units free from the supplier</strong><small>On top of what is billed. They arrive at zero cost, under FOC Received.</small></span>
+                        <span><strong>Units free from the supplier</strong><small>On top of what is billed. The price of the billed units is shared over all of them, so every unit carries the same cost.</small></span>
                       </label>
                       {freeOn && (
                         <div className="le-sub">
@@ -1269,6 +1305,9 @@ export function InvoiceForm({
                             <input type="number" min="0" step="any" value={l.focQty ?? ""} placeholder="0" autoFocus
                               onChange={(e) => setLine(l.key, { focQty: e.target.value })} />
                           </label>
+                          {freeOf(l) > 0 && amount(l) > 0 && (
+                            <p className="le-note">{fmt(arriving(l))} units for {fmt(amount(l))}: about {fmt(Math.round((amount(l) / arriving(l)) * 100) / 100)} each, free ones included.</p>
+                          )}
                           {freeOf(l) > 0 && named(l) && (
                             <p className="le-note">{fmt(arriving(l))} {modeOf(l) === "IMEI" ? "IMEIs" : "serials"} to enter under the line: {fmt(Number(l.qty) || 0)} billed + {fmt(freeOf(l))} free.</p>
                           )}
@@ -1337,18 +1376,31 @@ export function InvoiceForm({
           which collapses to one column under 320px per card. */}
       <div className="grid2">
       {!isSales && (
-        <div className="card" style={{ marginTop: "0.5rem" }}>
+        <div className="card paycard" style={{ marginTop: "0.5rem" }}>
           <div className="card-head">
             <h2>Payment</h2>
           </div>
           <div className="card-body">
+            <div className="segmented paycard-mode" role="radiogroup" aria-label="How this bill is paid">
+              {([["credit", "On credit"], ["full", "Paid in full"], ["part", "Part paid"]] as const).map(([k, label]) => (
+                <button key={k} type="button" role="radio" aria-checked={payMode === k}
+                  className={`seg${payMode === k ? " on" : ""}`} onClick={() => setPayMode(k)}>{label}</button>
+              ))}
+            </div>
+            {payMode === "credit" ? (
+              /* On credit: nothing to fill in; the bill is owed to the supplier. */
+              <div className="paycard-note">
+                <p>The full amount is owed to the supplier{dueDate ? <>, due <strong>{dueDate}</strong></> : ""}. Nothing is paid now.</p>
+              </div>
+            ) : (
             <div className="row">
               <div className="field">
-                <label htmlFor="cash_out">Amount paid</label>
+                <label htmlFor="cash_out">{payMode === "full" ? "Paid in full" : "Amount paid now"}</label>
                 <input id="cash_out" name="cash_out" type="number" min="0" step="any"
                   value={cashOut} onChange={(e) => setCashOut(e.target.value)}
+                  readOnly={payMode === "full"} className={payMode === "full" ? "readonly" : undefined}
                   placeholder="0" />
-                <span className="hint">Leave blank for a fully credit purchase</span>
+                <span className="hint">{payMode === "full" ? "The invoice total: nothing is left owing." : "The rest stays owed to the supplier."}</span>
               </div>
 
               {!foreign && (channels?.[locationId] ?? []).some((c) => c.accountId) ? (
@@ -1367,6 +1419,11 @@ export function InvoiceForm({
                 </select>
               </div>
               )}
+            </div>
+            )}
+            <div className="paycard-balance">
+              <span>{total - (Number(cashOut) || 0) > 0.005 ? "Owed to the supplier" : "Nothing owed"}</span>
+              <strong className={total - (Number(cashOut) || 0) > 0.005 ? "owed" : "clear"}>{fmt(Math.max(0, total - (Number(cashOut) || 0)))}</strong>
             </div>
             {cashOverpaid && (
               <div className="alert" style={{ marginTop: "0.5rem" }}>
@@ -1387,8 +1444,9 @@ export function InvoiceForm({
             <dl className="summary">
               {!isSales && (
                 <>
-                  {/* Gross, what comes off, what is owed: the stock keeps the
-                      gross and the discount is credited to Purchase Discounts. */}
+                  {/* Gross, what comes off, what is owed. Under NET (0204) the
+                      stock takes what is owed; under GROSS it keeps the gross
+                      and the discount is credited to Purchase Discounts. */}
                   <dt>Gross</dt><dd>{fmt(priced.gross)}</dd>
                   {lineDiscounts > 0 && <><dt>Line discounts</dt><dd>−{fmt(lineDiscounts)}</dd></>}
                   <dt>

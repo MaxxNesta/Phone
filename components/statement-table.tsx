@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { csvCell } from "@/lib/csv";
 import Link from "next/link";
 import { HelpHint } from "./help-hint";
 import { ChevronRight, Download, Printer } from "lucide-react";
@@ -118,10 +119,7 @@ export function StatementTable({
    * difference is invisible until somebody acts on it.
    */
   function exportCsv() {
-    const q = (v: string | number) => {
-      const t = String(v);
-      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
-    };
+    const q = csvCell;
     // The statement's own layout: a heading on its line with no figure, its
     // accounts beneath, then "Total <heading>"; the level says how deep.
     const out: string[] = [[`Level`, `Code`, `Description`, `Amount (${currency})`].join(",")];

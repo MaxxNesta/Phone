@@ -54,7 +54,7 @@ const DAY = "2026-06-01";
 try {
   const [co] = await sql`select id from company order by created_at limit 1`;
   const [loc] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location order by code limit 1`;
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine order by code limit 1`;
 
   await resetTransactions(sql);
 
@@ -76,7 +76,7 @@ try {
   console.log("\n  somewhere for shipped-not-billed cost to sit\n");
   const [acct] = await sql`
     select a.id, a.name, a.account_type, a.is_postable
-      from account a where a.company_id = ${co.id} and a.code = '14303'`;
+      from account a where a.company_id = ${co.id} and a.code = '1420'`;
   check("1090 exists", !!acct, acct?.name);
   check("  and is an asset, not an expense",
     acct?.account_type === "ASSET", String(acct?.account_type));
@@ -214,7 +214,7 @@ try {
   check("nor is a write-off", (await viewFor()) === before, `${await viewFor()}`);
 
   const elsewhere = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine
        and id <> ${loc.id} limit 1`;
   if (elsewhere.length > 0) {
     await P.postStockTransfer({ companyId: co.id, fromLocationId: loc.id,

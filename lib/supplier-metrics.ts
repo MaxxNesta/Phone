@@ -318,22 +318,22 @@ export const METRICS: Record<MetricId, MetricDefinition> = {
 
   return_performance: {
     id: "return_performance",
-    name: "Return performance",
-    description: "Goods sent back because the supplier got them wrong.",
+    name: "Defect-free after receipt",
+    description: "Units accepted at receipt and never reported faulty afterwards.",
     unit: "%",
-    direction: "lower",
+    direction: "higher",
     methodology:
-      "100 × (1 − returned quantity attributable to the supplier ÷ received "
-      + "quantity). Cannot be calculated: a purchase return records what went "
-      + "back and to whom, but not why. Returning goods because the customer "
-      + "cancelled, because the buyer over-ordered, and because the supplier "
-      + "shipped the wrong thing are the same row. Treating every return as a "
-      + "supplier defect would penalise suppliers for our own decisions.",
-    dataSource: "Purchase returns — present, but with no reason recorded",
-    supported: false,
-    requires:
-      "A reason on each purchase return line, distinguishing supplier fault "
-      + "from a change of mind on our side.",
+      "100 × (1 − units reported faulty after receipt ÷ units accepted at "
+      + "receipt), over the goods receipts in the period. A unit reported faulty "
+      + "is one written against its receipt line from the receipt or the IMEI "
+      + "page (fault report): the supplier's fault, recorded with its reason. "
+      + "Units refused at the door are not counted here; they are quality "
+      + "acceptance. Returns for any other reason (over-ordering, a cancelled "
+      + "sale) carry no fault report and never count against the supplier.",
+    dataSource: "Goods receipts and fault reports",
+    supported: true,
+    minObservations: 3,
+    normalize: asPercent,
   },
 
   quantity_accuracy: {
@@ -359,19 +359,20 @@ export const METRICS: Record<MetricId, MetricDefinition> = {
   quality_acceptance: {
     id: "quality_acceptance",
     name: "Quality acceptance",
-    description: "Share of inspected goods accepted.",
+    description: "Units accepted at receipt rather than refused at the door.",
     unit: "%",
     direction: "higher",
     methodology:
-      "100 × accepted inspected quantity ÷ inspected quantity. Cannot be "
-      + "calculated: there are no inspection records of any kind. Inferring "
-      + "quality from the absence of complaints would score a supplier nobody "
-      + "has checked identically to one checked and found perfect.",
-    dataSource: "No inspection records exist",
-    requires:
-      "Goods inspection: quantity inspected, quantity accepted, and the "
-      + "receipt it belongs to.",
-    supported: false,
+      "100 × (units received − units refused at receipt) ÷ units received, "
+      + "over the goods receipts in the period. A refused unit is one marked on "
+      + "the receipt with what is wrong and whether the supplier replaces or "
+      + "credits it, and held in quarantine. A receipt nobody inspected looks "
+      + "the same as one inspected and found perfect, so read a 100 with that "
+      + "in mind.",
+    dataSource: "Goods receipts (refused lines)",
+    supported: true,
+    minObservations: 3,
+    normalize: asPercent,
   },
 };
 

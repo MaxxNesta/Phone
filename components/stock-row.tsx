@@ -32,6 +32,10 @@ export type StockRowItem = {
   barcode: string | null; brandName: string | null;
   onHand: number; consignedQty: number; reservedQty: number; available: number;
   incomingQty: number; projected: number; valueOnHand: number;
+  /** Defective, held in a quarantine bin (0218): stock, never available. */
+  quarantineQty?: number;
+  /** Whether onHand already includes it (all warehouses) or it sits beside it (one warehouse). */
+  quarantineInOnHand?: boolean;
   /** Off for a role without cost.view: the server sends no cost or value, and none is drawn. */
   showCost: boolean;
   lastCost: string | null; lastCostDocNo: string | null; lastCostDocId: string | null; lastCostDate: string | null;
@@ -97,7 +101,13 @@ export function StockRow({ item, columnCount, showConsigned }:
             </span>
           </button>
         </td>
-        <td className="r stk-onhand">{qty(item.onHand)}</td>
+        <td className="r stk-onhand">{qty(item.onHand)}
+          {(item.quarantineQty ?? 0) > 0 && (
+            <div className="subline" title="Defective units held in the quarantine bin. Not available for sale.">
+              {item.quarantineInOnHand ? "incl. " : "+ "}{qty(item.quarantineQty ?? 0)} in quarantine
+            </div>
+          )}
+        </td>
         {showConsigned && (
           <td className="r">{item.consignedQty > 0
             ? <Link href="/inventory/consignment" style={{ color: "var(--link)" }}>{qty(item.consignedQty)}</Link> : DASH}</td>

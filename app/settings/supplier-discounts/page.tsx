@@ -5,9 +5,10 @@ import { HelpHint } from "@/components/help-hint";
 export const metadata = { title: "Supplier discounts" };
 
 /**
- * How a supplier's discount on a purchase bill reaches the books. Read-only
- * while only one method can post: the choice is stored per company
- * (company.purchase_discount_policy) so a later company can take the other.
+ * How a supplier's discount on a purchase bill reaches the books. Stored per
+ * company (company.purchase_discount_policy); NET since 0204. Read-only here:
+ * the method changes only by a decision recorded in a migration, never by a
+ * click that would make this month's bills disagree with last month's.
  */
 export default async function SupplierDiscounts() {
   const user = await requirePermission("settings.manage");
@@ -21,12 +22,12 @@ export default async function SupplierDiscounts() {
   ]) as [any[], any[], any[]];
 
   const options = [
-    { key: "GROSS", title: "Gross cost + Purchase Discounts",
-      lead: `Each phone keeps the price it was bought at (its FIFO cost). The supplier is owed the discounted amount, and the discount is credited to ${acct ? `${acct.code} ${acct.name}` : "the Purchase discount received account"}, shown on the P&L as its own deduction.`,
+    { key: "NET", title: "Net cost (IAS 2)",
+      lead: "The discount lowers what the phones cost, so it reaches profit as each phone is sold. A discount the supplier allows after billing (a debit note) comes off the phones still held and, for those already sold, off cost of sales. Free units share the price of the paid ones.",
       available: true },
-    { key: "NET", title: "Net cost",
-      lead: "The discount lowers what the phones cost. Not available yet.",
-      available: false },
+    { key: "GROSS", title: "Gross cost + Purchase Discounts",
+      lead: `Each phone keeps the price before the discount, and the discount is credited to ${acct ? `${acct.code} ${acct.name}` : "the Purchase discount received account"} when the bill is posted.`,
+      available: true },
   ];
 
   return (
@@ -36,7 +37,7 @@ export default async function SupplierDiscounts() {
       </header>
       <section className="card">
         <div className="card-head"><h2>Accounting method</h2>
-          <span className="page-sub">{n > 0 ? `${n} posted bill line${n === 1 ? "" : "s"} carry a discount — the method stays as it is` : "No discounted bill posted yet"}</span>
+          <span className="page-sub">{n > 0 ? `${n} discounted bill line${n === 1 ? "" : "s"} already posted keep the method they were posted under` : "No discounted bill posted yet"}</span>
         </div>
         <div className="card-body" role="radiogroup" aria-label="Supplier discount accounting">
           {options.map((o) => (
@@ -45,7 +46,7 @@ export default async function SupplierDiscounts() {
               <span><strong>{o.title}</strong><span className="subline">{o.lead}</span></span>
             </label>
           ))}
-          {!acct && <div className="alert" style={{ marginTop: 12 }}>No account is set for Purchase discount received. Point it at 51201 Purchase Discounts in the chart of accounts before posting a discounted bill.</div>}
+          {co?.policy === "GROSS" && !acct && <div className="alert" style={{ marginTop: 12 }}>No account is set for Purchase discount received. Point it at 5130 Purchase Discounts in the chart of accounts before posting a discounted bill.</div>}
         </div>
       </section>
     </div>

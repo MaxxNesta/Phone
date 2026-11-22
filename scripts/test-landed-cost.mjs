@@ -54,7 +54,7 @@ try {
   const P = await import("../lib/posting.ts");
   const L = await import("../lib/landed-cost.ts");
 
-  const locs = await sql`select id, name from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 2`;
+  const locs = await sql`select id, name from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 2`;
   const [loc, loc2] = locs;
   const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier and is_active order by code limit 1`;
   const [cust] = await sql`select id from business_partner where company_id = ${co.id} and is_customer and is_active and credit_limit is null order by code limit 1`;
@@ -70,7 +70,7 @@ try {
   const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;
   const [user] = await sql`select id from app_user where company_id = ${co.id} order by created_at limit 1`;
   const [clearing] = await sql`select fn_system_account(${co.id}, 'LANDED_COST_CLEARING') as a`;
-  const [misc] = await sql`select id from account where company_id = ${co.id} and code = '66121'`;
+  const [misc] = await sql`select id from account where company_id = ${co.id} and code = '6321'`;
   const types = Object.fromEntries((await sql`select code, id from landed_cost_type where company_id = ${co.id}`).map((t) => [t.code, t.id]));
   const today = new Date().toISOString().slice(0, 10);
   const stamp = String(Date.now()).slice(-7);

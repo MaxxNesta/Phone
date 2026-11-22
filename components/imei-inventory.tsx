@@ -13,6 +13,8 @@ import { imeiDrawer, type ImeiDrawerData } from "@/lib/imei-drawer";
 export type ImeiRow = {
   serial_id: string; imei: string; item_name: string; item_code: string; photo: string | null;
   location_name: string | null; unit_cost?: number | null; price: number | null; status: string; was_returned: boolean;
+  /** Set when this unit came in secondhand (bought back or traded in). */
+  secondhand_grade?: string | null;
 };
 type Tab = "overview" | "cost" | "prices" | "activity";
 
@@ -97,6 +99,7 @@ export function ImeiTable({ rows, showCost, showLocation, emptyLabel }: {
                 <td>
                   <StatusPill s={r.status} label={label(r.status)} />
                   {r.was_returned && <span className="imei-pill warn">{t("ph.returned")}</span>}
+                  {r.secondhand_grade && <span className="imei-pill" title="Bought back or traded in">Used · {r.secondhand_grade}</span>}
                 </td>
               </tr>
             ))}
@@ -292,7 +295,7 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
       <table className="imei-mini">
         <thead><tr><th>Component</th><th className="num">Amount (MMK)</th></tr></thead>
         <tbody>
-          <tr><td>Purchase cost{c.discount ? <span className="imei-muted"> (FIFO, before supplier discount)</span> : null}</td><td className="num">{money(c.purchase)}</td></tr>
+          <tr><td>Purchase cost{c.discount?.credited ? <span className="imei-muted"> (FIFO, before supplier discount)</span> : null}</td><td className="num">{money(c.purchase)}</td></tr>
           {c.landed.map((l, i) => <tr key={i}><td>{l.type}</td><td className="num">{money(l.amount)}</td></tr>)}
           {c.landed.length === 0 && <tr><td>Landed costs</td><td className="num">0</td></tr>}
           {Math.abs(c.other) >= 1 && <tr><td>Other adjustments <span className="imei-muted">(bill corrections)</span></td><td className="num">{money(c.other)}</td></tr>}
@@ -301,8 +304,9 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
       </table>
       {c.discount && (
         <p className="imei-muted" style={{ margin: "6px 0 0" }}>
-          The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit was credited to Purchase Discounts.
-          It does not lower the recorded FIFO cost.
+          {c.discount.credited
+            ? <>The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit was credited to Purchase Discounts. It does not lower the recorded FIFO cost.</>
+            : <>The supplier&rsquo;s discount of {money(c.discount.perUnit)} MMK on this unit lowered its FIFO cost (net method).</>}
         </p>
       )}
 
@@ -315,7 +319,7 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
           <li key={i.id}><FileText size={16} /><span><Doc id={i.id} no={i.no} /><small>{i.date} · Purchase invoice</small></span><b>{money(i.amount)}</b></li>
         ))}
         {c.landed.map((l, i) => (
-          <li key={`lc${i}`}><Truck size={16} /><span><Doc id={l.docId} no={l.docNo} /><small>{l.date} · {l.type} · {l.method === "EQUAL" ? "equal" : l.method === "VALUE" ? "by value" : "manual"} allocation</small></span><b>{money(l.amount)}</b></li>
+          <li key={`lc${i}`}><Truck size={16} /><span><Doc id={l.docId} no={l.docNo} /><small>{l.date} · {l.type} · {l.method === "EQUAL" ? "equal" : l.method === "VALUE" ? "by value" : l.method === "WEIGHT" ? "by weight" : "manual"} allocation</small></span><b>{money(l.amount)}</b></li>
         ))}
       </ul>
     </>

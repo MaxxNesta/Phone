@@ -46,7 +46,7 @@ try {
   const [item] = await sql`
     insert into item (company_id, item_group_id, serial, code, name, base_uom_id)
     values (${co.id}, ${grp.id}, '001', 'x', 'Test Item', ${uom.id}) returning id`;
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine limit 1`;
   const [cust] = await sql`
     insert into business_partner (company_id, code, name, is_customer)
     values (${co.id}, 'OL-C', 'Order List Customer', true) returning id`;

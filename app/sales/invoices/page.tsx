@@ -7,6 +7,7 @@ import {
 } from "@/lib/format";
 import { getCompany, getInvoiceList, getDocumentDrafts } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
+import { serverPage } from "@/lib/server-page";
 import { HelpHint } from "@/components/help-hint";
 
 const toTime = (v: unknown) => (v ? new Date(v as string).getTime() : 0);
@@ -23,13 +24,19 @@ const TABS: Array<["" | InvoiceDisplayStatus, string]> = [
 export default async function SalesInvoices({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; customer?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { status, customer } = await searchParams;
+  const sp = await searchParams;
+  const { status, customer } = sp;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const posted_ = (await getInvoiceList(company.id, "SALES_INVOICE", await seenLocations())) as any[];
+  // Independent reads, so in parallel: one wait, not two.
+  const [postedAll, draftsAll] = await Promise.all([
+    seenLocations().then((locs) => getInvoiceList(company.id, "SALES_INVOICE", locs)),
+    getDocumentDrafts(company.id, "SALES_INVOICE"),
+  ]);
+  const posted_ = postedAll as any[];
 
   /**
    * Unfinished vouchers, wearing the same shape as the rest of the list.
@@ -40,7 +47,7 @@ export default async function SalesInvoices({
    * draft has never been a receivable. The Draft tab has existed all along
    * and had nothing to show.
    */
-  const drafts = (await getDocumentDrafts(company.id, "SALES_INVOICE")) as any[];
+  const drafts = draftsAll as any[];
   const draftRows = drafts.map((d) => ({
     document_id: d.id, draft_id: d.id as string,
     doc_no: null, posting_date: d.doc_date, due_date: null,
@@ -98,7 +105,9 @@ export default async function SalesInvoices({
       outstanding: Number(i.outstanding),
       display: INVOICE_STATUS_LABEL[i.display as InvoiceDisplayStatus],
     },
-    node: (
+    // Built only when sent: of a long list, only the page on screen is.
+    get node() {
+      return (
       <tr className="link">
         <td className="code">
           {/* A draft has no document to open — the link goes back to the
@@ -152,8 +161,12 @@ export default async function SalesInvoices({
           )}
         </td>
       </tr>
-    ),
+      );
+    },
   }));
+
+  // Cut to the page on screen here, so only its rows are rendered and sent.
+  const page = serverPage(rows, sp, { key: "posting_date", dir: "desc" });
 
   return (
     <>
@@ -222,7 +235,8 @@ export default async function SalesInvoices({
             <span className="page-sub">{invoices.length} invoice{invoices.length === 1 ? "" : "s"}</span>
           </div>
           <DataTable
-            rows={rows}
+            rows={page.rows}
+            server={page.server}
             emptyLabel="No sales invoices"
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}

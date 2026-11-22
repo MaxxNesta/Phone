@@ -52,6 +52,13 @@ function rule(m: Movement, dir: "in" | "out", roles: { cogsId: string | null; he
       ? { key: `void-${t}`, label: (k) => many(k, what[0], what[1]), detail: what[2], attention: true }
       : { key: `void-${t}`, label: (k) => many(k, "voided document", "voided documents"), detail: "Undone documents.", attention: true };
   }
+  // Out to an expense account that is not cost of sales: a standalone giveaway
+  // or sample. Checked before the document type, because a giveaway leaves on
+  // a delivery and would otherwise be counted as goods delivered for a sale.
+  // A free item given with a sale goes to cost of sales and is not this.
+  if (dir === "out" && m.account_type === "EXPENSE") {
+    return { key: "giveaway", label: () => "Given away (promotion, sample, free of charge)", detail: "Stock that left without a sale; charged to its reason's expense account." };
+  }
   switch (t) {
     case "GOODS_RECEIPT":
       return dir === "in"
@@ -60,6 +67,9 @@ function rule(m: Movement, dir: "in" | "out", roles: { cogsId: string | null; he
     case "PURCHASE_INVOICE":
       return { key: `bill-${dir}`, label: () => dir === "in" ? "Bill price differences added to stock" : "Bill price differences taken off stock",
                detail: "A supplier billed a different price from the receipt; the difference was put on the goods still held." };
+    case "DEBIT_NOTE":
+      return { key: `dn-${dir}`, label: () => dir === "out" ? "Supplier discounts taken off stock" : "Supplier note corrections added to stock",
+               detail: "A supplier allowed a discount after billing; it lowered the cost of the goods still held (the share of goods already sold went to cost of sales)." };
     case "LANDED_COST":
       return { key: "landed", label: () => "Freight and import costs added", detail: "Carriage, duty and the like spread onto the goods they brought in." };
     case "SALES_INVOICE":
@@ -89,10 +99,6 @@ function rule(m: Movement, dir: "in" | "out", roles: { cogsId: string | null; he
       return { key: `journal-${dir}`, label: (k) => many(k, "manual journal entry", "manual journal entries"),
                detail: "Posted to the inventory account by hand, so no stock moved with it. This is the usual reason the stock ledger and the account disagree.",
                attention: true };
-  }
-  // Out to an expense account that is not cost of sales: a giveaway or sample.
-  if (dir === "out" && m.account_type === "EXPENSE") {
-    return { key: "giveaway", label: () => "Given away (promotion, sample, free of charge)", detail: "Stock that left without a sale; charged to its reason's expense account." };
   }
   const isCogs = dir === "out" && m.account_id != null && (m.account_id === roles.cogsId || m.account_id === roles.heldId);
   return { key: `other-${t}-${dir}`, label: () => t.toLowerCase().replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()),

@@ -54,7 +54,7 @@ try {
 
   const one = async (q) => (await q)[0];
   const wh = await one(sql`select id from location where company_id = ${co.id}
-     and is_stock_location and is_active order by code limit 1`);
+     and is_stock_location and not is_quarantine and is_active order by code limit 1`);
   const uom = await one(sql`select id from uom where company_id = ${co.id} order by code limit 1`);
   let grp = await one(sql`select id from item_group where company_id = ${co.id} order by code limit 1`);
   if (!grp) grp = await one(sql`insert into item_group (company_id, segment, code, name)

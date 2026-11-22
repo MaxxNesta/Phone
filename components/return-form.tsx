@@ -1,10 +1,11 @@
 "use client";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
-import { Fragment, useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
+import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { PartnerPicker } from "./partner-picker";
@@ -15,12 +16,22 @@ import type { Channel } from "@/lib/payment-channels";
 import type { MoneyPreview } from "@/lib/refund";
 import { LineRemove } from "./line-remove";
 import { useNotice } from "@/components/toast";
+import { Copy, Plus, Building2, User, Warehouse as WarehouseIcon, FileText, CalendarDays, Clock, Hash, ShieldAlert,
+  PackageCheck, ClipboardList, XCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { HelpHint } from "@/components/help-hint";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Partner = { id: string; code: string; name: string };
 type Location = { id: string; code: string; name: string };
-type Line = { key: number; itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; withSerials?: boolean };
+type Line = { key: number; itemId: string; qty: string; unitPrice: string; uomId?: string | null; serials?: ScannedSerial[]; withSerials?: boolean;
+  /** The receipt line these units go back against: refused on arrival (D-P7). */
+  sourceLineId?: string | null;
+  /** Where this line's units came from, when sent back from a receipt:
+   *  "Rejected at receipt · <reason>" or "Reported defective after receipt · <reason>". */
+  origin?: string | null;
+  /** How many of them this line may send back: its own units in quarantine. */
+  available?: number | null };
 type SalesDoc = { id: string; doc_type: string; doc_no: string; doc_date: Date | string;
   partner_id: string; rates?: Record<string, number>;
   /** A purchase made in a foreign currency, and its rate. */
@@ -50,7 +61,14 @@ export function ReturnForm({
   prefill,
   serialPool = [],
   channels,
+  stockByLocation,
 }: {
+  /**
+   * Stock per item per location. A supplier return takes goods off one shelf
+   * — quarantine, often (0218) — so what is short is short there, not across
+   * the company. Without it the company-wide figure is used, as before.
+   */
+  stockByLocation?: { item_id: string; location_id: string; qty_on_hand: string | number }[];
   /** Customer returns: payment methods by location, for paying money back now. */
   channels?: Record<string, Channel[]>;
   kind: "sales" | "purchase";
@@ -76,7 +94,17 @@ export function ReturnForm({
    */
   prefill?: {
     sourceDocumentId: string; docNo: string; partnerId: string; locationId: string;
-    lines: { itemId: string; qty: string; unitPrice: string }[];
+    lines: { itemId: string; qty: string; unitPrice: string; serials?: ScannedSerial[]; sourceLineId?: string | null;
+             origin?: string | null; available?: number | null }[];
+    /** Why these goods go back, when the page knows: a refusal's fault. */
+    memo?: string | null;
+    /** Sales returns: the goods come back faulty, and this is what is wrong. */
+    faulty?: string | null;
+    /** The warranty claim this return answers (0221); it records the return. */
+    claimId?: string | null;
+    /** Sent back from a receipt's defects: what that receipt holds, for the sidebar. */
+    receipt?: { docNo: string; orderNo: string | null; ordered: number; received: number;
+                rejected: number; found: number; replace: boolean } | null;
   } | null;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
@@ -99,6 +127,7 @@ export function ReturnForm({
   const [locationId, setLocationId] = useState(prefill?.locationId || locations[0]?.id || "");
   const [docDate, setDocDate] = useState(today);
   const [sourceDocumentId, setSourceDocumentId] = useState(prefill?.sourceDocumentId ?? "");
+  const [faulty, setFaulty] = useState(!!prefill?.faulty);
   const [receivedTime, setReceivedTime] = useState("");
   // Money back: kept as credit on the customer, or paid out now.
   const [refundMode, setRefundMode] = useState<"credit" | "now">("credit");
@@ -109,6 +138,9 @@ export function ReturnForm({
   const [review, setReview] = useState<MoneyPreview | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
+  // IMEI panels opened again after every phone on the line was named.
+  const [imeiOpen, setImeiOpen] = useState<number[]>([]);
+  const toggleImei = (key: number) => setImeiOpen((ks) => (ks.includes(key) ? ks.filter((k) => k !== key) : [...ks, key]));
   // A refusal from the real posting closes the review so the reason shows.
   useEffect(() => { if (state && "error" in state) setReview(null); }, [state]);
 
@@ -153,11 +185,11 @@ export function ReturnForm({
     const item = byId(itemId);
     const fromReceipt = receiptRate(itemId);
     if (fromReceipt !== null) {
-      setLine(key, { itemId, unitPrice: String(fromReceipt) });
+      setLine(key, { itemId, uomId: null, unitPrice: String(fromReceipt) });
       return;
     }
     const price = !item ? "" : isSales ? item.sale_price : item.next_cost;
-    setLine(key, { itemId, unitPrice: Number(price) > 0 ? String(Number(price)) : "" });
+    setLine(key, { itemId, uomId: null, unitPrice: Number(price) > 0 ? String(Number(price)) : "" });
   }
 
   // Switching the source re-prices what is already on the form. On a prefilled
@@ -183,12 +215,12 @@ export function ReturnForm({
     setLines((ls) => {
       let next = [...ls];
       for (const p of picks) {
-        const at = next.find((l) => l.itemId === p.itemId);
-        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
         const item = byId(p.itemId);
         const rate = receiptRate(p.itemId);
-        const price = rate !== null ? rate : Number(!item ? 0 : isSales ? item.sale_price : item.next_cost);
-        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: price > 0 ? String(price) : "" };
+        const st = startLine(item, rate !== null ? rate : Number(!item ? 0 : isSales ? item.sale_price : item.next_cost) || 0, { uomId: p.uomId });
+        const at = next.find((l) => l.itemId === p.itemId && (l.uomId || null) === st.uomId);
+        if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
+        const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: st.price > 0 ? String(st.price) : "", uomId: st.uomId };
         const blank = next.find((l) => !l.itemId);
         next = blank ? next.map((l) => l === blank ? { ...l, ...fill } : l)
           : [...next, { key: Math.max(0, ...next.map((l) => l.key)) + 1, ...fill }];
@@ -200,24 +232,35 @@ export function ReturnForm({
   const removeLine = (key: number) =>
     setLines((ls) => ls.filter((l) => l.key !== key));
 
+  /** The quantity in the item's own unit, for comparing with stock. */
+  const baseQty = (l: Line) => (Number(l.qty) || 0)
+    * Number((byId(l.itemId)?.packs ?? []).find((p) => p.uomId === l.uomId)?.factor ?? 1);
   const amount = (l: Line) => (Number(l.qty) || 0) * (Number(l.unitPrice) || 0);
   const total = lines.reduce((s, l) => s + amount(l), 0);
 
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0,
-                     serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial) }))
+      .map((l) => ({ itemId: l.itemId, qty: Number(l.qty), unitPrice: Number(l.unitPrice) || 0, uomId: l.uomId || null,
+                     serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial),
+                     sourceLineId: l.sourceLineId ?? null }))
   );
+  const units = lines.reduce((t, l) => t + (l.itemId ? baseQty(l) : 0), 0);
+  const blocked = lines.reduce((t, l) => t + (l.itemId && l.origin ? baseQty(l) : 0), 0);
+  const receipt = prefill?.receipt ?? null;
   const serialShort = lines.some((l) => named(l) && Number(l.qty) > 0
     && (l.serials?.length ?? 0) !== Number(l.qty));
 
   // Only a purchase return removes stock — a sales return adds it, so
   // there's nothing to run short of.
+  const onHand = (item: Item) => stockByLocation
+    ? stockByLocation.filter((r) => r.item_id === item.id && r.location_id === locationId)
+        .reduce((t, r) => t + Number(r.qty_on_hand), 0)
+    : Number(item.on_hand);
   const shortages = lines.filter((l) => {
     if (isSales || !l.itemId) return false;
     const item = byId(l.itemId);
-    return item?.is_stocked && Number(l.qty) > Number(item.on_hand);
+    return item?.is_stocked && baseQty(l) > onHand(item);
   });
 
   const openReview = async () => {
@@ -233,8 +276,13 @@ export function ReturnForm({
     }
   };
 
+  // A return filled from a receipt or claim needs no product search; it stays
+  // one click away for anything else going back.
+  const [adding, setAdding] = useState(!prefill || prefill.lines.length === 0);
+  const unitLines = lines.filter((l) => { const it = byId(l.itemId); return !!it && (named(l) || it.identity === "OPTIONAL" || !!l.origin); });
+
   return (
-    <form action={formAction} className="form wide docsheet" ref={formRef}
+    <form action={formAction} className="form wide docsheet rtn" ref={formRef}
       onSubmit={(e) => {
         // A customer return is reviewed before it posts; the confirm button
         // submits again with the review behind it.
@@ -245,20 +293,19 @@ export function ReturnForm({
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
       <input type="hidden" name="idempotency_key" value={attemptKey} />
+      <input type="hidden" name="lines" value={payload} />
 
+      <div className="rtn-layout">
+      <div className="rtn-main">
       {state && "error" in state && <div className="alert">{state.error}</div>}
       {reviewError && <div className="alert">{reviewError}</div>}
 
-      <input type="hidden" name="lines" value={payload} />
-
-      <div className="card">
-        <div className="card-head">
-          <h2>{isSales ? "Customer" : "Supplier"} and date</h2>
-        </div>
+      <div className="card doc-info">
+        <div className="card-head"><h2>Return details</h2></div>
         <div className="card-body">
-          <div className="row">
+          <div className="doc-fields">
             <div className="field">
-              <label htmlFor="partner_id">{isSales ? "Customer" : "Supplier"}</label>
+              <label htmlFor="partner_id">{isSales ? <User size={13} aria-hidden="true" /> : <Building2 size={13} aria-hidden="true" />}{isSales ? "Customer" : "Supplier"}</label>
               <PartnerPicker
                 partners={partners as never}
                 value={partnerId}
@@ -267,7 +314,7 @@ export function ReturnForm({
             </div>
 
             <div className="field">
-              <label htmlFor="location_id">Warehouse</label>
+              <label htmlFor="location_id"><WarehouseIcon size={13} aria-hidden="true" />Warehouse</label>
               {/* The receipt's own warehouse where there is one: goods that
                   came into Mandalay go back from Mandalay, and asking again
                   invites picking the wrong shelf. */}
@@ -275,28 +322,9 @@ export function ReturnForm({
                       value={locationId} onChange={(e) => setLocationId(e.target.value)} />
             </div>
 
-            {(
-              <div className="field">
-                <label htmlFor="source_document_id">Return against</label>
-                <select id="source_document_id" name="source_document_id" value={sourceDocumentId}
-                  onChange={(e) => setSourceDocumentId(e.target.value)} disabled={!partnerId}>
-                  <option value="">
-                    {!partnerId
-                      ? `Choose a ${isSales ? "customer" : "supplier"} first`
-                      : isSales
-                        ? "Not on a specific invoice"
-                        : "Not against a specific receipt or bill"}
-                  </option>
-                  {returnableDocs.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.doc_no} ·{" "}
-                      {d.doc_type === "DELIVERY" ? "delivery"
-                        : d.doc_type === "GOODS_RECEIPT" ? "goods receipt"
-                        : "invoice"} · {fmtDate(d.doc_date)}
-                    </option>
-                  ))}
-                </select>
-                <span className="page-sub">
+            <div className="field">
+              <label htmlFor="source_document_id"><FileText size={13} aria-hidden="true" />Return against
+                <HelpHint label="What returning against a document does">
                   {/* What is returned against decides what the return gives
                       back, not only what it costs. A bill means the supplier
                       owes a credit; a receipt they never billed means the
@@ -304,52 +332,90 @@ export function ReturnForm({
                   {!sourceDocumentId
                     ? isSales
                       ? "Leave blank to cost the return at current stock value."
-                      : "Leave blank to cost the return at current stock value — "
-                        + "choose the receipt these goods came in on where you can, "
-                        + "so the return takes back what that receipt put on."
+                      : "Leave blank to cost the return at current stock value. Choose the receipt these goods "
+                        + "came in on where you can, so the return takes back what that receipt put on."
                     : isSales
                       ? "Returned stock is costed at what it actually sold for on this document."
                       : sourceIsReceipt
-                        ? "Goods go back and the accrual this receipt raised comes off with "
-                          + "them. Nothing is charged to the supplier: they have not billed "
-                          + "for these."
+                        ? "Goods go back and the accrual this receipt raised comes off with them. Nothing is "
+                          + "charged to the supplier: they have not billed for these."
                         : "The supplier is owed less by what goes back."}
-                </span>
-              </div>
-            )}
+                </HelpHint>
+              </label>
+              <select id="source_document_id" name="source_document_id" value={sourceDocumentId}
+                onChange={(e) => setSourceDocumentId(e.target.value)} disabled={!partnerId}>
+                <option value="">
+                  {!partnerId
+                    ? `Choose a ${isSales ? "customer" : "supplier"} first`
+                    : isSales
+                      ? "Not on a specific invoice"
+                      : "Not against a specific receipt or bill"}
+                </option>
+                {returnableDocs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.doc_no} ·{" "}
+                    {d.doc_type === "DELIVERY" ? "delivery"
+                      : d.doc_type === "GOODS_RECEIPT" ? "goods receipt"
+                      : "invoice"} · {fmtDate(d.doc_date)}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="field">
-              <label htmlFor="doc_date">Date</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Date</label>
               <input id="doc_date" name="doc_date" type="date" value={docDate}
                 onChange={(e) => setDocDate(e.target.value)} required />
             </div>
 
             {isSales && (
               <div className="field">
-                <label htmlFor="received_time">Time</label>
+                <label htmlFor="received_time"><Clock size={13} aria-hidden="true" />Time
+                  <HelpHint label="Why the time">Orders same-day stock-ins correctly for FIFO.</HelpHint>
+                </label>
                 <input id="received_time" name="received_time" type="time" value={receivedTime}
                   onChange={(e) => setReceivedTime(e.target.value)} />
-                <span className="hint">Orders same-day stock-ins correctly for FIFO</span>
               </div>
             )}
 
             <div className="field">
-              <label htmlFor="reference">Reference</label>
+              <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Reference</label>
               <input id="reference" name="reference" type="text"
                 placeholder={isSales ? "Their reason / RMA no." : "Debit note no."} />
             </div>
+
+            {/* A faulty phone does not go back on the shelf (D-P7): it waits in
+                the branch's quarantine for the supplier or a write-off. */}
+            {isSales && (
+              <div className="field span-all">
+                <label htmlFor="faulty"><ShieldAlert size={13} aria-hidden="true" />Condition</label>
+                <label className="check" style={{ fontWeight: 400 }}>
+                  <input id="faulty" type="checkbox" name="faulty" checked={faulty}
+                    onChange={(e) => setFaulty(e.target.checked)} /> Faulty: hold in quarantine, not for resale
+                </label>
+                {faulty && (
+                  <input type="text" name="faulty_reason" required placeholder="What is wrong: no sound, battery swells…"
+                    aria-label="What is wrong" defaultValue={prefill?.faulty ?? undefined} />
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="card">
-        <div className="card-head">
-          <h2>Lines</h2>
-        </div>
+        <div className="card-head"><h2>Lines</h2></div>
 
-        <AddItemsBar items={items} categories={categories} onAdd={addPicks}
-          stockToggle={!isSales} title={isSales ? "Add products to the customer return" : "Add products to the supplier return"}
-          sub="Search, scan a barcode, or browse the catalogue" />
+        {adding ? (
+          <AddItemsBar items={items} categories={categories} onAdd={addPicks}
+            stockToggle={!isSales} title={isSales ? "Add products to the customer return" : "Add products to the supplier return"}
+            sub="Search, scan a barcode, or browse the catalogue" />
+        ) : (
+          <div className="rtn-filled">
+            <span>Filled in from {prefill?.docNo || (prefill?.claimId ? "the warranty claim" : "the source document")}.</span>
+            <button type="button" className="linkish" onClick={() => setAdding(true)}><Plus size={14} aria-hidden="true" /> Add a product</button>
+          </div>
+        )}
 
         <div className="tablewrap">
           <table className="linetable">
@@ -365,21 +431,40 @@ export function ReturnForm({
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={6} className="page-sub line-empty">No items yet — search above, scan a barcode, or Browse / Add multiple.</td></tr>
+                <tr><td colSpan={6} className="page-sub line-empty">No items yet. Search above, scan a barcode, or Browse / Add multiple.</td></tr>
               )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
-                const short = !isSales && item?.is_stocked && Number(l.qty) > Number(item.on_hand);
+                const short = !isSales && item?.is_stocked && baseQty(l) > onHand(item);
+                const n = l.serials?.length ?? 0;
 
                 return (
-                  <Fragment key={l.key}>
-                  <tr>
-                    <td style={{ minWidth: 240 }}>
+                  <tr key={l.key}>
+                    <td style={{ minWidth: 150 }}>
                       {item ? (
-                        <>
-                          <div className="line-item-name">{item.name}</div>
-                          <span className="subline">{item.code}</span>
-                        </>
+                        <div className="rtn-item">
+                          {item.photo && <span className="vthumb sm"><img src={item.photo} alt="" /></span>}
+                          <span>
+                            <div className="line-item-name">{item.name}</div>
+                            <span className="subline">
+                              {item.code}
+                              {named(l) && <> · <span className={n > 0 && n === (Number(l.qty) || 0) ? undefined : "low"}>{n} IMEI{n === 1 ? "" : "s"}</span></>}
+                            </span>
+                            {(item.packs ?? []).length > 0 && (() => {
+                              const packs: Pack[] = (item.packs ?? []).map((p) => ({ uomId: p.uomId, code: p.code, factor: Number(p.factor),
+                                price: p.price == null ? null : Number(p.price) }));
+                              return (
+                                <div style={{ marginTop: 4 }}>
+                                  <UnitToggle base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }} packs={packs}
+                                    value={l.uomId ?? ""} label={`Unit for ${item.code}`} qty={Number(l.qty) || 0}
+                                    onChange={(id) => setLine(l.key, { uomId: id,
+                                      unitPrice: String(priceInUnit(packs, l.uomId, id, Number(l.unitPrice) || 0,
+                                        isSales && receiptRate(l.itemId) === null ? Number(item.sale_price) || null : null)) })} />
+                                </div>
+                              );
+                            })()}
+                          </span>
+                        </div>
                       ) : "—"}
                     </td>
                     <td className="r">
@@ -387,9 +472,13 @@ export function ReturnForm({
                         "—"
                       ) : isSales ? (
                         fmt(Number(item.next_cost))
+                      ) : l.available != null ? (
+                        // Sent back from a receipt: this line's own units, not the
+                        // whole bin's stock repeated on every line.
+                        <span>{fmt(l.available)}<span className="subline" style={{ display: "block" }}>blocked</span></span>
                       ) : (
                         <span style={{ color: short ? "var(--bad)" : undefined }}>
-                          {item.is_stocked ? fmt(Number(item.on_hand)) : "service"}
+                          {item.is_stocked ? fmt(onHand(item)) : "service"}
                         </span>
                       )}
                     </td>
@@ -412,35 +501,6 @@ export function ReturnForm({
                       <LineRemove onClick={() => removeLine(l.key)} />
                     </td>
                   </tr>
-                  {item?.identity === "OPTIONAL" && (
-                    <tr className="batchrow">
-                      <td colSpan={6}>
-                        <TrackMode code={item.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
-                      </td>
-                    </tr>
-                  )}
-                  {item && named(l) && (
-                    <tr className="batchrow">
-                      <td colSpan={6}>
-                        <SerialEntry
-                          label={`${item.code} — ${isSales ? "which handsets came back" : "which handsets go back"}`}
-                          qty={Number(l.qty) || 0}
-                          value={l.serials ?? []}
-                          suggestions={serialPool
-                            .filter((u) => u.item_id === item.id && u.partner_id === partnerId
-                              && (!isSales || !sourceDocumentId || u.document_id === sourceDocumentId)
-                              && (isSales || !locationId || u.location_id === locationId))
-                            .map((u) => u.imei)}
-                          onChange={(v) => setLine(l.key, {
-                            serials: v,
-                            ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
-                              ? { qty: String(v.length) } : {}),
-                          })}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
                 );
               })}
             </tbody>
@@ -460,10 +520,64 @@ export function ReturnForm({
         </div>
       </div>
 
-      {shortages.length > 0 && (
-        <div className="alert">
-          Not enough stock on hand to return{" "}
-          {shortages.map((l) => byId(l.itemId)?.code).join(", ")}. Reduce the quantity.
+      {/* Each handset going back: where it came from, why, and its IMEI. One
+          row each; the IMEI entry opens under its row. */}
+      {unitLines.length > 0 && (
+        <div className="card">
+          <div className="card-head"><h2>{isSales ? "Items coming back" : "Items going back"}</h2></div>
+          <div className="rtn-units">
+            {unitLines.map((l) => {
+              const item = byId(l.itemId)!;
+              const serials = l.serials ?? [];
+              const q = Number(l.qty) || 0;
+              const done = q > 0 && serials.length === q;
+              const open = imeiOpen.includes(l.key);
+              const [what, ...why] = (l.origin ?? "").split(" · ");
+              return (
+                <div key={l.key} className="rtn-unit">
+                  <div className="rtn-unit-row">
+                    <strong className="rtn-unit-code">{item.code}</strong>
+                    <span className="rtn-unit-why">
+                      {l.origin ? <>{what}{why.length > 0 && <span className="page-sub"> · {why.join(" · ")}</span>}</> : <span className="page-sub">{item.name}</span>}
+                    </span>
+                    {named(l) && done && !open && (
+                      <span className="rtn-unit-imei">
+                        {serials.map((x) => (
+                          <span key={x.serial} className="vimei">
+                            IMEI <span className="m">{x.serial}</span>
+                            <button type="button" className="vicon" aria-label={`Copy IMEI ${x.serial}`}
+                              onClick={() => navigator.clipboard?.writeText(x.serial)}><Copy size={14} /></button>
+                          </span>
+                        ))}
+                        <button type="button" className="linkish" onClick={() => toggleImei(l.key)}>Change</button>
+                      </span>
+                    )}
+                  </div>
+                  {item.identity === "OPTIONAL" && (
+                    <TrackMode code={item.code} on={!!l.withSerials} onChange={(on) => setLine(l.key, { withSerials: on })} />
+                  )}
+                  {named(l) && (!done || open) && (
+                    <SerialEntry
+                      label="IMEIs"
+                      qty={q}
+                      value={serials}
+                      suggestions={serialPool
+                        .filter((u) => u.item_id === item.id && u.partner_id === partnerId
+                          && (!isSales || !sourceDocumentId || u.document_id === sourceDocumentId)
+                          && (isSales || !locationId || u.location_id === locationId))
+                        .map((u) => u.imei)}
+                      onChange={(v) => setLine(l.key, {
+                        serials: v,
+                        ...(!(Number(l.qty) > 0) || Number(l.qty) === (l.serials?.length ?? 0)
+                          ? { qty: String(v.length) } : {}),
+                      })}
+                      onDone={open ? () => toggleImei(l.key) : undefined}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -473,28 +587,30 @@ export function ReturnForm({
             <h2>Money back</h2>
           </div>
           <div className="card-body pos-stack">
-            <div className="segmented" role="radiogroup" aria-label="Money back">
-              <button type="button" role="radio" aria-checked={refundMode === "credit"}
-                className={`seg${refundMode === "credit" ? " on" : ""}`} onClick={() => setRefundMode("credit")}>
-                Keep as credit
-              </button>
-              <button type="button" role="radio" aria-checked={refundMode === "now"}
-                className={`seg${refundMode === "now" ? " on" : ""}`}
-                disabled={methods.every((c) => !c.accountId)}
-                onClick={() => {
-                  setRefundMode("now");
-                  setRefund((r) => ({ ...r, channelId: r.channelId || cashMethod?.id || "", amount: r.amount || String(total || "") }));
-                }}>
-                Refund now
-              </button>
+            <div className="rtn-radios" role="radiogroup" aria-label="Money back">
+              <label className="rtn-radio">
+                <input type="radio" name="refund_mode" checked={refundMode === "credit"} onChange={() => setRefundMode("credit")} />
+                <span><b>Keep as credit</b><small>The value stays on the customer&rsquo;s account.</small></span>
+              </label>
+              <label className={`rtn-radio${methods.every((c) => !c.accountId) ? " off" : ""}`}>
+                <input type="radio" name="refund_mode" checked={refundMode === "now"}
+                  disabled={methods.every((c) => !c.accountId)}
+                  onChange={() => {
+                    setRefundMode("now");
+                    setRefund((r) => ({ ...r, channelId: r.channelId || cashMethod?.id || "", amount: r.amount || String(total || "") }));
+                  }} />
+                <span><b>Refund now</b><small>Pay the money back from cash or a payment method.</small></span>
+              </label>
             </div>
             <input type="hidden" name="refund" value={refundMode} />
             {refundMode === "credit" ? (
-              <span className="hint">
-                {sourceDocumentId
-                  ? "What the customer paid stays against the invoice; anything above what they owe can be refunded later from the return."
-                  : "The value goes on the customer's account, to use on a later sale or refund later."}
-              </span>
+              // The radio already says where the value goes; against an invoice
+              // there is more to say.
+              sourceDocumentId ? (
+                <span className="hint">
+                  What the customer paid stays against the invoice; anything above what they owe can be refunded later from the return.
+                </span>
+              ) : null
             ) : (
               <RefundFields channels={methods} value={refund} onChange={setRefund} />
             )}
@@ -502,21 +618,77 @@ export function ReturnForm({
         </div>
       )}
 
-      <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="Reason for the return — English or Myanmar" />
+      <div className="card">
+        <div className="card-head"><h2><label htmlFor="memo">Note</label></h2></div>
+        <textarea id="memo" name="memo" rows={2} className="rtn-note" placeholder="Reason for the return, English or Myanmar"
+          defaultValue={prefill?.memo ?? undefined} />
+        {prefill?.claimId && <input type="hidden" name="claim_id" value={prefill.claimId} />}
+      </div>
       </div>
 
-      <div className="actions">
-        {serialShort && <span className="low" role="status">Name one IMEI per handset.</span>}
-        <button type="submit" disabled={pending || reviewing || total === 0 || shortages.length > 0 || serialShort}>
-          {pending ? "Posting…" : reviewing ? "Checking…" : isSales ? "Review return" : "Post purchase return"}
-        </button>
-        <span className="page-sub">
-          {isSales
-            ? "Stock returns to inventory; revenue and what the customer owes both reverse."
-            : "Stock leaves inventory; what's owed to the supplier drops."}
-        </span>
+      {/* The right column: the document the goods came in on, then what this
+          return does and the button that posts it. */}
+      <aside className="rtn-side">
+        {receipt && (
+          <section className="rtn-sec">
+            <h2 className="rtn-side-title">Source document</h2>
+            <div className="rtn-docs">
+              <span><FileText size={14} aria-hidden="true" />{receipt.docNo}</span>
+              {receipt.orderNo && <span><ClipboardList size={14} aria-hidden="true" />{receipt.orderNo}</span>}
+            </div>
+            <ul className="rtn-counts">
+              {receipt.ordered > 0 && <li><ClipboardList size={15} aria-hidden="true" /><span>Ordered</span><b>{fmt(receipt.ordered)}</b></li>}
+              <li><PackageCheck size={15} aria-hidden="true" /><span>Received</span><b>{fmt(receipt.received)}</b></li>
+              <li className="bad"><XCircle size={15} aria-hidden="true" /><span>Rejected at receipt</span><b>{fmt(receipt.rejected)}</b></li>
+              <li className="bad"><AlertTriangle size={15} aria-hidden="true" /><span>Defective after receipt</span><b>{fmt(receipt.found)}</b></li>
+              <li className="good"><CheckCircle2 size={15} aria-hidden="true" /><span>Good, in stock</span><b>{fmt(Math.max(0, receipt.received - receipt.rejected - receipt.found))}</b></li>
+            </ul>
+          </section>
+        )}
+
+        <section className="rtn-sec">
+          <h2 className="rtn-side-title">Return summary</h2>
+          <div className="rtn-total">
+            <span>Return total</span>
+            <strong>{fmt(total)} {sourceFc ?? "MMK"}</strong>
+          </div>
+          <dl className="rtn-facts">
+            <dt>Against</dt>
+            <dd>{sourceDoc ? sourceDoc.doc_no : "No document"}</dd>
+            <dt>{isSales ? "Units coming back" : "Units going back"}</dt>
+            <dd>{fmt(units)}{blocked > 0 ? ` (${fmt(blocked)} blocked)` : ""}</dd>
+            {isSales ? (
+              <>
+                <dt>Stock in</dt><dd>{faulty ? "Quarantine, not for resale" : "Back on the shelf"}</dd>
+                <dt>Money back</dt><dd>{refundMode === "credit" ? "Kept as credit" : "Refunded now"}</dd>
+              </>
+            ) : (
+              <>
+                <dt>Stock out</dt><dd>{fmt(total)} at cost</dd>
+                {sourceIsReceipt
+                  ? <><dt>Accrual cleared</dt><dd>{fmt(total)} received not invoiced</dd></>
+                  : sourceDoc ? <><dt>Supplier owes</dt><dd>{fmt(total)} less</dd></> : null}
+                {receipt?.replace && receipt.orderNo && units > 0 && <><dt>Replacements</dt><dd>{receipt.orderNo} waits for {fmt(units)}</dd></>}
+              </>
+            )}
+          </dl>
+          {shortages.length > 0 && (
+            <div className="alert">
+              Not enough stock on hand to return{" "}
+              {shortages.map((l) => byId(l.itemId)?.code).join(", ")}. Reduce the quantity.
+            </div>
+          )}
+          {serialShort && <span className="low" role="status">Name one IMEI per handset.</span>}
+          <button type="submit" className="rtn-post" disabled={pending || reviewing || total === 0 || shortages.length > 0 || serialShort}>
+            {pending ? "Posting…" : reviewing ? "Checking…" : isSales ? "Review return" : "Post purchase return"}
+          </button>
+          <span className="page-sub">
+            {isSales
+              ? "Stock returns to inventory; revenue and what the customer owes both reverse."
+              : "Stock leaves inventory; what's owed to the supplier drops."}
+          </span>
+        </section>
+      </aside>
       </div>
       {review && (
         <MoneyPreviewDialog preview={review} busy={pending}

@@ -70,19 +70,24 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
   // The warehouses this person may see, each with the branch it belongs to.
   const seen = await seenLocations();
+  // A warehouse's quarantine bin (0218) is part of the building, not a
+  // warehouse of its own: it is never offered here, and its stock counts in
+  // the warehouse it sits in.
   const allLocs = (await seenRows((await sql`
     select w.id, w.name, b.id as branch_id, b.name as branch_name
       from location w left join location b on b.id = w.parent_id
-     where w.company_id = ${co} and w.is_stock_location and w.is_active
+     where w.company_id = ${co} and w.is_stock_location and w.is_active and not w.is_quarantine
      order by b.code nulls first, w.code`) as unknown as Record<string, unknown>[], "id")) as any[];
+  const bins = await sql`select id, parent_id from location where company_id = ${co} and is_quarantine`;
+  const withBins = (ids: string[]) => [...ids, ...bins.filter((b) => ids.includes(b.parent_id as string)).map((b) => b.id as string)];
   const branchOpts = [...new Map(allLocs.filter((l) => l.branch_id)
     .map((l) => [l.branch_id, { id: l.branch_id as string, name: l.branch_name as string }])).values()];
   const branch = branchOpts.some((b) => b.id === sp.branch) ? sp.branch! : "";
   const whOpts = branch ? allLocs.filter((l) => l.branch_id === branch) : allLocs;
   const warehouse = whOpts.some((l) => l.id === sp.wh) ? sp.wh! : "";
   // Where the figures come from: one warehouse, a branch's warehouses, or all seen.
-  const scope = { locationId: warehouse || undefined,
-    locs: warehouse ? seen : branch ? whOpts.map((l) => l.id as string) : seen };
+  const scope = { locationId: undefined as string | undefined,
+    locs: warehouse ? withBins([warehouse]) : branch ? withBins(whOpts.map((l) => l.id as string)) : seen };
 
   const facetsP = catalogFacets(co, sp.category || undefined, sp.brand || undefined);
   // The cards and the table read the same catalogue; only a filter on the
@@ -91,6 +96,11 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const tableFiltered = Boolean(sp.q || sp.category || sp.status || sp.model || sp.brand
     || Object.keys(sp).some((k) => k.startsWith("a_") && sp[k]));
   const at = scope.locationId ? sql`and jl.location_id = ${scope.locationId}` : scope.locs ? sql`and jl.location_id = any(${scope.locs})` : sql``;
+  // What of it waits in quarantine: still stock, not for sale.
+  const quarantineP = sql`
+    select coalesce(sum(qty_on_hand), 0)::float as units, coalesce(sum(value_on_hand), 0)::float as value
+      from v_stock_on_hand
+     where company_id = ${co} and is_quarantine ${scope.locs ? sql`and location_id = any(${scope.locs})` : sql``}`;
   const [overview, table, facets, aging, groups, trend, flow] = await Promise.all([
     overviewP,
     tableFiltered ? facetsP.then((f) => inventorySummary(co, {
@@ -166,6 +176,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
 
   // Cost is rendered only for cost.view, and not sent to anyone else either.
   // The summary is by product model; each variant has its own page (Stock).
+  const [quarantine] = await quarantineP;
   const all = stripCost(foldToModels(overview.rows as any[]), seeCost) as any[];
   const rows = (stripCost(foldToModels(table.rows as any[]), seeCost) as any[])
     .filter((r) => !sp.status || r.status === sp.status);
@@ -284,8 +295,13 @@ export default async function InventorySummary({ searchParams }: { searchParams:
       <div className="kpis kpis-tiled kpis-compact">
         {seeCost && kpi(<Wallet size={16} aria-hidden="true" />, "Inventory value", `${money(totalValue)} MMK`,
           "At cost, landed costs included.")}
-        {kpi(<Layers size={16} aria-hidden="true" />, "Total on hand", `${(named + counted).toLocaleString("en-US")} units`,
-          `IMEI / serial: ${named.toLocaleString("en-US")} · Quantity: ${counted.toLocaleString("en-US")}`)}
+        {kpi(<Layers size={16} aria-hidden="true" />, "Total on hand",
+          <>{(named + counted).toLocaleString("en-US")} units
+            {/* Counted in the warehouse, not for sale (0218): said, not hidden in a tooltip. */}
+            {quarantine.units > 0 && <span className="sbadge" data-tone="warn" style={{ marginLeft: 8 }}>
+              {quarantine.units.toLocaleString("en-US")} in quarantine</span>}</>,
+          `IMEI / serial: ${named.toLocaleString("en-US")} · Quantity: ${counted.toLocaleString("en-US")}`
+          + (quarantine.units > 0 ? ` · ${quarantine.units.toLocaleString("en-US")} of them in quarantine bins: counted in their warehouse, not for sale.` : ""))}
         {seeCost && analysis ? <>
           {kpi(<Repeat size={16} aria-hidden="true" />, "Inventory turnover", turnover === null ? "—" : `${turnover.toFixed(1)}×`,
             "Cost of goods sold in the last 90 days over the average stock value (start and now).")}

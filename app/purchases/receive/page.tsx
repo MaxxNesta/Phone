@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { Package, FileText, FileClock, Plus } from "lucide-react";
 import { money, shortDate } from "@/lib/db";
 import {
-  getCompany, getOpenPurchaseOrders, getGoodsReceiptHistory, getGrirPositions,
+  getCompany, getOpenPurchaseOrders, getGoodsReceiptHistory, grirTotals,
   getOpenGoodsReceipts, getGrirCollisions, getOpenPurchaseInvoices,
   getBillsRaisedFromOrders, getReceiptDraftForOrder, getDocumentDrafts,
 } from "@/lib/queries";
@@ -36,20 +36,23 @@ export default async function Receive({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const [openLines, history, grir, stillToBill, collisionRows, openBills, raisedFrom] =
+  // The open receipts and bills are read once, in full: the GRIR totals need
+  // every one of them, and the lists below use the same rows (they were read
+  // twice before — once capped at 200 for the lists, once whole for the totals).
+  const [openLines, history, stillToBill, collisionRows, openBills, raisedFrom] =
     await Promise.all([
     getOpenPurchaseOrders(company.id),
     getGoodsReceiptHistory(company.id, await seenLocations()) as unknown as Promise<Receipt[]>,
-    getGrirPositions(company.id),
-    getOpenGoodsReceipts(company.id) as unknown as Promise<
+    getOpenGoodsReceipts(company.id, null) as unknown as Promise<
       { id: string; lines: { qty: number; unitPrice: number }[] }[]>,
     getGrirCollisions(company.id),
-    getOpenPurchaseInvoices(company.id) as unknown as Promise<Array<{
+    getOpenPurchaseInvoices(company.id, null) as unknown as Promise<Array<{
       id: string; doc_no: string; doc_date: string; partner_id: string;
       lines: { itemId: string; itemName: string; qty: number }[];
     }>>,
     getBillsRaisedFromOrders(company.id),
   ]);
+  const grir = grirTotals(openBills as never, stillToBill);
 
   // Goods already in and a bill already waiting for them, per supplier: the
   // one case where receiving against this order is the wrong move.

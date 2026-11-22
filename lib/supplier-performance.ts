@@ -43,6 +43,8 @@ export type PerformanceInputs = {
   completeness: { partner_id: string; completed_orders: number;
                   single_receipt_orders: number }[];
   variance: { partner_id: string; invoices: number; with_variance: number }[];
+  /** Units received, refused at the door, and reported faulty later (D-P7). */
+  quality?: { partner_id: string; receipts: number; received: number; refused: number; faulty: number }[];
   /** End of the reporting period. Everything is judged as at this date. */
   cutoff: string;
   thresholds?: Thresholds;
@@ -253,6 +255,12 @@ export function buildPerformance(input: PerformanceInputs): SupplierPerformance[
     const varianceShare = mv && mv.invoices > 0
       ? mv.with_variance / mv.invoices : null;
 
+    // --- quality: refused at the door, faulty after ------------------------
+    const q = input.quality?.find((x) => x.partner_id === id);
+    const accepted = q ? q.received - q.refused : 0;
+    const acceptancePct = q && q.received > 0 ? (100 * accepted) / q.received : null;
+    const defectFreePct = q && accepted > 0 ? 100 * (1 - q.faulty / accepted) : null;
+
     const metrics = {
       on_time_delivery: scoreMetric("on_time_delivery", onTimePct, onTimeN, thresholds, targets),
       order_fulfillment: scoreMetric("order_fulfillment", fulfilmentPct, f?.lines ?? 0, thresholds, targets),
@@ -261,9 +269,9 @@ export function buildPerformance(input: PerformanceInputs): SupplierPerformance[
       price_stability: scoreMetric("price_stability", deviation, priceObservations, thresholds, targets),
       delivery_completeness: scoreMetric("delivery_completeness", completenessPct, dc?.completed_orders ?? 0, thresholds, targets),
       matching_variance: scoreMetric("matching_variance", varianceShare === null ? null : varianceShare * 100, mv?.invoices ?? 0, thresholds, targets),
-      return_performance: scoreMetric("return_performance", null, 0, thresholds, targets),
+      return_performance: scoreMetric("return_performance", defectFreePct, q?.receipts ?? 0, thresholds, targets),
       quantity_accuracy: scoreMetric("quantity_accuracy", null, 0, thresholds, targets),
-      quality_acceptance: scoreMetric("quality_acceptance", null, 0, thresholds, targets),
+      quality_acceptance: scoreMetric("quality_acceptance", acceptancePct, q?.receipts ?? 0, thresholds, targets),
     } as Record<MetricId, MetricResult>;
 
     return {

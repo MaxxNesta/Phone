@@ -33,7 +33,8 @@ export function DocumentFooter({
 }: {
   createdAt?: string | null;
   activity: DocEvent[];
-  related: React.ReactNode;
+  /** What it is joined to. Left out where the side panel shows it instead. */
+  related?: React.ReactNode;
   createdBy: Person;
   postedBy: Person;
   postedAt: string | null;
@@ -48,7 +49,7 @@ export function DocumentFooter({
   ];
   return (
     <div className="docfooter">
-      <div className="docfooter-links">{related}</div>
+      {related && <div className="docfooter-links">{related}</div>}
 
       <section className="card docfooter-history">
         <div className="card-head">

@@ -285,3 +285,56 @@ export function pricePurchaseLines(lines: PurchaseDiscountLine[], bill: Purchase
   const total = r(priced.reduce((s, l) => s + l.net, 0));
   return { lines: priced, gross, subtotal, discount: r(gross - total), total };
 }
+
+/**
+ * Splits `total` in proportion to `weights`, rounded to the currency, with the
+ * remainder on the largest weight so the parts add back to exactly `total`.
+ * All-zero weights give all zeros: nothing to split by.
+ */
+export function spreadByWeight(total: number, weights: number[], scale = 4): number[] {
+  const r = (n: number) => roundMoney(n, scale);
+  const sum = weights.reduce((s, w) => s + Math.max(0, w), 0);
+  if (sum <= 0 || weights.length === 0) return weights.map(() => 0);
+  const parts = weights.map((w) => r(total * (Math.max(0, w) / sum)));
+  const off = r(total - parts.reduce((s, v) => s + v, 0));
+  if (off !== 0) {
+    const big = weights.reduce((bi, w, i) => (w > weights[bi] ? i : bi), 0);
+    parts[big] = r(parts[big] + off);
+  }
+  return parts;
+}
+
+/**
+ * What each stocked purchase line costs once free units share the price
+ * (IAS 2: the cost of the goods is what was paid for all of them).
+ *
+ * The bill's total stays exactly where it was; only its split moves. A free
+ * line is weighted at what a paid unit of the same item costs on this bill,
+ * or else `refUnit` for that item (its last purchase cost) — the relative
+ * value of goods that are not the same. A free line with no value to weigh it
+ * by keeps zero, and the paid lines keep their own cost.
+ *
+ *   10 paid for 10,000,000 + 1 free  →  9,090,909.09 and 909,090.91
+ */
+export function allocateFreeUnits(
+  lines: { itemId: string; qty: number; cost: number; free: boolean }[],
+  refUnit: (itemId: string) => number | null,
+  scale = 4,
+): number[] {
+  if (!lines.some((l) => l.free)) return lines.map((l) => l.cost);
+  const paid = new Map<string, { cost: number; qty: number }>();
+  for (const l of lines) {
+    if (l.free) continue;
+    const p = paid.get(l.itemId) ?? { cost: 0, qty: 0 };
+    p.cost += l.cost; p.qty += l.qty;
+    paid.set(l.itemId, p);
+  }
+  const weights = lines.map((l) => {
+    if (!l.free) return l.cost;
+    const p = paid.get(l.itemId);
+    const unit = p && p.qty > 0 ? p.cost / p.qty : refUnit(l.itemId);
+    return unit && unit > 0 ? l.qty * unit : 0;
+  });
+  if (!lines.some((l, i) => l.free && weights[i] > 0)) return lines.map((l) => l.cost);
+  return spreadByWeight(roundMoney(lines.reduce((s, l) => s + l.cost, 0), scale), weights, scale);
+}

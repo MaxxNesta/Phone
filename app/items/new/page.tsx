@@ -1,3 +1,4 @@
+import { serialTrackingOn } from "@/lib/features";
 import Link from "next/link";
 import { sql } from "@/lib/db";
 import { currentUser, can } from "@/lib/auth";
@@ -16,7 +17,7 @@ export default async function NewItem() {
 
   const [nodes, uoms, brands, variantAttributes] = await Promise.all([
     allCategories(co.id),
-    sql`select id, code, name from uom where company_id = ${co.id} and is_active order by code`,
+    sql`select id, code, name, name_my from uom where company_id = ${co.id} and is_active order by code`,
     getBrands(co.id),
     getVariantAttributes(co.id),
   ]);
@@ -54,6 +55,7 @@ export default async function NewItem() {
         brands={brands as never}
         returnTo="/products"
         retail={Boolean((await getCompany())?.retail_mode)}
+        serial={serialTrackingOn(await getCompany())}
         canAddBrand={can((await currentUser())!, "brands.manage")}
         canKeepDuplicates={can((await currentUser())!, "items.duplicates")}
       />

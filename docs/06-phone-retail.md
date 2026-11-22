@@ -82,13 +82,111 @@ report reads what it always read; the foreign figure is kyat over the rate.
   kyat). A bill with no receipt, or one that receives as it posts, uses its own.
 - The payable's journal line carries the yuan amount and rate.
 - Paying: amounts in the bill's currency; the bill comes down at its carrying
-  rate, the bank at today's; the gap is FX gain (4100) or loss (6400).
-- Advances in yuan: applied to a later yuan bill the same way.
+  rate, the bank at today's; the gap is FX gain or loss (both 6340 Exchange
+  Rate Gain/Loss since the chart moved to four digits, 0203).
+- Advances in yuan paid on or before the goods arrived fix what those goods
+  cost (IFRIC 22): applying one to the bill corrects the goods' cost by the
+  gap between the bill's rate and the advance's — onto stock held, to cost of
+  sales for what has sold — with no exchange on it. An advance paid after
+  the goods arrived settles a debt and keeps its exchange difference, as
+  does one applied to a bill with nothing received yet.
+- Purchase orders may be placed in the supplier's currency; a blank rate takes
+  the one on file for the order date.
+- Returns and debit notes against a yuan bill go at that bill's rate, so the
+  payable comes down at what it was carried at and no FX arises on them.
 - `payment_allocation.amount` is the invoice side (kyat at the invoice's rate);
   `base_amount` the payment side (kyat at the payment's rate). Equal for every
   kyat document, so nothing that existed changes.
-- Not yet: unrealised FX revaluation of open yuan payables at month end; sales
-  in foreign currency; purchase orders in foreign currency (they stay kyat).
+- Month-end revaluation (0222, 0223; Finance → Transactions → Exchange
+  revaluation): what suppliers are owed in a foreign currency, read from the
+  supplier ledger, and foreign cash and bank accounts, restated at the
+  month-end rate. The difference is unrealised exchange (6341, apart from
+  realised 6340), booked on the month end beside the balances (2160, 1150)
+  so neither the supplier ledger nor a bank stops agreeing with its detail,
+  and reversed the next day. Stock and advances for goods are not restated.
+  One standing run per month; a wrong rate is voided and run again. The
+  dashboard reminds an accountant while last month is undone.
+  `scripts/test-fx-revaluation.mjs`.
+- Not yet: sales in foreign currency.
+
+**D-P7. Damaged on arrival: quarantine, then return (agreed 2026-11-20,
+built 2026-11-21, 0218–0220, 0224).** Ten ordered, ten arrive, one is broken. The design follows SAP
+(blocked stock, then a return delivery that reopens the order) and NetSuite
+(a status that cannot be sold, then a vendor return).
+- Goods receipt: each line records arrived, accepted and rejected, with a
+  reason and the rejected units' IMEIs. Accepted units go to the branch's
+  stock; rejected ones go to its quarantine location. Quarantine is still
+  stock, at cost, on the balance sheet, but a location flagged not for sale,
+  refused by the posting engine for sales, deliveries and the till and left
+  out of sellable stock. The PO shows 10 of 10 received.
+- On the rejected line the receiver chooses **replace** (the supplier sends
+  another) or **credit** (the supplier takes it off what is owed).
+- Purchase return, opened from the receipt with the line and IMEIs filled in,
+  takes the unit out of quarantine. It must be a return, not a debit note: a
+  debit note moves money only, and the unit has to leave stock.
+  - Replace: clears GR/IR for the unit, not the payable; the PO reopens 1
+    (when the return posts, as SAP's 122 does, not at the receipt); the
+    replacement arrives against the PO and the bill stays at 10.
+  - Credit: the PO stays complete; the return comes off the receipt if not yet
+    billed (the bill is then for 9) or off the bill if it is.
+- A supplier who refuses both: write the unit off from quarantine.
+- Selling: orders, deliveries, invoices and the till see only sellable stock.
+  The engine already refuses a serial at another location ("Transfer it here
+  first"); the flag adds the refusal for a sale, delivery or till sale at the
+  quarantine location itself, which also covers items without IMEIs. The
+  stock position shows quarantine in its own column, never as available, so a
+  sales order for 10 against 9 good units reads short 1. Delivered 9, the
+  order keeps 1 to deliver: replace fills it from the replacement; credit
+  leaves it to other stock or to closing the order's remainder. A
+  deliver-later invoice for 10 holds the tenth in 2230 until it goes, or is
+  credited if it never can.
+- Release: a unit found good after all is transferred back to sellable stock
+  with a reason (SAP's release from blocked stock); no other transfer out of
+  quarantine.
+- Customer returns of faulty phones use the same location: the sales return
+  takes the unit into quarantine, not back onto the shelf, and a purchase
+  return then sends it to the supplier under the supplier warranty, or it is
+  written off.
+- As built: quarantine is a bin inside each warehouse ("Main Warehouse /
+  Quarantine", `location.is_quarantine`, 0218), made with the warehouse and
+  on first use. The building's stock is counted together — the Inventory
+  summary folds each bin into its warehouse and says how many units are in
+  quarantine; `v_stock_on_hand.warehouse_id` and `fn_stock_home` give the
+  warehouse a bin counts in — while anything that sells or picks leaves the
+  bin out. The
+  database refuses a sales order, invoice or delivery dated there and any
+  stock leaving it on a sale or delivery. Transfers in or out need a reason.
+  Forms, the till and imports do not offer it; item pickers count sellable
+  stock only; stock lists show it as its own location. A receipt line marked
+  `rejected` (0219) lands there; the receipt page shows it under its line, prints a
+  rejection note and offers the return per outcome. A return line names the
+  receipt line it sends back, and a replace return reopens the order
+  (`v_order_outstanding`, 0220). `scripts/test-quarantine.mjs`.
+- Found faulty after the receipt was posted (0224, built 2026-11-21): the
+  receipt does not change. **Report faulty** (on the receipt, or on the IMEI
+  page of a unit still on the shelf) writes a `fault_report` against the
+  receipt line the unit came in on — what is wrong, replace or credit — and
+  moves it into its warehouse's quarantine bin by a transfer that names the
+  receipt. From there it goes back exactly as a refused unit: the receipt
+  page shows it under its line, the rejection note lists it, and the return
+  opens filled in. A replace return goes against the receipt even once it is
+  billed and reopens the order (`document_line.for_replacement`, which now
+  drives `v_order_outstanding` for both kinds); a credit goes against the bill
+  once there is one. A unit already sold is not reported here — it comes back
+  as a customer return through a warranty claim (D-P8).
+- The three moments, side by side: seen while entering the receipt → refuse
+  it on the line; found on the shelf after posting → Report faulty; found by
+  the customer after sale → warranty claim, customer return into quarantine,
+  then to the supplier.
+
+**D-P8. Warranty claims (0221, built 2026-11-21).** A customer back with a
+faulty phone opens a claim: the fault, whether the shop's and the supplier's
+warranties covered it on the day (kept, not recomputed), and how it ended —
+repaired, replaced, refunded, or turned down with a reason. It moves
+nothing; it names the customer return (faulty, into quarantine) and the
+supplier return it led to, each recorded on the claim in its own
+transaction. Inventory → Warranty lookup → Warranty claims, and from the
+phone's own page.
 
 ## Work list
 

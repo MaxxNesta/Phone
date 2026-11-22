@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requirePermission, can } from "@/lib/auth";
 import { phoneStock, phoneStockFacets, stripCost, serialKpis } from "@/lib/phone";
-import { Boxes, PackageCheck, Lock, ShoppingBag, Search } from "lucide-react";
+import { Boxes, PackageCheck, Lock, ShoppingBag, Search, Recycle } from "lucide-react";
 import { PAGE_SIZE } from "@/lib/paging";
 import { Pager } from "@/components/pager";
 import { HelpHint } from "@/components/help-hint";
@@ -16,7 +16,7 @@ export async function generateMetadata() {
   return { title: "IMEI Inventory" };
 }
 
-const STATUSES = ["IN_STOCK", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
+const STATUSES = ["IN_STOCK", "QUARANTINE", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
 
 type Search = Record<string, string | undefined>;
 
@@ -39,6 +39,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
     // A search is about one phone, wherever it is now; browsing is about the shelf.
     status: sp.status === "ALL" ? undefined : (sp.status || (sp.q ? undefined : "IN_STOCK")),
     supplierId: sp.supplier || undefined,
+    condition: (sp.condition === "NEW" || sp.condition === "USED" ? sp.condition : undefined) as "NEW" | "USED" | undefined,
     locs: await seenLocations(),
   };
   const showCost = can(user, "cost.view");
@@ -93,7 +94,9 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
       <div className="imei-kpis">
         {kpi(<Boxes size={17} />, "Total IMEIs", k.total)}
         {kpi(<PackageCheck size={17} />, "In stock", k.available, share(k.available))}
+        {k.available_used > 0 && kpi(<Recycle size={17} />, "Secondhand in stock", k.available_used, share(k.available_used))}
         {kpi(<Lock size={17} />, "Reserved", k.reserved, share(k.reserved))}
+        {k.quarantine > 0 && kpi(<Lock size={17} />, "In quarantine (defective)", k.quarantine, share(k.quarantine))}
         {kpi(<ShoppingBag size={17} />, "Sold", k.sold, share(k.sold))}
       </div>
 
@@ -113,6 +116,7 @@ export default async function PhoneStock({ searchParams }: { searchParams: Promi
             <option value="ALL">All statuses</option>
             {STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
           </select>
+          {select("condition", "New & secondhand", [{ v: "NEW", l: "New" }, { v: "USED", l: "Secondhand" }], sp.condition)}
           {manyWarehouses && select("location", "All locations", facets.locations.map((l: any) => ({ v: l.id, l: l.name })), sp.location)}
           {facets.suppliers.length > 1 && select("supplier", "All suppliers", facets.suppliers.map((s: any) => ({ v: s.id, l: s.name })), sp.supplier)}
           <AutoApply />

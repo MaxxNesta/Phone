@@ -59,7 +59,7 @@ const RATIO: Record<RatioKey, {
   liabilitiesToEquity: { label: "Liabilities to equity", kind: "x", lowerIsBetter: true, formula: "Total liabilities ÷ equity",
     meaning: "Everything owed, borrowing and suppliers alike, against equity.", parts: (w) => [w.totalLiabilities, w.equity] },
   interestCover: { label: "Interest cover", kind: "x", formula: "Operating profit ÷ interest expense",
-    meaning: "How many times operating profit covers the interest due. Interest is posted to 67101.",
+    meaning: "How many times operating profit covers the interest due. Interest is posted to the Finance Costs group (69).",
     parts: (w) => [w.operatingProfit, w.interest] },
   financialLeverage: { label: "Financial leverage", kind: "x", lowerIsBetter: true, formula: "Average total assets ÷ average equity",
     meaning: "How far borrowed money finances the operations.", parts: (w) => [w.avgAssets, w.avgEquity] },

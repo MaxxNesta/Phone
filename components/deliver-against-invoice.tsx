@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { Lock, AlertCircle } from "lucide-react";
+import { Lock, AlertCircle, Building2, FileText, ClipboardList, Warehouse, CalendarDays, Hash, StickyNote, ChevronDown } from "lucide-react";
+import { DocHeading } from "./doc-heading";
 import type { ActionResult } from "@/lib/actions";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
 import { useNotice } from "@/components/toast";
@@ -184,19 +185,23 @@ export function DeliverAgainstInvoice({
   );
 
   return (
-    <form action={formAction} className="rcv">
+    <>
+    {/* The same heading, sheet and commit bar as every other delivery:
+        only what this one is answering (an invoice already raised) differs. */}
+    <DocHeading
+      back={{ href: backHref, label: backLabel }}
+      trail={[
+        { label: "Deliveries", href: "/sales/deliver" },
+        { label: invoice.docNo, href: `/documents/${invoice.id}` },
+      ]}
+      title="Delivery" status="New" />
+    <form action={formAction} className="form wide gr docsheet waved">
       <input type="hidden" name="idempotency_key" value={attemptKey} />
       <input type="hidden" name="partner_id" value={invoice.partnerId} />
       <input type="hidden" name="location_id" value={invoice.locationId ?? ""} />
       <input type="hidden" name="source_document_id" value={invoice.id} />
       <input type="hidden" name="lines" value={payload} />
       <input type="hidden" name="reference" value={reference} />
-
-      <div className="page-head">
-        <span className="eyebrow">Sales</span>
-        <h1>Deliver goods against sales invoice</h1>
-        <span className="page-sub">Record only the goods that physically left.</span>
-      </div>
 
       {shortConfirmed && <input type="hidden" name="allow_negative_stock" value="true" />}
       {/* Its own field, not folded into the memo. The engine asks for a
@@ -209,87 +214,95 @@ export function DeliverAgainstInvoice({
 
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
-      <section className="rcv-card rcv-against">
-        <div className="rcv-card-head">Delivering against</div>
-        <div className="rcv-against-body">
-          <div>
-            <div className="rcv-k">Sales invoice</div>
-            <Link href={`/documents/${invoice.id}`}>{invoice.docNo}</Link>
-          </div>
-          <div>
-            <div className="rcv-k">Related order</div>
-            {orderSummary(invoice)}
-          </div>
-          <div>
-            <div className="rcv-k">Customer</div>
-            <span>{invoice.partnerCode} · {invoice.partnerName}</span>
-          </div>
+      <div className="card doc-info">
+        <div className="card-head">
+          <h2>Delivery details</h2>
           <Link className="rcv-change" href="/sales/deliver">Change invoice</Link>
         </div>
-      </section>
-
-      <section className="rcv-card">
-        <div className="rcv-card-head">Delivery details</div>
-        <div className="rcv-fields">
-          <div className="field">
-            <label>Ships from</label>
-            {/* Fixed to the invoice's warehouse because nothing in this
-                workflow can change it: the delivery is raised against that
-                invoice and posts where it says. Shipping part of an invoice
-                from another warehouse needs a delivery raised there, which is
-                a separate document. It is a restriction of this route, not
-                anything to do with the price. */}
-            <span className="rcv-locked">
-              <Lock size={12} aria-hidden="true" />{" "}
-              {invoice.locationCode ?? "—"}{invoice.locationName ? ` · ${invoice.locationName}` : ""}
-            </span>
+        <div className="card-body">
+          <div className="doc-fields">
+            <div className="field">
+              <label><Building2 size={13} aria-hidden="true" />Customer</label>
+              <input type="text" value={`${invoice.partnerCode} · ${invoice.partnerName}`} readOnly aria-label="Customer" />
+            </div>
+            <div className="field">
+              <label><FileText size={13} aria-hidden="true" />Against invoice</label>
+              <span className="rcv-ro"><Link href={`/documents/${invoice.id}`}>{invoice.docNo}</Link></span>
+            </div>
+            <div className="field">
+              <label><ClipboardList size={13} aria-hidden="true" />Sales order</label>
+              <span className="rcv-ro">{orderSummary(invoice)}</span>
+            </div>
+            <div className="field">
+              <label><Warehouse size={13} aria-hidden="true" />Ships from</label>
+              {/* Fixed to the invoice's warehouse because nothing in this
+                  workflow can change it: the delivery is raised against that
+                  invoice and posts where it says. Shipping part of an invoice
+                  from another warehouse needs a delivery raised there, which is
+                  a separate document. */}
+              <span className="rcv-ro" title="Fixed by the invoice">
+                <Lock size={12} aria-hidden="true" style={{ marginRight: 6 }} />
+                {invoice.locationCode ?? "—"}{invoice.locationName ? ` · ${invoice.locationName}` : ""}
+              </span>
+            </div>
+            <div className="field">
+              <label htmlFor="dlv_date"><CalendarDays size={13} aria-hidden="true" />Delivery date</label>
+              <input id="dlv_date" name="doc_date" type="date" required
+                     value={docDate} onChange={(e) => setDocDate(e.target.value)} />
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="dlv_date">Delivered date</label>
-            <input id="dlv_date" name="doc_date" type="date" required
-                   value={docDate} onChange={(e) => setDocDate(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="dlv_ref">Delivery reference</label>
-            <input id="dlv_ref" type="text" placeholder="Delivery note number"
-                   value={reference} onChange={(e) => setReference(e.target.value)} />
-            <span className="hint">
-              Filled from {invoice.docNo}. Change it to the delivery note
-              number if the driver carries one.
-            </span>
+          <div className="doc-info-foot">
+            <details className="moredetails" open={!!memo || reference !== invoice.docNo || undefined}>
+              <summary>Additional details <span className="page-sub">(delivery note, remarks)</span></summary>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="dlv_ref"><Hash size={13} aria-hidden="true" />Reference</label>
+                  <input id="dlv_ref" type="text" placeholder="Delivery note no."
+                         value={reference} onChange={(e) => setReference(e.target.value)} />
+                  <span className="hint">Filled from {invoice.docNo}; change it if the driver carries a delivery note.</span>
+                </div>
+                <div className="field span-2">
+                  <label htmlFor="dlv_memo"><StickyNote size={13} aria-hidden="true" />Remarks</label>
+                  <input id="dlv_memo" name="memo" type="text" placeholder="Optional — English or Myanmar"
+                         value={memo} onChange={(e) => setMemo(e.target.value)} />
+                </div>
+              </div>
+            </details>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="rcv-card">
-        <div className="rcv-card-head">Goods going out</div>
+      <div className="card">
         <div className="tablewrap">
-          <table className="linetable rcv-table">
+          <table className="linetable grlines vgrid rcv-table">
             <thead>
               <tr>
+                <th className="vc-no">No.</th>
                 <th>Item</th>
                 <th className="r">Invoiced</th>
-                <th className="r">Already delivered</th>
                 <th className="r">Remaining</th>
                 <th className="r">On hand</th>
-                <th className="r">Deliver now <span aria-hidden="true">*</span></th>
+                <th className="r vc-qty">Deliver now <span aria-hidden="true">*</span></th>
                 <th className="r">Unit price</th>
-                <th className="r">Value (MMK)</th>
+                <th className="r">Subtotal</th>
               </tr>
             </thead>
             <tbody>
-              {invoice.lines.map((l) => {
+              {invoice.lines.map((l, idx) => {
                 const isShort = !l.consigned && entered(l) > l.onHand;
                 return (
                   <tr key={l.lineId}>
+                    <td className="vc-no">{idx + 1}</td>
                     <td>
                       <strong>{l.itemCode}</strong>
-                      {l.consigned && <span className="pill tiny"> consigned</span>}
-                      {l.isFree && <span className="pill tiny"> free of charge</span>}
-                      <div className="muted">{l.itemName}</div>
+                      {l.consigned && <span className="pill tiny" style={{ marginLeft: 6 }}>consigned</span>}
+                      {l.isFree && <span className="pill tiny" style={{ marginLeft: 6 }}>free of charge</span>}
+                      <div className="subline">{l.itemName}</div>
                     </td>
-                    <td className="r">{qty(l.invoicedQty)}{unitOf(l)}</td>
-                    <td className="r">{qty(l.deliveredQty)}{unitOf(l)}</td>
+                    <td className="r">
+                      {qty(l.invoicedQty)}{unitOf(l)}
+                      {l.deliveredQty > 0 && <div className="subline">{qty(l.deliveredQty)} delivered before</div>}
+                    </td>
                     <td className="r">{qty(l.remainingQty)}{unitOf(l)}</td>
                     <td className="r" style={{ color: isShort ? "var(--bad)" : undefined }}>
                       {l.consigned ? <span className="muted">consignor&rsquo;s</span>
@@ -317,14 +330,11 @@ export function DeliverAgainstInvoice({
             </tbody>
           </table>
         </div>
-        <div className="rcv-foot">
-          <span className="muted">
-            Unit price comes from {invoice.docNo}. What these goods cost is drawn
-            from the oldest stock on the shelf when this posts.
-          </span>
-          <span>Invoiced value <strong>{money(totals.charged)}</strong> MMK</span>
-        </div>
-      </section>
+        <p className="subline rcv-costnote">
+          <Lock size={11} aria-hidden="true" /> Unit price comes from {invoice.docNo}. What these goods cost is
+          drawn from the oldest stock on the shelf when this posts.
+        </p>
+      </div>
 
       {totals.short.length > 0 && (
         <div className="alert" style={{
@@ -349,91 +359,79 @@ export function DeliverAgainstInvoice({
           </ul>
           <div className="muted" style={{ marginTop: "0.35rem" }}>
             {shortConfirmed
-              ? `Reason: ${shortReason}. Cost of sale for the units with no stock `
+              ? `Reason: ${shortReason || "—"}. Cost of sale for the units with no stock `
                 + `behind them is provisional until the receipt that brings them `
                 + `in is entered; recording it later corrects the cost.`
               : "This is allowed where the goods are physically there and their "
                 + "receipt has not been entered yet. It has to be said out loud."}
           </div>
-          {!shortConfirmed && (
+          {!shortConfirmed ? (
             <div style={{ marginTop: "0.5rem" }}>
-              <button type="button" className="btn ghost"
-                      onClick={() => setAskShort(true)}>
+              <button type="button" className="btn ghost" onClick={() => setAskShort(true)}>
                 Confirm the goods are physically there
               </button>
+            </div>
+          ) : (
+            <div className="field" style={{ marginTop: "0.6rem", color: "var(--ink)" }}>
+              <label htmlFor="dlv_short_reason">Why the books are short</label>
+              <input id="dlv_short_reason" type="text" required
+                     placeholder="e.g. supplier delivery not yet entered"
+                     value={shortReason} onChange={(e) => setShortReason(e.target.value)} />
+              <span className="hint">Kept with the delivery, alongside the confirmation.</span>
             </div>
           )}
         </div>
       )}
 
-      <section className="rcv-card">
-        <div className="rcv-card-head">Note</div>
-        <div style={{ padding: "0.75rem 1rem" }}>
-          <textarea name="memo"
-                    rows={2} placeholder="Optional — English or Myanmar"
-                    value={memo} onChange={(e) => setMemo(e.target.value)} />
-        </div>
-      </section>
+      <div className="gr-bottom">
+        <div />
+        <div className="gr-side">
+          <div className="card">
+            <div className="card-head"><h2>Summary (MMK)</h2></div>
+            <div className="card-body">
+              <dl className="gr-sum">
+                <dt>Lines</dt><dd>{invoice.lines.filter((l) => entered(l) > 0).length}</dd>
+                <dt>Going out</dt><dd>{oneUnit ? `${qty(totals.going)}${unit}` : perItem(invoice, sending)}</dd>
+                <dt>Invoice</dt><dd>{invFullyDelivered && totals.going > 0 ? "Fully delivered" : "Partly delivered"}</dd>
+              </dl>
+              <div className="gr-total"><span>Invoiced value</span><span>{money(totals.charged)}</span></div>
+            </div>
+          </div>
 
-      <section className="rcv-card">
-        <div className="rcv-card-head">After posting this delivery</div>
-        <table className="rcv-preview">
-          <tbody>
-            <tr>
-              <th>Shipped from warehouse</th>
-              <td>{oneUnit ? `${qty(totals.going)}${unit}` : perItem(invoice, sending)}</td>
-            </tr>
-            <tr>
-              <th>Matched to sales invoice</th>
-              <td>
-                <Link href={`/documents/${invoice.id}`}>{invoice.docNo}</Link>{" · "}
-                {oneUnit ? `${qty(totals.going)}${unit}` : perItem(invoice, sending)}
-                {invFullyDelivered && totals.going > 0 ? " · Fully delivered" : ""}
-              </td>
-            </tr>
-            {totals.orders.length === 0 ? (
-              <tr>
-                <th>Allocated to SO</th>
-                <td className="muted">No linked order</td>
-              </tr>
-            ) : totals.orders.map((o) => (
-              <tr key={o.orderId}>
-                <th>Allocated to {o.orderNo}</th>
-                <td>
-                  <Link href={`/documents/${o.orderId}`}>{o.orderNo}</Link>{" · "}
-                  {qty(o.allocating)}{unit}{" · fulfilment "}
-                  {qty(o.fulfilled)} → {qty(o.fulfilled + o.allocating)} of {qty(o.ordered)}
-                </td>
-              </tr>
-            ))}
-            <tr>
-              <th>Not allocated to any SO</th>
-              <td className={totals.unallocated > 0 ? "" : "muted"}>
-                {qty(totals.unallocated)}{oneUnit ? unit : ""}
-                {totals.unallocated > 0 ? " — delivered and invoiced, answering no order" : ""}
-              </td>
-            </tr>
-            <tr>
-              <th>Stock ownership</th>
-              <td className={anyConsigned ? "" : "muted"}>
-                {anyConsigned
-                  ? "Includes consigned goods, drawn from the consignor's pool and settled with them"
-                  : "Our own stock"}
-              </td>
-            </tr>
-            <tr>
-              <th>Cost of sale</th>
-              <td className="muted">
-                Drawn FIFO from the lots on the shelf at posting — not the price above
-              </td>
-            </tr>
-            <tr>
-              <th>Customer payment</th>
-              <td className="muted">Unchanged</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+          {/* What posting will do, worked out from the quantities above. */}
+          <details className="card gr-preview" open>
+            <summary className="card-head">
+              <h2>What this delivery does</h2>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div className="card-body">
+              <dl className="gr-sum rcv-effects">
+                <dt>Out of the warehouse</dt>
+                <dd>{oneUnit ? `${qty(totals.going)}${unit}` : perItem(invoice, sending)}</dd>
+                <dt>Matched to invoice</dt>
+                <dd><Link href={`/documents/${invoice.id}`}>{invoice.docNo}</Link></dd>
+                {totals.orders.length === 0 ? (
+                  <><dt>Sales order</dt><dd className="muted">No linked order</dd></>
+                ) : totals.orders.map((o) => (
+                  <Fragment key={o.orderId}>
+                    <dt>Answers <Link href={`/documents/${o.orderId}`}>{o.orderNo}</Link></dt>
+                    <dd>{qty(o.allocating)}{unit} · {qty(o.fulfilled + o.allocating)} of {qty(o.ordered)} delivered</dd>
+                  </Fragment>
+                ))}
+                {totals.unallocated > 0 && (
+                  <><dt>Answering no order</dt><dd>{qty(totals.unallocated)}{oneUnit ? unit : ""}</dd></>
+                )}
+                <dt>Stock</dt><dd>{anyConsigned ? "Includes consigned goods" : "Our own stock"}</dd>
+                <dt>Cost of sale</dt><dd className="muted">FIFO at posting</dd>
+                <dt>Customer payment</dt><dd className="muted">Unchanged</dd>
+              </dl>
+              <p className="subline" style={{ marginTop: 8 }}>
+                Matches the existing invoice. No new invoice or receipt is created.
+              </p>
+            </div>
+          </details>
+        </div>
+      </div>
 
       {related}
 
@@ -447,29 +445,21 @@ export function DeliverAgainstInvoice({
         onConfirm={() => { setShortConfirmed(true); setAskShort(false); }}
       />
 
-      {totals.short.length > 0 && shortConfirmed && (
-        <div className="field">
-          <label htmlFor="dlv_short_reason">Why the books are short</label>
-          <input id="dlv_short_reason" type="text" required
-                 placeholder="e.g. supplier delivery not yet entered"
-                 value={shortReason} onChange={(e) => setShortReason(e.target.value)} />
-          <span className="hint">Kept with the delivery, alongside the confirmation.</span>
-        </div>
-      )}
-
-      <div className="rcv-actions">
-        <span className="muted">
-          Matches the existing invoice. No new invoice or receipt is created.
-        </span>
-        <Link className="btn ghost" href={backHref}>{backLabel}</Link>
-        <button type="submit" className="btn"
+      <div className="actions form-commit">
+        {totals.short.length > 0 && (!shortConfirmed || !shortReason.trim()) && (
+          <span className="commit-hint" role="status">
+            {shortConfirmed ? "Say why the books are short to post" : "Confirm the stock shortfall to post"}
+          </span>
+        )}
+        <button type="submit"
                 disabled={pending || totals.going <= 0
                   || (totals.short.length > 0 && (!shortConfirmed || !shortReason.trim()))}>
-          {pending ? "Posting…"
-            : `Post delivery · ${qty(totals.going)}${oneUnit ? unit : ""}`}
+          {pending ? "Posting…" : `Post delivery · ${qty(totals.going)}${oneUnit ? unit : ""}`}
         </button>
+        <Link className="btn ghost" href={backHref}>{backLabel}</Link>
       </div>
     </form>
+    </>
   );
 }
 

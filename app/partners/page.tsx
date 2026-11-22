@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { getCompany, getPartners } from "@/lib/queries";
 import { sql } from "@/lib/db";
-import { updatePartner, deactivatePartner, activatePartner, deletePartner } from "@/lib/actions";
+import { updatePartner, deactivatePartner, activatePartner, deletePartner, saveSupplierItem, deleteSupplierItem } from "@/lib/actions";
 import { PartnerRow } from "@/components/partner-row";
 import { CustomerRow } from "@/components/customer-row";
 import { CustomerPanelProvider } from "@/components/customer-panel";
+import { SupplierRow } from "@/components/supplier-row";
+import { SupplierPanelProvider } from "@/components/supplier-panel";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { getTranslations } from "next-intl/server";
@@ -160,6 +162,92 @@ export default async function Partners({
             </div>
           </section>
         </CustomerPanelProvider>
+      </>
+    );
+  }
+
+  if (role === "supplier") {
+    const cp = await getTranslations("customerPanel");
+    const sp = await getTranslations("supplierPanel");
+    const suppliers = byRole;
+    const srows: DataRow[] = suppliers.map((p) => ({
+      key: p.id,
+      searchText: [p.code, p.name, p.name_my, p.company_name, p.contact_person, p.phone, p.township, p.region].filter(Boolean).join(" "),
+      facet: {
+        status: p.is_active ? "active" : "inactive",
+        category: p.supplier_category_id ?? "none",
+        currency: p.currency ?? "home",
+        delivery: p.lead_time_days === null ? "unset" : "set",
+        owed: Number(p.outstanding) > 0.005 ? "yes" : "no",
+      },
+      sort: {
+        supplier: p.code,
+        contact: p.contact_person ?? p.company_name ?? "",
+        currency: p.currency ?? "",
+        delivery: p.lead_time_days === null ? Number.MAX_SAFE_INTEGER : Number(p.lead_time_days),
+        owed: Number(p.outstanding),
+        status: p.is_active ? 1 : 0,
+      },
+      node: (
+        <SupplierRow partner={p} deactivateAction={deactivatePartner}
+          activateAction={activatePartner} deleteAction={deletePartner} />
+      ),
+    }));
+    const currencyCodes = [...new Set(suppliers.map((p) => p.currency).filter(Boolean))].sort() as string[];
+    return (
+      <>
+        <datalist id="currency-codes">
+          {currencies.map((c: any) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </datalist>
+        <SupplierPanelProvider suppliers={suppliers} supplierCategories={supplierCategories}
+          updateAction={updatePartner} saveTermAction={saveSupplierItem} deleteTermAction={deleteSupplierItem}>
+          <div className="page-head">
+            <span className="eyebrow">{it("masterData")}</span>
+            <h1>{t("suppliers")}</h1>
+            <HelpHint>{t("filteredHelp")}</HelpHint>
+          </div>
+          <section>
+            <div className="card">
+              <div className="card-head">
+                <span className="page-sub">{t("records", { n: suppliers.length })}</span>
+                <span className="actions">
+                  <Link href="/partners/new" className="btn">{t("newPartner")}</Link>
+                </span>
+              </div>
+              <DataTable
+                rows={srows}
+                emptyLabel={t("noPartners")}
+                searchPlaceholder={sp("searchSuppliers")}
+                defaultSort={{ key: "supplier", dir: "asc" }}
+                tableClassName="dt-compact ctable stable"
+                storageKey="partners:suppliers:v1"
+                initialFilters={category ? { category } : {}}
+                filters={[
+                  { key: "status", label: c("status"), allLabel: cp("allStatuses"),
+                    options: [{ value: "active", label: t("activeLower") }, { value: "inactive", label: t("inactiveLower") }] },
+                  { key: "category", label: sp("group"), allLabel: t("allGroups"),
+                    options: [...supplierCategories.map((x) => ({ value: x.id, label: x.name })),
+                              { value: "none", label: t("notCategorised") }] },
+                  { key: "owed", label: sp("owed"), allLabel: sp("allOwed"),
+                    options: [{ value: "yes", label: sp("owedYes") }, { value: "no", label: sp("owedNo") }] },
+                  { key: "currency", label: sp("currency"), allLabel: sp("allCurrencies"), more: true,
+                    options: [{ value: "home", label: sp("homeCurrency") }, ...currencyCodes.map((v) => ({ value: v, label: v }))] },
+                  { key: "delivery", label: sp("usualDelivery"), allLabel: sp("allDelivery"), more: true,
+                    options: [{ value: "set", label: sp("deliverySet") }, { value: "unset", label: sp("notSet") }] },
+                ]}
+                columns={[
+                  { key: "supplier", label: sp("supplier"), sortable: true },
+                  { key: "contact", label: sp("contact"), sortable: true },
+                  { key: "currency", label: sp("currency"), sortable: true },
+                  { key: "delivery", label: sp("usualDelivery"), sortable: true },
+                  { key: "owed", label: sp("owed"), sortable: true, align: "r" },
+                  { key: "status", label: c("status"), sortable: true },
+                  { key: "actions", label: "" },
+                ]}
+              />
+            </div>
+          </section>
+        </SupplierPanelProvider>
       </>
     );
   }

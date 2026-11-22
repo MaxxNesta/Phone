@@ -138,7 +138,8 @@ export async function getInventoryCogsData({ from, to, branch }: Params) {
     carriage: recon.carriage ? { code: recon.carriage.code, name: recon.carriage.name, net: r4(n(recon.carriage.net)) } : null,
     // Cost of sales as the general ledger has it, for the reconciliation line.
     cogsGl: r4(n(recon.postedCogs?.value)),
-    // Credits to cost of sales in the period: customer returns and voided sales.
+    // Credits to cost of sales in the period: customer returns, voided sales,
+    // and supplier price corrections or discounts on goods already sold.
     cogsCredits: r4(n(recon.returnedToCogs?.value)),
     opening, closing, additions, releases,
     addedTotal, releasedTotal, soldCost, notSold, formula, formulaTies,

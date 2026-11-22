@@ -199,6 +199,8 @@ export async function clearingSources(companyId: string, exceptLandedCostId?: st
        and coalesce(src.doc_type, '') <> 'LANDED_COST'
        and not exists (select 1 from landed_cost_charge c where c.source_journal_line_id = jl.id and c.is_active
                          and c.landed_cost_id is distinct from ${exceptLandedCostId ?? null})
+       and coalesce(je.source_type, '') <> 'LANDED_COST_WRITE_OFF'
+       and not exists (select 1 from landed_cost_writeoff w where w.source_journal_line_id = jl.id and w.reversal_entry_id is null)
      order by je.entry_date desc
      limit 200`;
 }
@@ -241,4 +243,76 @@ export async function receiptLandedSummary(companyId: string, receiptId: string)
                             where sm.document_id = ${receiptId})
         or p.receipt_line_id in (select id from document_line where document_id = ${receiptId})`;
   return { original: r.original, added: added.v, final: r.original + added.v, count: r.count };
+}
+
+/** Older than this, an amount left in clearing is flagged. */
+export const CLEARING_STALE_DAYS = 30;
+
+/**
+ * Every bill line debited to Landed Cost Clearing or a cost type's clearing
+ * account that posted landed costs and write-offs have not used up, with
+ * what is used, what is left and how old it is. A draft that holds the line
+ * is named but uses nothing until it posts.
+ */
+const leftovers = (db: typeof sql, companyId: string, locs: string[] | null) => db`
+  with clearing as (
+    select account_id from system_account where company_id = ${companyId} and role = 'LANDED_COST_CLEARING'
+    union select clearing_account_id from landed_cost_type where company_id = ${companyId} and clearing_account_id is not null)
+  select jl.id, je.entry_no, je.entry_date::text as entry_date, (fn_shop_today() - je.entry_date)::int as days,
+         src.id as doc_id, src.doc_no, src.doc_type, a.code || ' ' || a.name as account, bp.name as partner,
+         jl.currency, abs(jl.amount)::float as fc_amount, jl.base_amount::float as amount,
+         u.used::float as used, u.held, u.held_id, w.written::float as written,
+         (jl.base_amount - u.used - w.written)::float as left, coalesce(je.memo, '') as memo
+    from journal_line jl
+    join clearing c on c.account_id = jl.account_id
+    join journal_entry je on je.id = jl.journal_entry_id
+    join account a on a.id = jl.account_id
+    left join document src on src.id = je.source_id
+    left join business_partner bp on bp.id = jl.partner_id
+    cross join lateral (
+      select coalesce(sum(ch.base_amount) filter (where d.status = 'POSTED'), 0) as used,
+             min(d.doc_no) filter (where d.status = 'DRAFT') as held,
+             (array_agg(d.id) filter (where d.status = 'DRAFT'))[1] as held_id
+        from landed_cost_charge ch join document d on d.id = ch.landed_cost_id
+       where ch.source_journal_line_id = jl.id and ch.is_active) u
+    cross join lateral (
+      select coalesce(sum(x.amount), 0) as written from landed_cost_writeoff x
+       where x.source_journal_line_id = jl.id and x.reversal_entry_id is null) w
+   where jl.company_id = ${companyId} and jl.base_amount > 0
+     and (src.id is null or (src.status = 'POSTED' and src.reverses_document_id is null))
+     and coalesce(je.source_type, '') not in ('LANDED_COST', 'LANDED_COST_WRITE_OFF')
+     and jl.base_amount - u.used - w.written > 0.00005
+     ${locs ? db`and (jl.location_id is null or jl.location_id = any(${locs}))` : db``}`;
+
+export type ClearingLeftover = {
+  id: string; entry_no: string; entry_date: string; days: number; doc_id: string | null; doc_no: string | null;
+  doc_type: string | null; account: string; partner: string | null; currency: string; fc_amount: number;
+  amount: number; used: number; held: string | null; held_id: string | null; written: number; left: number; memo: string;
+};
+
+export async function clearingLeftovers(companyId: string, locs: string[] | null, db: typeof sql = sql) {
+  return db`select * from (${leftovers(db, companyId, locs)}) l order by entry_date, entry_no` as unknown as Promise<ClearingLeftover[]>;
+}
+
+/** How much has sat in clearing longer than CLEARING_STALE_DAYS: for the warnings. */
+export async function staleClearing(companyId: string, locs: string[] | null = null, db: typeof sql = sql) {
+  const [r] = await db`
+    select count(*)::int as n, coalesce(sum("left"), 0)::float as total
+      from (${leftovers(db, companyId, locs)}) l where days > ${CLEARING_STALE_DAYS}`;
+  return r as unknown as { n: number; total: number };
+}
+
+/** Write-offs still standing, newest first, so a mistaken one can be reversed. */
+export async function clearingWriteOffs(companyId: string) {
+  return sql`
+    select w.id, w.amount::float as amount, w.entry_date::text as entry_date, w.reason, je.entry_no,
+           src.entry_no as bill_entry_no, u.name as by
+      from landed_cost_writeoff w
+      join journal_entry je on je.id = w.entry_id
+      join journal_line jl on jl.id = w.source_journal_line_id
+      join journal_entry src on src.id = jl.journal_entry_id
+      left join app_user u on u.id = w.created_by
+     where w.company_id = ${companyId} and w.reversal_entry_id is null
+     order by w.created_at desc limit 50` as unknown as Promise<
+      { id: string; amount: number; entry_date: string; reason: string; entry_no: string; bill_entry_no: string; by: string | null }[]>;
 }

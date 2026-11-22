@@ -35,7 +35,7 @@ await ok(cashier, line(1), unknown, "no price and no stock cost: nothing to chec
 await ok(manager, line(1, { focReasonId: "r", discountPct: 50 }), listed, "a manager decides");
 
 // The real lookup runs and returns what the rules need.
-const sql = postgres(process.env.DATABASE_URL, { ssl: "require", prepare: false, max: 1, onnotice: () => {} });
+const sql = postgres(process.env.DATABASE_URL, { ssl: /localhost|127.0.0.1/.test(process.env.DATABASE_URL) ? false : "require", prepare: false, max: 1, onnotice: () => {} });
 const [co] = await sql`select id from company order by created_at limit 1`;
 const items = (await sql`select id from item where company_id = ${co.id} limit 3`).map((r) => r.id);
 const [cust] = await sql`select id from business_partner where company_id = ${co.id} and is_customer limit 1`;

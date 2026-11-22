@@ -37,5 +37,9 @@ jobs:
       # Fails the run on high or critical only. Moderate and low are reported
       # but do not block, so routine noise in transitive dependencies cannot
       # stop a fix from shipping to the pilot.
+      # High or critical advisories fail the run, except ones the owner has
+      # accepted for a stated reason and date (scripts/audit-gate.mjs).
       - name: Audit dependencies
-        run: npm audit --audit-level=high
+        run: |
+          npm audit --json > audit.json || true
+          node scripts/audit-gate.mjs audit.json

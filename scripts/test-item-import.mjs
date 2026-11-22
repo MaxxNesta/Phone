@@ -79,7 +79,7 @@ try {
     const [items, categories, brands, uoms] = await Promise.all([
       sql`select id, code, serial, name, barcode, item_group_id, brand_id, base_uom_id
             from item where company_id = ${co.id} and is_active`,
-      sql`select id, code, name, parent_id from item_group where company_id = ${co.id} and is_active`,
+      sql`select id, code, name, parent_id, identity from item_group where company_id = ${co.id} and is_active`,
       sql`select id, code, name from brand where company_id = ${co.id} and is_active`,
       sql`select id, code, name from uom where company_id = ${co.id}`,
     ]);
@@ -97,8 +97,9 @@ try {
     planImport(parseCsv("No,Barcode,Stock ID,Stock Name,Category,Brand\n1,1,i,x,y,z"), await master())
       .errors.some((e) => /Unit/.test(e.message)));
 
+  // Refused at the upload check (it throws) or by the plan; either way, refused.
   check("an empty file is refused",
-    planImport(parseCsv(""), await master()).errors.length > 0);
+    await (async () => { try { return planImport(parseCsv(""), await master()).errors.length > 0; } catch { return true; } })());
 
   // ---- the stock columns are gone, and saying so beats ignoring them -------
   // Someone will upload last month's sheet. Those numbers meant something to
@@ -414,6 +415,22 @@ try {
 
   const [c3] = await sql`select brand_id from item where company_id=${co.id} and barcode=${`B${stamp}3`}`;
   check("the unbranded item has no brand rather than a made-up one", c3.brand_id === null);
+
+  // ---- tracking comes from the category ------------------------------------
+  // An item imported into a phone category is tracked by IMEI, as one made on
+  // the product form is; before this, every imported item was quantity only.
+  {
+    const [phones] = await sql`
+      insert into item_group (company_id, segment, code, name, identity)
+      values (${co.id}, ${"IP" + stamp.slice(-2)}, 'x', ${"Import Phones " + stamp}, 'IMEI')
+      returning id, name`;
+    const p = await plan(row(`B${stamp}P1`, `Phone ${stamp}`, null, phones.name, null, `P${stamp}`));
+    check("the preview carries the category's tracking", p.rows[0]?.identity === "IMEI", p.rows[0]?.identity ?? errorsOf(p));
+    await importItems({ companyId: co.id, filename: "phones.csv", rowCount: 1, rows: p.rows });
+    const [ph] = await sql`select identity, tracks_serial from item where company_id = ${co.id} and barcode = ${`B${stamp}P1`}`;
+    check("an item imported into an IMEI category is tracked by IMEI", ph?.identity === "IMEI" && ph.tracks_serial === true, JSON.stringify(ph));
+    check("an item in a category with no tracking stays quantity only", c1.is_stocked && (await sql`select identity from item where id = ${c1.id}`)[0].identity === "NONE");
+  }
 
   // ---- what the import must NOT do ----------------------------------------
   // The whole point of the change: setting up an item is not a stock event

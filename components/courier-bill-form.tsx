@@ -151,7 +151,7 @@ export function CourierBillForm({ action, preview, couriers, receipts, types, ca
       {total > 0 && (
         <section className="card">
           <div className="card-head"><h2>What this posts</h2>
-            {method !== "VALUE" && each > 0 && <span className="page-sub">{fmt(each)} on each item{method === "PER" ? ` · ${phones} items = ${fmt(total)}` : ""}</span>}</div>
+            {(method === "EQUAL" || method === "PER") && each > 0 && <span className="page-sub">{fmt(each)} on each item{method === "PER" ? ` · ${phones} items = ${fmt(total)}` : ""}</span>}</div>
           <div className="tablewrap">
             <table>
               <thead><tr><th>Entry</th><th>Account</th><th className="r">Debit</th><th className="r">Credit</th></tr></thead>

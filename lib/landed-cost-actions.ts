@@ -9,6 +9,8 @@ import { requirePermission } from "./auth";
 import { can } from "./auth-core";
 import { assertMyBranch } from "./branch-scope";
 import * as L from "./landed-cost";
+import { hasModule } from "./plans";
+import { getCompany } from "./queries";
 
 type Result = { error?: string; ok?: string } | null;
 
@@ -81,6 +83,40 @@ export async function landedCostStepAction(_prev: Result, fd: FormData): Promise
   } catch (e) { return { error: msg(e) }; }
 }
 
+// ------------------------------------------- what is left in clearing --
+
+/** Only a company that bought Landed cost can write anything off its clearing. */
+async function landedModule() {
+  if (!hasModule(await getCompany(), "landed_cost")) throw new Error("Landed cost is not part of this company's package.");
+}
+
+/** Write off what is left of one bill line in a clearing account to Landed Cost Variance. */
+export async function writeOffClearingAction(_prev: Result, fd: FormData): Promise<Result> {
+  try {
+    const u = await poster();
+    await landedModule();
+    if (!can(u, "accounting.post")) throw new Error("Your account cannot post to the ledger. Ask an accountant.");
+    const [line] = await sql`select location_id from journal_line where id = ${str(fd, "line_id")} and company_id = ${u.companyId}`;
+    if (!line) throw new Error("That bill line was not found.");
+    await assertMyBranch(line.location_id as string | null);
+    const r = await L.writeOffClearing({ companyId: u.companyId, userId: u.id, journalLineId: str(fd, "line_id"),
+      reason: str(fd, "reason"), date: str(fd, "date") || undefined });
+    revalidatePath("/purchases/landed-cost-clearing");
+    return { ok: `Written off ${r.amount.toLocaleString("en-US")} to Landed Cost Variance.` };
+  } catch (e) { return { error: msg(e) }; }
+}
+
+export async function reverseClearingWriteOffAction(_prev: Result, fd: FormData): Promise<Result> {
+  try {
+    const u = await poster();
+    await landedModule();
+    if (!can(u, "documents.void")) throw new Error("Your account cannot reverse posted entries. Ask a manager.");
+    await L.reverseClearingWriteOff({ companyId: u.companyId, userId: u.id, id: str(fd, "id"), reason: str(fd, "reason") });
+    revalidatePath("/purchases/landed-cost-clearing");
+    return { ok: "Reversed. The bill is back in the list." };
+  } catch (e) { return { error: msg(e) }; }
+}
+
 // ------------------------------------------------------------ settings --
 
 export async function saveCostTypeAction(_prev: Result, fd: FormData): Promise<Result> {
@@ -91,7 +127,7 @@ export async function saveCostTypeAction(_prev: Result, fd: FormData): Promise<R
     const name = str(fd, "name");
     const method = str(fd, "default_method") as L.Method;
     if (!code || !name) return { error: "A cost type needs a code and a name." };
-    if (!["VALUE", "EQUAL", "MANUAL"].includes(method)) return { error: "Choose a default allocation method." };
+    if (!["VALUE", "EQUAL", "MANUAL", "WEIGHT"].includes(method)) return { error: "Choose a default allocation method." };
     const vals = {
       code, name, method,
       account: str(fd, "clearing_account_id") || null,

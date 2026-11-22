@@ -11,20 +11,22 @@ import { HelpHint } from "./help-hint";
  *   PER    one figure for each item, multiplied by the items received
  *   EQUAL  one total, the same share on every item
  *   VALUE  one total, shared in proportion to what each item cost
+ *   WEIGHT one total, shared in proportion to what each item weighs
  *
  * A fixed amount per item posts as its total shared equally — the same
  * thing, entered the other way round.
  */
-export type Spread = "PER" | "EQUAL" | "VALUE";
+export type Spread = "PER" | "EQUAL" | "VALUE" | "WEIGHT";
 
 export const SPREAD: Record<Spread, { label: string; says: string }> = {
   PER: { label: "Fixed amount per item", says: "Type the charge for one item; it is multiplied by every item received." },
   EQUAL: { label: "One total, split equally", says: "Type the courier's total; every item gets the same share." },
   VALUE: { label: "One total, split by item cost", says: "Type the courier's total; dearer items carry more of it, in proportion to what they cost." },
+  WEIGHT: { label: "One total, split by weight", says: "Type the courier's total; heavier items carry more of it, by the weight set on each product." },
 };
 
 /** What the engine is told: a fixed amount per item is its total, shared equally. */
-export const postedSpread = (s: Spread) => (s === "VALUE" ? "VALUE" : "EQUAL");
+export const postedSpread = (s: Spread) => (s === "PER" ? "EQUAL" : s);
 
 export function SpreadField({ id, value, onChange }: { id: string; value: Spread; onChange: (s: Spread) => void }) {
   return (

@@ -122,7 +122,7 @@ export function InventoryMovement({ d }: { d: {
 
           <Head title="GL reconciliation" />
           <tr className="sf-l1" data-tone={glGap === 0 ? "sold" : "bad"}><td colSpan={3}><span className="sf-label">GL {d.cogsCode} · Inventory cost of sales
-            <HelpHint label="Cost of sales in the ledger">Cost of sales above, less what came back to it in the period (customer returns, voided sales: {money(d.cogsCredits)}), less delivered goods not yet billed. That is what the ledger should show.</HelpHint></span>
+            <HelpHint label="Cost of sales in the ledger">Cost of sales above, less what came back to it in the period (customer returns, voided sales, supplier price corrections and discounts on goods already sold: {money(d.cogsCredits)}), less delivered goods not yet billed. That is what the ledger should show.</HelpHint></span>
             <small className="sf-note">{glGap === 0 ? `Agrees with the movements above · expected ${money(expectedGl)}` : `Differs by ${money(glGap)} from the ${money(expectedGl)} the movements predict — see the checks below`}</small></td>
             <td className="sf-amt">{money(d.cogsGl)}</td></tr>
           {/* Only when carriage was recorded in the period: an empty line would read as a figure missing. */}

@@ -21,16 +21,17 @@ const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_00
 export type RecentSale = { id: string; doc_no: string; date: string; customer: string; walk_in: boolean;
   items: number; total: number; outstanding: number; voided: boolean };
 
-export async function salesOverview(co: string, locs: string[] | null) {
+/** `serials` (lib/features.ts): count phones where IMEI is on, every unit where it is off. */
+export async function salesOverview(co: string, locs: string[] | null, serials = true) {
   const today = yangonToday();
   const at = locs ? sql`and d.location_id = any(${locs})` : sql``;
   const [[kpi], takings, week, top, recent, [ar]] = await Promise.all([
     // A void posts its reversal as a negative invoice the same way, so the
     // sums net it out; only the count has to leave both sides out.
     sql`select count(distinct d.id) filter (where d.reverses_document_id is null and d.reversed_by_document_id is null)::int as sales,
-               coalesce(sum(dl.net_amount), 0)::float as revenue,
+               coalesce(sum(coalesce(dl.revenue_amount, dl.net_amount)), 0)::float as revenue,
                coalesce(sum(c.cost), 0)::float as cost,
-               coalesce(sum(dl.base_qty) filter (where i.tracks_serial), 0)::int as phones
+               coalesce(sum(dl.base_qty) filter (where i.tracks_serial or not ${serials}), 0)::int as phones
           from document d
           join document_line dl on dl.document_id = d.id
           join item i on i.id = dl.item_id
@@ -46,12 +47,12 @@ export async function salesOverview(co: string, locs: string[] | null) {
                         and d.posting_date between ${today}::date - 6 and ${today}::date ${at}
                       group by 1) s on s.posting_date = g::date
          order by g`,
-    sql`select coalesce(p.name, i.name) as model, sum(dl.base_qty)::int as sold, sum(dl.net_amount)::float as revenue
+    sql`select coalesce(p.name, i.name) as model, sum(dl.base_qty)::int as sold, sum(coalesce(dl.revenue_amount, dl.net_amount))::float as revenue
           from document d
           join document_line dl on dl.document_id = d.id
           join item i on i.id = dl.item_id left join item p on p.id = i.parent_item_id
          where d.company_id = ${co} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
-           and d.posting_date between ${today}::date - 29 and ${today}::date ${at} and i.tracks_serial
+           and d.posting_date between ${today}::date - 29 and ${today}::date ${at} and (i.tracks_serial or not ${serials})
          group by 1 having sum(dl.base_qty) > 0 order by 2 desc, 3 desc limit 5`,
     sql`select d.id, d.doc_no, to_char(d.posting_date, 'YYYY-MM-DD') as date, bp.name as customer,
                bp.code = 'WALKIN' as walk_in, d.gross_total::float as total,
@@ -86,7 +87,7 @@ export type RecentBill = { id: string; doc_no: string; date: string; supplier: s
  * `payables` and `stock` follow the reader's permissions: what is owed to
  * suppliers is accounting's (as the Payables page is), low stock inventory's.
  */
-export async function purchasesOverview(co: string, locs: string[] | null, see: { payables: boolean; stock: boolean }) {
+export async function purchasesOverview(co: string, locs: string[] | null, see: { payables: boolean; stock: boolean }, serials = true) {
   const today = yangonToday();
   const monthStart = `${today.slice(0, 7)}-01`;
   const at = locs ? sql`and d.location_id = any(${locs})` : sql``;
@@ -118,7 +119,20 @@ export async function purchasesOverview(co: string, locs: string[] | null, see: 
          ${locs ? sql`and document_id in (select id from document where location_id = any(${locs}))` : sql``}
        order by due_date nulls last, posting_date` : Promise.resolve([]),
     see.payables ? getDueWithin(co, "PURCHASE_INVOICE", 7, locs) : Promise.resolve({ total: 0, invoices: 0 }),
-    // Phones that sell and are nearly out: two or fewer left, sold in 60 days.
+    // Products that sell and are nearly out: two or fewer left, sold in 60 days.
+    // Without serial numbers, counted from stock movements instead of IMEI units.
+    see.stock && !serials ? sql`
+      select i.name, q.on_hand::int as left_, s.sold::int as sold_60
+        from (select item_id, sum(qty) as on_hand from stock_movement
+               where company_id = ${co} ${locs ? sql`and location_id = any(${locs})` : sql``} group by 1) q
+        join (select sm.item_id, sum(-sm.qty) as sold from stock_movement sm join document d on d.id = sm.document_id
+               where sm.company_id = ${co} and d.status = 'POSTED' and sm.kind is null
+                 and d.doc_type in ('SALES_INVOICE', 'DELIVERY') and sm.movement_date > ${today}::date - 60
+                 ${locs ? sql`and sm.location_id = any(${locs})` : sql``}
+               group by 1 having sum(-sm.qty) > 0) s on s.item_id = q.item_id
+        join item i on i.id = q.item_id
+       where q.on_hand <= 2
+       order by q.on_hand, s.sold desc limit 8` :
     see.stock ? sql`
       select s.item_name as name, count(*) filter (where s.status = 'IN_STOCK')::int as left_,
              count(*) filter (where s.status = 'SOLD' and s.out_date > ${today}::date - 60)::int as sold_60

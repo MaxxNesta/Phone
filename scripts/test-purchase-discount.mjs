@@ -23,7 +23,7 @@ const serialCost = async (imei) => Number((await sql`select unit_cost::float c f
 
 await resetTransactions(sql);
 const supplier = (await sql`select id from business_partner where company_id = ${co.id} and code = '01-006'`)[0].id; // Ko Sai (Mr Mobile)
-const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
 const item = (await sql`select id from item where company_id = ${co.id} and code = 'IPC011'`)[0].id;
 const today = new Date().toISOString().slice(0, 10);
 let n = 352091234500000;

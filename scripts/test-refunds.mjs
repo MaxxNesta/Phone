@@ -72,7 +72,7 @@ try {
      values (${co.id}, ${grp.id}, '001', 'x', 'Refund test item', ${uom.id}) returning id`;
   const [supp] = await sql`insert into business_partner (company_id, code, name, is_supplier) values (${co.id}, 'RF-SUP', 'Refund supplier', true) returning id`;
   const [cust] = await sql`insert into business_partner (company_id, code, name, is_customer, payment_terms_days) values (${co.id}, 'RF-CUST', 'Refund customer', true, 30) returning id`;
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
   const today = new Date().toISOString().slice(0, 10);
   await P.postGoodsReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
     lines: [{ itemId: item.id, qty: 50, unitCost: 1000 }] });
@@ -81,8 +81,12 @@ try {
   // A shop that dropped KBZPay gets one for the suite, removed again afterwards.
   [madeKbz] = await sql`insert into payment_channel (company_id, code, name, kind, requires_reference, sort_order)
     select ${co.id}, 'KBZPAY', 'KBZPay', 'WALLET', true, 30
-     where not exists (select 1 from payment_channel where company_id = ${co.id} and code = 'KBZPAY') returning id`;
-  const CASH = await channel("CASH"), KBZ = await channel("KBZPAY");
+     where not exists (select 1 from payment_channel where company_id = ${co.id}
+                        and (code = 'KBZPAY' or lower(name) = 'kbzpay')) returning id`;
+  // A wallet added in Settings gets a generated code (KBZPAY-xxxx): find it by name too.
+  const CASH = await channel("CASH");
+  const KBZ = (await sql`select id from payment_channel where company_id = ${co.id}
+                          and (code = 'KBZPAY' or lower(name) = 'kbzpay') order by (code = 'KBZPAY') desc limit 1`)[0].id;
   // A wallet account of the test's own: a real KBZPay account, active or
   // retired, is never borrowed, and the channel's own mapping is put back.
   let [wallet] = await sql`select id from account where company_id = ${co.id} and code = 'T-KBZPAY'`;

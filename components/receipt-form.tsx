@@ -15,7 +15,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
-import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink } from "lucide-react";
+import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink, AlertTriangle } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 import { LineRemove } from "./line-remove";
@@ -57,6 +57,14 @@ type Line = {
   serials?: UnitRow[];
   /** Optional tracking: this receipt records a serial for every unit. */
   withSerials?: boolean;
+  /**
+   * Some of what arrived is refused (docs/06 D-P7): broken, wrong model,
+   * missing parts. Still received — the order counts it as arrived — but
+   * posted as its own line into the branch's quarantine, where nothing can
+   * sell it, until a return sends it back. `serials` are the refused IMEIs,
+   * picked from this line's; `qty` is used for items without them.
+   */
+  reject?: { qty: string; serials: string[]; reason: string; outcome: "" | "REPLACE" | "CREDIT" };
   /** What the purchase order still owes on this line, when receiving one. */
   ordered?: number;
 };
@@ -360,19 +368,40 @@ export function ReceiptForm({
   const unbilledValue = unbilled.reduce((s, l) => s + amount(l), 0);
 
 
+  /** How many of a line's units are refused, by IMEI where it has them. */
+  const rejectedQty = (l: Line) => !l.reject ? 0
+    : named(l) ? l.reject.serials.filter((sn) => (l.serials ?? []).some((u) => u.serial.trim() === sn)).length
+    : Math.max(0, Number(l.reject.qty) || 0);
   const payload = JSON.stringify(
     lines
       .filter((l) => l.itemId && Number(l.qty) > 0)
-      .map((l) => ({
-        itemId: l.itemId, qty: Number(l.qty), unitCost: Number(l.unitCost) || 0,
-        uomId: l.uomId || null,
-        sourceLineId: l.sourceLineId ?? null,
-        batchNo: l.batchNo?.trim() || null,
-        expiryDate: l.expiryDate || null,
-        serials: (named(l) ? l.serials ?? [] : []).map((x) => x.serial.trim()).filter(Boolean),
-        unitDetails: (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim() && (x.imei2?.trim() || x.deviceSerial?.trim()))
-          .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
-      }))
+      .flatMap((l) => {
+        const units = (named(l) ? l.serials ?? [] : []).filter((x) => x.serial.trim());
+        const refused = new Set(l.reject && named(l) ? l.reject.serials : []);
+        const rej = rejectedQty(l);
+        const common = {
+          itemId: l.itemId, unitCost: Number(l.unitCost) || 0,
+          uomId: l.uomId || null,
+          sourceLineId: l.sourceLineId ?? null,
+          batchNo: l.batchNo?.trim() || null,
+          expiryDate: l.expiryDate || null,
+        };
+        const part = (qty: number, rows: typeof units, rejected: Line["reject"] | null) => ({
+          ...common, qty,
+          serials: rows.map((x) => x.serial.trim()),
+          unitDetails: rows.filter((x) => x.imei2?.trim() || x.deviceSerial?.trim())
+            .map((x) => ({ serial: x.serial.trim(), imei2: x.imei2?.trim() || null, deviceSerial: x.deviceSerial?.trim() || null })),
+          ...(rejected ? { rejected: { reason: rejected.reason.trim(), outcome: rejected.outcome } } : {}),
+        });
+        // Nine to the shelf and one to quarantine: two lines answering the
+        // same order or bill line, so the order still counts ten arrived.
+        if (!l.reject || rej === 0) return [part(Number(l.qty), units, null)];
+        const kept = Number(l.qty) - rej;
+        return [
+          ...(kept > 0 ? [part(kept, units.filter((u) => !refused.has(u.serial.trim())), null)] : []),
+          part(rej, units.filter((u) => refused.has(u.serial.trim())), l.reject),
+        ];
+      })
   );
 
   // A phone line whose IMEI count is not its quantity cannot post; saying so
@@ -395,6 +424,9 @@ export function ReceiptForm({
   const serialShort = lines.filter((l) => named(l) && Number(l.qty) > 0
     && (entered(l) !== Number(l.qty) || rowsProblem(l.serials ?? [], modeOf(l), onFile)));
   const tracked = lines.filter((l) => named(l) && Number(l.qty) > 0);
+  // A refusal says how many, what is wrong and what the supplier is to do.
+  const rejectIncomplete = lines.filter((l) => l.reject && l.itemId && (
+    rejectedQty(l) === 0 || rejectedQty(l) > Number(l.qty) || !l.reject.reason.trim() || !l.reject.outcome));
   // Why the courier charge, if switched on, is not ready to post.
   const [carriageBlock, setCarriageBlock] = useState<string | null>(null);
   const imeiLine = tracked.find((l) => l.key === imeiKey) ?? tracked[0] ?? null;
@@ -693,6 +725,15 @@ export function ReceiptForm({
                                   <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button>
                                 </span>
                               )}
+                              <span className="vavail">
+                                <button type="button" className="linkish"
+                                  onClick={() => setLine(l.key, { reject: l.reject ? undefined : { qty: "", serials: [], reason: "", outcome: "" } })}>
+                                  {l.reject ? "Cancel refusal" : "Refuse some"}
+                                </button>
+                              </span>
+                              {l.reject && rejectedQty(l) > 0 && (
+                                <span className="sbadge" data-tone="warn" style={{ marginLeft: 6 }}>{fmt(rejectedQty(l))} to quarantine</span>
+                              )}
                             </span>
                           </span>
                         ) : (
@@ -775,6 +816,10 @@ export function ReceiptForm({
                     {named(l) && (
                       <UnitsRow colSpan={lineCols} title={item?.name ?? ""} qty={q} rows={l.serials ?? []}
                         onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
+                    )}
+                    {l.reject && (
+                      <RejectRow colSpan={lineCols} line={l} tracked={named(l)} imei={modeOf(l) === "IMEI"} arrived={q}
+                        onChange={(reject) => setLine(l.key, { reject })} />
                     )}
                     {picking && (
                       <tr className="gr-pickrow">
@@ -923,12 +968,14 @@ export function ReceiptForm({
       </div>
 
       <div className="actions form-commit">
-        {(serialShort.length > 0 || carriageBlock) && (
+        {(serialShort.length > 0 || carriageBlock || rejectIncomplete.length > 0) && (
           <span className="commit-hint" role="status">
-            {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post" : carriageBlock}
+            {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post"
+              : rejectIncomplete.length > 0 ? "A refusal needs which units, what is wrong, and whether the supplier replaces or credits them"
+              : carriageBlock}
           </span>
         )}
-        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0 || !!carriageBlock}
+        <button type="submit" ref={postRef} disabled={pending || total === 0 || serialShort.length > 0 || !!carriageBlock || rejectIncomplete.length > 0}
           onClick={(e) => {
             if (offOrder.length > 0 && !offOrderOk.current) { e.preventDefault(); setAskOffOrder(true); }
           }}>
@@ -949,5 +996,77 @@ export function ReceiptForm({
       </div>
     </form>
     </>
+  );
+}
+
+
+/**
+ * What was refused on one receipt line, and why (docs/06 D-P7). The units
+ * still count as arrived; they go to the branch's quarantine instead of the
+ * shelf, and the return that sends them back is raised from the receipt.
+ */
+function RejectRow({ colSpan, line, tracked, imei, arrived, onChange }: {
+  colSpan: number; line: Line; tracked: boolean; imei: boolean; arrived: number;
+  onChange: (reject: NonNullable<Line["reject"]>) => void;
+}) {
+  const r = line.reject!;
+  const units = (line.serials ?? []).map((u) => u.serial.trim()).filter(Boolean);
+  const toggle = (sn: string) => onChange({ ...r, serials: r.serials.includes(sn) ? r.serials.filter((x) => x !== sn) : [...r.serials, sn] });
+  const n = tracked ? r.serials.filter((sn) => units.includes(sn)).length : Math.max(0, Number(r.qty) || 0);
+  return (
+    <tr className="gr-reject">
+      <td colSpan={colSpan}>
+        <div className="reject-panel">
+          <div className="reject-panel-head">
+            <AlertTriangle size={16} aria-hidden="true" style={{ color: "#B07F00" }} />
+            Refused on arrival{n > 0 ? ` — ${n} of ${arrived}` : ""}
+            <span className="page-sub" style={{ fontWeight: 400, marginLeft: 4 }}>
+              Still received, into this warehouse&rsquo;s quarantine bin, not for sale.
+            </span>
+          </div>
+          <div className="reject-grid">
+            <div className="field">
+              <label>{tracked ? "Which units" : "How many"} *</label>
+              {tracked ? (
+                units.length === 0 ? <span className="subline">Scan the {imei ? "IMEIs" : "serial numbers"} above first, then tap the refused ones.</span> : (
+                  <div className="reject-imeis">
+                    {units.map((sn) => (
+                      <label key={sn} className="reject-imei">
+                        <input type="checkbox" checked={r.serials.includes(sn)} onChange={() => toggle(sn)} /> {sn}
+                      </label>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <input type="number" min="1" max={arrived || undefined} step="any" value={r.qty}
+                  onChange={(e) => onChange({ ...r, qty: e.target.value })} aria-label="Refused quantity" />
+              )}
+            </div>
+            <div className="field">
+              <label htmlFor={`reject-reason-${line.key}`}>What is wrong *</label>
+              <input id={`reject-reason-${line.key}`} type="text" value={r.reason}
+                placeholder="Screen cracked, does not power on, wrong colour…"
+                onChange={(e) => onChange({ ...r, reason: e.target.value })} aria-label="What is wrong" />
+              <span className="hint">Printed on the rejection note.</span>
+            </div>
+            <div className="field">
+              <label>The supplier will *</label>
+              <div className="choice-list">
+                <label className="choice">
+                  <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "REPLACE"}
+                    onChange={() => onChange({ ...r, outcome: "REPLACE" })} />
+                  <span>Replace it<small>The order waits for another once it goes back.</small></span>
+                </label>
+                <label className="choice">
+                  <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "CREDIT"}
+                    onChange={() => onChange({ ...r, outcome: "CREDIT" })} />
+                  <span>Credit it<small>The order is done; the bill or return covers it.</small></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }

@@ -24,7 +24,8 @@ export function SetupForm({
 
   // Myanmar's financial year has moved more than once, so this is asked
   // rather than assumed. April is the current convention.
-  const [month, setMonth] = useState(4);
+  // The calendar year by default (2026-11-22); another start month can still be chosen.
+  const [month, setMonth] = useState(1);
   const [year, setYear] = useState(defaultYear);
 
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;

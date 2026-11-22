@@ -4,7 +4,8 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { Fragment, useMemo, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { Lock, Building2, FileText, ClipboardList, Warehouse, CalendarDays, Clock, Hash, StickyNote, ChevronDown } from "lucide-react";
+import { DocHeading } from "./doc-heading";
 import type { ActionResult } from "@/lib/actions";
 import { RelatedDocumentsPanel } from "./related-documents";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
@@ -174,87 +175,102 @@ export function ReceiveAgainstBill({
     && (scans[l.lineId]?.length ?? 0) !== entered(l));
 
   return (
-    <form action={formAction} className="rcv">
+    <>
+    {/* The same heading, sheet and commit bar as every other goods receipt:
+        only what this one is answering (a bill already in) differs. */}
+    <DocHeading
+      back={{ href: backHref, label: backLabel }}
+      trail={[
+        { label: "Goods receipts", href: "/purchases/receive" },
+        { label: bill.docNo, href: `/documents/${bill.id}` },
+      ]}
+      title="Goods receipt" status="New" />
+    <form action={formAction} className="form wide gr docsheet waved">
       <input type="hidden" name="idempotency_key" value={attemptKey} />
       <input type="hidden" name="partner_id" value={bill.partnerId} />
       <input type="hidden" name="source_document_id" value={bill.id} />
       <input type="hidden" name="lines" value={payload} />
 
-      <div className="page-head">
-        <span className="eyebrow">Purchases</span>
-        <h1>Receive goods against supplier bill</h1>
-        <span className="page-sub">Record only the goods that physically arrived.</span>
-      </div>
-
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
-      <section className="rcv-card rcv-against">
-        <div className="rcv-card-head">Receiving against</div>
-        <div className="rcv-against-body">
-          <div>
-            <div className="rcv-k">Supplier bill</div>
-            <Link href={`/documents/${bill.id}`}>{bill.docNo}</Link>
-          </div>
-          <div>
-            <div className="rcv-k">Related order</div>
-            {orderSummary(bill)}
-          </div>
-          <div>
-            <div className="rcv-k">Supplier</div>
-            <span>{bill.partnerCode} · {bill.partnerName}</span>
-          </div>
+      <div className="card doc-info">
+        <div className="card-head">
+          <h2>Receipt details</h2>
           <Link className="rcv-change" href="/purchases/receive/new">Change bill</Link>
         </div>
-      </section>
-
-      <section className="rcv-card">
-        <div className="rcv-card-head">Receiving details</div>
-        <div className="rcv-fields">
-          <div className="field">
-            <label htmlFor="rcv_loc">Warehouse</label>
-            <WarehouseSelect locations={locations} id="rcv_loc" name="location_id" required
-                    value={locationId} onChange={(e) => setLocationId(e.target.value)} />
+        <div className="card-body">
+          <div className="doc-fields">
+            <div className="field">
+              <label><Building2 size={13} aria-hidden="true" />Supplier</label>
+              <input type="text" value={`${bill.partnerCode} · ${bill.partnerName}`} readOnly aria-label="Supplier" />
+            </div>
+            <div className="field">
+              <label><FileText size={13} aria-hidden="true" />Against bill</label>
+              <span className="rcv-ro"><Link href={`/documents/${bill.id}`}>{bill.docNo}</Link></span>
+            </div>
+            <div className="field">
+              <label><ClipboardList size={13} aria-hidden="true" />Purchase order</label>
+              <span className="rcv-ro">{orderSummary(bill)}</span>
+            </div>
+            <div className="field">
+              <label htmlFor="rcv_loc"><Warehouse size={13} aria-hidden="true" />Warehouse</label>
+              <WarehouseSelect locations={locations} id="rcv_loc" name="location_id" required
+                      value={locationId} onChange={(e) => setLocationId(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="rcv_date"><CalendarDays size={13} aria-hidden="true" />GR date</label>
+              <input id="rcv_date" name="doc_date" type="date" required
+                     value={docDate} onChange={(e) => setDocDate(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="rcv_time"><Clock size={13} aria-hidden="true" />Time</label>
+              <input id="rcv_time" name="received_time" type="time"
+                     value={time} onChange={(e) => setTime(e.target.value)} />
+            </div>
           </div>
-          <div className="field">
-            <label htmlFor="rcv_date">Received date</label>
-            <input id="rcv_date" name="doc_date" type="date" required
-                   value={docDate} onChange={(e) => setDocDate(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="rcv_time">Time</label>
-            <input id="rcv_time" name="received_time" type="time"
-                   value={time} onChange={(e) => setTime(e.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="rcv_ref">Delivery reference</label>
-            <input id="rcv_ref" name="reference" type="text" placeholder="Delivery note number"
-                   value={reference} onChange={(e) => setReference(e.target.value)} />
+          <div className="doc-info-foot">
+            <details className="moredetails" open={!!(reference || memo) || undefined}>
+              <summary>Additional details <span className="page-sub">(delivery reference, remarks)</span></summary>
+              <div className="row">
+                <div className="field">
+                  <label htmlFor="rcv_ref"><Hash size={13} aria-hidden="true" />Reference</label>
+                  <input id="rcv_ref" name="reference" type="text" placeholder="Delivery note no."
+                         value={reference} onChange={(e) => setReference(e.target.value)} />
+                </div>
+                <div className="field span-2">
+                  <label htmlFor="rcv_memo"><StickyNote size={13} aria-hidden="true" />Remarks</label>
+                  <input id="rcv_memo" name="memo" type="text" placeholder="Optional — English or Myanmar"
+                         value={memo} onChange={(e) => setMemo(e.target.value)} />
+                </div>
+              </div>
+            </details>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section className="rcv-card">
-        <div className="rcv-card-head">Goods received</div>
+      <div className="card">
         <div className="tablewrap">
-          <table className="linetable rcv-table">
+          <table className="linetable grlines vgrid rcv-table">
             <thead>
               <tr>
+                <th className="vc-no">No.</th>
                 <th>Item</th>
                 <th className="r">Billed</th>
-                <th className="r">Already received against bill</th>
+                <th className="r">Received before</th>
                 <th className="r">Remaining</th>
-                <th className="r">Receive now <span aria-hidden="true">*</span></th>
+                <th className="r vc-qty">Receive now <span aria-hidden="true">*</span></th>
                 <th className="r">Unit cost</th>
-                <th className="r">Value (MMK)</th>
+                <th className="r">Subtotal</th>
               </tr>
             </thead>
             <tbody>
-              {bill.lines.map((l) => (
+              {bill.lines.map((l, idx) => (
                 <Fragment key={l.lineId}>
                 <tr>
+                  <td className="vc-no">{idx + 1}</td>
                   <td>
                     <strong>{l.itemCode}</strong>
-                    <div className="muted">{l.itemName}</div>
+                    <div className="subline">{l.itemName}</div>
                   </td>
                   <td className="r">{qty(l.billedQty)}{unitOf(l)}</td>
                   <td className="r">{qty(l.receivedQty)}{unitOf(l)}</td>
@@ -281,7 +297,7 @@ export function ReceiveAgainstBill({
                 </tr>
                 {l.optionalSerial && (
                   <tr className="batchrow">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <TrackMode code={l.itemCode} on={!!withSerials[l.lineId]}
                         onChange={(on) => setWithSerials((m) => ({ ...m, [l.lineId]: on }))} />
                     </td>
@@ -289,7 +305,7 @@ export function ReceiveAgainstBill({
                 )}
                 {named(l) && (
                   <tr className="batchrow">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <SerialEntry
                         label={`${l.itemCode} — ${l.optionalSerial ? "serial number" : "IMEI"} of each unit`}
                         qty={entered(l)}
@@ -311,88 +327,71 @@ export function ReceiveAgainstBill({
             </tbody>
           </table>
         </div>
-        <div className="rcv-foot">
-          <span className="muted">Unit cost comes from {bill.docNo}.</span>
-          <span>
-            Received value <strong>{money(totals.value)}</strong> MMK
-          </span>
-        </div>
-      </section>
+        <p className="subline rcv-costnote"><Lock size={11} aria-hidden="true" /> Unit cost comes from {bill.docNo}.</p>
+      </div>
 
-      <section className="rcv-card">
-        <div className="rcv-card-head">Note</div>
-        <div style={{ padding: "0.75rem 1rem" }}>
-          <textarea name="memo" rows={2} placeholder="Optional — English or Myanmar"
-                    value={memo} onChange={(e) => setMemo(e.target.value)} />
-        </div>
-      </section>
+      <div className="gr-bottom">
+        <div />
+        <div className="gr-side">
+          <div className="card">
+            <div className="card-head"><h2>Summary (MMK)</h2></div>
+            <div className="card-body">
+              <dl className="gr-sum">
+                <dt>Lines</dt><dd>{bill.lines.filter((l) => entered(l) > 0).length}</dd>
+                <dt>Received</dt><dd>{oneUnit ? `${qty(totals.received)}${unit}` : perItem(bill, receiving)}</dd>
+                <dt>Bill</dt><dd>{billFullyReceived && totals.received > 0 ? "Fully received" : "Partly received"}</dd>
+              </dl>
+              <div className="gr-total"><span>Received value</span><span>{money(totals.value)}</span></div>
+            </div>
+          </div>
 
-      <section className="rcv-card">
-        <div className="rcv-card-head">
-          After posting this receipt
+          {/* What posting will do, worked out from the quantities above: what it
+              matches on the bill, what it answers on the order, what answers none. */}
+          <details className="card gr-preview" open>
+            <summary className="card-head">
+              <h2>What this receipt does</h2>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div className="card-body">
+              <dl className="gr-sum rcv-effects">
+                <dt>Into the warehouse</dt>
+                <dd>{oneUnit ? `${qty(totals.received)}${unit}` : perItem(bill, receiving)}</dd>
+                <dt>Matched to bill</dt>
+                <dd><Link href={`/documents/${bill.id}`}>{bill.docNo}</Link></dd>
+                {totals.orders.length === 0 ? (
+                  <><dt>Purchase order</dt><dd className="muted">No linked order</dd></>
+                ) : totals.orders.map((o) => (
+                  <Fragment key={o.orderId}>
+                    <dt>Answers <Link href={`/documents/${o.orderId}`}>{o.orderNo}</Link></dt>
+                    <dd>{qty(o.allocating)}{unit} · {qty(o.fulfilled + o.allocating)} of {qty(o.ordered)} received</dd>
+                  </Fragment>
+                ))}
+                {totals.unallocated > 0 && (
+                  <><dt>Answering no order</dt><dd>{qty(totals.unallocated)}{oneUnit ? unit : ""}</dd></>
+                )}
+                <dt>Supplier payment</dt><dd className="muted">Unchanged</dd>
+              </dl>
+              <p className="subline" style={{ marginTop: 8 }}>
+                Matches the existing bill. No new invoice or payment is created.
+              </p>
+            </div>
+          </details>
         </div>
-        <table className="rcv-preview">
-          <tbody>
-            <tr>
-              <th>Received into warehouse</th>
-              <td>{oneUnit ? `${qty(totals.received)}${unit}` : perItem(bill, receiving)}</td>
-            </tr>
-            <tr>
-              <th>Matched to supplier bill</th>
-              <td>
-                <Link href={`/documents/${bill.id}`}>{bill.docNo}</Link>{" · "}
-                {oneUnit ? `${qty(totals.received)}${unit}` : perItem(bill, receiving)}
-                {billFullyReceived && totals.received > 0 ? " · Fully received" : ""}
-              </td>
-            </tr>
-            {totals.orders.length === 0 ? (
-              <tr>
-                <th>Allocated to PO</th>
-                <td className="muted">No linked order</td>
-              </tr>
-            ) : totals.orders.map((o) => (
-              <tr key={o.orderId}>
-                <th>Allocated to {o.orderNo}</th>
-                <td>
-                  <Link href={`/documents/${o.orderId}`}>{o.orderNo}</Link>{" · "}
-                  {qty(o.allocating)}{unit}
-                  {" · fulfilment "}
-                  {qty(o.fulfilled)} → {qty(o.fulfilled + o.allocating)}
-                  {" of "}{qty(o.ordered)}
-                </td>
-              </tr>
-            ))}
-            <tr>
-              <th>Not allocated to any PO</th>
-              <td className={totals.unallocated > 0 ? "" : "muted"}>
-                {qty(totals.unallocated)}{oneUnit ? unit : ""}
-                {totals.unallocated > 0
-                  ? " — received and billed, answering no order"
-                  : ""}
-              </td>
-            </tr>
-            <tr>
-              <th>Supplier payment</th>
-              <td className="muted">Unchanged</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      </div>
 
       {related}
 
-      <div className="rcv-actions">
-        <span className="muted">
-          Matches the existing bill. No new invoice or payment is created.
-        </span>
-        <Link className="btn ghost" href={backHref}>{backLabel}</Link>
-        {serialShort && <span className="low" role="status">Scan one IMEI per phone received.</span>}
-        <button type="submit" className="btn" disabled={pending || totals.received <= 0 || serialShort}>
-          {pending ? "Posting…"
-            : `Post goods receipt · ${qty(totals.received)}${oneUnit ? unit : ""}`}
+      <div className="actions form-commit">
+        {serialShort && (
+          <span className="commit-hint" role="status">Every unit needs its IMEI or serial to post</span>
+        )}
+        <button type="submit" disabled={pending || totals.received <= 0 || serialShort}>
+          {pending ? "Posting…" : `Post GR · ${qty(totals.received)}${oneUnit ? unit : ""}`}
         </button>
+        <Link className="btn ghost" href={backHref}>{backLabel}</Link>
       </div>
     </form>
+    </>
   );
 }
 

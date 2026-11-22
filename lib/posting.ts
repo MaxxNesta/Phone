@@ -3,7 +3,7 @@ import type { TransactionSql } from "postgres";
 import { sql } from "./db";
 import { landedOn } from "./landed-cost";
 import { planVoidIn, type VoidBlocker } from "./void";
-import { priceLines, pricePurchaseLines, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
+import { priceLines, pricePurchaseLines, allocateFreeUnits, spreadByWeight, roundMoney, type VolumeBand, type LineDiscounts } from "./discount";
 
 // The posting engine.
 //
@@ -76,6 +76,8 @@ export type InvoiceLine = {
    * shelf and recorded as gone.
    */
   serials?: string[];
+  /** Secondhand buyback: these IMEIs may have been ours before (see FulfillmentLine). */
+  reacquire?: boolean;
 
   /** Customer warranty on this line, in months. Defaults to the item's. */
   warrantyMonths?: number | null;
@@ -257,6 +259,25 @@ export type FulfillmentLine = {
    * discover that is while the box is open.
    */
   serials?: string[];
+  /**
+   * Secondhand buyback: a listed IMEI that has been ours before and has since
+   * gone out (sold, returned to a supplier) comes back as the same unit, on a
+   * new layer at this receipt's cost, its history kept. One still on a shelf
+   * is refused — a phone cannot be in stock twice. Without this flag any
+   * known IMEI is refused, as a new phone from a supplier never has history.
+   */
+  reacquire?: boolean;
+  /**
+   * Goods receipts only (docs/06 D-P7): these units arrived but were refused
+   * — broken, wrong model, missing parts. They are received all the same, at
+   * the same cost, because they are the supplier's goods in our hands and the
+   * order counts them as arrived; but they land in the branch's quarantine
+   * (0218), where nothing can sell them, until a return sends them back.
+   * The receiver says what is wrong, and whether the supplier is to replace
+   * them (the order expects them again once they go back) or credit them.
+   * A line of ten with one broken is two lines: nine, and one rejected.
+   */
+  rejected?: { reason: string; outcome: "REPLACE" | "CREDIT" } | null;
 
   /** Optional per-unit detail for a received serial: IMEI 2, the maker's
    *  serial, supplier warranty. Keyed by the serial it describes. */
@@ -2055,7 +2076,11 @@ async function claimSerials(
     }
     if (s.item_id !== itemId) throw new Error(`${sn} is a ${st.item_code}, not the item on this line.`);
     if (st.location_id !== locationId) {
-      throw new Error(`${sn} is at ${st.location_name}. Transfer it here first.`);
+      const [q] = await tx`select is_quarantine from location where id = ${st.location_id}`;
+      throw new Error(q?.is_quarantine
+        ? `${sn} is in quarantine (${st.location_name}): it was rejected or returned faulty. ` +
+          `Release it from quarantine first if it has been checked and found good.`
+        : `${sn} is at ${st.location_name}. Transfer it here first.`);
     }
     units.push({ serialId: s.id, serialNo: s.serial_no, lotId: st.stock_lot_id });
   }
@@ -2160,7 +2185,7 @@ async function packFactor(
 ): Promise<PackFactor> {
   if (!uomId || uomId === baseUomId) return { factor: 1, uomId: baseUomId };
   const [row] = await tx`
-    select factor from item_uom where item_id = ${itemId} and uom_id = ${uomId}`;
+    select factor from v_item_pack where item_id = ${itemId} and uom_id = ${uomId}`;
   if (!row) {
     const [u] = await tx`select code from uom where id = ${uomId}`;
     const [i] = await tx`select code, name from item where id = ${itemId}`;
@@ -2175,6 +2200,26 @@ async function packFactor(
     throw new Error("A pack size has to hold more than nothing");
   }
   return { factor, uomId };
+}
+
+/**
+ * A return typed in packs, turned into the item's own unit. Stock, cost
+ * layers and GR/IR all count base units, so everything after this sees base
+ * quantities and per-base prices; the line keeps what was typed (`entered`)
+ * so the document still reads "2 BOX".
+ */
+async function returnInBaseUnits(tx: TransactionSql, lines: ReturnLine[]): Promise<ReturnLine[]> {
+  const out: ReturnLine[] = [];
+  for (const l of lines) {
+    const [item] = l.uomId ? await tx`select base_uom_id from item where id = ${l.itemId}` : [];
+    if (!item) { out.push(l); continue; }
+    const pack = await packFactor(tx, l.itemId, l.uomId, item.base_uom_id as string);
+    out.push(pack.factor === 1 ? l : {
+      ...l, qty: round4(l.qty * pack.factor), unitPrice: l.unitPrice / pack.factor,
+      entered: { qty: l.qty, uomId: pack.uomId, factor: pack.factor },
+    });
+  }
+  return out;
 }
 
 // ------------------------------------------------------- batch tracking --
@@ -3222,12 +3267,12 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
     // to come back to the same place.
     let expenseAccountId: string;
     if (line.focReasonId) {
-      // A giveaway is settled the moment it leaves. No invoice is coming, so
-      // its cost goes to the reason's own account and never passes through
-      // the holding account below.
-      const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId} and applies_to = 'SALE'`;
-      if (!foc) throw new Error(SALE_FOC_ONLY);
-      expenseAccountId = foc.account_id as string;
+      // A free line is settled the moment it leaves: no invoice will bill it,
+      // so its cost never passes through the holding account below. Given
+      // with a sale it is cost of sales; a standalone giveaway (a delivery of
+      // nothing but free goods, for no order or invoice) goes to its reason.
+      expenseAccountId = await focExpenseAccount(tx, companyId, line.itemId, line.focReasonId,
+        !!input.sourceDocumentId || input.lines.some((l) => !l.focReasonId));
     } else {
       const cogs = await tx`
         select fn_resolve_account_for_item(${companyId}, 'COGS', ${line.itemId}) as a`;
@@ -3293,7 +3338,7 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
       if (!held[0]?.a) {
         throw new Error(
           "No account is set for goods shipped and not invoiced. "
-          + "Migration 0114 adds 1090 and the SHIPPED_NOT_INVOICED role.");
+          + "Point it at 1420 Goods Shipped Not Invoiced in Settings → Accounts.");
       }
       journal.push({ accountId: held[0].a as string, amount: claimable, locationId });
       if (provisional !== 0) {
@@ -3966,9 +4011,9 @@ async function issueStockLine(tx: TransactionSql, a: {
 
   let expenseAccountId: string;
   if (a.focReasonId) {
-    const [foc] = await tx`select account_id from foc_reason where id = ${a.focReasonId} and applies_to = 'SALE'`;
-    if (!foc) throw new Error(SALE_FOC_ONLY);
-    expenseAccountId = foc.account_id as string;
+    // Issued by a sales invoice, which always charges for something: a free
+    // item given with a sale is part of what the sale cost.
+    expenseAccountId = await focExpenseAccount(tx, a.companyId, a.itemId, a.focReasonId, true);
   } else {
     const [cogs] = await tx`
       select fn_resolve_account_for_item(${a.companyId}, 'COGS', ${a.itemId}) as a`;
@@ -4252,6 +4297,37 @@ async function _postSalesInvoice(
   const journal: JournalLine[] = [];
   /** What this invoice bills, for the cost claim once every line exists. */
   const billedLines: Array<{ lineId: string; itemId: string; qty: number; serials?: string[] }> = [];
+  /* A free item given with this sale earns its share of it (IFRS 15, 0205).
+     What the customer paid for the charged lines is spread over every line,
+     free ones included, by what each sells for on its own — its price-list
+     price (the till's own rule), or for a charged line with none, the price
+     it was sold at. A 1,000 phone and a 50 case for 1,000: 952.38 / 47.62.
+     Revenue in total does not move. A deliver-later invoice keeps it on the
+     paid lines: its free lines do not wait in 2230 for the goods to go. */
+  const revenueOf = new Map<InvoiceLine, number>();
+  const deferredInvoice = !!input.toDeliver && !input.issueStock && !input.deliveryId;
+  if (!deferredInvoice && input.lines.some((l) => l.focReasonId) && input.lines.some((l) => !l.focReasonId)) {
+    const listed = new Map((await tx`
+      select i.id, (select ip.price from item_price ip join price_level pl on pl.id = ip.price_level_id
+                     where ip.item_id = i.id and ip.valid_from <= ${docDate}::date
+                       and pl.id = (select l.id from price_level l where l.company_id = i.company_id
+                                     order by (l.code = 'RETAIL') desc, l.sort_order, l.code limit 1)
+                     order by ip.valid_from desc limit 1)::float as price
+        from item i where i.id = any(${[...new Set(input.lines.map((l) => l.itemId))]})`)
+      .map((r) => [r.id as string, Number(r.price ?? 0)]));
+    const netOf = (l: InvoiceLine) => (l.focReasonId ? 0
+      : round4(taxFor.get(l)?.net ?? pricedFor.get(l)?.net ?? l.qty * l.unitPrice));
+    const ssp = input.lines.map((l) => {
+      const qty = round4(l.qty * (packs.get(l)?.factor ?? 1));
+      const list = listed.get(l.itemId) ?? 0;
+      return list > 0 ? qty * list : l.focReasonId ? 0 : l.qty * l.unitPrice;
+    });
+    if (input.lines.some((l, i) => l.focReasonId && ssp[i] > 0)) {
+      const pool = roundMoney(input.lines.reduce((t, l) => t + netOf(l), 0), scale);
+      spreadByWeight(pool, ssp, scale).forEach((v, i) => revenueOf.set(input.lines[i], v));
+    }
+  }
+
   let lineNo = 0;
 
   for (const line of input.lines) {
@@ -4282,7 +4358,7 @@ async function _postSalesInvoice(
          volume_discount_pct, volume_discount_amount, volume_discount_id,
          invoice_discount_pct, invoice_discount_amount, invoice_discount_id,
          net_amount, tax_code_id, tax_amount, gross_amount, foc_reason_id,
-         warranty_months, source_line_id)
+         warranty_months, source_line_id, revenue_amount)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty},
@@ -4305,7 +4381,7 @@ async function _postSalesInvoice(
          -- It records a relationship and nothing more. Fulfilment is counted
          -- from deliveries and receipts, never from invoices, so nothing that
          -- adds up quantities starts counting this.
-         ${line.sourceLineId ?? null})
+         ${line.sourceLineId ?? null}, ${revenueOf.get(line) ?? null})
       returning id`;
 
     /* Which units this line bills, for the cost claim after the loop. Free
@@ -4370,7 +4446,7 @@ async function _postSalesInvoice(
       : roundMoney(discountGross * (net / chargedBeforeTaxSplit), scale);
 
     /* Deliver later: goods billed before they leave are not yet a sale. The
-       price after discount waits in Billed Not Delivered (21303) and each
+       price after discount waits in Billed Not Delivered (2230) and each
        delivery moves its share to Sales and Sales Discounts (0191). A
        service on the same invoice is earned now — nothing is delivered for it. */
     const deferRevenue = !!input.toDeliver && !input.issueStock && !input.deliveryId
@@ -4384,10 +4460,12 @@ async function _postSalesInvoice(
         insert into sales_revenue_deferred
           (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
         values (${companyId}, ${invLine.id}, ${doc.id}, ${baseQty}, ${round4(net)}, ${discount}, ${revenue[0].a})`;
-    } else if (net !== 0 || discount !== 0) {
+    } else if ((revenueOf.get(line) ?? net) !== 0 || discount !== 0) {
+      // The line's allocated share where free items took part (above).
+      const earned = revenueOf.get(line) ?? net;
       const revenue = await tx`
         select fn_resolve_account_for_item(${companyId}, 'REVENUE', ${line.itemId}) as a`;
-      journal.push({ accountId: revenue[0].a, amount: -round4(net + discount) });
+      journal.push({ accountId: revenue[0].a, amount: -round4(earned + discount) });
       if (discount !== 0) {
         const allowed = await tx`
           select fn_system_account(${companyId}, 'SALES_DISCOUNT_ALLOWED') as a`;
@@ -4707,6 +4785,20 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
 
     const { companyId, partnerId, locationId, docDate } = input;
 
+  /* Units refused at the door (D-P7) land in the branch's quarantine (0218),
+     received like the rest but where nothing can sell them. Each refusal
+     says what is wrong and what the supplier is to do about it. */
+  for (const [i, l] of input.lines.entries()) {
+    if (!l.rejected) continue;
+    if (!l.rejected.reason?.trim()) throw new Error(`Line ${i + 1}: say what is wrong with the rejected goods.`);
+    if (l.rejected.outcome !== "REPLACE" && l.rejected.outcome !== "CREDIT") {
+      throw new Error(`Line ${i + 1}: choose whether the supplier replaces the rejected goods or credits them.`);
+    }
+  }
+  const quarantineId = input.lines.some((l) => l.rejected)
+    ? (await tx`select fn_quarantine_location(${locationId}) as q`)[0].q as string
+    : null;
+
   // Which of these items keep lot identity, read once for the document
   // rather than per line.
   const tracking = await batchTracking(tx, input.lines.map((l) => l.itemId)); const receivedAt = input.receivedAt || docDate;
@@ -4761,14 +4853,19 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       // Quantity-weighted where an item is billed on more than one line, so
       // one receipt line takes one cost and it is the cost of those goods.
       const prices = await tx`
-        -- Before the supplier's discount: under the GROSS policy the goods are
-        -- stocked at the price bought, and the bill credited the discount.
+        -- What the bill put on stock (stock_cost: by discount policy, with
+        -- free units' share). Bills from before 0204 were all GROSS: the goods
+        -- at the price bought, the discount credited separately.
         select dl.item_id,
-               sum(dl.net_amount + case when co.purchase_discount_policy = 'GROSS'
-                     then coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0) else 0 end) as net,
+               sum(coalesce(dl.stock_cost, dl.net_amount
+                     + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0))
+                   -- less discounts agreed before the goods came (discountOffBill)
+                   - coalesce((select sum(n.net_amount) from document_line n
+                                 join document nd on nd.id = n.document_id
+                                where n.source_line_id = dl.id and nd.doc_type = 'DEBIT_NOTE'
+                                  and nd.status = 'POSTED'), 0)) as net,
                sum(dl.base_qty) as qty
           from document_line dl
-          join company co on co.id = dl.company_id
          where dl.document_id = ${input.sourceDocumentId}
          group by dl.item_id
         having sum(dl.base_qty) > 0`;
@@ -4803,6 +4900,8 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
 
   for (const line of lines) {
     lineNo++;
+    // Where this line's goods physically land: rejected units in quarantine.
+    const at = line.rejected ? quarantineId! : locationId;
 
     const [item] = await tx`select id, code, name, is_stocked, base_uom_id from item where id = ${line.itemId}`;
     if (!item) throw new Error("Item not found");
@@ -4824,12 +4923,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
       insert into document_line
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
-         net_amount, tax_amount, gross_amount, source_line_id, foc_reason_id)
+         net_amount, tax_amount, gross_amount, source_line_id, foc_reason_id,
+         reject_reason, reject_outcome)
       values
-        (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
+        (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${at},
          ${enteredQty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${unitCost},
          ${net}, 0, ${net}, ${line.sourceLineId ?? null},
-         ${unitCost === 0 ? line.focReasonId ?? null : null})
+         ${unitCost === 0 ? line.focReasonId ?? null : null},
+         ${line.rejected?.reason.trim() ?? null}, ${line.rejected?.outcome ?? null})
       returning id`;
 
     assertBatchGiven(item as never, tracking.get(line.itemId), line);
@@ -4839,7 +4940,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         (company_id, item_id, location_id, movement_date, qty,
          unit_cost, total_cost, document_id, document_line_id, batch_no, expiry_date)
       values
-        (${companyId}, ${line.itemId}, ${locationId}, ${docDate}::date,
+        (${companyId}, ${line.itemId}, ${at}, ${docDate}::date,
          ${baseQty}, ${baseUnitCost}, ${net}, ${doc.id}, ${docLine.id},
          ${line.batchNo?.trim() || null}, ${line.expiryDate || null})
       returning id`;
@@ -4852,13 +4953,13 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
     // Everything below the line is in base units: what was owed for goods
     // already gone, what reaches the shelf, and the layer it becomes.
     const { covered, variance, byAccount } = await settleNegativeStock(
-      tx, companyId, doc.id, line.itemId, locationId, baseQty, baseUnitCost, movement.id
+      tx, companyId, doc.id, line.itemId, at, baseQty, baseUnitCost, movement.id
     );
     const toShelf = round4(baseQty - covered);
     let lotId: string | null = null;
     if (toShelf > 0.0001) {
       lotId = await createFifoLot(
-        tx, companyId, line.itemId, locationId, receivedAt, baseUnitCost, toShelf, movement.id,
+        tx, companyId, line.itemId, at, receivedAt, baseUnitCost, toShelf, movement.id,
         { batchNo: line.batchNo, expiryDate: line.expiryDate });
     }
 
@@ -4892,16 +4993,42 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
          where company_id = ${companyId}
            and (serial_no = any(${[...given, ...extra]}) or imei2 = any(${[...given, ...extra]})
                 or device_serial = any(${extra}))`;
+      let fresh = given;
       if (clash.length > 0) {
-        throw new Error(
-          `${(clash as unknown as { serial_no: string }[])[0].serial_no} is already `
-          + `recorded. A serial identifies one unit, and that one has arrived before.`
-        );
+        const known = line.reacquire ? await tx`
+          select s.id, s.serial_no,
+                 exists (select 1 from v_stock_serial_available a where a.serial_id = s.id) as on_shelf
+            from stock_serial s
+           where s.company_id = ${companyId} and s.serial_no = any(${given})` : [];
+        const back = known.filter((k) => !k.on_shelf);
+        const stillHere = known.find((k) => k.on_shelf);
+        if (stillHere) {
+          throw new Error(`${stillHere.serial_no} is in stock already. A phone cannot be on the shelf twice.`);
+        }
+        // Anything clashing that is not a whole known IMEI coming back (an
+        // IMEI 2 or maker's serial of another unit) is still refused.
+        if (!line.reacquire || clash.length !== back.length) {
+          throw new Error(
+            `${(clash as unknown as { serial_no: string }[])[0].serial_no} is already `
+            + `recorded. A serial identifies one unit, and that one has arrived before.`
+          );
+        }
+        // The same unit, a new acquisition: onto this receipt's layer, at
+        // this receipt's cost, with everything before it kept in its events.
+        await tx`update stock_serial set stock_lot_id = ${lotId}, stock_movement_id = ${movement.id},
+                   item_id = ${line.itemId}
+                  where id = any(${back.map((k) => k.id as string)})`;
+        await insertInChunks(tx, "stock_serial_event", back.map((k) => ({
+          company_id: companyId, serial_id: k.id, event: "REACQUIRED",
+          document_id: doc.id, to_location_id: at, lot_id: lotId,
+        })));
+        const reused = new Set(back.map((k) => k.serial_no as string));
+        fresh = given.filter((sn) => !reused.has(sn));
       }
       // Two statements for the whole line, not two per unit: a box of 200
       // phones was 400 round trips.
-      if (given.length > 0) {
-        const units = await insertInChunks(tx, "stock_serial", given.map((sn) => {
+      if (fresh.length > 0) {
+        const units = await insertInChunks(tx, "stock_serial", fresh.map((sn) => {
           const d = details.get(sn);
           return {
             company_id: companyId, item_id: line.itemId, serial_no: sn,
@@ -4913,14 +5040,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         }), true);
         await insertInChunks(tx, "stock_serial_event", units.map((u) => ({
           company_id: companyId, serial_id: u.id, event: "RECEIVED",
-          document_id: doc.id, to_location_id: locationId, lot_id: lotId,
+          document_id: doc.id, to_location_id: at, lot_id: lotId,
         })));
       }
     }
 
     const inventory = await tx`
       select fn_resolve_account_for_item(${companyId}, 'INVENTORY', ${line.itemId}) as a`;
-    journal.push({ accountId: inventory[0].a, amount: net, locationId });
+    journal.push({ accountId: inventory[0].a, amount: net, locationId: at });
 
     /**
      * The sale charged a provisional figure; this receipt says what the goods
@@ -5039,7 +5166,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
               join document_line dl on dl.document_id = n.document_id
                                    and dl.item_id = n.item_id
              where n.company_id = ${companyId} and n.item_id = ${line.itemId}
-               and n.location_id = ${locationId}
+               and n.location_id = ${at}
                and n.expense_account_id is null
                and n.to_location_id is null`;
           if (lines.length === 1) {
@@ -5070,7 +5197,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
                       and ad.company_id = jl.company_id
                       and ad.role = 'INVENTORY'
                where n.company_id = ${companyId} and n.item_id = ${line.itemId}
-                 and n.location_id = ${locationId}
+                 and n.location_id = ${at}
                  and n.expense_account_id is null
                  and n.to_location_id is null
                  and jl.base_amount > 0
@@ -5083,7 +5210,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
             select d.doc_no from negative_stock n
               join document d on d.id = n.document_id
              where n.company_id = ${companyId} and n.item_id = ${line.itemId}
-               and n.location_id = ${locationId}
+               and n.location_id = ${at}
              order by n.created_at limit 1`;
           throw new Error(
             `${item.code} (${item.name}) went out short on `
@@ -5095,8 +5222,8 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
           );
         }
 
-        journal.push({ accountId: account, amount: part.amount, locationId });
-        journal.push({ accountId: inventory[0].a, amount: -part.amount, locationId });
+        journal.push({ accountId: account, amount: part.amount, locationId: at });
+        journal.push({ accountId: inventory[0].a, amount: -part.amount, locationId: at });
 
         /* Value only, no goods: this settles stock that was sold before
            anyone recorded it arriving, at what the receipt says it really
@@ -5106,7 +5233,7 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
             (company_id, item_id, location_id, movement_date, qty,
              unit_cost, total_cost, document_id, document_line_id)
           values
-            (${companyId}, ${line.itemId}, ${locationId}, ${docDate}::date,
+            (${companyId}, ${line.itemId}, ${at}, ${docDate}::date,
              0, 0, ${-part.amount}, ${doc.id}, ${docLine.id})`;
       }
     }
@@ -5522,6 +5649,18 @@ async function linkFulfilmentIn(
   const { companyId } = input;
   const written: { fulfilmentLineId: string; orderLineId: string; qty: number }[] = [];
 
+  /* The receipt and delivery lines being given away, locked before anything
+     is read and in one fixed order. The order is locked per line below, but
+     two people linking the same receipt line to two different orders lock
+     two different orders — each would read the line as still free and both
+     would take it. Sorted, so two links over the same lines queue rather
+     than deadlock. */
+  await tx`
+    select id from document_line
+     where id = any(${[...new Set(input.lines.map((l) => l.fulfilmentLineId))].sort()}::uuid[])
+     order by id
+       for update`;
+
   for (const [i, l] of input.lines.entries()) {
     if (!(l.qty > 0)) throw new Error(`Line ${i + 1}: quantity must be more than nothing`);
 
@@ -5593,9 +5732,30 @@ async function linkFulfilmentIn(
 
     // And what this receipt line has left to give. Allocating the same units
     // to two orders is how one shipment closes two.
+    //
+    // Given away twice over, not once: by links already made, and — where the
+    // line was raised from a different order and no link speaks for that —
+    // the whole line, to that order. v_order_outstanding counts that line in
+    // full against its own order; leaving it out here offered a delivery
+    // raised from one order as entirely free to close another, and the same
+    // six units closed ten. Its own order is left out: posting a receipt
+    // from an order writes that very link.
     const [used] = await tx`
-      select coalesce(sum(qty), 0) as v from fulfilment_link
-       where fulfilment_line_id = ${l.fulfilmentLineId}`;
+      select coalesce((select sum(fl.qty) from fulfilment_link fl
+                        where fl.fulfilment_line_id = dl.id), 0)
+           + case when src.doc_type in ('PURCHASE_ORDER', 'SALES_ORDER')
+                   and fn_current_document(src.id) <> fn_current_document(${order.document_id})
+                   and not exists (select 1 from fulfilment_link fl2
+                                    where fl2.fulfilment_line_id = dl.id
+                                      and fl2.order_line_id is not distinct from dl.source_line_id)
+                  -- No more than that order line asked for: received 10 on
+                  -- an order for 6, the order takes 6 and 4 are free.
+                  then least(dl.base_qty, coalesce(ol.base_qty, dl.base_qty)) else 0 end as v
+        from document_line dl
+        join document d on d.id = dl.document_id
+        left join document_line ol on ol.id = dl.source_line_id
+        left join document src on src.id = coalesce(ol.document_id, d.source_document_id)
+       where dl.id = ${l.fulfilmentLineId}`;
     const spare = round4(Number(got.qty) - Number(used.v));
     if (spare + 0.0001 < l.qty) {
       throw new Error(
@@ -5845,6 +6005,26 @@ const worthSomething = (journal: JournalLine[]) => journal.some((l) => Math.abs(
 /** A giveaway names why goods left; a supplier FOC reason is for goods that arrived free. */
 const SALE_FOC_ONLY = "A free line on a sale needs a giveaway reason; the supplier FOC reason is for goods received free.";
 
+/**
+ * Where the cost of goods given free goes (decision 2026-11-16).
+ *
+ * Given with a sale — the free case with the phone — it is part of what that
+ * sale cost, so cost of sales: margin reads true and nothing sits in
+ * promotion that was really the price of selling. A standalone giveaway,
+ * goods that leave with no sale at all, goes to its reason's own account
+ * (promotion, sample, office use, damage) so it shows as what it was. The
+ * reason is still checked and stored either way, for the FOC reports.
+ */
+async function focExpenseAccount(
+  tx: TransactionSql, companyId: string, itemId: string, focReasonId: string, withSale: boolean,
+): Promise<string> {
+  const [foc] = await tx`select account_id from foc_reason where id = ${focReasonId} and applies_to = 'SALE'`;
+  if (!foc) throw new Error(SALE_FOC_ONLY);
+  if (!withSale) return foc.account_id as string;
+  const [c] = await tx`select fn_resolve_account_for_item(${companyId}, 'COGS', ${itemId}) as a`;
+  return c.a as string;
+}
+
 async function supplierFoc<L extends InvoiceLine>(tx: TransactionSql, companyId: string, lines: L[]): Promise<L[]> {
   const ids = [...new Set(lines.map((l) => l.focReasonId).filter((x): x is string => Boolean(x)))];
   if (ids.length === 0) return lines;
@@ -5946,21 +6126,19 @@ async function _postPurchaseInvoice(
   const includesTax = input.priceIncludesTax ?? false;
 
   /* The supplier's discount, line first and bill after (pricePurchaseLines,
-     the same arithmetic the bill form previews). Under the GROSS policy the
-     goods keep the price they were bought at — GR/IR, stock and expense all
-     move at the gross — the supplier is owed the discounted amount, and the
-     difference is credited to Purchase Discounts. Tax is on what is owed.
-     NET (the discount lowers the cost) is a policy the engine does not post
-     yet, so a discounted bill under it is refused rather than guessed at. */
+     the same arithmetic the bill form previews). Tax is on what is owed.
+
+     NET (the default, IAS 2.11): the discount lowers what the goods cost, so
+     GR/IR, stock and expense all move at the discounted net and the discount
+     reaches profit as each phone is sold. GROSS: the goods keep the price
+     before the discount, and the discount is credited to Purchase Discounts
+     here, once. Bills posted under one method keep it; the policy decides
+     only what is posted now (0204). */
   const priced = pricePurchaseLines(
     input.lines.map((l) => ({ qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmount: l.discountAmount })),
     { pct: input.billDiscountPct ?? null, amount: input.billDiscountAmount ?? null }, scale);
-  if (priced.discount > 0) {
-    const [co] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
-    if (co?.p !== "GROSS") {
-      throw new Error("This company's supplier discount policy reduces stock cost, which cannot be posted yet. Post the bill at the discounted price instead.");
-    }
-  }
+  const [policyRow] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
+  const grossMethod = policyRow?.p === "GROSS";
 
   const splits = input.lines.map((l, i) => {
     const rate = l.taxCodeId ? taxRates.get(l.taxCodeId) : noTax;
@@ -5978,6 +6156,36 @@ async function _postPurchaseInvoice(
     return { ...split, rate: chosen, grossEx, discount, itemDiscount, billDiscount: roundMoney(discount - itemDiscount, scale), priced: p };
   });
   const discountTotal = roundMoney(splits.reduce((t, v) => t + v.discount, 0), scale);
+
+  /* What each line puts on stock (or expense): the discounted net under NET,
+     the price before the discount under GROSS. Then free units take their
+     share of what the paid ones cost — eleven phones for the price of ten
+     are eleven phones at a tenth less, not ten at full price and one at
+     nothing (allocateFreeUnits). The bill's total cost does not move. */
+  const itemRows = await tx`
+    select id, is_stocked, base_uom_id from item where id = any(${[...new Set(input.lines.map((l) => l.itemId))]})`;
+  const itemOf = new Map(itemRows.map((r) => [r.id as string, r]));
+  const packs: Awaited<ReturnType<typeof packFactor>>[] = [];
+  for (const l of input.lines) {
+    const it = itemOf.get(l.itemId);
+    if (!it) throw new Error("Item not found");
+    packs.push(await packFactor(tx, l.itemId, l.uomId, it.base_uom_id as string));
+  }
+  const stockedIdx = input.lines.map((l, i) => (itemOf.get(l.itemId)!.is_stocked ? i : -1)).filter((i) => i >= 0);
+  const costOf = splits.map((v) => (grossMethod ? v.grossEx : v.net));
+  const freeItems = [...new Set(stockedIdx.filter((i) => input.lines[i].focReasonId).map((i) => input.lines[i].itemId))];
+  const lastCost = new Map<string, number>();
+  if (freeItems.length) {
+    for (const r of await tx`
+      select distinct on (item_id) item_id, unit_cost from stock_lot
+       where company_id = ${companyId} and item_id = any(${freeItems}) and unit_cost > 0
+       order by item_id, created_at desc`) lastCost.set(r.item_id as string, Number(r.unit_cost));
+  }
+  const allocated = allocateFreeUnits(
+    stockedIdx.map((i) => ({ itemId: input.lines[i].itemId, qty: round4(input.lines[i].qty * packs[i].factor),
+                             cost: costOf[i], free: !!input.lines[i].focReasonId })),
+    (itemId) => lastCost.get(itemId) ?? null, scale);
+  stockedIdx.forEach((i, k) => { costOf[i] = allocated[k]; });
 
   const lineNets = splits.map((v) => v.net);
   const netTotal = roundMoney(lineNets.reduce((t, v) => t + v, 0), scale);
@@ -6006,12 +6214,10 @@ async function _postPurchaseInvoice(
   for (const line of input.lines) {
     lineNo++;
 
-    const [item] = await tx`
-      select id, is_stocked, base_uom_id from item where id = ${line.itemId}`;
-    if (!item) throw new Error("Item not found");
+    const item = itemOf.get(line.itemId)!;
 
     const net = lineNets[lineNo - 1];
-    const pack = await packFactor(tx, line.itemId, line.uomId, item.base_uom_id as string);
+    const pack = packs[lineNo - 1];
     const baseQty = round4(line.qty * pack.factor);
 
     await tx`
@@ -6019,7 +6225,7 @@ async function _postPurchaseInvoice(
         (company_id, document_id, line_no, item_id, location_id,
          entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
          discount_pct, discount_amount, invoice_discount_pct, invoice_discount_amount,
-         net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, foc_reason_id)
+         net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, foc_reason_id, stock_cost)
       values
         (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
          ${line.qty}, ${pack.uomId}, ${pack.factor}, ${baseQty}, ${line.unitPrice},
@@ -6027,13 +6233,12 @@ async function _postPurchaseInvoice(
          ${splits[lineNo - 1].priced.invoiceDiscountPct}, ${splits[lineNo - 1].billDiscount},
          ${net}, ${line.taxCodeId ?? splits[lineNo - 1].rate?.id ?? null},
          ${splits[lineNo - 1].tax}, ${roundMoney(net + splits[lineNo - 1].tax, scale)},
-         ${line.sourceLineId ?? null}, ${line.focReasonId ?? null})`;
+         ${line.sourceLineId ?? null}, ${line.focReasonId ?? null}, ${costOf[lineNo - 1]})`;
 
     isStocked.set(line.itemId, !!item.is_stocked);
 
-    // At the price before any supplier discount (GROSS policy); the discount
-    // is credited to Purchase Discounts once, below.
-    const bought = splits[lineNo - 1].grossEx;
+    // What the goods cost, by policy and with free units' share (above).
+    const bought = costOf[lineNo - 1];
     if (item.is_stocked) {
       // Cleared against GR/IR below, once for the whole invoice — a single
       // matched or unmatched settlement reads far clearer than one per line.
@@ -6152,8 +6357,8 @@ async function _postPurchaseInvoice(
       const billed: {
         receiptLineId: string; qty: number; newUnitCost: number; heldValue: number;
       }[] = [];
-      for (const line of input.lines) {
-        if (!isStocked.get(line.itemId)) continue;
+      input.lines.forEach((line, i) => {
+        if (!isStocked.get(line.itemId)) return;
         const got = draw(line.itemId, line.qty, line.sourceLineId);
         relieved += got.value;
 
@@ -6161,11 +6366,13 @@ async function _postPurchaseInvoice(
           billed.push({
             receiptLineId: t.lineId,
             qty: t.qty,
-            newUnitCost: line.unitPrice,
+            // What the bill says a unit cost: after discount (NET), with the
+            // free units' share — not the list price typed on the line.
+            newUnitCost: line.qty === 0 ? 0 : costOf[i] / line.qty,
             heldValue: t.value,
           });
         }
-      }
+      });
       grirAmount = round4(relieved);
 
       // A price that turned out to be wrong is a cost, not an expense. It goes
@@ -6196,9 +6403,10 @@ async function _postPurchaseInvoice(
     journal.push({ accountId: grir[0].a, amount: grirAmount, partnerId });
   }
 
-  if (discountTotal !== 0) {
+  // GROSS only: under NET the discount is already out of the cost above.
+  if (grossMethod && discountTotal !== 0) {
     const [pd] = await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`;
-    if (!pd?.a) throw new Error("Point the Purchase discount received account (Settings → Accounts) at 51201 Purchase Discounts before posting a discounted bill.");
+    if (!pd?.a) throw new Error("Point the Purchase discount received account (Settings → Accounts) at 5130 Purchase Discounts before posting a discounted bill.");
     journal.push({ accountId: pd.a, amount: -discountTotal, partnerId, locationId });
   }
 
@@ -6390,7 +6598,7 @@ export async function postPurchaseWithReceipt(
           batchNo: l.batchNo, expiryDate: l.expiryDate,
           // The handsets in the box. Without these a bill that receives
           // phones is refused: the receipt it composes has to name them.
-          serials: l.serials, unitDetails: l.unitDetails,
+          serials: l.serials, unitDetails: l.unitDetails, reacquire: l.reacquire,
           // Only where the order is what this receipt answers. Without an
           // order these carry nothing, exactly as before.
           sourceLineId: orderId ? l.sourceLineId : undefined,
@@ -6460,6 +6668,9 @@ export type AdjustmentLine = {
   expiryDate?: string | null;
   /** The units lost, for a decrease of a serial-tracked item. */
   serials?: string[];
+  /** A write-off of defective stock names the receipt line it arrived on,
+   *  so that receipt can say what became of it. */
+  sourceLineId?: string | null;
 };
 export type AdjustmentInput = {
   companyId: string;
@@ -6469,6 +6680,12 @@ export type AdjustmentInput = {
   reference?: string | null;
   /** When a found-stock line actually arrived, if more precise than docDate. */
   receivedAt?: string | null;
+  /**
+   * Damaged or scrapped stock written off (Path B): charged to Inventory
+   * Damage (0225) rather than the adjustment account a count difference
+   * uses. Only takes stock away.
+   */
+  writeOff?: boolean;
   lines: AdjustmentLine[];
 };
 
@@ -6494,6 +6711,12 @@ async function _postStockAdjustment(
   if (lines.length === 0) throw new Error("An adjustment needs at least one line");
   // Signed: a stock loss is a negative quantity by design.
   assertLines(lines, { signedQty: true });
+  if (input.writeOff && lines.some((l) => l.qty > 0)) {
+    throw new Error("A write-off only takes stock away. Use a count adjustment for stock found.");
+  }
+  // Where the loss is charged: Inventory Damage for a write-off, the
+  // adjustment account for a count difference.
+  const offsetRole = input.writeOff ? "INVENTORY_DAMAGE" : "STOCK_ADJUSTMENT";
 
   {
     const { companyId, locationId, docDate } = input;
@@ -6586,12 +6809,13 @@ async function _postStockAdjustment(
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
            entered_qty, entered_uom_id, base_qty, unit_price, net_amount, gross_amount,
-           batch_no, expiry_date)
+           batch_no, expiry_date, source_line_id)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
            ${line.qty}, ${item.base_uom_id}, ${line.qty}, ${unitCost}, ${totalCost}, ${totalCost},
            ${line.qty > 0 ? (line.batchNo?.trim() || null) : null},
-           ${line.qty > 0 ? (line.expiryDate || null) : null})
+           ${line.qty > 0 ? (line.expiryDate || null) : null},
+           ${line.sourceLineId ?? null})
         returning id`;
 
       const [movement] = await tx`
@@ -6606,7 +6830,7 @@ async function _postStockAdjustment(
       if (plan) {
         {
           const adjAcct = await tx`
-            select fn_system_account(${companyId}, 'STOCK_ADJUSTMENT') as a`;
+            select fn_system_account(${companyId}, ${offsetRole}) as a`;
           const ids = await recordFifoConsumption(
             tx, companyId, movement.id, plan, adjAcct[0].a as string);
           if (units) {
@@ -6625,7 +6849,7 @@ async function _postStockAdjustment(
     }
 
     netValue = round4(netValue);
-    const adj = await tx`select fn_system_account(${companyId}, 'STOCK_ADJUSTMENT') as a`;
+    const adj = await tx`select fn_system_account(${companyId}, ${offsetRole}) as a`;
     journal.push({ accountId: adj[0].a, amount: -netValue, locationId });
 
     const entryId = await writeJournal(
@@ -6706,6 +6930,20 @@ export async function postStockTransfer(input: TransferInput, outer?: Transactio
     const receivedAt = input.receivedAt || docDate;
     const serialTrackedT = await serialTracking(tx, lines);
     assertSerials(lines, serialTrackedT, "transfer");
+
+    /* Quarantine (0218) is entered and left on purpose. Releasing a unit to
+       sale says it was checked and found good; moving one in says it was
+       found faulty. Either is a statement somebody makes, so it carries
+       their reason — the one record of why a phone that was refused at the
+       door is now on the shelf. */
+    const quarantineEnds = await tx`
+      select id from location where id in (${fromLocationId}, ${toLocationId}) and is_quarantine`;
+    if (quarantineEnds.length > 0 && !input.memo?.trim()) {
+      throw new Error(
+        quarantineEnds.some((q) => q.id === fromLocationId)
+          ? "Say why this stock is being released from quarantine — what was checked, and by whom."
+          : "Say why this stock is going into quarantine — what is wrong with it.");
+    }
 
     const fyRows = await tx`select fn_fiscal_year_for(${companyId}, ${docDate}::date) as fy`;
     const fiscalYear = fyRows[0]?.fy ?? null;
@@ -6906,6 +7144,18 @@ export type ReturnLine = {
   focReasonId?: string | null;
   /** The exact units coming back (or going back), for a serial-tracked item. */
   serials?: string[];
+  /** The unit `qty` and `unitPrice` are in. Left unset it is the item's own unit. */
+  uomId?: string | null;
+  /** Set by returnInBaseUnits: the line as typed, kept for the document line. */
+  entered?: { qty: number; uomId: string; factor: number };
+  /**
+   * Purchase returns: the line of the source receipt these goods go back
+   * against. Named for units refused on arrival (D-P7), so the return knows
+   * whether the supplier is replacing them — then the order expects them
+   * again (0220) and the return clears GR/IR even once the receipt is billed,
+   * because the supplier owes goods, not money.
+   */
+  sourceLineId?: string | null;
 };
 export type ReturnInput = {
   /**
@@ -6927,6 +7177,13 @@ export type ReturnInput = {
   receivedAt?: string | null;
   /** Prices already contain the tax, as on the invoice being reversed. */
   priceIncludesTax?: boolean;
+  /**
+   * Sales returns only (docs/06 D-P7): the goods came back faulty. They go to
+   * the branch's quarantine (0218) instead of the shelf, where nothing can
+   * sell them again, until a return sends them to the supplier under its
+   * warranty or they are written off. The reason is kept on the return.
+   */
+  faulty?: { reason: string } | null;
   lines: ReturnLine[];
 };
 
@@ -7048,18 +7305,32 @@ async function _postNote(
   const tax = rate ? roundMoney((amount * rate.rate) / 100, scale) : 0;
   const gross = roundMoney(amount + tax, scale);
 
-  /* What the invoice still owes, so a note cannot take it below nothing. A
-     customer who has already paid needs their money back, not a credit — and
-     an invoice driven negative would sit in aging as a debt owed the wrong
-     way round. */
+  /* How far the note may go: past what is still owed, up to what is left of
+     the invoice after earlier returns and notes. Already paid, the other side
+     is owed the difference, which leaves the invoice below zero exactly as a
+     return does; Refund pays it out (refundableOnReturn for a customer,
+     refundableOnDebitNote for a supplier). Beyond the invoice's own value it
+     is not a reduction of this invoice at all. A foreign-currency bill stops
+     at what is owed: its refund would need a rate of its own. */
+  const [left] = await tx`
+    select d.currency, d.gross_total - coalesce((
+             select sum(rr.gross_total) from document rr
+              where fn_current_document(rr.source_document_id) = fn_current_document(d.id)
+                and rr.doc_type in ('SALES_RETURN', 'CREDIT_NOTE', 'PURCHASE_RETURN', 'DEBIT_NOTE') and rr.status = 'POSTED'
+                and rr.reversed_by_document_id is null and rr.reverses_document_id is null), 0) as v
+      from document d where d.id = ${input.sourceDocumentId}`;
   const [open] = await tx`
     select outstanding from v_open_item where document_id = ${input.sourceDocumentId}`;
-  const owed = Number(open?.outstanding ?? 0);
+  const owed = isCredit || left?.currency === "MMK"
+    ? Number(left?.v ?? 0) : Number(open?.outstanding ?? 0);
   if (gross > owed + 0.0001) {
     throw new Error(
-      `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} still owing and ` +
-      `this note is for ${Math.round(gross).toLocaleString("en-US")}. A note cannot take ` +
-      `an invoice below nothing — refund what was overpaid instead, or reduce the note.`
+      isCredit || left?.currency === "MMK"
+        ? `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} left after earlier returns and notes, ` +
+          `and this note is for ${Math.round(gross).toLocaleString("en-US")}. Reduce the note.`
+        : `${source.doc_no} has ${Math.round(owed).toLocaleString("en-US")} still owing and ` +
+          `this note is for ${Math.round(gross).toLocaleString("en-US")}. A note on a foreign-currency ` +
+          `bill cannot take it below nothing — reduce the note.`
     );
   }
 
@@ -7114,20 +7385,28 @@ async function _postNote(
         left = round4(left - share);
         (h as Record<string, unknown>).share = share;
       });
+      // A discount keeps the sale at its price and adds to what was allowed
+      // off it, so the delivery releases the same Sales and more Sales
+      // Discounts; any other note lowers what the delivery releases as sale.
+      const asDiscount = input.category === "DISCOUNT";
       for (const h of held) {
         const share = Number((h as Record<string, unknown>).share);
         if (share === 0) continue;
         await tx`
           insert into sales_revenue_deferred
             (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
-          values (${companyId}, ${h.invoice_line_id}, ${doc.id}, 0, ${-share}, 0, ${h.revenue_account_id})`;
+          values (${companyId}, ${h.invoice_line_id}, ${doc.id}, 0, ${-share}, ${asDiscount ? share : 0}, ${h.revenue_account_id})`;
       }
       const bnd = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
       journal.push({ accountId: bnd[0].a, amount: round4(fromHeld) });
     }
-    // Revenue given back, tax given back, and the customer owes less.
-    const ret = await tx`
-      select fn_resolve_account_for_item(${companyId}, 'SALES_RETURN', null) as a`;
+    // Revenue given back, tax given back, and the customer owes less. A
+    // discount agreed after the sale is a discount, shown with the invoice's
+    // own (Sales Discounts, Option B: sales stay gross); every other note is
+    // a return of revenue.
+    const ret = input.category === "DISCOUNT"
+      ? await tx`select fn_system_account(${companyId}, 'SALES_DISCOUNT_ALLOWED') as a`
+      : await tx`select fn_resolve_account_for_item(${companyId}, 'SALES_RETURN', null) as a`;
     if (round4(amount - fromHeld) !== 0) journal.push({ accountId: ret[0].a, amount: round4(amount - fromHeld) });
     if (tax !== 0 && rate) {
       journal.push({ accountId: taxAccountFor(rate, "output"), amount: tax });
@@ -7142,12 +7421,22 @@ async function _postNote(
       select fn_resolve_control_account(${companyId}, 'AP_CONTROL', ${partnerId}) as a`;
     journal.push({ accountId: ap[0].a, amount: gross, partnerId,
                    ...(fx ? { currency: fx.currency, fcAmount: toFc(gross, fx) } : {}) });
-    // A discount the supplier allows after billing lands where the bill's own
-    // discounts do (Purchase Discounts); any other correction is a return of cost.
-    const ret = input.category === "DISCOUNT"
-      ? await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`
-      : await tx`select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
-    journal.push({ accountId: ret[0].a, amount: -amount });
+    const [pol] = await tx`select purchase_discount_policy as p from company where id = ${companyId}`;
+    if (input.category === "DISCOUNT" && pol?.p !== "GROSS") {
+      // NET: a discount after billing is still a lower cost for those goods.
+      for (const jl of await discountOffBill(tx, {
+        companyId, billId: input.sourceDocumentId, noteId: doc.id as string, docDate,
+        locationId: noteLocation, amount, scale, reason: `${docNo}: ${input.reason.trim()}`,
+      })) journal.push(jl);
+    } else {
+      // GROSS: a discount the supplier allows after billing lands where the
+      // bill's own discounts do (Purchase Discounts); any other correction is
+      // a return of cost.
+      const ret = input.category === "DISCOUNT"
+        ? await tx`select fn_system_account(${companyId}, 'PURCHASE_DISCOUNT_RECEIVED') as a`
+        : await tx`select fn_resolve_account_for_item(${companyId}, 'PURCHASE_RETURN', null) as a`;
+      journal.push({ accountId: ret[0].a, amount: -amount });
+    }
     if (tax !== 0 && rate) {
       journal.push({ accountId: taxAccountFor(rate, "input"), amount: -tax });
     }
@@ -7161,6 +7450,112 @@ async function _postNote(
   await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
 
   return { id: doc.id as string, docNo, against: source.doc_no as string, gross };
+}
+
+/**
+ * A supplier's discount on a bill already posted, under the NET method: it
+ * lowers what those goods cost, so it goes where the goods are now — exactly
+ * the walk a bill's own price correction takes (adjustReceiptCost). On the
+ * shelf it comes off stock; sold, off cost of sales, on the account the sale
+ * charged (Goods Shipped Not Invoiced included); moved, it follows them.
+ *
+ * Spread over the bill's lines by what each put on stock, then over each
+ * line's receipt lines by quantity, both to the exact amount. A service line's
+ * share comes off its expense. Goods not yet received have no lot to lower,
+ * so their share goes to Purchase Price Variance, where a difference with no
+ * goods behind it belongs. Credits only: the posted bill is not touched.
+ */
+async function discountOffBill(tx: TransactionSql, input: {
+  companyId: string; billId: string; noteId: string; docDate: string;
+  locationId: string | null; amount: number; scale: number; reason: string;
+}): Promise<JournalLine[]> {
+  const { companyId, billId, amount, scale } = input;
+  const lines = await tx`
+    select dl.id, dl.item_id, dl.source_line_id, dl.entered_uom_id, dl.location_id, i.is_stocked,
+           coalesce(dl.stock_cost, dl.net_amount
+             + coalesce(dl.discount_amount, 0) + coalesce(dl.invoice_discount_amount, 0)) as cost
+      from document_line dl join item i on i.id = dl.item_id
+     where dl.document_id = ${billId}
+     order by dl.line_no`;
+  const shares = spreadByWeight(amount, lines.map((l) => Number(l.cost)), scale);
+  // The receipt lines that brought the bill's goods in, in one read: the ones
+  // its lines were billed from, any receipt raised from this bill, and the
+  // receipt the bill as a whole was raised from.
+  const sourced = lines.map((l) => l.source_line_id).filter(Boolean) as string[];
+  const receiptLines = await tx`
+    select rl.id, rl.item_id, rl.base_qty, r.id as receipt_id,
+           (r.source_document_id = ${billId}
+            or r.id = (select source_document_id from document where id = ${billId})) as whole
+      from document r join document_line rl on rl.document_id = r.id
+     where r.doc_type = 'GOODS_RECEIPT' and r.status = 'POSTED'
+       and (r.source_document_id = ${billId}
+            or r.id = (select source_document_id from document where id = ${billId})
+            or r.id in (select document_id from document_line where id = any(${sourced})))
+     order by r.posting_date, rl.line_no`;
+  const journal: JournalLine[] = [];
+  const billed: { receiptLineId: string; qty: number; newUnitCost: number; heldValue: number }[] = [];
+  let expensed = 0;
+  // Bill lines whose goods have not arrived: the discount waits in GR/IR with
+  // the bill's own debit, and lowers what the goods are received at.
+  const waiting: { line: { id: string; item_id: string; location_id: string | null; entered_uom_id: string }; share: number }[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const share = shares[i];
+    if (share === 0) continue;
+    if (!l.is_stocked) {
+      const [x] = await tx`select fn_resolve_account_for_item(${companyId}, 'COGS', ${l.item_id}) as a`;
+      journal.push({ accountId: x.a, amount: -share, locationId: input.locationId });
+      expensed = round4(expensed + share);
+      continue;
+    }
+    const receipt = receiptLines.filter((r) =>
+      r.item_id === l.item_id && (r.id === l.source_line_id || r.whole));
+    // ponytail: a line part-received takes its whole share onto the units that
+    // arrived (right in total, early per unit); split by qty if that matters.
+    if (receipt.length === 0) { waiting.push({ line: l as never, share }); continue; }
+    const parts = spreadByWeight(share, receipt.map((r) => Number(r.base_qty)), 4);
+    receipt.forEach((r, k) => {
+      if (parts[k] === 0) return;
+      // A difference of exactly minus the part: one unit at it, nothing held.
+      billed.push({ receiptLineId: r.id as string, qty: 1, newUnitCost: -parts[k], heldValue: 0 });
+    });
+  }
+
+  const moved = billed.length ? await adjustReceiptCost(tx, {
+    companyId, documentId: input.noteId, docDate: input.docDate,
+    locationId: input.locationId as string, reason: input.reason, billed,
+  }) : { journal: [], toInventory: 0, toCogs: 0 };
+  for (const jl of moved.journal) journal.push(jl);
+
+  /* Not yet received: the bill debited GR/IR at the full cost, so the
+     discount comes off GR/IR, and is recorded against the bill line (a note
+     line of zero quantity) so the receipt raised from the bill values the
+     goods net of it and clears GR/IR exactly (_postGoodsReceipt). */
+  let held = 0;
+  if (waiting.length) {
+    const [bill] = await tx`select partner_id from document where id = ${billId}`;
+    let n = 0;
+    for (const w of waiting) {
+      await tx`
+        insert into document_line
+          (company_id, document_id, line_no, item_id, location_id, entered_qty, entered_uom_id,
+           conversion_factor, base_qty, unit_price, net_amount, gross_amount, source_line_id)
+        values (${companyId}, ${input.noteId}, ${++n}, ${w.line.item_id}, ${w.line.location_id},
+                0, ${w.line.entered_uom_id}, 1, 0, 0, ${w.share}, ${w.share}, ${w.line.id})`;
+      held = round4(held + w.share);
+    }
+    const [grir] = await tx`select fn_system_account(${companyId}, 'GRIR_CLEARING') as a`;
+    journal.push({ accountId: grir.a, amount: -held, partnerId: bill.partner_id, locationId: input.locationId });
+  }
+
+  // Whatever is left found no lot to lower: received before lots were tracked.
+  const rest = round4(amount - expensed - held + moved.toInventory + moved.toCogs);
+  if (rest !== 0) {
+    const [pv] = await tx`select fn_system_account(${companyId}, 'PURCHASE_PRICE_VARIANCE') as a`;
+    journal.push({ accountId: pv.a, amount: -rest, locationId: input.locationId });
+  }
+  return journal;
 }
 
 /** Sales side: the customer owes less, and no goods came back. */
@@ -7234,6 +7629,15 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
   assertLines(input.lines);
 
   return inTransaction(outer, async (tx) => {
+    input = { ...input, lines: await returnInBaseUnits(tx, input.lines) };
+    // Faulty goods come back into quarantine, not onto the shelf (D-P7).
+    if (input.faulty) {
+      const reason = input.faulty.reason?.trim();
+      if (!reason) throw new Error("Say what is wrong with the faulty goods.");
+      const [{ q }] = await tx`select fn_quarantine_location(${input.locationId}) as q`;
+      input = { ...input, locationId: q as string,
+                memo: input.memo?.trim() ? `${input.memo.trim()} — Faulty: ${reason}` : `Faulty: ${reason}` };
+    }
     const { companyId, partnerId, locationId, docDate } = input;
     const receivedAt = input.receivedAt || docDate;
     const serialTrackedR = await serialTracking(tx, input.lines);
@@ -7326,12 +7730,13 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
       const [docLine] = await tx`
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
-           entered_qty, entered_uom_id, base_qty, unit_price,
+           entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
            net_amount, tax_code_id, tax_amount, gross_amount, foc_reason_id)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
-           ${line.qty}, ${item.base_uom_id}, ${line.qty},
-           ${line.focReasonId ? 0 : line.unitPrice},
+           ${line.entered?.qty ?? line.qty}, ${line.entered?.uomId ?? item.base_uom_id},
+           ${line.entered?.factor ?? 1}, ${line.qty},
+           ${line.focReasonId ? 0 : round4(line.unitPrice * (line.entered?.factor ?? 1))},
            ${net}, ${line.focReasonId ? null : (line.taxCodeId ?? rt?.rate?.id ?? null)},
            ${lineTax}, ${round4(net + lineTax)}, ${line.focReasonId ?? null})
         returning id`;
@@ -7449,9 +7854,10 @@ export async function postSalesReturn(input: ReturnInput, outer?: TransactionSql
         if (billedCost === 0) {
           // Every unit came back before it was billed; nothing to take from cost of sales.
         } else if (line.focReasonId) {
-          const [foc] = await tx`select account_id from foc_reason where id = ${line.focReasonId} and applies_to = 'SALE'`;
-          if (!foc) throw new Error(SALE_FOC_ONLY);
-          journal.push({ accountId: foc.account_id, amount: -billedCost, locationId });
+          // Back where it was charged: cost of sales if it came with a sale.
+          const acct = await focExpenseAccount(tx, companyId, line.itemId, line.focReasonId,
+            !!input.sourceDocumentId || input.lines.some((l) => !l.focReasonId));
+          journal.push({ accountId: acct, amount: -billedCost, locationId });
         } else {
           const cogs = await tx`
             select fn_resolve_account_for_item(${companyId}, 'COGS', ${line.itemId}) as a`;
@@ -7540,6 +7946,7 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
   assertLines(input.lines);
 
   return inTransaction(outer, async (tx) => {
+    input = { ...input, lines: await returnInBaseUnits(tx, input.lines) };
     const { companyId, partnerId, locationId, docDate } = input;
     const serialTrackedP = await serialTracking(tx, input.lines);
     assertSerials(input.lines, serialTrackedP, "send back");
@@ -7556,6 +7963,8 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
     // brought them in or the invoice that billed for them — the mirror of
     // the sales return above.
     let againstReceipt = false;
+    /** Every line goes back for replacement (refused or found faulty, REPLACE). */
+    let replacementReturn = false;
 
     /**
      * What each returned line is worth.
@@ -7611,6 +8020,59 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
 
       againstReceipt = source.doc_type === "GOODS_RECEIPT";
 
+      /* Lines that name the receipt line they send back (D-P7). Each must be a
+         line of this source, and no line may go back more often than it came. */
+      const named = input.lines.filter((l) => l.sourceLineId);
+      let replacement = false;
+      if (named.length > 0) {
+        const srcLines = await tx`
+          select dl.id, dl.item_id, dl.base_qty::float as qty, dl.reject_outcome,
+                 coalesce((select sum(r.base_qty) from document_line r
+                             join document rd on rd.id = r.document_id
+                            where r.source_line_id = dl.id and rd.doc_type = 'PURCHASE_RETURN'
+                              and rd.status = 'POSTED' and rd.reverses_document_id is null), 0)::float as returned
+            from document_line dl
+           where dl.document_id = ${input.sourceDocumentId}
+             and dl.id = any(${named.map((l) => l.sourceLineId as string)})`;
+        const byLine = new Map(srcLines.map((r: any) => [r.id as string, r]));
+        const asked = new Map<string, number>();
+        for (const l of named) {
+          const r = byLine.get(l.sourceLineId!);
+          if (!r || r.item_id !== l.itemId) {
+            throw new Error(`That line is not a line of ${source.doc_no} for this item.`);
+          }
+          asked.set(r.id, (asked.get(r.id) ?? 0) + l.qty);
+        }
+        for (const [id, qty] of asked) {
+          const r = byLine.get(id);
+          if (qty > Number(r.qty) - Number(r.returned) + 0.0001) {
+            throw new Error(`Only ${Number(r.qty) - Number(r.returned)} of that line of ${source.doc_no} is left to send back.`);
+          }
+        }
+        // Found faulty after the receipt was posted (0224): the same choice,
+        // written beside the line rather than on it.
+        const reports = await tx`
+          select fr.receipt_line_id, s.serial_no, fr.outcome, fr.qty::float as qty
+            from fault_report fr left join stock_serial s on s.id = fr.serial_id
+           where fr.receipt_line_id = any(${named.map((l) => l.sourceLineId as string)})`;
+        const replacedLater = (l: ReturnLine) => {
+          const mine = reports.filter((r: any) => r.receipt_line_id === l.sourceLineId && r.outcome === "REPLACE");
+          if (mine.length === 0) return false;
+          const sn = l.serials ?? [];
+          return sn.length > 0
+            ? sn.every((x) => mine.some((r: any) => r.serial_no === x))
+            : mine.reduce((t: number, r: any) => t + Number(r.qty), 0) >= l.qty - 0.0001;
+        };
+        const replacing = named.filter((l) => byLine.get(l.sourceLineId!)?.reject_outcome === "REPLACE" || replacedLater(l));
+        if (replacing.length > 0 && (replacing.length !== input.lines.length || !againstReceipt)) {
+          throw new Error(
+            "Units going back for replacement are returned on their own, against the receipt they "
+            + "arrived on: the supplier owes goods for them, not money.");
+        }
+        replacement = replacing.length > 0;
+        replacementReturn = replacement;
+      }
+
       if (againstReceipt) {
         // A receipt that has been billed is a different conversation. The
         // supplier has asked for money, so what comes back is a credit
@@ -7644,7 +8106,10 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
                       where gr.id = ${input.sourceDocumentId}))
              )
            limit 1`;
-        if (billed.length > 0) {
+        // A unit sent back for replacement is the exception: the bill stands,
+        // because the supplier is sending another, so it is the accrual the
+        // return clears — and the replacement's receipt puts it back.
+        if (billed.length > 0 && !replacement) {
           throw new Error(
             `${source.doc_no} has already been billed by ${billed[0].doc_no}. `
             + `Return against that bill instead, so the credit lands where the `
@@ -7668,7 +8133,8 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
          * assertNotOverBilled replays them. Price and billable quantity come
          * out of the same function, so they cannot drift apart. A receipt
          * that has been billed never reaches here — the guard above refuses
-         * it — so returns are the only prior claim to replay.
+         * it — so returns are the only prior claim to replay. (A replacement
+         * return does, by design: it is priced from its own named line.)
          */
         const receiptLines = await tx`
           select dl.id, dl.item_id, dl.base_qty as qty, dl.net_amount as net
@@ -7689,7 +8155,7 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
         const carries = new Set(receiptLines.map((l: any) => l.item_id as string));
         lines = input.lines.map((l) => {
           if (!carries.has(l.itemId)) return l;
-          const got = draw(l.itemId, l.qty, null);
+          const got = draw(l.itemId, l.qty, l.sourceLineId ?? null);
           return {
             ...l,
             unitPrice: l.qty > 0 ? got.value / l.qty : 0,
@@ -7786,14 +8252,16 @@ export async function postPurchaseReturn(input: ReturnInput, outer?: Transaction
       const [docLine] = await tx`
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
-           entered_qty, entered_uom_id, base_qty, unit_price,
-           net_amount, tax_code_id, tax_amount, gross_amount)
+           entered_qty, entered_uom_id, conversion_factor, base_qty, unit_price,
+           net_amount, tax_code_id, tax_amount, gross_amount, source_line_id, for_replacement)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${locationId},
-           ${line.qty}, ${item.base_uom_id}, ${line.qty}, ${line.unitPrice},
+           ${line.entered?.qty ?? line.qty}, ${line.entered?.uomId ?? item.base_uom_id},
+           ${line.entered?.factor ?? 1}, ${line.qty}, ${round4(line.unitPrice * (line.entered?.factor ?? 1))},
            ${net}, ${splitsR[lineNo - 1].rate?.id ?? null},
            ${splitsR[lineNo - 1].tax},
-           ${round4(net + splitsR[lineNo - 1].tax)})
+           ${round4(net + splitsR[lineNo - 1].tax)}, ${line.sourceLineId ?? null},
+           ${replacementReturn && !!line.sourceLineId})
         returning id`;
 
       const [movement] = await tx`
@@ -8379,7 +8847,69 @@ export async function applyAdvance(input: {
       // Lines so far sum to sign*advTotal - sign*total; the gap closes it.
       // Supplier (sign -1): a debt carried higher than the advance paying it
       // is a gain (credit).
-      const close = round4(sign * (total - advTotal));
+      let close = round4(sign * (total - advTotal));
+
+      /**
+       * Paid for before the goods came (IFRIC 22, docs/06 D-P6).
+       *
+       * Yuan paid in advance fixed what that part of the goods cost in kyat
+       * on the day it was paid: nothing about the money moved after that, so
+       * there is no exchange gain or loss on it. The goods were put on the
+       * shelf at the receipt's rate, so the gap between that and the
+       * advance's rate is a correction to what they cost — onto the stock
+       * still held, to cost of sales for what has been sold — the same walk
+       * a supplier's price correction takes. An advance paid after the goods
+       * had arrived was settling a debt, and keeps its exchange difference.
+       * A bill with no goods received against it yet has nothing to correct,
+       * and keeps it too.
+       */
+      if (isPayment && close !== 0) {
+        const receipts = await tx`
+          select gr.id, gr.posting_date::text as d from document gr
+           where gr.company_id = ${companyId} and gr.doc_type = 'GOODS_RECEIPT'
+             and gr.status = 'POSTED' and gr.reverses_document_id is null
+             and (fn_current_document(gr.source_document_id) = fn_current_document(${inv.id})
+               or gr.id = (select b.source_document_id from document b where b.id = ${inv.id}))`;
+        const arrived = receipts.map((r: any) => String(r.d)).sort()[0] ?? null;
+        if (arrived) {
+          let prepaid = 0;
+          for (const a of lines) {
+            const [p] = await tx`select posting_date::text as d from document where id = ${a.paymentId}`;
+            if (String(p.d) <= arrived) {
+              const s = split.get(a.paymentId)!;
+              prepaid = round4(prepaid + sign * (s.inv - s.adv));
+            }
+          }
+          const goodsLines = prepaid === 0 ? [] : await tx`
+            select dl.id, dl.net_amount::float as weight from document_line dl
+             where dl.document_id = any(${receipts.map((r: any) => r.id as string)})
+               and dl.base_qty > 0 and dl.net_amount > 0
+             order by dl.document_id, dl.line_no`;
+          if (goodsLines.length > 0) {
+            const shares = spreadByWeight(prepaid, goodsLines.map((g: any) => Number(g.weight)), 4);
+            for (const [i, g] of goodsLines.entries()) {
+              if (shares[i] === 0) continue;
+              const r = await addValueToReceiptLine(tx, {
+                companyId, documentId: doc.id as string, docDate, locationId: inv.location_id as string,
+                reason: `${docNo}: paid in advance at the advance's rate (IFRIC 22)`,
+                receiptLineId: g.id as string, amount: shares[i],
+              });
+              journal.push(...r.journal);
+              // Units that only ever covered a shortage cannot be walked to;
+              // their share is cost of sales, as for landed cost.
+              const left = round4(shares[i] - r.toInventory - r.toCogs);
+              if (left !== 0) {
+                const [cogs] = await tx`
+                  select fn_resolve_account_for_item(${companyId}, 'COGS',
+                         (select item_id from document_line where id = ${g.id})) as a`;
+                journal.push({ accountId: cogs.a as string, amount: left, locationId: inv.location_id as string | null });
+              }
+            }
+            close = round4(close - prepaid);
+          }
+        }
+      }
+
       if (close !== 0) {
         const role = close < 0 ? "FX_GAIN" : "FX_LOSS";
         const [acct] = await tx`select fn_system_account(${companyId}, ${role}) as a`;
@@ -8424,7 +8954,8 @@ export async function refundableOnReturn(tx: TransactionSql, returnId: string) {
                       where f.source_document_id = d.id and f.doc_type = 'CUSTOMER_REFUND'
                         and f.status = 'POSTED'), 0)::float as refunded
       from document d where d.id = ${returnId}`;
-  if (!r || r.doc_type !== "SALES_RETURN") throw new Error("A refund pays out a customer return");
+  // A return, or a credit note that took a paid invoice below zero.
+  if (!r || !["SALES_RETURN", "CREDIT_NOTE"].includes(r.doc_type)) throw new Error("A refund pays out a customer return or credit note");
   if (r.status !== "POSTED") throw new Error(`${r.doc_no} is ${String(r.status).toLowerCase()} and cannot be refunded`);
   let owed: number;
   if (r.invoice_id) {
@@ -8443,6 +8974,88 @@ export async function refundableOnReturn(tx: TransactionSql, returnId: string) {
                       location_id: string | null; invoice_id: string | null; total: number },
     refundable: round4(Math.max(0, Math.min(Number(r.total) - Number(r.refunded), owed))),
   };
+}
+
+/**
+ * What a supplier still owes us back for a debit note: what the bill now
+ * sits below zero, less refunds already recorded from the note, capped by
+ * the note itself.
+ */
+export async function refundableOnDebitNote(tx: TransactionSql, noteId: string) {
+  const [n] = await tx`
+    select d.id, d.company_id, d.partner_id, d.doc_no, d.status, d.doc_type, d.gross_total::float as total,
+           d.location_id, fn_current_document(d.source_document_id) as bill_id,
+           coalesce((select sum(f.gross_total) from document f
+                      where f.source_document_id = d.id and f.doc_type = 'SUPPLIER_REFUND'
+                        and f.status = 'POSTED'), 0)::float as refunded
+      from document d where d.id = ${noteId}`;
+  if (!n || n.doc_type !== "DEBIT_NOTE") throw new Error("A supplier refund settles a debit note");
+  if (n.status !== "POSTED") throw new Error(`${n.doc_no} is ${String(n.status).toLowerCase()} and cannot be refunded`);
+  const [o] = await tx`select outstanding::float as o from v_open_item where document_id = ${n.bill_id}`;
+  const owedBack = Math.max(0, -Number(o?.o ?? 0));
+  return {
+    note: n as { id: string; company_id: string; partner_id: string; doc_no: string;
+                 location_id: string | null; bill_id: string; total: number },
+    refundable: round4(Math.max(0, Math.min(Number(n.total) - Number(n.refunded), owedBack))),
+  };
+}
+
+/**
+ * Money a supplier pays back for a debit note on a bill already paid:
+ * Dr the cash or bank account it came into / Cr Accounts Payable, allocated
+ * as minus the amount against the bill so it climbs back to zero (0206).
+ * Cost is not touched — the debit note already moved it.
+ */
+export async function postSupplierRefund(input: {
+  companyId: string; noteId: string; docDate: string; cashAccountId: string; amount: number;
+  memo?: string | null; reference?: string | null;
+}, outer?: TransactionSql) {
+  const amount = round4(Number(input.amount));
+  if (!(amount > 0)) throw new Error("Enter the amount received");
+  return inTransaction(outer, async (tx) => {
+    await tx`select id from document where id = ${input.noteId} for update`;
+    const { note: n, refundable } = await refundableOnDebitNote(tx, input.noteId);
+    if (n.company_id !== input.companyId) throw new Error("That debit note belongs to another company");
+    if (amount > refundable + 0.005) {
+      throw new Error(refundable > 0
+        ? `${n.doc_no} leaves ${refundable} to come back; ${amount} was entered`
+        : `${n.doc_no} leaves nothing to come back: the bill is not below zero`);
+    }
+    const [cash] = await tx`
+      select 1 from account where id = ${input.cashAccountId} and company_id = ${input.companyId}
+         and is_cash_account and is_postable`;
+    if (!cash) throw new Error("A refund comes into a cash or bank account");
+
+    const fyRows = await tx`select fn_fiscal_year_for(${input.companyId}, ${input.docDate}::date) as fy`;
+    const fiscalYear = fyRows[0]?.fy ?? null;
+    if (!fiscalYear) throw new Error(`No fiscal year covers ${input.docDate}`);
+    const { docNo } = await documentNumberFor(tx, input.companyId, "SUPPLIER_REFUND", input.docDate, null);
+
+    const [doc] = await tx`
+      insert into document
+        (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date, partner_id, location_id,
+         currency, exchange_rate, status, net_total, tax_total, gross_total, memo, reference,
+         payment_type, posted_at, source_document_id)
+      values
+        (${input.companyId}, 'SUPPLIER_REFUND', ${docNo}, ${fiscalYear}, ${input.docDate}::date,
+         ${input.docDate}::date, ${n.partner_id}, ${n.location_id}, 'MMK', 1, 'POSTED',
+         ${amount}, 0, ${amount}, ${input.memo ?? `Refund on ${n.doc_no}`}, ${input.reference ?? null},
+         'CASH', now(), ${n.id})
+      returning id`;
+    await tx`
+      insert into payment_allocation (company_id, payment_id, invoice_id, amount, base_amount)
+      values (${input.companyId}, ${doc.id}, ${n.bill_id}, ${-amount}, ${-amount})`;
+    const [bill] = await tx`select location_id from document where id = ${n.bill_id}`;
+    const ap = (await tx`select fn_resolve_control_account(${input.companyId}, 'AP_CONTROL', ${n.partner_id}) as a`)[0].a;
+    const entryId = await writeJournal(tx, input.companyId, input.docDate, "SUPPLIER_REFUND", doc.id,
+      `${docNo} refund from supplier on ${n.doc_no}`,
+      [
+        { accountId: input.cashAccountId, amount, locationId: n.location_id },
+        { accountId: ap, amount: -amount, partnerId: n.partner_id, locationId: (bill?.location_id as string) ?? null },
+      ]);
+    await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
+    return { id: doc.id as string, docNo: docNo as string };
+  });
 }
 
 /**
@@ -8955,6 +9568,8 @@ export type ImportRow = {
   name: string;
   itemId: string | null;
   categoryId: string;
+  /** From the category; NONE where the company has serial tracking off. */
+  identity?: string;
   brandId: string | null;
   uomId: string;
   /** The item's own piece of the code. `code` is composed from it by trigger
@@ -8962,6 +9577,11 @@ export type ImportRow = {
   serial: string;
   /** What it sells for, where the sheet said. Null is an unpriced item. */
   salePrice?: number | null;
+  /** The serial is the whole code (typed, or numbered under a model code). */
+  codeIsManual?: boolean;
+  /** A variant: the model it belongs to (made here when parentId is null) and its options. */
+  model?: { key: string; name: string; parentId: string | null; parentSerial: string; parentManual: boolean;
+            optionIds: string[]; attributeIds: string[]; nameIsCustom: boolean };
 };
 
 /**
@@ -9019,13 +9639,56 @@ export async function importItems(input: {
     // unique.
     const key = (groupId: string, serial: string) => `${groupId}|${serial}`;
     const idOf = new Map<string, string>();
+    // Each unit is tracked the way its category says (an iPhone by IMEI), as
+    // the product form does; nothing is tracked where the company switched
+    // serial numbers off (0200).
+    const [feat] = await tx`select coalesce((features->>'serial_tracking')::boolean, true) as on from company where id = ${companyId}`;
+    // Models first: each new one once, as the product form makes it (not sold
+    // itself; its variants are). An existing model is reused as it is.
+    const parentOf = new Map<string, string>();
+    for (const r of rows) {
+      if (!r.model) continue;
+      if (r.model.parentId) { parentOf.set(r.model.key, r.model.parentId); continue; }
+      if (parentOf.has(r.model.key)) continue;
+      const [p] = await tx`
+        insert into item (company_id, item_group_id, serial, code_is_manual, name, brand_id, base_uom_id,
+                          is_stocked, import_batch_id, identity)
+        values (${companyId}, ${r.categoryId}, ${r.model.parentSerial}, ${r.model.parentManual}, ${r.model.name},
+                ${r.brandId}, ${r.uomId}, true, ${batch.id}, ${feat.on ? (r.identity ?? "NONE") : "NONE"})
+        returning id`;
+      parentOf.set(r.model.key, p.id as string);
+    }
+    // What each model varies by, in the attributes' own order; added to an
+    // existing model only where it did not vary by that before.
+    const varies = new Map<string, Set<string>>();
+    for (const r of rows) if (r.model) {
+      const s = varies.get(parentOf.get(r.model.key)!) ?? new Set<string>();
+      r.model.attributeIds.forEach((a) => s.add(a));
+      varies.set(parentOf.get(r.model.key)!, s);
+    }
+    const attrRows = [...varies].flatMap(([itemId, ids]) => [...ids].map((attributeId, k) =>
+      ({ item_id: itemId, attribute_id: attributeId, sort_order: k })));
+    if (attrRows.length) {
+      await tx`insert into item_variant_attribute ${tx(attrRows)} on conflict (item_id, attribute_id) do nothing`;
+    }
+
     for (let i = 0; i < fresh.length; i += 1000) {
       const made = await tx`insert into item ${tx(fresh.slice(i, i + 1000).map((r) => ({
         company_id: companyId, item_group_id: r.categoryId, serial: r.serial, name: r.name,
         barcode: r.barcode || null, brand_id: r.brandId, base_uom_id: r.uomId,
         is_stocked: true, import_batch_id: batch.id,
+        identity: feat.on ? (r.identity ?? "NONE") : "NONE",
+        code_is_manual: Boolean(r.codeIsManual),
+        parent_item_id: r.model ? parentOf.get(r.model.key)! : null,
+        name_is_custom: Boolean(r.model?.nameIsCustom),
+        valuation_method: r.model ? "FIFO" : "WEIGHTED_AVERAGE",
       })))} returning id, item_group_id, serial`;
       for (const m of made) idOf.set(key(m.item_group_id as string, m.serial as string), m.id as string);
+    }
+    const optionRows = fresh.flatMap((r) => (r.model?.optionIds ?? []).map((optionId) =>
+      ({ item_id: idOf.get(key(r.categoryId, r.serial))!, option_id: optionId })));
+    for (let i = 0; i < optionRows.length; i += 5000) {
+      await tx`insert into item_variant_option ${tx(optionRows.slice(i, i + 5000))}`;
     }
 
     // The same write the new-item form makes: a sale price belongs to a
@@ -9835,7 +10498,7 @@ async function voidDocumentIn(
       }
       if (landedLater.length > 0) {
         await writeJournal(tx, doc.company_id as string, plan.reversalDate, doc.doc_type as string,
-          reversal.id as string, `${reversalNo} landed cost back to 1090`, landedLater);
+          reversal.id as string, `${reversalNo} landed cost back to Goods Shipped Not Invoiced`, landedLater);
       }
     }
 
@@ -9939,11 +10602,21 @@ async function voidDocumentIn(
              ${-cost}, ${reversal.id})
           returning id`;
 
-        await tx`
+        const [used] = await tx`
           insert into stock_lot_consumption
             (company_id, lot_id, stock_movement_id, qty, unit_cost)
           values
-            (${doc.company_id}, ${lot.id}, ${out.id}, ${qty}, ${Number(lot.unit_cost)})`;
+            (${doc.company_id}, ${lot.id}, ${out.id}, ${qty}, ${Number(lot.unit_cost)})
+          returning id`;
+
+        // The handsets on that layer leave with it. A serial is on the shelf
+        // until something issues it from its layer, so closing the layer
+        // alone left a voided receipt's IMEIs showing as in stock: phones
+        // the books say were never received, still offered for sale.
+        await tx`
+          insert into stock_serial_issue (company_id, serial_id, stock_movement_id, lot_id, consumption_id)
+          select ${doc.company_id}, s.id, ${out.id}, ${lot.id}, ${used.id}
+            from stock_serial s where s.stock_lot_id = ${lot.id}`;
       }
     }
 
@@ -11656,5 +12329,319 @@ export async function resettleConsignmentSale(input: {
     return (raised as unknown as { id: string; doc_no: string; gross_total: string }[])
       .filter((r) => !seen.has(r.id))
       .map((r) => ({ id: r.id, docNo: r.doc_no, amount: Number(r.gross_total) }));
+  });
+}
+
+// =========================================================================
+// Month-end revaluation of foreign balances (0223, docs/06 D-P6)
+// =========================================================================
+//
+// What suppliers are owed in yuan, and yuan held in cash or bank, restated
+// at the month-end rate. The difference is unrealised exchange (6341): it is
+// booked on the last day of the month, beside the balances (2160, 1150) so
+// neither the supplier ledger nor a bank account stops agreeing with its own
+// detail, and it is taken back the next morning. Settlement goes on at each
+// bill's own rate, and realised exchange is still booked when money moves.
+// Stock and advances paid for goods are not restated (IFRIC 22).
+
+export type FxRevaluationLine = {
+  kind: "PAYABLE" | "CASH";
+  accountId: string;
+  accountName: string;
+  partnerId: string | null;
+  partnerName: string | null;
+  currency: string;
+  /** Signed, as the ledger carries it: a payable is negative. */
+  fcBalance: number;
+  carried: number;
+  rate: number;
+  revalued: number;
+  /** revalued − carried: negative is more owed (a loss), positive a gain. */
+  difference: number;
+};
+
+/**
+ * The foreign balances open at the end of `periodEnd`, and what each comes
+ * to at the rates given (or the MARKET rate on file for that day). Reads
+ * only. A currency with no rate either way is named in `missingRates` and
+ * left out of `lines`, so a preview can ask for it.
+ */
+export async function planFxRevaluation(
+  input: { companyId: string; periodEnd: string; rates?: Record<string, number> },
+  outer?: TransactionSql,
+): Promise<{ lines: FxRevaluationLine[]; rates: Record<string, number>; missingRates: string[]; base: string }> {
+  return inTransaction(outer, async (tx) => {
+    const { companyId, periodEnd } = input;
+    const [co] = await tx`select base_currency from company where id = ${companyId}`;
+    const base = co.base_currency as string;
+    const scale = await currencyScale(tx, companyId);
+
+    const payables = await tx`
+      select jl.account_id, a.name as account_name, jl.partner_id, bp.name as partner_name,
+             jl.currency, sum(jl.amount)::float as fc, sum(jl.base_amount)::float as carried
+        from journal_line jl
+        join journal_entry je on je.id = jl.journal_entry_id
+        join account a on a.id = jl.account_id and a.subledger = 'SUPPLIER'
+        left join business_partner bp on bp.id = jl.partner_id
+       where jl.company_id = ${companyId} and jl.currency <> ${base}
+         and je.entry_date <= ${periodEnd}::date
+       group by jl.account_id, a.name, jl.partner_id, bp.name, jl.currency
+      having round(sum(jl.amount), 4) <> 0 or round(sum(jl.base_amount), 4) <> 0
+       order by bp.name, jl.currency`;
+    const cash = await tx`
+      select a.id as account_id, a.name as account_name, a.currency,
+             coalesce(sum(jl.amount) filter (where jl.currency = a.currency), 0)::float as fc,
+             coalesce(sum(jl.base_amount), 0)::float as carried
+        from account a
+        join journal_line jl on jl.account_id = a.id
+        join journal_entry je on je.id = jl.journal_entry_id and je.entry_date <= ${periodEnd}::date
+       where a.company_id = ${companyId} and a.currency is not null and a.currency <> ${base}
+         and a.subledger is null
+       group by a.id, a.name, a.currency
+      having round(coalesce(sum(jl.amount) filter (where jl.currency = a.currency), 0), 4) <> 0
+          or round(coalesce(sum(jl.base_amount), 0), 4) <> 0
+       order by a.code`;
+
+    const currencies = [...new Set([...payables, ...cash].map((r: any) => String(r.currency).trim()))];
+    const rates: Record<string, number> = {};
+    const missingRates: string[] = [];
+    for (const cur of currencies) {
+      const typed = Number(input.rates?.[cur] ?? 0);
+      if (typed > 0) { rates[cur] = typed; continue; }
+      const [r] = await tx`
+        select fn_exchange_rate(${companyId}, ${cur}, ${base}, 'MARKET', ${periodEnd}::date)::float as r`;
+      if (Number(r?.r) > 0) rates[cur] = Number(r.r); else missingRates.push(cur);
+    }
+
+    const lines: FxRevaluationLine[] = [];
+    const add = (kind: FxRevaluationLine["kind"], r: any) => {
+      const cur = String(r.currency).trim();
+      const rate = rates[cur];
+      if (!rate) return;
+      const revalued = roundMoney(Number(r.fc) * rate, scale);
+      const difference = roundMoney(revalued - Number(r.carried), scale);
+      if (Math.abs(difference) < 0.005) return;
+      lines.push({
+        kind, accountId: r.account_id, accountName: r.account_name,
+        partnerId: r.partner_id ?? null, partnerName: r.partner_name ?? null,
+        currency: cur, fcBalance: round4(Number(r.fc)), carried: round4(Number(r.carried)),
+        rate, revalued, difference,
+      });
+    };
+    for (const r of payables) add("PAYABLE", r);
+    for (const r of cash) add("CASH", r);
+    return { lines, rates, missingRates, base };
+  });
+}
+
+/**
+ * Posts the month-end revaluation: unrealised exchange on `periodEnd`, and
+ * its reversal the next day. One standing run per month end; to redo one,
+ * void it first. Both days must be in open periods.
+ */
+export async function postFxRevaluation(
+  input: { companyId: string; periodEnd: string; rates?: Record<string, number>; userId?: string | null },
+  outer?: TransactionSql,
+): Promise<{ id: string; lines: number }> {
+  return inTransaction(outer, async (tx) => {
+    const { companyId, periodEnd } = input;
+    await tx`select pg_advisory_xact_lock(hashtext('fx_revaluation:' || ${companyId}))`;
+    const [standing] = await tx`
+      select id from fx_revaluation where company_id = ${companyId} and period_end = ${periodEnd}::date and status = 'POSTED'`;
+    if (standing) throw new Error(`${periodEnd} has been revalued already. Void that run to run it again.`);
+
+    const plan = await planFxRevaluation(input, tx);
+    if (plan.missingRates.length > 0) {
+      throw new Error(`Enter the ${plan.missingRates.join(", ")} rate for ${periodEnd} — how many ${plan.base} one unit cost that day.`);
+    }
+    if (plan.lines.length === 0) throw new Error(`Nothing open in a foreign currency on ${periodEnd} needs restating.`);
+
+    const acct = async (role: string) => {
+      const [a] = await tx`select fn_system_account(${companyId}, ${role}) as a`;
+      if (!a?.a) throw new Error(`No account is set for ${role}. Set it under Settings.`);
+      return a.a as string;
+    };
+    const apAdj = await acct("FX_REVALUATION_AP");
+    const cashAdj = await acct("FX_REVALUATION_CASH");
+    const unrealised = await acct("FX_UNREALISED_LOSS");
+
+    const [{ next }] = await tx`select (${periodEnd}::date + 1)::text as next`;
+    const [run] = await tx`
+      insert into fx_revaluation (company_id, period_end, reversal_date, rates, created_by)
+      values (${companyId}, ${periodEnd}::date, ${next}::date, ${tx.json(plan.rates)}, ${input.userId ?? null})
+      returning id`;
+
+    const journal: JournalLine[] = [];
+    for (const l of plan.lines) {
+      journal.push({ accountId: l.kind === "PAYABLE" ? apAdj : cashAdj, amount: l.difference,
+                     partnerId: l.partnerId });
+      journal.push({ accountId: unrealised, amount: -l.difference });
+    }
+    const label = `Exchange revaluation at ${periodEnd}`;
+    const entryId = await writeJournal(tx, companyId, periodEnd, "FX_REVALUATION", run.id, label, journal);
+    const reversalId = await writeJournal(tx, companyId, next, "FX_REVALUATION", run.id,
+      `${label}, reversed`, journal.map((j) => ({ ...j, amount: -j.amount })));
+    await tx`update fx_revaluation set entry_id = ${entryId}, reversal_entry_id = ${reversalId} where id = ${run.id}`;
+    await insertInChunks(tx, "fx_revaluation_line", plan.lines.map((l) => ({
+      revaluation_id: run.id, kind: l.kind, account_id: l.accountId, partner_id: l.partnerId,
+      currency: l.currency, fc_balance: l.fcBalance, carried: l.carried, rate: l.rate,
+      revalued: l.revalued, difference: l.difference,
+    })));
+    return { id: run.id as string, lines: plan.lines.length };
+  });
+}
+
+/**
+ * Undoes a revaluation run so the month can be run again — a wrong rate, a
+ * bill posted late. Corrections are reversals: both its entries are undone
+ * by entries the other way on the same days, so both days must still be in
+ * open periods.
+ */
+export async function voidFxRevaluation(
+  input: { companyId: string; revaluationId: string; reason: string; userId?: string | null },
+  outer?: TransactionSql,
+) {
+  if (!input.reason?.trim()) throw new Error("Say why this revaluation is being voided.");
+  return inTransaction(outer, async (tx) => {
+    const [run] = await tx`
+      select * from fx_revaluation where id = ${input.revaluationId} and company_id = ${input.companyId} for update`;
+    if (!run) throw new Error("That revaluation does not exist.");
+    if (run.status !== "POSTED") throw new Error("That revaluation has been voided already.");
+    const undo = async (entryId: string, date: string, memo: string) => {
+      const lines = await tx`
+        select account_id, partner_id, location_id, base_amount::float as amount from journal_line
+         where journal_entry_id = ${entryId}`;
+      return writeJournal(tx, input.companyId, date, "FX_REVALUATION", run.id, memo,
+        lines.map((l: any) => ({ accountId: l.account_id, partnerId: l.partner_id, locationId: l.location_id,
+                                 amount: -Number(l.amount) })));
+    };
+    const pe = String((await tx`select ${run.period_end}::date::text as d`)[0].d);
+    const rd = String((await tx`select ${run.reversal_date}::date::text as d`)[0].d);
+    const v1 = await undo(run.entry_id, pe, `Exchange revaluation at ${pe} voided: ${input.reason.trim()}`);
+    const v2 = await undo(run.reversal_entry_id, rd, `Exchange revaluation at ${pe} voided (its reversal): ${input.reason.trim()}`);
+    await tx`update fx_revaluation set status = 'VOIDED', void_entry_id = ${v1}, void_reversal_entry_id = ${v2},
+               void_reason = ${input.reason.trim()}, voided_by = ${input.userId ?? null}, voided_at = now()
+             where id = ${run.id}`;
+    return { id: run.id as string };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// A fault found after the receipt was posted (0224, docs/06 D-P7)
+// ---------------------------------------------------------------------------
+//
+// The phone passed the door and failed the next day's test. Its receipt is
+// posted and does not change; the finding is written beside it — the receipt
+// line it came in on, what is wrong, replace or credit — and the unit moves
+// into its warehouse's quarantine bin by an ordinary transfer. From there it
+// goes back to the supplier exactly as a unit refused at the door does.
+
+export type FaultReportInput = {
+  companyId: string;
+  receiptId: string;
+  reason: string;
+  outcome: "REPLACE" | "CREDIT";
+  userId?: string | null;
+  /** Per receipt line: the units (serial-tracked) or how many (otherwise). */
+  lines: { receiptLineId: string; serials?: string[]; qty?: number }[];
+};
+
+export async function reportFaulty(input: FaultReportInput, outer?: TransactionSql) {
+  const reason = input.reason?.trim();
+  if (!reason) throw new Error("Say what is wrong with it.");
+  if (input.outcome !== "REPLACE" && input.outcome !== "CREDIT") throw new Error("Choose replace or credit.");
+  const wanted = input.lines
+    .map((l) => ({ ...l, serials: (l.serials ?? []).map((s) => s.trim()).filter(Boolean) }))
+    .filter((l) => l.serials.length > 0 || Number(l.qty) > 0);
+  if (wanted.length === 0) throw new Error("Choose the units that are faulty.");
+
+  return inTransaction(outer, async (tx) => {
+    const { companyId } = input;
+    const [gr] = await tx`
+      select id, doc_no from document
+       where id = ${input.receiptId} and company_id = ${companyId}
+         and doc_type = 'GOODS_RECEIPT' and status = 'POSTED'`;
+    if (!gr) throw new Error("Only a posted goods receipt can have units reported faulty.");
+    const [today] = await tx`select fn_shop_today()::text as d`;
+
+    // Units grouped by where they are now: one transfer per warehouse.
+    type Move = { from: string; lines: TransferLine[]; reports: { lineId: string; serialNo?: string; qty: number }[] };
+    const moves = new Map<string, Move>();
+    const moveAt = (from: string) => {
+      if (!moves.has(from)) moves.set(from, { from, lines: [], reports: [] });
+      return moves.get(from)!;
+    };
+
+    for (const w of wanted) {
+      const [rl] = await tx`
+        select dl.id, dl.item_id, dl.location_id, dl.base_qty::float as qty, dl.reject_reason,
+               i.code, i.name, i.tracks_serial
+          from document_line dl join item i on i.id = dl.item_id
+         where dl.id = ${w.receiptLineId} and dl.document_id = ${gr.id}`;
+      if (!rl) throw new Error("That line is not on this receipt.");
+      if (rl.reject_reason) throw new Error(`${rl.code} on this line was refused on arrival and is already in quarantine.`);
+
+      if (rl.tracks_serial) {
+        if (w.serials.length === 0) throw new Error(`Choose which ${rl.code} units are faulty.`);
+        const units = await tx`
+          select s.id, s.serial_no, v.status, v.location_id, v.location_name, l.is_quarantine,
+                 exists (select 1 from stock_serial_event e
+                           join stock_lot lot on lot.id = e.lot_id
+                           join stock_movement sm on sm.id = lot.stock_movement_id
+                          where e.serial_id = s.id and e.event = 'RECEIVED'
+                            and sm.document_line_id = ${rl.id}) as on_line,
+                 exists (select 1 from fault_report fr where fr.serial_id = s.id) as reported
+            from stock_serial s
+            join v_stock_serial v on v.serial_id = s.id
+            left join location l on l.id = v.location_id
+           where s.company_id = ${companyId} and s.serial_no = any(${w.serials})`;
+        for (const sn of w.serials) {
+          const u = units.find((x) => x.serial_no === sn);
+          if (!u || !u.on_line) throw new Error(`${sn} did not arrive on this line of ${gr.doc_no}.`);
+          if (u.reported) throw new Error(`${sn} has already been reported faulty.`);
+          if (u.status !== "IN_STOCK") throw new Error(u.status === "SOLD"
+            ? `${sn} is already sold — a sold phone comes back as a customer return, into quarantine.`
+            : `${sn} is ${SERIAL_STATUS[u.status] ?? String(u.status).toLowerCase()}, so it is not on the shelf to report.`);
+          if (u.is_quarantine) throw new Error(`${sn} is already in quarantine.`);
+          const m = moveAt(u.location_id);
+          const tl = m.lines.find((x) => x.itemId === rl.item_id);
+          if (tl) { tl.qty++; tl.serials!.push(sn); } else m.lines.push({ itemId: rl.item_id, qty: 1, serials: [sn] });
+          m.reports.push({ lineId: rl.id, serialNo: sn, qty: 1 });
+        }
+      } else {
+        const qty = Number(w.qty);
+        const [done] = await tx`
+          select coalesce(sum(qty), 0)::float as q from fault_report where receipt_line_id = ${rl.id}`;
+        if (qty > rl.qty - Number(done.q)) {
+          throw new Error(`${rl.code}: ${rl.qty} arrived on this line and ${done.q} already reported — ${qty} is more than that.`);
+        }
+        const m = moveAt(rl.location_id);
+        m.lines.push({ itemId: rl.item_id, qty });
+        m.reports.push({ lineId: rl.id, qty });
+      }
+    }
+
+    const transfers: string[] = [];
+    for (const m of moves.values()) {
+      const [bin] = await tx`select fn_quarantine_location(${m.from}) as id`;
+      const t = await postStockTransfer({
+        companyId, fromLocationId: m.from, toLocationId: bin.id, docDate: today.d,
+        reference: gr.doc_no,
+        memo: `Found faulty after receipt ${gr.doc_no}: ${reason}. Supplier to ${input.outcome === "REPLACE" ? "replace" : "credit"}.`,
+        lines: m.lines,
+      }, tx);
+      transfers.push(t.id);
+      for (const r of m.reports) {
+        await tx`
+          insert into fault_report
+            (company_id, receipt_line_id, serial_id, qty, reason, outcome, bin_location_id,
+             transfer_document_id, created_by)
+          values
+            (${companyId}, ${r.lineId},
+             ${r.serialNo ? (await tx`select id from stock_serial where company_id = ${companyId} and serial_no = ${r.serialNo}`)[0].id : null},
+             ${r.qty}, ${reason}, ${input.outcome}, ${bin.id}, ${t.id}, ${input.userId ?? null})`;
+      }
+    }
+    return { transferIds: transfers };
   });
 }

@@ -8,6 +8,8 @@ import { saveItemEdit } from "@/lib/actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ItemEditor, type EditorItem } from "@/components/item-editor";
 import { PhoneSettings } from "@/components/phone-settings";
+import { serialTrackingOn, sparePartsOn } from "@/lib/features";
+import type { PartNo } from "@/components/part-numbers";
 
 export async function generateMetadata() { return { title: "Edit item" }; }
 
@@ -25,8 +27,8 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const seeCost = can(user, "cost.view");
 
   const [item] = (await sql`
-    select i.id, i.code, i.name, i.name_my, i.name_is_custom, i.barcode, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
-           i.brand_id, i.base_uom_id, i.warranty_months, i.supplier_warranty_months,
+    select i.id, i.code, i.name, i.name_my, i.name_is_custom, i.barcode, i.purchase_uom_id, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
+           i.brand_id, i.base_uom_id, i.warranty_months, i.supplier_warranty_months, i.weight_kg::float as weight_kg,
            exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
            (select count(*)::int from item c where c.parent_item_id = i.id) as variant_count,
            (select count(*)::int from item c where c.parent_item_id = i.id and c.tracks_serial) as variants_tracked,
@@ -50,8 +52,8 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
 
   const [brands, uoms, packs] = await Promise.all([
     sql`select id, code, name from brand where company_id = ${company.id} order by name` as unknown as Promise<{ id: string; code: string; name: string }[]>,
-    sql`select id, code, name from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string }[]>,
-    sql`select uom_id, factor::float as factor from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number }[]>,
+    sql`select id, code, name, name_my from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string; name_my: string | null }[]>,
+    sql`select uom_id, factor::float as factor, sale_price::float as price, barcode from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number; price: number | null; barcode: string | null }[]>,
   ]);
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
@@ -99,14 +101,19 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const priceBy = new Map(prices.map((p) => [p.price_level_id as string, String(Number(p.price))]));
 
   const data: EditorItem = {
-    id, code: item.code, name: item.name, nameCustom: !!item.name_is_custom, barcode: item.barcode ?? "",
+    id, code: item.code, name: item.name, nameCustom: !!item.name_is_custom, barcode: item.barcode ?? "", weightKg: item.weight_kg == null ? "" : String(item.weight_kg),
     isActive: item.is_active, isStocked: item.is_stocked, identity: item.identity, tracksSerial: !!item.tracks_serial,
     uom: item.uom_code, brand: item.brand,
     category: item.top_category ? `${item.top_category} / ${item.category}` : item.category,
     parentId: item.parent_item_id, parentName: item.parent_name,
     isModel, nameMy: item.name_my ?? "", brandId: item.brand_id ?? "", uomId: item.base_uom_id,
     ownPhoto: item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null,
-    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor) })), brands, uoms,
+    packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor), price: p.price, barcode: p.barcode })), brands, uoms,
+    buyUomId: (item.purchase_uom_id as string | null) ?? null,
+    partNumbers: sparePartsOn(company)
+      ? (await sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
+                    where item_id = ${id} order by kind, part_no`) as unknown as PartNo[]
+      : null,
     parts: (item.parts ?? []) as { a: string; o: string }[],
     photo, siblings,
     levels: levels.map((l) => ({ id: l.id, name: l.name, price: priceBy.get(l.id) ?? "" })),
@@ -131,7 +138,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
       <Breadcrumbs trail={trail} />
       {/* Tracking and warranty belong to the product (and so to all its variants). */}
       <ItemEditor item={data} action={saveItemEdit}
-        tracking={canTrack ? <PhoneSettings item={item} embedded /> : null} />
+        tracking={canTrack ? <PhoneSettings item={item} embedded serial={serialTrackingOn(await getCompany())} /> : null} />
     </div>
   );
 }
