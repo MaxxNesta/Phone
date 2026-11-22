@@ -273,6 +273,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <NavLink href="/finance/income-statement" sub>{n("incomeStatement")}</NavLink>
                   <NavLink href="/finance/balance-sheet" sub>{n("balanceSheet")}</NavLink>
                   <NavLink href="/finance/cash-flow" sub>{n("cashFlow")}</NavLink>
+                  {hasModule(company, "equity") && <NavLink href="/equity/statement" sub>{n("changesInEquity")}</NavLink>}
                   <NavLink href="/finance/inventory-cogs" sub>{n("inventoryCogs")}</NavLink>
                 </NavSubGroup>
                 )}
