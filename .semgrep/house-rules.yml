@@ -1,0 +1,88 @@
+# House rules for this ERP, checked by Semgrep:
+#   semgrep scan --config .semgrep --metrics=off
+# Each one is a rule from CLAUDE.md / docs/04 that a reviewer would otherwise
+# have to remember. A hit is a lead to check, not a proven bug.
+rules:
+  - id: server-action-without-permission
+    message: >-
+      Exported function in a "use server" file with no permission check. Any
+      signed-in user can call it from the browser with its action id, whatever
+      the menu shows. Call requirePermission (or requireUser / a wrapper that
+      does) first.
+    severity: ERROR
+    languages: [typescript]
+    paths:
+      include: ["lib/**/*.ts", "app/**/*.ts", "app/**/*.tsx"]
+    patterns:
+      - pattern-inside: |
+          "use server";
+          ...
+      - pattern: |
+          export async function $F(...) { ... }
+      - pattern-not: |
+          export async function $F(...) { ... requirePermission(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... requireUser(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... requireFaPoster(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... poster(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... requireClaimRights(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... who(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... scope(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... rateKeeper(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... currentUser(...); ... }
+      - pattern-not: |
+          export async function $F(...) { ... landedModule(...); ... }
+      # Public on purpose: they run before anyone can sign in, or change nothing but a cookie.
+      - metavariable-regex:
+          metavariable: $F
+          regex: ^(?!(signIn|signOut|createFirstAdmin|setupCompany|companyExists|setLocale)$).*
+
+  - id: route-handler-without-permission
+    message: >-
+      Route handler with no permission check of its own. The middleware gates
+      by path, but a handler serving data should check too.
+    severity: WARNING
+    languages: [typescript]
+    paths:
+      include: ["app/**/route.ts"]
+    patterns:
+      - pattern: |
+          export async function $M(...) { ... }
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(GET|POST|PUT|PATCH|DELETE)$
+      - pattern-not: |
+          export async function $M(...) { ... requirePermission(...); ... }
+      - pattern-not: |
+          export async function $M(...) { ... requireUser(...); ... }
+      - pattern-not: |
+          export async function $M(...) { ... currentUser(...); ... }
+
+  - id: ledger-write-outside-posting
+    message: >-
+      Writes the ledger or the stock ledger outside lib/posting.ts. docs/04:
+      never write outside posting; corrections are reversals.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include: ["lib/**/*.ts", "app/**/*.ts", "app/**/*.tsx"]
+      exclude: ["lib/posting.ts", "lib/landed-cost.ts"]
+    pattern-regex: (?i)(insert\s+into|update|delete\s+from)\s+(journal_line|journal_entry|stock_movement|stock_lot|stock_lot_consumption)\b
+
+  - id: sql-unsafe-dynamic
+    message: >-
+      sql.unsafe with a value built at run time. Use the tagged template
+      (sql`... ${value}`) so values are sent as parameters.
+    severity: ERROR
+    languages: [typescript]
+    patterns:
+      - pattern-either:
+          - pattern: $SQL.unsafe($X, ...)
+      - pattern-not: $SQL.unsafe("...", ...)

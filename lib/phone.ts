@@ -562,8 +562,9 @@ export async function phoneStockSummary(companyId: string, locs: string[] | null
 
 export async function retailDashboard(companyId: string, locs: string[] | null = null, serials = true) {
   // Someone who sees only their own branch gets its figures only (seenLocations).
+  // col is one of three fixed column names, never input.
   const at = (col: "location_id" | "d.location_id" | "s.location_id") =>
-    locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``;
+    locs ? sql`and ${sql.unsafe(col)} = any(${locs})` : sql``; // nosemgrep: sql-unsafe-dynamic
   const range = (from: ReturnType<typeof sql>, to: ReturnType<typeof sql> = sql`fn_shop_today()`) =>
     saleRows(companyId, from, to, locs);
   // What "sold" counts: phones where IMEI is on, every unit where it is off.
