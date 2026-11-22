@@ -243,6 +243,7 @@ export const PATH_PERMISSIONS: Array<[string, Permission]> = [
   // A landed cost shows and changes what stock cost, so cost visibility,
   // not purchasing, is what opens it.
   ["/purchases/landed-costs", "cost.view"],
+  ["/purchases/landed-cost-clearing", "cost.view"],
   ["/purchases", "purchase.view"],
   // Revenue against cost of sales and margin, and stock value by age.
   ["/inventory/intelligence", "cost.view"],

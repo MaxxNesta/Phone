@@ -1,18 +1,24 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, AlertTriangle } from "lucide-react";
 import { money, sql } from "@/lib/db";
 import { DocRefs } from "@/components/doc-refs";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
-import { listLandedCosts, LC_STATUS } from "@/lib/landed-cost-queries";
+import { listLandedCosts, LC_STATUS, staleClearing, CLEARING_STALE_DAYS } from "@/lib/landed-cost-queries";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { hasModule } from "@/lib/plans";
+import { getCompany } from "@/lib/queries";
 import { BranchScope } from "@/components/branch-scope";
 
 export default async function LandedCosts({ searchParams }: { searchParams: Promise<{ gr?: string }> }) {
   const user = await requirePermission("cost.view");
   const { gr } = await searchParams;
-  const all = (await listLandedCosts(user.companyId, await seenLocations())) as any[];
+  const locs = await seenLocations();
+  const [all, stale] = await Promise.all([
+    listLandedCosts(user.companyId, locs) as Promise<any[]>,
+    hasModule(await getCompany(), "landed_cost") ? staleClearing(user.companyId, locs) : Promise.resolve({ n: 0, total: 0 }),
+  ]);
   // With Carriage Inward the only cost type in use, a new one is a carriage
   // inward bill; the full editor is for companies that split their imports.
   const [{ others }] = await sql`
@@ -70,6 +76,15 @@ export default async function LandedCosts({ searchParams }: { searchParams: Prom
           <Link href="/payables/couriers/bill" className="btn"><Plus size={16} aria-hidden="true" /> {others > 0 ? "Record import cost" : "Record carriage inward"}</Link>
         </span>
       </div>
+
+      {stale.n > 0 && (
+        <p className="filters-note" role="status">
+          <AlertTriangle size={14} aria-hidden="true" style={{ color: "var(--warn)", verticalAlign: "-2px", marginRight: 6 }} />
+          {money(stale.total)} MMK has been in landed cost clearing for more than {CLEARING_STALE_DAYS} days
+          ({stale.n} bill line{stale.n === 1 ? "" : "s"}), so those goods are carried below what they cost.{" "}
+          <Link href="/purchases/landed-cost-clearing">Spread or write it off</Link>
+        </p>
+      )}
 
       {gr && (
         <p className="filters-note">

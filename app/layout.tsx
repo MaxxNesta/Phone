@@ -225,6 +225,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/purchases/debit-notes" exact>{n("debitNotes")}</NavLink>
                 <NavLink href="/purchases/secondhand/new">{n("buySecondhand")}</NavLink>
                 {may("cost.view") && hasModule(company, "landed_cost") && <NavLink href="/purchases/landed-costs">{n("landedCosts")}</NavLink>}
+                {may("cost.view") && hasModule(company, "landed_cost") && <NavLink href="/purchases/landed-cost-clearing">{n("landedCostClearing")}</NavLink>}
                 {may("accounting.view") && <NavLink href="/payables" exact>{n("payables")}</NavLink>}
                 {may("accounting.view") && <NavLink href="/payables/advances">{n("supplierAdvances")}</NavLink>}
                 {may("accounting.post") && <NavLink href="/payables/pay">{n("paySupplier")}</NavLink>}

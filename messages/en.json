@@ -42,6 +42,7 @@
     "supplierReturns": "Supplier returns",
     "debitNotes": "Debit notes",
     "landedCosts": "Landed costs",
+    "landedCostClearing": "Left in clearing",
     "supplierPerformance": "Supplier performance",
     "payables": "Payables",
     "paySupplier": "Pay supplier",

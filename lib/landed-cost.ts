@@ -246,7 +246,6 @@ export function allocate(
     return spread(amount, units.map((u) => Math.max(0, u.original_cost) * qty(u)), dp);
   }
   if (charge.method === "EQUAL") return spread(amount, units.map(qty), dp);
-
   // Manual by product variant: the variants must account for the whole
   // charge, and each variant's share is divided evenly among its units.
   const byItem = new Map(charge.manual.map((m) => [m.item_id, roundTo(Number(m.amount), dp)]));
@@ -368,6 +367,8 @@ export async function saveLandedCost(input: Actor & DraftInput & { id: string },
         const [src] = jl.source_id
           ? await tx`select status from document where id = ${jl.source_id}` : [];
         if (src && src.status !== "POSTED") throw new Error(`${label}: the linked bill has been reversed.`);
+        const [off] = await tx`select 1 from landed_cost_writeoff where source_journal_line_id = ${jl.id} and reversal_entry_id is null`;
+        if (off) throw new Error(`${label}: that bill has been written off. Reverse the write-off to spread it.`);
         currency = jl.currency; fc = Math.abs(jl.amount); baseAmt = jl.base;
         rate = currency === base.code ? 1 : jl.rate; rateDate = jl.entry_date; rateBy = null;
         clearingId = jl.account_id; partnerId = partnerId ?? jl.partner_id ?? null;
@@ -856,6 +857,86 @@ export async function reverseLandedCost(input: Actor & { id: string; reason: str
   });
 }
 
+// ------------------------------------------- what is left in clearing --
+
+/**
+ * Write off what is left of a bill line in a clearing account: Dr Landed
+ * Cost Variance / Cr that clearing account, under the bill's payee and
+ * branch, in the bill's currency when it was kept in one. Refused while a
+ * landed cost (draft or posted) holds the line, so it is never used twice.
+ */
+export async function writeOffClearing(input: Actor & { journalLineId: string; reason: string; date?: string }, outer?: TransactionSql) {
+  return inTransaction(outer, async (tx) => {
+    const reason = input.reason?.trim();
+    if (!reason) throw new Error("Say why this amount is being written off.");
+    const date = input.date || todayLocal();
+    const base = await baseCurrency(tx, input.companyId);
+    const [jl] = await tx`
+      select jl.id, jl.account_id, jl.currency, jl.amount::float as fc, jl.base_amount::float as base,
+             jl.partner_id, jl.location_id, je.entry_no, je.source_type
+        from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
+       where jl.id = ${input.journalLineId} and jl.company_id = ${input.companyId}
+         and jl.account_id in (
+               select account_id from system_account where company_id = ${input.companyId} and role = 'LANDED_COST_CLEARING'
+               union select clearing_account_id from landed_cost_type where company_id = ${input.companyId} and clearing_account_id is not null)
+       for update of jl`;
+    if (!jl || !(jl.base > 0) || jl.source_type === "LANDED_COST" || jl.source_type === "LANDED_COST_WRITE_OFF") {
+      throw new Error("That line is not a bill in a landed cost clearing account.");
+    }
+    const [held] = await tx`
+      select d.doc_no from landed_cost_charge c join document d on d.id = c.landed_cost_id
+       where c.source_journal_line_id = ${jl.id} and c.is_active and d.status in ('DRAFT', 'POSTED') limit 1`;
+    if (held) throw new Error(`${held.doc_no} spreads this bill. Discard or reverse it before writing anything off.`);
+    const [{ v: written }] = await tx`
+      select coalesce(sum(amount), 0)::float as v from landed_cost_writeoff
+       where source_journal_line_id = ${jl.id} and reversal_entry_id is null`;
+    const left = roundTo(jl.base - written, base.dp);
+    if (!(left > 0)) throw new Error("Nothing is left of this bill to write off.");
+    const [variance] = await tx`
+      select account_id from system_account where company_id = ${input.companyId} and role = 'LANDED_COST_VARIANCE'`;
+    if (!variance) throw new Error("Set the Landed Cost Variance account first (Settings → Accounts).");
+
+    // A bill kept in yuan is credited in yuan, in proportion to what is left.
+    const foreign = jl.currency !== base.code && Math.abs(jl.fc) > 0
+      ? { currency: jl.currency as string, fcAmount: -round4((Math.abs(jl.fc) * left) / jl.base) } : {};
+    const [{ id }] = await tx`select gen_random_uuid() as id`;
+    const entryId = await writeJournal(tx, input.companyId, date, "LANDED_COST_WRITE_OFF", id,
+      `${jl.entry_no} landed cost clearing written off · ${reason}`, [
+        { accountId: variance.account_id, amount: left, locationId: jl.location_id },
+        { accountId: jl.account_id, amount: -left, partnerId: jl.partner_id, locationId: jl.location_id, ...foreign },
+      ], jl.location_id);
+    await tx`
+      insert into landed_cost_writeoff (id, company_id, source_journal_line_id, amount, entry_date, reason, entry_id, created_by)
+      values (${id}, ${input.companyId}, ${jl.id}, ${left}, ${date}::date, ${reason}, ${entryId}, ${input.userId})`;
+    return { id: id as string, amount: left, entryId };
+  });
+}
+
+/** Undo a write-off with an entry of its own; the bill line is left again. */
+export async function reverseClearingWriteOff(input: Actor & { id: string; reason: string; date?: string }, outer?: TransactionSql) {
+  return inTransaction(outer, async (tx) => {
+    const reason = input.reason?.trim();
+    if (!reason) throw new Error("Say why this write-off is being reversed.");
+    const [w] = await tx`
+      select id, entry_id, reversal_entry_id from landed_cost_writeoff
+       where id = ${input.id} and company_id = ${input.companyId} for update`;
+    if (!w) throw new Error("Write-off not found.");
+    if (w.reversal_entry_id) throw new Error("This write-off is already reversed.");
+    const lines = await tx`
+      select account_id, partner_id, location_id, currency, amount::float as fc, base_amount::float as amount
+        from journal_line where journal_entry_id = ${w.entry_id}`;
+    const [{ code }] = await tx`select base_currency as code from company where id = ${input.companyId}`;
+    const entryId = await writeJournal(tx, input.companyId, input.date || todayLocal(), "LANDED_COST_WRITE_OFF", w.id,
+      `Reverses landed cost clearing write-off · ${reason}`,
+      lines.map((l) => ({ accountId: l.account_id, partnerId: l.partner_id, locationId: l.location_id, amount: -l.amount,
+                          ...(l.currency !== code ? { currency: l.currency, fcAmount: -l.fc } : {}) })));
+    await tx`
+      update landed_cost_writeoff set reversal_entry_id = ${entryId}, reversal_reason = ${reason},
+             reversed_by = ${input.userId}, reversed_at = now()
+       where id = ${w.id}`;
+    return { entryId };
+  });
+}
 /**
  * Landed cost a phone's slice carries now: every landed cost put on it after
  * it left, net of any reversal taken from there. It sits wherever the slice's

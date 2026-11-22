@@ -9,7 +9,8 @@
 //   npx tsx scripts/test-landed-cost-lines.mjs
 
 const { sql } = await import("../lib/db.ts");
-const { postPurchaseWithReceipt, postSaleWithDelivery } = await import("../lib/posting.ts");
+const { postPurchaseWithReceipt, postSaleWithDelivery, writeJournal } = await import("../lib/posting.ts");
+const Q = await import("../lib/landed-cost-queries.ts");
 const L = await import("../lib/landed-cost.ts");
 
 let failed = 0;
@@ -85,6 +86,47 @@ try {
     const rje = await one(tx`select sum(jl.base_amount)::float as v from journal_line jl join journal_entry e on e.id = jl.journal_entry_id
                               where e.source_id = ${rev.id}`);
     check("the reversing entry balances", near(rje.v, 0), rje);
+
+    // What is left in clearing: a duty bill booked 40 days ago and never spread.
+    const [clr] = await tx`select fn_system_account(${co.id}, 'LANDED_COST_CLEARING') as a`;
+    const [vr] = await tx`select a.id, a.code from system_account s join account a on a.id = s.account_id
+                           where s.company_id = ${co.id} and s.role = 'LANDED_COST_VARIANCE'`;
+    check("Landed Cost Variance is mapped to 5940", vr?.code === "5940", vr);
+    const cash = await one(tx`select id from account where company_id = ${co.id} and is_cash_account and is_postable and is_active order by code limit 1`);
+    const old = new Date(Date.now() - 40 * 86400000).toISOString().slice(0, 10);
+    const billEntry = await writeJournal(tx, co.id, old, "TEST_BILL", crypto.randomUUID(), "duty bill test",
+      [{ accountId: clr.a, amount: 50000, locationId: wh.id }, { accountId: cash.id, amount: -50000, locationId: wh.id }]);
+    const bl = await one(tx`select id from journal_line where journal_entry_id = ${billEntry} and base_amount > 0`);
+    const listed = async () => (await Q.clearingLeftovers(co.id, null, tx)).find((r) => r.id === bl.id);
+    let lo = await listed();
+    check("the unspread bill is listed: 50,000 left, 40 days old", lo && near(lo.left, 50000) && near(lo.used, 0) && lo.days >= 40, lo);
+    const st = await Q.staleClearing(co.id, null, tx);
+    check("and counted as over 30 days", st.n >= 1 && st.total >= 50000, st);
+
+    const lc2 = await L.createLandedCost({ ...actor, docDate: day, receiptIds: [gr.id] }, tx);
+    await L.saveLandedCost({ ...actor, id: lc2.id, docDate: day, receiptIds: [gr.id],
+      charges: [{ costTypeId: type.id, sourceJournalLineId: bl.id, method: "EQUAL" }] }, tx);
+    lo = await listed();
+    check("a draft that holds it is named, and uses nothing yet", lo?.held === lc2.docNo && near(lo.left, 50000), lo);
+    const held = await L.writeOffClearing({ ...actor, journalLineId: bl.id, reason: "t" }, tx).then(() => "went through", (e) => e.message);
+    check("the write-off is refused while the draft holds it", /spreads this bill/.test(held), held);
+    await L.deleteLandedCost({ ...actor, id: lc2.id }, tx);
+
+    const wo = await L.writeOffClearing({ ...actor, journalLineId: bl.id, reason: "duty refund never came" }, tx);
+    const wj = await tx`select account_id, base_amount::float as v from journal_line where journal_entry_id = ${wo.entryId} order by base_amount desc`;
+    check("the write-off is Dr 5940 50,000 / Cr clearing 50,000",
+      wj.length === 2 && wj[0].account_id === vr.id && near(wj[0].v, 50000) && wj[1].account_id === clr.a && near(wj[1].v, -50000), wj);
+    check("and the bill leaves the list", !(await listed()), await listed());
+    const again = await L.writeOffClearing({ ...actor, journalLineId: bl.id, reason: "t" }, tx).then(() => "went through", (e) => e.message);
+    check("a second write-off finds nothing left", /Nothing is left/.test(again), again);
+
+    await L.reverseClearingWriteOff({ ...actor, id: wo.id, reason: "bill found" }, tx);
+    lo = await listed();
+    check("reversing it puts the 50,000 back on the list", lo && near(lo.left, 50000), lo);
+    const net5940 = await one(tx`select coalesce(sum(jl.base_amount), 0)::float as v from journal_line jl join journal_entry e on e.id = jl.journal_entry_id
+                                  where e.source_type = 'LANDED_COST_WRITE_OFF' and e.source_id = ${wo.id}`);
+    check("write-off and reversal net to nothing", near(net5940.v, 0), net5940);
+
     throw new Rollback();
   });
 } catch (e) {

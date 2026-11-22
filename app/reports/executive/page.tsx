@@ -6,6 +6,7 @@ import { hasModule } from "@/lib/plans";
 import { money } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import { executiveData, type Pl } from "@/lib/executive";
+import { staleClearing, CLEARING_STALE_DAYS } from "@/lib/landed-cost-queries";
 import { compact } from "@/components/stat";
 import { RankedBarChart } from "@/components/charts";
 import { ExecTabs } from "@/components/exec-tabs";
@@ -57,7 +58,9 @@ export default async function Executive({ searchParams }: { searchParams: Promis
 
   const tab: Tab = TABS.find(([k]) => k === sp.tab)?.[0] ?? "overview";
   const period = resolvePeriod(sp.p ?? "1m");
-  const [d, health] = await Promise.all([executiveData(company.id, period.from, period.to), getHealth(company.id)]);
+  const landed = hasModule(company, "landed_cost");
+  const [d, health, clearing] = await Promise.all([executiveData(company.id, period.from, period.to), getHealth(company.id),
+    landed ? staleClearing(company.id) : Promise.resolve({ n: 0, total: 0 })]);
 
   const gm = pctOf(gp(d.now), d.now.rev), nm = pctOf(net(d.now), d.now.rev);
   const onTime = d.ar > 0 ? 100 * (1 - d.arOverdue / d.ar) : 100;
@@ -78,6 +81,7 @@ export default async function Executive({ searchParams }: { searchParams: Promis
     d.negativeLines > 0 && { href: "/inventory/negative-stock", text: `${d.negativeLines} stock line${d.negativeLines === 1 ? " is" : "s are"} below zero.` },
     health.trialBalance !== 0 && { href: "/ledger", text: `The trial balance is off by ${money(health.trialBalance)}.` },
     health.unbalanced > 0 && { href: "/finance/journal", text: `${health.unbalanced} journal entr${health.unbalanced === 1 ? "y does" : "ies do"} not balance.` },
+    clearing.n > 0 && { href: "/purchases/landed-cost-clearing", text: `${compact(clearing.total)} MMK of import bills has sat in landed cost clearing over ${CLEARING_STALE_DAYS} days.` },
     health.inventoryBreaks > 0 && { href: "/finance/inventory-cogs", text: `Stock and the ledger differ in ${health.inventoryBreaks} place${health.inventoryBreaks === 1 ? "" : "s"}.` },
   ].filter(Boolean) as { href: string; text: string }[];
 
