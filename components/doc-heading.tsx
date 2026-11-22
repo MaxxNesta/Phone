@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { Fragment } from "react";
 import { ArrowLeft } from "lucide-react";
 
@@ -22,9 +23,9 @@ export function DocHeading({ back, trail, title, status, badges, children }: {
 }) {
   return (
     <div className="doc-heading">
-      <Link href={back.href} className="doc-heading-back" aria-label={back.label}>
+      <BackLink href={back.href} className="doc-heading-back" aria-label={back.label}>
         <ArrowLeft size={18} aria-hidden="true" />
-      </Link>
+      </BackLink>
       <nav className="doc-heading-trail" aria-label="Breadcrumb">
         {trail.map((t) => (
           <Fragment key={t.href}>

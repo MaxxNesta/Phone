@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { ErpCopyNumber, ErpPrintButton, ErpReceiptButton } from "@/components/erp-doc-toolbar";
 import { ErpMore } from "@/components/erp-more";
@@ -167,9 +168,9 @@ export function ErpDocShell({
       <div className="erp-crumb">
         {backHref && (
           <>
-            <Link href={backHref} className="erp-crumb-link backlink">
+            <BackLink href={backHref} className="erp-crumb-link backlink">
               <ArrowLeft size={13} aria-hidden="true" /> {backLabel ?? "Back"}
-            </Link>
+            </BackLink>
             <span className="erp-crumb-sep">/</span>
           </>
         )}

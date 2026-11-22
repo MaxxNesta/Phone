@@ -10,6 +10,8 @@ import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source
 import { PartnerPicker } from "./partner-picker";
 import { LineRemove } from "./line-remove";
 import { useNotice } from "@/components/toast";
+import { HelpHint } from "@/components/help-hint";
+import { User, Warehouse as WarehouseIcon, CalendarDays, ClipboardList, Hash, StickyNote, Package, Plus } from "lucide-react";
 
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
 type Uom = { id: string; code: string; name: string };
@@ -282,11 +284,12 @@ export function DeliveryForm({
 
       {state && "error" in state && <div className="alert">{state.error}</div>}
 
-      <div className="card">
+      <div className="card doc-info">
+        <div className="card-head"><h2>Delivery details</h2></div>
         <div className="card-body">
-          <div className="row">
+          <div className="doc-fields cols-4">
             <div className="field">
-              <label htmlFor="partner_id">Customer</label>
+              <label htmlFor="partner_id"><User size={13} aria-hidden="true" />Customer</label>
               <PartnerPicker
                 partners={customers as never}
                 value={partnerId}
@@ -295,42 +298,54 @@ export function DeliveryForm({
               />
             </div>
             <div className="field">
-              <label htmlFor="location_id">From warehouse</label>
+              <label htmlFor="location_id"><WarehouseIcon size={13} aria-hidden="true" />From warehouse</label>
               <WarehouseSelect locations={locations} id="location_id" name="location_id" value={locationId} required
                       onChange={(e) => setLocationId(e.target.value)} />
             </div>
             <div className="field">
-              <label htmlFor="doc_date">Date</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />Date</label>
               <input id="doc_date" name="doc_date" type="date" defaultValue={today} required />
             </div>
+            {/* Optional on purpose. Blank is the ordinary case for this screen:
+                goods leaving with nothing raised beforehand. */}
             <div className="field">
-              <label htmlFor="reference">Ref / order ID</label>
-              <input id="reference" name="reference" type="text" placeholder="Delivery note no." />
-            </div>
-          </div>
-
-          {/* Optional on purpose. Blank is the ordinary case for this screen —
-              goods leaving with nothing raised beforehand. */}
-          <div className="row">
-            <div className="field">
-              <label htmlFor="order">Against a sales order</label>
+              <label htmlFor="order"><ClipboardList size={13} aria-hidden="true" />Against a sales order
+                <HelpHint label="What choosing an order does">
+                  Choosing one fills in what it still owes and credits the delivery
+                  to it, so the order closes properly.
+                </HelpHint>
+              </label>
               <select id="order" value={orderId} onChange={(e) => pickOrder(e.target.value)}>
-                <option value="">None — deliver without an order</option>
+                <option value="">None, deliver without an order</option>
                 {ordersFor.map(([id, o]) => (
                   <option key={id} value={id}>{o.no}</option>
                 ))}
               </select>
-              <span className="hint">
-                Choosing one fills in what it still owes and credits the delivery
-                to it, so the order closes properly.
-              </span>
             </div>
+          </div>
+          <div className="doc-info-foot">
+          <details className="moredetails">
+            <summary>Additional details <span className="page-sub">(reference, note)</span></summary>
+            <div className="row">
+              <div className="field">
+                <label htmlFor="reference"><Hash size={13} aria-hidden="true" />Reference</label>
+                <input id="reference" name="reference" type="text" placeholder="Delivery note no." />
+              </div>
+              <div className="field span-2">
+                <label htmlFor="memo"><StickyNote size={13} aria-hidden="true" />Note</label>
+                <input id="memo" name="memo" type="text" placeholder="Optional, English or Myanmar" />
+              </div>
+            </div>
+          </details>
           </div>
         </div>
       </div>
 
       <div className="card">
-        <div className="card-head"><h2>Items</h2></div>
+        <div className="card-head">
+          <h2><Package size={18} aria-hidden="true" /> Items</h2>
+          <button type="button" className="ghost tiny" onClick={addLine}><Plus size={15} aria-hidden="true" /> Add item</button>
+        </div>
         <AddItemsBar items={items} categories={categories} onAdd={addPicks}
           available={onHandHere} stockToggle title="Add products to the delivery"
           sub="Search, scan a barcode, or browse the catalogue" />
@@ -464,9 +479,6 @@ export function DeliveryForm({
             </tbody>
           </table>
         </div>
-        <div className="card-body">
-          <button type="button" className="ghost" onClick={addLine}>+ Line</button>
-        </div>
       </div>
 
       {shortages.length > 0 && !negativeConfirmed && (
@@ -517,10 +529,6 @@ export function DeliveryForm({
         onConfirm={() => { setNegativeConfirmed(true); setAskNegative(false); }}
       />
 
-      <div className="field">
-        <label htmlFor="memo">Note</label>
-        <textarea id="memo" name="memo" rows={2} placeholder="Optional — English or Myanmar" />
-      </div>
 
       {unexplainedFree.length > 0 && (
         <div className="alert">
@@ -539,7 +547,7 @@ export function DeliveryForm({
         </div>
       )}
 
-      <div className="actions">
+      <div className="actions form-commit">
         <button
           type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
           onClick={shortages.length > 0 && !negativeConfirmed

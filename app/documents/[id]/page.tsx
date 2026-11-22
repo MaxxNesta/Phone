@@ -133,6 +133,12 @@ const PLURAL: Record<string, string> = {
   CUSTOMER_RECEIPT: "Customer receipts",
   CUSTOMER_REFUND: "Customer refunds",
   SUPPLIER_REFUND: "Supplier refunds",
+  PURCHASE_RETURN: "Supplier returns",
+  SALES_RETURN: "Customer returns",
+  STOCK_ADJUSTMENT: "Stock adjustments",
+  STOCK_TRANSFER: "Stock transfers",
+  DEBIT_NOTE: "Debit notes",
+  CREDIT_NOTE: "Credit notes",
 };
 
 /** Where an arrow labelled for it leads back to. */
@@ -460,6 +466,25 @@ export default async function DocumentPage({
   const SALES_SIDE = new Set(["SALES_ORDER", "DELIVERY", "SALES_INVOICE", "CUSTOMER_RECEIPT", "SALES_RETURN", "CREDIT_NOTE", "CUSTOMER_REFUND"]);
   const BUY_SIDE = new Set(["PURCHASE_ORDER", "GOODS_RECEIPT", "PURCHASE_INVOICE", "SUPPLIER_PAYMENT", "PURCHASE_RETURN", "DEBIT_NOTE", "SUPPLIER_REFUND"]);
   const partyWord = SALES_SIDE.has(doc.doc_type) ? "Customer" : BUY_SIDE.has(doc.doc_type) ? "Supplier" : "Partner";
+  /**
+   * A stock adjustment has no partner. It says why instead: a count
+   * difference, or a write-off charged to Inventory Damage (0225), and the
+   * receipt the written-off units came in on.
+   */
+  const adjFacts = doc.doc_type === "STOCK_ADJUSTMENT" ? (await sql`
+    select (select a.code || ' ' || a.name from journal_line jl join account a on a.id = jl.account_id
+             where jl.journal_entry_id = ${doc.journal_entry_id ?? null}
+               and a.id in (select account_id from system_account
+                             where company_id = ${doc.company_id} and role in ('INVENTORY_DAMAGE', 'STOCK_ADJUSTMENT'))
+             limit 1) as charged_to,
+           exists (select 1 from journal_line jl join system_account s on s.account_id = jl.account_id
+                    where jl.journal_entry_id = ${doc.journal_entry_id ?? null}
+                      and s.company_id = ${doc.company_id} and s.role = 'INVENTORY_DAMAGE') as write_off,
+           coalesce((select json_agg(distinct jsonb_build_object('id', sd.id, 'no', sd.doc_no))
+                       from document_line dl join document_line sl on sl.id = dl.source_line_id
+                       join document sd on sd.id = sl.document_id
+                      where dl.document_id = ${doc.id}), '[]'::json) as sources`)[0] as
+    { charged_to: string | null; write_off: boolean; sources: { id: string; no: string }[] } : null;
 
   // What this document is genuinely linked to, in both directions. Shown
   // alongside the workflow pipeline rather than instead of it: the pipeline
@@ -747,7 +772,7 @@ export default async function DocumentPage({
         value: qty(String(done)), unit: unitWord,
         note: done === 0 ? "Not yet invoiced" : "Invoiced" },
       { icon: Clock, label: "Unbilled quantity", value: qty(String(left)), unit: unitWord,
-        note: left > 0 ? "Awaiting supplier invoice"
+        note: left > 0 ? (isDel ? "Awaiting sales invoice" : "Awaiting supplier invoice")
           : out > 0 ? `Nothing outstanding. ${qty(String(out))} not billable (rejected or returned)` : "Nothing outstanding",
         tone: left > 0 ? "warn" : "ok" },
     );
@@ -1725,6 +1750,18 @@ export default async function DocumentPage({
         <div className="card-head"><h2>{label(doc.doc_type).replace(/\b\w/g, (c) => c.toUpperCase())} details</h2></div>
         <div className="card-body">
           <div className="dl-details-cols">
+            {adjFacts ? (
+            <dl className="dl-kv">
+              <div><dt>Reason</dt><dd>{adjFacts.write_off ? "Damaged or scrapped (write-off)" : "Count difference"}</dd></div>
+              {adjFacts.charged_to && <div><dt>Charged to</dt><dd className="m">{adjFacts.charged_to}</dd></div>}
+              {adjFacts.sources.length > 0 && (
+                <div><dt>Source</dt><dd>{adjFacts.sources.map((x, i) => (
+                  <span key={x.id}>{i > 0 && ", "}<Link href={`/documents/${x.id}`} className="m dl-link">{x.no}</Link></span>
+                ))}</dd></div>
+              )}
+              {doc.reference && <div><dt>Reference</dt><dd className="m">{doc.reference}</dd></div>}
+            </dl>
+            ) : (
             <dl className="dl-kv">
               <div><dt>{partyWord}</dt><dd>
                 {doc.partner_id
@@ -1750,6 +1787,7 @@ export default async function DocumentPage({
                 <div><dt>Salesman</dt><dd>{doc.salesman_code} · {doc.salesman_name}</dd></div>
               )}
             </dl>
+            )}
             <dl className="dl-kv">
               <div><dt>Date</dt><dd>{shortDate(doc.doc_date)}
                 {String(doc.posting_date) !== String(doc.doc_date) && <span className="dl-code"> · posted {shortDate(doc.posting_date)}</span>}</dd></div>
@@ -1918,7 +1956,8 @@ export default async function DocumentPage({
                   {(isInvoice || Number(doc.tax_total) !== 0) && (
                     <div><dt>Commercial tax</dt><dd>{Number(doc.tax_total) ? "" : "No tax on this sale"}</dd><dd>{money(doc.tax_total)} {doc.currency}</dd></div>
                   )}
-                  <div className="dl-sum-total"><dt>Total</dt><dd /><dd>{money(docTotal)} {doc.currency}</dd></div>
+                  {/* An adjustment's total keeps its sign: a loss is negative, as its lines are. */}
+                  <div className="dl-sum-total"><dt>Total</dt><dd /><dd>{money(doc.doc_type === "STOCK_ADJUSTMENT" ? linesNet : docTotal)} {doc.currency}</dd></div>
                   {isInvoice && (
                     <div className="dl-sum-due"><dt>Balance due</dt><dd>{money(outstanding)} {doc.currency}</dd><dd><a href="#payments">See payments</a></dd></div>
                   )}

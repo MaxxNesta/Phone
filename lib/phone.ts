@@ -371,11 +371,18 @@ export async function serialsOnDocument(documentId: string) {
     -- A unit read off a document this one is only tied to (the receipt a
     -- return names, say) belongs here only if it ties to one of these lines:
     -- the receipt's other units are not this return's.
+    --
+    -- A document that moved handsets itself (a return, a write-off, a
+    -- delivery) lists only those: a write-off of one phone against a receipt
+    -- line of five is about that one, not the five the line received.
     select serial_id, imei, imei2, device_serial, item_code, identity, item_id, event, line_id
       from placed
-     where line_id is not null
+     where (line_id is not null
         or document_id = ${documentId}::uuid
-        or document_id in (select id from composed)`;
+        or document_id in (select id from composed))
+       and (document_id = ${documentId}::uuid
+        or document_id in (select id from composed)
+        or not exists (select 1 from stock_serial_event own where own.document_id = ${documentId}::uuid))`;
 }
 
 /**

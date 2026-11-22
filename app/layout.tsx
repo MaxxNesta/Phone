@@ -29,6 +29,7 @@ import { headers } from "next/headers";
 import { currentUser, can, authRequired, seesMainDashboard, type Permission } from "@/lib/auth";
 import { signOut } from "@/lib/auth-actions";
 import { DatePickerFix } from "@/components/date-picker-fix";
+import { NavTracker } from "@/components/back-link";
 import { Analytics } from "@vercel/analytics/next";
 
 // One face for the whole product, chosen for the thing an ERP does most:
@@ -149,6 +150,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           }}
         />
         <DatePickerFix />
+        <NavTracker />
         <div className="shell">
           <MobileNav
             title={company?.name ?? sh("appName")}

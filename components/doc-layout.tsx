@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import {
   ArrowLeft, Calendar, Check, ChevronDown, Circle, CircleDot, Plus,
   CreditCard, FileText, PencilLine, Undo2, XCircle, Printer, Paperclip, RefreshCw, Truck, PackageCheck,
@@ -55,9 +56,9 @@ export function DocLayout({
     <div className="dl">
       <header className="dl-head">
         <div className="dl-head-id">
-          <Link href={backHref ?? listHref} className="dl-back">
+          <BackLink href={backHref ?? listHref} className="dl-back">
             <ArrowLeft size={15} aria-hidden="true" /> {backHref ? backLabel ?? "Back" : listLabel}
-          </Link>
+          </BackLink>
           <div className="dl-title">
             <h1>{typeLabel} {docNo}</h1>
             <ErpCopyNumber docNo={docNo} />

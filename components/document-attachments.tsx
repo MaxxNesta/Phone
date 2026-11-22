@@ -85,7 +85,7 @@ export function DocumentAttachments({
         </h2>
         <span className="page-sub">
           {attachments.length === 0
-            ? "The supplier's own bill, a signed delivery note, a photo of the goods"
+            ? "A signed delivery note, the other side's own bill, a photo of the goods"
             : `${attachments.length} file${attachments.length === 1 ? "" : "s"}`}
         </span>
       </div>

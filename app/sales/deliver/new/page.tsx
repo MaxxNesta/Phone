@@ -11,6 +11,7 @@ import { sql } from "@/lib/db";
 import { DeliveryForm } from "@/components/delivery-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
+import { DocHeading } from "@/components/doc-heading";
 
 export default async function NewDelivery({
   searchParams,
@@ -82,12 +83,9 @@ export default async function NewDelivery({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Deliveries", href: "/sales/deliver" },
-        { label: "Deliver goods" },
-      ]} />
-      <div className="page-head">
-        <h1>Deliver goods</h1>
+      <DocHeading back={{ href: "/sales/deliver", label: "Back to deliveries" }}
+        trail={[{ label: "Deliveries", href: "/sales/deliver" }]}
+        title="New delivery" status="New">
         <HelpHint>
           For stock leaving with nothing raised beforehand &mdash; goods
           dropped at a shop to be billed later, or samples given away with no
@@ -96,8 +94,7 @@ export default async function NewDelivery({
           FIFO cost and the cost is recognised; revenue and the receivable
           belong to the invoice, whenever it is raised.
         </HelpHint>
-        <Link href="/sales/deliver" className="btn ghost">Back to deliveries</Link>
-      </div>
+      </DocHeading>
 
       <DeliveryForm
         action={createDelivery}

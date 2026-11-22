@@ -187,7 +187,6 @@ export const MODULES: { key: Module; name: string; covers: string }[] = [
   { key: "accounting", name: "Accounting", covers: "Cash and bank, journals, ledger, financial reports" },
   { key: "fixed_assets", name: "Fixed Assets", covers: "Asset register, depreciation" },
   { key: "hr", name: "HR & Payroll", covers: "Employees, advances, payroll, payslips" },
-  { key: "equity", name: "Equity", covers: "Shareholders, capital, share transfers" },
   { key: "logistics", name: "Logistics", covers: "Routes, delivery trips, vehicles, drivers" },
   { key: "management", name: "Management Reports", covers: "Executive dashboard: profit, cash, working capital and branches at a glance" },
 ];
@@ -205,6 +204,8 @@ export function hasModule(company: { modules?: string[] | null; plan?: Plan; sea
     if (!SEAT_ADDONS[seat]?.includes(m)) return false;
   }
   if (isCore(m)) return true;
+  // Equity is part of Standard and Advanced (2026-11-22), not an add-on.
+  if (m === "equity") return !company?.plan || company.plan !== "STARTER";
   if (company?.plan && !addonAllowed(company.plan, m)) return false;
   return !company?.modules || company.modules.includes(m);
 }
@@ -231,6 +232,7 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; note?: st
     { label: "Inventory aging", in: FEATURES.inventory_aging },
     { label: "Inventory turnover, days of stock and stock cover", in: FEATURES.inventory_analysis },
     { label: "Dashboard accounting health and breakdowns", in: FEATURES.dashboard_advanced },
+    { label: "Equity: shareholders, capital and the statement of changes in equity", in: ["BUSINESS", "ENTERPRISE"] },
   ] },
   { group: "Advanced", lines: [
     { label: "Replenishment planning", in: FEATURES.replenishment },

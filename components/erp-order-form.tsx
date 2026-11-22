@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft, ChevronRight, Truck, UserRound } from "lucide-react";
 import { money, qty as fmtQty, shortDate } from "@/lib/format";
 import { ErpCopyNumber, ErpPrintButton } from "@/components/erp-doc-toolbar";
@@ -231,28 +232,20 @@ export function ErpOrderForm({
         </section>
       )}
 
-      <section className="erp-card">
-        <div className="erp-card-head"><h2>Order details</h2></div>
-        <div className="erp-card-body">
-          <div className="erp-fields">
-            <div>
-              <dl className="erp-kv">
-                <dt>{config.partyLabel}</dt>
-                <dd>{partnerName ? `${partnerCode ? partnerCode + " · " : ""}${partnerName}` : "—"}</dd>
-                <dt>Reference</dt>
-                <dd className="m">{reference ?? "—"}</dd>
-                <dt>Order date</dt>
-                <dd className="m">{shortDate(docDate)}</dd>
-              </dl>
-            </div>
-            <div>
-              <dl className="erp-kv">
-                <dt>Expected</dt>
-                <dd className="m">{dueDate ? shortDate(dueDate) : "—"}</dd>
-                <dt>Warehouse</dt>
-                <dd>{locationName ?? "—"}</dd>
-              </dl>
-            </div>
+      {/* The same underlined rows as every posted document's details. */}
+      <section className="card dl-details">
+        <div className="card-head"><h2>Order details</h2></div>
+        <div className="card-body">
+          <div className="dl-details-cols">
+            <dl className="dl-kv">
+              <div><dt>{config.partyLabel}</dt><dd>{partnerName ? `${partnerCode ? partnerCode + " · " : ""}${partnerName}` : "—"}</dd></div>
+              <div><dt>Reference</dt><dd className="m">{reference ?? "—"}</dd></div>
+              <div><dt>Order date</dt><dd className="m">{shortDate(docDate)}</dd></div>
+            </dl>
+            <dl className="dl-kv">
+              <div><dt>Expected</dt><dd className="m">{dueDate ? shortDate(dueDate) : "—"}</dd></div>
+              <div><dt>Warehouse</dt><dd>{locationName ?? "—"}</dd></div>
+            </dl>
           </div>
         </div>
       </section>
@@ -344,9 +337,9 @@ export function ErpOrderForm({
       <div className="erp-crumb">
         {backHref && (
           <>
-            <Link href={backHref} className="erp-crumb-link backlink">
+            <BackLink href={backHref} className="erp-crumb-link backlink">
               <ArrowLeft size={13} aria-hidden="true" /> {backLabel ?? "Back"}
-            </Link>
+            </BackLink>
             <span className="erp-crumb-sep">/</span>
           </>
         )}
