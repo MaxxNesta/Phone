@@ -6,6 +6,7 @@ import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { StockTransferForm } from "@/components/stock-transfer-form";
 import { ErpCrumbs } from "@/components/erp-worklist";
+import { DocHeading } from "@/components/doc-heading";
 import { HelpHint } from "@/components/help-hint";
 import { getTranslations } from "next-intl/server";
 
@@ -40,19 +41,18 @@ export default async function NewStockTransfer() {
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: n("inventory") },
-        { label: t("tr.title") },
-      ]} />
-      <div className="page-head">
-        <h1>{t("tr.title")}</h1>
+      {/* The heading every new document has (returns, adjustments). */}
+      <DocHeading
+        back={{ href: "/documents?type=STOCK_TRANSFER", label: t("pastTransfers") }}
+        trail={[{ label: t("pastTransfers"), href: "/documents?type=STOCK_TRANSFER" }]}
+        title={t("tr.title")} status="New">
         <HelpHint>
           {t("tr.help")}{" "}
           <Link href="/documents?type=STOCK_TRANSFER" style={{ color: "var(--link)" }}>
             {t("pastTransfers")}
           </Link>
         </HelpHint>
-      </div>
+      </DocHeading>
 
       <StockTransferForm
         action={createStockTransfer}

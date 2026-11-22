@@ -12,6 +12,8 @@ import { AddItemsBar, type Pick } from "./add-items-bar";
 import { useTranslations } from "next-intl";
 import { LineRemove } from "./line-remove";
 import { useNotice } from "@/components/toast";
+import { HelpHint } from "./help-hint";
+import { Warehouse as WarehouseIcon, ArrowRightLeft, CalendarDays, Clock, Hash } from "lucide-react";
 
 type Item = PickerItem;
 type Node = { id: string; code: string; segment: string; name: string; parent_id: string | null };
@@ -143,45 +145,46 @@ export function StockTransferForm({
   });
 
   return (
-    <form action={formAction} className="form wide docsheet">
+    <form action={formAction} className="form wide docsheet rtn">
       <input type="hidden" name="idempotency_key" value={attemptKey} />
-      {state && "error" in state && <div className="alert">{state.error}</div>}
-
       <input type="hidden" name="lines" value={payload} />
 
-      <div className="card">
-        <div className="card-head">
-          <h2>{t("tr.fromTo")}</h2>
-        </div>
+      <div className="rtn-layout">
+      <div className="rtn-main">
+      {state && "error" in state && <div className="alert">{state.error}</div>}
+
+      <div className="card doc-info">
+        <div className="card-head"><h2>{t("tr.fromTo")}</h2></div>
         <div className="card-body">
-          <div className="row">
+          <div className="doc-fields">
             <div className="field">
-              <label htmlFor="from_location_id">{t("tr.fromWarehouse")}</label>
+              <label htmlFor="from_location_id"><WarehouseIcon size={13} aria-hidden="true" />{t("tr.fromWarehouse")}</label>
               <WarehouseSelect locations={locations} id="from_location_id" name="from_location_id" value={fromLocationId}
                 onChange={(e) => setFromLocationId(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="to_location_id">{t("tr.toWarehouse")}</label>
+              <label htmlFor="to_location_id"><ArrowRightLeft size={13} aria-hidden="true" />{t("tr.toWarehouse")}</label>
               <WarehouseSelect locations={destinations} id="to_location_id" name="to_location_id" value={toLocationId}
                 onChange={(e) => setToLocationId(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="doc_date">{c("date")}</label>
+              <label htmlFor="doc_date"><CalendarDays size={13} aria-hidden="true" />{c("date")}</label>
               <input id="doc_date" name="doc_date" type="date" value={docDate}
                 onChange={(e) => setDocDate(e.target.value)} required />
             </div>
 
             <div className="field">
-              <label htmlFor="received_time">{t("time")}</label>
+              <label htmlFor="received_time"><Clock size={13} aria-hidden="true" />{t("time")}
+                <HelpHint label={t("time")}>{t("tr.timeHint")}</HelpHint>
+              </label>
               <input id="received_time" name="received_time" type="time" value={receivedTime}
                 onChange={(e) => setReceivedTime(e.target.value)} />
-              <span className="hint">{t("tr.timeHint")}</span>
             </div>
 
             <div className="field">
-              <label htmlFor="reference">{t("reference")}</label>
+              <label htmlFor="reference"><Hash size={13} aria-hidden="true" />{t("reference")}</label>
               <input id="reference" name="reference" type="text" placeholder={t("tr.referencePlaceholder")} />
             </div>
           </div>
@@ -196,9 +199,7 @@ export function StockTransferForm({
       </div>
 
       <div className="card">
-        <div className="card-head">
-          <h2>{t("lines")}</h2>
-        </div>
+        <div className="card-head"><h2>{t("lines")}</h2></div>
 
         <AddItemsBar items={items} categories={categories} onAdd={addPicks}
           available={availableHere} stockToggle title={t("tr.addItems")} sub={t("addItemsSub")} />
@@ -213,7 +214,7 @@ export function StockTransferForm({
             </thead>
             <tbody>
               {lines.length === 0 && (
-                <tr><td colSpan={4} className="page-sub line-empty">No items yet — search above, scan a barcode, or Browse / Add multiple.</td></tr>
+                <tr><td colSpan={4} className="page-sub line-empty">No items yet. Search above, scan a barcode, or use Browse / Add multiple.</td></tr>
               )}
               {lines.map((l) => {
                 const item = byId(l.itemId);
@@ -323,15 +324,27 @@ export function StockTransferForm({
         onConfirm={() => { setNegativeConfirmed(true); setAskNegative(false); }}
       />
 
-      <div className="field">
-        <label htmlFor="memo">{c("note")}</label>
-        <textarea id="memo" name="memo" rows={2} required={releasing || holding}
+      <div className="card">
+        <div className="card-head"><h2><label htmlFor="memo">{c("note")}</label></h2></div>
+        <textarea id="memo" name="memo" rows={2} className="rtn-note" required={releasing || holding}
           placeholder={releasing ? t("tr.releaseHint") : holding ? t("tr.intoQuarantineHint") : t("tr.notePlaceholder")} />
       </div>
+      </div>
 
-      <div className="actions">
+      <aside className="rtn-side">
+        <section className="rtn-sec">
+        <h2 className="rtn-side-title">{t("tr.summary")}</h2>
+        <div className="rtn-total">
+          <span>{t("tr.unitsMoving")}</span>
+          <strong>{fmt(lines.reduce((s, l) => s + (l.itemId ? Number(l.qty) || 0 : 0), 0))}</strong>
+        </div>
+        <dl className="rtn-facts">
+          <dt>{t("tr.fromWarehouse")}</dt><dd>{locations.find((l) => l.id === fromLocationId)?.name ?? "—"}</dd>
+          <dt>{t("tr.toWarehouse")}</dt><dd>{destinations.find((l) => l.id === toLocationId)?.name ?? "—"}</dd>
+          <dt>{t("lines")}</dt><dd>{lines.filter((l) => l.itemId && Number(l.qty) > 0).length}</dd>
+        </dl>
         {serialShort && <span className="low" role="status">{t("tr.oneImeiPerHandset")}</span>}
-        <button
+        <button className="rtn-post"
           type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
           onClick={
             shortages.length > 0 && !negativeConfirmed
@@ -349,6 +362,8 @@ export function StockTransferForm({
         <span className="page-sub">
           {t("tr.postNote")}
         </span>
+        </section>
+      </aside>
       </div>
     </form>
   );
