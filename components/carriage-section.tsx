@@ -96,7 +96,7 @@ export function CarriageSection({ couriers, units, base, onBlocked, paidFrom = [
               ? <><strong>{fmt(value)}</strong> × {units} item{units === 1 ? "" : "s"} = <strong>{fmt(total)}</strong></>
               : units === 1 ? <>All <strong>{fmt(value)}</strong> on the one item</>
               : method === "EQUAL" ? <>{fmt(value)} ÷ {units} items = <strong>{fmt(value / units)}</strong> each</>
-              : <>{fmt(value)} shared across {units} items by what each cost</>} · </>}
+              : <>{fmt(value)} shared across {units} items by what each {method === "WEIGHT" ? "weighs" : "cost"}</>} · </>}
             <span className="carriage-posts">{paidNow
               ? "Paid from the till now; nothing is owed."
               : "Owed to the courier until paid from Payables → Couriers."}</span>

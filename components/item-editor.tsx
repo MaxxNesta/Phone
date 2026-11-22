@@ -9,10 +9,13 @@ import { optionLabel } from "@/lib/item-code";
 import { PackSizes } from "./pack-sizes";
 import { PartNumbers, type PartNo } from "./part-numbers";
 import { ItemPhotoField } from "./item-photo-field";
+import { HelpHint } from "./help-hint";
 import { useNotice } from "@/components/toast";
 
 export type EditorItem = {
   id: string; code: string; name: string; nameCustom: boolean; barcode: string;
+  /** kg per unit, for freight split by weight; "" when not set. */
+  weightKg: string;
   isActive: boolean; isStocked: boolean; identity: string; tracksSerial: boolean;
   uom: string; brand: string | null; category: string;
   parentId: string | null; parentName: string | null;
@@ -71,7 +74,7 @@ export function ItemEditor({ item, action, tracking }: {
     ? `${item.parentName} ${item.parts.map((p) => optionLabel(p.a, p.o)).join(" / ")}`.trim() : item.name;
 
   const start = () => ({
-    name: item.name, nameCustom: item.nameCustom, code: item.code, barcode: item.barcode, active: item.isActive,
+    name: item.name, nameCustom: item.nameCustom, code: item.code, barcode: item.barcode, active: item.isActive, weightKg: item.weightKg,
     nameMy: item.nameMy, brandId: item.brandId, uomId: item.uomId,
     prices: Object.fromEntries(item.levels.map((l) => [l.id, l.price])),
   });
@@ -101,6 +104,7 @@ export function ItemEditor({ item, action, tracking }: {
       <input type="hidden" name="name_custom" value={f.nameCustom ? "1" : "0"} />
       <input type="hidden" name="code" value={f.code} />
       <input type="hidden" name="barcode" value={f.barcode} />
+      {!isModel && <input type="hidden" name="weight_kg" value={f.weightKg} />}
       <input type="hidden" name="is_active" value={f.active ? "1" : "0"} />
       <input type="hidden" name="prices" value={isModel ? "{}" : JSON.stringify(f.prices)} />
       {product && <>
@@ -200,6 +204,13 @@ export function ItemEditor({ item, action, tracking }: {
                   </>}
               {item.isStocked && (isVariant || !tracking) && (
                 <div className="ie-field"><span>Tracking</span><output className="ie-ro">{TRACKING[item.identity] ?? item.identity}</output></div>
+              )}
+              {!isModel && (
+                <label className="ie-field">
+                  <span>Weight (kg) <HelpHint label="About weight">Optional. Used when freight is split by weight: a charge is shared by weight times quantity.</HelpHint></span>
+                  <input value={f.weightKg} type="number" inputMode="decimal" min="0" step="any" placeholder="e.g. 0.2"
+                    onChange={(e) => set({ weightKg: e.target.value })} />
+                </label>
               )}
               <label className="ie-field">
                 <span>Status</span>

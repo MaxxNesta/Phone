@@ -127,7 +127,7 @@ export async function saveCostTypeAction(_prev: Result, fd: FormData): Promise<R
     const name = str(fd, "name");
     const method = str(fd, "default_method") as L.Method;
     if (!code || !name) return { error: "A cost type needs a code and a name." };
-    if (!["VALUE", "EQUAL", "MANUAL"].includes(method)) return { error: "Choose a default allocation method." };
+    if (!["VALUE", "EQUAL", "MANUAL", "WEIGHT"].includes(method)) return { error: "Choose a default allocation method." };
     const vals = {
       code, name, method,
       account: str(fd, "clearing_account_id") || null,

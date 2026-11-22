@@ -28,7 +28,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
 
   const [item] = (await sql`
     select i.id, i.code, i.name, i.name_my, i.name_is_custom, i.barcode, i.purchase_uom_id, i.is_active, i.is_stocked, i.identity, i.tracks_serial,
-           i.brand_id, i.base_uom_id, i.warranty_months, i.supplier_warranty_months,
+           i.brand_id, i.base_uom_id, i.warranty_months, i.supplier_warranty_months, i.weight_kg::float as weight_kg,
            exists (select 1 from stock_movement m where m.item_id = i.id) as has_moved,
            (select count(*)::int from item c where c.parent_item_id = i.id) as variant_count,
            (select count(*)::int from item c where c.parent_item_id = i.id and c.tracks_serial) as variants_tracked,
@@ -101,7 +101,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const priceBy = new Map(prices.map((p) => [p.price_level_id as string, String(Number(p.price))]));
 
   const data: EditorItem = {
-    id, code: item.code, name: item.name, nameCustom: !!item.name_is_custom, barcode: item.barcode ?? "",
+    id, code: item.code, name: item.name, nameCustom: !!item.name_is_custom, barcode: item.barcode ?? "", weightKg: item.weight_kg == null ? "" : String(item.weight_kg),
     isActive: item.is_active, isStocked: item.is_stocked, identity: item.identity, tracksSerial: !!item.tracks_serial,
     uom: item.uom_code, brand: item.brand,
     category: item.top_category ? `${item.top_category} / ${item.category}` : item.category,

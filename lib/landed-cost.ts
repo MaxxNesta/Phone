@@ -29,11 +29,12 @@ import {
   round4, inTransaction, writeJournal, createFifoLot, moveSerialsTo, addValueToReceiptLine, type JournalLine,
 } from "./posting";
 
-export type Method = "VALUE" | "EQUAL" | "MANUAL";
+export type Method = "VALUE" | "EQUAL" | "MANUAL" | "WEIGHT";
 export const METHOD_LABEL: Record<Method, string> = {
   VALUE: "Split by item cost",
   EQUAL: "Split equally per item",
   MANUAL: "Manual by product variant",
+  WEIGHT: "Split by weight",
 };
 const METHODS = Object.keys(METHOD_LABEL) as Method[];
 
@@ -146,6 +147,8 @@ export type Unit = {
   /** Per unit. */
   original_cost: number;
   qty: number;
+  /** kg per unit, null when the item has none. */
+  weight: number | null;
 };
 
 /**
@@ -166,7 +169,7 @@ export async function eligibleUnits(tx: TransactionSql, companyId: string, recei
     select s.id as serial_id, s.serial_no, s.item_id, i.name as item_name,
            sm.document_id as receipt_id, d.doc_no as receipt_no,
            sm.document_line_id as receipt_line_id, coalesce(dl.line_no, 0)::int as line_no,
-           (gl.unit_cost + ${notLanded()})::float as original_cost, 1 as qty
+           (gl.unit_cost + ${notLanded()})::float as original_cost, 1 as qty, i.weight_kg::float as weight
       from stock_serial s
       join stock_movement sm on sm.id = s.stock_movement_id
       join document d on d.id = sm.document_id
@@ -182,7 +185,7 @@ export async function eligibleUnits(tx: TransactionSql, companyId: string, recei
            sm.document_id as receipt_id, d.doc_no as receipt_no,
            sm.document_line_id as receipt_line_id, dl.line_no::int as line_no,
            (sum(sm.total_cost + coalesce(gl.qty_received, 0) * ${notLanded()}) / sum(sm.qty))::float as original_cost,
-           sum(sm.qty)::float as qty
+           sum(sm.qty)::float as qty, i.weight_kg::float as weight
       from stock_movement sm
       join document d on d.id = sm.document_id
       join item i on i.id = sm.item_id
@@ -190,7 +193,7 @@ export async function eligibleUnits(tx: TransactionSql, companyId: string, recei
       left join stock_lot gl on gl.stock_movement_id = sm.id
      where sm.company_id = ${companyId} and sm.document_id = any(${receiptIds})
        and sm.qty > 0 and sm.kind is null and not coalesce(i.tracks_serial, false)
-     group by sm.item_id, i.name, sm.document_id, d.doc_no, sm.document_line_id, dl.line_no
+     group by sm.item_id, i.name, i.weight_kg, sm.document_id, d.doc_no, sm.document_line_id, dl.line_no
      order by d.doc_no, dl.line_no`;
   return [...phones, ...lines] as unknown as Unit[];
 }
@@ -246,6 +249,16 @@ export function allocate(
     return spread(amount, units.map((u) => Math.max(0, u.original_cost) * qty(u)), dp);
   }
   if (charge.method === "EQUAL") return spread(amount, units.map(qty), dp);
+  if (charge.method === "WEIGHT") {
+    // Every unit must say what it weighs: a guess of nothing would hand its
+    // share of the freight to the rest.
+    const none = [...new Set(units.filter((u) => !(Number(u.weight) > 0)).map((u) => u.item_name))];
+    if (none.length) {
+      throw new Error(`${chargeLabel}: no weight on ${none.join(", ")}. Enter the weight on the product, or split another way.`);
+    }
+    return spread(amount, units.map((u) => Number(u.weight) * qty(u)), dp);
+  }
+
   // Manual by product variant: the variants must account for the whole
   // charge, and each variant's share is divided evenly among its units.
   const byItem = new Map(charge.manual.map((m) => [m.item_id, roundTo(Number(m.amount), dp)]));

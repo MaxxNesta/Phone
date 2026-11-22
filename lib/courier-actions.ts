@@ -50,7 +50,7 @@ async function billInput(u: { id: string; companyId: string }, fd: FormData) {
   return {
     companyId: u.companyId, userId: u.id, partnerId: str(fd, "partner_id"), receiptIds, amount,
     docDate: str(fd, "doc_date") || todayLocal(),
-    method: (str(fd, "method") === "VALUE" ? "VALUE" : "EQUAL") as "VALUE" | "EQUAL",
+    method: (["VALUE", "WEIGHT"] as const).find((m) => m === str(fd, "method")) ?? ("EQUAL" as const),
     costTypeId: str(fd, "cost_type_id") || null,
     reference: str(fd, "reference") || null, notes: str(fd, "memo") || null,
     paidFromAccountId: str(fd, "paid_from") || null,

@@ -127,6 +127,37 @@ try {
                                   where e.source_type = 'LANDED_COST_WRITE_OFF' and e.source_id = ${wo.id}`);
     check("write-off and reversal net to nothing", near(net5940.v, 0), net5940);
 
+    // Split by weight: two phones at 0.2 kg and a line of three charger boxes at 2 kg.
+    await tx`update item set weight_kg = 0.2 where id = ${phone.id}`;
+    await tx`update item set weight_kg = 2 where id = ${charger.id}`;
+    await postPurchaseWithReceipt({
+      companyId: co.id, partnerId: supplier.id, locationId: wh.id, docDate: day, dueDate: day,
+      memo: "landed cost weight test", reference: null, cashOut: 0, cashAccountId: null,
+      lines: [
+        { itemId: charger.id, qty: 3, unitPrice: 80000 },
+        { itemId: phone.id, qty: 2, unitPrice: 3000000, serials: [`98${String(Date.now()).slice(-13)}`, `97${String(Date.now()).slice(-13)}`] },
+      ],
+    }, tx);
+    const wgr = await one(tx`select id from document where company_id = ${co.id} and doc_type = 'GOODS_RECEIPT'
+                             and memo = 'landed cost weight test' order by created_at desc limit 1`);
+    const wlc = await L.createLandedCost({ ...actor, docDate: day, receiptIds: [wgr.id] }, tx);
+    // 6.4 kg in all: each phone 0.2/6.4, the boxes 6/6.4.
+    await L.saveLandedCost({ ...actor, id: wlc.id, docDate: day, receiptIds: [wgr.id],
+      charges: [{ costTypeId: type.id, amount: 100000, method: "WEIGHT" }, { costTypeId: type.id, amount: 77777, method: "WEIGHT" }] }, tx);
+    await L.calculateLandedCost({ ...actor, id: wlc.id }, tx);
+    const wa = await tx`select a.serial_id, a.amount::float, c.line_no from landed_cost_allocation a
+                          join landed_cost_charge c on c.id = a.charge_id where a.landed_cost_id = ${wlc.id} order by c.line_no`;
+    const ch1 = wa.filter((a) => a.line_no === 1), ch2 = wa.filter((a) => a.line_no === 2);
+    check("by weight: each phone takes 3,125 of 100,000", ch1.filter((a) => a.serial_id).every((a) => near(a.amount, 3125)), ch1);
+    check("by weight: the charger boxes take 93,750", near(ch1.find((a) => !a.serial_id)?.amount, 93750), ch1);
+    const sum2 = ch2.reduce((t, a) => t + a.amount, 0);
+    check("an uneven 77,777 still adds up exactly", Math.round(sum2 * 10000) === 777770000, [sum2, ch2]);
+    check("and a box carries 10 times a phone (2 kg against 0.2)", ch2.filter((a) => a.serial_id).every((p) =>
+      Math.abs(ch2.find((a) => !a.serial_id).amount / 3 / p.amount - 10) < 0.01), ch2);
+    await tx`update item set weight_kg = null where id = ${phone.id}`;
+    const phoneName = await one(tx`select name from item where id = ${phone.id}`);
+    const noWeight = await L.calculateLandedCost({ ...actor, id: wlc.id }, tx).then(() => "went through", (e) => e.message);
+    check("a phone with no weight is refused by name", /no weight on/.test(noWeight) && noWeight.includes(phoneName.name), noWeight);
     throw new Rollback();
   });
 } catch (e) {

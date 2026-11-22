@@ -114,6 +114,14 @@ function dateTime(fd: FormData, dateKey: string, timeKey: string): string {
   return time ? `${date}T${time}` : date;
 }
 
+/** A weight in kg from a form: null when blank, refused unless above zero. */
+function weightKg(fd: FormData): number | null | "bad" {
+  const v = String(fd.get("weight_kg") ?? "").trim();
+  if (v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 10000) / 10000 : "bad";
+}
+
 /** A month count from a form, or null when left blank. */
 function months(fd: FormData, key: string): number | null {
   const v = String(fd.get(key) ?? "").trim();
@@ -817,6 +825,10 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       return { error: await m("modelCodeInvalid") };
     }
 
+    // Per unit, copied to every variant (a charger box weighs what its model does).
+    const newWeight = weightKg(fd);
+    if (newWeight === "bad") return { error: "Weight must be a number of kg above zero, or left blank." };
+
     // Before the transaction: re-encoding is the slow part and the part most
     // likely to be refused, and an unreadable file should fail the save rather
     // than hold a write open while sharp works.
@@ -859,7 +871,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       const [item] = await tx`
         insert into item
           (company_id, item_group_id, brand_id, serial, code, code_is_manual, name, name_my, base_uom_id, is_stocked,
-           tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months)
+           tracks_batch, tracks_expiry, identity, warranty_months, supplier_warranty_months, weight_kg)
         values
           (${co}, ${groupId}, ${brandId}, ${serial}, ${fullCode}, ${singleModel !== null || singleManual},
            ${name}, ${str(fd, "name_my") || null},
@@ -869,7 +881,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            ${fd.get("tracks_batch") !== null},
            ${fd.get("tracks_batch") !== null && fd.get("tracks_expiry") !== null},
            ${identity}, ${months(fd, "warranty_months")},
-           ${months(fd, "supplier_warranty_months")})
+           ${months(fd, "supplier_warranty_months")}, ${newWeight})
         returning id`;
 
       for (const p of newPacks) {
@@ -1020,6 +1032,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
               identity: childIdentity,
               warranty_months: months(fd, "warranty_months"),
               supplier_warranty_months: months(fd, "supplier_warranty_months"),
+              weight_kg: newWeight,
               duplicate_ack_by: dupOf.has(at) ? me.id : null,
               duplicate_ack_at: dupOf.has(at) ? new Date() : null,
             },
@@ -1121,6 +1134,8 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
       }
     }
 
+    const weight = weightKg(fd);
+    if (weight === "bad") return { error: "Weight must be a number of kg above zero, or left blank." };
     const photo = await photoFrom(fd);
     /** The object the old picture lived in, removed once the row is safely
      *  saved. Set inside the transaction, acted on after it. */
@@ -1134,6 +1149,10 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
           is_stocked = ${fd.get("is_stocked") !== null},
           is_active = ${fd.get("is_active") === "on"}
         where id = ${id} and company_id = ${co}`;
+      // Only when the form carries it: a model's page has no weight of its own.
+      if (fd.has("weight_kg")) {
+        await tx`update item set weight_kg = ${weight} where id = ${id} and company_id = ${co}`;
+      }
 
       // Only when the form actually carried the field, so a caller that
       // does not know about packs cannot wipe them.
@@ -2975,10 +2994,10 @@ export async function deliverPendingInvoice(_prev: unknown, fd: FormData): Promi
 
 /** The courier charge a receiving form carries, read and checked once. */
 function carriageFields(user: Parameters<typeof can>[0], fd: FormData):
-  { error: string } | { carriage: { partnerId: string; amount: number; method: "VALUE" | "EQUAL"; reference: string | null; paidFromAccountId: string | null } | null } {
+  { error: string } | { carriage: { partnerId: string; amount: number; method: "VALUE" | "EQUAL" | "WEIGHT"; reference: string | null; paidFromAccountId: string | null } | null } {
   const carriage = str(fd, "carriage_on") === "1" ? {
     partnerId: str(fd, "carriage_partner_id"), amount: num(fd, "carriage_amount"),
-    method: str(fd, "carriage_method") === "VALUE" ? "VALUE" as const : "EQUAL" as const,
+    method: (["VALUE", "WEIGHT"] as const).find((m) => m === str(fd, "carriage_method")) ?? "EQUAL" as const,
     reference: str(fd, "carriage_reference") || null,
     paidFromAccountId: str(fd, "carriage_paid") === "1" ? str(fd, "carriage_paid_from") || null : null,
   } : null;

@@ -539,6 +539,15 @@ export function ItemForm({
                 </div>
               )}
 
+              <div className="pf2-fields" style={{ marginTop: 10 }}>
+                  <div className="field">
+                    <label htmlFor="weight_kg">Weight (kg)
+                      <HelpHint label="About weight">Optional. Used when freight is split by weight; every variant gets it.</HelpHint>
+                    </label>
+                    <input id="weight_kg" name="weight_kg" type="number" inputMode="decimal" min="0" step="any" placeholder="e.g. 0.2" />
+                  </div>
+              </div>
+
               {!retail && (<>
                 <label className="trackbox-opt" htmlFor="tracks_batch">
                   <input

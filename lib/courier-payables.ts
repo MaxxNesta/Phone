@@ -181,7 +181,7 @@ export async function payCourier(input: PayCourierInput) {
 
 export type CourierBillInput = {
   companyId: string; userId: string | null; partnerId: string | null; docDate: string; receiptIds: string[];
-  amount: number; method?: "EQUAL" | "VALUE"; costTypeId?: string | null; reference?: string | null; notes?: string | null;
+  amount: number; method?: "EQUAL" | "VALUE" | "WEIGHT"; costTypeId?: string | null; reference?: string | null; notes?: string | null;
   /** Paid on the spot from this cash or bank account: nothing is owed, so no courier is needed. */
   paidFromAccountId?: string | null;
   /** Stop once every phone's share is worked out; the caller rolls back. */

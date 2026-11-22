@@ -6,11 +6,12 @@ import { saveLandedCostAction, landedCostStepAction } from "@/lib/landed-cost-ac
 import { ConfirmDelete } from "./confirm-delete";
 import { useNotice } from "@/components/toast";
 
-type Method = "VALUE" | "EQUAL" | "MANUAL";
+type Method = "VALUE" | "EQUAL" | "MANUAL" | "WEIGHT";
 const METHODS: [Method, string][] = [
   ["VALUE", "Split by item cost"],
   ["EQUAL", "Split equally per item"],
   ["MANUAL", "Manual by product variant"],
+  ["WEIGHT", "Split by weight"],
 ];
 
 export type EditorCharge = {

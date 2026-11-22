@@ -7764,7 +7764,7 @@ a.kpi:hover { border-color: var(--ink-soft); }
 .ie-field input, .ie-field select { width: 100%; min-width: 0; box-sizing: border-box; }
 .ie-field input.mono, .ie-ro.mono { font-family: var(--mono); }
 .ie-ro { display: block; padding: 0.5rem 0.7rem; border-radius: 9px; background: var(--line-soft); color: var(--ink-soft); min-height: 1.2rem; }
-.ie-grid3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: var(--s2); }
+.ie-grid3 { display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: var(--s2); }
 .ie-grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--s2); margin-top: var(--s2); }
 .ie-name { position: relative; display: block; }
 .ie-name input { padding-right: 2rem; }

@@ -319,7 +319,7 @@ function CostTab({ d }: { d: ImeiDrawerData }) {
           <li key={i.id}><FileText size={16} /><span><Doc id={i.id} no={i.no} /><small>{i.date} · Purchase invoice</small></span><b>{money(i.amount)}</b></li>
         ))}
         {c.landed.map((l, i) => (
-          <li key={`lc${i}`}><Truck size={16} /><span><Doc id={l.docId} no={l.docNo} /><small>{l.date} · {l.type} · {l.method === "EQUAL" ? "equal" : l.method === "VALUE" ? "by value" : "manual"} allocation</small></span><b>{money(l.amount)}</b></li>
+          <li key={`lc${i}`}><Truck size={16} /><span><Doc id={l.docId} no={l.docNo} /><small>{l.date} · {l.type} · {l.method === "EQUAL" ? "equal" : l.method === "VALUE" ? "by value" : l.method === "WEIGHT" ? "by weight" : "manual"} allocation</small></span><b>{money(l.amount)}</b></li>
         ))}
       </ul>
     </>
