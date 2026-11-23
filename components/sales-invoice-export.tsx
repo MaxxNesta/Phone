@@ -83,21 +83,26 @@ async function buildWorkbook(invoices: ExportInvoice[], params: Record<string, s
   ws.addRow([]);
 
   for (const inv of invoices) {
-    // Start of the invoice: a dark bar with number and date, payment on the right.
-    const bar = ws.addRow([`${inv.docNo}  ·  ${fmtDate(inv.date)}`, "", "", "", "", inv.channel ? `${inv.payment} · ${inv.channel}` : inv.payment]);
-    span(bar, 1, COLS - 1);
+    // Start of the invoice: a dark bar. The labels are the old report's
+    // ("Docid :", "Date :", "Payment :", "Customer :"…), cell by cell, so the
+    // sales import reads this file back the way it reads the old software's.
+    const ymd = inv.date.split("-");
+    const bar = ws.addRow([`Docid : ${inv.docNo}`, `Date : ${ymd[2]}/${ymd[1]}/${ymd[0]}`, "", "", "",
+      `Payment : ${inv.channel ? `${inv.payment} · ${inv.channel}` : inv.payment}`]);
     bar.eachCell({ includeEmpty: true }, (c) => { c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } }; c.font = { bold: true, color: { argb: "FFFFFFFF" } }; });
     bar.getCell(COLS).alignment = { horizontal: "right" };
     bar.height = 20;
     // Who and where, on one soft line.
-    const who = ws.addRow([[
-      `Customer: ${inv.customer ?? "Walk-in"}${inv.customerCode ? ` (${inv.customerCode})` : ""}`,
-      `Location: ${inv.location ?? "—"}`, `Salesman: ${inv.salesman ?? "—"}`,
-      inv.reference ? `Ref: ${inv.reference}` : null,
-    ].filter(Boolean).join("     ")]);
-    span(who);
-    who.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SOFT } };
-    who.getCell(1).font = { color: { argb: "FF3A3A3C" } };
+    const who = ws.addRow([
+      `Customer : ${inv.customer ?? "Walk-in"}`,
+      inv.customerCode ? `Customer code : ${inv.customerCode}` : "",
+      `Location : ${inv.location ?? ""}`, `Salesmen : ${inv.salesman ?? ""}`, "",
+      inv.reference ? `Remark : ${inv.reference}` : "",
+    ]);
+    who.eachCell({ includeEmpty: true }, (c) => {
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: SOFT } };
+      c.font = { color: { argb: "FF3A3A3C" } };
+    });
 
     const head = ws.addRow(["Code", "Description", "Qty", "Sale price", "Amount", "Type"]);
     head.eachCell((c, n) => {
@@ -110,8 +115,8 @@ async function buildWorkbook(invoices: ExportInvoice[], params: Record<string, s
       const r = ws.addRow([l.code, l.name, l.qty, l.price, l.amount, l.foc ? `FOC · ${l.foc}` : ""]);
       [3, 4, 5].forEach((n) => money(r.getCell(n)));
       if (l.serials.length) {
-        // The units under their line, as the old report printed them.
-        const s = ws.addRow(["", `IMEI / serial: ${l.serials.join(", ")}`]);
+        // The units under their line, as the old report printed them: the codes alone, which is how the import knows them.
+        const s = ws.addRow(["", l.serials.join(", ")]);
         span(s, 2, COLS);
         s.getCell(2).font = { size: 9, color: { argb: BLUE } };
         s.getCell(2).alignment = { wrapText: true, vertical: "top" };
@@ -122,8 +127,8 @@ async function buildWorkbook(invoices: ExportInvoice[], params: Record<string, s
     // End of the invoice: the money, every field shown, zero where nothing.
     const T = inv.totals;
     const sums: [string, number, boolean?][] = [
-      ["Invoice total", T.invoiceTotal, true], ["Item discount", T.itemDiscount], ["Voucher discount", T.voucherDiscount],
-      ["Tax", T.tax], ["Net amount", T.net, true], ["Advance pay", T.advance], ["Paid amount", T.paid],
+      ["Invoice Total", T.invoiceTotal, true], ["Item Discount", T.itemDiscount], ["Voucher Discount", T.voucherDiscount],
+      ["Tax", T.tax], ["Net Amount", T.net, true], ["Advance Pay", T.advance], ["Paid Amount", T.paid],
       ["Returned / credited", T.credited], ["Balance", T.balance, true],
     ];
     sums.forEach(([label, value, strong], i) => {
@@ -133,7 +138,7 @@ async function buildWorkbook(invoices: ExportInvoice[], params: Record<string, s
       val.font = { bold: !!strong }; money(val);
       if (i === 0) { money(r.getCell(3)); r.getCell(3).font = { bold: true };
         [3, 4, 5].forEach((n) => { r.getCell(n).border = { top: { style: "thin", color: { argb: "FF8E8E93" } } }; }); }
-      if (label === "Net amount") [4, 5].forEach((n) => { r.getCell(n).border = { top: { style: "thin", color: { argb: RULE } } }; });
+      if (label === "Net Amount") [4, 5].forEach((n) => { r.getCell(n).border = { top: { style: "thin", color: { argb: RULE } } }; });
       if (label === "Balance") [4, 5].forEach((n) => { r.getCell(n).border = { top: { style: "thin", color: { argb: RULE } }, bottom: { style: "double", color: { argb: DARK } } }; });
     });
     if (inv.memo) { const m = ws.addRow(["", `Note: ${inv.memo}`]); span(m, 2, COLS); m.getCell(2).font = { italic: true, color: { argb: MUTED } }; }

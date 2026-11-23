@@ -161,7 +161,8 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
       const kv = labelled(cells);
       cur = {
         row: i + 1, oldRef: kv.docid ?? "", supplierInvoiceNo: kv.invoiceno || null, rawDate: kv.date ?? "",
-        supplier: "", payment: null, location: "", remark: null, salesman: null, lines: [],
+        // Payment usually sits on the next row; this app's export puts it on this one.
+        supplier: "", payment: kv.payment || null, location: "", remark: null, salesman: null, lines: [],
         totals: { qty: null, invoiceTotal: null, itemDiscount: 0, voucherDiscount: 0, advancePay: 0,
                   paidAmount: 0, netTotal: null, currency: "MMK", exchangeRate: 1 },
       };
@@ -184,12 +185,18 @@ export function parsePurchaseReport(rows: string[][]): SourceInvoice[] {
     // The line table's head; copied without column A it starts at "Description".
     if (first === "code" || (first === "description" && filled.some((c) => key(c) === "qty"))) { mode = "lines"; return; }
 
-    if (first === "invoicetotal" || mode === "totals") {
+    // A totals row reads by its label wherever the label sits: the old report
+    // puts it first ("Invoice Total 5.00 17,530,000.00"), this app's own export
+    // under the amounts ("5 | Invoice Total | 17,530,000"). Its figures are the
+    // numbers around it, those before the label first.
+    const labelAt = filled.findIndex((c) => !isNum(c));
+    const tLabel = labelAt >= 0 ? key(filled[labelAt]) : "";
+    if (first === "invoicetotal" || tLabel === "invoicetotal" || mode === "totals") {
       mode = "totals";
-      const label = key(filled[0]);
+      const label = tLabel;
       if (seen.has(label)) return; // the report prints the totals block twice
       seen.add(label);
-      const nums = filled.slice(1).filter(isNum).map(num);
+      const nums = [...filled.slice(0, labelAt), ...filled.slice(labelAt + 1)].filter(isNum).map(num);
       const t = inv.totals;
       if (label === "invoicetotal") { t.qty = nums[0] ?? null; t.invoiceTotal = nums[1] ?? null; }
       else if (label === "itemdiscount") t.itemDiscount = nums[0] ?? 0;
