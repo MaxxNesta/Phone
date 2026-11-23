@@ -1329,6 +1329,26 @@ export default async function DocumentPage({
           {salesInvoiceValue !== null && <> — {money(salesInvoiceValue)}</>}
         </Link>
       )}
+      {supplierRefundable > 0.5 && (
+        <Link href={`/purchases/refunds/new?note=${doc.id}`} className="btn primary"
+          title={`${Math.round(supplierRefundable).toLocaleString("en-US")} MMK is owed back by the supplier.`}>
+          <Undo2 size={14} aria-hidden="true" /> Refund received
+        </Link>
+      )}
+      {refundable > 0.5 && (
+        <Link href={`/sales/refunds/new?return=${doc.id}`} className="btn primary"
+          title={`${Math.round(refundable).toLocaleString("en-US")} MMK is owed back to this customer. Pay it in cash, by bank or to their wallet.`}>
+          <Undo2 size={14} aria-hidden="true" /> Refund
+        </Link>
+      )}
+    </>
+  );
+
+  /* Occasional actions, out of the way of the usual next step (owner, 2026-11-23):
+     corrections, credit or debit note, report faulty, undo a trade-in. The header
+     keeps only the step that usually comes next; void stays last in the menu. */
+  const moreActions = (
+    <>
       {reportable?.any && can(user, "inventory.manage") && (
         <Link href={`/purchases/receive/${doc.id}/faulty`} className="btn ghost"
           title="A unit from this receipt failed after it was received: write it down and move it to quarantine.">
@@ -1343,18 +1363,6 @@ export default async function DocumentPage({
           <input type="hidden" name="sale_id" value={doc.id} />
           <input type="hidden" name="reason" value="Undone from the invoice" />
         </DeleteButton>
-      )}
-      {supplierRefundable > 0.5 && (
-        <Link href={`/purchases/refunds/new?note=${doc.id}`} className="btn primary"
-          title={`${Math.round(supplierRefundable).toLocaleString("en-US")} MMK is owed back by the supplier.`}>
-          <Undo2 size={14} aria-hidden="true" /> Refund received
-        </Link>
-      )}
-      {refundable > 0.5 && (
-        <Link href={`/sales/refunds/new?return=${doc.id}`} className="btn primary"
-          title={`${Math.round(refundable).toLocaleString("en-US")} MMK is owed back to this customer. Pay it in cash, by bank or to their wallet.`}>
-          <Undo2 size={14} aria-hidden="true" /> Refund
-        </Link>
       )}
       {voidPlan && correctInvoiceAction}
       {voidPlan && voucherCorrection}
@@ -1680,7 +1688,7 @@ export default async function DocumentPage({
         </>
       }
       stats={statsNode}
-      menuActions={voidNode ?? undefined}
+      menuActions={<>{moreActions}{voidNode}</>}
       payments={paymentsNode}
       paymentsCount={paymentsCount}
       journal={journalNode}

@@ -793,3 +793,21 @@
 .stmt-switch input:focus-visible + .stmt-track {
   outline: 2px solid var(--erp-brand); outline-offset: 2px;
 }
+
+/* Print and the till receipt sit in More too (2026-11-23): the same menu row. */
+.erp-more-menu > .erp-hbtn {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%; justify-content: flex-start;
+  border: 0; background: none; padding: 0.5rem 0.6rem; border-radius: 6px; font-weight: 400;
+  color: inherit; text-decoration: none; font-size: var(--t-sm);
+}
+.erp-more-menu > .erp-hbtn:hover { background: var(--erp-surface-sunken); }
+/* Every item in More reads as the same plain row, whichever component it came
+   from: no grey fill or border from a button's own style. */
+.erp-more-menu .btn, .erp-more-menu .btn.ghost, .erp-more-menu button.btn {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%; justify-content: flex-start;
+  background: none; border: 0; box-shadow: none; padding: 0.5rem 0.6rem; border-radius: 6px;
+  font-weight: 400; font-size: var(--t-sm); height: auto; min-height: 0; color: inherit;
+}
+.erp-more-menu .btn:hover, .erp-more-menu .btn.ghost:hover { background: var(--erp-surface-sunken); }
+.erp-more-menu .btn.danger, .erp-more-menu .btn.ghost.danger { color: var(--bad); }
+.erp-more-menu .btn:disabled, .erp-more-menu .btn[aria-disabled="true"] { color: var(--muted); }

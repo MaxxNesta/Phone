@@ -144,9 +144,12 @@ export function ErpDocShell({
         actions={
           <>
             {headActions}
-            {receiptHref && <ErpReceiptButton href={receiptHref} />}
-            <ErpPrintButton docId={docId} />
-            {menuActions && <ErpMore>{menuActions}</ErpMore>}
+            {/* Print and the till receipt are occasional too: in More, with the rest. */}
+            <ErpMore>
+              {receiptHref && <ErpReceiptButton href={receiptHref} />}
+              <ErpPrintButton docId={docId} />
+              {menuActions}
+            </ErpMore>
           </>
         }
         tabs={tabs}
@@ -245,9 +248,12 @@ export function ErpDocShell({
           </div>
           <div className="doc-head-actions">
             {headActions}
-            {receiptHref && <ErpReceiptButton href={receiptHref} />}
-            <ErpPrintButton docId={docId} />
-            {menuActions && <ErpMore>{menuActions}</ErpMore>}
+            {/* Print and the till receipt are occasional too: in More, with the rest. */}
+            <ErpMore>
+              {receiptHref && <ErpReceiptButton href={receiptHref} />}
+              <ErpPrintButton docId={docId} />
+              {menuActions}
+            </ErpMore>
           </div>
         </header>
         {stats}
