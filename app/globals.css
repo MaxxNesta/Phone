@@ -11949,3 +11949,9 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .gl-filters select { padding-right: 20px; }
 .gl-filters :is(input, select):focus { outline: none; border-bottom-color: var(--focus); box-shadow: 0 1px 0 0 var(--focus); }
 .gl-filters .gl-apply .actions { margin: 0; gap: 6px; }
+
+/* Sales export progress (2026-11-23): a card at the foot of the window while
+   the invoices are read, the same bar the invoice import uses. */
+.sie-progress { position: fixed; right: 24px; bottom: 24px; width: min(380px, calc(100vw - 32px)); z-index: 80;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.16); border-radius: 12px; }
+.sie-progress .pimp-progress { margin: 0; }

@@ -8,6 +8,7 @@ import {
 import { getCompany, getInvoiceList, getDocumentDrafts } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { serverPage } from "@/lib/server-page";
+import { SalesInvoiceExport } from "@/components/sales-invoice-export";
 import { HelpHint } from "@/components/help-hint";
 
 const toTime = (v: unknown) => (v ? new Date(v as string).getTime() : 0);
@@ -92,7 +93,7 @@ export default async function SalesInvoices({
   const rows: DataRow[] = invoices.map((i) => ({
     key: i.document_id,
     searchText: [i.doc_no, i.partner_name].filter(Boolean).join(" "),
-    facet: { channel: i.channel ?? "INVOICE" },
+    facet: { channel: i.channel ?? "INVOICE", customer: i.partner_name ?? "" },
     sort: {
       doc_no: i.doc_no ?? "",
       posting_date: toTime(i.posting_date),
@@ -241,7 +242,12 @@ export default async function SalesInvoices({
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}
             filters={[{ key: "channel", allLabel: "All channels",
-                        options: [{ value: "POS", label: "Counter sale" }, { value: "INVOICE", label: "Sales invoice" }] }]}
+                        options: [{ value: "POS", label: "Counter sale" }, { value: "INVOICE", label: "Sales invoice" }] },
+                      // One customer's invoices: what a statement or an export for one shop starts from.
+                      { key: "customer", allLabel: "All customers",
+                        options: [...new Set(invoices.map((i) => i.partner_name).filter(Boolean) as string[])].sort()
+                          .map((n) => ({ value: n, label: n })) }]}
+            toolbarEnd={<SalesInvoiceExport />}
             columns={[
               { key: "doc_no", label: "Invoice #", sortable: true },
               { key: "posting_date", label: "Date", sortable: true },
