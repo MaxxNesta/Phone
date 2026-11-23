@@ -42,6 +42,7 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
     <form action={formAction} className="form wide docsheet">
       {state?.error && <div className="alert">{state.error}</div>}
       <div className="card doc-info">
+        <div className="card-head"><h2>Pay-in details</h2></div>
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">

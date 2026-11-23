@@ -40,6 +40,7 @@ export function DriverHandinForm({ action, drivers, branches, tills, initialDriv
       {state?.error && <div className="alert">{state.error}</div>}
       <input type="hidden" name="idempotency_key" value={`${key}-${round}`} />
       <div className="card doc-info">
+        <div className="card-head"><h2>Hand-in details</h2></div>
         <div className="card-body">
           <div className="doc-fields">
             <div className="field">
