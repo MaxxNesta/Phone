@@ -24,11 +24,20 @@ try {
   await sql.begin(async (tx) => {
     const [loc] = await tx`select id from location where company_id = ${co.id} and code = 'MAIN-WH'`;
     const [cust] = await tx`select id from business_partner where company_id = ${co.id} and is_customer order by code limit 1`;
-    // A stocked product without serials, with plenty on the shelf.
-    const [item] = await tx`
+    // A stocked product without serials, with plenty on the shelf: received
+    // here when the database has none, so the test does not depend on stock.
+    let [item] = await tx`
       select i.id, i.code from item i join v_stock_on_hand s on s.item_id = i.id
        where i.company_id = ${co.id} and i.is_stocked and not i.tracks_serial and not i.tracks_batch and s.qty_on_hand >= 20
+         and s.location_id = ${loc.id}
        order by s.qty_on_hand desc limit 1`;
+    if (!item) {
+      [item] = await tx`select id, code from item where company_id = ${co.id} and is_stocked and not tracks_serial
+                          and not tracks_batch and parent_item_id is null and is_active order by code limit 1`;
+      const [sup] = await tx`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
+      await P.postPurchaseWithReceipt({ companyId: co.id, partnerId: sup.id, locationId: loc.id, docDate: today, dueDate: today,
+        memo: "bnd test stock", reference: null, cashOut: 0, cashAccountId: null, lines: [{ itemId: item.id, qty: 40, unitPrice: 20000 }] }, tx);
+    }
     const acct = async (code) => (await tx`select id from account where company_id = ${co.id} and code = ${code}`)[0].id;
     const BND = await acct("2230"), GSNI = await acct("1420");
     const [rev] = await tx`select fn_resolve_account_for_item(${co.id}, 'REVENUE', ${item.id}) as a`;
@@ -68,11 +77,15 @@ try {
     const d2 = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, sourceDocumentId: inv.id,
       lines: [{ itemId: item.id, qty: 6, sourceLineId: invLine.id }] }, tx);
     docs.push(d2.id);
-    assert.equal(await sum([d2.id], rev.a), -160000, "last delivery releases what is left");
+    // A discount note keeps Sales gross (Option B): the 50,000 lands in Sales Discounts.
+    const [allowed] = await tx`select fn_system_account(${co.id}, 'SALES_DISCOUNT_ALLOWED') as a`;
+    assert.equal(await sum([d2.id], BND), 160000, "last delivery releases what is left: 160,000");
+    assert.equal(await sum([d2.id], rev.a), -210000, "as Sales at the full price");
+    assert.equal(await sum([d2.id], allowed.a), 50000, "with the 50,000 discount behind it");
     assert.equal(await sum(docs, BND), 0, "nothing left in 21303");
-    assert.equal(await sum(docs, rev.a), -300000, "Sales over the whole life: 350,000 - 50,000");
+    assert.equal(await sum(docs, rev.a), -350000, "Sales over the whole life stay gross: 350,000");
     assert.equal(await sum(docs, GSNI), 0, "14303 clear");
-    console.log("4 deliver 6: 160,000 released; 21303 back to 0; Sales 300,000 in all");
+    console.log("4 deliver 6: 160,000 released as 210,000 Sales less 50,000 discount; 21303 back to 0");
 
     // 5. Void the last delivery: its release comes back into 21303, ready to go again.
     await P.voidDocument({ documentId: d2.id, reason: "test", goodsBack: true }, tx);
@@ -83,6 +96,32 @@ try {
        where r.invoice_line_id = ${invLine.id}`;
     assert.equal(Number(open.n), 160000, "and the open figure agrees");
     console.log("5 void delivery: 160,000 back in 21303, open figure agrees");
+
+    // 6. A delivery charge waits with the goods (0231), here on cash on delivery.
+    const DI = (await tx`select account_id from system_account where company_id = ${co.id} and role = 'DELIVERY_INCOME'`)[0].account_id;
+    const inv2 = await P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      toDeliver: true, paymentType: "COD", deliveryFee: 5000, lines: [{ itemId: item.id, qty: 2, unitPrice: 35000 }] }, tx);
+    assert.equal(await sum([inv2.id], BND), -75000, "deliver-later invoice holds goods and charge: 75,000");
+    assert.equal(await sum([inv2.id], DI), 0, "and earns no delivery income yet");
+    const [l2] = await tx`select id from document_line where document_id = ${inv2.id}`;
+    const e1 = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, sourceDocumentId: inv2.id,
+      lines: [{ itemId: item.id, qty: 1, sourceLineId: l2.id }] }, tx);
+    assert.equal(await sum([e1.id], DI), -5000, "the first delivery earns the whole 5,000 charge");
+    assert.equal(await sum([e1.id], BND), 40000, "and releases 35,000 of goods with it");
+    const e2 = await P.postDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, sourceDocumentId: inv2.id,
+      lines: [{ itemId: item.id, qty: 1, sourceLineId: l2.id }] }, tx);
+    assert.equal(await sum([e2.id], DI), 0, "the second earns no charge again");
+    assert.equal(await sum([inv2.id, e1.id, e2.id], BND), 0, "nothing left held");
+    await P.voidDocument({ documentId: e2.id, reason: "test", goodsBack: true }, tx);
+    await P.voidDocument({ documentId: e1.id, reason: "test", goodsBack: true }, tx);
+    const [feeHeld] = await tx`select coalesce(sum(r.amount), 0)::float as v from sales_fee_deferred r
+                                 join document d on d.id = r.document_id and d.status = 'POSTED' where r.invoice_id = ${inv2.id}`;
+    assert.equal(feeHeld.v, 5000, "voiding the deliveries holds the charge again");
+    const inv3 = await P.postSaleWithDelivery({ companyId: co.id, partnerId: cust.id, locationId: loc.id, docDate: today, dueDate: today,
+      paymentType: "CREDIT", allowOverCreditLimit: true, creditOverrideReason: "test", deliveryFee: 3000,
+      memo: null, reference: null, cashIn: 0, cashAccountId: null, lines: [{ itemId: item.id, qty: 1, unitPrice: 35000 }] }, tx);
+    assert.equal(await sum([inv3.id], DI), -3000, "an invoice delivered now still earns its charge at once");
+    console.log("6 delivery charge: held with the goods, earned on the first delivery, once; held again on void; unchanged when delivered now");
 
     throw ROLLBACK;
   });

@@ -3498,6 +3498,22 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
           if (disc !== 0) journal.push({ accountId: allowed, amount: disc, locationId });
         }
       }
+      /* Its delivery charge, held with the goods (0231), is earned on the
+         first delivery: that is when the carrying is done. All of it, once. */
+      const [fee] = await tx`
+        select coalesce(sum(r.amount), 0)::float as v from sales_fee_deferred r
+          join document rd on rd.id = r.document_id and rd.status = 'POSTED'
+         where r.invoice_id = ${billedBy.id}`;
+      if (round4(Number(fee.v)) > 0) {
+        const amount = round4(Number(fee.v));
+        const bnd = (await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`)[0].a as string;
+        const income = (await tx`select account_id from system_account where company_id = ${companyId} and role = 'DELIVERY_INCOME'`)[0]?.account_id as string;
+        await tx`
+          insert into sales_fee_deferred (company_id, invoice_id, document_id, amount)
+          values (${companyId}, ${billedBy.id}, ${doc.id}, ${-amount})`;
+        journal.push({ accountId: bnd, amount, locationId });
+        journal.push({ accountId: income, amount: -amount, locationId });
+      }
     }
   }
 
@@ -4336,6 +4352,8 @@ async function _postSalesInvoice(
 
   let lineNo = 0;
 
+  // Whether any goods on this invoice wait for their delivery (deliver later, 0191); the charge then waits too (0231).
+  let goodsDeferred = false;
   for (const line of input.lines) {
     lineNo++;
 
@@ -4457,6 +4475,7 @@ async function _postSalesInvoice(
        service on the same invoice is earned now — nothing is delivered for it. */
     const deferRevenue = !!input.toDeliver && !input.issueStock && !input.deliveryId
       && !!item.is_stocked && !line.focReasonId;
+    if (deferRevenue) goodsDeferred = true;
     if (deferRevenue && (net !== 0 || discount !== 0)) {
       const revenue = await tx`
         select fn_resolve_account_for_item(${companyId}, 'REVENUE', ${line.itemId}) as a`;
@@ -4494,7 +4513,18 @@ async function _postSalesInvoice(
         "at an income account before charging a delivery fee."
       );
     }
-    journal.push({ accountId: income.account_id, amount: -deliveryFee });
+    if (goodsDeferred) {
+      // Deliver later: the charge is earned when the goods are carried (0231).
+      // It waits in Billed Not Delivered with them; the first delivery
+      // against this invoice releases it to Delivery Income.
+      const held = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
+      journal.push({ accountId: held[0].a, amount: -deliveryFee });
+      await tx`
+        insert into sales_fee_deferred (company_id, invoice_id, document_id, amount)
+        values (${companyId}, ${doc.id}, ${doc.id}, ${deliveryFee})`;
+    } else {
+      journal.push({ accountId: income.account_id, amount: -deliveryFee });
+    }
   }
 
   // Tax charged, grouped by the account each code points at — one leg per
