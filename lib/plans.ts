@@ -206,9 +206,8 @@ export function hasModule(company: { modules?: string[] | null; plan?: Plan; sea
   if (isCore(m)) return true;
   // Equity is part of Standard and Advanced (2026-11-22), not an add-on.
   if (m === "equity") return !company?.plan || company.plan !== "STARTER";
-  // Logistics (trips, routes, vehicles) is part of Standard and Advanced (2026-11-24);
-  // on Essential it stays an add-on.
-  if (m === "logistics" && company?.plan && company.plan !== "STARTER") return true;
+  // Logistics (trips, routes, vehicles) is part of Standard and Advanced (2026-11-24), as Equity is.
+  if (m === "logistics") return !company?.plan || company.plan !== "STARTER";
   if (company?.plan && !addonAllowed(company.plan, m)) return false;
   return !company?.modules || company.modules.includes(m);
 }
@@ -236,7 +235,7 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; note?: st
     { label: "Inventory turnover, days of stock and stock cover", in: FEATURES.inventory_analysis },
     { label: "Dashboard accounting health and breakdowns", in: FEATURES.dashboard_advanced },
     { label: "Equity: shareholders, capital and the statement of changes in equity", in: ["BUSINESS", "ENTERPRISE"] },
-    { label: "Logistics: delivery trips, routes and vehicles, with cash on delivery per stop", note: "An add-on on Essential", in: ["BUSINESS", "ENTERPRISE"] },
+    { label: "Logistics: delivery trips, routes and vehicles, with cash on delivery per stop", in: ["BUSINESS", "ENTERPRISE"] },
   ] },
   { group: "Advanced", lines: [
     { label: "Replenishment planning", in: FEATURES.replenishment },
