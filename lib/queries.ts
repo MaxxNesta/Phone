@@ -418,7 +418,7 @@ export async function getInvoiceList(companyId: string, docType: "SALES_INVOICE"
            -- Which channel made the sale. The till stamps its own reference
            -- (POS:<attempt>, how it recognises a resent sale), so the channel
            -- is read from that rather than stored twice.
-           case when d.reference like 'POS:%' then 'POS' else 'INVOICE' end as channel,
+           case when d.reference like 'POS:%' then 'POS' when d.payment_type = 'COD' then 'COD' else 'INVOICE' end as channel,
            coalesce(q.item_qty, 0)::float as item_qty,
            d.source_ref,
            coalesce(a.adv, 0)::float as adv_applied

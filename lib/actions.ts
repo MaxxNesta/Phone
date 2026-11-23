@@ -2184,9 +2184,11 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     if (!str(fd, "location_id")) return { error: await m("chooseWarehouse") };
     await assertMyBranch(str(fd, "location_id"));
 
-    const paymentType: "CASH" | "CREDIT" = str(fd, "payment_type") === "CASH" ? "CASH" : "CREDIT";
-    const dueDate = str(fd, "due_date") || null;
-    const cashIn = num(fd, "cash_in");
+    const paymentType: "CASH" | "CREDIT" | "COD" = (["CASH", "COD"] as const).find((t) => t === str(fd, "payment_type")) ?? "CREDIT";
+    // COD: nothing is taken at posting (the driver collects it at the door),
+    // and it is due on delivery, the invoice date unless one is given.
+    const dueDate = str(fd, "due_date") || (paymentType === "COD" ? str(fd, "doc_date") || null : null);
+    const cashIn = paymentType === "COD" ? 0 : num(fd, "cash_in");
     const toDeliver = fd.get("to_deliver") !== null;
     const deliveryId = str(fd, "delivery_id") || null;
     const deliveryFee = num(fd, "delivery_fee");
@@ -3228,6 +3230,46 @@ export async function createSupplierPayment(_prev: unknown, fd: FormData): Promi
   redirectWithToast(`/documents/${docId}`, toastMsg);
 }
 
+/**
+ * Cash on delivery, collected: the driver has the money. Posts the ordinary
+ * customer receipt for what is still owed on the invoice, through the same
+ * settle() the Receive payment screen uses (channel, branch, allocation), so
+ * it is a cash or bank receipt like any other.
+ */
+export async function collectCodAction(_prev: unknown, fd: FormData): Promise<{ error?: string; ok?: string } | null> {
+  await requirePermission("sales.post");
+  const co = await companyId();
+  try {
+    const id = str(fd, "invoice_id");
+    const [inv] = await sql`
+      select d.id, d.doc_no, d.partner_id, d.location_id, d.payment_type, d.status, o.outstanding::float as outstanding
+        from document d left join v_open_item o on o.document_id = d.id
+       where d.id = ${id} and d.company_id = ${co} and d.doc_type = 'SALES_INVOICE'`;
+    if (!inv || inv.status !== "POSTED") return { error: "That invoice is not a posted sale." };
+    if (inv.payment_type !== "COD") return { error: `${inv.doc_no} is not cash on delivery.` };
+    const owed = Math.round(Number(inv.outstanding ?? 0) * 100) / 100;
+    if (!(owed > 0)) return { error: `${inv.doc_no} has nothing left to collect.` };
+    const amount = num(fd, "amount") || owed;
+    if (amount > owed + 0.005) return { error: `Only ${owed.toLocaleString("en-US")} is left to collect on ${inv.doc_no}.` };
+    const pay = new FormData();
+    pay.set("partner_id", inv.partner_id as string);
+    pay.set("location_id", (inv.location_id as string) ?? "");
+    pay.set("doc_date", str(fd, "doc_date") || todayLocal());
+    for (const k of ["payment_channel_id", "payment_account_id", "payment_reference", "cash_account_id"]) {
+      if (str(fd, k)) pay.set(k, str(fd, k));
+    }
+    pay.set("memo", `Cash on delivery collected · ${inv.doc_no}`);
+    pay.set("allocations", JSON.stringify([{ invoiceId: inv.id, amount }]));
+    const r = await settle(pay, "receive");
+    if ("error" in r) return { error: r.error };
+    revalidatePath(`/documents/${inv.id}`);
+    revalidatePath("/sales/invoices");
+    return { ok: `Collected · receipt ${r.docNo} posted` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export async function createCustomerReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("sales.post");
   let docId: string;
@@ -3545,7 +3587,7 @@ async function invoiceCorrection(co: string, fd: FormData) {
       goodsReceiptId:
         src?.doc_type === "GOODS_RECEIPT" ? (inv.source_document_id as string) : null,
       salesmanId: (inv.salesman_id as string) ?? null,
-      paymentType: (inv.payment_type as "CASH" | "CREDIT") ?? undefined,
+      paymentType: (inv.payment_type as "CASH" | "CREDIT" | "COD") ?? undefined,
       // The charge for carrying the goods is not revenue on them and is not
       // what is being corrected. Carried across unchanged, or a correction
       // would hand the customer their delivery back for nothing.

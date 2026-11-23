@@ -137,7 +137,7 @@ export async function salesExportBatch(ids: string[]): Promise<ExportInvoice[]> 
         id: h.id, docNo: h.doc_no, date: h.date, reference: h.reference?.startsWith("POS:") ? null : h.reference,
         memo: h.memo, customer: h.customer, customerCode: h.customer_code, location: h.location,
         salesman: h.salesman, channel: h.channel, currency: h.currency,
-        payment: h.reference?.startsWith("POS:") ? "Counter sale" : h.payment_type === "CASH" ? "Cash" : h.payment_type === "CREDIT" ? "Credit" : (h.payment_type ?? "—"),
+        payment: h.reference?.startsWith("POS:") ? "Counter sale" : h.payment_type === "CASH" ? "Cash" : h.payment_type === "CREDIT" ? "Credit" : h.payment_type === "COD" ? "Cash on delivery" : (h.payment_type ?? "—"),
         lines: ls.map((l) => ({ code: l.code, name: l.name, qty: l.qty, uom: l.uom, price: l.price,
           amount: r2(l.qty * l.price), foc: l.foc, serials: serialsOf.get(l.id) ?? [] })),
         totals: {

@@ -126,7 +126,8 @@ export type InvoiceInput = {
 
 export type SalesInvoiceInput = InvoiceInput & {
   salesmanId?: string | null;
-  paymentType?: "CASH" | "CREDIT";
+  /** COD: credit in the books, collected at the door by the shop's driver (0230). */
+  paymentType?: "CASH" | "CREDIT" | "COD";
 
   /** Someone confirmed the goods physically exist though the ERP records
    *  none. Reaches the delivery this voucher posts alongside the invoice. */
@@ -301,6 +302,8 @@ export type FulfillmentLine = {
   consignorId?: string | null;
 };
 export type FulfillmentInput = {
+  /** Part of a cash-on-delivery sale (0230): the goods go out against payment at the door, not credit. */
+  cod?: boolean;
   /**
    * The currency the prices are in, and kyat per unit of it. Purchases only:
    * a yuan bill is entered in yuan and posted in kyat at this rate (or the
@@ -3076,7 +3079,8 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
     : false;
 
   let goingOut = 0;
-  if (!billedAlready) {
+  // Cash on delivery draws on no credit: the goods go out against payment.
+  if (!billedAlready && !input.cod) {
     for (const line of input.lines) {
       const [src] = line.sourceLineId
         ? await tx`select unit_price from document_line where id = ${line.sourceLineId}`
@@ -4262,7 +4266,9 @@ async function _postSalesInvoice(
   const alreadyExposed = input.deliveryId
     ? Number((await tx`select gross_total from document where id = ${input.deliveryId}`)[0]?.gross_total ?? 0)
     : 0;
-  const onAccount = Math.max(0, round4(grossTotal - cashAtCounter - alreadyExposed));
+  // Cash on delivery is not trust in the customer: the goods are not handed
+  // over without the money, so it does not draw on their credit limit.
+  const onAccount = input.paymentType === "COD" ? 0 : Math.max(0, round4(grossTotal - cashAtCounter - alreadyExposed));
   const credit = await assertCreditLimit(tx, companyId, partnerId, onAccount, input);
 
   const [doc] = await tx`
@@ -4714,6 +4720,7 @@ export async function postSaleWithDelivery(input: SalesInvoiceInput, outer?: Tra
         // the other left this route unable to post a shortage at all: the
         // delivery it creates asks for a reason the invoice never handed it.
         negativeStockReason: input.negativeStockReason,
+        cod: input.paymentType === "COD",
         lines: toDeliver.map((l) => ({
           itemId: l.itemId, qty: l.qty, focReasonId: l.focReasonId,
           // And which unit that quantity is in. Without it a line for two
@@ -11376,7 +11383,7 @@ export async function amendOrderIn(tx: TransactionSql, input: {
                   ? { toDeliver: head.to_deliver as boolean,
                       deliveryId: head.source_document_id as string | null,
                       salesmanId: (head.salesman_id as string) ?? null,
-                      paymentType: (head.payment_type as "CASH" | "CREDIT") ?? undefined,
+                      paymentType: (head.payment_type as "CASH" | "CREDIT" | "COD") ?? undefined,
                       // Carried, not recharged: a corrected price on the goods
                       // does not give the customer their delivery for nothing.
                       deliveryFee: head.delivery_fee === null

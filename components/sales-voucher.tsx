@@ -267,7 +267,8 @@ export function SalesVoucher({
   const [askNegative, setAskNegative] = useState(false);
   const [docDate, setDocDate] = useState(restored?.docDate ?? today);
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
-  const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT">(restored?.paymentType === "CASH" ? "CASH" : "CREDIT");
+  const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT" | "COD">(
+    restored?.paymentType === "CASH" || restored?.paymentType === "COD" ? restored.paymentType : "CREDIT");
   const [cashIn, setCashIn] = useState(restored?.cashIn ?? "");
   const payChannels = (channels?.[locationId] ?? []).filter((c) => c.accountId);
   const [payChannelId, setPayChannelId] = useState("");
@@ -790,7 +791,16 @@ export function SalesVoucher({
   // Credit takes nothing now: the whole amount goes on account. A part
   // payment later is a customer receipt, not a field here.
   useEffect(() => {
-    if (paymentType === "CREDIT") setCashIn("");
+    if (paymentType !== "CASH") setCashIn("");
+  }, [paymentType]);
+  // Cash on delivery is due when it is delivered: the invoice date.
+  useEffect(() => {
+    if (paymentType === "COD") setDueDate(docDate);
+  }, [paymentType, docDate]);
+  // Cash on delivery goes out with our driver: not "customer takes now".
+  useEffect(() => {
+    if (paymentType === "COD" && fulfilment && fulfilMode === "counter") chooseFulfilMode("send");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentType]);
 
   // Discount is netted into the unit price. Trade discount posts nothing of
@@ -1025,9 +1035,10 @@ export function SalesVoucher({
             <div className="field">
               <label htmlFor="payment_select"><Wallet size={13} aria-hidden="true" />Payment</label>
               <select id="payment_select" value={paymentType}
-                onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT")}>
+                onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT" | "COD")}>
                 <option value="CREDIT">Credit</option>
                 <option value="CASH">Cash</option>
+                <option value="COD">Cash on delivery</option>
               </select>
             </div>
             <div className="field">
@@ -1708,14 +1719,14 @@ export function SalesVoucher({
         <div className="card paycard">
           <div className="card-head">
             <h2>Payment</h2>
-            <span className={`pill ${paymentType === "CASH" ? "ok" : "info"}`}>{paymentType === "CASH" ? "Cash" : "Credit"}</span>
+            <span className={`pill ${paymentType === "CASH" ? "ok" : "info"}`}>{paymentType === "CASH" ? "Cash" : paymentType === "COD" ? "Cash on delivery" : "Credit"}</span>
           </div>
           <div className="card-body">
-            {fulfilment && <div className="row">
+            {(fulfilment || paymentType === "COD") && <div className="row">
               {(() => {
-                // A counter sale carries nothing anywhere, so there is no charge to ask about.
-                if (!fulfilment) return null;
-                const noCharge = fulfilMode === "counter" || fulfilMode === "match";
+                // A counter sale carries nothing anywhere, so there is no charge to ask
+                // about; cash on delivery always goes out with the driver.
+                const noCharge = paymentType !== "COD" && (fulfilMode === "counter" || fulfilMode === "match");
                 return (
               <div className="field">
                 <label htmlFor="delivery_fee">Transport charge to customer</label>
@@ -1723,7 +1734,9 @@ export function SalesVoucher({
                   value={noCharge ? "" : fee} onChange={(e) => setFee(e.target.value)}
                   placeholder="0" disabled={noCharge} />
                 <span className="hint">
-                  {fulfilMode === "counter"
+                  {paymentType === "COD" && noCharge === false && fulfilMode === "counter"
+                    ? "What the customer pays for our driver bringing it. Credited to delivery income, not sales."
+                    : fulfilMode === "counter"
                     ? "Nobody carried the goods — the customer took them away."
                     : fulfilMode === "match"
                       ? "Whatever that delivery charged is billed here already."
@@ -1734,7 +1747,15 @@ export function SalesVoucher({
               })()}
             </div>}
 
-            {paymentType === "CREDIT" ? (
+            {paymentType === "COD" ? (
+              /* Cash on delivery: nothing is taken now. The driver collects the
+                 total at the door; Collected on the invoice posts the receipt. */
+              <div className="paycard-note">
+                <p>Our driver collects <strong>{fmt(total)}</strong> from <strong>{customer?.name ?? "the customer"}</strong> on
+                  delivery. Until then it shows as <strong>COD to collect</strong>; choose <strong>Collected</strong> on the
+                  invoice when the money is in. No credit limit applies.</p>
+              </div>
+            ) : paymentType === "CREDIT" ? (
               /* On credit: nothing to fill in. The whole amount goes on the
                  customer's account, due when the header says. */
               <div className="paycard-note">

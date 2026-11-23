@@ -23,6 +23,8 @@ import { serialsOnDocument, serialsByLine } from "@/lib/phone";
 import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
+import { CodCollect } from "@/components/cod-collect";
+import { channelsAt } from "@/lib/payment-channels";
 import { OffOrderNote, type OffOrderReceived } from "@/components/off-order-note";
 import { LinkFulfilment, OrderActions } from "@/components/link-fulfilment";
 import { TaskBanner } from "@/components/document-rail";
@@ -703,6 +705,9 @@ export default async function DocumentPage({
   }
 
   const outstanding = isInvoice ? await getDocumentOutstanding(doc.id) : 0;
+  // Cash on delivery (0230): collected at the door by the shop's driver.
+  const isCod = doc.doc_type === "SALES_INVOICE" && doc.payment_type === "COD" && doc.status === "POSTED";
+  const codChannels = isCod && outstanding > 0.005 ? await channelsAt(user.companyId, doc.location_id ?? null) : [];
   // A customer return that still owes the customer money back.
   const refundable = (doc.doc_type === "SALES_RETURN" || doc.doc_type === "CREDIT_NOTE") && doc.status === "POSTED"
     ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
@@ -1289,7 +1294,10 @@ export default async function DocumentPage({
   const headActions = (
     <>
       {/* Money still owed on an invoice: the first thing anyone opening it does. */}
-      {isInvoice && outstanding > 0.005 && (
+      {isCod && outstanding > 0.005 && can(user, "sales.post") && (
+        <CodCollect invoiceId={doc.id} docNo={doc.doc_no ?? ""} owed={outstanding} today={todayLocal()} channels={codChannels} />
+      )}
+      {isInvoice && outstanding > 0.005 && !isCod && (
         <Link
           href={doc.doc_type === "SALES_INVOICE"
             ? `/receivables/receive?partner=${doc.partner_id}&invoice=${doc.id}`
@@ -1349,6 +1357,12 @@ export default async function DocumentPage({
      keeps only the step that usually comes next; void stays last in the menu. */
   const moreActions = (
     <>
+      {isCod && outstanding > 0.005 && can(user, "sales.return") && (
+        <Link href={`/sales/returns/new?source=${doc.id}`} className="btn ghost"
+          title="The customer refused it or was not there: the phones come back to stock and the amount is no longer owed.">
+          Not delivered · return
+        </Link>
+      )}
       {reportable?.any && can(user, "inventory.manage") && (
         <Link href={`/purchases/receive/${doc.id}/faulty`} className="btn ghost"
           title="A unit from this receipt failed after it was received: write it down and move it to quarantine.">
@@ -1539,7 +1553,7 @@ export default async function DocumentPage({
     : { label: String(doc.status), tone: doc.status === "POSTED" ? "info" : "neutral" };
   const chainStages = chain.map((step) => ({
     type: step,
-    label: label(step).replace(/\b\w/g, (c) => c.toUpperCase()),
+    label: isCod && step === "CUSTOMER_RECEIPT" ? "COD Collection" : label(step).replace(/\b\w/g, (c) => c.toUpperCase()),
     doc: stageDoc[step] ?? null,
     docs: stageDocs[step] ?? [],
     href: stageDoc[step] ? null : nextStageHref(step),
@@ -1553,7 +1567,8 @@ export default async function DocumentPage({
         </DocPanelSection>
       )}
       {chainStages.length > 0 && (
-        <DocPanelSection title="Flow"><DocFlow chain={chainStages} docNo={doc.doc_no ?? ""} notes={{ [doc.doc_type]: shortDate(doc.doc_date) }} /></DocPanelSection>
+        <DocPanelSection title="Flow"><DocFlow chain={chainStages} docNo={doc.doc_no ?? ""} notes={{ [doc.doc_type]: shortDate(doc.doc_date),
+          ...(isCod && outstanding > 0.005 ? { CUSTOMER_RECEIPT: `To collect ${money(outstanding)}` } : {}) }} /></DocPanelSection>
       )}
       <DocPanelSection title="History">
         <DocPanelList items={(versions.length ? versions : [{ id: doc.id, version: Number(doc.version ?? 1), gross_total: doc.gross_total,
@@ -1704,6 +1719,11 @@ export default async function DocumentPage({
       badges={
         <>
           {versionBadge}
+          {isCod && (
+            <span className={`dl-pill ${outstanding > 0.005 ? "warn" : "ok"}`}>
+              {outstanding > 0.005 ? "COD · to collect" : "COD · collected"}
+            </span>
+          )}
           {match && (
             <span className={`dl-pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : "neutral"}`}>
               {match.state === "FULL" ? (movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`)
@@ -1806,7 +1826,7 @@ export default async function DocumentPage({
               <div><dt>Warehouse</dt><dd>{doc.location_code ? `${doc.location_name}` : "—"}
                 {doc.location_code && <span className="dl-code"> {doc.location_code}</span>}</dd></div>
               {isInvoiceDoc && doc.payment_type ? (
-                <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : "Credit")}</span>
+                <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : doc.payment_type === "COD" ? "Cash on delivery" : "Credit")}</span>
                   {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
               ) : moneyAccounts.length > 0 || doc.payment_channel_name ? (
                 <div><dt>{doc.doc_type === "CASH_TRANSFER" ? "Accounts" : "Paid through"}</dt><dd>

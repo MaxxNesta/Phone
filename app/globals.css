@@ -11955,3 +11955,8 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .sie-progress { position: fixed; right: 24px; bottom: 24px; width: min(380px, calc(100vw - 32px)); z-index: 80;
   box-shadow: 0 12px 32px rgb(0 0 0 / 0.16); border-radius: 12px; }
 .sie-progress .pimp-progress { margin: 0; }
+
+/* Cash on delivery: the Collected dialog's fields take the full width, two to a row. */
+.confirm.alertish .confirm-actions > .cod-collect { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; text-align: left; margin-bottom: 6px; }
+.cod-collect .field { margin: 0; }
+.cod-collect .field:last-child { grid-column: 1 / -1; }
