@@ -101,6 +101,7 @@ export default async function NewSalesInvoice({
         items={d.items as never}
         locations={d.locations as never}
         salesmen={d.salesmen as never}
+        couriers={(await sql`select id, name from business_partner where company_id = ${co.id} and is_courier and is_active order by name`) as never}
         cashAccounts={d.cashAccounts as never}
         channels={channels}
         promotions={d.promotions as never}

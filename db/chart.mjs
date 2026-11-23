@@ -59,6 +59,7 @@ export const CHART = [
   ["12",   "Receivables",                              "ASSET",     false, { under: "1-CA", from: ["135", "138"] }],
   ["1210", "Accounts Receivable",                      "ASSET",     true,  { from: "13501", control: true }],
   ["1220", "Advance (Other Department)",               "ASSET",     true,  { from: "13801" }],
+  ["1230", "COD Receivable (Courier)",                 "ASSET",     true],
   ["13",   "Inventory",                                "ASSET",     false, { under: "1-CA", from: ["141", "142"] }],
   // The one inventory account: every receipt, sale and adjustment moves it.
   // It was "Inventory (Opening)" in the legacy chart, which it never was.
@@ -300,6 +301,8 @@ export const SYSTEM = {
   OTHER_PAYABLE: "2130",
   // A courier's bill is booked here, then spread from here onto the phones.
   CARRIAGE_INWARD: "5120",
+  // Cash on delivery a courier has collected and not yet paid in (0232); its fee.
+  COD_RECEIVABLE: "1230", CARRIAGE_OUTWARD: "6130",
 
   // Money that moved before the invoice did. Deliberately not the control
   // accounts: an advance has no open item.

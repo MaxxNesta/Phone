@@ -10,6 +10,7 @@ import { BalanceRow } from "@/components/balance-row";
 import { getAdvanceBalances } from "@/lib/partner-ledger";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { CodCouriersView } from "./cod-couriers-view";
 
 const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
   ["", "All"],
@@ -21,9 +22,27 @@ const TABS: Array<["" | "current" | "overdue" | "partial", string]> = [
 export default async function Receivables({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; date?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ status?: string; date?: string; from?: string; to?: string; view?: string }>;
 }) {
   const sp = await searchParams;
+  if (sp.view === "couriers") {
+    const co = await getCompany();
+    if (!co) return <div className="empty">No company found.</div>;
+    return (
+      <>
+        <div className="page-head">
+          <span className="eyebrow">Sales</span>
+          <h1>Receivables</h1>
+          <HelpHint>
+            Cash on delivery carried by courier companies: what each is carrying, what it has collected and not
+            paid in yet (COD Receivable under its name), and what it has paid in. Its fee is Carriage Outward.
+          </HelpHint>
+        </div>
+        <PartnerTabs side="CUSTOMER" active="couriers" />
+        <CodCouriersView companyId={co.id} />
+      </>
+    );
+  }
   const { status } = sp;
   // Invoices posted in the chosen period only; the tabs keep the period.
   const period = periodFromParams(sp);

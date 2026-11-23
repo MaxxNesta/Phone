@@ -129,7 +129,7 @@ function addDays(iso: string, days: number) {
 }
 
 export function SalesVoucher({
-  action, saveDraft, draft, customers, items: initialItems, locations, salesmen, cashAccounts, channels, promotions,
+  action, saveDraft, draft, customers, items: initialItems, locations, salesmen, couriers = [], cashAccounts, channels, promotions,
   volumeDiscounts,
   currencyScale = 4,
   currency = "",
@@ -163,6 +163,8 @@ export function SalesVoucher({
   locations: Location[];
   stockByLocation: StockRow[];
   salesmen: Salesman[];
+  /** Courier companies that can carry a cash-on-delivery parcel (0232). */
+  couriers?: { id: string; name: string }[];
   cashAccounts: CashAccount[];
   /** Payment channels by location (0141); replaces the account picker when set up. */
   channels?: Record<string, Channel[]>;
@@ -269,6 +271,9 @@ export function SalesVoucher({
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
   const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT" | "COD">(
     restored?.paymentType === "CASH" || restored?.paymentType === "COD" ? restored.paymentType : "CREDIT");
+  // Cash on delivery: empty is our own driver, otherwise the courier company carrying it.
+  const [courierId, setCourierId] = useState("");
+  const courier = couriers.find((c) => c.id === courierId);
   const [cashIn, setCashIn] = useState(restored?.cashIn ?? "");
   const payChannels = (channels?.[locationId] ?? []).filter((c) => c.accountId);
   const [payChannelId, setPayChannelId] = useState("");
@@ -1723,6 +1728,18 @@ export function SalesVoucher({
           </div>
           <div className="card-body">
             {(fulfilment || paymentType === "COD") && <div className="row">
+              {paymentType === "COD" && (
+                <div className="field">
+                  <label htmlFor="courier_id">Delivered by</label>
+                  <select id="courier_id" name="courier_id" value={courierId} onChange={(e) => setCourierId(e.target.value)}>
+                    <option value="">Our driver</option>
+                    {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <span className="hint">{courier
+                    ? "The courier collects and pays in later, keeping its fee: booked to Carriage Outward."
+                    : couriers.length ? "Or a courier company." : "Add a courier under Partners to send one."}</span>
+                </div>
+              )}
               {(() => {
                 // A counter sale carries nothing anywhere, so there is no charge to ask
                 // about; cash on delivery always goes out with the driver.
@@ -1735,7 +1752,7 @@ export function SalesVoucher({
                   placeholder="0" disabled={noCharge} />
                 <span className="hint">
                   {paymentType === "COD" && noCharge === false && fulfilMode === "counter"
-                    ? "What the customer pays for our driver bringing it. Credited to delivery income, not sales."
+                    ? `What the customer pays for ${courier ? "the delivery" : "our driver bringing it"}. Credited to delivery income, not sales.`
                     : fulfilMode === "counter"
                     ? "Nobody carried the goods — the customer took them away."
                     : fulfilMode === "match"
@@ -1751,9 +1768,15 @@ export function SalesVoucher({
               /* Cash on delivery: nothing is taken now. The driver collects the
                  total at the door; Collected on the invoice posts the receipt. */
               <div className="paycard-note">
+                {courier ? (
+                  <p><strong>{courier.name}</strong> collects <strong>{fmt(total)}</strong> from <strong>{customer?.name ?? "the customer"}</strong> on
+                    delivery. When it reports the parcel paid, choose <strong>Courier collected</strong> on the invoice; the
+                    money then waits in COD Receivable until the courier pays it in. No credit limit applies.</p>
+                ) : (
                 <p>Our driver collects <strong>{fmt(total)}</strong> from <strong>{customer?.name ?? "the customer"}</strong> on
                   delivery. Until then it shows as <strong>COD to collect</strong>; choose <strong>Collected</strong> on the
                   invoice when the money is in. No credit limit applies.</p>
+                )}
               </div>
             ) : paymentType === "CREDIT" ? (
               /* On credit: nothing to fill in. The whole amount goes on the

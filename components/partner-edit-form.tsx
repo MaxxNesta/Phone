@@ -13,7 +13,7 @@ export type Partner = {
   member_card_id: string | null;
   contact_person?: string | null; email?: string | null; notes?: string | null;
   created_at?: string | Date | null;
-  is_customer: boolean; is_supplier: boolean; is_active: boolean;
+  is_customer: boolean; is_supplier: boolean; is_courier?: boolean; is_active: boolean;
   region: string | null;
   /** Which column of the price list this customer buys from. */
   price_level_id: string | null; price_level_name: string | null;
@@ -187,6 +187,10 @@ export function PartnerEditForm({
         <label className="check">
           <input name="is_supplier" type="checkbox" defaultChecked={partner.is_supplier} />
           {t("supplier")}
+        </label>
+        <label className="check">
+          <input name="is_courier" type="checkbox" defaultChecked={partner.is_courier ?? false} />
+          {t("courier")}
         </label>
         <label className="check">
           <input name="is_active" type="checkbox" defaultChecked={partner.is_active} />

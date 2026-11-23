@@ -77,6 +77,10 @@ export default async function NewPartner() {
                 <input id="is_supplier" name="is_supplier" type="checkbox" />
                 {t("isSupplier")}
               </label>
+              <label className="check" htmlFor="is_courier">
+                <input id="is_courier" name="is_courier" type="checkbox" />
+                {t("isCourier")}
+              </label>
             </div>
           </div>
         </div>

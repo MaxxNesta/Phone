@@ -1,0 +1,46 @@
+import { todayLocal } from "@/lib/format";
+import { requirePermission } from "@/lib/auth";
+import { onlyMyLocations } from "@/lib/branch-scope";
+import { getBranches } from "@/lib/queries";
+import { moneyAccounts } from "@/lib/courier-payables";
+import { codCouriers, codParcels } from "@/lib/cod-couriers";
+import { remitCourierAction } from "@/lib/courier-actions";
+import { Breadcrumbs } from "@/components/breadcrumbs";
+import { HelpHint } from "@/components/help-hint";
+import { CodRemitForm } from "@/components/cod-remit-form";
+
+export const metadata = { title: "Courier pay-in" };
+
+export default async function CourierPayIn({ searchParams }: { searchParams: Promise<{ courier?: string }> }) {
+  const user = await requirePermission("sales.post");
+  const { courier } = await searchParams;
+  const [couriers, parcels, branches, accounts] = await Promise.all([
+    codCouriers(user.companyId),
+    codParcels(user.companyId, null),
+    getBranches(user.companyId).then((b) => onlyMyLocations(b as unknown as { id: string; code: string; name: string }[])),
+    moneyAccounts(user.companyId),
+  ]);
+  const owing = couriers.filter((c) => c.held > 0.005 || c.outCount > 0);
+
+  return (
+    <div className="ie">
+      <Breadcrumbs trail={[{ label: "Receivables", href: "/receivables" }, { label: "COD couriers", href: "/receivables?view=couriers" }, { label: "Pay in" }]} />
+      <header className="ie-title">
+        <h1>Courier pay-in <HelpHint label="About courier pay-in">The courier pays in the cash on delivery it collected, usually keeping its fee back. Tick any parcel it collected that is not marked yet. It posts as a cash or bank voucher: the account takes what arrived, Carriage Outward the fee, and COD Receivable under the courier comes down by both.</HelpHint></h1>
+      </header>
+      {owing.length === 0 ? (
+        <p className="page-sub">No courier is holding or carrying cash on delivery right now.</p>
+      ) : (
+        <CodRemitForm
+          action={remitCourierAction}
+          couriers={owing.map((c) => ({ id: c.id, name: c.name, held: c.held }))}
+          parcels={parcels}
+          branches={branches.map((b) => ({ id: b.id, label: `${b.code} · ${b.name}` }))}
+          accounts={accounts.map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
+          initialCourierId={courier}
+          today={todayLocal()}
+        />
+      )}
+    </div>
+  );
+}

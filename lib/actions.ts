@@ -236,10 +236,11 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
     const name = str(fd, "name");
     const isCustomer = fd.get("is_customer") === "on";
     const isSupplier = fd.get("is_supplier") === "on";
+    const isCourier = fd.get("is_courier") === "on";
 
     if (!code) return { error: await m("codeRequired") };
     if (!name) return { error: await m("nameRequired") };
-    if (!isCustomer && !isSupplier) return { error: await m("chooseRole") };
+    if (!isCustomer && !isSupplier && !isCourier) return { error: await m("chooseRole") };
 
     const dup = await sql`
       select 1 from business_partner where company_id = ${co} and code = ${code}`;
@@ -247,13 +248,13 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
 
     await sql`
       insert into business_partner
-        (company_id, code, name, name_my, company_name, is_customer, is_supplier,
+        (company_id, code, name, name_my, company_name, is_customer, is_supplier, is_courier,
          region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
          category_id, supplier_category_id, currency, member_card_id,
          contact_person, email, notes)
       values
         (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
-         ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier},
+         ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier}, ${isCourier},
          ${asRegion(str(fd, "region"))}, ${str(fd, "township") || null},
          ${str(fd, "address") || null},
          ${str(fd, "phone") || null}, ${num(fd, "payment_terms_days")},
@@ -302,11 +303,12 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
     const name = str(fd, "name");
     const isCustomer = fd.get("is_customer") === "on";
     const isSupplier = fd.get("is_supplier") === "on";
+    const isCourier = fd.get("is_courier") === "on";
 
     if (!id) return { error: await m("choosePartner") };
     if (!code) return { error: await m("codeRequired") };
     if (!name) return { error: await m("nameRequired") };
-    if (!isCustomer && !isSupplier) return { error: await m("chooseRole") };
+    if (!isCustomer && !isSupplier && !isCourier) return { error: await m("chooseRole") };
 
     const dup = await sql`
       select 1 from business_partner where company_id = ${co} and code = ${code} and id <> ${id}`;
@@ -319,7 +321,7 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
         member_card_id = ${str(fd, "member_card_id") || null},
         contact_person = ${str(fd, "contact_person") || null}, email = ${str(fd, "email") || null},
         notes = ${str(fd, "notes") || null},
-        is_customer = ${isCustomer}, is_supplier = ${isSupplier},
+        is_customer = ${isCustomer}, is_supplier = ${isSupplier}, is_courier = ${isCourier},
         region = ${asRegion(str(fd, "region"))},
         township = ${str(fd, "township") || null}, address = ${str(fd, "address") || null},
         phone = ${str(fd, "phone") || null}, payment_terms_days = ${num(fd, "payment_terms_days")},
@@ -2189,6 +2191,12 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // and it is due on delivery, the invoice date unless one is given.
     const dueDate = str(fd, "due_date") || (paymentType === "COD" ? str(fd, "doc_date") || null : null);
     const cashIn = paymentType === "COD" ? 0 : num(fd, "cash_in");
+    // COD carried by a courier company (0232); empty is the shop's own driver.
+    const courierId = paymentType === "COD" ? str(fd, "courier_id") || null : null;
+    if (courierId) {
+      const [c] = await sql`select 1 from business_partner where id = ${courierId} and company_id = ${await companyId()} and is_courier`;
+      if (!c) return { error: "That courier is not on the courier list." };
+    }
     const toDeliver = fd.get("to_deliver") !== null;
     const deliveryId = str(fd, "delivery_id") || null;
     const deliveryFee = num(fd, "delivery_fee");
@@ -2228,6 +2236,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
       reference: str(fd, "reference") || null,
       salesmanId: str(fd, "salesman_id") || null,
       paymentType,
+      courierId,
       // Prices as typed already contain the tax. The counter price in a shop
       // usually does; a wholesale quote usually does not.
       priceIncludesTax: fd.get("price_includes_tax") !== null,

@@ -128,6 +128,8 @@ export type SalesInvoiceInput = InvoiceInput & {
   salesmanId?: string | null;
   /** COD: credit in the books, collected at the door by the shop's driver (0230). */
   paymentType?: "CASH" | "CREDIT" | "COD";
+  /** COD carried by a courier company rather than the shop's driver (0232). */
+  courierId?: string | null;
 
   /** Someone confirmed the goods physically exist though the ERP records
    *  none. Reaches the delivery this voucher posts alongside the invoice. */
@@ -4293,7 +4295,7 @@ async function _postSalesInvoice(
        partner_id, location_id, currency, exchange_rate, status, price_includes_tax,
        net_total, tax_total, gross_total, memo, posted_at,
        payment_type, salesman_id, reference, to_deliver, source_document_id, delivery_fee,
-       credit_override_reason, credit_override_at, price_level_id)
+       credit_override_reason, credit_override_at, price_level_id, courier_id)
     values
       (${companyId}, 'SALES_INVOICE', ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date,
        ${docDate}::date, ${dueDate}, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
@@ -4304,7 +4306,8 @@ async function _postSalesInvoice(
        ${deliveryFee},
        ${credit.over ? (input.creditOverrideReason?.trim() ?? null) : null},
        ${credit.over ? new Date() : null},
-       ${input.priceLevelId ?? null})
+       ${input.priceLevelId ?? null},
+       ${input.paymentType === "COD" ? input.courierId ?? null : null})
     returning id`;
 
   // A counter sale that went short says so on itself, the way a delivery does.
@@ -8408,6 +8411,11 @@ export type SettlementInput = {
    */
   locationId?: string | null;
   /**
+   * Whose balance the money side moves, when it is not a till but a debt:
+   * a courier holding cash on delivery in COD Receivable (0232).
+   */
+  cashPartnerId?: string | null;
+  /**
    * Money taken or paid with no invoice to put it against.
    *
    * Set instead of allocations, never alongside them: a receipt is either
@@ -8655,6 +8663,7 @@ async function postSettlement(
     }
     journal.push({
       accountId: input.cashAccountId, amount: round4(-sign * total), locationId: cashLocationId,
+      ...(input.cashPartnerId ? { partnerId: input.cashPartnerId } : {}),
       ...(fx && await isFcAccount(tx, input.cashAccountId, fx)
         ? { currency: fx.currency, fcAmount: round4(-sign * (advance > 0 ? advance
               : lines.reduce((t, a) => t + a.amount, 0))) } : {}),
@@ -11311,7 +11320,7 @@ export async function amendOrderIn(tx: TransactionSql, input: {
                    dl.source_line_id, dl.discount_pct, dl.is_consignment,
                    d.location_id, d.partner_id, d.source_document_id,
                    d.doc_type, d.to_deliver, d.salesman_id, d.payment_type,
-                   d.delivery_fee,
+                   d.delivery_fee, d.courier_id,
                    to_char(d.doc_date, 'YYYY-MM-DD') as doc_date,
                    to_char(d.due_date, 'YYYY-MM-DD') as due_date
               from document_line dl
@@ -11414,6 +11423,7 @@ export async function amendOrderIn(tx: TransactionSql, input: {
                       deliveryId: head.source_document_id as string | null,
                       salesmanId: (head.salesman_id as string) ?? null,
                       paymentType: (head.payment_type as "CASH" | "CREDIT" | "COD") ?? undefined,
+                      courierId: (head.courier_id as string | null) ?? null,
                       // Carried, not recharged: a corrected price on the goods
                       // does not give the customer their delivery for nothing.
                       deliveryFee: head.delivery_fee === null

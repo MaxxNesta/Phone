@@ -24,6 +24,7 @@ import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
 import { CodCollect } from "@/components/cod-collect";
+import { CourierCollect } from "@/components/courier-collect";
 import { channelsAt } from "@/lib/payment-channels";
 import { OffOrderNote, type OffOrderReceived } from "@/components/off-order-note";
 import { LinkFulfilment, OrderActions } from "@/components/link-fulfilment";
@@ -707,7 +708,9 @@ export default async function DocumentPage({
   const outstanding = isInvoice ? await getDocumentOutstanding(doc.id) : 0;
   // Cash on delivery (0230): collected at the door by the shop's driver.
   const isCod = doc.doc_type === "SALES_INVOICE" && doc.payment_type === "COD" && doc.status === "POSTED";
-  const codChannels = isCod && outstanding > 0.005 ? await channelsAt(user.companyId, doc.location_id ?? null) : [];
+  // Carried by a courier company (0232): it collects, then pays in later.
+  const courierName = isCod && doc.courier_id ? (doc.courier_name as string) : null;
+  const codChannels = isCod && !courierName && outstanding > 0.005 ? await channelsAt(user.companyId, doc.location_id ?? null) : [];
   // A customer return that still owes the customer money back.
   const refundable = (doc.doc_type === "SALES_RETURN" || doc.doc_type === "CREDIT_NOTE") && doc.status === "POSTED"
     ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
@@ -1295,7 +1298,9 @@ export default async function DocumentPage({
     <>
       {/* Money still owed on an invoice: the first thing anyone opening it does. */}
       {isCod && outstanding > 0.005 && can(user, "sales.post") && (
-        <CodCollect invoiceId={doc.id} docNo={doc.doc_no ?? ""} owed={outstanding} today={todayLocal()} channels={codChannels} />
+        courierName
+          ? <CourierCollect invoiceId={doc.id} docNo={doc.doc_no ?? ""} owed={outstanding} today={todayLocal()} courier={courierName} />
+          : <CodCollect invoiceId={doc.id} docNo={doc.doc_no ?? ""} owed={outstanding} today={todayLocal()} channels={codChannels} />
       )}
       {isInvoice && outstanding > 0.005 && !isCod && (
         <Link
@@ -1721,7 +1726,7 @@ export default async function DocumentPage({
           {versionBadge}
           {isCod && (
             <span className={`dl-pill ${outstanding > 0.005 ? "warn" : "ok"}`}>
-              {outstanding > 0.005 ? "COD · to collect" : "COD · collected"}
+              {outstanding > 0.005 ? "COD · to collect" : "COD · collected"}{courierName ? ` · ${courierName}` : ""}
             </span>
           )}
           {match && (
@@ -1827,6 +1832,7 @@ export default async function DocumentPage({
                 {doc.location_code && <span className="dl-code"> {doc.location_code}</span>}</dd></div>
               {isInvoiceDoc && doc.payment_type ? (
                 <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : doc.payment_type === "COD" ? "Cash on delivery" : "Credit")}</span>
+                  {courierName && <span className="m"> by {courierName}</span>}
                   {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
               ) : moneyAccounts.length > 0 || doc.payment_channel_name ? (
                 <div><dt>{doc.doc_type === "CASH_TRANSFER" ? "Accounts" : "Paid through"}</dt><dd>

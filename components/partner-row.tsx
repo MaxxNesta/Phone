@@ -86,6 +86,7 @@ export function PartnerRow({
           {partner.is_customer && <span className="pill ok">{t("customer")}</span>}
           {partner.is_customer && partner.is_supplier && " "}
           {partner.is_supplier && <span className="pill warn">{t("supplier")}</span>}
+          {partner.is_courier && <> <span className="pill">{t("courier")}</span></>}
         </td>
       )}
       <td>

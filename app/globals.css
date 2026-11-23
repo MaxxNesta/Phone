@@ -11960,3 +11960,10 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .confirm.alertish .confirm-actions > .cod-collect { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; text-align: left; margin-bottom: 6px; }
 .cod-collect .field { margin: 0; }
 .cod-collect .field:last-child { grid-column: 1 / -1; }
+/* COD pay-in (0232): what the courier holds, against what came in. */
+.cod-remit-sum { margin: 14px 0 0; display: grid; gap: 6px; max-width: 420px; margin-left: auto; }
+.cod-remit-sum > div { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }
+.cod-remit-sum dt { color: var(--muted); }
+.cod-remit-sum dd { margin: 0; }
+.cod-remit-sum > div:last-child { border-top: 1px solid var(--line); padding-top: 6px; }
+.cod-remit-sum > div.bad dt, .cod-remit-sum > div.bad dd { color: var(--bad); }

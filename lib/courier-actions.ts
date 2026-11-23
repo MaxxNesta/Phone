@@ -10,6 +10,7 @@ import { sql } from "./db";
 import { inTransaction } from "./posting";
 import { assertMyBranch } from "./branch-scope";
 import { payCourier, courierBill, type PreviewShare } from "./courier-payables";
+import { courierCollected, remitCourier } from "./cod-couriers";
 
 type Result = { error?: string } | null;
 
@@ -94,4 +95,46 @@ export async function recordCourierBillAction(_prev: Result, fd: FormData): Prom
   }
   revalidatePath("/payables");
   redirect(`/purchases/landed-costs/${lcId}`);
+}
+
+/** Cash on delivery (0232): the courier says these parcels were delivered and paid. */
+export async function courierCollectedAction(_prev: unknown, fd: FormData): Promise<{ error?: string; ok?: string } | null> {
+  const u = await requirePermission("sales.post");
+  try {
+    const invoiceIds = fd.getAll("invoice_id").map(String).filter(Boolean);
+    const rows = await sql`select location_id, courier_id from document where company_id = ${u.companyId} and id = any(${invoiceIds})`;
+    await assertMyBranch(...rows.map((r) => r.location_id as string | null));
+    const courierId = rows[0]?.courier_id as string | undefined;
+    if (!courierId) return { error: "That invoice is not carried by a courier." };
+    const posted = await inTransaction(undefined, (tx) => courierCollected(tx, {
+      companyId: u.companyId, courierId, docDate: str(fd, "doc_date") || todayLocal(), invoiceIds }));
+    for (const id of invoiceIds) revalidatePath(`/documents/${id}`);
+    revalidatePath("/receivables");
+    return { ok: `Collected by the courier · receipt ${posted.map((p) => p.docNo).join(", ")} posted` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** The courier pays in what it collected, its fee kept back. */
+export async function remitCourierAction(_prev: Result, fd: FormData): Promise<Result> {
+  const u = await requirePermission("sales.post");
+  let done: { id: string; docNo: string };
+  const courierId = str(fd, "courier_id");
+  try {
+    const locationId = str(fd, "location_id") || null;
+    await assertMyBranch(locationId);
+    if (!courierId) return { error: "Choose the courier paying in." };
+    const n = (k: string) => { const v = Number(str(fd, k) || 0); if (!Number.isFinite(v)) throw new Error("Enter amounts as numbers."); return v; };
+    done = await remitCourier({
+      companyId: u.companyId, courierId, docDate: str(fd, "doc_date") || todayLocal(), locationId,
+      moneyAccountId: str(fd, "money_account_id"), received: n("received"), fee: n("fee"),
+      collectInvoiceIds: fd.getAll("invoice_id").map(String).filter(Boolean),
+      reference: str(fd, "reference") || null, memo: str(fd, "memo") || null,
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/receivables");
+  redirect(`/documents/${done.id}?toast=${encodeURIComponent(`Paid in · ${done.docNo} posted`)}`);
 }
