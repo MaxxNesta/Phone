@@ -1,6 +1,6 @@
 import { scopedBranch } from "@/lib/branch-scope";
 import Link from "next/link";
-import { ArrowRight, Scale } from "lucide-react";
+import { ArrowRight, Scale, List, ListTree } from "lucide-react";
 import { getFinanceData } from "@/lib/actions";
 import {
   getCompany, getJournalEntries, getJournalEntryLines,
@@ -13,7 +13,6 @@ import { AccountMultiPicker } from "@/components/account-multi-picker";
 import { JournalEntryList, type Entry } from "@/components/journal-entry-list";
 import { LedgerDetails, type DetailBlock } from "@/components/ledger-details";
 import { ExportCsvButton } from "@/components/export-csv";
-import { ErpCrumbs } from "@/components/erp-worklist";
 import { HelpHint } from "@/components/help-hint";
 import { paginate } from "@/lib/paging";
 import { Pager } from "@/components/pager";
@@ -114,12 +113,8 @@ export default async function GeneralLedger({
 
   return (
     <>
-      <ErpCrumbs steps={[
-        { label: "Accounting" },
-        { label: "Ledgers" },
-        { label: "General ledger" },
-      ]} />
       <div className="page-head">
+        <span className="eyebrow">Accounting · Ledgers</span>
         <h1>General ledger</h1>
         <HelpHint>
           Every posted entry, whatever document wrote it. Read it in date
@@ -136,11 +131,27 @@ export default async function GeneralLedger({
         </span>
       </div>
 
-      <div className="erp-tabs" style={{ marginBottom: "1rem" }}>
-        <Link href={carry({ view: undefined })}
-              className={`erp-tab ${byAccount ? "" : "here"}`}>All entries</Link>
-        <Link href={carry({ view: "account" })}
-              className={`erp-tab ${byAccount ? "here" : ""}`}>By account</Link>
+      <div className="gl-bar">
+        <div className="erp-tabs">
+          <Link prefetch={false} href={carry({ view: undefined })}
+                className={`erp-tab ${byAccount ? "" : "here"}`}>All entries</Link>
+          <Link prefetch={false} href={carry({ view: "account" })}
+                className={`erp-tab ${byAccount ? "here" : ""}`}>By account</Link>
+        </div>
+        {!byAccount && (
+          <div className="segmented gl-layout" role="radiogroup" aria-label="Layout">
+            {/* Plain links, a full load: switching layout in place hung Next's
+                navigation on this page (the view itself loads fine directly). */}
+            <a href={carry({ layout: undefined })} role="radio" aria-checked={p.layout !== "accounts"}
+               className={`seg${p.layout !== "accounts" ? " on" : ""}`}>
+              <List size={15} aria-hidden="true" /> Movements
+            </a>
+            <a href={carry({ layout: "accounts" })} role="radio" aria-checked={p.layout === "accounts"}
+               className={`seg${p.layout === "accounts" ? " on" : ""}`}>
+              <ListTree size={15} aria-hidden="true" /> Account headers
+            </a>
+          </div>
+        )}
       </div>
 
       {byAccount ? <AccountView p={p} companyId={company.id} list={list}
@@ -216,7 +227,8 @@ async function EntriesView({
     <>
       {/* GET, so a filtered view is a URL: it can be bookmarked, sent to
           someone, and reloaded without re-choosing seven things. */}
-      <form method="get" className="card doc-meta" style={{ marginBottom: "1rem" }}>
+      <form method="get" className="gl-filters">
+        {p.layout && <input type="hidden" name="layout" value={p.layout} />}
         <div className="card-body">
           <div className="row">
             <div className="field">
@@ -251,13 +263,6 @@ async function EntriesView({
               </div>
             )}
             <div className="field">
-              <label htmlFor="layout">Layout</label>
-              <select id="layout" name="layout" defaultValue={p.layout ?? ""}>
-                <option value="">Movements</option>
-                <option value="accounts">Account headers</option>
-              </select>
-            </div>
-            <div className="field">
               <label htmlFor="type">Document type</label>
               <select id="type" name="type" defaultValue={p.type ?? ""}>
                 {TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -273,17 +278,11 @@ async function EntriesView({
               <input id="q" name="q" type="text" defaultValue={p.q ?? ""}
                      placeholder="Document or memo" />
             </div>
-            <div className="field">
-              {/* No label of its own, but the column needs one: without it
-                  this sits a line lower than the boxes it belongs to, on any
-                  row where another field carries a hint underneath. */}
-              <label aria-hidden="true">&nbsp;</label>
+            <div className="field gl-apply">
               <div className="actions">
                 <AutoApply />
                 <button type="submit" className="tiny" data-apply>Apply</button>
-                {filtered && (
-                  <Link href="/finance/general-ledger" className="btn ghost tiny">Clear</Link>
-                )}
+                {/* "Clear filters" comes from AutoApply; no second Clear beside it. */}
               </div>
             </div>
           </div>
@@ -426,7 +425,7 @@ async function AccountView({
       {/* The period and branch, on the tab that uses them. They lived only in
           the querystring here, which meant arriving from the other tab you
           could see a filtered account with no control saying so. */}
-      <form method="get" className="card doc-meta" style={{ marginBottom: "1rem" }}>
+      <form method="get" className="gl-filters">
         <input type="hidden" name="view" value="account" />
         <input type="hidden" name="account" value={ids.join(",")} />
         <div className="card-body">
@@ -473,10 +472,6 @@ async function AccountView({
               <div className="actions">
                 <AutoApply />
                 <button type="submit" className="tiny" data-apply>Apply</button>
-                {(p.from || p.to || p.location || p.voided) && (
-                  <Link href={carry({ from: undefined, to: undefined, location: undefined })}
-                        className="btn ghost tiny">Clear</Link>
-                )}
               </div>
             </div>
           </div>

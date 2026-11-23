@@ -11928,3 +11928,24 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
   :root { --ui-zoom: 0.85; }
   html { zoom: var(--ui-zoom); }
 }
+
+/* ========================================================= general ledger ====
+   2026-11-23: the trail is a label over the title; the tabs and a visible
+   Layout switch share one row; the filters are one compact row of underline
+   fields instead of a card of boxes, so the entries start higher. */
+.gl-bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.gl-bar .erp-tabs { border-bottom: 0; margin: 0; }
+.gl-layout { margin-bottom: 6px; }
+.gl-layout .seg { min-height: 30px; padding: 0 12px; font-size: var(--t-sm); text-decoration: none; }
+.gl-filters { margin: 0 0 14px; }
+.gl-filters .card-body { padding: 0; }
+.gl-filters .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 4px 18px; align-items: end; margin: 0; }
+.gl-filters .field { margin: 0; gap: 2px; min-width: 0; }
+.gl-filters .field > label { font-size: var(--t-xs); font-weight: 500; color: var(--muted); }
+.gl-filters :is(input:not([type="checkbox"]), select) {
+  height: 2rem; min-height: 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+  background-color: transparent; padding: 0 1px; box-shadow: none; font-size: var(--t-sm); }
+.gl-filters select { padding-right: 20px; }
+.gl-filters :is(input, select):focus { outline: none; border-bottom-color: var(--focus); box-shadow: 0 1px 0 0 var(--focus); }
+.gl-filters .gl-apply .actions { margin: 0; gap: 6px; }
