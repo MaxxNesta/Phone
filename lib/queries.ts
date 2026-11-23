@@ -5440,9 +5440,12 @@ export async function getTrip(companyId: string, tripId: string) {
      order by s.seq`;
 
   // What the driver is to do at each stop (0233): collect for COD, nothing for credit.
-  const { carriedMany } = await import("./delivery-slip");
+  const [{ carriedMany }, { collectTotal }] = await Promise.all([import("./delivery-slip"), import("./cod-collect")]);
   const told = await carriedMany(companyId, stops.flatMap((s) => (s.document_id ? [String(s.document_id)] : [])));
-  return { trip, stops: stops.map((s) => ({ ...s, instruction: s.document_id ? told.get(String(s.document_id))?.instruction ?? null : null })) };
+  // Cash the driver should come back with: every COD parcel still out on this trip, deposits and charges once per invoice.
+  const cashToCollect = collectTotal([...told.values()].flatMap((c) => (c.parcel && c.state !== "DONE" && c.state !== "REFUSED" ? [c.parcel] : [])));
+  return { trip: { ...trip, cash_to_collect: cashToCollect },
+           stops: stops.map((s) => ({ ...s, instruction: s.document_id ? told.get(String(s.document_id))?.instruction ?? null : null })) };
 }
 
 /**

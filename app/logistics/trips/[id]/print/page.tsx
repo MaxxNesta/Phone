@@ -42,7 +42,7 @@ export default async function TripManifest({
       id: string; trip_no: string; trip_date: string; status: string;
       location_name: string | null; plate_no: string | null;
       driver_name: string | null; salesman_name: string | null;
-      note: string | null; goods_value: string;
+      note: string | null; goods_value: string; cash_to_collect: number;
     };
     stops: Array<{
       id: string; seq: number; status: string;
@@ -143,6 +143,12 @@ export default async function TripManifest({
               and td for the figure. */}
           <table className="sheet-totals">
             <tbody>
+              {trip.cash_to_collect > 0 && (
+                <tr className="strong">
+                  <th>Cash on delivery to collect</th>
+                  <td>{money(trip.cash_to_collect)} <span className="sheet-ccy">{company.base_currency}</span></td>
+                </tr>
+              )}
               <tr className="strong">
                 <th>Goods carried</th>
                 <td>

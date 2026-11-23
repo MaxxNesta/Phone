@@ -24,7 +24,7 @@ export default async function TripDetail({
       driver_name: string | null; salesman_name: string | null; note: string | null;
       departed_at: string | null; closed_at: string | null;
       stops: string; delivered: string; failed: string; pending: string;
-      goods_value: string;
+      goods_value: string; cash_to_collect: number;
     };
     stops: Parameters<typeof TripStops>[0]["stops"];
   };
@@ -69,6 +69,13 @@ export default async function TripDetail({
                   Value of the deliveries on board, already posted
                 </span>
               </div>
+              {trip.cash_to_collect > 0 && (
+                <div className="field">
+                  <label>Cash on delivery to collect</label>
+                  <span className="fixedfield">{money(trip.cash_to_collect)}</span>
+                  <span className="hint">What the driver should bring back, deposits taken off</span>
+                </div>
+              )}
             </div>
             {trip.note && (
               <div className="hintbar">{trip.note}</div>

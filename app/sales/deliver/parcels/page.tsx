@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { requirePermission } from "@/lib/auth";
 import { seenLocations } from "@/lib/branch-scope";
-import { getPendingDeliveries } from "@/lib/queries";
+import { getCompany, getPendingDeliveries } from "@/lib/queries";
+import { hasModule } from "@/lib/plans";
+import { can } from "@/lib/auth-core";
 import { codAwaitingDispatch } from "@/lib/cod";
 import { carriedOut, type Carried } from "@/lib/delivery-slip";
 import { ErpPageHead, ErpSection } from "@/components/erp-worklist";
@@ -34,9 +36,11 @@ export default async function ParcelsOut({ searchParams }: { searchParams: Promi
   const tab: Tab = TABS.some(([k]) => k === asked) ? asked as Tab : "out";
   const seen = await seenLocations();
   const mine = (loc: string | null) => !seen || (!!loc && seen.includes(loc));
-  const [carried, codWaiting, pending] = await Promise.all([
-    carriedOut(user.companyId), codAwaitingDispatch(user.companyId), getPendingDeliveries(user.companyId),
+  const [carried, codWaiting, pending, company] = await Promise.all([
+    carriedOut(user.companyId), codAwaitingDispatch(user.companyId), getPendingDeliveries(user.companyId), getCompany(),
   ]);
+  // Many stops for one driver: a trip (Logistics, in Standard and up).
+  const trips = hasModule(company as never, "logistics") && can(user, "settings.manage");
   const out = carried.filter((c) => mine(c.warehouseId));
   const byTab = {
     out: out.filter((c) => c.state === "OUT"),
@@ -91,7 +95,10 @@ export default async function ParcelsOut({ searchParams }: { searchParams: Promi
     <div className="erp-page">
       <ErpPageHead eyebrow="Delivery" title="Parcels out"
         lead="What is with a driver or courier, what each is to collect at the door, and what is still waiting to go."
-        action={<Link href="/sales/deliver" className="erp-hbtn">Deliveries</Link>} />
+        action={<span className="actions">
+          {trips && <Link href="/logistics/trips/new" className="erp-hbtn">Plan a trip</Link>}
+          <Link href="/sales/deliver" className="erp-hbtn">Deliveries</Link>
+        </span>} />
       <nav className="vtabs pay-tabs" aria-label="Parcels">
         {TABS.map(([k, label]) => (
           <Link key={k} href={k === "out" ? "/sales/deliver/parcels" : `/sales/deliver/parcels?tab=${k}`}

@@ -195,7 +195,7 @@ export default async function PackageAndSeats({ searchParams }: { searchParams: 
           <PlanSwitcher current={plan} limits={PLAN_LIMITS} have={have as { branches: number; warehouses: number }}
             locked={!planSwitchable} action={setCompanyPlan} />
           <ModuleSwitcher all={MODULES} current={company.modules ?? MODULES.map((m) => m.key)}
-            core={CORE_MODULES} planName={PLAN_NAME[plan]}
+            core={plan === "STARTER" ? CORE_MODULES : [...CORE_MODULES, "logistics"]} planName={PLAN_NAME[plan]}
             needsStandard={plan === "STARTER" ? STANDARD_UP_ADDONS : []}
             locked={!planSwitchable} action={setCompanyModules} />
           <section className="card">
