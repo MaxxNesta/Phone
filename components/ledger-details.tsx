@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { ExportCsvButton } from "./export-csv";
+import { ExportBlocksButtons, type ExportBlock } from "./export-blocks";
 
 export type DetailLine = {
   date: string; docId: string | null; docNo: string | null; entryNo: string;
@@ -33,14 +33,18 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
   const toggle = (k: string) => setShut((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const allShut = blocks.length > 0 && shut.size === blocks.length;
   const name = (b: DetailBlock) => `${b.accountName}${b.split ? ` – ${b.partnerName ?? "No customer or supplier"}` : ""}`;
-  // The export is this layout: each block's lines, then its total, opening and closing.
-  const csv: (string | number)[][] = [["Account code", "Account", "Date", "Document", "Account name (other side)", "Description", "Debit", "Credit"],
-    ...blocks.flatMap((b) => [
-      ...b.lines.map((l) => [b.accountCode, name(b), l.date, l.docNo ?? l.entryNo, l.shown ?? l.contra.map((c) => c.account).join(" / "), l.text, l.debit || "", l.credit || ""]),
-      [b.accountCode, name(b), "", "", "", "Total", b.debits, b.credits],
-      [b.accountCode, name(b), "", "", "", "Opening", b.opening > 0 ? b.opening : "", b.opening < 0 ? -b.opening : ""],
-      [b.accountCode, name(b), "", "", "", "Closing", b.closing < 0 ? -b.closing : "", b.closing > 0 ? b.closing : ""],
-    ])];
+  // The export is this layout: one block per account with a clear start (its
+  // header) and end (total, opening, closing), styled in Excel, marked in CSV.
+  const exportBlocks: ExportBlock[] = blocks.map((b) => ({
+    title: `${b.accountCode} · ${name(b)}`,
+    note: `Opening ${bal(b.opening)} · Closing ${bal(b.closing)}`,
+    rows: b.lines.map((l) => [l.date, l.docNo ?? l.entryNo, l.shown ?? l.contra.map((c) => c.account).join(" / "), l.text, l.debit || "", l.credit || ""]),
+    foot: [
+      ["", "", "", "Total", b.debits, b.credits],
+      ["", "", "", "Opening", b.opening > 0 ? b.opening : "", b.opening < 0 ? -b.opening : ""],
+      ["", "", "", "Closing", b.closing < 0 ? -b.closing : "", b.closing > 0 ? b.closing : ""],
+    ],
+  }));
 
   return (
     <section className="card ledger-details">
@@ -54,7 +58,8 @@ export function LedgerDetails({ blocks, title, allHref }: { blocks: DetailBlock[
             </button>
           )}
           {allHref && <Link href={allHref} className="btn ghost tiny">All accounts</Link>}
-          <ExportCsvButton name="general-ledger-details" rows={csv} />
+          <ExportBlocksButtons name="general-ledger-details" title={`General ledger details · ${title}`}
+            head={["Date", "Document", "Account name (other side)", "Description", "Debit", "Credit"]} blocks={exportBlocks} />
         </span>
       </div>
       {blocks.length === 0 ? <div className="empty">Nothing on these accounts in this period.</div> : (

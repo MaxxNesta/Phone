@@ -1,10 +1,10 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { csvCell } from "@/lib/csv";
+import { ExportBlocksButtons, type ExportBlock } from "./export-blocks";
 import Link from "next/link";
-import { ChevronRight, Download, Printer, Rows3 } from "lucide-react";
-import { money, todayLocal } from "@/lib/format";
+import { ChevronRight, Printer, Rows3 } from "lucide-react";
+import { money } from "@/lib/format";
 
 export type EntryLine = {
   accountCode: string;
@@ -71,30 +71,14 @@ export function JournalEntryList({ entries, backQuery = "" }:
   const totalDr = entries.reduce((s, e) => s + e.debit, 0);
   const totalCr = entries.reduce((s, e) => s + e.credit, 0);
 
-  const exportCsv = () => {
-    const rows: string[][] = [[
-      "Entry", "Date", "Document", "Type", "Partner", "Account code",
-      "Account", "Debit", "Credit", "Memo",
-    ]];
-    for (const e of entries) {
-      for (const l of e.lines) {
-        rows.push([
-          e.entryNo, e.entryDate, e.docNo ?? "", e.docLabel, e.partnerName ?? "",
-          l.accountCode, l.accountName, String(l.debit || ""), String(l.credit || ""),
-          l.memo ?? e.memo ?? "",
-        ]);
-      }
-    }
-    const csv = rows
-      .map((r) => r.map(csvCell).join(","))
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `journal-entries-${todayLocal()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // One block per entry: its header (entry, date, document, who), its lines,
+  // its total. Styled in Excel, start and end marked in CSV.
+  const exportBlocks: ExportBlock[] = entries.map((e) => ({
+    title: [e.entryNo, e.entryDate, e.docNo].filter(Boolean).join(" · "),
+    note: [e.docLabel, e.partnerName].filter(Boolean).join(" · "),
+    rows: e.lines.map((l) => [l.accountCode, l.accountName, l.debit || "", l.credit || "", l.memo ?? e.memo ?? ""]),
+    foot: [["", "Total", e.debit, e.credit, ""]],
+  }));
 
   if (entries.length === 0) {
     return <div className="empty">No posted entries match these filters.</div>;
@@ -114,9 +98,8 @@ export function JournalEntryList({ entries, backQuery = "" }:
               <Rows3 size={13} aria-hidden="true" />
               {all ? "Collapse all" : "Expand all"}
             </button>
-            <button type="button" className="ghost tiny" onClick={exportCsv}>
-              <Download size={13} aria-hidden="true" /> Export
-            </button>
+            <ExportBlocksButtons name="journal-entries" title="Journal entries"
+              head={["Account code", "Account", "Debit", "Credit", "Memo"]} blocks={exportBlocks} />
             <button type="button" className="ghost tiny noprint"
                     onClick={() => window.print()}>
               <Printer size={13} aria-hidden="true" /> Print
