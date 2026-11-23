@@ -9,6 +9,8 @@ import {
   depositAction, dispatchCodAction, handoverAction, notHomeAction, receiveReturnAction, refusedAction,
 } from "@/lib/cod-actions";
 import type { CodSheet, Parcel } from "@/lib/cod";
+import { collectText } from "@/lib/cod-collect";
+import { RowMenu } from "./row-menu";
 
 type Opt = { id: string; name: string };
 type Account = { id: string; label: string };
@@ -85,7 +87,7 @@ function ReceiveBack({ p, today, primary }: { p: Parcel; today: string; primary?
   const imeis = p.lines.flatMap((l) => l.serials);
   const counted = p.lines.filter((l) => l.serials.length === 0);
   return (
-    <Step action={receiveReturnAction} className={primary ? "btn primary" : "btn ghost tiny"}
+    <Step action={receiveReturnAction} className={primary ? "btn primary" : ""}
       label={primary ? "Receive returned phone" : "Back to shop"} pendingLabel="Posting…"
       title={`Receive ${p.no} back`}
       detail="Only what went out comes back: scan each IMEI, count anything without one. It goes back on sale in the warehouse; the invoice can be dispatched again."
@@ -105,6 +107,23 @@ function ReceiveBack({ p, today, primary }: { p: Parcel; today: string; primary?
           <input name={`count_${l.lineId}`} type="number" min="0" step="1" required placeholder="Count back" />
         </div>
       ))}
+    </Step>
+  );
+}
+
+/** Paid at the door: this parcel, its IMEIs, and the cash it takes now (deposit and charge already counted). */
+function Handover({ p, today, accounts, primary }: { p: Parcel; today: string; accounts: Account[]; primary?: boolean }) {
+  return (
+    <Step action={handoverAction} className={primary ? "btn primary" : "btn tiny"}
+      label={primary ? "Confirm payment & hand over" : "Hand over"} pendingLabel="Posting…"
+      title={`Hand over ${p.no}`}
+      detail={`${p.lines.map((l) => `${l.item}${l.serials.length ? ` (${l.serials.join(", ")})` : ""}`).join("; ")}. `
+        + `${fmt(p.collectNow)} MMK to collect${p.deposit > 0 ? `, after the ${fmt(Math.min(p.deposit, p.goods + p.extras))} deposit` : ""}. `
+        + "The phone is released only when this is paid in full."}
+      confirmLabel="Paid · hand over">
+      <input type="hidden" name="parcel_id" value={p.id} />
+      <DateField today={today} />
+      <PayFields parcel={p} amount={p.collectNow} accounts={accounts} />
     </Step>
   );
 }
@@ -146,25 +165,13 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
   })).filter((l) => l.qty > 0)), [left, dispatchLines]);
 
   const first = open[0];
-  const depositsLeft = sheet.deposits;
-  const dueOf = (p: Parcel) => Math.max(0, p.due - depositsLeft);
 
   /* One primary action: whatever moves this sale forward next. */
   let primary: React.ReactNode = null;
   if (canPost && returning[0]) {
     primary = <ReceiveBack p={returning[0]} today={today} primary />;
   } else if (canPost && first) {
-    primary = (
-      <Step action={handoverAction} className="btn primary" label="Confirm payment & hand over" pendingLabel="Posting…"
-        title={`Hand over ${first.no}`}
-        detail={`${first.lines.map((l) => `${l.item}${l.serials.length ? ` (${l.serials.join(", ")})` : ""}`).join("; ")}. `
-          + `${fmt(dueOf(first))} MMK to collect${depositsLeft > 0 ? ` after the ${fmt(depositsLeft)} deposit` : ""}. The phone is released only when this is paid in full.`}
-        confirmLabel="Paid · hand over">
-        <input type="hidden" name="parcel_id" value={first.id} />
-        <DateField today={today} />
-        <PayFields parcel={first} amount={dueOf(first)} accounts={accounts} />
-      </Step>
-    );
+    primary = <Handover p={first} today={today} accounts={accounts} primary />;
   } else if (canPost && left.length > 0) {
     primary = (
       <Step action={dispatchCodAction} className="btn primary" label="Dispatch" pendingLabel="Posting…"
@@ -221,7 +228,8 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
             <tbody>
               {sheet.parcels.map((p) => (
                 <tr key={p.id}>
-                  <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.date}</div></td>
+                  <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.date}</div>
+                    <Link href={`/sales/deliver/slip/${p.id}`} className="subline" style={{ color: "var(--link)" }}>Delivery slip</Link></td>
                   <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <div className="subline">{l.serials.join(", ")}</div> : null}</div>)}</td>
                   <td>{p.collector?.name ?? "—"}</td>
                   <td>
@@ -229,18 +237,20 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                     {p.lastReason && <div className="subline">{p.lastReason}{p.retryOn ? ` · retry ${p.retryOn}` : ""}</div>}
                     {p.closedBy && <div className="subline"><Link href={`/documents/${p.closedBy}`} style={{ color: "var(--link)" }}>{p.closedByNo}</Link></div>}
                   </td>
-                  <td className="r">{p.state === "OUT" || p.state === "NOT_HOME" ? fmt(p.due) : "—"}</td>
+                  <td className="r cod-collect-cell">{p.state === "OUT" || p.state === "NOT_HOME" ? collectText(p).replace(/^Collect /, "") : "—"}</td>
                   <td className="tight">
                     {canPost && (p.state === "OUT" || p.state === "NOT_HOME") && (
                       <span className="cod-row-actions">
-                        <Step action={depositAction} className="btn ghost tiny" label="Part payment" pendingLabel="Posting…"
+                        {p.id !== first?.id && <Handover p={p} today={today} accounts={accounts} />}
+                        <RowMenu label={`More for ${p.no}`}>
+                        <Step action={depositAction} className="" label="Part payment" pendingLabel="Posting…"
                           title={`Part payment on ${p.no}`} detail="Money taken before handover is kept as a deposit for this invoice and applied once, when the phone is handed over. The phone stays with the driver."
                           confirmLabel="Keep as deposit">
                           <input type="hidden" name="parcel_id" value={p.id} />
                           <DateField today={today} />
                           <PayFields parcel={p} amount={0} accounts={accounts} deposit />
                         </Step>
-                        <Step action={notHomeAction} className="btn ghost tiny" label="Customer not home — retry" pendingLabel="Saving…"
+                        <Step action={notHomeAction} className="" label="Customer not home — retry" pendingLabel="Saving…"
                           title={`${p.no}: customer not home`} detail={`It stays with ${p.collector?.name ?? "the carrier"} for another try, with no second invoice and no stock moved. If it comes back to the shop meanwhile, use Back to shop: the same IMEIs are scanned in.`}
                           confirmLabel="Keep for retry">
                           <input type="hidden" name="parcel_id" value={p.id} />
@@ -248,12 +258,13 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                           <div className="field"><label>Retry on</label><input name="retry_on" type="date" min={today} /></div>
                         </Step>
                         {p.state === "NOT_HOME" && <ReceiveBack p={p} today={today} />}
-                        <Step action={refusedAction} className="btn ghost tiny" label="Customer refused — return to shop" pendingLabel="Saving…"
+                        <Step action={refusedAction} className="" label="Customer refused — return to shop" pendingLabel="Saving…"
                           title={`${p.no}: customer refused`} detail="Nothing is owed. The phone is on its way back and stays out of sale until the warehouse scans it in."
                           confirmLabel="Return to shop">
                           <input type="hidden" name="parcel_id" value={p.id} />
                           <div className="field cod-wide"><label>Why</label><input name="reason" required placeholder="Changed mind, wrong model…" /></div>
                         </Step>
+                        </RowMenu>
                       </span>
                     )}
                   </td>

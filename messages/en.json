@@ -146,7 +146,8 @@
     "purchasingReports": "Purchasing",
     "inventoryReports": "Inventory",
     "financeReports": "Finance",
-    "fxRevaluation": "Exchange revaluation"
+    "fxRevaluation": "Exchange revaluation",
+    "parcelsOut": "Parcels out"
   },
   "shell": {
     "appName": "Myanmar ERP",

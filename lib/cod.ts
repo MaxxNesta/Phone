@@ -22,6 +22,8 @@
 
 import { sql } from "./db";
 import type { TransactionSql } from "postgres";
+import { collect } from "./cod-collect";
+export { collectText, collectTotal } from "./cod-collect";
 import {
   applyAdvance, inTransaction, postCashVoucher, postCustomerReceipt, postDelivery, postStockTransfer, round4,
 } from "./posting";
@@ -43,6 +45,10 @@ export type Parcel = {
   lines: { lineId: string; itemId: string; item: string; qty: number; serials: string[]; focReasonId: string | null }[];
   /** What handing it over bills: its goods at the invoice's prices, with the charge and services if nothing was handed over before. */
   due: number;
+  /** Its goods alone, the charge and services still unbilled, the invoice's unused deposit, and the goods on its other open parcels. */
+  goods: number; extras: number; deposit: number; othersGoods: number;
+  /** Cash to take at the door: handed over now, and if every other open parcel goes first. */
+  collectNow: number; collectLast: number;
 };
 
 const PARCELS = (db: Db, where: ReturnType<typeof sql>) => db`
@@ -70,6 +76,18 @@ const PARCELS = (db: Db, where: ReturnType<typeof sql>) => db`
          (select coalesce(sum(il.gross_amount / nullif(il.base_qty, 0) * dl.base_qty), 0)::float
             from document_line dl join document_line il on il.id = dl.source_line_id
            where dl.document_id = t.id and il.foc_reason_id is null) as goods,
+         -- Deposits taken for the invoice and not yet applied.
+         (select coalesce(sum(v.available), 0)::float from v_partner_advance v join document a on a.id = v.payment_id
+           where a.source_document_id = i.id and a.doc_type = 'CUSTOMER_RECEIPT' and a.status = 'POSTED') as deposit,
+         -- The goods on the invoice's other parcels still out.
+         (select coalesce(sum(il.gross_amount / nullif(il.base_qty, 0) * sl.base_qty), 0)::float
+            from document s join location sb on sb.id = s.to_location_id and sb.is_transit
+            join document_line sl on sl.document_id = s.id
+            join document_line il on il.id = sl.source_line_id and il.foc_reason_id is null
+           where s.source_document_id = i.id and s.id <> t.id and s.doc_type = 'STOCK_TRANSFER' and s.status = 'POSTED'
+             and not exists (select 1 from dispatch_event e left join document ed on ed.id = e.document_id
+                              where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED') and ed.status = 'POSTED')))
+         ) as others_goods,
          -- ... and, while nothing has been handed over, the charge and services.
          (case when exists (select 1 from sales_billed_on_handover h join document hd on hd.id = h.document_id and hd.status = 'POSTED'
                              where h.invoice_id = i.id) then 0
@@ -104,6 +122,7 @@ function toParcel(r: Record<string, unknown>): Parcel {
     lines: ((r.lines as Array<{ lineId: string; itemId: string; item: string; qty: number; serials: string[]; foc: string | null }>) ?? [])
       .map((l) => ({ lineId: l.lineId, itemId: l.itemId, item: l.item, qty: Number(l.qty), serials: l.serials ?? [], focReasonId: l.foc })),
     due: round4(Number(r.goods) + Number(r.extras)),
+    ...collect(Number(r.goods), Number(r.extras), Number(r.deposit), Number(r.others_goods)),
   };
 }
 
@@ -516,4 +535,32 @@ export async function codSheet(invoiceId: string, companyId: string): Promise<Co
     courierHolds: [...courierHolds.values()].filter((c) => c.amount > 0.005),
     direct,
   };
+}
+
+/** COD invoices with goods still in the warehouse, waiting to be dispatched. One query. */
+export async function codAwaitingDispatch(companyId: string) {
+  return (await sql`
+    select d.id, d.doc_no as no, d.doc_date::text as date, d.location_id as "warehouseId", bp.name as customer,
+           d.driver_id is not null or d.courier_id is not null as "carrierChosen",
+           coalesce(dr.name, cr.name) as carrier,
+           sum(dl.base_qty - coalesce((
+             select sum(case when tb.is_transit then tl.base_qty else -tl.base_qty end)
+               from document_line tl join document t on t.id = tl.document_id and t.status = 'POSTED' and t.doc_type = 'STOCK_TRANSFER'
+               join location tb on tb.id = t.to_location_id join location fb on fb.id = t.location_id
+              where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0))::float as qty
+      from document d
+      join business_partner bp on bp.id = d.partner_id
+      join document_line dl on dl.document_id = d.id
+      join item it on it.id = dl.item_id and it.is_stocked
+      left join driver dr on dr.id = d.driver_id
+      left join business_partner cr on cr.id = d.courier_id
+     where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.ar_on_handover and d.status = 'POSTED'
+       and d.reversed_by_document_id is null
+     group by d.id, bp.name, dr.name, cr.name
+    having sum(dl.base_qty - coalesce((
+             select sum(case when tb.is_transit then tl.base_qty else -tl.base_qty end)
+               from document_line tl join document t on t.id = tl.document_id and t.status = 'POSTED' and t.doc_type = 'STOCK_TRANSFER'
+               join location tb on tb.id = t.to_location_id join location fb on fb.id = t.location_id
+              where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0)) > 0
+     order by d.doc_date, d.doc_no`) as unknown as { id: string; no: string; date: string; warehouseId: string; customer: string; carrier: string | null; qty: number }[];
 }

@@ -177,7 +177,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/sales" exact>{n("salesOverview")}</NavLink>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
                 {deliveries && <NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
-                {deliveries && <NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
+                {deliveries && <NavLink href="/sales/deliver" exact>{n("deliveries")}</NavLink>}
+                {deliveries && <NavLink href="/sales/deliver/parcels">{n("parcelsOut")}</NavLink>}
                 {wholesale && <NavLink href="/sales/consignment">{n("consignmentSale")}</NavLink>}
                 <NavLink href="/sales/returns" exact>{n("customerReturns")}</NavLink>
                 <NavLink href="/sales/credit-notes" exact>{n("creditNotes")}</NavLink>

@@ -4,8 +4,10 @@ import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import { Building2, CalendarDays, Hash, StickyNote, Truck, Wallet } from "lucide-react";
 import { useNotice } from "@/components/toast";
+import { collectTotal } from "@/lib/cod-collect";
 
-type Parcel = { id: string; courierId: string; no: string; invoiceNo: string; date: string; customer: string; outstanding: number; branchId: string | null };
+type Parcel = { id: string; courierId: string; no: string; invoiceNo: string; date: string; customer: string;
+  invoiceId: string; goods: number; extras: number; deposit: number; note: string; branchId: string | null };
 type Opt = { id: string; label: string };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -33,7 +35,8 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
   const [received, setReceived] = useState<string | null>(null);
 
   const held = courier?.held ?? 0;
-  const collecting = mine.filter((p) => ticked[p.id]).reduce((s, p) => s + p.outstanding, 0);
+  // Each invoice's deposit and charge once, however many of its parcels are ticked.
+  const collecting = collectTotal(mine.filter((p) => ticked[p.id]));
   const due = held + collecting;
   const feeN = feeMode === "BILLED" ? 0 : Number(fee) || 0;
   // What arrived: everything due less the fee, unless typed otherwise.
@@ -113,7 +116,7 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
                     <td>{p.date}</td>
                     <td className="code"><Link href={`/documents/${p.id}`} target="_blank" style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.invoiceNo}</div></td>
                     <td>{p.customer}</td>
-                    <td className="r">{fmt(p.outstanding)}</td>
+                    <td className="r">{p.note}</td>
                   </tr>
                 ))}
               </tbody>

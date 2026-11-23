@@ -17,7 +17,7 @@
 import { sql } from "./db";
 import type { TransactionSql } from "postgres";
 import { inTransaction, postBankVoucher, postCashVoucher, round4 } from "./posting";
-import { confirmHandover, openParcels, type Parcel } from "./cod";
+import { collectTotal, confirmHandover, openParcels, type Parcel } from "./cod";
 
 export type CodCourier = {
   id: string; code: string; name: string; phone: string | null;
@@ -58,7 +58,7 @@ export async function codCouriers(companyId: string): Promise<CodCourier[]> {
     openParcels(companyId)]);
   const list = (rows as unknown as Omit<CodCourier, "out" | "outCount">[]).map((c) => {
     const mine = parcels.filter((p) => p.collector?.kind === "COURIER" && p.collector.id === c.id && p.state !== "REFUSED");
-    return { ...c, out: round4(mine.reduce((t, p) => t + p.due, 0)), outCount: mine.length };
+    return { ...c, out: collectTotal(mine), outCount: mine.length };
   });
   return list.sort((a, b) => (b.held + b.out) - (a.held + a.out) || a.name.localeCompare(b.name));
 }

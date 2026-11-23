@@ -146,7 +146,8 @@
     "purchasingReports": "အဝယ်",
     "inventoryReports": "ကုန်လက်ကျန်",
     "financeReports": "ငွေစာရင်း",
-    "fxRevaluation": "ငွေလဲနှုန်း ပြန်တွက်ခြင်း"
+    "fxRevaluation": "ငွေလဲနှုန်း ပြန်တွက်ခြင်း",
+    "parcelsOut": "ပို့ဆောင်ဆဲ ပစ္စည်းများ"
   },
   "shell": {
     "appName": "မြန်မာ ERP",

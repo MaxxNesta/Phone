@@ -41,9 +41,9 @@ try {
     const cust = await one(tx`insert into business_partner (company_id, code, name, is_customer) values (${co.id}, ${"CC" + tag}, 'COD customer', true) returning id`);
     const courier = await one(tx`insert into business_partner (company_id, code, name, is_courier) values (${co.id}, ${"CK" + tag}, 'Test Express', true) returning id`);
     const driver = await one(tx`insert into driver (company_id, code, name) values (${co.id}, ${"DR" + tag}, 'Ko Driver') returning id`);
-    const imei = Array.from({ length: 6 }, (_, i) => `CODT${tag}${i}`);
+    const imei = Array.from({ length: 8 }, (_, i) => `CODT${tag}${i}`);
     await P.postGoodsReceipt({ companyId: co.id, partnerId: supplier.id, locationId: wh.id, docDate: day,
-      lines: [{ itemId: phone.id, qty: 6, unitCost: 800000, serials: imei }] }, tx);
+      lines: [{ itemId: phone.id, qty: 8, unitCost: 800000, serials: imei }] }, tx);
 
     const role = async (r) => (await one(tx`select account_id from system_account where company_id = ${co.id} and role = ${r}`))?.account_id;
     const CWD = await role("CASH_WITH_DRIVERS"), CODR = await role("COD_RECEIVABLE"), CARR = await role("CARRIAGE_OUTWARD"), DI = await role("DELIVERY_INCOME");
@@ -211,6 +211,23 @@ try {
     check("the full 1,005,000 is received, no Carriage Outward yet, courier cleared",
       near(await bal(bank.id) - bank3, 1005000) && near(await bal(CARR), carr3) && near(await bal(CODR, courier.id), 0),
       [await bal(bank.id) - bank3, await bal(CARR) - carr3, await bal(CODR, courier.id)]);
+
+    console.log("\n  G  split parcels: what the slip tells the carrier");
+    const g2 = await codInvoice(2, 5000, { driverId: driver.id });
+    const g2l = await lineOf(g2);
+    const ga = await C.codDispatch(tx, { companyId: co.id, invoiceId: g2.id, docDate: day, driverId: driver.id, lines: [{ lineId: g2l, qty: 1, serials: [imei[6]] }] });
+    const gb = await C.codDispatch(tx, { companyId: co.id, invoiceId: g2.id, docDate: day, driverId: driver.id, lines: [{ lineId: g2l, qty: 1, serials: [imei[7]] }] });
+    await C.recordDeposit(tx, { companyId: co.id, parcelId: ga.id, docDate: day, payment: { to: "DRIVER", amount: 300000 } });
+    let pa1 = await C.parcel(ga.id, tx), pb1 = await C.parcel(gb.id, tx);
+    check("each split slip names both amounts: 705,000 if first, 1,000,000 otherwise",
+      C.collectText(pa1) === "Collect 705,000 MMK if handed over first, otherwise 1,000,000 MMK" && C.collectText(pb1) === C.collectText(pa1), C.collectText(pa1));
+    check("the invoice and a courier batch count the deposit and charge once: 1,705,000", near(C.collectTotal([pa1, pb1]), 1705000), C.collectTotal([pa1, pb1]));
+    const gh2 = await C.confirmHandover(tx, { companyId: co.id, parcelId: gb.id, docDate: day, payment: { to: "DRIVER", amount: pb1.collectNow } });
+    pa1 = await C.parcel(ga.id, tx);
+    check("handed over in reverse order: the second parcel takes 705,000", near(gh2.due, 705000), gh2.due);
+    check("the other parcel now says plainly: Collect 1,000,000 MMK", C.collectText(pa1) === "Collect 1,000,000 MMK", C.collectText(pa1));
+    await C.confirmHandover(tx, { companyId: co.id, parcelId: ga.id, docDate: day, payment: { to: "DRIVER", amount: pa1.collectNow } });
+    check("both handed over at the slip amounts: the customer owes nothing", near(await owed(g2.id), 0), await owed(g2.id));
 
     const tb = await one(tx`select coalesce(sum(balance), 0)::float as v from v_trial_balance where company_id = ${co.id}`);
     check("the trial balance nets to zero", near(tb.v, 0), tb);

@@ -1905,6 +1905,8 @@ button, .btn { display: inline-flex; align-items: center; gap: 0.35rem; }
   padding: 2mm; border-bottom: 1px solid #e2e2e2; vertical-align: top;
 }
 .sheet-table .c-no  { width: 8mm; color: #666; }
+/* Text that may run long on paper (an address, an instruction, a list of IMEIs) wraps inside the page. */
+.sheet-table td.sheet-wrap { white-space: normal; }
 .sheet-table .c-uom { width: 16mm; }
 .sheet-table .c-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sheet-code { color: #666; margin-right: 2mm; }
@@ -11978,6 +11980,10 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .cod-fee { flex-basis: 100%; max-width: 320px; margin-top: 8px; }
 .cod-fee select { width: 100%; min-width: 260px; }
 :has(> label > input[name="is_courier"]:not(:checked)) > .cod-fee { display: none; }
+/* Delivery slip (0233): the one instruction at the door, printed largest. */
+.slip-instruction { margin: 6mm 0 2mm; padding: 4mm 5mm; border: 1.5px solid #111; border-radius: 2mm; font-size: 16pt; font-weight: 700; line-height: 1.25; }
+.slip-note { margin: 0 0 5mm; font-size: 9pt; color: #444; }
+.cod-collect-cell { white-space: normal; max-width: 220px; }
 .cod-row-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 /* COD pay-in (0232): what the courier holds, against what came in. */
 .cod-remit-sum { margin: 14px 0 0; display: grid; gap: 6px; max-width: 420px; margin-left: auto; }

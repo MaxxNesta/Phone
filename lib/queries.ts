@@ -3342,7 +3342,7 @@ export async function getInvoiceDeliveryContext(companyId: string, invoiceId: st
 
 export async function getPendingDeliveryLines(companyId: string) {
   const docs = await sql`
-    select inv.id, inv.doc_no, inv.doc_date, inv.partner_id, inv.location_id,
+    select inv.id, inv.doc_no, inv.doc_date, inv.partner_id, inv.location_id, inv.ar_on_handover,
            p.name as partner_name
       from document inv
       join business_partner p on p.id = inv.partner_id
@@ -3407,7 +3407,7 @@ export async function getPendingDeliveries(companyId: string) {
   const pending = await getPendingDeliveryLines(companyId);
   return pending.map((d: any) => ({
     id: d.id, doc_no: d.doc_no, doc_date: d.doc_date, partner_name: d.partner_name,
-    lines: d.lines.length,
+    lines: d.lines.length, location_id: d.location_id as string, ar_on_handover: !!d.ar_on_handover,
     total_qty: d.lines.reduce((s: number, l: any) => s + l.qty, 0),
   }));
 }
@@ -5439,7 +5439,10 @@ export async function getTrip(companyId: string, tripId: string) {
      where s.trip_id = ${tripId}
      order by s.seq`;
 
-  return { trip, stops };
+  // What the driver is to do at each stop (0233): collect for COD, nothing for credit.
+  const { carriedMany } = await import("./delivery-slip");
+  const told = await carriedMany(companyId, stops.flatMap((s) => (s.document_id ? [String(s.document_id)] : [])));
+  return { trip, stops: stops.map((s) => ({ ...s, instruction: s.document_id ? told.get(String(s.document_id))?.instruction ?? null : null })) };
 }
 
 /**

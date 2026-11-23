@@ -1049,7 +1049,8 @@ export function SalesVoucher({
                 onChange={(e) => setPaymentType(e.target.value as "CASH" | "CREDIT" | "COD")}>
                 <option value="CREDIT">Credit</option>
                 <option value="CASH">Cash</option>
-                <option value="COD">Cash on delivery</option>
+                {/* Paid at the door, so only where goods can be dispatched. */}
+                {fulfilment && <option value="COD">Cash on delivery</option>}
               </select>
             </div>
             <div className="field">
@@ -1749,8 +1750,10 @@ export function SalesVoucher({
                     {drivers.length > 0 && <optgroup label="Our drivers">{drivers.map((d) => <option key={d.id} value={`D:${d.id}`}>{d.name}</option>)}</optgroup>}
                     {couriers.length > 0 && <optgroup label="Courier companies">{couriers.map((c) => <option key={c.id} value={`C:${c.id}`}>{c.name}</option>)}</optgroup>}
                   </select>
-                  <span className="hint">{courier
-                    ? "The courier collects and pays in later, keeping its fee: booked to Carriage Outward."
+                  <span className="hint">{paymentType !== "COD"
+                    ? "Who carries it. Nothing is collected at the door: the customer pays on the invoice's terms."
+                    : courier
+                    ? "The courier collects and pays in later, under its fee arrangement."
                     : driver ? "The driver hands the cash in to the shop till."
                     : drivers.length + couriers.length === 0 ? "Add drivers under Receivables → Driver cash → Manage drivers, or a partner with Courier ticked."
                     : "One of our drivers, or a courier company."}</span>

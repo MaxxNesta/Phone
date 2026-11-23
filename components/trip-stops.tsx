@@ -18,7 +18,7 @@ type Stop = {
   partner_name: string | null; township: string | null; region: string | null;
   phone: string | null; address: string | null;
   /** A cash-on-delivery parcel (0233): handed over only against payment, from its invoice. */
-  cod_parcel?: boolean; source_document_id?: string | null;
+  cod_parcel?: boolean; source_document_id?: string | null; instruction?: string | null;
 };
 
 type Candidate = {
@@ -148,6 +148,7 @@ export function TripStops({
                       <td className="wrap">
                         {s.partner_name}
                         {s.phone && <div className="subline">{s.phone}</div>}
+                        {s.instruction && <div className="subline"><strong>{s.instruction}</strong></div>}
                       </td>
                       <td className="wrap">
                         {[s.township, s.region].filter(Boolean).join(", ") || "—"}

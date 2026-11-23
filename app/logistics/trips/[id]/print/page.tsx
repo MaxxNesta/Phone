@@ -46,7 +46,7 @@ export default async function TripManifest({
     };
     stops: Array<{
       id: string; seq: number; status: string;
-      document_id: string | null; doc_no: string | null; gross_total: string;
+      document_id: string | null; doc_no: string | null; gross_total: string; instruction: string | null;
       partner_name: string | null; township: string | null; region: string | null;
       phone: string | null; address: string | null;
     }>;
@@ -105,8 +105,9 @@ export default async function TripManifest({
                 <th>Customer</th>
                 <th>Where</th>
                 <th>Delivery</th>
+                <th>At the door</th>
                 <th style={{ textAlign: "right" }}>Value</th>
-                <th style={{ width: "32mm" }}>Received by</th>
+                <th style={{ width: "26mm" }}>Received by</th>
               </tr>
             </thead>
             <tbody>
@@ -117,13 +118,15 @@ export default async function TripManifest({
                     <strong>{s.partner_name}</strong>
                     {s.phone && <div className="sheet-code">{s.phone}</div>}
                   </td>
-                  <td>
+                  <td className="sheet-wrap">
                     {[s.township, s.region].filter(Boolean).join(", ") || "—"}
                     {s.address && <div className="sheet-code">{s.address}</div>}
                   </td>
                   {/* A call with no goods still prints: the driver is going
                       there, and on a pre-sale round that call is the job. */}
                   <td className="sheet-code">{s.doc_no ?? "call only"}</td>
+                  {/* COD: the cash to take; anything else, that nothing is collected. */}
+                  <td className="sheet-wrap" style={{ minWidth: "38mm" }}><strong>{s.instruction ?? "—"}</strong></td>
                   <td style={{ textAlign: "right" }}>
                     {Number(s.gross_total) > 0 ? money(s.gross_total) : "—"}
                   </td>

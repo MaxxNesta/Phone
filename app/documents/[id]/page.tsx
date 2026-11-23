@@ -25,7 +25,7 @@ import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
 import { CodPanel } from "@/components/cod-panel";
 import { ConfirmDelivered } from "@/components/confirm-delivered";
-import { codSheet } from "@/lib/cod";
+import { codSheet, collectTotal } from "@/lib/cod";
 import { moneyAccounts as codMoneyAccounts } from "@/lib/courier-payables";
 import { channelsAt } from "@/lib/payment-channels";
 import { OffOrderNote, type OffOrderReceived } from "@/components/off-order-note";
@@ -1595,7 +1595,7 @@ export default async function DocumentPage({
       {chainStages.length > 0 && (
         <DocPanelSection title="Flow"><DocFlow chain={chainStages} docNo={doc.doc_no ?? ""} notes={{ [doc.doc_type]: shortDate(doc.doc_date),
           ...(cod && cod.parcels.some((p) => p.state === "OUT" || p.state === "NOT_HOME")
-            ? { CUSTOMER_RECEIPT: `To collect ${money(cod.parcels.filter((p) => p.state === "OUT" || p.state === "NOT_HOME").reduce((t, p) => t + p.due, 0))}` } : {}) }} /></DocPanelSection>
+            ? { CUSTOMER_RECEIPT: `To collect ${money(collectTotal(cod.parcels.filter((p) => p.state === "OUT" || p.state === "NOT_HOME")))}` } : {}) }} /></DocPanelSection>
       )}
       <DocPanelSection title="History">
         <DocPanelList items={(versions.length ? versions : [{ id: doc.id, version: Number(doc.version ?? 1), gross_total: doc.gross_total,

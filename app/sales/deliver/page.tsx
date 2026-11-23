@@ -50,7 +50,7 @@ export default async function Deliver({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const [openLines, pending, stockByLocation, history, stillToBill, focReasons] = await Promise.all([
+  const [openLines, allPending, stockByLocation, history, stillToBill, focReasons] = await Promise.all([
     getOpenSalesOrders(company.id),
     getPendingDeliveries(company.id),
     getStockByLocation(company.id),
@@ -64,6 +64,9 @@ export default async function Deliver({
     sql`select id, code, name from foc_reason
          where company_id = ${company.id} and applies_to = 'SALE' order by code`,
   ]);
+
+  // Cash on delivery goes out from its own invoice, as parcels (0233), not from here.
+  const pending = allPending.filter((p) => !p.ar_on_handover);
 
   const orders = new Map<string, {
     orderId: string; orderNo: string; partnerId: string; partnerName: string;
@@ -288,6 +291,7 @@ export default async function Deliver({
           onlyUnbilled ? "One thing only: goods that went out and were never billed."
           : onlyUndelivered ? "One thing only: invoices whose goods never went out."
           : "Record stock leaving your warehouse."}
+        action={<Link href="/sales/deliver/parcels" className="erp-hbtn"><Truck size={15} aria-hidden="true" /> Parcels out</Link>}
       />
 
       {!focused && (
