@@ -51,7 +51,7 @@ try {
   await sql`update company set retail_mode = true where id = ${co.id}`;
 
   const [wh] = await sql`
-    select id, parent_id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and code <> 'BR2-WH' order by code limit 1`;
+    select id, parent_id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and code <> 'BR2-WH' order by code limit 1`;
 
   // A second shop, with its own stock room.
   const place = async (code, name, parent, stock) => {
@@ -329,7 +329,7 @@ try {
      where item_id = ${phone.id} and status = 'IN_STOCK'`;
   const [phoneQty] = await sql`
     select coalesce(sum(fn_qty_on_hand(${co.id}, ${phone.id}, l.id)), 0) q
-      from location l where l.company_id = ${co.id} and l.is_stock_location and not l.is_quarantine`;
+      from location l where l.company_id = ${co.id} and l.is_stock_location and not l.is_quarantine and not l.is_transit`;
   check("serials in stock equal the phone quantity on hand", n(serialVal.c) === n(phoneQty.q),
     `${serialVal.c} serials vs ${phoneQty.q} on hand`);
   const [phoneLayers] = await sql`

@@ -103,7 +103,7 @@ try {
       values (${co.id}, 'TMP-S', 'Temp Supplier', true) returning id`;
   }
   const [loc] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine limit 1`;
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit limit 1`;
 
   if (supp && loc && a.ok) {
     const pi = await postPurchaseWithReceipt({

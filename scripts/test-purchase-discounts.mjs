@@ -66,7 +66,7 @@ try {
     const [co] = await tx`select id, name from company order by created_at limit 1`;
     await tx`update company set purchase_discount_policy = 'NET' where id = ${co.id}`;
     const [loc] = await tx`select id from location
-       where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+       where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
     // An item with no stock history, so FIFO starts with these receipts (one
     // already sold short would have its new units cover that shortage), and
     // a different one that has been bought before, to weigh a free unit by.

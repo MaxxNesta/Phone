@@ -50,7 +50,7 @@ const near = (a, b) => Math.abs(n(a) - n(b)) < 0.01;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const [item] = await sql`select id from item
      where company_id = ${co.id} and is_stocked and is_active
        -- A product with variants is a name for a group and cannot be
@@ -296,7 +296,7 @@ try {
   console.log("\n  money taken in one branch, a bill raised in another\n");
   {
     const branches = await sql`select id, code from location
-       where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 2`;
+       where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 2`;
     if (branches.length === 2) {
       const [yangon, mandalay] = branches;
       const per = async (code, locId) => {

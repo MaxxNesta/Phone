@@ -80,7 +80,7 @@ try {
   check("each warehouse belongs to exactly one branch",
     (await sql`select count(*)::int as c from location w
                  join location b on b.id = w.parent_id
-                where w.company_id = ${co.id} and w.is_stock_location and not w.is_quarantine and b.parent_id is null`)[0].c >= 2);
+                where w.company_id = ${co.id} and w.is_stock_location and not w.is_quarantine and not w.is_transit and b.parent_id is null`)[0].c >= 2);
 
   const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;
   let [grp] = await sql`select id from item_group where company_id = ${co.id} order by code limit 1`;

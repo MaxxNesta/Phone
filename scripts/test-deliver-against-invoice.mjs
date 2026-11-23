@@ -64,7 +64,7 @@ try {
   const A = await import("../lib/actions.ts");
 
   const [loc] = await sql`select id, code from location
-     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const [item] = await sql`select id, code from item
      where company_id = ${co.id} and is_stocked and not tracks_serial and is_active
        -- A product with variants is a name for a group and cannot be
@@ -476,7 +476,7 @@ try {
     await wipe();
     await sql`update number_series set next_value = 1`;
     const locs = await sql`select id, code from location
-       where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 2`;
+       where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 2`;
     if (locs.length < 2) {
       check("two warehouses are needed for this case", false, "only one configured");
     } else {

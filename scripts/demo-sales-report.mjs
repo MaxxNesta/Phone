@@ -36,7 +36,7 @@ const { postGoodsReceipt, postSaleWithDelivery, postDelivery, postSalesReturn,
 
 const [co] = await sql`select id, name from company order by created_at limit 1`;
 const [loc] = await sql`
-  select id, code from location where company_id = ${co.id} and is_stock_location and not is_quarantine order by code limit 1`;
+  select id, code from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
 if (!co || !loc) { console.error("This needs a company with a stock location."); process.exit(1); }
 console.log(`\n  ${co.name}  ·  ${loc.code}\n`);
 

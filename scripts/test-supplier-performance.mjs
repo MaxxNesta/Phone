@@ -59,7 +59,7 @@ const d = (n) => {
 
 try {
   const [co] = await sql`select id, name from company limit 1`;
-  const [loc] = await sql`select id, code from location where is_stock_location and not is_quarantine order by code limit 1`;
+  const [loc] = await sql`select id, code from location where is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
 
   await resetTransactions(sql);
 

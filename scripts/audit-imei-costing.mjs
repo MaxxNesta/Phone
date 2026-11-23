@@ -46,7 +46,7 @@ const A = 2_000_000, B = 2_150_000, C = 2_100_000;
 try {
   await sql.begin(async (tx) => {
     const [co] = await tx`select id, name from company order by created_at limit 1`;
-    const locs = await tx`select id, name from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 2`;
+    const locs = await tx`select id, name from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 2`;
     const loc = locs[0], loc2 = locs[1];
     const [supp] = await tx`select id from business_partner where company_id = ${co.id} and is_supplier and is_active order by code limit 1`;
     const [cust] = await tx`select id from business_partner where company_id = ${co.id} and is_customer and is_active and credit_limit is null order by code limit 1`;

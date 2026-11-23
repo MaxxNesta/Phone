@@ -54,7 +54,7 @@ const near = (a, b) => Math.abs(n(a) - n(b)) < 0.0001;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`select id from location
-     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
 
   // Its own fixtures rather than whatever master data happens to be there:
   // this suite needs two suppliers to prove one supplier's orders stay out of

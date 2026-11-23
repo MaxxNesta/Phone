@@ -39,10 +39,10 @@ try {
   const [co] = await sql`select id from company order by created_at limit 1`;
   await resetTransactions(sql);
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit
        and parent_id is not null order by code limit 1`;
   const [wh2] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit
        and id <> ${wh.id} order by code limit 1`;
   const party = async (code, name, cols) => (await sql`select id from business_partner where company_id=${co.id} and code=${code}`)[0]
     ?? (await sql`insert into business_partner ${sql({ company_id: co.id, code, name, ...cols })} returning id`)[0];

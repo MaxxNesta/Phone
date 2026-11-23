@@ -32,7 +32,7 @@ if ((await sql`select 1 from document where company_id = ${co.id} and reference 
 const today = new Date().toISOString().slice(0, 10);
 const ref = { reference: "DFDEMO" };
 await sql.begin(async (tx) => {
-  const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+  const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const [uom] = await tx`select id from uom where company_id = ${co.id} order by code limit 1`;
   const [grp] = await tx`select g.id from item_group g where g.company_id = ${co.id}
       and not exists (select 1 from account_determination d where d.item_group_id = g.id and d.role = 'REVENUE') order by g.code limit 1`;

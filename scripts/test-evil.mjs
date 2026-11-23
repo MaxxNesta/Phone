@@ -79,7 +79,7 @@ const allows = async (label, fn) => {
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`
-    select id, code from location where company_id = ${co.id} and is_stock_location and not is_quarantine order by code limit 1`;
+    select id, code from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
 
   // The two accounts this suite watches, resolved from the chart rather than
   // spelled out. Every assertion below read 0 on a chart that numbers GR/IR

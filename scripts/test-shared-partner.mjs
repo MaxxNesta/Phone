@@ -66,7 +66,7 @@ try {
     insert into item (company_id, item_group_id, serial, code, name, base_uom_id)
     values (${co.id}, ${grp.id}, '001', 'x', 'Test Item', ${uom.id}) returning id`;
   const [loc] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine limit 1`;
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit limit 1`;
 
   const today = new Date().toISOString().slice(0, 10);
 

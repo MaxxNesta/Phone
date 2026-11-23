@@ -47,7 +47,7 @@ try {
   await resetTransactions(sql);
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [branch] = await sql`select id from location where company_id = ${co.id} and parent_id is null and is_active order by code limit 1`;
-  const [wh] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+  const [wh] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const one = async (q, what) => { const [r] = await q; if (!r) throw new Error(`no ${what} on this chart`); return r; };
   const acc = (where, what) => one(sql`select id, code, name from account where company_id = ${co.id} and is_postable and is_active and ${where} order by code limit 1`, what);
   const cash = await acc(sql`is_cash_account and not is_bank_account`, "cash account");

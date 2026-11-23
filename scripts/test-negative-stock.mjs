@@ -64,7 +64,7 @@ try {
     insert into business_partner (company_id, code, name, is_supplier)
     values (${co.id}, ${"NS-" + stamp}, ${"Neg Supplier " + stamp}, true) returning id`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active
      order by code limit 1`;
 
   let serial = 0;
@@ -104,7 +104,7 @@ try {
   // Give the item a known cost history so the provisional figure has
   // something honest to be: bought at 5,000 once, elsewhere.
   const [wh2] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active
       and id <> ${wh.id} order by code limit 1`;
   if (wh2) {
     await postGoodsReceipt({

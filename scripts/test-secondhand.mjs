@@ -25,7 +25,7 @@ const ROLLBACK = new Error("rollback");
 try {
   await sql.begin(async (tx) => {
     const [co] = await tx`select id from company order by created_at limit 1`;
-    const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+    const [loc] = await tx`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
     const [phone] = await tx`select id, name from item where company_id = ${co.id} and tracks_serial and is_stocked and is_active
         and not exists (select 1 from item c where c.parent_item_id = item.id) order by code limit 1`;
     const [supp] = await tx`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;

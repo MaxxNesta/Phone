@@ -40,7 +40,7 @@ const at = (d, hhmm) => `2026-09-0${d} ${hhmm}:00+06:30`;
 try {
   const [co] = await sql`select id, name from company order by created_at limit 1`;
   const [loc] = await sql`select id, code from location
-     where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+     where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   console.log(`\n  ${co.name}\n`);
 
   // ---- nobody, yet ---------------------------------------------------------

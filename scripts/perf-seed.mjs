@@ -25,7 +25,7 @@ if (process.argv.includes("--remove")) {
 
 const P = await import("../lib/posting.ts");
 const t0 = Date.now();
-const locs = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 3`;
+const locs = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 3`;
 const [uom] = await sql`select id from uom where company_id = ${co.id} and code = 'PCS'`;
 const grp = async (code) => (await sql`select id from item_group where company_id = ${co.id} and code = ${code}`)[0].id;
 const attr = async (code) => (await sql`select id from variant_attribute where company_id = ${co.id} and code = ${code}`)[0].id;

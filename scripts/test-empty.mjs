@@ -60,7 +60,7 @@ try {
   await sql`delete from item_group`;
   await sql`delete from business_partner`;
 
-  const [loc] = await sql`select id from location where is_stock_location and not is_quarantine order by code limit 1`;
+  const [loc] = await sql`select id from location where is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
   const [uom] = await sql`select id from uom order by code limit 1`;
   const today = new Date().toISOString().slice(0, 10);
 

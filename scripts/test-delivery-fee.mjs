@@ -55,7 +55,7 @@ try {
   console.log(`\n  ${co.name}\n`);
 
   const [loc] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine order by code limit 1`;
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
   const [uom] = await sql`select id from uom where company_id = ${co.id} order by code limit 1`;
   const [grp] = await sql`select id from item_group where company_id = ${co.id} order by code limit 1`;
 

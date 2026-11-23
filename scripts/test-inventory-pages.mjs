@@ -40,7 +40,7 @@ try {
   const P = await import("../lib/posting.ts");
   const Ph = await import("../lib/phone.ts");
 
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const party = async (code, cols) => (await sql`select id from business_partner where company_id = ${co.id} and code = ${code}`)[0]
     ?? (await sql`insert into business_partner ${sql({ company_id: co.id, code, name: code, ...cols })} returning id`)[0];
   const supp = await party("INVP-S", { is_supplier: true });

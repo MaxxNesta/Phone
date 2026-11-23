@@ -24,7 +24,7 @@ const P = await import("../lib/posting.ts");
 
 const [co] = await sql`select id from company order by created_at limit 1`;
 const [loc] = await sql`select id from location
-   where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+   where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
 const [item] = await sql`select id from item
    where company_id = ${co.id} and is_stocked and is_active order by code limit 1`;
 const [cust] = await sql`select id from business_partner

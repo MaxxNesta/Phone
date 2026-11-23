@@ -45,7 +45,7 @@ const { postPurchaseOrder, postGoodsReceipt, postPurchaseInvoice,
 
 const [co] = await sql`select id, name, plan from company limit 1`;
 const [loc] = await sql`select id, code from location
-                         where is_stock_location and not is_quarantine order by code limit 1`;
+                         where is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
 const [uom] = await sql`select id from uom where company_id = ${co.id}
                          and code = 'PCS' limit 1`;
 

@@ -59,7 +59,7 @@ try {
 
   const one = async (q) => (await q)[0];
   const wh = await one(sql`select id from location where company_id = ${co.id}
-     and is_stock_location and not is_quarantine and is_active order by code limit 1`);
+     and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`);
   // Opening balances now have to say which branch they belong to, the same
   // as every other posting. The warehouse above hangs under one of these.
   const branch = await one(sql`select id from location where company_id = ${co.id}

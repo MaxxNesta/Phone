@@ -57,7 +57,7 @@ const r2 = (v) => Math.round(n(v) * 100) / 100;
 try {
   const [co] = await sql`select id from company order by created_at limit 1`;
   const [loc] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine order by code limit 1`;
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit order by code limit 1`;
 
   await resetTransactions(sql);
 
@@ -332,7 +332,7 @@ try {
   check("a write-off never reaches 1090", (await balance("1420")) === held9,
     `${await balance("1420")}`);
   const other = await sql`select id from location where company_id = ${co.id}
-     and is_stock_location and not is_quarantine and id <> ${loc.id} limit 1`;
+     and is_stock_location and not is_quarantine and not is_transit and id <> ${loc.id} limit 1`;
   if (other.length > 0) {
     await P.postStockTransfer({ companyId: co.id, fromLocationId: loc.id,
       toLocationId: other[0].id, docDate: DAY, lines: [{ itemId: item.id, qty: 2 }] });

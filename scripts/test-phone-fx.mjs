@@ -44,7 +44,7 @@ try {
   await resetTransactions(sql);
   await sql`delete from exchange_rate where company_id = ${co.id}`;
   const [wh] = await sql`
-    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and code <> 'BR2-WH'
+    select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and code <> 'BR2-WH'
      order by code limit 1`;
   const party = async (code, name, cols) => {
     const [f] = await sql`select id from business_partner where company_id=${co.id} and code=${code}`;

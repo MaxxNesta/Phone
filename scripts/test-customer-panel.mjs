@@ -63,7 +63,7 @@ try {
 
   await resetTransactions(sql);
   await cleanMasters(co.id);
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const [other] = await sql`select id from location where company_id = ${co.id} and id <> ${loc.id} order by code limit 1`;
   const [grp] = await sql`insert into item_group (company_id, segment, code, name) values (${co.id}, '97', 'x', 'Panel test') returning id`;
   const [uom] = await sql`select id from uom where company_id = ${co.id} limit 1`;

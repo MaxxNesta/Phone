@@ -46,7 +46,7 @@ try {
   const [co] = await sql`select id from company order by created_at limit 1`;
   await resetTransactions(sql);
 
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active and not is_quarantine order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and is_active and not is_quarantine and not is_transit order by code limit 1`;
   const [sup] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
   const [ph] = await sql`select id from item where company_id = ${co.id} and tracks_serial and is_active and is_stocked
     and not exists (select 1 from item c where c.parent_item_id = item.id) order by code limit 1`;

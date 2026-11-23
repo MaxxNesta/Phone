@@ -16,7 +16,7 @@ if (process.argv.includes("--remove")) {
   console.log("removed", ids.length); await sql.end(); process.exit(0);
 }
 const P = await import("../lib/posting.ts");
-const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
 const [uom] = await sql`select id from uom where company_id = ${co.id} and code = 'PCS'`;
 const grp = async (code) => (await sql`select id from item_group where company_id = ${co.id} and code = ${code}`)[0].id;
 const [supp] = await sql`insert into business_partner (company_id, code, name, is_supplier) values (${co.id}, 'DEMO-SUP', 'Demo supplier', true) returning id`;

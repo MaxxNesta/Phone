@@ -98,7 +98,7 @@ try {
   console.log("\n  postings cross the 999th journal entry and receipt of the day\n");
   await resetTransactions(sql);
   const today = new Date().toISOString().slice(0, 10);
-  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and is_active order by code limit 1`;
+  const [loc] = await sql`select id from location where company_id = ${co.id} and is_stock_location and not is_quarantine and not is_transit and is_active order by code limit 1`;
   const [item] = await sql`select id from item where company_id = ${co.id} and is_stocked and is_active and not tracks_serial
      and not tracks_batch and not exists (select 1 from item c where c.parent_item_id = item.id) order by code limit 1`;
   const [supp] = await sql`select id from business_partner where company_id = ${co.id} and is_supplier order by code limit 1`;
