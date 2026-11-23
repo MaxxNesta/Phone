@@ -147,7 +147,10 @@
     "inventoryReports": "ကုန်လက်ကျန်",
     "financeReports": "ငွေစာရင်း",
     "fxRevaluation": "ငွေလဲနှုန်း ပြန်တွက်ခြင်း",
-    "parcelsOut": "ပို့ဆောင်ဆဲ ပစ္စည်းများ"
+    "parcelsOut": "ပို့ဆောင်ဆဲ ပစ္စည်းများ",
+    "delivery": "ပို့ဆောင်ရေး",
+    "driverCash": "ယာဉ်မောင်းထံ ငွေ",
+    "codCouriers": "COD Courier များ"
   },
   "shell": {
     "appName": "မြန်မာ ERP",

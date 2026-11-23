@@ -89,7 +89,7 @@ export default async function ParcelsOut({ searchParams }: { searchParams: Promi
 
   return (
     <div className="erp-page">
-      <ErpPageHead eyebrow="Sales" title="Parcels out"
+      <ErpPageHead eyebrow="Delivery" title="Parcels out"
         lead="What is with a driver or courier, what each is to collect at the door, and what is still waiting to go."
         action={<Link href="/sales/deliver" className="erp-hbtn">Deliveries</Link>} />
       <nav className="vtabs pay-tabs" aria-label="Parcels">

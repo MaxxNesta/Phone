@@ -25,7 +25,7 @@ export default async function CourierPayIn({ searchParams }: { searchParams: Pro
 
   return (
     <div className="ie">
-      <Breadcrumbs trail={[{ label: "Receivables", href: "/receivables" }, { label: "COD couriers", href: "/receivables?view=couriers" }, { label: "Pay in" }]} />
+      <Breadcrumbs trail={[{ label: "Delivery", href: "/sales/deliver/parcels" }, { label: "COD couriers", href: "/receivables/couriers" }, { label: "Pay in" }]} />
       <header className="ie-title">
         <h1>Courier pay-in <HelpHint label="About courier pay-in">The courier pays in the cash on delivery it collected, usually keeping its fee back. Tick any parcel it collected that is not confirmed yet: each is handed over through the same check as a driver&rsquo;s doorstep handover. It posts as a cash or bank voucher: the account takes what arrived, Carriage Outward the fee, and COD Receivable under the courier comes down by both.</HelpHint></h1>
       </header>

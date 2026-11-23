@@ -147,7 +147,10 @@
     "inventoryReports": "Inventory",
     "financeReports": "Finance",
     "fxRevaluation": "Exchange revaluation",
-    "parcelsOut": "Parcels out"
+    "parcelsOut": "Parcels out",
+    "delivery": "Delivery",
+    "driverCash": "Driver cash",
+    "codCouriers": "COD couriers"
   },
   "shell": {
     "appName": "Myanmar ERP",

@@ -285,7 +285,7 @@ export default async function Deliver({
   return (
     <div className="erp-page">
       <ErpPageHead
-        eyebrow="Sales"
+        eyebrow="Delivery"
         title="Deliveries"
         lead={
           onlyUnbilled ? "One thing only: goods that went out and were never billed."

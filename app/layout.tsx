@@ -173,12 +173,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {may("sales.view") && hasModule(company, "sales") && (
               <NavGroup label={n("salesHistory")} icon={<ShoppingCart size={15} />} match={["/sales", "/receivables"]}
-                except={["/sales/discounts-given", "/sales/reports"]}>
+                except={["/sales/discounts-given", "/sales/reports", "/sales/deliver", "/receivables/drivers", "/receivables/couriers"]}>
                 <NavLink href="/sales" exact>{n("salesOverview")}</NavLink>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
                 {deliveries && <NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
-                {deliveries && <NavLink href="/sales/deliver" exact>{n("deliveries")}</NavLink>}
-                {deliveries && <NavLink href="/sales/deliver/parcels">{n("parcelsOut")}</NavLink>}
                 {wholesale && <NavLink href="/sales/consignment">{n("consignmentSale")}</NavLink>}
                 <NavLink href="/sales/returns" exact>{n("customerReturns")}</NavLink>
                 <NavLink href="/sales/credit-notes" exact>{n("creditNotes")}</NavLink>
@@ -352,12 +350,24 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {wholesale && may("settings.manage") && hasModule(company, "logistics") && (
-              <NavGroup label={n("logistics")} icon={<Truck size={15} />} match={["/logistics"]}>
-                <NavLink href="/logistics/routes" exact>{n("routes")}</NavLink>
-                <NavLink href="/logistics/trips" exact>{n("deliveryTrips")}</NavLink>
-                <NavLink href="/logistics/vehicles" exact>{n("vehicles")}</NavLink>
-                <NavLink href="/logistics/drivers" exact>{n("drivers")}</NavLink>
+            {/* Everything about goods going out to customers, in one place (2026-11-24):
+                what is out and what to collect, recording deliveries, the money
+                drivers and couriers hold, and who drives. Shown wherever the
+                shop delivers (the per-shop orders & deliveries switch); trips,
+                routes and vehicles come with the Logistics add-on. */}
+            {deliveries && may("sales.view") && hasModule(company, "sales") && (
+              <NavGroup label={n("delivery")} icon={<Truck size={15} />}
+                match={["/sales/deliver", "/logistics", "/receivables/drivers", "/receivables/couriers"]}>
+                <NavLink href="/sales/deliver/parcels">{n("parcelsOut")}</NavLink>
+                <NavLink href="/sales/deliver" exact>{n("deliveries")}</NavLink>
+                <NavLink href="/receivables/drivers">{n("driverCash")}</NavLink>
+                <NavLink href="/receivables/couriers">{n("codCouriers")}</NavLink>
+                {may("settings.manage") && hasModule(company, "logistics") && <>
+                  <NavLink href="/logistics/trips" exact>{n("deliveryTrips")}</NavLink>
+                  <NavLink href="/logistics/routes" exact>{n("routes")}</NavLink>
+                  <NavLink href="/logistics/vehicles" exact>{n("vehicles")}</NavLink>
+                </>}
+                {may("settings.manage") && <NavLink href="/logistics/drivers" exact>{n("drivers")}</NavLink>}
               </NavGroup>
             )}
 

@@ -6,7 +6,6 @@ import { getBranches } from "@/lib/queries";
 import { moneyAccounts } from "@/lib/courier-payables";
 import { driversCash } from "@/lib/cod";
 import { receiveFromDriverAction } from "@/lib/cod-actions";
-import { PartnerTabs } from "@/components/partner-tabs";
 import { HelpHint } from "@/components/help-hint";
 import { DriverHandinForm } from "@/components/driver-handin-form";
 
@@ -24,15 +23,14 @@ export default async function ReceiveFromDriver({ searchParams }: { searchParams
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Sales</span>
-        <h1>Receivables</h1>
+        <span className="eyebrow">Delivery</span>
+        <h1>Driver cash</h1>
         <HelpHint>
           Cash on delivery a driver collected at the door sits in Cash with Drivers under that driver until it is handed in.
           Tick what is being handed in and enter the cash counted: it moves to the till. Counted short, the difference stays
           against the driver.
         </HelpHint>
       </div>
-      <PartnerTabs side="CUSTOMER" active="drivers" />
       {/* The driver list is shared with Logistics trips, but COD needs it without that add-on. */}
       <div className="actions" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
         <Link href="/logistics/drivers" className="btn ghost">Manage drivers</Link>

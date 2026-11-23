@@ -24,8 +24,6 @@ export async function PartnerTabs({ side, active, section }: {
       ]
     : [
         ["list", "/receivables", "Customers"],
-        ["couriers", "/receivables?view=couriers", "COD couriers"],
-        ["drivers", "/receivables/drivers", "Driver cash"],
         ["ledger", "/receivables/ledger", "Customer ledger"],
       ];
   return (
