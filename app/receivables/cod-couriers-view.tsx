@@ -1,3 +1,4 @@
+import { carrierInstruction, collectionBalance } from "@/lib/carrier-instruction";
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
 import { codCouriers, courierParcels } from "@/lib/cod-couriers";
@@ -42,14 +43,14 @@ export async function CodCouriersView({ companyId }: { companyId: string }) {
   const parcelRows: DataRow[] = parcels.map((p) => ({
     key: p.id,
     searchText: [p.no, p.invoiceNo, p.customer, p.collector?.name].filter(Boolean).join(" "),
-    sort: { date: p.date, no: p.no, open: p.due },
+    sort: { date: p.date, no: p.no, open: collectionBalance(p) },
     node: (
       <tr>
         <td>{day(p.date)}</td>
         <td className="code"><Link href={`/documents/${p.invoiceId}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.invoiceNo}</div></td>
         <td>{p.customer}</td>
         <td>{p.collector?.name ?? "—"}{p.state === "NOT_HOME" && <div className="subline">Not home{p.retryOn ? ` · retry ${p.retryOn}` : ""}</div>}</td>
-        <td className="r">{money(p.due)}</td>
+        <td className="r">{p.sharedAmount ? carrierInstruction(p) : money(collectionBalance(p))}</td>
       </tr>
     ),
   }));

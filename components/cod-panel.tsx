@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { carrierInstruction, collectionBalance } from "@/lib/carrier-instruction";
 import { useRouter } from "next/navigation";
 import { ConfirmDelete } from "./confirm-delete";
 import { useNotice } from "@/components/toast";
@@ -109,6 +110,20 @@ function ReceiveBack({ p, today, primary }: { p: Parcel; today: string; primary?
   );
 }
 
+function Handover({ p, today, accounts, primary = false }: { p: Parcel; today: string; accounts: Account[]; primary?: boolean }) {
+  return (
+      <Step action={handoverAction} className={primary ? "btn primary" : "btn ghost tiny"} label="Confirm payment & hand over" pendingLabel="Posting…"
+        title={`Hand over ${p.no}`}
+        detail={`${p.lines.map((l) => `${l.item}${l.serials.length ? ` (${l.serials.join(", ")})` : ""}`).join("; ")}. `
+          + `${fmt(collectionBalance(p))} MMK to collect${p.availableDeposit > 0 ? ` after the ${fmt(Math.min(p.due, p.availableDeposit))} deposit` : ""}. The phone is released only when this is paid in full.`}
+        confirmLabel="Paid · hand over">
+        <input type="hidden" name="parcel_id" value={p.id} />
+        <DateField today={today} />
+        <PayFields parcel={p} amount={collectionBalance(p)} accounts={accounts} />
+      </Step>
+  );
+}
+
 export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accounts, today, canPost, defaultCollector }: {
   invoiceId: string; invoiceNo: string; sheet: CodSheet; drivers: Opt[]; couriers: Opt[]; accounts: Account[];
   today: string; canPost: boolean; defaultCollector: string;
@@ -146,25 +161,12 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
   })).filter((l) => l.qty > 0)), [left, dispatchLines]);
 
   const first = open[0];
-  const depositsLeft = sheet.deposits;
-  const dueOf = (p: Parcel) => Math.max(0, p.due - depositsLeft);
-
   /* One primary action: whatever moves this sale forward next. */
   let primary: React.ReactNode = null;
   if (canPost && returning[0]) {
     primary = <ReceiveBack p={returning[0]} today={today} primary />;
   } else if (canPost && first) {
-    primary = (
-      <Step action={handoverAction} className="btn primary" label="Confirm payment & hand over" pendingLabel="Posting…"
-        title={`Hand over ${first.no}`}
-        detail={`${first.lines.map((l) => `${l.item}${l.serials.length ? ` (${l.serials.join(", ")})` : ""}`).join("; ")}. `
-          + `${fmt(dueOf(first))} MMK to collect${depositsLeft > 0 ? ` after the ${fmt(depositsLeft)} deposit` : ""}. The phone is released only when this is paid in full.`}
-        confirmLabel="Paid · hand over">
-        <input type="hidden" name="parcel_id" value={first.id} />
-        <DateField today={today} />
-        <PayFields parcel={first} amount={dueOf(first)} accounts={accounts} />
-      </Step>
-    );
+    primary = <Handover p={first} today={today} accounts={accounts} primary />;
   } else if (canPost && left.length > 0) {
     primary = (
       <Step action={dispatchCodAction} className="btn primary" label="Dispatch" pendingLabel="Posting…"
@@ -221,7 +223,7 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
             <tbody>
               {sheet.parcels.map((p) => (
                 <tr key={p.id}>
-                  <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.date}</div></td>
+                  <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.date}</div><Link className="dispatch-slip-link" href={`/sales/deliver/dispatch/${p.id}`}>Delivery slip</Link></td>
                   <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <div className="subline">{l.serials.join(", ")}</div> : null}</div>)}</td>
                   <td>{p.collector?.name ?? "—"}</td>
                   <td>
@@ -229,10 +231,11 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                     {p.lastReason && <div className="subline">{p.lastReason}{p.retryOn ? ` · retry ${p.retryOn}` : ""}</div>}
                     {p.closedBy && <div className="subline"><Link href={`/documents/${p.closedBy}`} style={{ color: "var(--link)" }}>{p.closedByNo}</Link></div>}
                   </td>
-                  <td className="r">{p.state === "OUT" || p.state === "NOT_HOME" ? fmt(p.due) : "—"}</td>
+                  <td className="r">{p.state === "OUT" || p.state === "NOT_HOME" ? (p.sharedAmount ? carrierInstruction(p) : fmt(collectionBalance(p))) : "—"}</td>
                   <td className="tight">
                     {canPost && (p.state === "OUT" || p.state === "NOT_HOME") && (
                       <span className="cod-row-actions">
+                        {(p.id !== first?.id || returning.length > 0) && <Handover p={p} today={today} accounts={accounts} />}
                         <Step action={depositAction} className="btn ghost tiny" label="Part payment" pendingLabel="Posting…"
                           title={`Part payment on ${p.no}`} detail="Money taken before handover is kept as a deposit for this invoice and applied once, when the phone is handed over. The phone stays with the driver."
                           confirmLabel="Keep as deposit">

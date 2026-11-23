@@ -20,6 +20,8 @@ const P = await import("../lib/posting.ts");
 const C = await import("../lib/cod.ts");
 const K = await import("../lib/cod-couriers.ts");
 
+const { collectionBalance, carrierInstruction, batchCollection } = await import("../lib/carrier-instruction.ts");
+
 let failed = 0;
 const check = (what, ok, got) => { console.log(`  ${ok ? "PASS" : "FAIL"}  ${what}${ok ? "" : `   (got ${JSON.stringify(got)})`}`); if (!ok) failed++; };
 const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.01;
@@ -94,6 +96,13 @@ try {
     check("part payment does not release the phone", part !== "posted" && (await unit(imei[0])).is_transit, part);
     await C.recordDeposit(tx, { companyId: co.id, parcelId: pa.id, docDate: day, payment: { to: "DRIVER", amount: 300000 } });
     check("the 300,000 taken is a deposit the driver holds, not a sale", near(await driverHolds(), 300000) && !(await aged(a.id)), await driverHolds());
+    const slip = await C.parcel(pa.id, tx);
+    check("driver slip and parcel row both deduct the advance", near(collectionBalance(slip), 705000)
+      && carrierInstruction(slip) === "Collect 705,000 MMK", slip);
+    check("a batch of two parcels shares the charge and deposit once",
+      near(batchCollection([slip, { ...slip, goods: 200000 }]), 905000));
+    check("a printed split with a shared balance asks the shop to confirm",
+      carrierInstruction({ ...slip, sharedAmount: true }).includes("confirm balance"));
     const h = await C.confirmHandover(tx, { companyId: co.id, parcelId: pa.id, docDate: day, payment: { to: "DRIVER", amount: 705000 } });
     check("handover bills 1,005,000, the deposit applied once, 705,000 collected", near(h.billed, 1005000) && near(h.deposits, 300000) && near(h.due, 705000), h);
     check("customer AR is zero", near(await owed(a.id), 0) && !(await aged(a.id)), await owed(a.id));

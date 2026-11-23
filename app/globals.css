@@ -11986,3 +11986,48 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .cod-remit-sum dd { margin: 0; }
 .cod-remit-sum > div:last-child { border-top: 1px solid var(--line); padding-top: 6px; }
 .cod-remit-sum > div.bad dt, .cod-remit-sum > div.bad dd { color: var(--bad); }
+
+/* Dispatch uses the shop's monochrome document layout on screen and on paper. */
+.dispatch-queue, .dispatch-paper, .cod-sheet {
+  --dispatch-ink: var(--text, CanvasText);
+  --dispatch-line: color-mix(in srgb, var(--dispatch-ink) 18%, transparent);
+  --dispatch-wash: color-mix(in srgb, var(--dispatch-ink) 6%, transparent);
+}
+.dispatch-queue, .dispatch-paper { color: var(--dispatch-ink); max-width: 82rem; margin-inline: auto; }
+.dispatch-queue h1 { margin: .6rem 0 1.4rem; }
+.dispatch-queue nav { display: flex; flex-wrap: wrap; gap: 1.5rem; border-bottom: 1px solid var(--dispatch-line); }
+.dispatch-queue nav a { padding: .75rem 0; color: inherit; }
+.dispatch-queue nav [aria-current=page] { box-shadow: inset 0 -3px currentColor; font-weight: 650; }
+.dispatch-split { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+.dispatch-entry { display: grid; gap: .3rem; padding: 1rem; color: inherit; border-bottom: 1px solid var(--dispatch-line); }
+.dispatch-entry[aria-current=true], .dispatch-entry:hover { background: var(--dispatch-wash); }
+.dispatch-entry span, .carrier-slip small { display: block; font-size: .9em; }
+.dispatch-split aside { border-inline-start: 1px solid var(--dispatch-line); padding: 1.5rem; }
+.carrier-slip header, .carrier-slip dl div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.carrier-slip header, .carrier-slip section, .carrier-slip footer { border-block-start: 1px solid var(--dispatch-line); padding-block: 1rem; }
+.carrier-slip h2 { margin-block: .7rem .2rem; }
+.carrier-slip h3 { font-size: clamp(1.4rem, 3vw, 2.2rem); line-height: 1.15; margin-block: .3rem .8rem; }
+.carrier-slip p { margin-block: .4rem 1rem; overflow-wrap: anywhere; }
+.carrier-slip dl { margin-block: 1rem; }
+.carrier-slip dl div { padding-block: .32rem; }
+.carrier-slip dd { margin: 0; text-align: end; font-variant-numeric: tabular-nums; }
+.dispatch-button { display: inline-block; background: var(--dispatch-ink); color: var(--bg, Canvas); padding: .6rem 1rem; border-radius: .35rem; }
+.dispatch-invoice, .dispatch-slip-link { display: inline-block; margin-block: .5rem; text-decoration: underline; color: inherit; }
+.dispatch-paper { max-width: 40rem; }
+.dispatch-paper .actions { justify-content: space-between; margin-bottom: 1.2rem; }
+.cod-sheet .pill { background: var(--dispatch-wash); border-color: var(--dispatch-line); color: var(--dispatch-ink); }
+@media (max-width: 700px) {
+  .dispatch-split { display: block; }
+  .dispatch-split aside { border: 0; padding: 1rem 0; }
+}
+@media print {
+  .dispatch-paper { --dispatch-ink: black; --dispatch-line: #ccc; color: black; background: white; }
+  .dispatch-paper .carrier-slip { break-inside: avoid; }
+}
+.cod-sheet, .confirm:has(.cod-collect), .dispatch-queue, .dispatch-paper,
+.receive-mode:has(#fulfil-q), .docsheet:has(#fee_mode), .docsheet:has(#till_account_id) {
+  --blue: var(--ink); --blue-ink: var(--ink); --link: var(--ink);
+  --dispatch-ink: var(--ink);
+}
+.dispatch-split .dispatch-entry:focus-visible, .dispatch-queue nav a:focus-visible,
+.dispatch-paper a:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }

@@ -35,7 +35,7 @@ export default async function CourierPayIn({ searchParams }: { searchParams: Pro
           action={remitCourierAction}
           couriers={owing.map((c) => ({ id: c.id, name: c.name, held: c.held, feeMode: c.feeMode }))}
           parcels={parcels.map((p) => ({ id: p.id, courierId: p.collector!.id, no: p.no, invoiceNo: p.invoiceNo, date: p.date,
-            customer: p.customer, outstanding: p.due, branchId: p.branchId }))}
+            customer: p.customer, invoiceId: p.invoiceId, goods: p.goods, extras: p.extras, availableDeposit: p.availableDeposit, sharedAmount: p.sharedAmount, branchId: p.branchId }))}
           branches={branches.map((b) => ({ id: b.id, label: `${b.code} · ${b.name}` }))}
           accounts={accounts.map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
           initialCourierId={courier}

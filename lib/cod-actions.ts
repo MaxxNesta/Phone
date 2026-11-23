@@ -26,6 +26,7 @@ function refresh(...ids: (string | null | undefined)[]) {
   for (const id of ids) if (id) revalidatePath(`/documents/${id}`);
   revalidatePath("/receivables");
   revalidatePath("/sales/invoices");
+  revalidatePath("/sales/deliver/dispatch");
 }
 
 /** "D:<driver>" or "C:<courier>", as the Delivered by select sends it. */

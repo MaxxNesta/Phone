@@ -1,3 +1,4 @@
+import { batchCollection } from "@/lib/carrier-instruction";
 import { StatusBanner } from "@/components/status-banner";
 import { hasModule } from "@/lib/plans";
 import { DISPLAY_TZ, todayLocal } from "@/lib/format";
@@ -1322,6 +1323,9 @@ export default async function DocumentPage({
      button's explanation is its tooltip rather than a sentence in the page. */
   const headActions = (
     <>
+      {doc.doc_type === "SALES_INVOICE" && doc.payment_type === "CREDIT" && notArrived.map(d => (
+        <Link key={d.id} href={`/sales/deliver/dispatch/${d.id}`} className="btn ghost">Delivery slip{notArrived.length > 1 ? ` · ${d.doc_no}` : ""}</Link>
+      ))}
       {notArrived[0] && can(user, "sales.post") && (
         <ConfirmDelivered deliveryId={notArrived[0].id} deliveryNo={notArrived[0].doc_no} />
       )}
@@ -1595,7 +1599,7 @@ export default async function DocumentPage({
       {chainStages.length > 0 && (
         <DocPanelSection title="Flow"><DocFlow chain={chainStages} docNo={doc.doc_no ?? ""} notes={{ [doc.doc_type]: shortDate(doc.doc_date),
           ...(cod && cod.parcels.some((p) => p.state === "OUT" || p.state === "NOT_HOME")
-            ? { CUSTOMER_RECEIPT: `To collect ${money(cod.parcels.filter((p) => p.state === "OUT" || p.state === "NOT_HOME").reduce((t, p) => t + p.due, 0))}` } : {}) }} /></DocPanelSection>
+            ? { CUSTOMER_RECEIPT: `To collect ${money(batchCollection(cod.parcels.filter((p) => p.state === "OUT" || p.state === "NOT_HOME")))}` } : {}) }} /></DocPanelSection>
       )}
       <DocPanelSection title="History">
         <DocPanelList items={(versions.length ? versions : [{ id: doc.id, version: Number(doc.version ?? 1), gross_total: doc.gross_total,

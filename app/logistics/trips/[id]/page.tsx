@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { money, shortDate } from "@/lib/format";
@@ -15,7 +16,7 @@ export default async function TripDetail({
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
 
-  const found = await getTrip(company.id, id);
+  const found = await getTrip(company.id, id, await seenLocations());
   if (!found) notFound();
   const { trip, stops } = found as unknown as {
     trip: {

@@ -18,7 +18,7 @@ type Stop = {
   partner_name: string | null; township: string | null; region: string | null;
   phone: string | null; address: string | null;
   /** A cash-on-delivery parcel (0233): handed over only against payment, from its invoice. */
-  cod_parcel?: boolean; source_document_id?: string | null;
+  collection: string; cod_parcel?: boolean; source_document_id?: string | null;
 };
 
 type Candidate = {
@@ -126,7 +126,7 @@ export function TripStops({
                     <th>Delivery</th>
                     <th>Customer</th>
                     <th>Where</th>
-                    <th className="r">Value</th>
+                    <th>Collection instruction</th>
                     <th>Status</th>
                     <th />
                   </tr>
@@ -154,7 +154,7 @@ export function TripStops({
                         {s.address && <div className="subline">{s.address}</div>}
                       </td>
                       <td className="r">
-                        {Number(s.gross_total) > 0 ? money(s.gross_total) : "—"}
+                        {s.collection}
                       </td>
                       <td>
                         {/* "Delivered" reads wrong on a call with no goods —

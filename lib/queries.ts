@@ -1,3 +1,4 @@
+import { deliveryRows } from "./delivery-worklist";
 import { cache } from "react";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
@@ -3342,7 +3343,7 @@ export async function getInvoiceDeliveryContext(companyId: string, invoiceId: st
 
 export async function getPendingDeliveryLines(companyId: string) {
   const docs = await sql`
-    select inv.id, inv.doc_no, inv.doc_date, inv.partner_id, inv.location_id,
+    select inv.id, inv.doc_no, inv.doc_date, inv.partner_id, inv.location_id, inv.ar_on_handover, inv.payment_type,
            p.name as partner_name
       from document inv
       join business_partner p on p.id = inv.partner_id
@@ -3407,7 +3408,7 @@ export async function getPendingDeliveries(companyId: string) {
   const pending = await getPendingDeliveryLines(companyId);
   return pending.map((d: any) => ({
     id: d.id, doc_no: d.doc_no, doc_date: d.doc_date, partner_name: d.partner_name,
-    lines: d.lines.length,
+    lines: d.lines.length, location_id: d.location_id, ar_on_handover: d.ar_on_handover, payment_type: d.payment_type,
     total_qty: d.lines.reduce((s: number, l: any) => s + l.qty, 0),
   }));
 }
@@ -5416,7 +5417,7 @@ export async function getTrips(companyId: string) {
 }
 
 /** One trip, its stops in running order, and what each stop is carrying. */
-export async function getTrip(companyId: string, tripId: string) {
+export async function getTrip(companyId: string, tripId: string, locations: string[] | null) {
   const [trip] = await sql`
     select * from v_delivery_trip where company_id = ${companyId} and id = ${tripId}`;
   if (!trip) return null;
@@ -5439,7 +5440,12 @@ export async function getTrip(companyId: string, tripId: string) {
      where s.trip_id = ${tripId}
      order by s.seq`;
 
-  return { trip, stops };
+  const ids = stops.flatMap(s => s.document_id ? [String(s.document_id)] : []);
+  const instructions = new Map((ids.length ? await deliveryRows(companyId, locations, ids) : [])
+    .map(r => [r.id, r.instruction]));
+  return { trip, stops: stops.map(s => ({ ...s, collection: s.document_id
+    ? instructions.get(String(s.document_id)) ?? "Confirm with shop" : "Visit only" })) };
+
 }
 
 /**

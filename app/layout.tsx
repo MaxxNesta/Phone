@@ -177,7 +177,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <NavLink href="/sales" exact>{n("salesOverview")}</NavLink>
                 <NavLink href="/sales/invoices" exact>{n("salesInvoices")}</NavLink>
                 {deliveries && <NavLink href="/sales/orders" exact>{n("salesOrders")}</NavLink>}
-                {deliveries && <NavLink href="/sales/deliver">{n("deliveries")}</NavLink>}
+                {deliveries && <NavLink href={wholesale ? "/sales/deliver" : "/sales/deliver/dispatch"}>{n("deliveries")}</NavLink>}
                 {wholesale && <NavLink href="/sales/consignment">{n("consignmentSale")}</NavLink>}
                 <NavLink href="/sales/returns" exact>{n("customerReturns")}</NavLink>
                 <NavLink href="/sales/credit-notes" exact>{n("creditNotes")}</NavLink>
@@ -351,7 +351,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </NavGroup>
             )}
 
-            {wholesale && may("settings.manage") && hasModule(company, "logistics") && (
+            {may("settings.manage") && hasModule(company, "logistics") && (
               <NavGroup label={n("logistics")} icon={<Truck size={15} />} match={["/logistics"]}>
                 <NavLink href="/logistics/routes" exact>{n("routes")}</NavLink>
                 <NavLink href="/logistics/trips" exact>{n("deliveryTrips")}</NavLink>

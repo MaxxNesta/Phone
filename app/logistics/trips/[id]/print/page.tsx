@@ -1,3 +1,4 @@
+import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -14,16 +15,11 @@ import { PrintButton } from "@/components/print-button";
  * no other document has, because no other document is carried around all
  * day and written on.
  *
- * Values are printed per stop because the driver is handing over goods
- * somebody has to agree the worth of, and a total at the foot so the yard
- * can check what went out against what came back.
+ * The driver needs the collection instruction for each stop.
  */
 const shortDate = (v: unknown) =>
   v ? new Date(String(v)).toLocaleDateString("en-GB",
     { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }) : "";
-
-const money = (v: string | number | null | undefined) =>
-  Number(v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 export default async function TripManifest({
   params,
@@ -34,7 +30,7 @@ export default async function TripManifest({
   const company = await getCompany();
   if (!company) notFound();
 
-  const found = await getTrip(company.id, id);
+  const found = await getTrip(company.id, id, await seenLocations());
   if (!found) notFound();
 
   const { trip, stops } = found as unknown as {
@@ -46,7 +42,7 @@ export default async function TripManifest({
     };
     stops: Array<{
       id: string; seq: number; status: string;
-      document_id: string | null; doc_no: string | null; gross_total: string;
+      collection: string; document_id: string | null; doc_no: string | null; gross_total: string;
       partner_name: string | null; township: string | null; region: string | null;
       phone: string | null; address: string | null;
     }>;
@@ -105,7 +101,7 @@ export default async function TripManifest({
                 <th>Customer</th>
                 <th>Where</th>
                 <th>Delivery</th>
-                <th style={{ textAlign: "right" }}>Value</th>
+                <th>Collection instruction</th>
                 <th style={{ width: "32mm" }}>Received by</th>
               </tr>
             </thead>
@@ -124,29 +120,13 @@ export default async function TripManifest({
                   {/* A call with no goods still prints: the driver is going
                       there, and on a pre-sale round that call is the job. */}
                   <td className="sheet-code">{s.doc_no ?? "call only"}</td>
-                  <td style={{ textAlign: "right" }}>
-                    {Number(s.gross_total) > 0 ? money(s.gross_total) : "—"}
-                  </td>
+                  <td><strong>{s.collection}</strong></td>
                   {/* Left empty on purpose. The shop signs this column, and a
                       status printed here would be yesterday's answer to a
                       question being asked today. */}
                   <td />
                 </tr>
               ))}
-            </tbody>
-          </table>
-
-          {/* A table: .sheet-totals is styled as one, with th for the label
-              and td for the figure. */}
-          <table className="sheet-totals">
-            <tbody>
-              <tr className="strong">
-                <th>Goods carried</th>
-                <td>
-                  {money(trip.goods_value)}{" "}
-                  <span className="sheet-ccy">{company.base_currency}</span>
-                </td>
-              </tr>
             </tbody>
           </table>
 

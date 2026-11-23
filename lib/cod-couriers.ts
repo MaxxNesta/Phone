@@ -1,3 +1,4 @@
+import { batchCollection } from "./carrier-instruction";
 /**
  * Cash on delivery carried by a courier company (0232, 0233).
  *
@@ -58,7 +59,7 @@ export async function codCouriers(companyId: string): Promise<CodCourier[]> {
     openParcels(companyId)]);
   const list = (rows as unknown as Omit<CodCourier, "out" | "outCount">[]).map((c) => {
     const mine = parcels.filter((p) => p.collector?.kind === "COURIER" && p.collector.id === c.id && p.state !== "REFUSED");
-    return { ...c, out: round4(mine.reduce((t, p) => t + p.due, 0)), outCount: mine.length };
+    return { ...c, out: round4(batchCollection(mine)), outCount: mine.length };
   });
   return list.sort((a, b) => (b.held + b.out) - (a.held + a.out) || a.name.localeCompare(b.name));
 }

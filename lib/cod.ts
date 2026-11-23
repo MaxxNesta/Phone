@@ -43,12 +43,24 @@ export type Parcel = {
   lines: { lineId: string; itemId: string; item: string; qty: number; serials: string[]; focReasonId: string | null }[];
   /** What handing it over bills: its goods at the invoice's prices, with the charge and services if nothing was handed over before. */
   due: number;
+  goods: number; extras: number; availableDeposit: number;
+  phone: string | null; address: string | null;
+  sharedAmount: boolean;
 };
 
 const PARCELS = (db: Db, where: ReturnType<typeof sql>) => db`
   select t.id, t.doc_no as no, t.doc_date::text as date, t.source_document_id as "invoiceId", i.doc_no as "invoiceNo",
          i.partner_id as "customerId", bp.name as customer, t.location_id as "warehouseId", t.to_location_id as "binId",
          (select coalesce(l.parent_id, l.id) from location l where l.id = t.location_id) as "branchId",
+         bp.phone, concat_ws(', ', nullif(bp.address, ''), nullif(bp.township, ''), nullif(bp.region, '')) as address,
+         (select coalesce(sum(v.available), 0)::float from v_partner_advance v join document a on a.id = v.payment_id
+            where a.source_document_id = i.id and a.doc_type = 'CUSTOMER_RECEIPT' and a.status = 'POSTED' and v.available > 0) as deposit,
+         exists (select 1 from document sibling join location bin on bin.id = sibling.to_location_id and bin.is_transit
+                  where sibling.source_document_id = i.id and sibling.id <> t.id and sibling.doc_type = 'STOCK_TRANSFER'
+                    and sibling.status = 'POSTED' and sibling.reversed_by_document_id is null
+                    and not exists (select 1 from dispatch_event e left join document ed on ed.id = e.document_id
+                                     where e.parcel_id = sibling.id and (e.kind = 'REFUSED' or
+                                       (e.kind in ('HANDED_OVER','RETURNED') and ed.status = 'POSTED')))) as sibling,
          t.driver_id, t.courier_id, dr.name as driver_name, cr.name as courier_name,
          (select json_build_object('kind', e.kind, 'reason', e.reason, 'retry', e.retry_on::text, 'at', e.created_at,
                                    'doc', e.document_id, 'docNo', ed.doc_no)
@@ -103,6 +115,9 @@ function toParcel(r: Record<string, unknown>): Parcel {
     closedByNo: state === "HANDED_OVER" || state === "RETURNED" ? last!.docNo : null,
     lines: ((r.lines as Array<{ lineId: string; itemId: string; item: string; qty: number; serials: string[]; foc: string | null }>) ?? [])
       .map((l) => ({ lineId: l.lineId, itemId: l.itemId, item: l.item, qty: Number(l.qty), serials: l.serials ?? [], focReasonId: l.foc })),
+    phone: r.phone as string | null, address: r.address as string | null,
+    goods: Number(r.goods), extras: Number(r.extras), availableDeposit: Number(r.deposit),
+    sharedAmount: Boolean(r.sibling) && (Number(r.extras) > 0 || Number(r.deposit) > 0),
     due: round4(Number(r.goods) + Number(r.extras)),
   };
 }
@@ -125,6 +140,16 @@ export async function openParcels(companyId: string, courierId?: string | null):
                        where e.parcel_id = t.id and e.kind in ('HANDED_OVER', 'RETURNED'))`)).map(toParcel);
 }
 
+/** Read-only carrier instructions for the requested shop, branch and documents. */
+export async function carrierParcels(companyId: string, locations: string[] | null, ids?: string[]) {
+  return (await PARCELS(sql, sql`t.company_id = ${companyId} and i.status = 'POSTED'
+    and i.reversed_by_document_id is null and t.reversed_by_document_id is null
+    ${locations ? sql`and t.location_id = any(${locations}::uuid[])` : sql``}
+    ${ids ? sql`and t.id = any(${ids}::uuid[])` : sql`and not exists (
+      select 1 from dispatch_event e join document ed on ed.id = e.document_id and ed.status = 'POSTED'
+      where e.parcel_id = t.id and e.kind in ('HANDED_OVER','RETURNED'))`}`)).map(toParcel);
+}
+
 async function collectorOf(db: Db, companyId: string, c: { driverId?: string | null; courierId?: string | null }) {
   if (!!c.driverId === !!c.courierId) throw new Error("Choose who carries it: one of your drivers, or a courier company.");
   if (c.driverId) {
@@ -136,16 +161,28 @@ async function collectorOf(db: Db, companyId: string, c: { driverId?: string | n
   }
 }
 
-/** What each line of a COD invoice still has to go out: ordered, less what is out or handed over, plus what came back. */
-export async function undispatched(invoiceId: string, db: Db = sql) {
-  return (await db`
-    select dl.id as "lineId", dl.item_id as "itemId", it.code || ' · ' || it.name as item, it.tracks_serial as serial,
-           (dl.base_qty - coalesce((
+// Remaining warehouse quantity for an invoice line, including parcels scanned back.
+const codRemaining = sql`(dl.base_qty - coalesce((
               select sum(case when tb.is_transit then tl.base_qty else -tl.base_qty end)
                 from document_line tl join document t on t.id = tl.document_id and t.status = 'POSTED' and t.doc_type = 'STOCK_TRANSFER'
                 join location tb on tb.id = t.to_location_id
                 join location fb on fb.id = t.location_id
-               where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0))::float as qty
+               where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0))`;
+
+export async function waitingCodInvoices(companyId: string, locations: string[] | null) {
+  return sql`select d.id, d.doc_no, p.name as partner_name from document d join business_partner p on p.id = d.partner_id
+    where d.company_id = ${companyId} and d.ar_on_handover and d.status = 'POSTED' and d.reversed_by_document_id is null
+      ${locations ? sql`and d.location_id = any(${locations}::uuid[])` : sql``}
+      and exists(select 1 from document_line dl join item it on it.id = dl.item_id and it.is_stocked
+                  where dl.document_id = d.id and ${codRemaining} > 0)
+    order by d.doc_date, d.doc_no`;
+}
+
+/** What each line of a COD invoice still has to go out: ordered, less what is out or handed over, plus what came back. */
+export async function undispatched(invoiceId: string, db: Db = sql) {
+  return (await db`
+    select dl.id as "lineId", dl.item_id as "itemId", it.code || ' · ' || it.name as item, it.tracks_serial as serial,
+           ${codRemaining}::float as qty
       from document_line dl join item it on it.id = dl.item_id
      where dl.document_id = ${invoiceId} and it.is_stocked
      order by dl.line_no`) as unknown as { lineId: string; itemId: string; item: string; serial: boolean; qty: number }[];
