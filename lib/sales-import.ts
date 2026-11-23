@@ -22,7 +22,7 @@ export async function getSalesImportMaster(companyId: string, file: { refs: stri
   const refs = file.refs.filter(Boolean).map((r) => r.trim().toLowerCase());
   const [customers, locations, items, payAccounts, known, units, [foc]] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${companyId} and is_customer order by code`,
-    sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active and not is_quarantine order by name`,
+    sql`select id, code, name from location where company_id = ${companyId} and is_stock_location and is_active and not is_quarantine and not is_transit order by name`,
     sql`select id, code, name, is_active, tracks_serial, identity from item where company_id = ${companyId}`,
     sql`select id, code, name from account where company_id = ${companyId} and is_active and is_postable
            and (is_cash_account or is_bank_account) order by code`,

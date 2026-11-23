@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { money, moneyOrTrace } from "@/lib/db";
-import { codCouriers, codParcels } from "@/lib/cod-couriers";
+import { codCouriers, courierParcels } from "@/lib/cod-couriers";
 import { DataTable, type DataRow } from "@/components/data-table";
 
 const day = (d: string) => new Date(d).toLocaleDateString("en-GB", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" });
@@ -12,8 +12,7 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
  * its name), and what it has paid in to date. Below, every parcel still out.
  */
 export async function CodCouriersView({ companyId }: { companyId: string }) {
-  const [couriers, parcels] = await Promise.all([codCouriers(companyId), codParcels(companyId, null)]);
-  const name = new Map(couriers.map((c) => [c.id, c.name]));
+  const [couriers, parcels] = await Promise.all([codCouriers(companyId), courierParcels(companyId, null)]);
   const totalOut = couriers.reduce((s, c) => s + c.out, 0);
   const totalHeld = couriers.reduce((s, c) => s + c.held, 0);
   const totalRemitted = couriers.reduce((s, c) => s + c.remitted, 0);
@@ -42,15 +41,15 @@ export async function CodCouriersView({ companyId }: { companyId: string }) {
 
   const parcelRows: DataRow[] = parcels.map((p) => ({
     key: p.id,
-    searchText: [p.no, p.customer, p.customerCode, name.get(p.courierId)].filter(Boolean).join(" "),
-    sort: { date: p.date, no: p.no, open: p.outstanding },
+    searchText: [p.no, p.invoiceNo, p.customer, p.collector?.name].filter(Boolean).join(" "),
+    sort: { date: p.date, no: p.no, open: p.due },
     node: (
       <tr>
         <td>{day(p.date)}</td>
-        <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.no}</Link></td>
-        <td>{p.customer}<div className="subline">{p.customerCode}</div></td>
-        <td>{name.get(p.courierId) ?? "—"}</td>
-        <td className="r">{money(p.outstanding)}</td>
+        <td className="code"><Link href={`/documents/${p.invoiceId}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.invoiceNo}</div></td>
+        <td>{p.customer}</td>
+        <td>{p.collector?.name ?? "—"}{p.state === "NOT_HOME" && <div className="subline">Not home{p.retryOn ? ` · retry ${p.retryOn}` : ""}</div>}</td>
+        <td className="r">{money(p.due)}</td>
       </tr>
     ),
   }));
@@ -61,7 +60,7 @@ export async function CodCouriersView({ companyId }: { companyId: string }) {
         <div className="kpi">
           <span className="kpi-label">Out for delivery</span>
           <span className="kpi-value">{moneyOrTrace(totalOut)}</span>
-          <span className="kpi-note">{plural(parcels.length, "parcel")}, still owed by customers</span>
+          <span className="kpi-note">{plural(parcels.length, "parcel")}, nothing owed until handed over</span>
         </div>
         <div className="kpi">
           <span className="kpi-label">Held by couriers</span>
@@ -112,7 +111,7 @@ export async function CodCouriersView({ companyId }: { companyId: string }) {
               defaultSort={{ key: "date", dir: "asc" }}
               columns={[
                 { key: "date", label: "Date", sortable: true },
-                { key: "no", label: "Invoice", sortable: true },
+                { key: "no", label: "Parcel", sortable: true },
                 { key: "customer", label: "Customer" },
                 { key: "courier", label: "Courier" },
                 { key: "open", label: "To collect", sortable: true, align: "r" },

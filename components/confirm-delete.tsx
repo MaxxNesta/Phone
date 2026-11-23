@@ -37,6 +37,7 @@ export function ConfirmDelete({
   confirmClassName = "danger-solid",
   ariaLabel,
   children,
+  failTitle,
 }: {
   action: (fd: FormData) => void;
   pending: boolean;
@@ -58,6 +59,8 @@ export function ConfirmDelete({
   ariaLabel?: string;
   /** Hidden inputs the action needs — id, return_to, and so on. */
   children?: React.ReactNode;
+  /** The heading when the action is refused; "Can't delete" unless said. */
+  failTitle?: string;
 }) {
   const c = useTranslations("common");
   label ??= c("delete"); pendingLabel ??= c("deleting"); confirmLabel ??= c("delete");
@@ -97,7 +100,7 @@ export function ConfirmDelete({
         {failed ? (
           <div className="confirm-panel" role="alertdialog" aria-labelledby="cd-fail">
             <div className="confirm-icon" aria-hidden="true"><Ban size={18} strokeWidth={2.25} /></div>
-            <h2 className="confirm-title" id="cd-fail">{c("cantDelete")}</h2>
+            <h2 className="confirm-title" id="cd-fail">{failTitle ?? c("cantDelete")}</h2>
             <p className="confirm-detail confirm-reason">{failed}</p>
             <div className="confirm-actions">
               <button type="button" autoFocus onClick={close}>{c("ok")}</button>

@@ -36,7 +36,7 @@ export const getCompany = cache(async (): Promise<Company | null> => {
     select id, code, name, name_my, base_currency, default_lead_time_days, plan, retail_mode, modules, features,
            to_char(access_until, 'YYYY-MM-DD') as access_until, access_status,
            (select count(*)::int from location l
-             where l.company_id = c.id and l.is_stock_location and l.is_active and not l.is_quarantine) as warehouses
+             where l.company_id = c.id and l.is_stock_location and l.is_active and not l.is_quarantine and not l.is_transit) as warehouses
       from company c order by created_at limit 1`;
   const c = rows[0];
   if (!c) return null;
@@ -1511,6 +1511,7 @@ export async function getDocument(id: string) {
     select d.*, p.name as partner_name, p.code as partner_code,
            (select pc.name from payment_channel pc where pc.id = d.payment_channel_id) as payment_channel_name,
            (select c.name from business_partner c where c.id = d.courier_id) as courier_name,
+           (select r.name from driver r where r.id = d.driver_id) as driver_name,
            -- Which column of the price list filled this document, as it was
            -- named on the day. Read from the level rather than stored as
            -- text: a renamed level should read by its current name, since it
@@ -5426,7 +5427,8 @@ export async function getTrip(companyId: string, tripId: string) {
      column, which is set either way. */
   const stops = await sql`
     select s.id, s.seq, s.status, s.delivered_at, s.failure_reason, s.note,
-           s.document_id, d.doc_no, d.doc_date,
+           s.document_id, d.doc_no, d.doc_date, d.source_document_id,
+           exists (select 1 from location b where b.id = d.to_location_id and b.is_transit) as cod_parcel,
            coalesce(d.gross_total, 0) as gross_total,
            p.id as partner_id, p.name as partner_name,
            p.township, p.region, p.phone, p.address
@@ -5457,9 +5459,16 @@ export async function getUncarriedDeliveries(companyId: string, tripId?: string)
       left join business_partner p on p.id = d.partner_id
       left join location l on l.id = d.location_id
      where d.company_id = ${companyId}
-       and d.doc_type = 'DELIVERY'
        and d.status = 'POSTED'
        and d.reverses_document_id is null
+       -- A delivery, or a cash-on-delivery parcel still out (0233). A COD
+       -- handover is already in the customer's hands.
+       and ((d.doc_type = 'DELIVERY'
+             and not exists (select 1 from document i where i.id = d.source_document_id and i.ar_on_handover))
+            or (d.doc_type = 'STOCK_TRANSFER'
+                and exists (select 1 from location b where b.id = d.to_location_id and b.is_transit)
+                and not exists (select 1 from dispatch_event e join document ed on ed.id = e.document_id and ed.status = 'POSTED'
+                                 where e.parcel_id = d.id and e.kind in ('HANDED_OVER', 'RETURNED'))))
        and not exists (
              select 1
                from delivery_trip_stop s

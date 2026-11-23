@@ -17,6 +17,8 @@ type Stop = {
   document_id: string | null; doc_no: string | null; gross_total: string;
   partner_name: string | null; township: string | null; region: string | null;
   phone: string | null; address: string | null;
+  /** A cash-on-delivery parcel (0233): handed over only against payment, from its invoice. */
+  cod_parcel?: boolean; source_document_id?: string | null;
 };
 
 type Candidate = {
@@ -198,6 +200,9 @@ export function TripStops({
                           )}
                           {open && s.status === "PENDING" && (
                             <>
+                              {s.cod_parcel ? (
+                                <a href={`/documents/${s.source_document_id}`} className="btn ghost">Confirm payment &amp; hand over</a>
+                              ) : (
                               <form action={answerFormAction}>
                                 <input type="hidden" name="stop_id" value={s.id} />
                                 <input type="hidden" name="status" value="DELIVERED" />
@@ -205,6 +210,7 @@ export function TripStops({
                                   {s.document_id ? "Delivered" : "Visited"}
                                 </button>
                               </form>
+                              )}
                               <button type="button" className="btn ghost"
                                       onClick={() => setFailing(failing === s.id ? null : s.id)}>
                                 Failed

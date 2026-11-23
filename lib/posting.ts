@@ -130,6 +130,14 @@ export type SalesInvoiceInput = InvoiceInput & {
   paymentType?: "CASH" | "CREDIT" | "COD";
   /** COD carried by a courier company rather than the shop's driver (0232). */
   courierId?: string | null;
+  /** Or by the shop's own driver (0233). */
+  driverId?: string | null;
+  /**
+   * Cash on delivery, owed and earned only as parcels are handed over and paid
+   * (0233). The invoice posts nothing: its lines wait as held, and each
+   * handover bills what it hands over.
+   */
+  codOnHandover?: boolean;
 
   /** Someone confirmed the goods physically exist though the ERP records
    *  none. Reaches the delivery this voucher posts alongside the invoice. */
@@ -306,6 +314,16 @@ export type FulfillmentLine = {
 export type FulfillmentInput = {
   /** Part of a cash-on-delivery sale (0230): the goods go out against payment at the door, not credit. */
   cod?: boolean;
+  /**
+   * The warehouse the ledger lines count in, when the stock leaves a bin
+   * inside it (a COD handover leaves the Out for delivery bin, 0233). Branch
+   * reports roll a line up one level, so a line at the bin would land on the
+   * warehouse, not its branch.
+   */
+  journalLocationId?: string | null;
+  /** Who carried it: the shop's driver or a courier company (0233). */
+  driverId?: string | null;
+  courierId?: string | null;
   /**
    * The currency the prices are in, and kyat per unit of it. Purchases only:
    * a yuan bill is entered in yuan and posted in kyat at this rate (or the
@@ -2081,7 +2099,8 @@ async function claimSerials(
     }
     if (s.item_id !== itemId) throw new Error(`${sn} is a ${st.item_code}, not the item on this line.`);
     if (st.location_id !== locationId) {
-      const [q] = await tx`select is_quarantine from location where id = ${st.location_id}`;
+      const [q] = await tx`select is_quarantine, is_transit from location where id = ${st.location_id}`;
+      if (q?.is_transit) throw new Error(`${sn} is out for delivery (${st.location_name}). Hand it over on its invoice, or receive it back first.`);
       throw new Error(q?.is_quarantine
         ? `${sn} is in quarantine (${st.location_name}): it was rejected or returned faulty. ` +
           `Release it from quarantine first if it has been checked and found good.`
@@ -3108,7 +3127,7 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
        partner_id, location_id, currency, exchange_rate, status,
        net_total, tax_total, gross_total, memo, posted_at, reference, source_document_id,
        delivery_fee, negative_stock_confirmed, negative_stock_confirmed_at,
-       negative_stock_reason, credit_override_reason, credit_override_at)
+       negative_stock_reason, credit_override_reason, credit_override_at, driver_id, courier_id)
     values
       (${companyId}, 'DELIVERY', ${docNo}, ${fiscalYear}, ${docDate}::date,
        ${docDate}::date, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
@@ -3122,7 +3141,7 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
        ${input.allowNegativeStock === true
          ? (input.negativeStockReason?.trim() || null) : null},
        ${creditDel.over ? (input.creditOverrideReason?.trim() ?? null) : null},
-       ${creditDel.over ? new Date() : null})
+       ${creditDel.over ? new Date() : null}, ${input.driverId ?? null}, ${input.courierId ?? null})
     returning id`;
 
   const journal: JournalLine[] = [];
@@ -3394,7 +3413,9 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
    */
   if (input.sourceDocumentId) {
     const [billedBy] = await tx`
-      select id from document
+      select id, ar_on_handover, location_id, partner_id, net_total::float as net_total,
+             tax_total::float as tax_total, coalesce(delivery_fee, 0)::float as delivery_fee
+        from document
        where id = ${input.sourceDocumentId} and company_id = ${companyId}
          and doc_type = 'SALES_INVOICE' and status = 'POSTED'`;
     if (billedBy) {
@@ -3465,28 +3486,51 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
          holding a price in Billed Not Delivered, this delivery releases the
          share it sent — all of what is left on the load that completes the
          line — to Sales, with the discount behind it to Sales Discounts. */
+      /* Cash on delivery (0233): nothing was owed or earned until now. What
+         this handover releases is billed to the customer here, Dr Receivable
+         in place of Dr Billed Not Delivered, with its share of the tax; and
+         the first handover also earns the invoice's services, which nothing
+         carries. sales_billed_on_handover records what was billed. */
+      const cod = !!billedBy.ar_on_handover;
+      if (cod) {
+        const [bin] = await tx`select is_transit from location where id = ${locationId}`;
+        if (!bin?.is_transit) {
+          throw new Error("A cash-on-delivery invoice is dispatched from its invoice and handed over when paid, not delivered from the warehouse.");
+        }
+      }
+      const codAr = cod
+        ? (await tx`select fn_resolve_control_account(${companyId}, 'AR_CONTROL', ${billedBy.partner_id}) as a`)[0].a as string
+        : null;
+      const codAt = (billedBy.location_id as string | null) ?? null;
+      const codFirst = cod && !(await tx`
+        select 1 from sales_billed_on_handover h join document hd on hd.id = h.document_id and hd.status = 'POSTED'
+         where h.invoice_id = ${billedBy.id} limit 1`)[0];
+      let codBilled = 0;
       const held = await tx`
-        select r.invoice_line_id, dl.item_id,
+        select r.invoice_line_id, dl.item_id, i.is_stocked,
                (array_agg(r.revenue_account_id))[1] as revenue_account_id,
                sum(r.qty) as qty, sum(r.net) as net, sum(r.discount) as discount
           from sales_revenue_deferred r
           join document rd on rd.id = r.document_id and rd.status = 'POSTED'
           join document_line dl on dl.id = r.invoice_line_id
+          join item i on i.id = dl.item_id
          where dl.document_id = ${billedBy.id}
-         group by r.invoice_line_id, dl.item_id
+         group by r.invoice_line_id, dl.item_id, i.is_stocked
         having sum(r.qty) > 0`;
       if (held.length > 0) {
         const bnd = (await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`)[0].a as string;
         const allowed = (await tx`select fn_system_account(${companyId}, 'SALES_DISCOUNT_ALLOWED') as a`)[0].a as string;
         for (const h of held as unknown as Array<{ invoice_line_id: string; item_id: string; revenue_account_id: string;
-                                                   qty: string; net: string; discount: string }>) {
+                                                   qty: string; net: string; discount: string; is_stocked: boolean }>) {
           const [took] = await tx`
             select coalesce(
                      nullif(sum(base_qty) filter (where source_line_id = ${h.invoice_line_id}), 0),
                      coalesce(sum(base_qty) filter (where item_id = ${h.item_id}), 0)
                    ) as q
               from document_line where document_id = ${doc.id}`;
-          const openQty = Number(h.qty), sent = Math.min(Number(took.q), openQty);
+          const openQty = Number(h.qty);
+          // A service on a COD invoice is earned with the first parcel handed over.
+          const sent = cod && codFirst && !h.is_stocked ? openQty : Math.min(Number(took.q), openQty);
           if (!(sent > 0)) continue;
           const whole = sent >= openQty;
           const net = whole ? round4(Number(h.net)) : round4(Number(h.net) * sent / openQty);
@@ -3495,9 +3539,11 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
             insert into sales_revenue_deferred
               (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
             values (${companyId}, ${h.invoice_line_id}, ${doc.id}, ${-sent}, ${-net}, ${-disc}, ${h.revenue_account_id})`;
-          if (net !== 0) journal.push({ accountId: bnd, amount: net, locationId });
-          if (net + disc !== 0) journal.push({ accountId: h.revenue_account_id, amount: -round4(net + disc), locationId });
-          if (disc !== 0) journal.push({ accountId: allowed, amount: disc, locationId });
+          if (cod) {
+            codBilled = round4(codBilled + net);
+          } else if (net !== 0) journal.push({ accountId: bnd, amount: net, locationId });
+          if (net + disc !== 0) journal.push({ accountId: h.revenue_account_id, amount: -round4(net + disc), locationId: cod ? codAt : locationId });
+          if (disc !== 0) journal.push({ accountId: allowed, amount: disc, locationId: cod ? codAt : locationId });
         }
       }
       /* Its delivery charge, held with the goods (0231), is earned on the
@@ -3513,15 +3559,55 @@ async function _postDelivery(tx: TransactionSql, input: FulfillmentInput) {
         await tx`
           insert into sales_fee_deferred (company_id, invoice_id, document_id, amount)
           values (${companyId}, ${billedBy.id}, ${doc.id}, ${-amount})`;
-        journal.push({ accountId: bnd, amount, locationId });
-        journal.push({ accountId: income, amount: -amount, locationId });
+        if (cod) codBilled = round4(codBilled + amount);
+        else journal.push({ accountId: bnd, amount, locationId });
+        journal.push({ accountId: income, amount: -amount, locationId: cod ? codAt : locationId });
+      }
+
+      if (cod) {
+        /* Its tax, in step with the goods: the share of the invoice's tax that
+           the net released so far carries, less what earlier handovers took.
+           The last handover therefore takes exactly what is left. */
+        const tax = round4(Number(billedBy.tax_total));
+        if (tax !== 0) {
+          const goodsNet = round4(Number(billedBy.net_total) - Number(billedBy.delivery_fee));
+          const [rel] = await tx`
+            select coalesce(sum(-r.net) filter (where r.document_id <> ${doc.id}), 0)::float as before,
+                   coalesce(sum(-r.net), 0)::float as now
+              from sales_revenue_deferred r
+              join document rd on rd.id = r.document_id and rd.status = 'POSTED'
+              join document_line dl on dl.id = r.invoice_line_id
+             where dl.document_id = ${billedBy.id} and r.net < 0`;
+          const share = (n: number) => goodsNet === 0 ? 0 : round4(tax * Math.min(1, n / goodsNet));
+          const taxNow = round4(share(Number(rel.now)) - share(Number(rel.before)));
+          if (taxNow !== 0) {
+            const [acct] = await tx`
+              select coalesce(
+                       (select tc.output_account_id from document_line dl join tax_code tc on tc.id = dl.tax_code_id
+                         where dl.document_id = ${billedBy.id} and dl.tax_amount <> 0 limit 1),
+                       fn_system_account(${companyId}, 'OUTPUT_TAX')) as a`;
+            journal.push({ accountId: acct.a as string, amount: -taxNow, locationId: codAt });
+            codBilled = round4(codBilled + taxNow);
+          }
+        }
+        if (codBilled !== 0) {
+          journal.push({ accountId: codAr!, amount: codBilled, partnerId: billedBy.partner_id as string, locationId: codAt });
+          await tx`
+            insert into sales_billed_on_handover (company_id, invoice_id, document_id, amount)
+            values (${companyId}, ${billedBy.id}, ${doc.id}, ${codBilled})`;
+        }
       }
     }
   }
 
+  // Stock that left a bin is booked at its warehouse, for the branch reports.
+  if (input.journalLocationId) {
+    for (const j of journal) if (j.locationId === locationId) j.locationId = input.journalLocationId;
+  }
+
   const hasValue = journal.some((j) => round4(j.amount) !== 0);
   const entryId = hasValue
-    ? await writeJournal(tx, companyId, docDate, "DELIVERY", doc.id, `${docNo} delivery`, journal, locationId)
+    ? await writeJournal(tx, companyId, docDate, "DELIVERY", doc.id, `${docNo} delivery`, journal, input.journalLocationId ?? locationId)
     : null;
 
   await tx`
@@ -4287,6 +4373,10 @@ async function _postSalesInvoice(
   // Cash on delivery is not trust in the customer: the goods are not handed
   // over without the money, so it does not draw on their credit limit.
   const onAccount = input.paymentType === "COD" ? 0 : Math.max(0, round4(grossTotal - cashAtCounter - alreadyExposed));
+  const cod = !!input.codOnHandover;
+  if (cod && (input.paymentType !== "COD" || input.deliveryId || input.issueStock || cashAtCounter > 0)) {
+    throw new Error("A cash-on-delivery invoice takes no money at posting and moves no stock itself: it is dispatched, then handed over.");
+  }
   const credit = await assertCreditLimit(tx, companyId, partnerId, onAccount, input);
 
   const [doc] = await tx`
@@ -4295,7 +4385,7 @@ async function _postSalesInvoice(
        partner_id, location_id, currency, exchange_rate, status, price_includes_tax,
        net_total, tax_total, gross_total, memo, posted_at,
        payment_type, salesman_id, reference, to_deliver, source_document_id, delivery_fee,
-       credit_override_reason, credit_override_at, price_level_id, courier_id)
+       credit_override_reason, credit_override_at, price_level_id, courier_id, driver_id, ar_on_handover)
     values
       (${companyId}, 'SALES_INVOICE', ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date,
        ${docDate}::date, ${dueDate}, ${partnerId}, ${locationId}, 'MMK', 1, 'POSTED',
@@ -4307,7 +4397,7 @@ async function _postSalesInvoice(
        ${credit.over ? (input.creditOverrideReason?.trim() ?? null) : null},
        ${credit.over ? new Date() : null},
        ${input.priceLevelId ?? null},
-       ${input.paymentType === "COD" ? input.courierId ?? null : null})
+       ${input.courierId ?? null}, ${input.driverId ?? null}, ${cod})
     returning id`;
 
   // A counter sale that went short says so on itself, the way a delivery does.
@@ -4476,14 +4566,16 @@ async function _postSalesInvoice(
        price after discount waits in Billed Not Delivered (2230) and each
        delivery moves its share to Sales and Sales Discounts (0191). A
        service on the same invoice is earned now — nothing is delivered for it. */
-    const deferRevenue = !!input.toDeliver && !input.issueStock && !input.deliveryId
-      && !!item.is_stocked && !line.focReasonId;
+    // Cash on delivery holds every charged line, services too: nothing is
+    // earned before the first parcel is handed over (0233).
+    const deferRevenue = (!!input.toDeliver && !input.issueStock && !input.deliveryId
+      && !!item.is_stocked && !line.focReasonId) || (cod && !line.focReasonId);
     if (deferRevenue) goodsDeferred = true;
     if (deferRevenue && (net !== 0 || discount !== 0)) {
       const revenue = await tx`
         select fn_resolve_account_for_item(${companyId}, 'REVENUE', ${line.itemId}) as a`;
       const held = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
-      journal.push({ accountId: held[0].a, amount: -round4(net) });
+      if (!cod) journal.push({ accountId: held[0].a, amount: -round4(net) });
       await tx`
         insert into sales_revenue_deferred
           (company_id, invoice_line_id, document_id, qty, net, discount, revenue_account_id)
@@ -4521,7 +4613,7 @@ async function _postSalesInvoice(
       // It waits in Billed Not Delivered with them; the first delivery
       // against this invoice releases it to Delivery Income.
       const held = await tx`select fn_system_account(${companyId}, 'BILLED_NOT_DELIVERED') as a`;
-      journal.push({ accountId: held[0].a, amount: -deliveryFee });
+      if (!cod) journal.push({ accountId: held[0].a, amount: -deliveryFee });
       await tx`
         insert into sales_fee_deferred (company_id, invoice_id, document_id, amount)
         values (${companyId}, ${doc.id}, ${doc.id}, ${deliveryFee})`;
@@ -4533,7 +4625,7 @@ async function _postSalesInvoice(
   // Tax charged, grouped by the account each code points at — one leg per
   // account rather than one per line, so a ten-line invoice at one rate
   // writes one credit to Commercial Tax Payable.
-  if (taxTotal !== 0) {
+  if (taxTotal !== 0 && !cod) {
     const byAccount = new Map<string, number>();
     for (const v of taxFor.values()) {
       if (v.tax === 0) continue;
@@ -4548,7 +4640,7 @@ async function _postSalesInvoice(
   // The customer owes the gross. net_total is what was earned and tax_total
   // what is held for the revenue department; the receivable is both, which is
   // also what v_open_item ages and what a receipt settles against.
-  if (grossTotal !== 0) {
+  if (grossTotal !== 0 && !cod) {
     const ar = await tx`
       select fn_resolve_control_account(${companyId}, 'AR_CONTROL', ${partnerId}) as a`;
     journal.push({ accountId: ar[0].a, amount: grossTotal, partnerId });
@@ -4595,11 +4687,13 @@ async function _postSalesInvoice(
      neither the sale nor its cost has happened. The delivery books the actual
      cost and releases the price from Billed Not Delivered (0191). */
 
-  const entryId = await writeJournal(
+  // A COD invoice has nothing to post until a parcel is handed over (0233).
+  if (cod && journal.length > 0) throw new Error("A cash-on-delivery invoice posts nothing until handover.");
+  const entryId = cod ? null : await writeJournal(
     tx, companyId, docDate, "SALES_INVOICE", doc.id, `${docNo} sales invoice`, journal, locationId
   );
 
-  await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
+  if (entryId) await tx`update document set journal_entry_id = ${entryId} where id = ${doc.id}`;
 
   // If the delivery behind this invoice drew any consigned stock, this is
   // the moment — recognized at the invoice, not the delivery, at the price
@@ -4754,6 +4848,8 @@ export async function postSaleWithDelivery(input: SalesInvoiceInput, outer?: Tra
         // delivery it creates asks for a reason the invoice never handed it.
         negativeStockReason: input.negativeStockReason,
         cod: input.paymentType === "COD",
+        driverId: input.driverId ?? null,
+        courierId: input.courierId ?? null,
         lines: toDeliver.map((l) => ({
           itemId: l.itemId, qty: l.qty, focReasonId: l.focReasonId,
           // And which unit that quantity is in. Without it a line for two
@@ -6930,6 +7026,8 @@ export async function postStockAdjustment(input: AdjustmentInput, outer?: Transa
 
 export type TransferLine = {
   itemId: string; qty: number;
+  /** The invoice line a COD dispatch or return carries (0233). */
+  sourceLineId?: string | null;
   /** The units moving, for a serial-tracked item. They arrive with their cost. */
   serials?: string[];
 };
@@ -6956,6 +7054,11 @@ export type TransferInput = {
   reference?: string | null;
   /** When stock actually arrived at the destination, if more precise than docDate. */
   receivedAt?: string | null;
+  /** A COD dispatch or return (0233): the invoice, its customer, who carries it. */
+  sourceDocumentId?: string | null;
+  partnerId?: string | null;
+  driverId?: string | null;
+  courierId?: string | null;
   lines: TransferLine[];
 };
 
@@ -7003,7 +7106,7 @@ export async function postStockTransfer(input: TransferInput, outer?: Transactio
          -- either. The shortage posted and the record of who agreed to it,
          -- and why, went nowhere.
          negative_stock_confirmed, negative_stock_confirmed_at,
-         negative_stock_reason)
+         negative_stock_reason, source_document_id, partner_id, driver_id, courier_id)
       values
         (${companyId}, 'STOCK_TRANSFER', ${docNo}, ${fiscalYear}, ${docDate}::date,
          ${docDate}::date, ${fromLocationId}, ${toLocationId}, 'MMK', 1, 'POSTED',
@@ -7011,7 +7114,9 @@ export async function postStockTransfer(input: TransferInput, outer?: Transactio
          ${input.allowNegativeStock === true},
          ${input.allowNegativeStock === true ? new Date().toISOString() : null},
          ${input.allowNegativeStock === true
-           ? (input.negativeStockReason?.trim() || null) : null})
+           ? (input.negativeStockReason?.trim() || null) : null},
+         ${input.sourceDocumentId ?? null}, ${input.partnerId ?? null},
+         ${input.driverId ?? null}, ${input.courierId ?? null})
       returning id`;
 
     const journal: JournalLine[] = [];
@@ -7074,10 +7179,11 @@ export async function postStockTransfer(input: TransferInput, outer?: Transactio
       const [docLine] = await tx`
         insert into document_line
           (company_id, document_id, line_no, item_id, location_id,
-           entered_qty, entered_uom_id, base_qty, unit_price, net_amount, gross_amount)
+           entered_qty, entered_uom_id, base_qty, unit_price, net_amount, gross_amount, source_line_id)
         values
           (${companyId}, ${doc.id}, ${lineNo}, ${line.itemId}, ${fromLocationId},
-           ${line.qty}, ${item.base_uom_id}, ${line.qty}, ${unitCost}, ${totalCost}, ${totalCost})
+           ${line.qty}, ${item.base_uom_id}, ${line.qty}, ${unitCost}, ${totalCost}, ${totalCost},
+           ${line.sourceLineId ?? null})
         returning id`;
 
       // Both halves name the same line: one transfer line is one movement
@@ -8415,6 +8521,10 @@ export type SettlementInput = {
    * a courier holding cash on delivery in COD Receivable (0232).
    */
   cashPartnerId?: string | null;
+  /** The driver now holding the money, for COD cash in Cash with Drivers (0233). */
+  driverId?: string | null;
+  /** The invoice a deposit was taken for (0233), so its handover applies it. */
+  sourceDocumentId?: string | null;
   /**
    * Money taken or paid with no invoice to put it against.
    *
@@ -8595,12 +8705,13 @@ async function postSettlement(
       insert into document
         (company_id, doc_type, doc_no, version, fiscal_year_id, doc_date, posting_date,
          partner_id, location_id, currency, exchange_rate, status,
-         net_total, tax_total, gross_total, memo, reference, payment_type, posted_at)
+         net_total, tax_total, gross_total, memo, reference, payment_type, posted_at,
+         driver_id, source_document_id)
       values
         (${companyId}, ${kind}, ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date, ${docDate}::date,
          ${partnerId}, ${cashLocationId}, ${fx?.currency ?? "MMK"}, ${fx?.rate ?? 1}, 'POSTED',
          ${total}, 0, ${total}, ${input.memo ?? null}, ${input.reference ?? null},
-         'CASH', now())
+         'CASH', now(), ${input.driverId ?? null}, ${input.sourceDocumentId ?? null})
       returning id`;
 
     for (const a of lines) {
@@ -9204,6 +9315,8 @@ export type VoucherInput = {
   locationId?: string | null;
   /** The partner the voucher is with, shown on the document. */
   partnerId?: string | null;
+  /** The driver whose COD cash it moves (0233). */
+  driverId?: string | null;
   /**
    * Set only when this posting replaces an existing voucher: it keeps that
    * voucher's number and takes the next version under it. The same field the
@@ -9309,11 +9422,11 @@ async function _postVoucher(
       insert into document
         (company_id, doc_type, doc_no, version, fiscal_year_id, doc_date, posting_date,
          location_id, partner_id, currency, exchange_rate, status, voucher_direction,
-         net_total, tax_total, gross_total, memo, reference, posted_at)
+         net_total, tax_total, gross_total, memo, reference, posted_at, driver_id)
       values
         (${companyId}, ${docType}, ${docNo}, ${version}, ${fiscalYear}, ${docDate}::date, ${docDate}::date,
          ${input.locationId ?? null}, ${input.partnerId ?? null}, 'MMK', 1, 'POSTED', ${direction},
-         ${total}, 0, ${total}, ${input.memo ?? null}, ${input.reference ?? null}, now())
+         ${total}, 0, ${total}, ${input.memo ?? null}, ${input.reference ?? null}, now(), ${input.driverId ?? null})
       returning id`;
 
     const entryId = await writeJournal(
@@ -10247,7 +10360,7 @@ async function voidDocumentIn(
       select id, company_id, doc_type, doc_no, partner_id, location_id, currency,
              exchange_rate, net_total, tax_total, gross_total, journal_entry_id,
              status, reversed_by_document_id, fiscal_year_id, voucher_direction,
-             lifecycle_owner_id,
+             lifecycle_owner_id, ar_on_handover,
              to_char(doc_date, 'YYYY-MM-DD') as doc_date,
              to_char(posting_date, 'YYYY-MM-DD') as posting_date
         from document where id = ${documentId} for update`;
@@ -10335,7 +10448,7 @@ async function voidDocumentIn(
              currency, amount as fc_amount
         from journal_line where journal_entry_id = ${doc.journal_entry_id}
        order by line_no`;
-    if (lines.length === 0) {
+    if (lines.length === 0 && !doc.ar_on_handover) {
       // planVoidIn refuses this above, in words that say why. Kept as the
       // last line of defence for a caller that reaches this function some
       // other way, and deliberately the same sentence the plan uses, so the
@@ -10361,7 +10474,7 @@ async function voidDocumentIn(
         (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date,
          partner_id, location_id, currency, exchange_rate, status,
          net_total, tax_total, gross_total, memo, reverses_document_id,
-         voucher_direction, posted_at)
+         voucher_direction, posted_at, ar_on_handover)
       values
         (${doc.company_id}, ${doc.doc_type}, ${reversalNo},
          fn_fiscal_year_for(${doc.company_id}, ${plan.reversalDate}::date),
@@ -10370,13 +10483,14 @@ async function voidDocumentIn(
          'POSTED',
          ${-Number(doc.net_total)}, ${-Number(doc.tax_total)}, ${-Number(doc.gross_total)},
          ${`Void of ${doc.doc_no}${input.reason ? ` — ${input.reason}` : ""}`},
-         ${doc.id}, ${doc.voucher_direction ?? null}, now())
+         ${doc.id}, ${doc.voucher_direction ?? null}, now(), ${!!doc.ar_on_handover})
       returning id`;
 
     // Negated one for one rather than recomputed. A reversal derived by
     // re-running the posting rules would follow today's rules, and those may
     // have been edited since — the point is to undo what was actually posted.
-    const entryId = await writeJournal(
+    // A COD invoice nobody took posted nothing (0233): its void posts nothing either.
+    const entryId = (lines as unknown[]).length === 0 && doc.ar_on_handover ? null : await writeJournal(
       tx, doc.company_id, plan.reversalDate, doc.doc_type, reversal.id,
       `${reversalNo} void of ${doc.doc_no}`,
       (lines as unknown as {
@@ -10393,7 +10507,7 @@ async function voidDocumentIn(
         fcAmount: -Number(l.fc_amount),
       }))
     );
-    await tx`update document set journal_entry_id = ${entryId} where id = ${reversal.id}`;
+    if (entryId) await tx`update document set journal_entry_id = ${entryId} where id = ${reversal.id}`;
 
     // The original may only move to REVERSED with the reversal attached —
     // 0037 refuses the status change on its own, so this single statement is

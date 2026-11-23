@@ -129,7 +129,7 @@ function addDays(iso: string, days: number) {
 }
 
 export function SalesVoucher({
-  action, saveDraft, draft, customers, items: initialItems, locations, salesmen, couriers = [], cashAccounts, channels, promotions,
+  action, saveDraft, draft, customers, items: initialItems, locations, salesmen, couriers = [], drivers = [], cashAccounts, channels, promotions,
   volumeDiscounts,
   currencyScale = 4,
   currency = "",
@@ -163,8 +163,9 @@ export function SalesVoucher({
   locations: Location[];
   stockByLocation: StockRow[];
   salesmen: Salesman[];
-  /** Courier companies that can carry a cash-on-delivery parcel (0232). */
+  /** Courier companies and the shop's own drivers who can carry a dispatch (0232, 0233). */
   couriers?: { id: string; name: string }[];
+  drivers?: { id: string; name: string }[];
   cashAccounts: CashAccount[];
   /** Payment channels by location (0141); replaces the account picker when set up. */
   channels?: Record<string, Channel[]>;
@@ -271,9 +272,11 @@ export function SalesVoucher({
   const [dueDate, setDueDate] = useState(restored?.dueDate ?? "");
   const [paymentType, setPaymentType] = useState<"CASH" | "CREDIT" | "COD">(
     restored?.paymentType === "CASH" || restored?.paymentType === "COD" ? restored.paymentType : "CREDIT");
-  // Cash on delivery: empty is our own driver, otherwise the courier company carrying it.
-  const [courierId, setCourierId] = useState("");
-  const courier = couriers.find((c) => c.id === courierId);
+  // Who carries a dispatch: "D:<driver>" or "C:<courier>" (0233). Kept in the draft.
+  const [collector, setCollector] = useState<string>(typeof restored?.collector === "string" ? restored.collector : "");
+  const courier = collector.startsWith("C:") ? couriers.find((c) => `C:${c.id}` === collector) : undefined;
+  const driver = collector.startsWith("D:") ? drivers.find((d) => `D:${d.id}` === collector) : undefined;
+  const carrierName = courier?.name ?? driver?.name ?? null;
   const [cashIn, setCashIn] = useState(restored?.cashIn ?? "");
   const payChannels = (channels?.[locationId] ?? []).filter((c) => c.accountId);
   const [payChannelId, setPayChannelId] = useState("");
@@ -293,7 +296,10 @@ export function SalesVoucher({
    * decides which of them the screen is setting, so the three states cannot
    * contradict each other the way two independent controls could.
    */
-  const [fulfilMode, setFulfilMode] = useState<"counter" | "send" | "later" | "match">("counter");
+  // Reopened from a draft as it was saved: a dispatch-later draft must not come back as a counter sale.
+  const [fulfilMode, setFulfilMode] = useState<"counter" | "send" | "later" | "match">(
+    restored?.fulfilMode === "send" || restored?.fulfilMode === "later" || restored?.fulfilMode === "counter"
+      ? restored.fulfilMode : restored?.toDeliver ? "later" : "counter");
   const [sourceFor, setSourceFor] = useState<number | null>(null);
   const [fee, setFee] = useState(restored?.fee ?? "");
   const [tab, setTab] = useState<"invoices" | "promotions">("invoices");
@@ -957,7 +963,7 @@ export function SalesVoucher({
 
   const draftState = JSON.stringify({
     lines, customerId, locationId, reference, docDate, dueDate,
-    paymentType, cashIn, toDeliver, fee,
+    paymentType, cashIn, toDeliver, fee, fulfilMode: fulfilMode === "match" ? "counter" : fulfilMode, collector,
   });
 
   return (
@@ -1122,29 +1128,29 @@ export function SalesVoucher({
                 key: "counter" as const,
                 icon: <ShoppingBag size={18} aria-hidden="true" />,
                 title: "Customer takes now",
-                lead: "Counter sale or pickup. Goods leave immediately.",
+                lead: paymentType === "COD" ? "Not for cash on delivery: it is paid at the door." : "Counter sale or pickup. Goods leave immediately.",
                 // Not "no delivery document" — one is always written for
                 // stocked goods, because it is what records the stock leaving
                 // and draws the cost. What is true is that nobody has to make
                 // it, and somebody who read that there was none would go
                 // looking for the SI… number and not understand it.
                 note: "No delivery step, and no transport charge",
-                disabled: false,
+                disabled: paymentType === "COD",
               },
               {
                 key: "send" as const,
                 icon: <Truck size={18} aria-hidden="true" />,
-                title: "We deliver now",
-                lead: "Goods leave now, carried to the customer.",
-                note: "A delivery is recorded, and you can charge for it",
+                title: "Dispatch now",
+                lead: "The phone leaves now with the driver or courier you name.",
+                note: "You can charge for carrying it",
                 disabled: false,
               },
               {
                 key: "later" as const,
                 icon: <Clock size={18} aria-hidden="true" />,
-                title: "Deliver later",
-                lead: "Invoice now, deliver later.",
-                note: "Stock leaves when you create the delivery",
+                title: "Dispatch later",
+                lead: "Save the request now; the phone stays in the warehouse.",
+                note: "It leaves when you dispatch it from the invoice",
                 disabled: false,
               },
               {
@@ -1157,7 +1163,7 @@ export function SalesVoucher({
                     ? `${openDeliveries.length} deliver${openDeliveries.length === 1 ? "y" : "ies"} waiting on an invoice`
                     : "Nothing for this customer is waiting on an invoice"
                   : "Choose a customer first",
-                disabled: !customerId || openDeliveries.length === 0,
+                disabled: paymentType === "COD" || !customerId || openDeliveries.length === 0,
               },
             ]).map((m) => (
               <button
@@ -1187,17 +1193,19 @@ export function SalesVoucher({
             <div>
               <strong>
                 {fulfilMode === "counter" ? "Customer takes now"
-                  : fulfilMode === "send" ? "We deliver now"
-                  : fulfilMode === "later" ? "Deliver later"
+                  : fulfilMode === "send" ? "Dispatch now"
+                  : fulfilMode === "later" ? "Dispatch later"
                   : "Already delivered"} selected
               </strong>
               <ul>
                 <li>
                   {fulfilMode === "later"
-                    ? "Stock stays where it is until you create the delivery."
+                    ? "The IMEI stays in the warehouse until you dispatch it from the invoice."
                     : fulfilMode === "match"
                       ? "Stock already left with that delivery — nothing moves again."
-                      : "Stock leaves as soon as this invoice posts."}
+                      : fulfilMode === "send"
+                        ? `The IMEI leaves the warehouse with ${carrierName ?? "the driver or courier named below"} when this posts.`
+                        : "The IMEI leaves with the customer when this posts."}
                 </li>
                 <li>
                   {fulfilMode === "match"
@@ -1207,11 +1215,15 @@ export function SalesVoucher({
                       : "A transport charge can be added below."}
                 </li>
                 <li>
-                  {fulfilMode === "later"
-                    ? "Revenue and the receivable post now."
+                  {paymentType === "COD"
+                    ? "Nothing is owed or earned until the customer pays at the door and takes it. Until then it stays company stock, out of sale."
+                    : fulfilMode === "later"
+                    ? "The customer owes it from now; the sale and its cost are booked when it is dispatched."
                     : fulfilMode === "match"
                       ? "Revenue posts now; the cost was taken by the delivery."
-                      : "A delivery is recorded for you — no separate step."}
+                      : fulfilMode === "send"
+                        ? "A delivery records it leaving; it shows as out for delivery until someone confirms it arrived."
+                        : "A delivery is recorded for you — no separate step."}
                 </li>
               </ul>
             </div>
@@ -1728,16 +1740,20 @@ export function SalesVoucher({
           </div>
           <div className="card-body">
             {(fulfilment || paymentType === "COD") && <div className="row">
-              {paymentType === "COD" && (
+              {(fulfilMode === "send" || fulfilMode === "later") && (
                 <div className="field">
-                  <label htmlFor="courier_id">Delivered by</label>
-                  <select id="courier_id" name="courier_id" value={courierId} onChange={(e) => setCourierId(e.target.value)}>
-                    <option value="">Our driver</option>
-                    {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <label htmlFor="collector">Delivered by{paymentType === "COD" && fulfilMode === "send" ? " *" : ""}</label>
+                  <select id="collector" name="collector" value={collector} onChange={(e) => setCollector(e.target.value)}
+                    required={paymentType === "COD" && fulfilMode === "send"}>
+                    <option value="">{fulfilMode === "later" ? "Decide at dispatch" : "Choose…"}</option>
+                    {drivers.length > 0 && <optgroup label="Our drivers">{drivers.map((d) => <option key={d.id} value={`D:${d.id}`}>{d.name}</option>)}</optgroup>}
+                    {couriers.length > 0 && <optgroup label="Courier companies">{couriers.map((c) => <option key={c.id} value={`C:${c.id}`}>{c.name}</option>)}</optgroup>}
                   </select>
                   <span className="hint">{courier
                     ? "The courier collects and pays in later, keeping its fee: booked to Carriage Outward."
-                    : couriers.length ? "Or a courier company." : "Add a courier under Partners to send one."}</span>
+                    : driver ? "The driver hands the cash in to the shop till."
+                    : drivers.length + couriers.length === 0 ? "Add drivers under Logistics → Drivers, or a partner with Courier ticked."
+                    : "One of our drivers, or a courier company."}</span>
                 </div>
               )}
               {(() => {
@@ -1751,8 +1767,8 @@ export function SalesVoucher({
                   value={noCharge ? "" : fee} onChange={(e) => setFee(e.target.value)}
                   placeholder="0" disabled={noCharge} />
                 <span className="hint">
-                  {paymentType === "COD" && noCharge === false && fulfilMode === "counter"
-                    ? `What the customer pays for ${courier ? "the delivery" : "our driver bringing it"}. Credited to delivery income, not sales.`
+                  {paymentType === "COD"
+                    ? "What the customer pays for bringing it. Delivery income when the parcel is handed over and paid, not before."
                     : fulfilMode === "counter"
                     ? "Nobody carried the goods — the customer took them away."
                     : fulfilMode === "match"
@@ -1768,15 +1784,10 @@ export function SalesVoucher({
               /* Cash on delivery: nothing is taken now. The driver collects the
                  total at the door; Collected on the invoice posts the receipt. */
               <div className="paycard-note">
-                {courier ? (
-                  <p><strong>{courier.name}</strong> collects <strong>{fmt(total)}</strong> from <strong>{customer?.name ?? "the customer"}</strong> on
-                    delivery. When it reports the parcel paid, choose <strong>Courier collected</strong> on the invoice; the
-                    money then waits in COD Receivable until the courier pays it in. No credit limit applies.</p>
-                ) : (
-                <p>Our driver collects <strong>{fmt(total)}</strong> from <strong>{customer?.name ?? "the customer"}</strong> on
-                  delivery. Until then it shows as <strong>COD to collect</strong>; choose <strong>Collected</strong> on the
-                  invoice when the money is in. No credit limit applies.</p>
-                )}
+                <p>{carrierName ? <strong>{carrierName}</strong> : "The driver or courier"} collects <strong>{fmt(total)}</strong> from{" "}
+                  <strong>{customer?.name ?? "the customer"}</strong> at the door. Nothing is owed until then, and the phone is
+                  handed over only when it is paid in full: choose <strong>Confirm payment &amp; hand over</strong> on the invoice.
+                  {courier ? " The courier then owes it until it pays in, less its fee." : " The driver then hands the cash in to the till."}</p>
               </div>
             ) : paymentType === "CREDIT" ? (
               /* On credit: nothing to fill in. The whole amount goes on the

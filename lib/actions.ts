@@ -21,6 +21,7 @@ import { requirePermission, requireUser, can, permissionForDocument, assertShopW
 import { hidesPay } from "./hr";
 import { begin as beginHeavy, end as endHeavy } from "./heavy";
 import { courierBill } from "./courier-payables";
+import { codDispatch, notHome as codNotHome } from "./cod";
 import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
@@ -2191,11 +2192,17 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     // and it is due on delivery, the invoice date unless one is given.
     const dueDate = str(fd, "due_date") || (paymentType === "COD" ? str(fd, "doc_date") || null : null);
     const cashIn = paymentType === "COD" ? 0 : num(fd, "cash_in");
-    // COD carried by a courier company (0232); empty is the shop's own driver.
-    const courierId = paymentType === "COD" ? str(fd, "courier_id") || null : null;
+    // Who carries it (0233): "D:<driver>" or "C:<courier>", for a dispatch.
+    const carrier = str(fd, "collector");
+    const driverId = carrier.startsWith("D:") ? carrier.slice(2) : null;
+    const courierId = carrier.startsWith("C:") ? carrier.slice(2) : null;
     if (courierId) {
-      const [c] = await sql`select 1 from business_partner where id = ${courierId} and company_id = ${await companyId()} and is_courier`;
+      const [c] = await sql`select 1 from business_partner where id = ${courierId} and company_id = ${co} and is_courier and is_active`;
       if (!c) return { error: "That courier is not on the courier list." };
+    }
+    if (driverId) {
+      const [d] = await sql`select 1 from driver where id = ${driverId} and company_id = ${co} and is_active`;
+      if (!d) return { error: "That driver is not on the driver list." };
     }
     const toDeliver = fd.get("to_deliver") !== null;
     const deliveryId = str(fd, "delivery_id") || null;
@@ -2237,6 +2244,7 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
       salesmanId: str(fd, "salesman_id") || null,
       paymentType,
       courierId,
+      driverId,
       // Prices as typed already contain the tax. The counter price in a shop
       // usually does; a wholesale quote usually does not.
       priceIncludesTax: fd.get("price_includes_tax") !== null,
@@ -2279,8 +2287,33 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
     if (!deliveriesOn && toDeliver) {
       return { error: "This shop sells at the counter: the invoice hands the goods over, so there is no deliver-later." };
     }
+    /* Cash on delivery (0233) is paid at the door, so it is always carried:
+       Dispatch now (with a named driver or courier) or Dispatch later. Never
+       a counter pickup, and never billing a delivery that already went. */
+    const cod = paymentType === "COD";
+    if (cod) {
+      if (!deliveriesOn) return { error: "Cash on delivery needs dispatch, which is switched off for this shop." };
+      if (deliveryId || fulfil === "match") return { error: "Cash on delivery is billed when it is handed over, not after a delivery that already went." };
+      if (fulfil !== "send" && fulfil !== "later") return { error: "Cash on delivery is paid at the door: choose Dispatch now or Dispatch later, not Customer takes now." };
+      if (fulfil === "send" && !driverId && !courierId) return { error: "Dispatch now: choose the driver or courier taking it." };
+      if (lines.some((l) => l.source === "CONSIGNMENT")) return { error: "Consigned stock cannot go out on cash on delivery." };
+    }
     const userId = (await requireUser()).id;
     const result = await postOnce(co, attemptKey(fd), async (tx) => {
+      if (cod) {
+        const inv = await postSalesInvoice({ ...input, toDeliver: true, codOnHandover: true, cashIn: 0, cashAccountId: null }, tx);
+        if (fulfil === "send") {
+          const invLines = await tx`
+            select dl.id from document_line dl join item i on i.id = dl.item_id
+             where dl.document_id = ${inv.id} order by dl.line_no`;
+          await codDispatch(tx, {
+            companyId: co, invoiceId: inv.id, docDate: input.docDate, driverId, courierId,
+            lines: lines.map((l, i) => ({ lineId: invLines[i]?.id as string, qty: l.qty, serials: l.serials ?? [] }))
+              .filter((l) => l.lineId),
+          });
+        }
+        return inv;
+      }
       const posted = await (deliveryId
         ? postSalesInvoice({
             ...input, deliveryId,
@@ -2298,6 +2331,14 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
         const [rc] = await tx`
           select id from document where source_document_id = ${posted.id} and doc_type = 'CUSTOMER_RECEIPT'`;
         if (rc) await stampReceipt(tx as never, rc.id, payChannelId, payRef, userId);
+      }
+      // The customer took it at the counter: its delivery was a handover, so it says delivered (0233).
+      if (fulfil === "counter" && !retail && !deliveryId && !toDeliver) {
+        await tx`
+          insert into dispatch_event (company_id, parcel_id, invoice_id, kind, acted_by)
+          select ${co}, d.id, ${posted.id}, 'DELIVERED', ${userId}
+            from document i join document d on d.id = i.source_document_id and d.doc_type = 'DELIVERY'
+           where i.id = ${posted.id}`;
       }
       return posted;
     });
@@ -3237,46 +3278,6 @@ export async function createSupplierPayment(_prev: unknown, fd: FormData): Promi
   revalidatePath("/documents");
   revalidatePath("/ledger");
   redirectWithToast(`/documents/${docId}`, toastMsg);
-}
-
-/**
- * Cash on delivery, collected: the driver has the money. Posts the ordinary
- * customer receipt for what is still owed on the invoice, through the same
- * settle() the Receive payment screen uses (channel, branch, allocation), so
- * it is a cash or bank receipt like any other.
- */
-export async function collectCodAction(_prev: unknown, fd: FormData): Promise<{ error?: string; ok?: string } | null> {
-  await requirePermission("sales.post");
-  const co = await companyId();
-  try {
-    const id = str(fd, "invoice_id");
-    const [inv] = await sql`
-      select d.id, d.doc_no, d.partner_id, d.location_id, d.payment_type, d.status, o.outstanding::float as outstanding
-        from document d left join v_open_item o on o.document_id = d.id
-       where d.id = ${id} and d.company_id = ${co} and d.doc_type = 'SALES_INVOICE'`;
-    if (!inv || inv.status !== "POSTED") return { error: "That invoice is not a posted sale." };
-    if (inv.payment_type !== "COD") return { error: `${inv.doc_no} is not cash on delivery.` };
-    const owed = Math.round(Number(inv.outstanding ?? 0) * 100) / 100;
-    if (!(owed > 0)) return { error: `${inv.doc_no} has nothing left to collect.` };
-    const amount = num(fd, "amount") || owed;
-    if (amount > owed + 0.005) return { error: `Only ${owed.toLocaleString("en-US")} is left to collect on ${inv.doc_no}.` };
-    const pay = new FormData();
-    pay.set("partner_id", inv.partner_id as string);
-    pay.set("location_id", (inv.location_id as string) ?? "");
-    pay.set("doc_date", str(fd, "doc_date") || todayLocal());
-    for (const k of ["payment_channel_id", "payment_account_id", "payment_reference", "cash_account_id"]) {
-      if (str(fd, k)) pay.set(k, str(fd, k));
-    }
-    pay.set("memo", `Cash on delivery collected · ${inv.doc_no}`);
-    pay.set("allocations", JSON.stringify([{ invoiceId: inv.id, amount }]));
-    const r = await settle(pay, "receive");
-    if ("error" in r) return { error: r.error };
-    revalidatePath(`/documents/${inv.id}`);
-    revalidatePath("/sales/invoices");
-    return { ok: `Collected · receipt ${r.docNo} posted` };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
 }
 
 export async function createCustomerReceipt(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -4390,7 +4391,7 @@ export async function getFormData() {
             -- voucher before being told the first line was never possible.
             and not exists (select 1 from item c where c.parent_item_id = i.id)
           order by i.code`,
-    sql`select id, code, name, is_quarantine from location
+    sql`select id, code, name, is_quarantine, is_transit from location
          where company_id = ${co} and is_stock_location and is_active order by code`,
     // Volume bands in force today, so the voucher previews the same discounts
     // the engine will apply.
@@ -4488,7 +4489,8 @@ export async function getFormData() {
   // Quarantine locations (0218) hold stock nobody may sell, so no form offers
   // them as where it works. The few that act on that stock — a return to the
   // supplier, a release, a write-off — ask for them by name.
-  const working = locations.filter((l) => !l.is_quarantine);
+  // Out for delivery bins (0233) neither: only a COD handover or return moves stock out of one.
+  const working = locations.filter((l) => !l.is_quarantine && !l.is_transit);
   const held = locations.filter((l) => l.is_quarantine);
 
   return {
@@ -4561,7 +4563,7 @@ async function assertLocationAllowed(
   const plan = c.plan as Plan;
   const [n] = await sql`
     select count(*) filter (where parent_id is null)::int as branches,
-           count(*) filter (where is_stock_location and not is_quarantine)::int as warehouses
+           count(*) filter (where is_stock_location and not is_quarantine and not is_transit)::int as warehouses
       from location
      where company_id = ${co} and is_active and id is distinct from ${excludeId}`;
   const name = plan.charAt(0) + plan.slice(1).toLowerCase();
@@ -6819,10 +6821,34 @@ export async function answerTripStop(_prev: unknown, fd: FormData): Promise<Acti
     }
 
     const [stop] = await sql`
-      select s.trip_id from delivery_trip_stop s
+      select s.trip_id, s.document_id, d.doc_type, d.source_document_id,
+             exists (select 1 from location b where b.id = d.to_location_id and b.is_transit) as cod_parcel
+        from delivery_trip_stop s
         join delivery_trip t on t.id = s.trip_id
+        left join document d on d.id = s.document_id
        where s.id = ${stopId} and t.company_id = ${co}`;
     if (!stop) return { error: "That stop no longer exists" };
+
+    /* A cash-on-delivery parcel is released only against payment (0233), so
+       the stop answers through the same rule as the invoice: delivered means
+       Confirm payment & hand over; failed is a not-home attempt kept for retry. */
+    if (stop.cod_parcel) {
+      if (status === "DELIVERED") {
+        return { error: "Cash on delivery: open the invoice and use Confirm payment & hand over, so the phone is released only when it is paid." };
+      }
+      if (status === "FAILED") {
+        await codNotHome(sql, { companyId: co, parcelId: stop.document_id as string, reason: reason.trim() });
+        revalidatePath(`/logistics/trips/${stop.trip_id}`);
+        revalidatePath(`/documents/${stop.source_document_id}`);
+        return { ok: true };
+      }
+    }
+    if (status === "DELIVERED" && stop.doc_type === "DELIVERY") {
+      await sql`
+        insert into dispatch_event (company_id, parcel_id, invoice_id, kind)
+        select ${co}, ${stop.document_id}, ${stop.source_document_id}, 'DELIVERED'
+         where not exists (select 1 from dispatch_event where parcel_id = ${stop.document_id} and kind = 'DELIVERED')`;
+    }
 
     await sql`
       update delivery_trip_stop

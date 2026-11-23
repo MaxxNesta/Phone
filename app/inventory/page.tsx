@@ -76,7 +76,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const allLocs = (await seenRows((await sql`
     select w.id, w.name, b.id as branch_id, b.name as branch_name
       from location w left join location b on b.id = w.parent_id
-     where w.company_id = ${co} and w.is_stock_location and w.is_active and not w.is_quarantine
+     where w.company_id = ${co} and w.is_stock_location and w.is_active and not w.is_quarantine and not w.is_transit
      order by b.code nulls first, w.code`) as unknown as Record<string, unknown>[], "id")) as any[];
   const bins = await sql`select id, parent_id from location where company_id = ${co} and is_quarantine`;
   const withBins = (ids: string[]) => [...ids, ...bins.filter((b) => ids.includes(b.parent_id as string)).map((b) => b.id as string)];

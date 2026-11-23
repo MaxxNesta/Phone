@@ -23,8 +23,10 @@ import { serialsOnDocument, serialsByLine } from "@/lib/phone";
 import { ReplaceSettlement } from "@/components/replace-settlement";
 import { VoidDocument } from "@/components/void-document";
 import { LinkToOrder } from "@/components/link-to-order";
-import { CodCollect } from "@/components/cod-collect";
-import { CourierCollect } from "@/components/courier-collect";
+import { CodPanel } from "@/components/cod-panel";
+import { ConfirmDelivered } from "@/components/confirm-delivered";
+import { codSheet } from "@/lib/cod";
+import { moneyAccounts as codMoneyAccounts } from "@/lib/courier-payables";
 import { channelsAt } from "@/lib/payment-channels";
 import { OffOrderNote, type OffOrderReceived } from "@/components/off-order-note";
 import { LinkFulfilment, OrderActions } from "@/components/link-fulfilment";
@@ -706,11 +708,35 @@ export default async function DocumentPage({
   }
 
   const outstanding = isInvoice ? await getDocumentOutstanding(doc.id) : 0;
-  // Cash on delivery (0230): collected at the door by the shop's driver.
-  const isCod = doc.doc_type === "SALES_INVOICE" && doc.payment_type === "COD" && doc.status === "POSTED";
-  // Carried by a courier company (0232): it collects, then pays in later.
-  const courierName = isCod && doc.courier_id ? (doc.courier_name as string) : null;
-  const codChannels = isCod && !courierName && outstanding > 0.005 ? await channelsAt(user.companyId, doc.location_id ?? null) : [];
+  // Cash on delivery (0233): owed and earned only as parcels are handed over.
+  const isCod = doc.doc_type === "SALES_INVOICE" && doc.payment_type === "COD" && doc.status === "POSTED" && !!doc.ar_on_handover;
+  const courierName = doc.payment_type === "COD" && doc.courier_id ? (doc.courier_name as string) : null;
+  const driverName = doc.payment_type === "COD" && doc.driver_id ? (doc.driver_name as string) : null;
+  const [cod, codDrivers, codCouriers, codAccounts] = isCod ? await Promise.all([
+    codSheet(doc.id, user.companyId),
+    sql`select id, name from driver where company_id = ${user.companyId} and is_active order by name`,
+    sql`select id, name from business_partner where company_id = ${user.companyId} and is_courier and is_active order by name`,
+    codMoneyAccounts(user.companyId),
+  ]) : [null, [], [], []];
+  /* Where a sale's goods are (0233): a delivery proves only that they left.
+     Delivered needs an event: the customer took it at the counter, a COD
+     handover, a confirmed arrival or a trip stop marked delivered. */
+  const dispatches = doc.status === "POSTED" && (doc.doc_type === "SALES_INVOICE" || doc.doc_type === "DELIVERY") && !isCod ? await sql`
+    select d.id, d.doc_no,
+           exists (select 1 from dispatch_event e where e.parcel_id = d.id and e.kind in ('DELIVERED', 'HANDED_OVER'))
+             or exists (select 1 from delivery_trip_stop ts where ts.document_id = d.id and ts.status = 'DELIVERED') as arrived
+      from document d
+     where d.doc_type = 'DELIVERY' and d.status = 'POSTED' and d.reversed_by_document_id is null
+       and (d.id = ${doc.doc_type === "DELIVERY" ? doc.id : doc.source_document_id ?? null}
+            or (${doc.doc_type === "SALES_INVOICE"} and d.source_document_id = ${doc.id}))
+     order by d.doc_date, d.doc_no` as unknown as { id: string; doc_no: string; arrived: boolean }[] : [];
+  const notArrived = dispatches.filter((d) => !d.arrived);
+  const codState = cod
+    ? cod.parcels.some((p) => p.state === "REFUSED") ? "COD · return in transit"
+      : cod.parcels.some((p) => p.state === "OUT" || p.state === "NOT_HOME") ? "COD · out for delivery"
+      : cod.toDispatch.some((l) => l.qty > 0) ? (cod.parcels.some((p) => p.state === "HANDED_OVER") ? "COD · part delivered" : "COD · waiting to dispatch")
+      : cod.parcels.some((p) => p.state === "HANDED_OVER") ? "COD · delivered" : "COD · returned"
+    : null;
   // A customer return that still owes the customer money back.
   const refundable = (doc.doc_type === "SALES_RETURN" || doc.doc_type === "CREDIT_NOTE") && doc.status === "POSTED"
     ? Number((await getRefundableReturns(doc.company_id, null, doc.id))[0]?.refundable ?? 0) : 0;
@@ -792,7 +818,7 @@ export default async function DocumentPage({
         note: Number(doc.tax_total) !== 0
           ? `${money(doc.net_total)} + ${money(doc.tax_total)} tax`
           : undefined },
-      { icon: Wallet, label: "Paid", value: money(Number(doc.gross_total) - outstanding),
+      { icon: Wallet, label: "Paid", value: money(cod ? cod.paid : Number(doc.gross_total) - outstanding),
         tone: outstanding === 0 ? "ok" : undefined },
       { icon: Clock, label: "Outstanding", value: money(outstanding),
         note: outstanding > 0 && doc.due_date ? `due ${shortDate(doc.due_date)}` : undefined,
@@ -1296,12 +1322,10 @@ export default async function DocumentPage({
      button's explanation is its tooltip rather than a sentence in the page. */
   const headActions = (
     <>
-      {/* Money still owed on an invoice: the first thing anyone opening it does. */}
-      {isCod && outstanding > 0.005 && can(user, "sales.post") && (
-        courierName
-          ? <CourierCollect invoiceId={doc.id} docNo={doc.doc_no ?? ""} owed={outstanding} today={todayLocal()} courier={courierName} />
-          : <CodCollect invoiceId={doc.id} docNo={doc.doc_no ?? ""} owed={outstanding} today={todayLocal()} channels={codChannels} />
+      {notArrived[0] && can(user, "sales.post") && (
+        <ConfirmDelivered deliveryId={notArrived[0].id} deliveryNo={notArrived[0].doc_no} />
       )}
+      {/* Money still owed on an invoice: the first thing anyone opening it does. */}
       {isInvoice && outstanding > 0.005 && !isCod && (
         <Link
           href={doc.doc_type === "SALES_INVOICE"
@@ -1362,12 +1386,6 @@ export default async function DocumentPage({
      keeps only the step that usually comes next; void stays last in the menu. */
   const moreActions = (
     <>
-      {isCod && outstanding > 0.005 && can(user, "sales.return") && (
-        <Link href={`/sales/returns/new?source=${doc.id}`} className="btn ghost"
-          title="The customer refused it or was not there: the phones come back to stock and the amount is no longer owed.">
-          Not delivered · return
-        </Link>
-      )}
       {reportable?.any && can(user, "inventory.manage") && (
         <Link href={`/purchases/receive/${doc.id}/faulty`} className="btn ghost"
           title="A unit from this receipt failed after it was received: write it down and move it to quarantine.">
@@ -1410,7 +1428,9 @@ export default async function DocumentPage({
   const credited = related.downstream.flatMap((g) => g.docs)
     .filter((d) => /RETURN|CREDIT_NOTE|DEBIT_NOTE/.test(d.docType) && d.status === "POSTED")
     .reduce((t, d) => t + Number(d.amount ?? 0), 0);
-  const paidAll = isInvoice ? Math.max(0, docTotal - outstanding - credited) : 0;
+  // A COD invoice owes only what was handed over (0233): what it was paid is what settled that.
+  const paidAll = cod ? cod.paid : isInvoice ? Math.max(0, docTotal - outstanding - credited) : 0;
+  const codUnbilled = !!cod && cod.billed <= 0.005;
   const overdue = isInvoice && outstanding > 0.005 && !!doc.due_date && ymd(doc.due_date) < todayLocal();
   const moves = isInvoice ? [
     ...[...moneyRelated.source, ...moneyRelated.downstream].flatMap((g) => g.docs).map((d) => ({
@@ -1462,7 +1482,7 @@ export default async function DocumentPage({
             />
           )}
       <DocSection title="Payments" end={<span className={`dl-pill ${overdue ? "bad" : outstanding > 0.005 ? "warn" : "ok"}`}>
-          {outstanding <= 0.005 ? "Paid" : overdue ? "Overdue" : paidAll + credited > 0 ? "Part paid" : "Unpaid"}</span>}>
+          {codUnbilled ? "Not owed until handover" : outstanding <= 0.005 ? "Paid" : overdue ? "Overdue" : paidAll + credited > 0 ? "Part paid" : "Unpaid"}</span>}>
         <div className="dl-tablewrap">
           <table className="dl-table">
             <thead><tr><th style={{ width: 120 }}>Date</th><th>Document</th><th className="r">Amount</th><th className="r">Balance</th></tr></thead>
@@ -1553,6 +1573,7 @@ export default async function DocumentPage({
      says whether it stands at all. */
   const pill: { label: string; tone: StatusTone } = doc.status === "REVERSED" ? { label: "Voided", tone: "neutral" }
     : doc.superseded_by_document_id ? { label: "Corrected", tone: "neutral" }
+    : codUnbilled ? { label: "Not billed yet", tone: "neutral" }
     : isInvoice ? (outstanding <= 0.005 ? { label: "Paid", tone: "ok" } : overdue ? { label: "Overdue", tone: "bad" }
       : paidAll + credited > 0.005 ? { label: "Part paid", tone: "warn" } : { label: "Unpaid", tone: "warn" })
     : { label: String(doc.status), tone: doc.status === "POSTED" ? "info" : "neutral" };
@@ -1566,14 +1587,15 @@ export default async function DocumentPage({
   }));
   const panelNode = (
     <>
-      {isInvoice && docTotal > 0 && (
+      {isInvoice && docTotal > 0 && !codUnbilled && (
         <DocPanelSection title="Payment">
           <DocPaymentMeter paid={paidAll} credited={credited} total={docTotal} outstanding={outstanding} overdue={overdue} unit={doc.currency ?? "MMK"} />
         </DocPanelSection>
       )}
       {chainStages.length > 0 && (
         <DocPanelSection title="Flow"><DocFlow chain={chainStages} docNo={doc.doc_no ?? ""} notes={{ [doc.doc_type]: shortDate(doc.doc_date),
-          ...(isCod && outstanding > 0.005 ? { CUSTOMER_RECEIPT: `To collect ${money(outstanding)}` } : {}) }} /></DocPanelSection>
+          ...(cod && cod.parcels.some((p) => p.state === "OUT" || p.state === "NOT_HOME")
+            ? { CUSTOMER_RECEIPT: `To collect ${money(cod.parcels.filter((p) => p.state === "OUT" || p.state === "NOT_HOME").reduce((t, p) => t + p.due, 0))}` } : {}) }} /></DocPanelSection>
       )}
       <DocPanelSection title="History">
         <DocPanelList items={(versions.length ? versions : [{ id: doc.id, version: Number(doc.version ?? 1), gross_total: doc.gross_total,
@@ -1634,6 +1656,14 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
+          {cod && (
+            <CodPanel invoiceId={doc.id} invoiceNo={doc.doc_no ?? ""} sheet={cod} today={todayLocal()}
+              canPost={can(user, "sales.post")}
+              drivers={codDrivers as never} couriers={codCouriers as never}
+              accounts={(codAccounts as { id: string; code: string; name: string; is_bank_account: boolean }[])
+                .filter((a) => a.is_bank_account).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
+              defaultCollector={doc.driver_id ? `D:${doc.driver_id}` : doc.courier_id ? `C:${doc.courier_id}` : ""} />
+          )}
           {refused.length > 0 && (() => {
             const total = refused.reduce((t, r) => t + Number(r.qty), 0);
             const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
@@ -1724,14 +1754,13 @@ export default async function DocumentPage({
       badges={
         <>
           {versionBadge}
-          {isCod && (
-            <span className={`dl-pill ${outstanding > 0.005 ? "warn" : "ok"}`}>
-              {outstanding > 0.005 ? "COD · to collect" : "COD · collected"}{courierName ? ` · ${courierName}` : ""}
-            </span>
+          {codState && (
+            <span className={`dl-pill ${codState.endsWith("delivered") ? "ok" : "warn"}`}>{codState}</span>
           )}
           {match && (
             <span className={`dl-pill ${match.state === "FULL" ? "ok" : match.state === "PARTIAL" ? "warn" : "neutral"}`}>
-              {match.state === "FULL" ? (movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`)
+              {isSi && notArrived.length > 0 && match.state !== "NONE" ? "Out for delivery"
+                : match.state === "FULL" ? (movesGoods ? "Fully invoiced" : `Fully ${goodsWord}`)
                 : match.state === "PARTIAL" ? (movesGoods ? "Partly invoiced" : `Partly ${goodsWord}`)
                 : (movesGoods ? "Not invoiced" : `Not ${goodsWord}`)}
             </span>
@@ -1832,7 +1861,7 @@ export default async function DocumentPage({
                 {doc.location_code && <span className="dl-code"> {doc.location_code}</span>}</dd></div>
               {isInvoiceDoc && doc.payment_type ? (
                 <div><dt>Payment</dt><dd><span className="pill">{doc.payment_channel_name ?? (doc.payment_type === "CASH" ? "Cash" : doc.payment_type === "COD" ? "Cash on delivery" : "Credit")}</span>
-                  {courierName && <span className="m"> by {courierName}</span>}
+                  {(courierName || driverName) && <span className="m"> by {courierName ?? driverName}</span>}
                   {doc.payment_reference && <span className="m"> {doc.payment_reference}</span>}</dd></div>
               ) : moneyAccounts.length > 0 || doc.payment_channel_name ? (
                 <div><dt>{doc.doc_type === "CASH_TRANSFER" ? "Accounts" : "Paid through"}</dt><dd>
@@ -1846,12 +1875,16 @@ export default async function DocumentPage({
                   <dd>
                     {/* "Take now" and "Deliver later" are two different
                         promises to the customer: said on the invoice's face. */}
-                    {doc.to_deliver ? (
-                      <span className={`pill ${stageDoc["DELIVERY"] ? "ok" : "warn"}`}>
-                        {stageDoc["DELIVERY"] ? "Delivered" : "Delivery pending"}
-                      </span>
+                    {codState ? (
+                      <span className={`pill ${codState.endsWith("delivered") ? "ok" : "warn"}`}>{codState.replace("COD · ", "").replace(/^./, (c) => c.toUpperCase())}</span>
+                    ) : dispatches.length === 0 ? (
+                      doc.to_deliver
+                        ? <span className="pill warn">Waiting to dispatch</span>
+                        : <span className="pill ok">Taken now</span>
+                    ) : notArrived.length > 0 ? (
+                      <span className="pill warn">Out for delivery</span>
                     ) : (
-                      <span className="pill ok">Taken now</span>
+                      <span className="pill ok">Delivered</span>
                     )}
                   </dd>
                 </div>

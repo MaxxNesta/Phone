@@ -1476,7 +1476,8 @@
       "REPAIR": "In repair",
       "SOLD": "Sold",
       "RETURNED_TO_SUPPLIER": "Returned to supplier",
-      "WRITTEN_OFF": "Written off"
+      "WRITTEN_OFF": "Written off",
+      "OUT_FOR_DELIVERY": "Out for delivery (COD)"
     },
     "healthy": "Healthy",
     "docType": {

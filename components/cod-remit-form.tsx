@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Building2, CalendarDays, Hash, StickyNote, Truck, Wallet } from "lucide-react";
 import { useNotice } from "@/components/toast";
 
-type Parcel = { id: string; courierId: string; no: string; date: string; customer: string; outstanding: number; branchId: string | null };
+type Parcel = { id: string; courierId: string; no: string; invoiceNo: string; date: string; customer: string; outstanding: number; branchId: string | null };
 type Opt = { id: string; label: string };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -93,21 +93,21 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
       <section className="card">
         <div className="card-head">
           <h2>Parcels out with {courier?.name ?? "the courier"}</h2>
-          <span className="page-sub">Tick those this payment covers that are not marked collected yet</span>
+          <span className="page-sub">Tick the parcels this payment covers that are not confirmed handed over yet</span>
         </div>
         {mine.length === 0 ? (
-          <div className="card-body"><p className="page-sub">No open cash-on-delivery invoice is out with this courier.</p></div>
+          <div className="card-body"><p className="page-sub">No cash-on-delivery parcel is out with this courier.</p></div>
         ) : (
           <div className="tablewrap">
             <table>
-              <thead><tr><th className="tight" /><th>Date</th><th>Invoice</th><th>Customer</th><th className="r">To collect</th></tr></thead>
+              <thead><tr><th className="tight" /><th>Date</th><th>Parcel</th><th>Customer</th><th className="r">To collect</th></tr></thead>
               <tbody>
                 {mine.map((p) => (
                   <tr key={p.id}>
-                    <td className="tight"><input type="checkbox" name="invoice_id" value={p.id} checked={!!ticked[p.id]} aria-label={`Collected ${p.no}`}
+                    <td className="tight"><input type="checkbox" name="parcel_id" value={p.id} checked={!!ticked[p.id]} aria-label={`Collected ${p.no}`}
                       onChange={(e) => { setTicked((t) => ({ ...t, [p.id]: e.target.checked })); setReceived(null); }} /></td>
                     <td>{p.date}</td>
-                    <td className="code"><Link href={`/documents/${p.id}`} target="_blank" style={{ color: "var(--link)" }}>{p.no}</Link></td>
+                    <td className="code"><Link href={`/documents/${p.id}`} target="_blank" style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.invoiceNo}</div></td>
                     <td>{p.customer}</td>
                     <td className="r">{fmt(p.outstanding)}</td>
                   </tr>

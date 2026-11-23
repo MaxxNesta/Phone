@@ -1476,7 +1476,8 @@
       "REPAIR": "ပြုပြင်ဆဲ",
       "SOLD": "ရောင်းပြီး",
       "RETURNED_TO_SUPPLIER": "ပေးသွင်းသူသို့ ပြန်ပို့ပြီး",
-      "WRITTEN_OFF": "ဖျက်သိမ်းပြီး"
+      "WRITTEN_OFF": "ဖျက်သိမ်းပြီး",
+      "OUT_FOR_DELIVERY": "ပို့ဆောင်ဆဲ (COD)"
     },
     "healthy": "ကောင်းမွန်",
     "docType": {

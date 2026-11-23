@@ -1,24 +1,27 @@
 /**
- * Cash on delivery carried by a courier company (0232).
+ * Cash on delivery carried by a courier company (0232, 0233).
  *
  * The courier delivers and collects; the shop learns of it from the courier
- * and marks the invoice collected. The customer's debt is then settled and
- * the courier owes the money instead, in COD Receivable under its name. When
- * the courier pays in, it usually keeps its fee back: the cash or bank takes
- * what arrived, Carriage Outward the fee, and COD Receivable the whole.
+ * and confirms the parcel handed over (lib/cod.ts, the same rule as a
+ * driver's doorstep handover). The customer is billed and settled at that
+ * moment and the courier owes the money instead, in COD Receivable under its
+ * name. When the courier pays in, it usually keeps its fee back: the cash or
+ * bank takes what arrived, Carriage Outward the fee, and COD Receivable the
+ * whole.
  *
  * Nothing is kept about either step beyond the documents: what a courier
  * holds is the balance of COD Receivable under it; what is still out with it
- * is the outstanding of its open COD invoices.
+ * is its parcels not yet handed over or back.
  */
 
 import { sql } from "./db";
 import type { TransactionSql } from "postgres";
-import { inTransaction, postBankVoucher, postCashVoucher, postCustomerReceipt, round4 } from "./posting";
+import { inTransaction, postBankVoucher, postCashVoucher, round4 } from "./posting";
+import { confirmHandover, openParcels, type Parcel } from "./cod";
 
 export type CodCourier = {
   id: string; code: string; name: string; phone: string | null;
-  /** Open COD invoices it carries: delivered or not, not yet collected. */
+  /** Parcels it is carrying, not yet handed over or back, and what they bill. */
   out: number; outCount: number;
   /** Collected and not yet paid in. */
   held: number;
@@ -31,96 +34,55 @@ async function roleAccount(db: typeof sql | TransactionSql, companyId: string, r
   return (r?.account_id as string | undefined) ?? null;
 }
 
-/** Every courier, with what it is carrying, holding and has paid in. One query. */
+/** Every courier, with what it is carrying, holding and has paid in. */
 export async function codCouriers(companyId: string): Promise<CodCourier[]> {
-  const rows = await sql`
-    with cod as (select account_id from system_account where company_id = ${companyId} and role = 'COD_RECEIVABLE'),
-    held as (
+  const [rows, parcels] = await Promise.all([sql`
+    with held as (
       select jl.partner_id, sum(jl.base_amount) as held,
              -sum(jl.base_amount) filter (where jl.base_amount < 0) as remitted,
              max(je.entry_date) filter (where jl.base_amount < 0) as last_remitted
         from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
-       where jl.company_id = ${companyId} and jl.account_id = (select account_id from cod)
-       group by jl.partner_id),
-    out as (
-      select d.courier_id, sum(o.outstanding) as out, count(*) as n
-        from document d join v_open_item o on o.document_id = d.id
-       where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
-         and d.payment_type = 'COD' and d.courier_id is not null and o.outstanding > 0.005
-       group by d.courier_id)
+       where jl.company_id = ${companyId}
+         and jl.account_id = (select account_id from system_account where company_id = ${companyId} and role = 'COD_RECEIVABLE')
+       group by jl.partner_id)
     select bp.id, bp.code, bp.name, bp.phone,
-           coalesce(out.out, 0)::float as out, coalesce(out.n, 0)::int as "outCount",
            coalesce(held.held, 0)::float as held, coalesce(held.remitted, 0)::float as remitted,
            held.last_remitted::text as "lastRemitted"
       from business_partner bp
-      left join out on out.courier_id = bp.id
       left join held on held.partner_id = bp.id
      where bp.company_id = ${companyId}
-       and (bp.is_courier and bp.is_active or out.n > 0 or abs(coalesce(held.held, 0)) > 0.005)
-     order by coalesce(held.held, 0) + coalesce(out.out, 0) desc, bp.name`;
-  return rows as unknown as CodCourier[];
+       and (bp.is_courier and bp.is_active or abs(coalesce(held.held, 0)) > 0.005
+            or exists (select 1 from document t where t.courier_id = bp.id and t.doc_type = 'STOCK_TRANSFER'))`,
+    openParcels(companyId)]);
+  const list = (rows as unknown as Omit<CodCourier, "out" | "outCount">[]).map((c) => {
+    const mine = parcels.filter((p) => p.collector?.kind === "COURIER" && p.collector.id === c.id && p.state !== "REFUSED");
+    return { ...c, out: round4(mine.reduce((t, p) => t + p.due, 0)), outCount: mine.length };
+  });
+  return list.sort((a, b) => (b.held + b.out) - (a.held + a.out) || a.name.localeCompare(b.name));
 }
 
-export type CodParcel = {
-  id: string; no: string; date: string; customer: string; customerCode: string;
-  total: number; outstanding: number;
-  /** The branch it was sold in: the warehouse's branch. */
-  branchId: string | null;
-};
-
-/** One courier's open COD invoices, oldest first. */
-export async function codParcels(companyId: string, courierId: string | null): Promise<(CodParcel & { courierId: string })[]> {
-  const rows = await sql`
-    select d.id, d.doc_no as no, d.doc_date::text as date, bp.name as customer, bp.code as "customerCode",
-           d.gross_total::float as total, o.outstanding::float as outstanding, d.courier_id as "courierId",
-           (select coalesce(l.parent_id, l.id) from location l where l.id = d.location_id) as "branchId"
-      from document d
-      join v_open_item o on o.document_id = d.id
-      join business_partner bp on bp.id = d.partner_id
-     where d.company_id = ${companyId} and d.doc_type = 'SALES_INVOICE' and d.status = 'POSTED'
-       and d.payment_type = 'COD' and d.courier_id is not null and o.outstanding > 0.005
-       ${courierId ? sql`and d.courier_id = ${courierId}` : sql``}
-     order by d.doc_date, d.doc_no`;
-  return rows as unknown as (CodParcel & { courierId: string })[];
+/** Parcels out with couriers (not refused), oldest first. */
+export async function courierParcels(companyId: string, courierId: string | null): Promise<Parcel[]> {
+  return (await openParcels(companyId, courierId))
+    .filter((p) => p.collector?.kind === "COURIER" && p.state !== "REFUSED");
 }
 
 /**
- * The courier collected these invoices: each customer's debt is settled into
- * COD Receivable under the courier, one customer receipt per customer, for
- * all each invoice still owes.
+ * The courier reports these parcels delivered and paid: each is handed over
+ * through the one doorstep rule, its money into COD Receivable under the
+ * courier.
  */
 export async function courierCollected(tx: TransactionSql, input: {
-  companyId: string; courierId: string; docDate: string; invoiceIds: string[];
+  companyId: string; courierId: string; docDate: string; parcelIds: string[]; userId?: string | null;
 }) {
-  if (input.invoiceIds.length === 0) return [];
-  const cod = await roleAccount(tx, input.companyId, "COD_RECEIVABLE");
-  if (!cod) throw new Error("No account is set for COD Receivable. Point the COD_RECEIVABLE role at an asset account first.");
-  const [courier] = await tx`select name from business_partner where id = ${input.courierId} and company_id = ${input.companyId}`;
-  if (!courier) throw new Error("That courier no longer exists.");
-  const invs = await tx`
-    select d.id, d.doc_no, d.partner_id, d.payment_type, d.courier_id, d.status, d.location_id,
-           coalesce(o.outstanding, 0)::float as outstanding
-      from document d left join v_open_item o on o.document_id = d.id
-     where d.id = any(${input.invoiceIds}::uuid[]) and d.company_id = ${input.companyId} and d.doc_type = 'SALES_INVOICE'`;
-  if (invs.length !== new Set(input.invoiceIds).size) throw new Error("An invoice on this list no longer exists.");
-  const byCustomer = new Map<string, { invoiceId: string; amount: number }[]>();
-  for (const i of invs) {
-    if (i.status !== "POSTED") throw new Error(`${i.doc_no} is ${String(i.status).toLowerCase()}.`);
-    if (i.payment_type !== "COD" || i.courier_id !== input.courierId) throw new Error(`${i.doc_no} is not carried by ${courier.name}.`);
-    if (!(Number(i.outstanding) > 0.005)) throw new Error(`${i.doc_no} has nothing left to collect.`);
-    const list = byCustomer.get(i.partner_id) ?? [];
-    list.push({ invoiceId: i.id, amount: round4(Number(i.outstanding)) });
-    byCustomer.set(i.partner_id, list);
+  const done = [];
+  for (const id of input.parcelIds) {
+    const [t] = await tx`select courier_id, doc_no from document where id = ${id} and company_id = ${input.companyId}`;
+    if (!t || t.courier_id !== input.courierId) throw new Error(`${t?.doc_no ?? "That parcel"} is not with this courier.`);
+    done.push(await confirmHandover(tx, { companyId: input.companyId, parcelId: id, docDate: input.docDate,
+                                          payment: { to: "COURIER", amount: "DUE" }, userId: input.userId }));
   }
-  const posted = [];
-  for (const [partnerId, allocations] of byCustomer) {
-    const nos = invs.filter((i) => allocations.some((a) => a.invoiceId === i.id)).map((i) => i.doc_no).join(", ");
-    posted.push(await postCustomerReceipt({
-      companyId: input.companyId, partnerId, docDate: input.docDate, cashAccountId: cod, cashPartnerId: input.courierId,
-      allocations, memo: `Collected by ${courier.name} · ${nos}`,
-    }, tx));
-  }
-  return posted;
+  return done;
 }
 
 export type RemitInput = {
@@ -129,8 +91,8 @@ export type RemitInput = {
   moneyAccountId: string;
   /** What arrived, and what the courier kept back as its fee. */
   received: number; fee: number;
-  /** Invoices collected with this payment and not marked before. */
-  collectInvoiceIds: string[];
+  /** Parcels collected with this payment and not confirmed before. */
+  collectParcelIds: string[];
   reference?: string | null; memo?: string | null;
 };
 
@@ -156,13 +118,13 @@ export async function remitCourier(input: RemitInput, outer?: TransactionSql) {
 
     // Locked so two people paying in the same courier's money cannot both spend it.
     await tx`select id from business_partner where id = ${input.courierId} and company_id = ${input.companyId} for update`;
-    await courierCollected(tx, { companyId: input.companyId, courierId: input.courierId, docDate: input.docDate, invoiceIds: input.collectInvoiceIds });
+    await courierCollected(tx, { companyId: input.companyId, courierId: input.courierId, docDate: input.docDate, parcelIds: input.collectParcelIds });
     const [h] = await tx`
       select coalesce(sum(base_amount), 0)::float as v from journal_line
        where company_id = ${input.companyId} and account_id = ${cod} and partner_id = ${input.courierId}`;
     const held = round4(Number(h.v));
     if (received + fee > held + 0.005) {
-      throw new Error(`The courier holds ${held.toLocaleString("en-US")}; ${(received + fee).toLocaleString("en-US")} is more than that. Tick the invoices it collected.`);
+      throw new Error(`The courier holds ${held.toLocaleString("en-US")}; ${(received + fee).toLocaleString("en-US")} is more than that. Tick the parcels it collected.`);
     }
     const [courier] = await tx`select name from business_partner where id = ${input.courierId}`;
     const voucher = {

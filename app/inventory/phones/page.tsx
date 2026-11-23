@@ -16,7 +16,7 @@ export async function generateMetadata() {
   return { title: "IMEI Inventory" };
 }
 
-const STATUSES = ["IN_STOCK", "QUARANTINE", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
+const STATUSES = ["IN_STOCK", "QUARANTINE", "OUT_FOR_DELIVERY", "RESERVED", "REPAIR", "SOLD", "RETURNED_TO_SUPPLIER", "WRITTEN_OFF"];
 
 type Search = Record<string, string | undefined>;
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getCompany } from "@/lib/queries";
 import { costSection } from "@/lib/courier-payables";
 
-type Tab = "list" | "couriers" | "ledger";
+type Tab = "list" | "couriers" | "drivers" | "ledger";
 
 /**
  * The pages about who owes what, one set of tabs on each of them: the same
@@ -25,6 +25,7 @@ export async function PartnerTabs({ side, active, section }: {
     : [
         ["list", "/receivables", "Customers"],
         ["couriers", "/receivables?view=couriers", "COD couriers"],
+        ["drivers", "/receivables/drivers", "Driver cash"],
         ["ledger", "/receivables/ledger", "Customer ledger"],
       ];
   return (

@@ -80,7 +80,7 @@ export async function planVoid(documentId: string): Promise<VoidPlan | null> {
 export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> {
   const [doc] = await db`
     select d.id, d.company_id, d.doc_no, d.doc_type, d.status, d.gross_total,
-           d.lifecycle_owner_id,
+           d.lifecycle_owner_id, d.ar_on_handover,
            d.partner_id, d.journal_entry_id, d.reversed_by_document_id,
            to_char(d.doc_date, 'YYYY-MM-DD') as doc_date,
            to_char(d.posting_date, 'YYYY-MM-DD') as posting_date
@@ -128,7 +128,9 @@ export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> 
   // A void is a mirror-image journal entry, so a document that posted none
   // has nothing to mirror. The engine has always refused these; the plan
   // said they could go, which is how a refusal arrived after the button.
-  if (doc.status === "POSTED") {
+  // A cash-on-delivery invoice posts nothing until a parcel is handed over
+  // (0233): voiding one nobody took is cancelling the order, and is allowed.
+  if (doc.status === "POSTED" && !doc.ar_on_handover) {
     const [entry] = await db`
       select count(*)::int as n from journal_line
        where journal_entry_id = ${doc.journal_entry_id}`;
@@ -183,12 +185,25 @@ export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> 
        -- to be unpicked first — it is the thing this belongs to, and it is
        -- being undone in the same breath.
        and (${doc.lifecycle_owner_id ?? null}::uuid is null
-            or id <> ${doc.lifecycle_owner_id ?? null}::uuid)`;
+            or id <> ${doc.lifecycle_owner_id ?? null}::uuid)
+       -- A COD invoice's parcels that came back are finished with: the
+       -- dispatch and its return cancel out. One still out is asked about below.
+       and not (${!!doc.ar_on_handover} and doc_type = 'STOCK_TRANSFER')`;
   for (const c of children as unknown as { id: string; doc_no: string; doc_type: string }[]) {
     blockers.push({
       reason: `${c.doc_no} was raised from this document. Void that first.`,
       docNo: c.doc_no, docId: c.id,
     });
+  }
+  if (doc.ar_on_handover) {
+    const out = await db`
+      select t.id, t.doc_no from document t join location b on b.id = t.to_location_id and b.is_transit
+       where t.source_document_id = ${documentId} and t.doc_type = 'STOCK_TRANSFER' and t.status = 'POSTED'
+         and not exists (select 1 from dispatch_event e join document ed on ed.id = e.document_id and ed.status = 'POSTED'
+                          where e.parcel_id = t.id and e.kind in ('HANDED_OVER', 'RETURNED'))`;
+    for (const o of out as unknown as { id: string; doc_no: string }[]) {
+      blockers.push({ reason: `${o.doc_no} is still out for delivery. Mark it refused and receive it back first.`, docNo: o.doc_no, docId: o.id });
+    }
   }
 
   // A document this one was raised from is fine to leave alone — voiding a

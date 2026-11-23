@@ -11960,6 +11960,21 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .confirm.alertish .confirm-actions > .cod-collect { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; text-align: left; margin-bottom: 6px; }
 .cod-collect .field { margin: 0; }
 .cod-collect .field:last-child { grid-column: 1 / -1; }
+.cod-collect .cod-wide { grid-column: 1 / -1; }
+.cod-collect textarea { width: 100%; font-family: var(--mono, ui-monospace, monospace); font-size: 13px; }
+.cod-line { display: grid; grid-template-columns: 90px 1fr; gap: 10px; align-items: start; }
+.cod-line input[type="number"] { width: 100%; }
+/* The cash-on-delivery sheet on an invoice (0233): delivery, payment, settlement side by side. */
+.cod-sheet { margin-bottom: 16px; }
+.cod-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.cod-status > div { display: grid; gap: 4px; padding: 14px 18px; align-content: start; }
+.cod-status > div + div { border-left: 1px solid var(--line); }
+.cod-status strong { font-size: 15px; font-weight: 600; }
+@media (max-width: 760px) {
+  .cod-status { grid-template-columns: 1fr; }
+  .cod-status > div + div { border-left: 0; border-top: 1px solid var(--line); }
+}
+.cod-row-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 /* COD pay-in (0232): what the courier holds, against what came in. */
 .cod-remit-sum { margin: 14px 0 0; display: grid; gap: 6px; max-width: 420px; margin-left: auto; }
 .cod-remit-sum > div { display: flex; justify-content: space-between; gap: 16px; font-variant-numeric: tabular-nums; }

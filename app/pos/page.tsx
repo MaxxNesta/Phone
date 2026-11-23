@@ -16,7 +16,7 @@ export default async function PosPage() {
   const [locations, customers, salesmen, taxCodes, focReasons, volumeDiscounts] = await Promise.all([
     sql`select l.id, l.name, p.name as branch from location l
           left join location p on p.id = l.parent_id
-         where l.company_id = ${co} and l.is_stock_location and l.is_active and not l.is_quarantine
+         where l.company_id = ${co} and l.is_stock_location and l.is_active and not l.is_quarantine and not l.is_transit
          -- The shop's main stock first: the one with the most stock on hand.
          order by (select coalesce(sum(qty_on_hand), 0) from v_stock_on_hand v
                     where v.location_id = l.id) desc, l.code`,

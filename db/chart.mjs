@@ -35,6 +35,7 @@ export const CHART = [
   ["1110", "Cash Account",                             "ASSET",     true,  { from: "13101", cash: true }],
   ["1111", "Suspense Cash",                            "ASSET",     true,  { from: "13102", cash: true }],
   ["1112", "Yuan Cash",                                "ASSET",     true,  { from: "13103", cash: true }],
+  ["1113", "Cash with Drivers",                        "ASSET",     true],
   // Both flags, deliberately. is_bank_account puts it in the bank book; the
   // payment and sales screens ask for is_cash_account, and a bank account you
   // cannot pay a supplier from is not much of a bank account. The cash book
@@ -303,6 +304,8 @@ export const SYSTEM = {
   CARRIAGE_INWARD: "5120",
   // Cash on delivery a courier has collected and not yet paid in (0232); its fee.
   COD_RECEIVABLE: "1230", CARRIAGE_OUTWARD: "6130",
+  // COD cash a driver collected at the door and has not handed in (0233).
+  CASH_WITH_DRIVERS: "1113",
 
   // Money that moved before the invoice did. Deliberately not the control
   // accounts: an advance has no open item.
