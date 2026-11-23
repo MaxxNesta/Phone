@@ -347,24 +347,36 @@ export async function refused(db: Db, input: { companyId: string; parcelId: stri
   await db`update delivery_trip_stop set status = 'FAILED', failure_reason = ${`Refused: ${input.reason.trim()}`} where document_id = ${p.id}`;
 }
 
-/** The refused phones are back: the same IMEIs, scanned, go from the bin to the warehouse. */
+/**
+ * A parcel comes back to the shop, refused or with nobody home: exactly what
+ * went out, nothing else. Each IMEI is scanned back; anything without one is
+ * counted back to the quantity that left. Then the bin to the warehouse.
+ */
 export async function receiveReturn(tx: TransactionSql, input: {
-  companyId: string; parcelId: string; docDate: string; scanned: string[]; userId?: string | null;
+  companyId: string; parcelId: string; docDate: string; scanned: string[];
+  /** Units counted back on lines without IMEIs, by invoice line. */
+  counted?: Record<string, number>;
+  userId?: string | null;
 }) {
   const [lock] = await tx`select id from document where id = ${input.parcelId} and company_id = ${input.companyId} for update`;
   if (!lock) throw new Error("That parcel no longer exists.");
   const p = await parcel(input.parcelId, tx);
   if (!p) throw new Error("That is not a cash-on-delivery parcel.");
-  if (p.state !== "REFUSED") throw new Error(p.state === "RETURNED" ? `${p.no} is already back (${p.closedByNo}).` : `Mark ${p.no} refused before receiving it back.`);
+  if (p.state === "RETURNED") throw new Error(`${p.no} is already back (${p.closedByNo}).`);
+  if (p.state !== "REFUSED" && p.state !== "NOT_HOME") throw new Error(`Mark ${p.no} refused or not home before receiving it back.`);
   const expect = p.lines.flatMap((l) => l.serials);
   const got = [...new Set(input.scanned.map((s) => s.trim()).filter(Boolean))];
   const missing = expect.filter((s) => !got.includes(s));
   const extra = got.filter((s) => !expect.includes(s));
   if (extra.length) throw new Error(`${extra.join(", ")} ${extra.length === 1 ? "is" : "are"} not in ${p.no}.`);
   if (missing.length) throw new Error(`Scan every phone in ${p.no}: ${missing.join(", ")} not scanned.`);
+  for (const l of p.lines.filter((x) => x.serials.length === 0)) {
+    const n = Number(input.counted?.[l.lineId] ?? NaN);
+    if (n !== l.qty) throw new Error(`${l.item}: ${l.qty} went out; count all ${l.qty} back${Number.isFinite(n) ? ` (${n} counted)` : ""}.`);
+  }
   const back = await postStockTransfer({
     companyId: input.companyId, fromLocationId: p.binId, toLocationId: p.warehouseId, docDate: input.docDate,
-    memo: `Returned to shop: ${p.no} refused (${p.lastReason ?? "no reason given"})`, reference: p.invoiceNo,
+    memo: `Returned to shop: ${p.no} ${p.state === "REFUSED" ? "refused" : "customer not home"} (${p.lastReason ?? "no reason given"})`, reference: p.invoiceNo,
     sourceDocumentId: p.invoiceId, partnerId: p.customerId,
     lines: p.lines.map((l) => ({ itemId: l.itemId, qty: l.qty, serials: l.serials.length ? l.serials : undefined, sourceLineId: l.lineId })),
   }, tx);

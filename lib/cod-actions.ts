@@ -117,7 +117,9 @@ export async function receiveReturnAction(_prev: Result, fd: FormData): Promise<
   try {
     const p = await parcelInBranch(u.companyId, str(fd, "parcel_id"));
     const scanned = str(fd, "scanned").split(/[\s,]+/).filter(Boolean);
-    const t = await postOnce(u.companyId, key(fd), (tx) => receiveReturn(tx, { companyId: u.companyId, parcelId: p.id, docDate: str(fd, "doc_date") || todayLocal(), scanned, userId: u.id }));
+    const counted = Object.fromEntries([...fd.keys()].filter((k) => k.startsWith("count_"))
+      .map((k) => [k.slice(6), Number(str(fd, k))]));
+    const t = await postOnce(u.companyId, key(fd), (tx) => receiveReturn(tx, { companyId: u.companyId, parcelId: p.id, docDate: str(fd, "doc_date") || todayLocal(), scanned, counted, userId: u.id }));
     refresh(p.invoiceId);
     return { ok: `Back in stock · ${t.docNo}` };
   } catch (e) { return fail(e); }

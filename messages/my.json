@@ -610,7 +610,10 @@
     "creditAllowedYesHint": "အောက်ပါ သတ်မှတ်ချက်ဖြင့် အကြွေးရောင်းသည်။ ကန့်သတ်ချက် ကွက်လပ်ဆိုလျှင် အကန့်အသတ်မရှိ။",
     "creditAllowedNoHint": "ငွေသားသာ — ရောင်းတိုင်း ငွေချေရသည်။",
     "courier": "Courier",
-    "isCourier": "Courier — ပို့ဆောင်ပေးပြီး COD ငွေ ကောက်ခံသည်"
+    "isCourier": "Courier — ပို့ဆောင်ပေးပြီး COD ငွေ ကောက်ခံသည်",
+    "codFeeMode": "COD ပို့ခ (Courier fee)",
+    "codFeeDeducted": "ပြန်အပ်ငွေမှ နုတ်ယူသည်",
+    "codFeeBilled": "နောက်မှ သီးခြား bill ပို့သည်"
   },
   "partnerDetail": {
     "title": "ဖောက်သည် / ပေးသွင်းသူ",

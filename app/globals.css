@@ -11974,6 +11974,10 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
   .cod-status { grid-template-columns: 1fr; }
   .cod-status > div + div { border-left: 0; border-top: 1px solid var(--line); }
 }
+/* A courier's fee setting (0234): only beside a ticked Courier. */
+.cod-fee { flex-basis: 100%; max-width: 320px; margin-top: 8px; }
+.cod-fee select { width: 100%; min-width: 260px; }
+:has(> label > input[name="is_courier"]:not(:checked)) > .cod-fee { display: none; }
 .cod-row-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 /* COD pay-in (0232): what the courier holds, against what came in. */
 .cod-remit-sum { margin: 14px 0 0; display: grid; gap: 6px; max-width: 420px; margin-left: auto; }

@@ -81,6 +81,13 @@ export default async function NewPartner() {
                 <input id="is_courier" name="is_courier" type="checkbox" />
                 {t("isCourier")}
               </label>
+        <div className="field cod-fee">
+          <label htmlFor="cod_fee_mode">{t("codFeeMode")}</label>
+          <select id="cod_fee_mode" name="cod_fee_mode" defaultValue={"DEDUCTED"}>
+            <option value="DEDUCTED">{t("codFeeDeducted")}</option>
+            <option value="BILLED">{t("codFeeBilled")}</option>
+          </select>
+        </div>
             </div>
           </div>
         </div>

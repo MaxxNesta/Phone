@@ -80,6 +80,35 @@ function PayFields({ parcel, amount, accounts, deposit }: { parcel: Parcel; amou
   );
 }
 
+/** Back to the shop, refused or nobody home: the same IMEIs scanned, anything else counted. */
+function ReceiveBack({ p, today, primary }: { p: Parcel; today: string; primary?: boolean }) {
+  const imeis = p.lines.flatMap((l) => l.serials);
+  const counted = p.lines.filter((l) => l.serials.length === 0);
+  return (
+    <Step action={receiveReturnAction} className={primary ? "btn primary" : "btn ghost tiny"}
+      label={primary ? "Receive returned phone" : "Back to shop"} pendingLabel="Posting…"
+      title={`Receive ${p.no} back`}
+      detail="Only what went out comes back: scan each IMEI, count anything without one. It goes back on sale in the warehouse; the invoice can be dispatched again."
+      confirmLabel="Back in stock">
+      <input type="hidden" name="parcel_id" value={p.id} />
+      <DateField today={today} />
+      {imeis.length > 0 && (
+        <div className="field cod-wide">
+          <label>Scan IMEIs</label>
+          <textarea name="scanned" rows={3} required placeholder="Scan each phone" />
+          <span className="hint">Expected: {imeis.join(", ")}</span>
+        </div>
+      )}
+      {counted.map((l) => (
+        <div key={l.lineId} className="field">
+          <label>{l.item} · {l.qty} went out</label>
+          <input name={`count_${l.lineId}`} type="number" min="0" step="1" required placeholder="Count back" />
+        </div>
+      ))}
+    </Step>
+  );
+}
+
 export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accounts, today, canPost, defaultCollector }: {
   invoiceId: string; invoiceNo: string; sheet: CodSheet; drivers: Opt[]; couriers: Opt[]; accounts: Account[];
   today: string; canPost: boolean; defaultCollector: string;
@@ -123,20 +152,7 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
   /* One primary action: whatever moves this sale forward next. */
   let primary: React.ReactNode = null;
   if (canPost && returning[0]) {
-    const p = returning[0];
-    primary = (
-      <Step action={receiveReturnAction} className="btn primary" label="Receive returned phone" pendingLabel="Posting…"
-        title={`Receive ${p.no} back`} detail="Scan each phone as it comes back. Only the same IMEIs that went out are accepted; they go back on sale in the warehouse."
-        confirmLabel="Back in stock">
-        <input type="hidden" name="parcel_id" value={p.id} />
-        <DateField today={today} />
-        <div className="field cod-wide">
-          <label>Scan IMEIs</label>
-          <textarea name="scanned" rows={3} required placeholder={p.lines.flatMap((l) => l.serials).join("\n")} />
-          <span className="hint">Expected: {p.lines.flatMap((l) => l.serials).join(", ") || "no IMEIs"}</span>
-        </div>
-      </Step>
-    );
+    primary = <ReceiveBack p={returning[0]} today={today} primary />;
   } else if (canPost && first) {
     primary = (
       <Step action={handoverAction} className="btn primary" label="Confirm payment & hand over" pendingLabel="Posting…"
@@ -225,12 +241,13 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                           <PayFields parcel={p} amount={0} accounts={accounts} deposit />
                         </Step>
                         <Step action={notHomeAction} className="btn ghost tiny" label="Customer not home — retry" pendingLabel="Saving…"
-                          title={`${p.no}: customer not home`} detail={`It stays with ${p.collector?.name ?? "the carrier"} for another try. No second invoice and no stock moves.`}
+                          title={`${p.no}: customer not home`} detail={`It stays with ${p.collector?.name ?? "the carrier"} for another try, with no second invoice and no stock moved. If it comes back to the shop meanwhile, use Back to shop: the same IMEIs are scanned in.`}
                           confirmLabel="Keep for retry">
                           <input type="hidden" name="parcel_id" value={p.id} />
                           <div className="field"><label>What happened</label><input name="reason" required placeholder="Nobody home, phone off…" /></div>
                           <div className="field"><label>Retry on</label><input name="retry_on" type="date" min={today} /></div>
                         </Step>
+                        {p.state === "NOT_HOME" && <ReceiveBack p={p} today={today} />}
                         <Step action={refusedAction} className="btn ghost tiny" label="Customer refused — return to shop" pendingLabel="Saving…"
                           title={`${p.no}: customer refused`} detail="Nothing is owed. The phone is on its way back and stays out of sale until the warehouse scans it in."
                           confirmLabel="Return to shop">

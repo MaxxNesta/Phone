@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { todayLocal } from "@/lib/format";
 import { requirePermission } from "@/lib/auth";
 import { onlyMyLocations } from "@/lib/branch-scope";
@@ -32,6 +33,10 @@ export default async function ReceiveFromDriver({ searchParams }: { searchParams
         </HelpHint>
       </div>
       <PartnerTabs side="CUSTOMER" active="drivers" />
+      {/* The driver list is shared with Logistics trips, but COD needs it without that add-on. */}
+      <div className="actions" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
+        <Link href="/logistics/drivers" className="btn ghost">Manage drivers</Link>
+      </div>
       {drivers.length === 0 ? (
         <p className="page-sub">No driver is holding cash on delivery.</p>
       ) : (

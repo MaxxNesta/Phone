@@ -21,6 +21,8 @@ import { confirmHandover, openParcels, type Parcel } from "./cod";
 
 export type CodCourier = {
   id: string; code: string; name: string; phone: string | null;
+  /** How it charges (0234): keeps its fee out of the pay-in, or bills it later. */
+  feeMode: "DEDUCTED" | "BILLED";
   /** Parcels it is carrying, not yet handed over or back, and what they bill. */
   out: number; outCount: number;
   /** Collected and not yet paid in. */
@@ -45,7 +47,7 @@ export async function codCouriers(companyId: string): Promise<CodCourier[]> {
        where jl.company_id = ${companyId}
          and jl.account_id = (select account_id from system_account where company_id = ${companyId} and role = 'COD_RECEIVABLE')
        group by jl.partner_id)
-    select bp.id, bp.code, bp.name, bp.phone,
+    select bp.id, bp.code, bp.name, bp.phone, bp.cod_fee_mode as "feeMode",
            coalesce(held.held, 0)::float as held, coalesce(held.remitted, 0)::float as remitted,
            held.last_remitted::text as "lastRemitted"
       from business_partner bp
@@ -91,6 +93,8 @@ export type RemitInput = {
   moneyAccountId: string;
   /** What arrived, and what the courier kept back as its fee. */
   received: number; fee: number;
+  /** BILLED: it paid in everything; its fee comes on a bill, so none is booked here (0234). */
+  feeMode?: "DEDUCTED" | "BILLED";
   /** Parcels collected with this payment and not confirmed before. */
   collectParcelIds: string[];
   reference?: string | null; memo?: string | null;
@@ -106,6 +110,9 @@ export async function remitCourier(input: RemitInput, outer?: TransactionSql) {
   const received = round4(input.received), fee = round4(input.fee);
   if (received < 0 || fee < 0) throw new Error("Amounts cannot be negative.");
   if (!(received + fee > 0)) throw new Error("Enter what the courier paid in.");
+  if (input.feeMode === "BILLED" && fee > 0) {
+    throw new Error("This courier bills its fee separately: record the full amount received now and the fee on its bill, so it is expensed once.");
+  }
   return inTransaction(outer, async (tx) => {
     const [money] = await tx`
       select id, is_cash_account from account

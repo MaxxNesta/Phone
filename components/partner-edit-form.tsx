@@ -13,7 +13,7 @@ export type Partner = {
   member_card_id: string | null;
   contact_person?: string | null; email?: string | null; notes?: string | null;
   created_at?: string | Date | null;
-  is_customer: boolean; is_supplier: boolean; is_courier?: boolean; is_active: boolean;
+  is_customer: boolean; is_supplier: boolean; is_courier?: boolean; cod_fee_mode?: string | null; is_active: boolean;
   region: string | null;
   /** Which column of the price list this customer buys from. */
   price_level_id: string | null; price_level_name: string | null;
@@ -192,6 +192,13 @@ export function PartnerEditForm({
           <input name="is_courier" type="checkbox" defaultChecked={partner.is_courier ?? false} />
           {t("courier")}
         </label>
+        <div className="field cod-fee">
+          <label htmlFor="cod_fee_mode">{t("codFeeMode")}</label>
+          <select id="cod_fee_mode" name="cod_fee_mode" defaultValue={partner.cod_fee_mode ?? "DEDUCTED"}>
+            <option value="DEDUCTED">{t("codFeeDeducted")}</option>
+            <option value="BILLED">{t("codFeeBilled")}</option>
+          </select>
+        </div>
         <label className="check">
           <input name="is_active" type="checkbox" defaultChecked={partner.is_active} />
           {c("active")}

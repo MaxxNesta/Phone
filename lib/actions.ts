@@ -249,13 +249,13 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
 
     await sql`
       insert into business_partner
-        (company_id, code, name, name_my, company_name, is_customer, is_supplier, is_courier,
+        (company_id, code, name, name_my, company_name, is_customer, is_supplier, is_courier, cod_fee_mode,
          region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
          category_id, supplier_category_id, currency, member_card_id,
          contact_person, email, notes)
       values
         (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
-         ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier}, ${isCourier},
+         ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier}, ${isCourier}, ${feeMode(fd) ?? "DEDUCTED"},
          ${asRegion(str(fd, "region"))}, ${str(fd, "township") || null},
          ${str(fd, "address") || null},
          ${str(fd, "phone") || null}, ${num(fd, "payment_terms_days")},
@@ -323,6 +323,8 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
         contact_person = ${str(fd, "contact_person") || null}, email = ${str(fd, "email") || null},
         notes = ${str(fd, "notes") || null},
         is_customer = ${isCustomer}, is_supplier = ${isSupplier}, is_courier = ${isCourier},
+        -- How a courier charges for COD (0234); kept when the form does not ask.
+        cod_fee_mode = coalesce(${feeMode(fd)}, cod_fee_mode),
         region = ${asRegion(str(fd, "region"))},
         township = ${str(fd, "township") || null}, address = ${str(fd, "address") || null},
         phone = ${str(fd, "phone") || null}, payment_terms_days = ${num(fd, "payment_terms_days")},
@@ -2168,6 +2170,12 @@ function parseLines(fd: FormData): InvoiceLine[] {
   const bad = lines.findIndex((l) => l.unitPrice !== undefined && Number(l.unitPrice) < 0);
   if (bad >= 0) throw new Error(`Line ${bad + 1}: price cannot be negative`);
   return lines;
+}
+
+/** A courier's COD fee default (0234), or null when the form did not ask. */
+function feeMode(fd: FormData): "DEDUCTED" | "BILLED" | null {
+  const v = fd.get("cod_fee_mode");
+  return v === "BILLED" ? "BILLED" : v === "DEDUCTED" ? "DEDUCTED" : null;
 }
 
 export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<ActionResult> {

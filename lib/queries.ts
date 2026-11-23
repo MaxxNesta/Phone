@@ -2195,7 +2195,7 @@ export async function getPartners(companyId: string) {
   return sql`
     select bp.id, bp.code, bp.name, bp.name_my, bp.company_name, bp.member_card_id,
            bp.contact_person, bp.email, bp.notes, bp.created_at,
-           bp.is_customer, bp.is_supplier, bp.is_courier, bp.is_active,
+           bp.is_customer, bp.is_supplier, bp.is_courier, bp.cod_fee_mode, bp.is_active,
            bp.region, bp.township, bp.address, bp.phone,
            bp.payment_terms_days, bp.currency, bp.lead_time_days, bp.credit_limit, bp.price_level_id,
            (select pl.name from price_level pl where pl.id = bp.price_level_id) as price_level_name,

@@ -109,7 +109,8 @@ export async function remitCourierAction(_prev: Result, fd: FormData): Promise<R
     const n = (k: string) => { const v = Number(str(fd, k) || 0); if (!Number.isFinite(v)) throw new Error("Enter amounts as numbers."); return v; };
     done = await remitCourier({
       companyId: u.companyId, courierId, docDate: str(fd, "doc_date") || todayLocal(), locationId,
-      moneyAccountId: str(fd, "money_account_id"), received: n("received"), fee: n("fee"),
+      moneyAccountId: str(fd, "money_account_id"), received: n("received"), fee: str(fd, "fee_mode") === "BILLED" ? 0 : n("fee"),
+      feeMode: str(fd, "fee_mode") === "BILLED" ? "BILLED" : "DEDUCTED",
       collectParcelIds: fd.getAll("parcel_id").map(String).filter(Boolean),
       reference: str(fd, "reference") || null, memo: str(fd, "memo") || null,
     });

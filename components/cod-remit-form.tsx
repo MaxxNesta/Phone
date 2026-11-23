@@ -18,7 +18,7 @@ const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 
  */
 export function CodRemitForm({ action, couriers, parcels, branches, accounts, initialCourierId, today }: {
   action: (prev: { error?: string } | null, fd: FormData) => Promise<{ error?: string } | null>;
-  couriers: { id: string; name: string; held: number }[];
+  couriers: { id: string; name: string; held: number; feeMode: "DEDUCTED" | "BILLED" }[];
   parcels: Parcel[]; branches: Opt[]; accounts: Opt[]; initialCourierId?: string; today: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
@@ -28,12 +28,14 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
   const mine = useMemo(() => parcels.filter((p) => p.courierId === courierId), [parcels, courierId]);
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
   const [fee, setFee] = useState("");
+  // How this courier charges, from its record; staff may say otherwise for this one settlement.
+  const [feeMode, setFeeMode] = useState<"DEDUCTED" | "BILLED">(courier?.feeMode ?? "DEDUCTED");
   const [received, setReceived] = useState<string | null>(null);
 
   const held = courier?.held ?? 0;
   const collecting = mine.filter((p) => ticked[p.id]).reduce((s, p) => s + p.outstanding, 0);
   const due = held + collecting;
-  const feeN = Number(fee) || 0;
+  const feeN = feeMode === "BILLED" ? 0 : Number(fee) || 0;
   // What arrived: everything due less the fee, unless typed otherwise.
   const receivedN = received === null ? Math.max(0, due - feeN) : Number(received) || 0;
   const left = Math.round((due - receivedN - feeN) * 100) / 100;
@@ -48,7 +50,8 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
             <div className="field">
               <label htmlFor="courier_id"><Truck size={13} aria-hidden="true" />Courier</label>
               <select id="courier_id" name="courier_id" value={courierId} required
-                onChange={(e) => { setCourierId(e.target.value); setTicked({}); setReceived(null); }}>
+                onChange={(e) => { setCourierId(e.target.value); setTicked({}); setReceived(null); setFee("");
+                  setFeeMode(couriers.find((c) => c.id === e.target.value)?.feeMode ?? "DEDUCTED"); }}>
                 {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.held > 0 ? ` · holds ${fmt(c.held)}` : ""}</option>)}
               </select>
             </div>
@@ -122,13 +125,26 @@ export function CodRemitForm({ action, couriers, parcels, branches, accounts, in
       <section className="card paycard">
         <div className="card-head"><h2>Paid in</h2></div>
         <div className="card-body">
+          <input type="hidden" name="fee_mode" value={feeMode} />
           <div className="row">
             <div className="field">
-              <label htmlFor="fee">Courier fee kept back</label>
+              <label htmlFor="fee_mode">Courier fee</label>
+              <select id="fee_mode" value={feeMode} onChange={(e) => { setFeeMode(e.target.value as typeof feeMode); setReceived(null); }}>
+                <option value="DEDUCTED">Kept back from this pay-in</option>
+                <option value="BILLED">Billed separately later</option>
+              </select>
+              <span className="hint">{feeMode === "BILLED"
+                ? "The full amount is received now. Expense the fee on the courier's bill when it comes."
+                : "This courier's usual way is set on the partner."}</span>
+            </div>
+            {feeMode === "DEDUCTED" && (
+            <div className="field">
+              <label htmlFor="fee">Fee kept back</label>
               <input id="fee" name="fee" type="number" min="0" step="any" placeholder="0" value={fee}
-                onChange={(e) => setFee(e.target.value)} />
+                onChange={(e) => { setFee(e.target.value); setReceived(null); }} />
               <span className="hint">Booked to Carriage Outward.</span>
             </div>
+            )}
             <div className="field">
               <label htmlFor="received">Money received</label>
               <input id="received" name="received" type="number" min="0" step="any" value={received ?? String(receivedN)}

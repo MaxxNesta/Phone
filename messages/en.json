@@ -610,7 +610,10 @@
     "creditAllowedYesHint": "Sells on credit by the terms below. Leave the limit blank for no ceiling.",
     "creditAllowedNoHint": "Cash only: every sale is paid when it is made.",
     "courier": "Courier",
-    "isCourier": "Courier — delivers for us and collects cash on delivery"
+    "isCourier": "Courier — delivers for us and collects cash on delivery",
+    "codFeeMode": "Courier fee on cash on delivery",
+    "codFeeDeducted": "Kept back from the pay-in",
+    "codFeeBilled": "Billed separately later"
   },
   "partnerDetail": {
     "title": "Partner",

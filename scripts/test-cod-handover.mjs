@@ -172,6 +172,46 @@ try {
     check("Delivery Income 5,000 once across both", near(await onDocs(DI, [h1.delivery.id, h2.delivery.id]), -5000), await onDocs(DI, [h1.delivery.id, h2.delivery.id]));
     check("invoice settled in full", near(await owed(d.id), 0), await owed(d.id));
 
+    console.log("\n  E  not home, brought back to the shop: exactly what went out");
+    const e = await codInvoice(1, 5000, { driverId: driver.id });
+    const el = await lineOf(e);
+    const pe = await C.codDispatch(tx, { companyId: co.id, invoiceId: e.id, docDate: day, driverId: driver.id, lines: [{ lineId: el, qty: 1, serials: [imei[5]] }] });
+    await C.notHome(tx, { companyId: co.id, parcelId: pe.id, reason: "Nobody home" });
+    const eWrong = await attempt((s) => C.receiveReturn(s, { companyId: co.id, parcelId: pe.id, docDate: day, scanned: [imei[0]] }));
+    check("not home: another IMEI is refused at the shop door", eWrong !== "posted", eWrong);
+    await C.receiveReturn(tx, { companyId: co.id, parcelId: pe.id, docDate: day, scanned: [imei[5]] });
+    const u5 = await unit(imei[5]);
+    check("the same IMEI is back in the warehouse, for sale", u5.status === "IN_STOCK" && !u5.is_transit, u5);
+    check("nothing owed, and the invoice can go out again", !(await aged(e.id)) && (await C.undispatched(e.id, tx))[0].qty === 1, 0);
+    const acc = await one(tx`insert into item (company_id, item_group_id, code, serial, name, base_uom_id, is_stocked)
+                             values (${co.id}, ${grp.id}, ${"CODA" + tag}, ${"CODA" + tag}, 'COD test case', ${uom.id}, true) returning id`);
+    await P.postGoodsReceipt({ companyId: co.id, partnerId: supplier.id, locationId: wh.id, docDate: day, lines: [{ itemId: acc.id, qty: 5, unitCost: 2000 }] }, tx);
+    const f = await P.postSalesInvoice({ companyId: co.id, partnerId: cust.id, locationId: wh.id, docDate: day, dueDate: day,
+      paymentType: "COD", codOnHandover: true, toDeliver: true, lines: [{ itemId: acc.id, qty: 2, unitPrice: 5000 }] }, tx);
+    const fl = await lineOf(f);
+    const pf = await C.codDispatch(tx, { companyId: co.id, invoiceId: f.id, docDate: day, driverId: driver.id, lines: [{ lineId: fl, qty: 2 }] });
+    await C.notHome(tx, { companyId: co.id, parcelId: pf.id, reason: "Shop shut" });
+    const short = await attempt((s) => C.receiveReturn(s, { companyId: co.id, parcelId: pf.id, docDate: day, scanned: [], counted: { [fl]: 1 } }));
+    check("an accessory counted back short is refused", short !== "posted", short);
+    const onHand = async () => (await one(tx`select coalesce(sum(qty), 0)::float as q from stock_movement where item_id = ${acc.id} and location_id = ${wh.id}`)).q;
+    await C.receiveReturn(tx, { companyId: co.id, parcelId: pf.id, docDate: day, scanned: [], counted: { [fl]: 2 } });
+    check("counted back in full: all 5 in the warehouse again", near(await onHand(), 5), await onHand());
+
+    console.log("\n  F  a courier that bills its fee separately");
+    const g = await codInvoice(1, 5000, { courierId: courier.id });
+    const pg = await C.codDispatch(tx, { companyId: co.id, invoiceId: g.id, docDate: day, courierId: courier.id,
+      lines: [{ lineId: await lineOf(g), qty: 1, serials: [imei[2]] }] });
+    await K.courierCollected(tx, { companyId: co.id, courierId: courier.id, docDate: day, parcelIds: [pg.id] });
+    const billedFee = await attempt((s) => K.remitCourier({ companyId: co.id, courierId: courier.id, docDate: day, locationId: wh.id, moneyAccountId: bank.id,
+      received: 1002000, fee: 3000, feeMode: "BILLED", collectParcelIds: [] }, s));
+    check("billed separately: a fee on the pay-in is refused, so it is expensed once", billedFee !== "posted", billedFee);
+    const bank3 = await bal(bank.id), carr3 = await bal(CARR);
+    await K.remitCourier({ companyId: co.id, courierId: courier.id, docDate: day, locationId: wh.id, moneyAccountId: bank.id,
+      received: 1005000, fee: 0, feeMode: "BILLED", collectParcelIds: [] }, tx);
+    check("the full 1,005,000 is received, no Carriage Outward yet, courier cleared",
+      near(await bal(bank.id) - bank3, 1005000) && near(await bal(CARR), carr3) && near(await bal(CODR, courier.id), 0),
+      [await bal(bank.id) - bank3, await bal(CARR) - carr3, await bal(CODR, courier.id)]);
+
     const tb = await one(tx`select coalesce(sum(balance), 0)::float as v from v_trial_balance where company_id = ${co.id}`);
     check("the trial balance nets to zero", near(tb.v, 0), tb);
     throw new Rollback();

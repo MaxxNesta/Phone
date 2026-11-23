@@ -1752,7 +1752,7 @@ export function SalesVoucher({
                   <span className="hint">{courier
                     ? "The courier collects and pays in later, keeping its fee: booked to Carriage Outward."
                     : driver ? "The driver hands the cash in to the shop till."
-                    : drivers.length + couriers.length === 0 ? "Add drivers under Logistics → Drivers, or a partner with Courier ticked."
+                    : drivers.length + couriers.length === 0 ? "Add drivers under Receivables → Driver cash → Manage drivers, or a partner with Courier ticked."
                     : "One of our drivers, or a courier company."}</span>
                 </div>
               )}
