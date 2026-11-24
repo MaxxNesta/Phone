@@ -72,7 +72,7 @@ function PayFields({ parcel, amount, accounts, deposit }: { parcel: Parcel; amou
         <input name="amount" type="number" min="0" step="any" defaultValue={deposit ? undefined : amount} required />
       </div>
       {to !== "ACCOUNT" && (
-        <div className="field">
+        <div className="field cod-wide">
           <label>Transaction ID</label>
           <input name="reference" maxLength={80} autoComplete="off" placeholder="If paid to their wallet" />
         </div>
@@ -83,11 +83,12 @@ function PayFields({ parcel, amount, accounts, deposit }: { parcel: Parcel; amou
             <label>Into</label>
             <select name="account_id" required>{accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</select>
           </div>
-          <div className="field">
+          <div className="field cod-wide">
             <label>Transaction ID</label>
             <input name="reference" maxLength={80} autoComplete="off" />
           </div>
-          <label className="check cod-wide"><input type="checkbox" name="verified" /> I can see this money in the account</label>
+          {/* Required: a transfer not yet seen in the account is not payment, so the phone cannot be released. */}
+          <label className="check cod-wide"><input type="checkbox" name="verified" required /> Money is in the account</label>
         </>
       )}
     </>
