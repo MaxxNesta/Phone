@@ -1,6 +1,9 @@
 import { getCompany } from "@/lib/queries";
 import { sql } from "@/lib/db";
-import { createUnit, updateUnit, deactivateUnit, activateUnit, deleteUnit, addStandardUnits } from "@/lib/actions";
+import { createUnit, updateUnit, deactivateUnit, activateUnit, deleteUnit, addStandardUnits, setUnitPacks } from "@/lib/actions";
+import { unitPacksOn } from "@/lib/features";
+import { UnitPacksSwitch } from "@/components/unit-packs-switch";
+import { can, currentUser } from "@/lib/auth";
 import { AddUnitForm } from "@/components/unit-form";
 import { UnitRow } from "@/components/unit-row";
 import { DataTable, type DataRow } from "@/components/data-table";
@@ -16,6 +19,8 @@ export default async function Units() {
   const c = await getTranslations("common");
   const cat = await getTranslations("categories");
   if (!co) return <div className="empty">{c("noCompany")}</div>;
+  const packsOn = unitPacksOn(co);
+  const canSwitch = can((await currentUser())!, "settings.manage");
 
   const units = (await sql`
     select u.id, u.code, u.name, u.name_my, u.is_active, u.ref_uom_id, u.ref_qty::float as ref_qty, u.whole_numbers,
@@ -39,7 +44,7 @@ export default async function Units() {
         deactivateAction={deactivateUnit}
         activateAction={activateUnit}
         deleteAction={deleteUnit}
-        rulesFrom={units}
+        rulesFrom={packsOn ? units : undefined}
       />
     ),
   }));
@@ -51,7 +56,7 @@ export default async function Units() {
      A unit smaller than the stock unit (FT on hose counted in M) is the
      stock unit's child the same way. One query for the whole catalogue. */
   const conv: DataRow[] = [];
-  {
+  if (packsOn) {
     const packs = (await sql`
       select i.id, i.code, i.name, coalesce(bu.name_my || ' ', '') || bu.code as base,
              coalesce(pu.name_my || ' ', '') || pu.code as unit, iu.factor::float as factor, iu.sale_price::float as price
@@ -103,7 +108,8 @@ export default async function Units() {
         <p className="page-sub">{t("sub")}</p>
       </div>
 
-      <AddUnitForm action={createUnit} rulesFrom={units} standardAction={addStandardUnits} />
+      {canSwitch && <UnitPacksSwitch on={packsOn} action={setUnitPacks} />}
+      <AddUnitForm action={createUnit} rulesFrom={packsOn ? units : undefined} standardAction={packsOn ? addStandardUnits : undefined} />
 
       <section>
         <div className="card">
@@ -127,7 +133,7 @@ export default async function Units() {
               columns={[
                 { key: "code", label: c("code"), sortable: true },
                 { key: "name", label: c("name"), sortable: true },
-                { key: "equals", label: UOM.equals, align: "r" as const }, { key: "whole", label: UOM.whole },
+                ...(packsOn ? [{ key: "equals", label: UOM.equals, align: "r" as const }, { key: "whole", label: UOM.whole }] : []),
                 { key: "items", label: c("items"), sortable: true, align: "r" },
                 { key: "is_active", label: c("status"), sortable: true },
                 { key: "actions", label: "" },
@@ -137,7 +143,7 @@ export default async function Units() {
         </div>
       </section>
 
-      <section>
+      {packsOn && <section>
           <div className="card">
             <div className="card-head">
               <h2>{UOM.conversions}</h2>
@@ -163,7 +169,7 @@ export default async function Units() {
               />
             )}
           </div>
-        </section>
+        </section>}
     </>
   );
 }

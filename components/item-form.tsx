@@ -59,9 +59,12 @@ export function ItemForm({
   canAddBrand,
   canKeepDuplicates,
   serial = true,
+  packs = true,
 }: {
   /** IMEI and serial numbers switched on for the company (lib/features.ts). Off: every product is counted. */
   serial?: boolean;
+  /** Packs and unit conversion in use (lib/features.ts unitPacksOn). */
+  packs?: boolean;
   /** May keep two variants of one configuration on purpose (items.duplicates). */
   canKeepDuplicates?: boolean;
   /** Owner only (brands.manage): the shop sells Apple. */
@@ -400,9 +403,11 @@ export function ItemForm({
                   </span>
                 </div>
 
-                <div className="pf2-wide">
-                  <PackSizes key={baseUomId} uoms={uoms} baseUomId={baseUomId} initial={[]} />
-                </div>
+                {packs && (
+                  <div className="pf2-wide">
+                    <PackSizes key={baseUomId} uoms={uoms} baseUomId={baseUomId} initial={[]} />
+                  </div>
+                )}
 
                 {retail ? (
                   <div className="pf2-wide">

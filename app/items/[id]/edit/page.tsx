@@ -8,7 +8,7 @@ import { saveItemEdit } from "@/lib/actions";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { ItemEditor, type EditorItem } from "@/components/item-editor";
 import { PhoneSettings } from "@/components/phone-settings";
-import { serialTrackingOn } from "@/lib/features";
+import { serialTrackingOn, unitPacksOn } from "@/lib/features";
 import type { PartNo } from "@/components/part-numbers";
 
 export async function generateMetadata() { return { title: "Edit item" }; }
@@ -110,6 +110,8 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     ownPhoto: item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null,
     packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor), price: p.price, barcode: p.barcode })), brands, uoms,
     buyUomId: (item.purchase_uom_id as string | null) ?? null,
+    // Packs show when the shop uses them, or when this product already has some.
+    unitPacks: unitPacksOn(company) || packs.length > 0,
     partNumbers: (await sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
                     where item_id = ${id} order by kind, part_no`) as unknown as PartNo[],
     parts: (item.parts ?? []) as { a: string; o: string }[],

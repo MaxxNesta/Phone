@@ -1849,6 +1849,32 @@ export async function updateUnit(_prev: unknown, fd: FormData): Promise<ActionRe
  * weight from KG, and pieces whole. A code the shop already has is left as
  * it is, apart from gaining its reference if it had none.
  */
+/**
+ * The shop's switch for packs and unit conversion. Off is refused while a
+ * product still has packs: its lines would go on offering them.
+ */
+export async function setUnitPacks(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("settings.manage");
+  const on = fd.get("on") === "1";
+  try {
+    const co = await companyId();
+    if (!on) {
+      const used = await sql`select distinct i.code from item_uom iu join item i on i.id = iu.item_id
+                              where iu.company_id = ${co} and i.is_active order by i.code limit 6`;
+      if (used.length) {
+        return { error: `${used.length > 5 ? "More than 5 products have" : used.length === 1 ? "1 product has" : `${used.length} products have`} packs `
+          + `(${used.slice(0, 5).map((u) => u.code).join(", ")}). Remove their packs first, or keep this on.` };
+      }
+    }
+    await sql`update company set features = coalesce(features, '{}'::jsonb) || jsonb_build_object('unit_packs', ${on}::boolean)
+               where id = ${co}`;
+    revalidatePath("/items", "layout");
+    return { ok: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not save." };
+  }
+}
+
 export async function addStandardUnits(_prev: unknown, _fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
   const STD: [string, string, string | null, number | null, boolean][] = [

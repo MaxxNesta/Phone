@@ -28,6 +28,8 @@ export type EditorItem = {
   buyUomId: string | null;
   /** Part numbers, or null when the company has them switched off. */
   partNumbers: PartNo[] | null;
+  /** Packs and unit conversion in use (lib/features.ts unitPacksOn), or packs already on this product. */
+  unitPacks: boolean;
   brands: { id: string; code: string; name: string }[];
   uoms: { id: string; code: string; name: string }[];
   parts: { a: string; o: string }[];
@@ -224,8 +226,8 @@ export function ItemEditor({ item, action, tracking }: {
 
           {product && (
             <section className="ie-card" key={resetKey} onChange={() => { setSaved(false); setTouched(true); }}>
-              <h3>Pack sizes &amp; photo</h3>
-              <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} buyUomId={item.buyUomId} />
+              <h3>{item.unitPacks ? <>Pack sizes &amp; photo</> : "Photo"}</h3>
+              {item.unitPacks && <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} buyUomId={item.buyUomId} />}
               {item.partNumbers && !isModel && <div style={{ marginTop: "var(--s2)" }}><PartNumbers initial={item.partNumbers} /></div>}
               <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
             </section>
