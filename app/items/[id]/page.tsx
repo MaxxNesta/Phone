@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { sql } from "@/lib/db";
 import { getCompany, getStockMovements } from "@/lib/queries";
-import { sparePartsOn } from "@/lib/features";
 import { PackLadder } from "@/components/pack-sizes";
 import { VariantTags, asVariant } from "@/components/variant-tags";
 import { ItemThumb } from "@/components/item-thumb";
@@ -79,9 +78,7 @@ export default async function ItemPage({
 
   if (!item) notFound();
 
-  const spareParts = sparePartsOn(company);
-  const partNos = spareParts
-    ? await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no` : [];
+  const partNos = await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no`;
   const [packs, prices, stock, movements, variants] = await Promise.all([
     sql`select u.code, u.name_my as my, iu.factor, iu.sale_price,
                (select bu.name_my from item bi join uom bu on bu.id = bi.base_uom_id where bi.id = ${id}) as base_my
@@ -195,18 +192,8 @@ export default async function ItemPage({
                   {pk("onlyBase", { unit: item.uom_code })}
                 </span>
               ) : (
-                spareParts ? (
-                  <PackLadder base={item.uom_code} baseMy={packs[0]?.base_my} packs={packs.map((p) => ({ code: p.code, my: p.my, factor: Number(p.factor),
-                    price: p.sale_price == null ? null : Number(p.sale_price) }))} />
-                ) : (
-                <ul className="plainlist">
-                  {packs.map((p) => (
-                    <li key={p.code} className="code">
-                      1 {p.code} = {qty(p.factor)} {item.uom_code}
-                    </li>
-                  ))}
-                </ul>
-                )
+                <PackLadder base={item.uom_code} baseMy={packs[0]?.base_my} packs={packs.map((p) => ({ code: p.code, my: p.my, factor: Number(p.factor),
+                  price: p.sale_price == null ? null : Number(p.sale_price) }))} />
               )}
             </div>
             {partNos.length > 0 && (

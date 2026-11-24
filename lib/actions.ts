@@ -1,7 +1,7 @@
 "use server";
 import { str, num } from "./input";
 import { todayLocal } from "@/lib/format";
-import { ordersAndDeliveriesOn, serialTrackingOn, sparePartsOn } from "./features";
+import { ordersAndDeliveriesOn, serialTrackingOn } from "./features";
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
@@ -8019,10 +8019,10 @@ export async function itemImportTemplate(industry?: string, format: "xlsx" | "cs
   const { buildImportTemplate, importTemplateRows, IMPORT_INDUSTRIES } = await import("./read-spreadsheet");
   const co = await companyId();
   // Which shop this is decides the examples, unless someone picked another:
-  // spare parts where part numbers are on, phones where IMEIs are, else general.
+  // phones where IMEIs are on, else general; spare parts when picked.
   const [c] = await sql`select features from company where id = ${co}`;
   const picked = (Object.keys(IMPORT_INDUSTRIES) as (keyof typeof IMPORT_INDUSTRIES)[]).find((k) => k === industry)
-    ?? (sparePartsOn(c) ? "parts" : serialTrackingOn(c) ? "phone" : "general");
+    ?? (serialTrackingOn(c) ? "phone" : "general");
   // This company's own variant options become columns, so the sheet is the one it can import.
   const options = (await sql`select name, code from variant_attribute where company_id = ${co} and is_active
                               order by sort_order, name`) as unknown as { name: string; code: string }[];

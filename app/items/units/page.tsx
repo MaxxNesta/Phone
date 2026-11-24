@@ -6,7 +6,6 @@ import { UnitRow } from "@/components/unit-row";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
 import { getTranslations } from "next-intl/server";
-import { sparePartsOn } from "@/lib/features";
 import { UOM } from "@/lib/uom-labels";
 import Link from "next/link";
 
@@ -29,7 +28,6 @@ export default async function Units() {
      group by u.id, r.code
      order by u.name`) as any[];
 
-  const spare = sparePartsOn(co);
   const rows: DataRow[] = units.map((u) => ({
     key: u.id,
     searchText: [u.code, u.name, u.name_my].filter(Boolean).join(" "),
@@ -41,7 +39,7 @@ export default async function Units() {
         deactivateAction={deactivateUnit}
         activateAction={activateUnit}
         deleteAction={deleteUnit}
-        rulesFrom={spare ? units : undefined}
+        rulesFrom={units}
       />
     ),
   }));
@@ -53,7 +51,7 @@ export default async function Units() {
      A unit smaller than the stock unit (FT on hose counted in M) is the
      stock unit's child the same way. One query for the whole catalogue. */
   const conv: DataRow[] = [];
-  if (sparePartsOn(co)) {
+  {
     const packs = (await sql`
       select i.id, i.code, i.name, coalesce(bu.name_my || ' ', '') || bu.code as base,
              coalesce(pu.name_my || ' ', '') || pu.code as unit, iu.factor::float as factor, iu.sale_price::float as price
@@ -105,7 +103,7 @@ export default async function Units() {
         <p className="page-sub">{t("sub")}</p>
       </div>
 
-      <AddUnitForm action={createUnit} rulesFrom={spare ? units : undefined} standardAction={spare ? addStandardUnits : undefined} />
+      <AddUnitForm action={createUnit} rulesFrom={units} standardAction={addStandardUnits} />
 
       <section>
         <div className="card">
@@ -129,7 +127,7 @@ export default async function Units() {
               columns={[
                 { key: "code", label: c("code"), sortable: true },
                 { key: "name", label: c("name"), sortable: true },
-                ...(spare ? [{ key: "equals", label: UOM.equals, align: "r" as const }, { key: "whole", label: UOM.whole }] : []),
+                { key: "equals", label: UOM.equals, align: "r" as const }, { key: "whole", label: UOM.whole },
                 { key: "items", label: c("items"), sortable: true, align: "r" },
                 { key: "is_active", label: c("status"), sortable: true },
                 { key: "actions", label: "" },
@@ -139,8 +137,7 @@ export default async function Units() {
         </div>
       </section>
 
-      {sparePartsOn(co) && (
-        <section>
+      <section>
           <div className="card">
             <div className="card-head">
               <h2>{UOM.conversions}</h2>
@@ -167,7 +164,6 @@ export default async function Units() {
             )}
           </div>
         </section>
-      )}
     </>
   );
 }

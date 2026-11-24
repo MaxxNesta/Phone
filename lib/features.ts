@@ -13,21 +13,16 @@
  *                     Off: every invoice hands the goods over itself. Both post
  *                     correctly (0178; scripts/check-delivery-entries.mjs).
  */
-export type CompanyFeatures = { serial_tracking?: boolean; orders_deliveries?: boolean; spare_parts?: boolean };
+export type CompanyFeatures = { serial_tracking?: boolean; orders_deliveries?: boolean };
 type HasFeatures = { retail_mode?: boolean | null; features?: CompanyFeatures | null } | null | undefined;
 
 export function serialTrackingOn(company: HasFeatures) {
   return company?.features?.serial_tracking ?? true;
 }
 
-/**
- * A spare-parts shop (0213): part numbers (OEM, equivalents, supplier codes),
- * a selling price per pack, and the pack ladder (1 CTN = 10 BOX = 120 PCS)
- * on the product. Absent means off: phone shops see none of it.
- */
-export function sparePartsOn(company: HasFeatures) {
-  return company?.features?.spare_parts ?? false;
-}
+/* Spare parts (0213) are no longer a switch (2026-11-24): part numbers, a
+   selling price and barcode per pack, the pack ladder and unit conversions
+   are on for every company. A phone shop simply leaves them empty. */
 
 export function ordersAndDeliveriesOn(company: HasFeatures) {
   return company?.features?.orders_deliveries ?? !company?.retail_mode;
