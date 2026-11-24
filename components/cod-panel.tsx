@@ -165,6 +165,7 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
   })).filter((l) => l.qty > 0)), [left, dispatchLines]);
 
   const first = open[0];
+  const oneProduct = new Set([...sheet.parcels.flatMap((p) => p.lines.map((l) => l.itemId)), ...sheet.toDispatch.map((l) => l.itemId)]).size <= 1;
 
   /* One primary action: whatever moves this sale forward next. */
   let primary: React.ReactNode = null;
@@ -225,13 +226,19 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
       {sheet.parcels.length > 0 && (
         <div className="dl-tablewrap">
           <table className="dl-table cod-parcels">
-            <thead><tr><th>Parcel</th><th>Phones</th><th>With</th><th>Status</th><th className="r">To collect</th><th /></tr></thead>
+            <thead><tr><th>Parcel</th><th>In this parcel</th><th>With</th><th>Status</th><th className="r">To collect</th><th /></tr></thead>
             <tbody>
               {sheet.parcels.map((p) => (
                 <tr key={p.id}>
                   <td><Link href={`/documents/${p.id}`} className="m dl-link">{p.no}</Link>
                     <span className="cod-sub">{p.date} · <Link href={`/sales/deliver/slip/${p.id}`} className="dl-link">Slip</Link></span></td>
-                  <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <span className="cod-sub">IMEI {l.serials.join(", ")}</span> : null}</div>)}</td>
+                  {/* The Items section names the product; a parcel says which units it holds.
+                      The product is named here only when the invoice has more than one. */}
+                  <td>{p.lines.map((l) => (
+                    <div key={l.lineId}>
+                      {oneProduct ? null : <span className="cod-sub cod-item">{l.item}</span>}
+                      {l.serials.length ? `IMEI ${l.serials.join(", ")}` : `${l.qty} unit${l.qty === 1 ? "" : "s"}`}
+                    </div>))}</td>
                   <td>{p.collector?.name ?? "—"}</td>
                   <td>
                     <span className={`dl-pill ${TONE[p.state] || "neutral"}`}>{STATE[p.state]}</span>

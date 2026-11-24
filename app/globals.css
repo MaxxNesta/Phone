@@ -11982,6 +11982,7 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .cod-facts dd { margin: 0; font-weight: 600; }
 .cod-sub { display: block; font-size: 0.8125rem; font-weight: 400; color: var(--muted); margin-top: 2px; }
 .cod-parcels td { vertical-align: top; }
+.cod-sub.cod-item { margin: 0 0 2px; }
 /* Lines only: no zebra rows on the COD parcels. */
 table.dl-table.cod-parcels tbody tr:nth-child(n) > td { background: none; }
 @media (max-width: 760px) {
