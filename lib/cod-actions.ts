@@ -2,7 +2,7 @@
 
 /**
  * Cash on delivery from the screens (0233): dispatch, the doorstep handover,
- * a part payment, not home, refused, the return scanned back in, a credit
+ * a partial payment, not home, refused, the return scanned back in, a credit
  * dispatch confirmed delivered, and the cashier receiving a driver's cash.
  * Each checks the branch and calls lib/cod.ts, where the rules live.
  */
@@ -88,7 +88,7 @@ export async function depositAction(_prev: Result, fd: FormData): Promise<Result
     const pay = payment(fd);
     const r = await postOnce(u.companyId, key(fd), (tx) => recordDeposit(tx, { companyId: u.companyId, parcelId: p.id, docDate: str(fd, "doc_date") || todayLocal(), payment: pay }));
     refresh(p.invoiceId);
-    return { ok: `Part payment kept as a deposit · ${r.docNo}` };
+    return { ok: `Partial payment kept as a deposit · ${r.docNo}` };
   } catch (e) { return fail(e); }
 }
 

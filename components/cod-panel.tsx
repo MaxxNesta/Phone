@@ -252,8 +252,8 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                       <span className="cod-row-actions">
                         {open.length > 1 && <Handover p={p} today={today} accounts={accounts} />}
                         <RowMenu label={`More for ${p.no}`}>
-                        <Step action={depositAction} className="" label="Part payment" pendingLabel="Posting…"
-                          title={`Part payment on ${p.no}`} detail="Money taken before handover is kept as a deposit for this invoice and applied once, when the phone is handed over. The phone stays with the driver."
+                        <Step action={depositAction} className="" label="Partial payment" pendingLabel="Posting…"
+                          title={`Partial payment on ${p.no}`} detail="Money taken before handover is kept as a deposit for this invoice and applied once, when the phone is handed over. The phone stays with the driver."
                           confirmLabel="Keep as deposit">
                           <input type="hidden" name="parcel_id" value={p.id} />
                           <DateField today={today} />

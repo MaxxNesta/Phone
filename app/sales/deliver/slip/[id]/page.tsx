@@ -72,7 +72,7 @@ export default async function DeliverySlip({ params }: { params: Promise<{ id: s
 
           <div className="slip-instruction">{c.instruction}</div>
           {c.parcel && c.state !== "REFUSED" && c.state !== "DONE" && (
-            <p className="slip-note">Hand the phone over only when this is paid in full. A part payment stays a deposit and the phone comes back.</p>
+            <p className="slip-note">Hand the phone over only when this is paid in full. A partial payment stays a deposit and the phone comes back.</p>
           )}
 
           <table className="sheet-table">

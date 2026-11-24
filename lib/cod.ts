@@ -294,7 +294,7 @@ export async function confirmHandover(tx: TransactionSql, input: {
   const paid = input.payment.amount === "DUE" ? due : round4(input.payment.amount);
   if (paid + 0.005 < due) {
     throw new Error(`${p.no} comes to ${due.toLocaleString("en-US")} after deposits; ${paid.toLocaleString("en-US")} does not cover it. `
-      + `The phone stays with the ${p.collector?.kind === "COURIER" ? "courier" : "driver"}: record what was paid as a part payment.`);
+      + `The phone stays with the ${p.collector?.kind === "COURIER" ? "courier" : "driver"}: record what was paid as a partial payment.`);
   }
   if (paid > due + 0.005) {
     throw new Error(`${p.no} comes to ${due.toLocaleString("en-US")} after deposits; ${paid.toLocaleString("en-US")} is more than that.`);
@@ -319,7 +319,7 @@ export async function confirmHandover(tx: TransactionSql, input: {
 }
 
 /**
- * Money taken before the phone is handed over: a part payment, or a transfer
+ * Money taken before the phone is handed over: a partial payment, or a transfer
  * that arrived before the driver did. Kept as a deposit for the invoice and
  * applied once, at handover.
  */
