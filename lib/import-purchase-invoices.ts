@@ -425,7 +425,12 @@ export function planInvoices(source: SourceInvoice[], side: ImportSide, mapping:
       const dupInLine = l.serials.filter((x, k) => l.serials.indexOf(x) !== k);
       if (dupInLine.length) err(at, `${dupInLine[0]} appears twice on this line.`);
       if (it?.identity !== "NONE") for (const x of new Set(l.serials)) {
-        if (it?.identity === "IMEI" && !/^\d{15}$/.test(x)) err(at, `${x} is not an IMEI — an IMEI is 15 digits.`);
+        if (it?.identity === "IMEI" && /^\d{16}$/.test(x)) {
+          // The IMEISV: same first 14 digits, a software version in place of the check digit.
+          const body = x.slice(0, 14);
+          const imei = [...Array(10).keys()].map((d) => body + d).find(luhnOk);
+          err(at, `${x} is the 16-digit IMEISV, not the IMEI${imei ? `: use ${imei}` : ""}.`);
+        } else if (it?.identity === "IMEI" && !/^\d{15}$/.test(x)) err(at, `${x} is not an IMEI — an IMEI is 15 digits.`);
         else if (/^\d{15}$/.test(x) && !luhnOk(x)) review(at, `IMEI ${x} fails its check digit — a typo in the old system?`);
         const other = firstSeen.get(x);
         if (other && other !== label) err(at, `${x} is also on ${other} in this file.`);

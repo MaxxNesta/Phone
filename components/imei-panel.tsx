@@ -17,6 +17,17 @@ export function imeiCheckOk(v: string) {
   return sum % 10 === 0;
 }
 
+/**
+ * The IMEI behind a 16-digit IMEISV: the same first 14 digits (model and
+ * serial) with the check digit in place of the 2-digit software version.
+ */
+export function imeiFromImeisv(v: string) {
+  if (!/^\d{16}$/.test(v)) return null;
+  const body = v.slice(0, 14);
+  for (let d = 0; d <= 9; d++) if (imeiCheckOk(body + d)) return body + d;
+  return null;
+}
+
 type Status = { ok: boolean; label: string };
 export type UnitMode = "IMEI" | "SERIAL";
 
@@ -40,6 +51,9 @@ function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI", onFile:
   // A Mac or AirPods: the serial is the identity, and has no check digit.
   if (mode === "SERIAL") return { ok: true, label: "Valid" };
   if (/^\d{15}$/.test(v)) return imeiCheckOk(v) ? { ok: true, label: "Valid" } : { ok: false, label: "Check digit wrong" };
+  // A 16-digit number is the IMEISV (software version), not the IMEI: say which IMEI it means.
+  const fromSv = imeiFromImeisv(v);
+  if (fromSv) return { ok: false, label: `16 digits is the IMEISV. The IMEI is ${fromSv}` };
   if (/^\d+$/.test(v)) return { ok: false, label: `${v.length} digits, IMEI has 15` };
   return { ok: true, label: "Serial" };
 }
