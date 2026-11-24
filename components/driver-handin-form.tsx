@@ -65,7 +65,7 @@ export function DriverHandinForm({ action, drivers, branches, tills, initialDriv
               </select>
             </div>
             <div className="field">
-              <label htmlFor="till_account_id"><Wallet size={13} aria-hidden="true" />Into till</label>
+              <label htmlFor="till_account_id"><Wallet size={13} aria-hidden="true" />Into</label>
               <select id="till_account_id" name="till_account_id" defaultValue={tills[0]?.id ?? ""} required>
                 {tills.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
@@ -114,7 +114,7 @@ export function DriverHandinForm({ action, drivers, branches, tills, initialDriv
               <label htmlFor="counted">Cash counted</label>
               <input id="counted" name="counted" type="number" min="0" step="any" value={counted ?? String(expected)}
                 onChange={(e) => setCounted(e.target.value)} />
-              <span className="hint">What is actually in the driver&rsquo;s hand, counted at the till.</span>
+              <span className="hint">Cash counted at the till, or what the driver transferred into the account above.</span>
             </div>
           </div>
           <dl className="cod-remit-sum">

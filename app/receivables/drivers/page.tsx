@@ -42,7 +42,9 @@ export default async function ReceiveFromDriver({ searchParams }: { searchParams
           action={receiveFromDriverAction}
           drivers={drivers}
           branches={branches.map((b) => ({ id: b.id, label: `${b.code} · ${b.name}` }))}
-          tills={accounts.filter((a) => !a.is_bank_account).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
+          // Tills first; a driver who transfers the money in hands it in to the bank or wallet instead.
+          tills={[...accounts.filter((a) => !a.is_bank_account), ...accounts.filter((a) => a.is_bank_account)]
+            .map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
           initialDriverId={driver}
           today={todayLocal()}
         />

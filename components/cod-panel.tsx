@@ -48,7 +48,11 @@ function DateField({ today }: { today: string }) {
   );
 }
 
-/** How the customer paid: cash to whoever carried it, or straight into the company's bank or wallet. */
+/**
+ * How the customer paid. To whoever carried it (cash, or the driver's own
+ * wallet or QR: the driver holds it either way and hands it in), or straight
+ * into the company's own bank, wallet or MMQR, seen to have arrived.
+ */
 function PayFields({ parcel, amount, accounts, deposit }: { parcel: Parcel; amount: number; accounts: Account[]; deposit?: boolean }) {
   const carrier = parcel.collector?.kind === "COURIER" ? "COURIER" : "DRIVER";
   const [to, setTo] = useState<"DRIVER" | "COURIER" | "ACCOUNT">(carrier);
@@ -57,14 +61,22 @@ function PayFields({ parcel, amount, accounts, deposit }: { parcel: Parcel; amou
       <div className="field">
         <label>Paid to</label>
         <select name="pay_to" value={to} onChange={(e) => setTo(e.target.value as typeof to)}>
-          <option value={carrier}>{parcel.collector ? `${parcel.collector.name} (${carrier === "COURIER" ? "courier" : "driver"}), cash` : "Cash"}</option>
-          {accounts.length > 0 && <option value="ACCOUNT">Straight into our bank or wallet</option>}
+          <option value={carrier}>{parcel.collector
+            ? `${parcel.collector.name} (${carrier === "COURIER" ? "courier" : "driver"}): cash or their own wallet`
+            : "Cash"}</option>
+          {accounts.length > 0 && <option value="ACCOUNT">Our own bank, wallet or MMQR</option>}
         </select>
       </div>
       <div className="field">
         <label>{deposit ? "Amount paid" : "Amount collected"}</label>
         <input name="amount" type="number" min="0" step="any" defaultValue={deposit ? undefined : amount} required />
       </div>
+      {to !== "ACCOUNT" && (
+        <div className="field">
+          <label>Transaction ID</label>
+          <input name="reference" maxLength={80} autoComplete="off" placeholder="If paid to their wallet" />
+        </div>
+      )}
       {to === "ACCOUNT" && (
         <>
           <div className="field">

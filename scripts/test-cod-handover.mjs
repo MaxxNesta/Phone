@@ -249,6 +249,12 @@ try {
     await C.lostInTransit(tx, { companyId: co.id, parcelId: pl2.id, docDate: day, reason: "Driver lost it", bearer: "CARRIER" });
     check("lost, borne by the driver: the driver owes the 800,000 cost", near(await driverHolds() - held0, 800000), await driverHolds() - held0);
 
+    console.log("\n  I  the driver hands in by transfer to the company's bank");
+    const owes = await driverHolds();
+    const bankI = await bal(bank.id);
+    await C.receiveFromDriver({ companyId: co.id, driverId: driver.id, docDate: day, locationId: wh.id, tillAccountId: bank.id, counted: owes, receiptIds: [] }, tx);
+    check("everything the driver held reaches the bank, and the driver owes nothing", near(await bal(bank.id) - bankI, owes) && near(await driverHolds(), 0), [owes, await bal(bank.id) - bankI, await driverHolds()]);
+
     const tb = await one(tx`select coalesce(sum(balance), 0)::float as v from v_trial_balance where company_id = ${co.id}`);
     check("the trial balance nets to zero", near(tb.v, 0), tb);
     throw new Rollback();

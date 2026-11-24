@@ -25,7 +25,7 @@ import type { TransactionSql } from "postgres";
 import { collect } from "./cod-collect";
 export { collectText, collectTotal } from "./cod-collect";
 import {
-  applyAdvance, inTransaction, postCashVoucher, postCustomerReceipt, postDelivery, postStockAdjustment, postStockTransfer, round4,
+  applyAdvance, inTransaction, postBankVoucher, postCashVoucher, postCustomerReceipt, postDelivery, postStockAdjustment, postStockTransfer, round4,
 } from "./posting";
 
 type Db = typeof sql | TransactionSql;
@@ -462,15 +462,17 @@ export async function receiveFromDriver(input: {
     await tx`select id from driver where id = ${input.driverId} and company_id = ${input.companyId} for update`;
     const cwd = await role(tx, input.companyId, "CASH_WITH_DRIVERS");
     if (!cwd) throw new Error("No account is set for Cash with Drivers.");
-    const [till] = await tx`select id from account where id = ${input.tillAccountId} and company_id = ${input.companyId} and is_cash_account`;
-    if (!till) throw new Error("Choose the till the cash goes into.");
+    // A till for cash counted, or the company's bank or wallet for a driver who transfers it in.
+    const [till] = await tx`select id, is_bank_account from account
+       where id = ${input.tillAccountId} and company_id = ${input.companyId} and (is_cash_account or is_bank_account) and is_postable`;
+    if (!till) throw new Error("Choose the till or account the money goes into.");
     const [h] = await tx`
       select coalesce(sum(jl.base_amount), 0)::float as v from journal_line jl join journal_entry je on je.id = jl.journal_entry_id
         join document d on d.id = je.source_id
        where jl.account_id = ${cwd} and d.driver_id = ${input.driverId}`;
     if (counted > round4(Number(h.v)) + 0.005) throw new Error(`The driver holds ${Number(h.v).toLocaleString("en-US")}; ${counted.toLocaleString("en-US")} is more than that.`);
     const [dr] = await tx`select name from driver where id = ${input.driverId}`;
-    const v = await postCashVoucher({
+    const v = await (till.is_bank_account ? postBankVoucher : postCashVoucher)({
       companyId: input.companyId, docDate: input.docDate, locationId: input.locationId, driverId: input.driverId,
       memo: input.memo || `Cash on delivery handed in by ${dr.name}`,
       lines: [{ accountId: till.id as string, amount: counted }, { accountId: cwd, amount: -counted }],
