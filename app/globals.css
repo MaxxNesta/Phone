@@ -12130,3 +12130,6 @@ html:has(.pl3-page) body, .main:has(.pl3-page) { background: #fff; }
 .pl3-field input::-webkit-inner-spin-button, .pl3-field input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .pl3-field input[type="number"] { -moz-appearance: textfield; }
 .pl3-table tbody tr > td, .pl3-levels tbody tr > td { background: #fff !important; }
+.pl3-cell { white-space: nowrap; }
+.pl3-panel-foot .pl3-btn { padding: 9px 14px; font-size: 14px; }
+.pl3-panel-foot .pl3-btn.ghost { padding-inline: 8px; }

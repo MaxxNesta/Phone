@@ -69,8 +69,9 @@ export function PriceList({ products, levels, today, openLevels, setAction, clea
       </div>
 
       <div className="pl3-tablewrap">
-        <table className="pl3-table">
-          <colgroup><col /><col style={{ width: 150 }} />{levels.map((l) => <col key={l.id} style={{ width: 150 }} />)}</colgroup>
+        {/* Every price column holds a nine-digit kyat figure; past what fits, the table scrolls rather than squeezing. */}
+        <table className="pl3-table" style={{ width: `max(100%, ${240 + 150 + levels.length * 160}px)` }}>
+          <colgroup><col /><col style={{ width: 150 }} />{levels.map((l) => <col key={l.id} style={{ width: 160 }} />)}</colgroup>
           <thead>
             <tr>
               <th>Product</th><th>Unit</th>
