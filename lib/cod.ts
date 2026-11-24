@@ -23,6 +23,7 @@
 import { sql } from "./db";
 import type { TransactionSql } from "postgres";
 import { collect } from "./cod-collect";
+import { lookupKeys } from "./imei";
 export { collectText, collectTotal } from "./cod-collect";
 import {
   applyAdvance, inTransaction, postBankVoucher, postCashVoucher, postCustomerReceipt, postDelivery, postStockAdjustment, postStockTransfer, round4,
@@ -397,7 +398,9 @@ export async function receiveReturn(tx: TransactionSql, input: {
   if (p.state === "RETURNED") throw new Error(`${p.no} is already back (${p.closedByNo}).`);
   if (p.state !== "REFUSED" && p.state !== "NOT_HOME") throw new Error(`Mark ${p.no} refused or not home before receiving it back.`);
   const expect = p.lines.flatMap((l) => l.serials);
-  const got = [...new Set(input.scanned.map((s) => s.trim()).filter(Boolean))];
+  // An IMEISV scanned for a phone that went out counts as its IMEI.
+  const got = [...new Set(input.scanned.map((s) => s.trim()).filter(Boolean)
+    .map((s) => lookupKeys(s).find((k) => expect.includes(k)) ?? s))];
   const missing = expect.filter((s) => !got.includes(s));
   const extra = got.filter((s) => !expect.includes(s));
   if (extra.length) throw new Error(`${extra.join(", ")} ${extra.length === 1 ? "is" : "are"} not in ${p.no}.`);

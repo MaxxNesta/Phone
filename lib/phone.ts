@@ -1,3 +1,4 @@
+import { imeiFromImeisv, lookupKeys } from "./imei";
 import { lowStockToday } from "./replenish-data";
 import { cache } from "react";
 import { sql } from "./db";
@@ -90,7 +91,7 @@ export async function posSearch(companyId: string, locationId: string, q: string
            location_name, unit_cost::float
       from v_stock_serial
      where company_id = ${companyId}
-       and (imei = ${term} or imei2 = ${term} or device_serial = ${term})`;
+       and (imei = any(${lookupKeys(term)}) or imei2 = any(${lookupKeys(term)}) or device_serial = ${term})`;
   return { units, items: await sellable(companyId, locationId, term) };
 }
 
@@ -173,7 +174,8 @@ export type PhoneStockFilter = {
  * still need the list whole.
  */
 export async function phoneStock(companyId: string, f: PhoneStockFilter & { page?: number; size?: number } = {}) {
-  const like = f.q ? `%${f.q.trim()}%` : null;
+  // A scanned IMEISV searches as the IMEI it stands for.
+  const like = f.q ? `%${imeiFromImeisv(f.q) ?? f.q.trim()}%` : null;
   const size = f.size ?? 0;
   const offset = size > 0 ? (Math.max(1, f.page ?? 1) - 1) * size : 0;
   const rows = await sql`
@@ -424,7 +426,7 @@ export async function warrantyLookup(companyId: string, q: string, locs: string[
       from v_stock_serial v
      where v.company_id = ${companyId}
        ${locs ? sql`and v.location_id = any(${locs})` : sql``}
-       and (v.imei = ${term} or v.imei2 = ${term} or v.device_serial = ${term}
+       and (v.imei = any(${lookupKeys(term)}) or v.imei2 = any(${lookupKeys(term)}) or v.device_serial = ${term}
             or v.out_doc_no ilike ${like} or v.customer_name ilike ${like})
      order by v.out_date desc nulls last
      limit 100`;
@@ -691,7 +693,8 @@ export async function inventorySummary(companyId: string, f: {
    */
   combine?: boolean;
 }) {
-  const like = f.q ? `%${f.q.trim()}%` : null;
+  // A scanned IMEISV searches as the IMEI it stands for.
+  const like = f.q ? `%${imeiFromImeisv(f.q) ?? f.q.trim()}%` : null;
   const opts = f.optionIds ?? [];
   const locs = f.locs ?? null;
   const locations = await sql`

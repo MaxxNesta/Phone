@@ -5,28 +5,9 @@ import { ScanLine, ClipboardPaste, FileUp, Trash2, CheckCircle2 } from "lucide-r
 
 export type UnitRow = { serial: string; imei2?: string | null; deviceSerial?: string | null };
 
-/** Luhn, the check digit every IMEI carries in its fifteenth place. */
-export function imeiCheckOk(v: string) {
-  if (!/^\d{15}$/.test(v)) return false;
-  let sum = 0;
-  for (let i = 0; i < 15; i++) {
-    let d = Number(v[14 - i]);
-    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
-    sum += d;
-  }
-  return sum % 10 === 0;
-}
-
-/**
- * The IMEI behind a 16-digit IMEISV: the same first 14 digits (model and
- * serial) with the check digit in place of the 2-digit software version.
- */
-export function imeiFromImeisv(v: string) {
-  if (!/^\d{16}$/.test(v)) return null;
-  const body = v.slice(0, 14);
-  for (let d = 0; d <= 9; d++) if (imeiCheckOk(body + d)) return body + d;
-  return null;
-}
+/** Luhn and the IMEISV rule live in lib/imei.ts, shared with every lookup. */
+import { imeiCheckOk, imeiFromImeisv } from "@/lib/imei";
+export { imeiCheckOk, imeiFromImeisv };
 
 type Status = { ok: boolean; label: string };
 export type UnitMode = "IMEI" | "SERIAL";

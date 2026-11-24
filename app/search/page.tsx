@@ -1,3 +1,4 @@
+import { lookupKeys } from "@/lib/imei";
 import { seenLocations } from "@/lib/branch-scope";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -22,7 +23,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const locs = await seenLocations();
   const [units, allDocs, partners, oldPurchases] = await Promise.all([
     sql`select serial_id, imei, item_name, status, customer_name from v_stock_serial
-         where company_id = ${co} and (imei = ${q} or imei2 = ${q} or device_serial = ${q}
+         where company_id = ${co} and (imei = any(${lookupKeys(q)}) or imei2 = any(${lookupKeys(q)}) or device_serial = ${q}
                or imei ilike ${like}) ${locs ? sql`and location_id = any(${locs})` : sql``} limit 20`,
     sql`select id, doc_no, doc_type, posting_date, gross_total::float as total from document
          where company_id = ${co} and (doc_no ilike ${like} or source_ref ilike ${like}) and status <> 'DRAFT' ${locs ? sql`and location_id = any(${locs})` : sql``}

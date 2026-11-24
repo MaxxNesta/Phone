@@ -1,3 +1,4 @@
+import { lookupKeys } from "./imei";
 import { todayLocal } from "@/lib/format";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
@@ -2081,18 +2082,25 @@ async function claimSerials(
   if (wanted.length === 0) return units;
   // Every unit on the line in one lock and one status read. Locked in id
   // order, so two tills claiming overlapping units cannot deadlock.
+  // A scanned IMEISV (16 digits) also looks for the IMEI it stands for.
+  const keys = [...new Set(wanted.flatMap(lookupKeys))];
   const found = await tx`
     select id, item_id, serial_no, imei2 from stock_serial
-     where company_id = ${companyId} and (serial_no = any(${wanted}) or imei2 = any(${wanted}))
+     where company_id = ${companyId} and (serial_no = any(${keys}) or imei2 = any(${keys}))
      order by id
        for update`;
   const status = found.length === 0 ? [] : await tx`
     select serial_id, status, location_id, location_name, stock_lot_id, item_code
       from v_stock_serial where serial_id = any(${found.map((f) => f.id)})`;
   const statusOf = new Map(status.map((s) => [s.serial_id, s]));
-  for (const sn of wanted) {
+  for (const [i, scanned] of wanted.entries()) {
+    // As scanned first; only then the IMEI behind an IMEISV. The line then
+    // carries the real IMEI, so later steps (the invoice's claim on the
+    // delivery, the serial events) see the number the phone is filed under.
+    const sn = lookupKeys(scanned).find((k) => found.some((f) => f.serial_no === k || f.imei2 === k)) ?? scanned;
+    if (sn !== scanned) serials[i] = sn;
     const s = found.find((f) => f.serial_no === sn) ?? found.find((f) => f.imei2 === sn);
-    if (!s) throw new Error(`${sn} was never received.`);
+    if (!s) throw new Error(`${scanned} was never received.`);
     const st = statusOf.get(s.id)!;
     if (st.status !== "IN_STOCK") {
       throw new Error(`${sn} is ${SERIAL_STATUS[st.status] ?? st.status.toLowerCase()}.`);
