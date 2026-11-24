@@ -678,7 +678,7 @@ export function ReceiptForm({
                 {matchedPi && <th className="r">Billed</th>}
                 <th className="r vc-qty">Receive qty</th>
                 <th>Unit</th>
-                <th className="r">Unit cost{foreign && !matchedPi ? ` (${currency})` : ""}</th>
+                <th className="r vc-price">Unit cost{foreign && !matchedPi ? ` (${currency})` : ""}</th>
                 <th>IMEI / serial</th>
                 <th className="r">Subtotal</th>
                 <th />
@@ -970,7 +970,7 @@ export function ReceiptForm({
       <div className="actions form-commit">
         {(serialShort.length > 0 || carriageBlock || rejectIncomplete.length > 0) && (
           <span className="commit-hint" role="status">
-            {serialShort.length > 0 ? "Every unit needs its IMEI or serial to post"
+            {serialShort.length > 0 ? "Every unit needs a valid IMEI or serial to post: fix the ones in red"
               : rejectIncomplete.length > 0 ? "A refusal needs which units, what is wrong, and whether the supplier replaces or credits them"
               : carriageBlock}
           </span>

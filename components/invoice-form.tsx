@@ -949,7 +949,7 @@ export function InvoiceForm({
                 {matchedGr && <th className="r">Received</th>}
                 {anyOrdered && <th className="r">Order price</th>}
                 <th className="r vc-qty">Qty</th>
-                <th className="r">{matchedGr ? "Billed price" : "Unit price"}</th>
+                <th className="r vc-price">{matchedGr ? "Billed price" : "Unit price"}</th>
                 {anyDisc && <th className="r vc-disc">Discount</th>}
                 <th className="r">Amount</th>
                 <th />

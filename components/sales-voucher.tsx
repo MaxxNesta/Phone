@@ -1310,8 +1310,8 @@ export function SalesVoucher({
               <tr>
                 <th className="vc-no">No.</th>
                 <th>Item</th>
-                <th className="r">Qty</th>
-                <th className="r">Unit price{currency ? ` (${currency})` : ""}</th>
+                <th className="r vc-qty">Qty</th>
+                <th className="r vc-price">Unit price{currency ? ` (${currency})` : ""}</th>
                 {anyDisc && <th className="r vc-disc">Discount</th>}
                 <th className="r">Amount{currency ? ` (${currency})` : ""}</th>
                 <th />

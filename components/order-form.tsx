@@ -353,7 +353,7 @@ export function OrderForm({
               <tr>
                 <th className="vc-no">No.</th>
                 <th>Item</th><th className="r vc-qty">Qty</th><th>Unit</th>
-                <th className="r">Expected price</th>
+                <th className="r vc-price">Expected price</th>
                 <th className="r">Amount</th><th />
               </tr>
             </thead>

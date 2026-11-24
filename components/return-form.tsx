@@ -424,7 +424,7 @@ export function ReturnForm({
                 <th>Item</th>
                 <th className="r">{isSales ? "Ref. cost" : "On hand"}</th>
                 <th className="r vc-qty">Qty</th>
-                <th className="r">Unit price{sourceFc ? ` (${sourceFc})` : ""}</th>
+                <th className="r vc-price">Unit price{sourceFc ? ` (${sourceFc})` : ""}</th>
                 <th className="r">Amount</th>
                 <th />
               </tr>

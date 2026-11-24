@@ -8665,7 +8665,7 @@ button.line-del:disabled { opacity: 0.3; cursor: default; }
   .linetable.vgrid td.pricecell, .linetable.vgrid td.vc-price { width: 200px; }
   .linetable.vgrid td.r:not(.vc-qty) { width: 150px; white-space: nowrap; }
   .linetable.vgrid td.unitcell select { width: auto; }
-  .grlines.vgrid td:has(.gr-imei) { width: 200px; white-space: nowrap; }
+  .grlines.vgrid td:has(.gr-imei) { width: 1%; white-space: nowrap; }
 }
 
 /* ============================================================= rail ====
@@ -9030,10 +9030,19 @@ dialog.cbp::backdrop { background: rgb(0 0 0 / 0.38); backdrop-filter: blur(3px)
 .form.docsheet table.linetable > thead > tr > :is(th.vc-no + th, th:first-child:not(.vc-no)) { width: 32%; }
 .form.docsheet table.linetable > thead > tr > th.r:not(.vc-qty) { width: 9.5rem; min-width: 8.5rem; white-space: nowrap; }
 .form.docsheet table.linetable > thead > tr > th.vc-qty,
-.form.docsheet table.linetable > tbody > tr > :is(td.vc-qty, td.qtycell) { width: 6.5rem; min-width: 6rem; }
+.form.docsheet table.linetable > tbody > tr > :is(td.vc-qty, td.qtycell) { width: 1%; }
 .form.docsheet table.linetable > tbody > tr > td.vc-price { width: auto; }
 .form.docsheet .vlines.vgrid > tbody > tr > td.vc-price input[aria-label="Unit price"] { min-width: 0; }
-.form.docsheet table.linetable > tbody > tr > td.narrow input[aria-label="Quantity"] { min-width: 0; width: 100%; }
+.form.docsheet table.linetable > tbody > tr > td.narrow input[aria-label="Quantity"] { min-width: 0; width: 4.5rem; }
+/* The item ends a little past a third; the price or cost column takes the
+   room it gives up, so seven- and eight-figure kyat prices sit comfortably. */
+@media (min-width: 721px) {
+  .form.docsheet table.linetable > thead > tr > :is(th.vc-no + th, th:first-child:not(.vc-no)),
+  .form.docsheet table.linetable > tbody > tr > td.vc-item { width: 38%; }
+  .form.docsheet table.linetable > thead > tr > th.vc-price { width: 13rem; }
+  .form.docsheet table.linetable > tbody > tr > :is(td.vc-price, td.pricecell) { width: auto; }
+  .form.docsheet table.linetable > tbody > tr > :is(td.vc-price, td.pricecell) input { width: 100%; min-width: 9rem; }
+}
 /* A receiving line's units, under it: the entry panel spans the row. */
 .units-row-panel { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 4px 0 6px; }
 .units-row-panel > :first-child { align-self: stretch; }
