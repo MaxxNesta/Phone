@@ -171,7 +171,8 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
   let primary: React.ReactNode = null;
   if (canPost && returning[0]) {
     primary = <ReceiveBack p={returning[0]} today={today} primary />;
-  } else if (canPost && first) {
+  } else if (canPost && first && open.length === 1) {
+    // One parcel out: its handover is the next step. With several, each row has its own.
     primary = <Handover p={first} today={today} accounts={accounts} primary />;
   } else if (canPost && left.length > 0) {
     primary = (
@@ -204,9 +205,9 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
         ))}
       </Step>
     );
-  } else if (sheet.driverHolds[0]) {
+  } else if (open.length === 0 && sheet.driverHolds[0]) {
     primary = <Link href={`/receivables/drivers?driver=${sheet.driverHolds[0].driverId}`} className="btn primary">Receive from driver</Link>;
-  } else if (sheet.courierHolds[0]) {
+  } else if (open.length === 0 && sheet.courierHolds[0]) {
     primary = <Link href={`/receivables/couriers/pay?courier=${sheet.courierHolds[0].courierId}`} className="btn primary">Courier pay-in</Link>;
   }
 
@@ -249,7 +250,7 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                   <td className="tight">
                     {canPost && (p.state === "OUT" || p.state === "NOT_HOME") && (
                       <span className="cod-row-actions">
-                        {p.id !== first?.id && <Handover p={p} today={today} accounts={accounts} />}
+                        {open.length > 1 && <Handover p={p} today={today} accounts={accounts} />}
                         <RowMenu label={`More for ${p.no}`}>
                         <Step action={depositAction} className="" label="Part payment" pendingLabel="Posting…"
                           title={`Part payment on ${p.no}`} detail="Money taken before handover is kept as a deposit for this invoice and applied once, when the phone is handed over. The phone stays with the driver."
