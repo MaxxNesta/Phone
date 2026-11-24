@@ -1,8 +1,8 @@
+import { ErpPageHead, ErpSection } from "@/components/erp-worklist";
 import Link from "next/link";
 import { money, shortDate } from "@/lib/format";
 import { getCompany, getTrips } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
-import { HelpHint } from "@/components/help-hint";
 
 const toTime = (v: unknown) => (v ? new Date(v as string).getTime() : 0);
 
@@ -67,29 +67,12 @@ export default async function Trips() {
   }));
 
   return (
-    <>
-      <div className="page-head">
-        <span className="eyebrow">Logistics</span>
-        <h1>Delivery trips</h1>
-        <HelpHint>
-          One truck, one day, one ordered list of shops. A trip groups
-          deliveries that are already posted — the stock left the warehouse
-          when the delivery did — so marking a stop delivered is proof of
-          delivery and never touches the ledger.
-          <br /><br />
-          A stop that fails is recorded as failed with the reason. The goods
-          come back on the truck and the delivery still stands; a trip that
-          can only say &ldquo;delivered&rdquo; forces somebody to lie.
-        </HelpHint>
-        <Link href="/logistics/trips/new" className="btn">New trip</Link>
-      </div>
+    <div className="erp-page">
+      <ErpPageHead eyebrow="Delivery" title="Delivery trips"
+        lead="One driver, one day, an ordered list of stops. Each stop shows what to collect; the trip shows the cash to bring back."
+        action={<Link href="/logistics/trips/new" className="erp-hbtn">New trip</Link>} />
 
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>Trips</h2>
-            <span className="page-sub">{trips.length} trip{trips.length === 1 ? "" : "s"}</span>
-          </div>
+      <ErpSection title="Trips" count={trips.length}>
           <DataTable
             rows={rows}
             emptyLabel="No trips yet"
@@ -106,8 +89,7 @@ export default async function Trips() {
               { key: "status", label: "Status", sortable: true },
             ]}
           />
-        </div>
-      </section>
-    </>
+      </ErpSection>
+    </div>
   );
 }

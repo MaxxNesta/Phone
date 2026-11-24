@@ -1,9 +1,9 @@
+import { ErpPageHead, ErpSection } from "@/components/erp-worklist";
 import { getCompany, getDrivers } from "@/lib/queries";
 import { createDriver, updateDriver, setDriverActive } from "@/lib/actions";
 import { FleetRow, type FleetField } from "@/components/fleet-row";
 import { SimpleForm } from "@/components/simple-form";
 import { DataTable, type DataRow } from "@/components/data-table";
-import { HelpHint } from "@/components/help-hint";
 
 const FIELDS: FleetField[] = [
   { name: "name", label: "Name", required: true },
@@ -39,24 +39,15 @@ export default async function Drivers() {
   }));
 
   return (
-    <>
-      <div className="page-head">
-        <span className="eyebrow">Logistics</span>
-        <h1>Drivers</h1>
-        <HelpHint>
-          Who drives. Kept apart from salespersons because on a route the
-          driver and the salesman are routinely two people on one truck, and
-          one record for both loses which of them was there.
-          <br /><br />
-          A driver who leaves is retired, never deleted — they still appear on
-          the trips they drove, and removing the record would blank the answer
-          to who carried goods on a journey that already happened.
-        </HelpHint>
-      </div>
+    <div className="erp-page">
+      <ErpPageHead eyebrow="Delivery" title="Drivers"
+        lead="Who carries deliveries and collects cash on delivery. A driver who leaves is retired, never deleted."
+        action={<a href="#add" className="erp-hbtn">Add driver</a>} />
 
+      <div id="add" className="erp-addform">
       <SimpleForm action={createDriver} submitLabel="Add driver">
         <div className="card">
-          <div className="card-head"><h2>New driver</h2></div>
+          <div className="card-head"><h2>New driver</h2><a href="#" className="btn ghost tiny">Cancel</a></div>
           <div className="card-body">
             <div className="row">
               <div className="field">
@@ -83,13 +74,9 @@ export default async function Drivers() {
           </div>
         </div>
       </SimpleForm>
+      </div>
 
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>Drivers</h2>
-            <span className="page-sub">{drivers.length} driver{drivers.length === 1 ? "" : "s"}</span>
-          </div>
+      <ErpSection title="Drivers" count={drivers.length}>
           <DataTable
             rows={rows}
             emptyLabel="No drivers yet"
@@ -106,8 +93,7 @@ export default async function Drivers() {
               { key: "actions", label: "" },
             ]}
           />
-        </div>
-      </section>
-    </>
+      </ErpSection>
+    </div>
   );
 }

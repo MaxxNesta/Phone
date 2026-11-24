@@ -26,7 +26,7 @@ export default async function NewTrip() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Logistics</span>
+        <span className="eyebrow">Delivery</span>
         <h1>New trip</h1>
         <HelpHint>
           Pick the truck and who is on it, then tick the deliveries it is

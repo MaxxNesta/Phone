@@ -26,7 +26,7 @@ export default async function NewRoute() {
   return (
     <>
       <div className="page-head">
-        <span className="eyebrow">Logistics</span>
+        <span className="eyebrow">Delivery</span>
         <h1>New route</h1>
         <HelpHint>
           Name the beat and say which days it runs. Who normally takes it is a

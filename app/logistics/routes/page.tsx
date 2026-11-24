@@ -1,7 +1,7 @@
+import { ErpPageHead, ErpSection } from "@/components/erp-worklist";
 import Link from "next/link";
 import { getCompany, getRoutes } from "@/lib/queries";
 import { DataTable, type DataRow } from "@/components/data-table";
-import { HelpHint } from "@/components/help-hint";
 
 const DAYS = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const shortDate = (v: string | null) =>
@@ -60,28 +60,12 @@ export default async function Routes() {
   }));
 
   return (
-    <>
-      <div className="page-head">
-        <span className="eyebrow">Logistics</span>
-        <h1>Routes</h1>
-        <HelpHint>
-          A beat: the same shops, in the same order, on the same days. It is a
-          template, not a schedule — somebody presses generate on the morning
-          of the run and gets a trip they can then change.
-          <br /><br />
-          Generating picks up any posted delivery already waiting for a shop on
-          the beat. A shop with nothing waiting still gets a stop, because on a
-          pre-sale round the call is the job.
-        </HelpHint>
-        <Link href="/logistics/routes/new" className="btn">New route</Link>
-      </div>
+    <div className="erp-page">
+      <ErpPageHead eyebrow="Delivery" title="Routes"
+        lead="Regular rounds: the same customers, in the same order, on the same days. Generate a trip from one on the morning it runs."
+        action={<Link href="/logistics/routes/new" className="erp-hbtn">New route</Link>} />
 
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>Beats</h2>
-            <span className="page-sub">{routes.length} route{routes.length === 1 ? "" : "s"}</span>
-          </div>
+      <ErpSection title="Beats" count={routes.length}>
           <DataTable
             rows={rows}
             emptyLabel="No routes yet"
@@ -97,8 +81,7 @@ export default async function Routes() {
               { key: "is_active", label: "Status", sortable: true },
             ]}
           />
-        </div>
-      </section>
-    </>
+      </ErpSection>
+    </div>
   );
 }

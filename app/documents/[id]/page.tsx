@@ -1656,14 +1656,6 @@ export default async function DocumentPage({
       banner={
         <>
           {versionTrail}
-          {cod && (
-            <CodPanel invoiceId={doc.id} invoiceNo={doc.doc_no ?? ""} sheet={cod} today={todayLocal()}
-              canPost={can(user, "sales.post")}
-              drivers={codDrivers as never} couriers={codCouriers as never}
-              accounts={(codAccounts as { id: string; code: string; name: string; is_bank_account: boolean }[])
-                .filter((a) => a.is_bank_account).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
-              defaultCollector={doc.driver_id ? `D:${doc.driver_id}` : doc.courier_id ? `C:${doc.courier_id}` : ""} />
-          )}
           {refused.length > 0 && (() => {
             const total = refused.reduce((t, r) => t + Number(r.qty), 0);
             const units = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
@@ -1905,6 +1897,15 @@ export default async function DocumentPage({
           )}
         </div>
       </section>
+
+      {cod && (
+        <CodPanel invoiceId={doc.id} invoiceNo={doc.doc_no ?? ""} sheet={cod} today={todayLocal()}
+          canPost={can(user, "sales.post")}
+          drivers={codDrivers as never} couriers={codCouriers as never}
+          accounts={(codAccounts as { id: string; code: string; name: string; is_bank_account: boolean }[])
+            .filter((a) => a.is_bank_account).map((a) => ({ id: a.id, label: `${a.code} · ${a.name}` }))}
+          defaultCollector={doc.driver_id ? `D:${doc.driver_id}` : doc.courier_id ? `C:${doc.courier_id}` : ""} />
+      )}
 
       {lines.length > 0 && (() => {
         // Each line's own IMEIs, listed under it. A unit the query could not

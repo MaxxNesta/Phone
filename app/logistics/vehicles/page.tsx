@@ -1,9 +1,9 @@
+import { ErpPageHead, ErpSection } from "@/components/erp-worklist";
 import { getCompany, getVehicles } from "@/lib/queries";
 import { createVehicle, updateVehicle, setVehicleActive } from "@/lib/actions";
 import { FleetRow, type FleetField } from "@/components/fleet-row";
 import { SimpleForm } from "@/components/simple-form";
 import { DataTable, type DataRow } from "@/components/data-table";
-import { HelpHint } from "@/components/help-hint";
 
 const FIELDS: FleetField[] = [
   { name: "plate_no", label: "Plate", placeholder: "3K/1234", required: true },
@@ -37,21 +37,15 @@ export default async function Vehicles() {
   }));
 
   return (
-    <>
-      <div className="page-head">
-        <span className="eyebrow">Logistics</span>
-        <h1>Vehicles</h1>
-        <HelpHint>
-          The trucks that carry deliveries. Capacity is a note rather than a
-          number: a real load check needs weight and volume per item, which
-          the item master does not keep, and a figure here would look like a
-          limit while enforcing nothing.
-        </HelpHint>
-      </div>
+    <div className="erp-page">
+      <ErpPageHead eyebrow="Delivery" title="Vehicles"
+        lead="The vans and bikes that carry deliveries on a trip."
+        action={<a href="#add" className="erp-hbtn">Add vehicle</a>} />
 
+      <div id="add" className="erp-addform">
       <SimpleForm action={createVehicle} submitLabel="Add vehicle">
         <div className="card">
-          <div className="card-head"><h2>New vehicle</h2></div>
+          <div className="card-head"><h2>New vehicle</h2><a href="#" className="btn ghost tiny">Cancel</a></div>
           <div className="card-body">
             <div className="row">
               <div className="field">
@@ -75,13 +69,9 @@ export default async function Vehicles() {
           </div>
         </div>
       </SimpleForm>
+      </div>
 
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>Fleet</h2>
-            <span className="page-sub">{vehicles.length} vehicle{vehicles.length === 1 ? "" : "s"}</span>
-          </div>
+      <ErpSection title="Fleet">
           <DataTable
             rows={rows}
             emptyLabel="No vehicles yet"
@@ -97,8 +87,7 @@ export default async function Vehicles() {
               { key: "actions", label: "" },
             ]}
           />
-        </div>
-      </section>
-    </>
+      </ErpSection>
+    </div>
   );
 }

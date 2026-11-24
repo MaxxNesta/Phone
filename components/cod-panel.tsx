@@ -210,32 +210,33 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
   }
 
   return (
-    <section className="card cod-sheet" aria-label="Cash on delivery">
-      <div className="card-head">
+    <section className="dl-sec cod-sec" aria-label="Cash on delivery">
+      <div className="dl-sec-head">
         <h2>Cash on delivery</h2>
-        <span className="actions">{primary}</span>
+        {primary && <span className="dl-sec-end">{primary}</span>}
       </div>
-      <div className="cod-status">
-        <div><span className="kpi-label">Delivery</span><strong>{delivery}</strong></div>
-        <div><span className="kpi-label">Customer payment</span><strong>{payment}</strong>
-          {sheet.deposits > 0.005 && sheet.billed > 0 && <span className="subline">Deposit {fmt(sheet.deposits)} waiting for the next handover</span>}</div>
-        <div><span className="kpi-label">Driver / courier settlement</span><strong>{settle.length ? settle.join(" · ") : sheet.billed > 0 ? "Settled" : "Nothing collected yet"}</strong></div>
-      </div>
+      {/* Three facts, side by side, ruled like the details above: no boxes. */}
+      <dl className="cod-facts">
+        <div><dt>Delivery</dt><dd>{delivery}</dd></div>
+        <div><dt>Customer payment</dt><dd>{payment}
+          {sheet.deposits > 0.005 && sheet.billed > 0 && <span className="cod-sub">Deposit {fmt(sheet.deposits)} waiting for the next handover</span>}</dd></div>
+        <div><dt>Driver / courier settlement</dt><dd>{settle.length ? settle.join(" · ") : sheet.billed > 0 ? "Settled" : "Nothing collected yet"}</dd></div>
+      </dl>
       {sheet.parcels.length > 0 && (
-        <div className="tablewrap">
-          <table>
+        <div className="dl-tablewrap">
+          <table className="dl-table cod-parcels">
             <thead><tr><th>Parcel</th><th>Phones</th><th>With</th><th>Status</th><th className="r">To collect</th><th /></tr></thead>
             <tbody>
               {sheet.parcels.map((p) => (
                 <tr key={p.id}>
-                  <td className="code"><Link href={`/documents/${p.id}`} style={{ color: "var(--link)" }}>{p.no}</Link><div className="subline">{p.date}</div>
-                    <Link href={`/sales/deliver/slip/${p.id}`} className="subline" style={{ color: "var(--link)" }}>Delivery slip</Link></td>
-                  <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <div className="subline">{l.serials.join(", ")}</div> : null}</div>)}</td>
+                  <td><Link href={`/documents/${p.id}`} className="m dl-link">{p.no}</Link>
+                    <span className="cod-sub">{p.date} · <Link href={`/sales/deliver/slip/${p.id}`} className="dl-link">Slip</Link></span></td>
+                  <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <span className="cod-sub">{l.serials.join(", ")}</span> : null}</div>)}</td>
                   <td>{p.collector?.name ?? "—"}</td>
                   <td>
-                    <span className={`pill ${TONE[p.state]}`}>{STATE[p.state]}</span>
-                    {p.lastReason && <div className="subline">{p.lastReason}{p.retryOn ? ` · retry ${p.retryOn}` : ""}</div>}
-                    {p.closedBy && <div className="subline"><Link href={`/documents/${p.closedBy}`} style={{ color: "var(--link)" }}>{p.closedByNo}</Link></div>}
+                    <span className={`dl-pill ${TONE[p.state] || "neutral"}`}>{STATE[p.state]}</span>
+                    {p.lastReason && <span className="cod-sub">{p.lastReason}{p.retryOn ? ` · retry ${p.retryOn}` : ""}</span>}
+                    {p.closedBy && <span className="cod-sub"><Link href={`/documents/${p.closedBy}`} className="dl-link">{p.closedByNo}</Link></span>}
                   </td>
                   <td className="r cod-collect-cell">{p.state === "OUT" || p.state === "NOT_HOME" ? collectText(p).replace(/^Collect /, "") : "—"}</td>
                   <td className="tight">
