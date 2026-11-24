@@ -1581,6 +1581,7 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
 
   revalidatePath("/items/prices");
   revalidatePath("/sales/new");
+  if (fd.get("stay")) return { ok: true };
   redirectWithToast("/items/prices", await m("priceSet"));
 }
 
@@ -1624,6 +1625,7 @@ export async function clearItemPrice(_prev: unknown, fd: FormData): Promise<Acti
   }
   revalidatePath("/items/prices");
   revalidatePath("/sales/new");
+  if (fd.get("stay")) return { ok: true };
   redirectWithToast("/items/prices", "Price removed");
 }
 
@@ -8708,7 +8710,7 @@ export async function createPriceLevel(_prev: unknown, fd: FormData): Promise<Ac
 
   revalidatePath("/items/prices");
   revalidatePath("/partners/new");
-  redirectWithToast("/items/prices", "Price level added");
+  redirectWithToast("/items/prices?levels=1", "Price level added");
 }
 
 export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -8738,7 +8740,7 @@ export async function updatePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
 
   revalidatePath("/items/prices");
   revalidatePath("/partners");
-  redirectWithToast("/items/prices", "Price level saved");
+  redirectWithToast("/items/prices?levels=1", "Price level saved");
 }
 
 export async function deletePriceLevel(_prev: unknown, fd: FormData): Promise<ActionResult> {
@@ -8769,7 +8771,7 @@ export async function deletePriceLevel(_prev: unknown, fd: FormData): Promise<Ac
   }
 
   revalidatePath("/items/prices");
-  redirectWithToast("/items/prices", "Price level deleted");
+  redirectWithToast("/items/prices?levels=1", "Price level deleted");
 }
 
 /**

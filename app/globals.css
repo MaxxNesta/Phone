@@ -12024,3 +12024,109 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .ie-pricegrid th[scope="row"] { white-space: nowrap; font-weight: 600; }
 .ie-pricegrid th[scope="row"] small { font-weight: 400; color: var(--muted); }
 .ie-pricegrid td input { width: 100%; min-width: 7rem; text-align: right; }
+
+/* ===================================================== price levels ====
+   /items/prices after the Astryx preview (2026-11-24): products down with
+   their units beneath, a column per level; the Set price panel docks to the
+   right and the page steps aside; levels live in a dialog. Scoped .pl3-. */
+.pl3-page, .pl3-panel, .pl3-dialog { --pl3-ink: #1D1D1F; --pl3-sub: #6E6E73; --pl3-rule: #E5E5EA; --pl3-field: #D2D2D7; --pl3-fill: #F5F5F7; --pl3-blue: #0071E3; color: var(--pl3-ink); }
+.pl3-page { max-width: 1180px; }
+.pl3-head { display: flex; align-items: flex-end; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--pl3-rule); }
+.pl3-head > div { flex: 1; min-width: 0; }
+.pl3-eyebrow { display: block; font-size: 12px; color: var(--pl3-sub); margin-bottom: 4px; }
+.pl3-head h1 { margin: 0; font-size: 28px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; }
+.pl3-head p { margin: 6px 0 0; font-size: 15px; color: var(--pl3-sub); }
+.pl3-btn { appearance: none; border: 0; border-radius: 10px; background: var(--pl3-fill); color: var(--pl3-ink); font: inherit; font-size: 15px;
+  font-weight: 500; padding: 9px 16px; min-height: 40px; cursor: pointer; white-space: nowrap; box-shadow: none; }
+.pl3-btn:hover { background: #E8E8ED; }
+.pl3-btn.primary { background: var(--pl3-ink); color: #fff; }
+.pl3-btn.primary:hover { background: #000; }
+.pl3-btn.primary:disabled { background: #AEAEB2; }
+.pl3-btn.ghost { background: transparent; }
+.pl3-btn.ghost:hover { background: var(--pl3-fill); }
+.pl3-bar { display: flex; align-items: center; gap: 12px; padding: 20px 0 8px; }
+.pl3-count { flex: 1; font-size: 15px; color: var(--pl3-sub); }
+.pl3-search, .pl3-select { height: 40px; border: 1px solid var(--pl3-field); border-radius: 10px; background-color: #fff; font: inherit; font-size: 15px;
+  padding: 0 12px; color: var(--pl3-ink); box-shadow: none; }
+.pl3-search { width: 320px; }
+.pl3-select { width: 190px; }
+.pl3-search:focus, .pl3-select:focus { outline: none; border-color: var(--pl3-blue); box-shadow: 0 0 0 1px var(--pl3-blue); }
+.pl3-tablewrap { overflow-x: auto; }
+.pl3-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 15px; }
+.pl3-table th { text-align: left; font-weight: 600; font-size: 15px; padding: 12px; border-bottom: 1px solid var(--pl3-rule); background: none; white-space: nowrap; color: var(--pl3-ink); text-transform: none; letter-spacing: 0; }
+.pl3-table th small { font-size: 12px; font-weight: 400; color: var(--pl3-sub); }
+.pl3-table th.r, .pl3-table td.r { text-align: right; }
+.pl3-table td { padding: 6px 12px; border-bottom: 1px solid var(--pl3-rule); vertical-align: middle; background: none; }
+.pl3-table tr.pl3-last > td, .pl3-table td.pl3-prod { border-bottom: 1px solid var(--pl3-ink); }
+.pl3-table tbody tr, .pl3-table tbody tr > td, .pl3-table tbody tr:nth-child(even) > td, .pl3-table tbody tr:hover > td { background: #fff; }
+.pl3-table td.pl3-prod { vertical-align: top; padding-top: 14px; }
+.pl3-prod strong { display: block; font-weight: 600; }
+.pl3-prod span, .pl3-unit span { display: block; font-size: 13px; color: var(--pl3-sub); margin-top: 2px; }
+.pl3-table td.pl3-unit { padding-block: 10px; }
+.pl3-cell { appearance: none; border: 0; background: none; box-shadow: none; display: block; width: 100%; min-height: 0; text-align: right;
+  padding: 9px 12px; border-radius: 10px; font: inherit; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--pl3-ink); cursor: pointer; }
+.pl3-cell:hover { background: var(--pl3-fill); }
+.pl3-cell.on { background: #E8E8ED; box-shadow: inset 0 0 0 2px var(--pl3-blue); }
+.pl3-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--pl3-blue); }
+.pl3-none { color: var(--pl3-sub); }
+.pl3-empty { padding: 32px; text-align: center; color: var(--pl3-sub); }
+.pl3-more { display: flex; justify-content: center; padding: 20px 0; }
+
+/* Set price: docked right; on a wide screen the page steps aside for it. */
+.pl3-panel { position: fixed; top: 56px; right: 0; bottom: 0; width: 400px; max-width: calc(100vw - 56px); z-index: 60; display: flex; flex-direction: column;
+  background: #fff; border-left: 1px solid var(--pl3-rule); box-shadow: -12px 0 32px rgb(0 0 0 / 0.06); }
+@media (min-width: 1280px) { html.price-panel-open main.main > :not(.topbar) { margin-right: 400px; transition: margin-right 180ms ease; } }
+.pl3-panel-head, .pl3-dialog-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 16px 8px; }
+.pl3-panel-head > div, .pl3-dialog-head > div { flex: 1; min-width: 0; }
+.pl3-panel-head h2, .pl3-dialog-head h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.pl3-panel-head p, .pl3-dialog-head p { margin: 4px 0 0; font-size: 13px; color: var(--pl3-sub); }
+.pl3-x { appearance: none; border: 0; background: none; box-shadow: none; min-height: 0; width: 32px; height: 32px; border-radius: 8px;
+  font-size: 24px; line-height: 1; color: var(--pl3-ink); cursor: pointer; padding: 0; }
+.pl3-x:hover { background: var(--pl3-fill); }
+.pl3-panel-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 8px 16px 16px; }
+.pl3-panel-body hr { border: 0; border-top: 1px solid var(--pl3-rule); margin: 0; width: 100%; }
+.pl3-field { display: flex; flex-direction: column; gap: 6px; font-size: 15px; font-weight: 500; }
+.pl3-field select, .pl3-field input { height: 40px; border: 1px solid var(--pl3-field); border-radius: 10px; background-color: #fff; font: inherit;
+  font-weight: 400; font-size: 15px; padding: 0 12px; color: var(--pl3-ink); width: 100%; box-shadow: none; }
+.pl3-field select:focus, .pl3-field input:focus { outline: none; border-color: var(--pl3-blue); box-shadow: 0 0 0 1px var(--pl3-blue); }
+.pl3-hint { font-size: 13px; font-weight: 400; color: var(--pl3-sub); margin: 0; }
+.pl3-hist-head { appearance: none; border: 0; background: none; box-shadow: none; min-height: 0; padding: 0; display: flex; align-items: center; gap: 10px;
+  font: inherit; font-size: 15px; color: var(--pl3-ink); cursor: pointer; text-align: left; }
+.pl3-hist-head:hover { background: none; }
+.pl3-caret { display: inline-block; width: 12px; font-size: 18px; line-height: 1; transition: transform 150ms ease; }
+.pl3-caret.open { transform: rotate(90deg); }
+.pl3-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #E8E8ED; font-size: 12px;
+  font-weight: 500; color: var(--pl3-ink); }
+.pl3-badge.info { background: #E8F1FD; color: var(--pl3-blue); }
+.pl3-hist { list-style: none; margin: 0; padding: 0; }
+.pl3-hist li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--pl3-rule); font-size: 15px; }
+.pl3-hist-r { display: inline-flex; align-items: center; gap: 8px; }
+.pl3-panel-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px 16px; }
+.pl3-panel-foot form { margin: 0; }
+
+/* Manage price levels. */
+.pl3-dialog { position: fixed; width: min(720px, calc(100vw - 32px)); max-height: 90dvh; padding: 0; border: 0; border-radius: 16px; background: #fff;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.18); }
+.pl3-dialog[open] { display: flex; flex-direction: column; }
+.pl3-dialog::backdrop { background: rgb(0 0 0 / 0.32); }
+.pl3-dialog-head { padding-bottom: 4px; }
+.pl3-dialog-body { overflow-y: auto; padding: 8px 16px; }
+.pl3-dialog-body > .actions { position: absolute; top: 20px; right: 60px; margin: 0; }
+.pl3-dialog-head > div { padding-right: 140px; }
+.pl3-dialog-body > .actions > button { background: #1D1D1F; color: #fff; border: 0; border-radius: 10px; min-height: 36px; padding: 0 14px; }
+.pl3-levels { width: 100%; border-collapse: collapse; font-size: 15px; }
+.pl3-levels th { text-align: left; font-weight: 600; padding: 10px 8px; border-bottom: 1px solid var(--pl3-rule); background: none; color: var(--pl3-ink); text-transform: none; letter-spacing: 0; }
+.pl3-levels td, .pl3-levels tbody tr:nth-child(even) > td, .pl3-levels tbody tr:hover > td { padding: 12px 8px; border-bottom: 1px solid var(--pl3-rule); background: #fff; }
+.pl3-levels td:last-child button { background: none; color: var(--pl3-ink); box-shadow: none; border: 0; }
+.pl3-levels td:last-child button:hover { background: var(--pl3-fill); }
+.pl3-levels td:last-child button:disabled { color: #AEAEB2; }
+.pl3-levels .r { text-align: right; }
+.pl3-levels td.code { font-weight: 600; }
+.pl3-levels td:last-child .actions { justify-content: flex-end; }
+.pl3-dialog-foot { display: flex; justify-content: flex-end; padding: 12px 16px 16px; }
+/* The price list sits on white, as the preview does. */
+html:has(.pl3-page) body, .main:has(.pl3-page) { background: #fff; }
+.pl3-field input { text-align: left; }
+.pl3-field input::-webkit-inner-spin-button, .pl3-field input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pl3-field input[type="number"] { -moz-appearance: textfield; }
+.pl3-table tbody tr > td, .pl3-levels tbody tr > td { background: #fff !important; }

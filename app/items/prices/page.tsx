@@ -1,159 +1,85 @@
 import { todayLocal } from "@/lib/format";
 import { getCompany, getPriceList } from "@/lib/queries";
 import { sql } from "@/lib/db";
-import { setItemPrice, createPriceLevel, updatePriceLevel, deletePriceLevel } from "@/lib/actions";
+import { setItemPrice, clearItemPrice, createPriceLevel, updatePriceLevel, deletePriceLevel } from "@/lib/actions";
 import { AddPriceLevelForm, PriceLevelRow } from "@/components/price-level-form";
-import { PriceRow } from "@/components/price-row";
-import { HelpHint } from "@/components/help-hint";
-import { paginate } from "@/lib/paging";
-import { Pager } from "@/components/pager";
+import { PriceList, type PriceProduct } from "@/components/price-list";
 import { getTranslations } from "next-intl/server";
 
+/**
+ * The price list (2026-11-24 layout, after the Astryx preview): products down,
+ * each with its units (PCS, PACK, BOX) beneath it, a column per price level.
+ * A price opens a side panel to set it from a date, with its dated history;
+ * the levels themselves are managed in a dialog, out of the prices' way.
+ */
 export default async function Prices({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
   const company = await getCompany();
-  const t = await getTranslations("prices");
   const c = await getTranslations("common");
-  const it = await getTranslations("items");
+  const t = await getTranslations("prices");
   if (!company) return <div className="empty">{c("noCompany")}</div>;
 
-  const list = await (getPriceList(company.id) as unknown as Promise<Array<{
-      item_id: string; code: string; name: string; base_uom_id: string;
+  const [list, levelUse] = await Promise.all([
+    getPriceList(company.id) as unknown as Promise<Array<{
+      item_id: string; code: string; name: string;
       uom_id: string; uom_code: string; factor: number; is_base: boolean; base_code: string;
-      level_id: string; level_name: string; sort_order: number;
-      price: string | null; valid_from: string | null; prices: number;
-      history: { price: number; from: string }[] | null;
-    }>>);
+      level_id: string; price: string | null; valid_from: string | null;
+      history: { price: number | null; from: string }[] | null;
+    }>>,
+    sql`select pl.id, pl.code, pl.name, pl.sort_order,
+               (select count(*)::int from item_price ip where ip.price_level_id = pl.id) as prices,
+               (select count(*)::int from business_partner bp where bp.price_level_id = pl.id) as partners
+          from price_level pl
+         where pl.company_id = ${company.id}
+         order by pl.sort_order, pl.code` as unknown as Promise<Array<{
+      id: string; code: string; name: string; sort_order: number; prices: number; partners: number;
+    }>>,
+  ]);
 
-  // The query returns one row per item per level; the table wants one row per
-  // item with a column per level.
-  const levels = [...new Map(list.map((r) => [r.level_id, r])).values()]
-    .sort((a, b) => a.sort_order - b.sort_order)
-    .map((r) => ({ id: r.level_id, name: r.level_name }));
+  // Rows come one per product, unit and level; the list wants a product with its units, each with a cell per level.
+  const products = new Map<string, PriceProduct>();
+  for (const r of list) {
+    const p = products.get(r.item_id) ?? { itemId: r.item_id, code: r.code, name: r.name, units: [] };
+    products.set(r.item_id, p);
+    let u = p.units.find((x) => x.uomId === r.uom_id);
+    if (!u) {
+      u = { uomId: r.uom_id, code: r.uom_code, isBase: r.is_base,
+            per: r.is_base ? null : `1 ${r.uom_code.toLowerCase()} = ${Number(r.factor).toLocaleString("en-US", { maximumFractionDigits: 4 })} ${r.base_code.toLowerCase()}`,
+            cells: {} };
+      p.units.push(u);
+    }
+    u.cells[r.level_id] = { price: r.price == null ? null : Number(r.price), validFrom: r.valid_from, history: r.history ?? [] };
+  }
 
-  // One table row per product and unit: the piece, then each pack (0236).
-  const items = [...new Map(list.map((r) => [`${r.item_id}|${r.uom_id}`, r])).values()].map((r) => ({
-    key: `${r.item_id}|${r.uom_id}`,
-    itemId: r.item_id,
-    code: r.code,
-    name: r.name,
-    uomId: r.uom_id,
-    uomCode: r.uom_code,
-    isBase: r.is_base,
-    factor: Number(r.factor),
-    baseCode: r.base_code,
-    levels: levels.map((l) => {
-      const cell = list.find((x) => x.item_id === r.item_id && x.uom_id === r.uom_id && x.level_id === l.id);
-      return {
-        levelId: l.id,
-        levelName: l.name,
-        price: cell?.price ?? null,
-        validFrom: cell?.valid_from ?? null,
-        prices: Number(cell?.prices ?? 0),
-        history: cell?.history ?? [],
-      };
-    }),
-  }));
-
-  // What each level is carrying, so a row can warn before it is renamed and
-  // explain itself when a delete is refused.
-  const levelUse = (await sql`
-    select pl.id, pl.code, pl.name, pl.sort_order,
-           (select count(*)::int from item_price ip where ip.price_level_id = pl.id) as prices,
-           (select count(*)::int from business_partner bp where bp.price_level_id = pl.id) as partners
-      from price_level pl
-     where pl.company_id = ${company.id}
-     order by pl.sort_order, pl.code`) as unknown as Array<{
-      id: string; code: string; name: string; sort_order: number;
-      prices: number; partners: number;
-    }>;
-
-  const today = todayLocal();
-  const products = new Set(items.map((i) => i.itemId)).size;
-  const priced = new Set(items.filter((i) => i.isBase && i.levels.some((l) => l.price !== null)).map((i) => i.itemId)).size;
-
-  const pg = paginate(items, sp.page);
   return (
-    <>
-      <div className="page-head">
-        <span className="eyebrow">{it("masterData")}</span>
-        <h1>{t("title")}</h1>
-        <HelpHint>{t("help")}</HelpHint>
-      </div>
-
-      <AddPriceLevelForm action={createPriceLevel} />
-
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>{t("levels")}</h2>
-            <span className="page-sub">{t("levelsSub", { n: levelUse.length })}</span>
-          </div>
+    <PriceList
+      products={[...products.values()]}
+      levels={levelUse.map((l, i) => ({ id: l.id, name: l.name, isDefault: i === 0 }))}
+      today={todayLocal()}
+      openLevels={sp.levels === "1"}
+      setAction={setItemPrice}
+      clearAction={clearItemPrice}
+      manage={
+        <>
+          <AddPriceLevelForm action={createPriceLevel} />
           {levelUse.length === 0 ? (
-            <div className="empty">
-              {t("noLevels")}
-            </div>
+            <div className="empty">{t("noLevels")}</div>
           ) : (
             <div className="tablewrap">
-              <table>
+              <table className="pl3-levels">
                 <thead>
-                  <tr>
-                    <th>{c("code")}</th>
-                    <th>{c("name")}</th>
-                    <th className="r">{c("order")}</th>
-                    <th className="r">{t("pricesCol")}</th>
-                    <th />
-                  </tr>
+                  <tr><th>{c("code")}</th><th>{c("name")}</th><th className="r">{c("order")}</th><th className="r">{t("pricesCol")}</th><th className="r">Actions</th></tr>
                 </thead>
                 <tbody>
                   {levelUse.map((l, i) => (
-                    <PriceLevelRow
-                      key={l.id}
-                      level={l}
-                      first={i === 0}
-                      updateAction={updatePriceLevel}
-                      deleteAction={deletePriceLevel}
-                    />
+                    <PriceLevelRow key={l.id} level={l} first={i === 0} updateAction={updatePriceLevel} deleteAction={deletePriceLevel} />
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
-      </section>
-
-      <section>
-        <div className="card">
-          <div className="card-head">
-            <h2>{t("prices")}</h2>
-            <span className="page-sub">{t("priced", { priced, total: products })}</span>
-          </div>
-
-          {items.length === 0 ? (
-            <div className="empty">{t("noItems")}</div>
-          ) : (
-            <div className="tablewrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{c("code")}</th>
-                    <th>{t("item")}</th>
-                    {levels.map((l) => (
-                      <th key={l.id} className="r">{l.name}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pg.rows.map((row) => (
-                    <PriceRow key={row.key} row={row} today={today} action={setItemPrice} />
-                  ))}
-                </tbody>
-              </table>
-              <Pager p={pg} params={sp} />
-            </div>
-          )}
-        </div>
-      </section>
-    </>
+        </>
+      }
+    />
   );
 }
