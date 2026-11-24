@@ -183,12 +183,11 @@ export async function scaffoldCompany(input: SetupInput) {
     // The shop sells Apple: the brand is there from the start.
     await tx`insert into brand (company_id, code, name) values (${co.id}, 'APPLE', 'Apple')`;
 
+    // Pieces only, counted whole. Boxes, cartons and measures come when the shop
+    // turns on Packs and unit conversion (Settings → Units) and adds them.
     await tx`
-      insert into uom (company_id, code, name) values
-        (${co.id}, 'PCS', 'Pieces'),
-        (${co.id}, 'BOX', 'Box'),
-        (${co.id}, 'CTN', 'Carton'),
-        (${co.id}, 'KG',  'Kilogram')`;
+      insert into uom (company_id, code, name, name_my, whole_numbers)
+      values (${co.id}, 'PCS', 'Piece', 'ခု', true)`;
 
     // Apple types (iPhone, iPad, Mac…) with their tracking, and the variant
     // lists they are picked by (migrations 0121, 0122).

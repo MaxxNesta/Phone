@@ -1,7 +1,7 @@
 "use server";
 import { str, num } from "./input";
 import { todayLocal } from "@/lib/format";
-import { ordersAndDeliveriesOn, serialTrackingOn } from "./features";
+import { ordersAndDeliveriesOn, serialTrackingOn, unitPacksOn } from "./features";
 
 import { revalidatePath } from "next/cache";
 import { sanitizeAxes } from "./supplier-metrics";
@@ -711,6 +711,7 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
       } catch {
         return { error: await m("packsUnreadable") };
       }
+      if (newPacks.length > 0 && !(await packsAllowed(co))) return { error: PACKS_OFF };
       if (newPacks.some((p) => p.uomId === uomId)) {
         return { error: await m("packSameAsBase") };
       }
@@ -1128,6 +1129,10 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
           .filter((p) => p.uomId && p.uomId !== uomId && p.factor > 0);
       } catch {
         return { error: await m("packsUnreadable") };
+      }
+      if (packs.length > 0 && !(await packsAllowed(co))) {
+        const [had] = await sql`select 1 from item_uom where item_id = ${id} and company_id = ${co} limit 1`;
+        if (!had) return { error: PACKS_OFF };
       }
       const seen = new Set<string>();
       for (const p of packs) {
@@ -1761,9 +1766,17 @@ export async function createBrandInline(
  * equals in a reference unit, and whole numbers only. One level of reference:
  * the reference has none of its own, and a unit others refer to takes none.
  */
+/** Packs and unit relations wait for the shop's switch (Settings → Units, lib/features.ts). */
+const PACKS_OFF = "Packs and unit conversion are off. Turn them on under Settings → Units first.";
+async function packsAllowed(co: string) {
+  const [c] = await sql`select retail_mode, features from company where id = ${co}`;
+  return unitPacksOn(c);
+}
+
 async function unitRules(fd: FormData, co: string, id: string | null) {
   if (!fd.has("unit_rules")) return null;
   const refId = str(fd, "ref_uom_id") || null;
+  if (refId && !(await packsAllowed(co))) throw new Error(PACKS_OFF);
   const qty = refId ? Number(str(fd, "ref_qty")) : null;
   if (refId) {
     if (!(qty! > 0)) throw new Error("Say how much of the reference unit one of this unit is, e.g. 0.3048.");

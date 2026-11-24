@@ -72,7 +72,7 @@ try {
   check("6 posting rules", await count("account_determination") === 6,
     String(await count("account_determination")));
   check("2 locations", await count("location") === 2);
-  check("4 units", await count("uom") === 4);
+  check("1 unit, PCS", await count("uom") === 1);
   check("18 numbering series", await count("number_series") === 18);
   check("no catalogue or partners",
     await count("item") === 0 && await count("item_group") === 0 &&
