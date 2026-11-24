@@ -13,10 +13,11 @@ import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
+import { asVariant } from "@/components/variant-tags";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
 import { HelpHint } from "./help-hint";
-import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Pencil, X } from "lucide-react";
+import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Pencil, X, ExternalLink } from "lucide-react";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ChannelPicker } from "./channel-picker";
 import type { Channel } from "@/lib/payment-channels";
@@ -982,12 +983,30 @@ export function InvoiceForm({
                   <tr key={l.key}>
                     <td className="vc-no">{i + 1}</td>
                     <td className="vc-item">
-                      {/* An order line's item is not this voucher's to swap:
-                          changing what is being bought starts at the order. */}
-                      {l.orderLineId ? (
-                        <span className="readout">
-                          <span className="vname">{item ? item.name : "—"}</span>
-                          {item && <span className="vcode">{item.code}</span>}
+                      {/* Chosen products are not swapped in place: a wrong one is
+                          removed and added again, so units typed for it never
+                          end up under another product. */}
+                      {l.orderLineId || item ? (
+                        <span className="vprod">
+                          <span>
+                            {(() => {
+                              const v = asVariant(item?.variant) ?? [];
+                              const name = item?.model && v.length ? item.model : item?.name ?? "—";
+                              return (
+                                <span className="vname-row">
+                                  <span className="vname" title={item?.model && v.length ? [item.model, ...v.map((x) => x.o)].join(" · ") : name}>{name}
+                                    {item?.model && v.length > 0 && <span className="vopts-in"> {v.map((x) => x.o).join(" · ")}</span>}</span>
+                                  {item && (
+                                    <Link href={`/items/${item.id}`} target="_blank" rel="noopener noreferrer" className="vopen"
+                                      title={`Open ${item.code} in a new tab`} aria-label={`Open item ${item.code} in a new tab`}>
+                                      <ExternalLink size={13} aria-hidden="true" />
+                                    </Link>
+                                  )}
+                                </span>
+                              );
+                            })()}
+                            {item && <span className="vcode">{item.code}</span>}
+                          </span>
                         </span>
                       ) : (
                         <ItemPicker

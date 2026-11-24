@@ -176,9 +176,7 @@ export function ReceiptForm({
   const [partnerId, setPartnerId] = useState<string>(saved?.partnerId ?? order?.partnerId ?? "");
   /** The line whose IMEIs are open below the table. */
   const [imeiKey, setImeiKey] = useState<number | null>(null);
-  /** A line whose phone is being changed. */
-  const [changing, setChanging] = useState<number | null>(null);
-  /** The line open in the Edit line popup: change the product, refuse units. */
+  /** The line open in the Edit line popup: refuse units. A wrong product is removed and added again. */
   const [editKey, setEditKey] = useState<number | null>(null);
   const base = fx?.base ?? "MMK";
   const orderFx = order?.currency && order.currency !== base ? order : null;
@@ -697,7 +695,7 @@ export function ReceiptForm({
                 const billedLine = matchedPi?.lines.find(
                   (pl) => pl.lineId === l.sourceLineId || pl.itemId === l.itemId);
                 const qtyMismatch = matchedPi && billedLine && Number(l.qty) !== billedLine.qty;
-                const picking = !l.itemId || changing === l.key;
+                const picking = !l.itemId;
                 const n = entered(l);
                 const q = Number(l.qty) || 0;
                 return (
@@ -825,7 +823,7 @@ export function ReceiptForm({
                               categories={categories}
                               uoms={uoms}
                               value={l.itemId}
-                              onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
+                              onPick={(id) => pickItem(l.key, id)}
                               onCreated={addItem}
                             />
                           </div>
@@ -910,15 +908,6 @@ export function ReceiptForm({
                   <button type="button" className="le-x" aria-label="Close" onClick={close}><X size={18} /></button>
                 </header>
                 <div className="le-body">
-                  {!l.sourceLineId && (
-                    <section className="le-sec">
-                      <div className="le-check" style={{ alignItems: "center" }}>
-                        <span><strong>Wrong product on this line?</strong><small>Pick another. The quantity and IMEIs stay; the cost changes to the new product&rsquo;s last cost, or its price on the bill.</small></span>
-                        <button type="button" className="btn ghost" style={{ marginLeft: "auto", flex: "none" }}
-                          onClick={() => { setChanging(l.key); close(); }}>Change product</button>
-                      </div>
-                    </section>
-                  )}
                   <section className="le-sec">
                     <label className="le-check">
                       <input type="checkbox" checked={!!l.reject}

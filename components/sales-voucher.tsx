@@ -560,7 +560,6 @@ export function SalesVoucher({
   // Why a scanned IMEI could not go on: sold, elsewhere, already here.
   const [scanMsg, setScanMsg] = useState<string | null>(null);
   // A line whose product is being changed, and the lines whose IMEI list is open.
-  const [changing, setChanging] = useState<number | null>(null);
   // The line open in the Edit line dialog, by key.
   const [editKey, setEditKey] = useState<number | null>(null);
   const [imeiOpen, setImeiOpen] = useState<number[]>([]);
@@ -1368,7 +1367,7 @@ export function SalesVoucher({
                   ) : null;
 
                 const parts = asVariant(item?.variant) ?? [];
-                const picking = !item || changing === l.key;
+                const picking = !item;
                 const serials = l.serials ?? [];
                 const q = Number(l.qty) || 0;
                 const tracked = !!item?.tracks_serial && !toDeliver && !matchedDeliveryId;
@@ -1407,12 +1406,9 @@ export function SalesVoucher({
                             categories={categories}
                             uoms={uoms}
                             value={l.itemId}
-                            onPick={(id) => { pickItem(l.key, id); setChanging(null); }}
+                            onPick={(id) => pickItem(l.key, id)}
                             onCreated={addItem}
                           />
-                          {changing === l.key && (
-                            <button type="button" className="linkish" onClick={() => setChanging(null)}>Cancel</button>
-                          )}
                         </div>
                       ) : (
                         <span className="vprod">
@@ -1430,9 +1426,6 @@ export function SalesVoucher({
                             <span className="vcode">{item.code}</span>
                             <span className={`vavail${short ? " short" : ""}`}>
                               {item.is_stocked ? `${fmt(onHandHere(item.id))} available` : "Service"}
-                              {!l.sourceLineId && (
-                                <> · <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button></>
-                              )}
                             </span>
                           </span>
                         </span>
