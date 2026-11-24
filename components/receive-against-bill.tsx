@@ -383,7 +383,7 @@ export function ReceiveAgainstBill({
 
       <div className="actions form-commit">
         {serialShort && (
-          <span className="commit-hint" role="status">Every unit needs its IMEI or serial to post</span>
+          <span className="commit-hint" role="status">Every unit needs a valid IMEI or serial to post: fix the ones in red</span>
         )}
         <button type="submit" disabled={pending || totals.received <= 0 || serialShort}>
           {pending ? "Posting…" : `Post GR · ${qty(totals.received)}${oneUnit ? unit : ""}`}

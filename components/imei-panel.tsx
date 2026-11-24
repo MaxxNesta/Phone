@@ -9,7 +9,8 @@ export type UnitRow = { serial: string; imei2?: string | null; deviceSerial?: st
 import { imeiCheckOk, imeiFromImeisv } from "@/lib/imei";
 export { imeiCheckOk, imeiFromImeisv };
 
-type Status = { ok: boolean; label: string };
+/** `fix`: the value to put in instead, offered as one click. */
+type Status = { ok: boolean; label: string; fix?: string };
 export type UnitMode = "IMEI" | "SERIAL";
 
 /**
@@ -34,7 +35,7 @@ function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI", onFile:
   if (/^\d{15}$/.test(v)) return imeiCheckOk(v) ? { ok: true, label: "Valid" } : { ok: false, label: "Check digit wrong" };
   // A 16-digit number is the IMEISV (software version), not the IMEI: say which IMEI it means.
   const fromSv = imeiFromImeisv(v);
-  if (fromSv) return { ok: false, label: `This is the IMEISV (16 digits). Record the IMEI: ${fromSv}` };
+  if (fromSv) return { ok: false, label: `This is the IMEISV (16 digits). The IMEI is ${fromSv}`, fix: fromSv };
   if (/^\d+$/.test(v)) return { ok: false, label: `${v.length} digits, IMEI has 15` };
   return { ok: true, label: "Serial" };
 }
@@ -64,6 +65,7 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = 
   const [paste, setPaste] = useState("");
   const table = useRef<HTMLTableSectionElement>(null);
   const filled = rows.filter((r) => r.serial.trim()).length;
+  const allGood = filled === qty && qty > 0 && !rowsProblem(rows, mode, onFile);
 
   // Always one row per unit received, keeping what is typed.
   const padded: UnitRow[] = Array.from({ length: Math.max(qty, 0) },
@@ -103,8 +105,8 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = 
         <div>
           <h3>{mode === "SERIAL" ? "Serial numbers" : "IMEI entry"} — {title}</h3>
           <span className="subline">
-            Receive quantity: <strong className={filled === qty && qty > 0 ? "ok-qty" : "low"}>{filled} / {qty} entered</strong>
-            {filled === qty && qty > 0 && <CheckCircle2 size={15} className="ok-qty" aria-hidden="true" />}
+            Receive quantity: <strong className={allGood ? "ok-qty" : "low"}>{filled} / {qty} entered</strong>
+            {allGood && <CheckCircle2 size={15} className="ok-qty" aria-hidden="true" />}
           </span>
         </div>
         <div className="imeipanel-tools">
@@ -171,6 +173,10 @@ export function ImeiPanel({ title, qty, rows, onChange, mode = "IMEI", onFile = 
                     <td>
                       {st ? <span className={`pill ${st.ok && !imei2Bad ? "ok" : "overdue"}`}>{imei2Bad ? "IMEI 2 check digit" : st.label}</span>
                         : <span className="subline">—</span>}
+                      {st?.fix && (
+                        <button type="button" className="ghost tiny" style={{ marginLeft: 8 }}
+                          onClick={() => set(i, { serial: st.fix! })}>Use {st.fix}</button>
+                      )}
                     </td>
                     <td className="tight">
                       <button type="button" className="danger tiny" aria-label={`Clear unit ${i + 1}`}
