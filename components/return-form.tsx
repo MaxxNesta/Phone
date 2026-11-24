@@ -5,7 +5,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { TrackMode } from "./track-mode";
 import { SerialEntry, type ScannedSerial } from "./serial-entry";
 import type { ActionResult, PickerItem } from "@/lib/actions";
-import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
+import { UnitToggle, priceInUnit, startLine, packsOf, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { PartnerPicker } from "./partner-picker";
@@ -470,9 +470,16 @@ export function ReturnForm({
                     <td className="r">
                       {!item ? (
                         "—"
-                      ) : isSales ? (
-                        fmt(Number(item.next_cost))
-                      ) : l.available != null ? (
+                      ) : isSales ? (() => {
+                        // In the line's unit, as the purchase bill shows it.
+                        const pack = l.uomId ? packsOf(item).find((p) => p.uomId === l.uomId) : undefined;
+                        return pack ? (
+                          <>
+                            {fmt(Number(item.next_cost) * pack.factor)}
+                            <span className="subline" style={{ display: "block" }}>{fmt(Number(item.next_cost))} per {item.uom_code}</span>
+                          </>
+                        ) : fmt(Number(item.next_cost));
+                      })() : l.available != null ? (
                         // Sent back from a receipt: this line's own units, not the
                         // whole bin's stock repeated on every line.
                         <span>{fmt(l.available)}<span className="subline" style={{ display: "block" }}>blocked</span></span>

@@ -9,7 +9,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { TrackMode } from "./track-mode";
 import { CarriageSection } from "./carriage-section";
 import type { AwaitingLine } from "@/lib/queries";
-import { UnitToggle, LineUnit, priceInUnit, startLine, type Pack } from "./unit-toggle";
+import { UnitToggle, LineUnit, priceInUnit, startLine, packsOf, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
@@ -1035,9 +1035,16 @@ export function InvoiceForm({
                         <span style={{ color: short ? "var(--bad)" : undefined }}>
                           {item.is_stocked ? fmt(Number(item.on_hand)) : "service"}
                         </span>
-                      ) : (
-                        fmt(Number(item.next_cost))
-                      )}
+                      ) : (() => {
+                        // In the line's unit: a box of 36 at 1,667 a piece is 60,000 a box.
+                        const pack = l.uomId ? packsOf(item).find((p) => p.uomId === l.uomId) : undefined;
+                        return pack ? (
+                          <>
+                            {fmt(Number(item.next_cost) * pack.factor)}
+                            <span className="subline" style={{ display: "block" }}>{fmt(Number(item.next_cost))} per {item.uom_code}</span>
+                          </>
+                        ) : fmt(Number(item.next_cost));
+                      })()}
                     </td>
                     {matchedGr && (
                       <td className="r" style={{ color: qtyMismatch ? "var(--warn)" : undefined }}>
