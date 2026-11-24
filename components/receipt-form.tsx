@@ -913,7 +913,7 @@ export function ReceiptForm({
                   {!l.sourceLineId && (
                     <section className="le-sec">
                       <div className="le-check" style={{ alignItems: "center" }}>
-                        <span><strong>Wrong product on this line?</strong><small>Pick another; the quantity and cost stay.</small></span>
+                        <span><strong>Wrong product on this line?</strong><small>Pick another. The quantity and IMEIs stay; the cost changes to the new product&rsquo;s last cost, or its price on the bill.</small></span>
                         <button type="button" className="btn ghost" style={{ marginLeft: "auto", flex: "none" }}
                           onClick={() => { setChanging(l.key); close(); }}>Change product</button>
                       </div>
