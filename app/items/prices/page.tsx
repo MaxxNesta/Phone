@@ -17,20 +17,13 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
   const it = await getTranslations("items");
   if (!company) return <div className="empty">{c("noCompany")}</div>;
 
-  const [list, packs] = await Promise.all([
-    getPriceList(company.id) as unknown as Promise<Array<{
-      item_id: string; code: string; name: string; base_uom_id: string; uom_code: string;
+  const list = await (getPriceList(company.id) as unknown as Promise<Array<{
+      item_id: string; code: string; name: string; base_uom_id: string;
+      uom_id: string; uom_code: string; factor: number; is_base: boolean; base_code: string;
       level_id: string; level_name: string; sort_order: number;
       price: string | null; valid_from: string | null; prices: number;
-    }>>,
-    sql`select iu.item_id, iu.uom_id, iu.factor, u.code
-          from item_uom iu
-          join uom u on u.id = iu.uom_id
-          join item i on i.id = iu.item_id
-         where i.company_id = ${company.id}` as unknown as Promise<Array<{
-      item_id: string; uom_id: string; factor: string; code: string;
-    }>>,
-  ]);
+      history: { price: number; from: string }[] | null;
+    }>>);
 
   // The query returns one row per item per level; the table wants one row per
   // item with a column per level.
@@ -38,23 +31,26 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((r) => ({ id: r.level_id, name: r.level_name }));
 
-  const items = [...new Map(list.map((r) => [r.item_id, r])).values()].map((r) => ({
+  // One table row per product and unit: the piece, then each pack (0236).
+  const items = [...new Map(list.map((r) => [`${r.item_id}|${r.uom_id}`, r])).values()].map((r) => ({
+    key: `${r.item_id}|${r.uom_id}`,
     itemId: r.item_id,
     code: r.code,
     name: r.name,
-    baseUomId: r.base_uom_id,
+    uomId: r.uom_id,
     uomCode: r.uom_code,
-    packs: packs
-      .filter((p) => p.item_id === r.item_id)
-      .map((p) => ({ uomId: p.uom_id, code: p.code, factor: Number(p.factor) })),
+    isBase: r.is_base,
+    factor: Number(r.factor),
+    baseCode: r.base_code,
     levels: levels.map((l) => {
-      const cell = list.find((x) => x.item_id === r.item_id && x.level_id === l.id);
+      const cell = list.find((x) => x.item_id === r.item_id && x.uom_id === r.uom_id && x.level_id === l.id);
       return {
         levelId: l.id,
         levelName: l.name,
         price: cell?.price ?? null,
         validFrom: cell?.valid_from ?? null,
         prices: Number(cell?.prices ?? 0),
+        history: cell?.history ?? [],
       };
     }),
   }));
@@ -73,7 +69,8 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
     }>;
 
   const today = todayLocal();
-  const priced = items.filter((i) => i.levels.some((l) => l.price !== null)).length;
+  const products = new Set(items.map((i) => i.itemId)).size;
+  const priced = new Set(items.filter((i) => i.isBase && i.levels.some((l) => l.price !== null)).map((i) => i.itemId)).size;
 
   const pg = paginate(items, sp.page);
   return (
@@ -129,7 +126,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
         <div className="card">
           <div className="card-head">
             <h2>{t("prices")}</h2>
-            <span className="page-sub">{t("priced", { priced, total: items.length })}</span>
+            <span className="page-sub">{t("priced", { priced, total: products })}</span>
           </div>
 
           {items.length === 0 ? (
@@ -148,7 +145,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
                 </thead>
                 <tbody>
                   {pg.rows.map((row) => (
-                    <PriceRow key={row.itemId} row={row} today={today} action={setItemPrice} />
+                    <PriceRow key={row.key} row={row} today={today} action={setItemPrice} />
                   ))}
                 </tbody>
               </table>

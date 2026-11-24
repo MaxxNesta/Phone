@@ -9,7 +9,7 @@ import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source
 import { priceLines, type VolumeBand } from "@/lib/discount";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
-import { UnitToggle, LineUnit, priceInUnit, startLine, type Pack } from "./unit-toggle";
+import { UnitToggle, LineUnit, priceInUnit, startLine, listPrice, type Pack } from "./unit-toggle";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
@@ -30,7 +30,7 @@ type Customer = {
   id: string; code: string; name: string;
   payment_terms_days: number; price_level_id: string | null;
 };
-type ItemPrice = { item_id: string; price_level_id: string; price: string };
+type ItemPrice = { item_id: string; price_level_id: string; uom_id?: string | null; price: string };
 type PriceLevel = { id: string; code: string; name: string; sort_order: number };
 type Location = { id: string; code: string; name: string };
 type StockRow = { item_id: string; location_id: string; qty_on_hand: string };
@@ -335,13 +335,9 @@ export function SalesVoucher({
    * charged. Changing the master price later must not restate old invoices,
    * which is why the price is copied onto the line rather than looked up.
    */
-  function priceFor(itemId: string): number {
-    const atLevel = itemPrices.find(
-      (p) => p.item_id === itemId && p.price_level_id === activeLevelId
-    );
-    if (atLevel) return Number(atLevel.price);
-    const anyLevel = itemPrices.find((p) => p.item_id === itemId);
-    return anyLevel ? Number(anyLevel.price) : 0;
+  /** The list price of one unit (a piece, or a box) at a level: the customer's, unless another is given (0236). */
+  function priceFor(itemId: string, uomId?: string | null, levelId: string | null = activeLevelId): number {
+    return listPrice(itemPrices, items.find((i) => i.id === itemId) as never, levelId, uomId);
   }
 
   /** The order these prices were agreed on, when one is behind them. */
@@ -375,10 +371,10 @@ export function SalesVoucher({
     setLines((ls) =>
       ls.map((l) => {
         if (!l.itemId) return l;
-        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId) || !l.unitPrice;
+        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId, l.uomId) || !l.unitPrice;
         if (!wasSuggested) return l;
-        const at = itemPrices.find((p) => p.item_id === l.itemId && p.price_level_id === level);
-        return { ...l, unitPrice: at ? String(Number(at.price)) : l.unitPrice };
+        const p = priceFor(l.itemId, l.uomId, level);
+        return { ...l, unitPrice: p > 0 ? String(p) : l.unitPrice };
       })
     );
   }
@@ -389,10 +385,10 @@ export function SalesVoucher({
     setLines((ls) =>
       ls.map((l) => {
         if (!l.itemId) return l;
-        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId) || !l.unitPrice;
+        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId, l.uomId) || !l.unitPrice;
         if (!wasSuggested) return l;
-        const at = itemPrices.find((p) => p.item_id === l.itemId && p.price_level_id === id);
-        return { ...l, unitPrice: at ? String(Number(at.price)) : l.unitPrice };
+        const p = priceFor(l.itemId, l.uomId, id);
+        return { ...l, unitPrice: p > 0 ? String(p) : l.unitPrice };
       })
     );
   }
@@ -576,7 +572,7 @@ export function SalesVoucher({
       if (at && !it?.tracks_serial) return ls.map((l) => (l === at ? { ...l, qty: String((Number(l.qty) || 0) + qty) } : l));
       if (at) return ls;
       const st = startLine(it, priceFor(itemId), { uomId });
-      const p = st.price;
+      const p = st.uomId ? priceFor(itemId, st.uomId) : st.price;
       const blank = ls.find((l) => !l.itemId);
       const line: Line = {
         key: blank?.key ?? Math.max(0, ...ls.map((l) => l.key)) + 1, itemId,
@@ -1599,7 +1595,7 @@ export function SalesVoucher({
                             uomId: id ?? undefined,
                             // An agreed price stays; a suggested one follows the unit.
                             ...(l.agreedPrice != null ? {} : {
-                              unitPrice: String(priceInUnit(packsOf(item), l.uomId, id, Number(l.unitPrice) || 0, priceFor(l.itemId))) }),
+                              unitPrice: String(priceFor(l.itemId, id) || priceInUnit(packsOf(item), l.uomId, id, Number(l.unitPrice) || 0)) }),
                           })}
                           disabled={!!l.sourceLineId}
                           label={`Unit for ${item.code}`}

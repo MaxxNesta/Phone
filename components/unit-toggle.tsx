@@ -25,6 +25,35 @@ export function LineUnit({ item, uomId }: { item: (HasPacks & { uom_code?: strin
   return code ? <span className="line-unit">{code}</span> : null;
 }
 
+/** A list price: per product, level and unit (0236). `uom_id` absent on old shapes means the stock unit. */
+export type LevelPrice = { item_id: string; price_level_id: string; uom_id?: string | null; price: string | number };
+
+/**
+ * What one unit of a product sells for at a price level (0236): the unit's own
+ * price at that level; for a pack without one, the level's piece price times
+ * the pack, else the pack's default price, else the default piece price times
+ * the pack. A stock unit with no price at the level takes any level's.
+ */
+export function listPrice(prices: LevelPrice[], item: (HasPacks & { id: string; base_uom_id?: string | null }) | null | undefined,
+                          levelId: string | null | undefined, uomId?: string | null): number {
+  if (!item) return 0;
+  const base = item.base_uom_id ?? null;
+  const find = (lvl: string | null | undefined, u: string | null) =>
+    prices.find((p) => p.item_id === item.id && (lvl == null || p.price_level_id === lvl) && (p.uom_id ?? base) === u);
+  if (!uomId || uomId === base) {
+    const hit = find(levelId, base) ?? find(null, base);
+    return hit ? Number(hit.price) : 0;
+  }
+  const own = find(levelId, uomId);
+  if (own) return Number(own.price);
+  const pack = packsOf(item).find((p) => p.uomId === uomId);
+  const f = pack?.factor ?? 1;
+  const piece = find(levelId, base);
+  if (piece) return round(Number(piece.price) * f);
+  if (pack?.price != null) return pack.price;
+  return round(listPrice(prices, item, levelId, null) * f);
+}
+
 /** The pack a scanned code names, if it is one of this item's pack barcodes. */
 export function packByBarcode(item: HasPacks | null | undefined, code: string): string | null {
   const t = code.trim();

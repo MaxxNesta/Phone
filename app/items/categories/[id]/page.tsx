@@ -47,7 +47,10 @@ export default async function CategoryLevel({ params }: { params: Promise<{ id: 
           join uom u on u.id = i.base_uom_id
           left join (select item_id, sum(qty_on_hand) as qty, sum(value_on_hand) as val
                        from v_stock_on_hand group by item_id) s on s.item_id = i.id
-          left join item_price p on p.item_id = i.id
+          left join lateral (
+                select ip.price from item_price ip
+                 where ip.item_id = i.id and ip.uom_id = i.base_uom_id and ip.valid_from <= fn_shop_today()
+                 order by (ip.price_level_id = fn_default_price_level(i.company_id)) desc, ip.valid_from desc limit 1) p on true
          where i.company_id = ${co.id} and i.item_group_id = ${id}
          order by i.code`,
     sql`select id, code, name from uom where company_id = ${co.id} and is_active order by code`,

@@ -4432,7 +4432,7 @@ async function _postSalesInvoice(
   if (!deferredInvoice && input.lines.some((l) => l.focReasonId) && input.lines.some((l) => !l.focReasonId)) {
     const listed = new Map((await tx`
       select i.id, (select ip.price from item_price ip join price_level pl on pl.id = ip.price_level_id
-                     where ip.item_id = i.id and ip.valid_from <= ${docDate}::date
+                     where ip.item_id = i.id and ip.uom_id = i.base_uom_id and ip.valid_from <= ${docDate}::date
                        and pl.id = (select l.id from price_level l where l.company_id = i.company_id
                                      order by (l.code = 'RETAIL') desc, l.sort_order, l.code limit 1)
                      order by ip.valid_from desc limit 1)::float as price

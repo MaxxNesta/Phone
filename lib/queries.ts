@@ -2279,7 +2279,7 @@ export async function getItems(companyId: string) {
               from item_price ip
               join price_level pl on pl.id = ip.price_level_id
              where ip.company_id = i.company_id
-               and ip.item_id = i.id
+               and ip.item_id = i.id and ip.uom_id = i.base_uom_id
                and ip.valid_from <= fn_shop_today()
              order by pl.sort_order, pl.code, ip.valid_from desc
              limit 1
@@ -4605,27 +4605,41 @@ export async function getExpiryByItem(companyId: string) {
  * describing the invoices raised under them.
  */
 export async function getPriceList(companyId: string) {
+  // One row per product, unit and level (0236): the piece, then each pack
+  // smallest first, each with its own price at every level and the dated
+  // prices before it, newest first, as they were.
   return sql`
     select i.id as item_id, i.code, i.name, i.base_uom_id,
-           u.code as uom_code,
+           un.uom_id, un.code as uom_code, un.factor, un.is_base, bu.code as base_code,
            pl.id as level_id, pl.name as level_name, pl.sort_order,
            cur.price, to_char(cur.valid_from, 'YYYY-MM-DD') as valid_from,
            (select count(*)::int from item_price h
-             where h.item_id = i.id and h.price_level_id = pl.id) as prices
+             where h.item_id = i.id and h.price_level_id = pl.id and h.uom_id = un.uom_id) as prices,
+           (select json_agg(json_build_object('price', h.price::float, 'from', to_char(h.valid_from, 'YYYY-MM-DD'))
+                            order by h.valid_from desc)
+              from item_price h
+             where h.item_id = i.id and h.price_level_id = pl.id and h.uom_id = un.uom_id) as history
       from item i
-      join uom u on u.id = i.base_uom_id
+      join uom bu on bu.id = i.base_uom_id
+      cross join lateral (
+            select i.base_uom_id as uom_id, bu.code, 1::float as factor, true as is_base
+            union all
+            select iu.uom_id, pu.code, iu.factor::float, false
+              from item_uom iu join uom pu on pu.id = iu.uom_id
+             where iu.item_id = i.id
+      ) un
       cross join price_level pl
       left join lateral (
             select ip.price, ip.valid_from
               from item_price ip
-             where ip.item_id = i.id and ip.price_level_id = pl.id
+             where ip.item_id = i.id and ip.price_level_id = pl.id and ip.uom_id = un.uom_id
                and ip.valid_from <= fn_shop_today()
              order by ip.valid_from desc
              limit 1
       ) cur on true
      where i.company_id = ${companyId} and pl.company_id = ${companyId}
        and i.is_active
-     order by i.code, pl.sort_order`;
+     order by i.code, un.factor, pl.sort_order`;
 }
 
 export async function getOverCreditLimit(companyId: string) {

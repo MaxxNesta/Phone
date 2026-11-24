@@ -60,11 +60,11 @@ export default async function Units() {
     const packs = (await sql`
       select i.id, i.code, i.name, coalesce(bu.name_my || ' ', '') || bu.code as base,
              coalesce(pu.name_my || ' ', '') || pu.code as unit, iu.factor::float as factor, iu.sale_price::float as price
-        from item_uom iu
+        from v_item_pack iu
         join item i on i.id = iu.item_id
         join uom bu on bu.id = i.base_uom_id
         join uom pu on pu.id = iu.uom_id
-       where iu.company_id = ${co.id} and i.is_active
+       where iu.company_id = ${co.id} and i.is_active and not iu.standard
        order by i.code, iu.factor desc`) as unknown as
       { id: string; code: string; name: string; base: string; unit: string; factor: number; price: number | null }[];
     const n4 = (n: number) => Number(n.toFixed(4)).toLocaleString("en-US", { maximumFractionDigits: 4 });

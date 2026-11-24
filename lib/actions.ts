@@ -892,8 +892,9 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
       for (const p of newPacks) {
         await tx`
-          insert into item_uom (company_id, item_id, uom_id, factor, sale_price)
-          values (${co}, ${item.id}, ${p.uomId}, ${p.factor}, ${p.price})`;
+          insert into item_uom (company_id, item_id, uom_id, factor)
+          values (${co}, ${item.id}, ${p.uomId}, ${p.factor})`;
+        if (p.price != null) await priceFromToday(tx, co, item.id, null, p.uomId, p.price);
       }
 
       if (photo && "set" in photo) {
@@ -1063,9 +1064,14 @@ export async function createItem(_prev: unknown, fd: FormData): Promise<ActionRe
            the price. A carton of shirts is a carton of each size; a
            pack left only on the parent would apply to nothing. */
         const packRows = planned.flatMap((p) => newPacks.map((pk) =>
-          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor, sale_price: pk.price })));
+          ({ company_id: co, item_id: idBySerial.get(p.row.serial)!, uom_id: pk.uomId, factor: pk.factor })));
         for (let i = 0; i < packRows.length; i += 5000) {
           await tx`insert into item_uom ${tx(packRows.slice(i, i + 5000))}`;
+        }
+        for (const p of planned) {
+          for (const pk of newPacks) {
+            if (pk.price != null) await priceFromToday(tx, co, idBySerial.get(p.row.serial)!, null, pk.uomId, pk.price);
+          }
         }
         if (level) {
           const prices = planned.map((p) => ({ company_id: co, item_id: idBySerial.get(p.row.serial)!,
@@ -1178,8 +1184,10 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
             if (other) throw new Error(`Barcode ${p.barcode} is already on a pack of ${other.code}.`);
           }
           await tx`
-            insert into item_uom (company_id, item_id, uom_id, factor, sale_price, barcode)
-            values (${co}, ${id}, ${p.uomId}, ${p.factor}, ${p.price}, ${p.barcode})`;
+            insert into item_uom (company_id, item_id, uom_id, factor, barcode)
+            values (${co}, ${id}, ${p.uomId}, ${p.factor}, ${p.barcode})`;
+          // "Sells at": the pack's price at the default level, dated; last month's stays.
+          if (p.price != null) await priceFromToday(tx, co, id, null, p.uomId, p.price);
         }
       }
       // The unit purchases start in (0214): the stock unit, a pack, or a unit of its family.
@@ -1576,6 +1584,30 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
   redirectWithToast("/items/prices", await m("priceSet"));
 }
 
+/**
+ * A selling price from today (0236): a new dated row, so the price before it
+ * stays what it was on the days it applied. The same price again adds nothing;
+ * set twice in one day, the later one wins. No level means the default level
+ * (fn_default_price_level); no unit, the stock unit.
+ */
+async function priceFromToday(db: typeof sql | import("postgres").TransactionSql, co: string, itemId: string,
+                              levelId: string | null, uomId: string | null, price: number) {
+  await db`
+    insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
+    select ${co}, i.id, lv.id, coalesce(${uomId}::uuid, i.base_uom_id), 'MMK', ${price}, fn_shop_today()
+      from item i
+      cross join lateral (select coalesce(${levelId}::uuid, fn_default_price_level(${co})) as id) lv
+     where i.id = ${itemId} and i.company_id = ${co} and lv.id is not null
+       and ${price}::numeric is distinct from (
+             select ip.price from item_price ip
+              where ip.item_id = i.id and ip.price_level_id = lv.id
+                and ip.uom_id = coalesce(${uomId}::uuid, i.base_uom_id)
+                and ip.valid_from <= fn_shop_today()
+              order by ip.valid_from desc limit 1)
+    on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
+    do update set price = excluded.price`;
+}
+
 /** Back to "no price": every price this item had at this level goes, so the cell reads Set again. */
 export async function clearItemPrice(_prev: unknown, fd: FormData): Promise<ActionResult> {
   await requirePermission("items.manage");
@@ -1584,7 +1616,9 @@ export async function clearItemPrice(_prev: unknown, fd: FormData): Promise<Acti
     const itemId = str(fd, "item_id"), levelId = str(fd, "price_level_id");
     if (!itemId) return { error: await m("chooseItem") };
     if (!levelId) return { error: await m("choosePriceLevel") };
-    await sql`delete from item_price where company_id = ${co} and item_id = ${itemId} and price_level_id = ${levelId}`;
+    const uomId = str(fd, "uom_id") || null;
+    await sql`delete from item_price where company_id = ${co} and item_id = ${itemId} and price_level_id = ${levelId}
+               and uom_id = coalesce(${uomId}::uuid, (select base_uom_id from item where id = ${itemId}))`;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -4476,9 +4510,11 @@ export async function getFormData() {
 
     // Every price at every level. The voucher picks the one matching the
     // customer, so a wholesale buyer is not quoted the retail price.
-    sql`select ip.item_id, ip.price_level_id, ip.price
+    // Today's price per product, level and unit (0236): a box has its own.
+    sql`select distinct on (ip.item_id, ip.price_level_id, ip.uom_id) ip.item_id, ip.price_level_id, ip.uom_id, ip.price
            from item_price ip
-          where ip.company_id = ${co}`,
+          where ip.company_id = ${co} and ip.valid_from <= fn_shop_today()
+          order by ip.item_id, ip.price_level_id, ip.uom_id, ip.valid_from desc`,
 
     sql`select id, code, name, sort_order from price_level
          where company_id = ${co} order by sort_order`,
@@ -5101,13 +5137,10 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         if (!(level.id in prices)) continue;
         const raw = String(prices[level.id] ?? "").trim();
         if (raw === "") {
-          await tx`delete from item_price where item_id = ${id} and price_level_id = ${level.id}`;
+          await tx`delete from item_price where item_id = ${id} and price_level_id = ${level.id}
+                     and uom_id = (select base_uom_id from item where id = ${id})`;
         } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
-          await tx`
-            insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price)
-            select ${co}, i.id, ${level.id}, i.base_uom_id, 'MMK', ${Number(raw)} from item i where i.id = ${id}
-            on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
-              do update set price = excluded.price`;
+          await priceFromToday(tx, co, id, level.id, null, Number(raw));
         }
       }
     });

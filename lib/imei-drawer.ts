@@ -45,6 +45,7 @@ export async function imeiDrawer(serialId: string) {
     select pl.id, pl.code, pl.name,
            (select ip.price::float from item_price ip
              where ip.item_id = ${u.item_id} and ip.price_level_id = pl.id and ip.valid_from <= fn_shop_today()
+               and ip.uom_id = (select base_uom_id from item where id = ${u.item_id})
              order by ip.valid_from desc limit 1) as price
       from price_level pl
      where pl.company_id = ${user.companyId}
@@ -123,7 +124,7 @@ export async function imeiDrawer(serialId: string) {
   const priceRows = await sql`
     select pl.name as level, ip.price::float as price, to_char(ip.valid_from, 'YYYY-MM-DD') as date
       from item_price ip join price_level pl on pl.id = ip.price_level_id
-     where ip.item_id = ${u.item_id}
+     where ip.item_id = ${u.item_id} and ip.uom_id = (select base_uom_id from item where id = ${u.item_id})
      order by pl.name, ip.valid_from`;
   const priceEvents: { at: string; kind: string; title: string; detail: string }[] = [];
   let lastLevel = "", last: number | null = null;

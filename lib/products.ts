@@ -21,6 +21,7 @@ export async function productList(co: string, sp: Search) {
          group by dl.item_id`,
     sql`select distinct on (item_id, price_level_id) item_id, price_level_id, price::float as price
           from item_price where company_id = ${co} and valid_from <= fn_shop_today()
+           and uom_id = (select base_uom_id from item where item.id = item_price.item_id)
          order by item_id, price_level_id, valid_from desc`,
     // What the supplier last charged, read from the posted invoice (never kept on the item).
     sql`select distinct on (dl.item_id) dl.item_id, dl.unit_price::float as price

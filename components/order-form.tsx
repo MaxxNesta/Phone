@@ -4,7 +4,7 @@ import { WarehouseSelect } from "@/components/warehouse-select";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { AwaitingLine } from "@/lib/queries";
-import { UnitToggle, AddPackInline, startLine } from "@/components/unit-toggle";
+import { UnitToggle, AddPackInline, startLine, listPrice } from "@/components/unit-toggle";
 import { addItemPack } from "@/lib/actions";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
@@ -176,12 +176,9 @@ export function OrderForm({
   const activeLevelId =
     partners.find((x) => x.id === partnerId)?.price_level_id ?? defaultLevelId;
 
-  function priceFor(itemId: string): number {
-    const atLevel = itemPrices.find(
-      (p) => p.item_id === itemId && p.price_level_id === activeLevelId);
-    if (atLevel) return Number(atLevel.price);
-    const anyLevel = itemPrices.find((p) => p.item_id === itemId);
-    return anyLevel ? Number(anyLevel.price) : 0;
+  /** The list price of one unit at a level: the customer's, unless another is given (0236). */
+  function priceFor(itemId: string, uomId?: string | null, levelId: string | null = activeLevelId): number {
+    return listPrice(itemPrices as never, byId(itemId) as never, levelId, uomId);
   }
 
   function pickItem(key: number, itemId: string) {
@@ -215,11 +212,10 @@ export function OrderForm({
     setLines((ls) =>
       ls.map((l) => {
         if (!l.itemId) return l;
-        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId) || !l.unitPrice;
+        const wasSuggested = Number(l.unitPrice) === priceFor(l.itemId, l.uomId) || !l.unitPrice;
         if (!wasSuggested) return l;
-        const at = itemPrices.find(
-          (x) => x.item_id === l.itemId && x.price_level_id === level);
-        return { ...l, unitPrice: at ? String(Number(at.price)) : l.unitPrice };
+        const pr = priceFor(l.itemId, l.uomId, level);
+        return { ...l, unitPrice: pr > 0 ? String(pr) : l.unitPrice };
       }),
     );
   }
@@ -232,7 +228,8 @@ export function OrderForm({
       let next = [...ls];
       for (const p of picks) {
         const item = byId(p.itemId);
-        const st = startLine(item, !item ? 0 : isSales ? priceFor(p.itemId) : Number(item.next_cost) || 0, { uomId: p.uomId, buying: !isSales });
+        const st0 = startLine(item, !item ? 0 : isSales ? priceFor(p.itemId) : Number(item.next_cost) || 0, { uomId: p.uomId, buying: !isSales });
+        const st = isSales && st0.uomId ? { ...st0, price: priceFor(p.itemId, st0.uomId) } : st0;
         const at = next.find((l) => l.itemId === p.itemId && (l.uomId || null) === st.uomId);
         if (at) { next = next.map((l) => l === at ? { ...l, qty: String((Number(l.qty) || 0) + p.qty) } : l); continue; }
         const fill = { itemId: p.itemId, qty: String(p.qty), unitPrice: st.price > 0 ? String(st.price) : "", uomId: st.uomId ?? "" };
@@ -428,7 +425,12 @@ export function OrderForm({
                           base={{ uomId: item.base_uom_id ?? "", code: item.uom_code }}
                           packs={packsFor(item)}
                           value={l.uomId ?? ""}
-                          onChange={(id) => setLine(l.key, { uomId: id ?? "" })}
+                          onChange={(id) => setLine(l.key, {
+                            uomId: id ?? "",
+                            // A sale's suggested price follows the unit; a typed one stays.
+                            ...(isSales && (Number(l.unitPrice) === priceFor(l.itemId, l.uomId) || !l.unitPrice)
+                              ? { unitPrice: String(priceFor(l.itemId, id) || "") } : {}),
+                          })}
                           onAddPack={() => setAddingPack(l.key)}
                           label={`Unit for ${item.code}`}
                           qty={Number(l.qty) || 0}

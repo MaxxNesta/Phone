@@ -39,6 +39,10 @@ try {
     if (!box) [box] = await tx`insert into uom (company_id, code, name) values (${co.id}, 'TBOX', 'Test box') returning id`;
     await tx`delete from item_uom where item_id = ${item.id}`;
     await tx`insert into item_uom (company_id, item_id, uom_id, factor, sale_price) values (${co.id}, ${item.id}, ${box.id}, 10, 45000)`;
+    // A pack's price lives in the price list since 0236, per level and dated.
+    await tx`insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
+             values (${co.id}, ${item.id}, fn_default_price_level(${co.id}), ${box.id}, 'MMK', 45000, fn_shop_today())
+             on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from) do update set price = excluded.price`;
     const today = new Date().toISOString().slice(0, 10);
     const onHand = async () => Number((await tx`select fn_qty_on_hand(${co.id}, ${item.id}, ${loc.id}) as q`)[0].q);
     const bal = async (code) => Number((await tx`select coalesce(sum(jl.base_amount), 0)::float as v from journal_line jl
@@ -111,6 +115,9 @@ try {
     const oil = await mk("TOIL1", "Engine oil 5W-30", L);
     await tx`insert into item_uom (company_id, item_id, uom_id, factor, sale_price) values
         (${co.id}, ${oil}, ${DRUM}, 200, null), (${co.id}, ${oil}, ${CAN}, 4, 60000)`;
+    await tx`insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
+             values (${co.id}, ${oil}, fn_default_price_level(${co.id}), ${CAN}, 'MMK', 60000, fn_shop_today())
+             on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from) do update set price = excluded.price`;
     const qty = async (id) => Number((await tx`select fn_qty_on_hand(${co.id}, ${id}, ${loc.id}) as q`)[0].q);
     const oilBill = await P.postPurchaseWithReceipt({ companyId: co.id, partnerId: supp.id, locationId: loc.id, docDate: today,
       dueDate: today, lines: [{ itemId: oil, qty: 2, uomId: DRUM, unitPrice: 2_000_000 }] }, tx);

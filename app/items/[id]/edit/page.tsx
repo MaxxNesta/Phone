@@ -53,13 +53,15 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const [brands, uoms, packs] = await Promise.all([
     sql`select id, code, name from brand where company_id = ${company.id} order by name` as unknown as Promise<{ id: string; code: string; name: string }[]>,
     sql`select id, code, name, name_my from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string; name_my: string | null }[]>,
-    sql`select uom_id, factor::float as factor, sale_price::float as price, barcode from item_uom where item_id = ${id}` as unknown as Promise<{ uom_id: string; factor: number; price: number | null; barcode: string | null }[]>,
+    sql`select uom_id, factor::float as factor, sale_price::float as price, barcode from v_item_pack where item_id = ${id} and not standard` as unknown as Promise<{ uom_id: string; factor: number; price: number | null; barcode: string | null }[]>,
   ]);
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
          order by (code = 'RETAIL' and (select retail_mode from company where id = ${company.id})) desc, sort_order, code` as unknown as Promise<{ id: string; name: string }[]>,
     sql`select distinct on (price_level_id) price_level_id, price from item_price
-         where item_id = ${id} and valid_from <= fn_shop_today() order by price_level_id, valid_from desc` as unknown as Promise<any[]>,
+         where item_id = ${id} and valid_from <= fn_shop_today()
+           and uom_id = (select base_uom_id from item where id = ${id})
+         order by price_level_id, valid_from desc` as unknown as Promise<any[]>,
     sql`select coalesce(sum(qty_on_hand), 0)::float as qty, coalesce(sum(value_on_hand), 0)::float as value
           from v_stock_on_hand where item_id = ${id}` as unknown as Promise<any[]>,
     sql`select d.id, d.doc_no, to_char(d.doc_date, 'DD Mon YYYY') as date, bp.name as supplier,

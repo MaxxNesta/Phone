@@ -8,12 +8,14 @@ import { useNotice } from "@/components/toast";
 type Level = {
   levelId: string; levelName: string;
   price: string | null; validFrom: string | null; prices: number;
+  /** Every price this unit had at this level, newest first, as it was (0236). */
+  history: { price: number; from: string }[];
 };
 
+/** One product in one unit: the piece, or a pack (1 BOX = 36 PCS). */
 type Row = {
   itemId: string; code: string; name: string;
-  baseUomId: string; uomCode: string;
-  packs: { uomId: string; code: string; factor: number }[];
+  uomId: string; uomCode: string; isBase: boolean; factor: number; baseCode: string;
   levels: Level[];
 };
 
@@ -55,8 +57,11 @@ export function PriceRow({
   return (
     <>
       <tr>
-        <td className="code">{row.code}</td>
-        <td className="wrap">{row.name}</td>
+        <td className="code">{row.isBase ? row.code : ""}</td>
+        <td className="wrap">
+          {row.isBase ? row.name
+            : <span className="subline">↳ 1 {row.uomCode} = {row.factor.toLocaleString("en-US", { maximumFractionDigits: 4 })} {row.baseCode}</span>}
+        </td>
         {row.levels.map((l) => (
           <td key={l.levelId} className="r">
             {l.price === null ? (
@@ -83,12 +88,13 @@ export function PriceRow({
             <form action={formAction} className="form">
               <input type="hidden" name="item_id" value={row.itemId} />
               <input type="hidden" name="price_level_id" value={editing} />
+              <input type="hidden" name="uom_id" value={row.uomId} />
               <div className="row">
                 <div className="field">
                   <label>{c("price")}</label>
                   <input
                     name="price" type="number" min="0" step="any" required
-                    defaultValue={row.levels.find((l) => l.levelId === editing)?.price ?? ""}
+                    defaultValue={row.levels.find((l) => l.levelId === editing)?.price != null ? Number(row.levels.find((l) => l.levelId === editing)!.price) : ""}
                   />
                   <span className="hint">
                     {row.code} · {row.levels.find((l) => l.levelId === editing)?.levelName}
@@ -96,14 +102,7 @@ export function PriceRow({
                 </div>
                 <div className="field">
                   <label>{pr("perUnitLabel")}</label>
-                  <select name="uom_id" defaultValue={row.baseUomId}>
-                    <option value={row.baseUomId}>{row.uomCode}</option>
-                    {row.packs.map((p) => (
-                      <option key={p.uomId} value={p.uomId}>
-                        {p.code} ({p.factor} {row.uomCode})
-                      </option>
-                    ))}
-                  </select>
+                  <input value={row.isBase ? row.uomCode : `${row.uomCode} (${row.factor} ${row.baseCode})`} readOnly />
                   <span className="hint">{pr("perUnitHint")}</span>
                 </div>
                 <div className="field">
@@ -121,11 +120,26 @@ export function PriceRow({
                 </button>
               </div>
             </form>
+            {(editingLevel?.history.length ?? 0) > 0 && (
+              /* Every price this unit had at this level, as it was: a change is a new row. */
+              <div className="field" style={{ marginTop: "var(--s2)" }}>
+                <label>Price history · {row.uomCode} · {editingLevel!.levelName}</label>
+                <ul className="plainlist">
+                  {editingLevel!.history.map((h) => (
+                    <li key={h.from}>
+                      <span className="code">{h.from}</span> · {money(h.price)}
+                      {h.from > today ? <span className="subline"> (starts later)</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {editingLevel?.price != null && (
               /* Back to the default: no price at all, which is not the same as a price of 0. */
               <form action={clearAction} className="actions">
                 <input type="hidden" name="item_id" value={row.itemId} />
                 <input type="hidden" name="price_level_id" value={editing} />
+                <input type="hidden" name="uom_id" value={row.uomId} />
                 <button type="submit" className="ghost" disabled={clearing}>Remove price (no price)</button>
               </form>
             )}

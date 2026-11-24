@@ -35,6 +35,7 @@ export async function lookupImei(imei: string) {
     select v.serial_id, v.item_id, coalesce(v.model_name, v.item_name) as model, v.item_name,
            (select ip.price from item_price ip join price_level pl on pl.id = ip.price_level_id
              where ip.item_id = v.item_id and ip.valid_from <= fn_shop_today()
+               and ip.uom_id = (select base_uom_id from item where id = v.item_id)
              order by (pl.code = 'RETAIL') desc, ip.valid_from desc limit 1)::float as price,
            exists (select 1 from secondhand_intake i where i.serial_id = v.serial_id
                                                     and i.receipt_id = v.received_document_id) as used,
