@@ -231,7 +231,7 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                 <tr key={p.id}>
                   <td><Link href={`/documents/${p.id}`} className="m dl-link">{p.no}</Link>
                     <span className="cod-sub">{p.date} · <Link href={`/sales/deliver/slip/${p.id}`} className="dl-link">Slip</Link></span></td>
-                  <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <span className="cod-sub">{l.serials.join(", ")}</span> : null}</div>)}</td>
+                  <td>{p.lines.map((l) => <div key={l.lineId}>{l.item} × {l.qty}{l.serials.length ? <span className="cod-sub">IMEI {l.serials.join(", ")}</span> : null}</div>)}</td>
                   <td>{p.collector?.name ?? "—"}</td>
                   <td>
                     <span className={`dl-pill ${TONE[p.state] || "neutral"}`}>{STATE[p.state]}</span>
