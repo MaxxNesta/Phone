@@ -102,9 +102,9 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
 
   const onHand = Number(stock[0]?.qty ?? 0);
   const reserved = reservedAll.filter((r) => r.item_id === id).reduce((s, r) => s + Number(r.reserved_qty), 0);
-  const priceBy = new Map(prices.filter((p) => p.is_base).map((p) => [p.price_level_id as string, String(Number(p.price))]));
+  const priceBy = new Map(prices.filter((p) => p.is_base && p.price != null).map((p) => [p.price_level_id as string, String(Number(p.price))]));
   const packPriceBy = (levelId: string) => Object.fromEntries(prices
-    .filter((p) => !p.is_base && p.price_level_id === levelId).map((p) => [p.uom_id as string, String(Number(p.price))]));
+    .filter((p) => !p.is_base && p.price != null && p.price_level_id === levelId).map((p) => [p.uom_id as string, String(Number(p.price))]));
 
   const data: EditorItem = {
     id, code: item.code, name: item.name, nameCustom: !!item.name_is_custom, barcode: item.barcode ?? "", weightKg: item.weight_kg == null ? "" : String(item.weight_kg),

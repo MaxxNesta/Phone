@@ -130,6 +130,13 @@ export async function imeiDrawer(serialId: string) {
   let lastLevel = "", last: number | null = null;
   for (const r of priceRows as any[]) {
     if (r.level !== lastLevel) { lastLevel = r.level; last = null; }
+    if (r.price == null) {
+      // Removed (0237): no price from that day, the ones before kept.
+      priceEvents.push({ at: r.date, kind: "PRICE", title: `${r.level} price removed`,
+        detail: last === null ? "No price" : `Was ${fmt(last)} MMK; no price from here` });
+      last = null;
+      continue;
+    }
     priceEvents.push({ at: r.date, kind: "PRICE", title: `${r.level} price ${last === null ? "set" : "updated"}`,
       detail: last === null ? `${fmt(r.price)} MMK` : `From ${fmt(last)} to ${fmt(r.price)} MMK` });
     last = Number(r.price);

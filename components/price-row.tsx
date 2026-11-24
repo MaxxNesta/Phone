@@ -9,7 +9,7 @@ type Level = {
   levelId: string; levelName: string;
   price: string | null; validFrom: string | null; prices: number;
   /** Every price this unit had at this level, newest first, as it was (0236). */
-  history: { price: number; from: string }[];
+  history: { price: number | null; from: string }[];
 };
 
 /** One product in one unit: the piece, or a pack (1 BOX = 36 PCS). */
@@ -75,7 +75,9 @@ export function PriceRow({
               </button>
             )}
             <div className="subline">
-              {l.price === null ? pr("noPrice") : pr("perUnit", { unit: row.uomCode })}
+              {l.price === null
+                ? (l.validFrom ? `removed ${l.validFrom}` : pr("noPrice"))
+                : pr("perUnit", { unit: row.uomCode })}
             </div>
           </td>
         ))}
@@ -127,7 +129,7 @@ export function PriceRow({
                 <ul className="plainlist">
                   {editingLevel!.history.map((h) => (
                     <li key={h.from}>
-                      <span className="code">{h.from}</span> · {money(h.price)}
+                      <span className="code">{h.from}</span> · {h.price == null ? "no price (removed)" : money(h.price)}
                       {h.from > today ? <span className="subline"> (starts later)</span> : null}
                     </li>
                   ))}
@@ -135,12 +137,12 @@ export function PriceRow({
               </div>
             )}
             {editingLevel?.price != null && (
-              /* Back to the default: no price at all, which is not the same as a price of 0. */
+              /* No price from today, which is not a price of 0; the prices before it stay in the history. */
               <form action={clearAction} className="actions">
                 <input type="hidden" name="item_id" value={row.itemId} />
                 <input type="hidden" name="price_level_id" value={editing} />
                 <input type="hidden" name="uom_id" value={row.uomId} />
-                <button type="submit" className="ghost" disabled={clearing}>Remove price (no price)</button>
+                <button type="submit" className="ghost" disabled={clearing}>Remove price from today</button>
               </form>
             )}
           </td>

@@ -5,6 +5,7 @@
 //   1. a box and a pack each have a price at every level
 //   2. a price change is a new dated row: last month's 10,000 stays beside this month's 12,000
 //   3. the product page's pack price (v_item_pack) is today's at the default level; a future one waits
+//   5. removing a price keeps the ones before it; the sale falls back
 //   4. listPrice: a unit's own price at the level; else the level's piece price × the pack;
 //      else the pack's default price; a piece with no price at the level takes any level's
 
@@ -68,6 +69,20 @@ try {
     const noPiece = rows.filter((r) => !(r.price_level_id === wh.id && r.uom_id === PCS));
     check("   without a wholesale piece price: the pack's default 12,000", listPrice(noPiece, it, wh.id, PACK) === 12000);
     check("   a level with nothing: the piece takes any level's 3,000", listPrice(noPiece, it, "00000000-0000-0000-0000-000000000000", null) === 3000);
+
+    // 5. Removing a price (0237): no price from today, last month's row kept, the sale falls back.
+    await price(def.id, BOX, null, today);
+    const boxRows = await tx`select price::float as p from item_price
+        where item_id = ${item.id} and price_level_id = ${def.id} and uom_id = ${BOX} order by valid_from`;
+    check("5. box price removed today: 65,000 kept in the history, then none", boxRows.map((r) => r.p).join(",") === "65000,",
+      JSON.stringify(boxRows.map((r) => r.p)));
+    const [vp] = await tx`select sale_price from v_item_pack where item_id = ${item.id} and uom_id = ${BOX}`;
+    check("   the product page shows no box price", vp.sale_price === null);
+    const live = await tx`select * from (select distinct on (price_level_id, uom_id) item_id, price_level_id, uom_id, price
+        from item_price where item_id = ${item.id} and valid_from <= fn_shop_today()
+        order by price_level_id, uom_id, valid_from desc) c where c.price is not null`;
+    const it2 = { ...it, packs: it.packs.map((x) => (x.uomId === BOX ? { ...x, price: null } : x)) };
+    check("   a box sells at the piece price × 36 = 108,000", listPrice(live, it2, def.id, BOX) === 108000, String(listPrice(live, it2, def.id, BOX)));
 
     throw ROLLBACK;
   });

@@ -1588,10 +1588,11 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
  * A selling price from today (0236): a new dated row, so the price before it
  * stays what it was on the days it applied. The same price again adds nothing;
  * set twice in one day, the later one wins. No level means the default level
- * (fn_default_price_level); no unit, the stock unit.
+ * (fn_default_price_level); no unit, the stock unit. A null price removes it
+ * from today (0237): one more dated row, the history before it untouched.
  */
 async function priceFromToday(db: typeof sql | import("postgres").TransactionSql, co: string, itemId: string,
-                              levelId: string | null, uomId: string | null, price: number) {
+                              levelId: string | null, uomId: string | null, price: number | null) {
   await db`
     insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
     select ${co}, i.id, lv.id, coalesce(${uomId}::uuid, i.base_uom_id), 'MMK', ${price}, fn_shop_today()
@@ -1616,9 +1617,8 @@ export async function clearItemPrice(_prev: unknown, fd: FormData): Promise<Acti
     const itemId = str(fd, "item_id"), levelId = str(fd, "price_level_id");
     if (!itemId) return { error: await m("chooseItem") };
     if (!levelId) return { error: await m("choosePriceLevel") };
-    const uomId = str(fd, "uom_id") || null;
-    await sql`delete from item_price where company_id = ${co} and item_id = ${itemId} and price_level_id = ${levelId}
-               and uom_id = coalesce(${uomId}::uuid, (select base_uom_id from item where id = ${itemId}))`;
+    // No price from today; every price before stays in the history (0237).
+    await priceFromToday(sql, co, itemId, levelId, str(fd, "uom_id") || null, null);
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -4511,10 +4511,12 @@ export async function getFormData() {
     // Every price at every level. The voucher picks the one matching the
     // customer, so a wholesale buyer is not quoted the retail price.
     // Today's price per product, level and unit (0236): a box has its own.
-    sql`select distinct on (ip.item_id, ip.price_level_id, ip.uom_id) ip.item_id, ip.price_level_id, ip.uom_id, ip.price
-           from item_price ip
-          where ip.company_id = ${co} and ip.valid_from <= fn_shop_today()
-          order by ip.item_id, ip.price_level_id, ip.uom_id, ip.valid_from desc`,
+    sql`select * from (
+          select distinct on (ip.item_id, ip.price_level_id, ip.uom_id) ip.item_id, ip.price_level_id, ip.uom_id, ip.price
+            from item_price ip
+           where ip.company_id = ${co} and ip.valid_from <= fn_shop_today()
+           order by ip.item_id, ip.price_level_id, ip.uom_id, ip.valid_from desc) cur
+         where cur.price is not null`,
 
     sql`select id, code, name, sort_order from price_level
          where company_id = ${co} order by sort_order`,
@@ -5137,8 +5139,7 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         if (!(level.id in prices)) continue;
         const raw = String(prices[level.id] ?? "").trim();
         if (raw === "") {
-          await tx`delete from item_price where item_id = ${id} and price_level_id = ${level.id}
-                     and uom_id = (select base_uom_id from item where id = ${id})`;
+          await priceFromToday(tx, co, id, level.id, null, null);
         } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
           await priceFromToday(tx, co, id, level.id, null, Number(raw));
         }
@@ -5151,7 +5152,7 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         if (!pack) continue;
         const raw = String(v ?? "").trim();
         if (raw === "") {
-          await tx`delete from item_price where item_id = ${id} and price_level_id = ${lvl} and uom_id = ${uom}`;
+          await priceFromToday(tx, co, id, lvl, uom, null);
         } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
           await priceFromToday(tx, co, id, lvl, uom, Number(raw));
         }
