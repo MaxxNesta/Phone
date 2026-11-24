@@ -36,8 +36,10 @@ function asChain(initial: { uomId: string; factor: number }[]): { of: string; pe
  * receipts saying 24.
  */
 export function PackSizes({
-  uoms, baseUomId, initial, spareParts = false, buyUomId = null,
+  uoms, baseUomId, initial, spareParts = false, buyUomId = null, priced = true,
 }: {
+  /** False where the product's prices are set elsewhere on the page (the edit page's price grid). */
+  priced?: boolean;
   /** The unit purchase lines start in (0214); null is the stock unit. */
   buyUomId?: string | null;
   /** A spare-parts shop: a selling price per pack, and the ladder underneath. */
@@ -86,7 +88,7 @@ export function PackSizes({
   const payload = JSON.stringify(
     packs
       .filter((p) => p.uomId && total(p) > 0)
-      .map((p) => ({ uomId: p.uomId, factor: r6(total(p)), price: !spareParts || p.price === "" ? null : Number(p.price),
+      .map((p) => ({ uomId: p.uomId, factor: r6(total(p)), price: !spareParts || !priced || p.price === "" ? null : Number(p.price),
                      barcode: spareParts ? p.barcode.trim() || null : null })),
   );
   const [buy, setBuy] = useState(buyUomId ?? "");
@@ -110,9 +112,9 @@ export function PackSizes({
 
       {spareParts && packs.length > 0 ? (
         /* A spare-parts shop: one row a pack, the columns named once. */
-        <div className="packgrid" role="table" aria-label={pk("label")}>
+        <div className={`packgrid${priced ? "" : " unpriced"}`} role="table" aria-label={pk("label")}>
           <div className="packgrid-head" role="row">
-            <span>{UOM.pack}</span><span>{UOM.factor}</span><span>{UOM.sellsAt}</span><span>{UOM.barcode}</span><span />
+            <span>{UOM.pack}</span><span>{UOM.factor}</span>{priced && <span>{UOM.sellsAt}</span>}<span>{UOM.barcode}</span><span />
           </div>
           {packs.map((p) => (
             <div key={p.key} className="packgrid-row" role="row">
@@ -121,8 +123,8 @@ export function PackSizes({
                 {available.map((u) => <option key={u.id} value={u.id}>{unitLabel(u)}</option>)}
               </select>
               {holds(p)}
-              <input type="number" min="0" step="any" value={p.price} placeholder={pk("pricePlaceholder")}
-                     onChange={(e) => set(p.key, { price: e.target.value })} aria-label={pk("packPrice")} />
+              {priced && <input type="number" min="0" step="any" value={p.price} placeholder={pk("pricePlaceholder")}
+                     onChange={(e) => set(p.key, { price: e.target.value })} aria-label={pk("packPrice")} />}
               <input value={p.barcode} placeholder="Scan the box" onChange={(e) => set(p.key, { barcode: e.target.value })}
                      aria-label="Pack barcode" />
               <button type="button" className="ghost tiny" onClick={() => remove(p.key)}>

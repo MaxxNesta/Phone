@@ -36,7 +36,8 @@ export type EditorItem = {
   photo: string | null;
   /** The other variants of the same product, this one included. Empty for a plain item. */
   siblings: { id: string; code: string; name: string; qty: number; parts: string[]; photo: string | null }[];
-  levels: { id: string; name: string; price: string }[];
+  /** Today's price per level: the stock unit's, and each pack's by unit id (0236). */
+  levels: { id: string; name: string; price: string; packs?: Record<string, string> }[];
   stock: { onHand: number; reserved: number; available: number; avgCost: number | null };
   /** What a unit of the latest receipt cost, landed costs included. Null without cost access. */
   unitCost: number | null;
@@ -78,7 +79,9 @@ export function ItemEditor({ item, action, tracking }: {
   const start = () => ({
     name: item.name, nameCustom: item.nameCustom, code: item.code, barcode: item.barcode, active: item.isActive, weightKg: item.weightKg,
     nameMy: item.nameMy, brandId: item.brandId, uomId: item.uomId,
-    prices: Object.fromEntries(item.levels.map((l) => [l.id, l.price])),
+    // Keyed "level" for the stock unit, "level|unit" for a pack: one cell of the grid each.
+    prices: Object.fromEntries(item.levels.flatMap((l) => [[l.id, l.price],
+      ...item.packs.map((p) => [`${l.id}|${p.uomId}`, l.packs?.[p.uomId] ?? ""])])) as Record<string, string>,
   });
   const [f, setF] = useState(start);
   const [saved, setSaved] = useState(false);
@@ -227,7 +230,7 @@ export function ItemEditor({ item, action, tracking }: {
           {product && (
             <section className="ie-card" key={resetKey} onChange={() => { setSaved(false); setTouched(true); }}>
               <h3>{item.unitPacks ? <>Pack sizes &amp; photo</> : "Photo"}</h3>
-              {item.unitPacks && <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} buyUomId={item.buyUomId} />}
+              {item.unitPacks && <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} buyUomId={item.buyUomId} priced={false} />}
               {item.partNumbers && !isModel && <div style={{ marginTop: "var(--s2)" }}><PartNumbers initial={item.partNumbers} /></div>}
               <div style={{ marginTop: "var(--s2)" }}><ItemPhotoField currentSrc={item.ownPhoto} /></div>
             </section>
@@ -245,17 +248,36 @@ export function ItemEditor({ item, action, tracking }: {
 
           {!isModel && <section className="ie-card">
             <h3>Pricing</h3>
+            {/* Units down, price levels across: 1×3 for a phone, 3×3 for a cable sold by the piece, pack and box. */}
+            <div className="tablewrap">
+              <table className="ie-pricegrid">
+                <thead>
+                  <tr><th>Unit</th>{item.levels.map((l) => <th key={l.id} className="r">{l.name}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {[{ id: "", code: item.uom, factor: 1 },
+                    ...[...item.packs].sort((a, b) => a.factor - b.factor)
+                      .map((p) => ({ id: p.uomId, code: item.uoms.find((u) => u.id === p.uomId)?.code ?? "?", factor: p.factor }))]
+                    .map((u) => (
+                    <tr key={u.id || "base"}>
+                      <th scope="row">{u.code}{u.id && <small> = {u.factor.toLocaleString("en-US", { maximumFractionDigits: 4 })} {item.uom}</small>}</th>
+                      {item.levels.map((l) => {
+                        const k = u.id ? `${l.id}|${u.id}` : l.id;
+                        return (
+                          <td key={l.id}>
+                            <input type="number" min="0" step="any" inputMode="decimal" placeholder="No price" value={f.prices[k] ?? ""}
+                              aria-label={`${l.name} price per ${u.code}`}
+                              onChange={(e) => set({ prices: { ...f.prices, [k]: e.target.value } })} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <span className="hint">A change starts today; the price before it stays in the price history. A new pack size gets its row once saved.</span>
             <div className="ie-prices">
-              {item.levels.map((l) => (
-                <label key={l.id} className="ie-field">
-                  <span>{l.name}</span>
-                  <span className="ie-money">
-                    <i>MMK</i>
-                    <input type="number" min="0" step="any" inputMode="decimal" placeholder="No price" value={f.prices[l.id] ?? ""}
-                      onChange={(e) => set({ prices: { ...f.prices, [l.id]: e.target.value } })} />
-                  </span>
-                </label>
-              ))}
               {item.seeCost && (
                 <div className="ie-field">
                   <span>Last unit cost</span>

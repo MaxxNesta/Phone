@@ -5143,6 +5143,19 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
           await priceFromToday(tx, co, id, level.id, null, Number(raw));
         }
       }
+      // A pack's cell of the price grid ("level|unit"): only this product's packs, at its levels.
+      for (const [k, v] of Object.entries(prices)) {
+        const [lvl, uom] = k.split("|");
+        if (!uom || !levels.some((l) => l.id === lvl)) continue;
+        const [pack] = await tx`select 1 from item_uom where item_id = ${id} and uom_id = ${uom}`;
+        if (!pack) continue;
+        const raw = String(v ?? "").trim();
+        if (raw === "") {
+          await tx`delete from item_price where item_id = ${id} and price_level_id = ${lvl} and uom_id = ${uom}`;
+        } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+          await priceFromToday(tx, co, id, lvl, uom, Number(raw));
+        }
+      }
     });
     if (replaced) await deleteObject("public", replaced);
   } catch (e) {

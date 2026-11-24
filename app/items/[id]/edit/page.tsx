@@ -58,10 +58,12 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
          order by (code = 'RETAIL' and (select retail_mode from company where id = ${company.id})) desc, sort_order, code` as unknown as Promise<{ id: string; name: string }[]>,
-    sql`select distinct on (price_level_id) price_level_id, price from item_price
+    // Today's price per level and unit: the piece and each pack (0236).
+    sql`select distinct on (price_level_id, uom_id) price_level_id, uom_id, price,
+               uom_id = (select base_uom_id from item where id = ${id}) as is_base
+          from item_price
          where item_id = ${id} and valid_from <= fn_shop_today()
-           and uom_id = (select base_uom_id from item where id = ${id})
-         order by price_level_id, valid_from desc` as unknown as Promise<any[]>,
+         order by price_level_id, uom_id, valid_from desc` as unknown as Promise<any[]>,
     sql`select coalesce(sum(qty_on_hand), 0)::float as qty, coalesce(sum(value_on_hand), 0)::float as value
           from v_stock_on_hand where item_id = ${id}` as unknown as Promise<any[]>,
     sql`select d.id, d.doc_no, to_char(d.doc_date, 'DD Mon YYYY') as date, bp.name as supplier,
@@ -100,7 +102,9 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
 
   const onHand = Number(stock[0]?.qty ?? 0);
   const reserved = reservedAll.filter((r) => r.item_id === id).reduce((s, r) => s + Number(r.reserved_qty), 0);
-  const priceBy = new Map(prices.map((p) => [p.price_level_id as string, String(Number(p.price))]));
+  const priceBy = new Map(prices.filter((p) => p.is_base).map((p) => [p.price_level_id as string, String(Number(p.price))]));
+  const packPriceBy = (levelId: string) => Object.fromEntries(prices
+    .filter((p) => !p.is_base && p.price_level_id === levelId).map((p) => [p.uom_id as string, String(Number(p.price))]));
 
   const data: EditorItem = {
     id, code: item.code, name: item.name, nameCustom: !!item.name_is_custom, barcode: item.barcode ?? "", weightKg: item.weight_kg == null ? "" : String(item.weight_kg),
@@ -118,7 +122,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
                     where item_id = ${id} order by kind, part_no`) as unknown as PartNo[],
     parts: (item.parts ?? []) as { a: string; o: string }[],
     photo, siblings,
-    levels: levels.map((l) => ({ id: l.id, name: l.name, price: priceBy.get(l.id) ?? "" })),
+    levels: levels.map((l) => ({ id: l.id, name: l.name, price: priceBy.get(l.id) ?? "", packs: packPriceBy(l.id) })),
     stock: { onHand, reserved, available: onHand - reserved,
              avgCost: seeCost && onHand > 0 ? Number(stock[0].value) / onHand : null },
     unitCost: cost ? cost.totalUnitCost : null,

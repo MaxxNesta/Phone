@@ -12018,3 +12018,9 @@ table.dl-table.cod-parcels tbody tr:nth-child(n) > td { background: none; }
 .line-unit { display: inline-block; margin-left: 6px; font-size: 0.75rem; font-weight: 600; color: var(--muted); vertical-align: middle; }
 td:has(> .line-unit) { white-space: nowrap; }
 td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-flex; vertical-align: middle; }
+/* Pack sizes where prices are set in the price grid (product edit page): no Sells-at column. */
+.packgrid.unpriced .packgrid-head, .packgrid.unpriced .packgrid-row { grid-template-columns: minmax(130px, 1.2fr) minmax(230px, 1.8fr) minmax(120px, 1.1fr) auto; }
+/* The product's price grid: units down, price levels across. */
+.ie-pricegrid th[scope="row"] { white-space: nowrap; font-weight: 600; }
+.ie-pricegrid th[scope="row"] small { font-weight: 400; color: var(--muted); }
+.ie-pricegrid td input { width: 100%; min-width: 7rem; text-align: right; }
