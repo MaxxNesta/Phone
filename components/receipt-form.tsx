@@ -19,6 +19,7 @@ import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, Stick
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 import { LineRemove } from "./line-remove";
+import { priceInUnit, startLine, packsOf } from "./unit-toggle";
 import { Flagged } from "./cell-flag";
 import { useNotice } from "@/components/toast";
 
@@ -323,9 +324,11 @@ export function ReceiptForm({
         const ol = order?.lines.find((x) => x.itemId === p.itemId);
         const billed = matchedPi?.lines.find((pl) => pl.itemId === p.itemId);
         const item = byId(p.itemId);
-        const cost = ol ? ol.unitCost : billed ? billed.unitPrice : item ? Number(item.next_cost) : 0;
+        const st = !ol && !billed && item ? startLine(item, Number(item.next_cost) || 0, { buying: true }) : null;
+        const cost = ol ? ol.unitCost : billed ? billed.unitPrice : st ? st.price : 0;
         const fill: Partial<Line> = {
           itemId: p.itemId, qty: String(p.qty), unitCost: cost > 0 ? String(cost) : "",
+          ...(st?.uomId ? { uomId: st.uomId } : {}),
           sourceLineId: ol?.lineId ?? billed?.lineId ?? null, ...(ol ? { ordered: ol.qty } : {}),
         };
         const blank = next.find((l) => !l.itemId);
@@ -751,7 +754,11 @@ export function ReceiptForm({
                           has packs — one option is a question already answered. */}
                       <td className="narrow unitcell">
                         {(item?.packs ?? []).length > 0 ? (
-                          <select value={l.uomId ?? ""} onChange={(e) => setLine(l.key, { uomId: e.target.value })}
+                          <select value={l.uomId ?? ""} onChange={(e) => setLine(l.key, {
+                              uomId: e.target.value,
+                              ...(billedLine || !l.unitCost ? {} : {
+                                unitCost: String(priceInUnit(packsOf(item), l.uomId, e.target.value || null, Number(l.unitCost) || 0)) }),
+                            })}
                             aria-label={`Unit for ${item?.code ?? "line"}`}>
                             <option value="">{item?.uom_code}</option>
                             {(item?.packs ?? []).map((p) => (

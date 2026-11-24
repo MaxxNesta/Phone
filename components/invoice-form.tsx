@@ -9,7 +9,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { TrackMode } from "./track-mode";
 import { CarriageSection } from "./carriage-section";
 import type { AwaitingLine } from "@/lib/queries";
-import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
+import { UnitToggle, LineUnit, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { ItemPicker } from "./item-picker";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
@@ -1076,6 +1076,7 @@ export function InvoiceForm({
                           : undefined}
                       />
                       </Flagged>
+                      <LineUnit item={item} uomId={l.uomId} />
                       {inherited(l) && billPart
                        && Number(l.qty) < Number(l.sourceQty) - 0.0001 && (
                         <span className="qtyleft">

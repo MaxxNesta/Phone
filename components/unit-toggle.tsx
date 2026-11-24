@@ -15,6 +15,16 @@ export function packsOf(item: HasPacks | null | undefined): Pack[] {
     price: p.price == null ? null : Number(p.price), barcode: p.barcode ?? null, whole: !!p.whole }));
 }
 
+/**
+ * The unit a line is counted in, next to its quantity, for an item that has
+ * packs: "1" alone could be a piece or a box.
+ */
+export function LineUnit({ item, uomId }: { item: (HasPacks & { uom_code?: string }) | null | undefined; uomId?: string | null }) {
+  if (!item?.packs?.length) return null;
+  const code = uomId ? item.packs.find((p) => p.uomId === uomId)?.code : item.uom_code;
+  return code ? <span className="line-unit">{code}</span> : null;
+}
+
 /** The pack a scanned code names, if it is one of this item's pack barcodes. */
 export function packByBarcode(item: HasPacks | null | undefined, code: string): string | null {
   const t = code.trim();
@@ -142,7 +152,7 @@ export function UnitToggle({
 }
 
 /** Trailing zeros help nobody read a quantity. */
-const round = (n: number) => Number(n.toFixed(4));
+const round = (n: number) => Number(n.toFixed(2));
 
 /**
  * Define a pack without leaving the voucher. Hitting a missing pack size

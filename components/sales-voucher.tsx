@@ -9,7 +9,7 @@ import { StockSourceDialog, poolsFor, type OwnershipSplit } from "./stock-source
 import { priceLines, type VolumeBand } from "@/lib/discount";
 import { ItemPicker } from "./item-picker";
 import { AddItemsBar, type Pick } from "./add-items-bar";
-import { UnitToggle, priceInUnit, startLine, type Pack } from "./unit-toggle";
+import { UnitToggle, LineUnit, priceInUnit, startLine, type Pack } from "./unit-toggle";
 import { PartnerPicker } from "./partner-picker";
 import Link from "next/link";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
@@ -1447,6 +1447,7 @@ export function SalesVoucher({
                           ? { background: "var(--line-soft)", cursor: "not-allowed" }
                           : undefined}
                         onChange={(e) => setLine(l.key, { qty: e.target.value })} />
+                      <LineUnit item={item} uomId={l.uomId} />
                       {l.sourceLineId && billPart
                        && Number(l.qty) < Number(l.sourceQty) - 0.0001 && (
                         <span className="qtyleft">

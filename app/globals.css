@@ -12013,3 +12013,8 @@ table.dl-table.cod-parcels tbody tr:nth-child(n) > td { background: none; }
 .cod-remit-sum dd { margin: 0; }
 .cod-remit-sum > div:last-child { border-top: 1px solid var(--line); padding-top: 6px; }
 .cod-remit-sum > div.bad dt, .cod-remit-sum > div.bad dd { color: var(--bad); }
+
+/* The unit beside a line's quantity, for an item sold in packs: 1 PACK, not "1". */
+.line-unit { display: inline-block; margin-left: 6px; font-size: 0.75rem; font-weight: 600; color: var(--muted); vertical-align: middle; }
+td:has(> .line-unit) { white-space: nowrap; }
+td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-flex; vertical-align: middle; }
