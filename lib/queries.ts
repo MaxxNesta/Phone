@@ -5474,7 +5474,7 @@ export async function getUncarriedDeliveries(companyId: string, tripId?: string)
             or (d.doc_type = 'STOCK_TRANSFER'
                 and exists (select 1 from location b where b.id = d.to_location_id and b.is_transit)
                 and not exists (select 1 from dispatch_event e join document ed on ed.id = e.document_id and ed.status = 'POSTED'
-                                 where e.parcel_id = d.id and e.kind in ('HANDED_OVER', 'RETURNED'))))
+                                 where e.parcel_id = d.id and e.kind in ('HANDED_OVER', 'RETURNED', 'LOST'))))
        and not exists (
              select 1
                from delivery_trip_stop s

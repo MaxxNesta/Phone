@@ -200,7 +200,7 @@ export async function planVoidIn(db: Db, documentId: string): Promise<VoidPlan> 
       select t.id, t.doc_no from document t join location b on b.id = t.to_location_id and b.is_transit
        where t.source_document_id = ${documentId} and t.doc_type = 'STOCK_TRANSFER' and t.status = 'POSTED'
          and not exists (select 1 from dispatch_event e join document ed on ed.id = e.document_id and ed.status = 'POSTED'
-                          where e.parcel_id = t.id and e.kind in ('HANDED_OVER', 'RETURNED'))`;
+                          where e.parcel_id = t.id and e.kind in ('HANDED_OVER', 'RETURNED', 'LOST'))`;
     for (const o of out as unknown as { id: string; doc_no: string }[]) {
       blockers.push({ reason: `${o.doc_no} is still out for delivery. Mark it refused and receive it back first.`, docNo: o.doc_no, docId: o.id });
     }

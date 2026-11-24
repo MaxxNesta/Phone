@@ -6822,6 +6822,18 @@ export type AdjustmentInput = {
    * uses. Only takes stock away.
    */
   writeOff?: boolean;
+  /**
+   * Lost in transit (0235): who bears it, in place of Inventory Damage: the
+   * driver (Cash with Drivers under them) or the courier (COD Receivable
+   * under it). With the invoice it belongs to and the warehouse the ledger
+   * lines count in, since the stock leaves a bin inside it.
+   */
+  chargeAccountId?: string | null;
+  chargePartnerId?: string | null;
+  driverId?: string | null;
+  partnerId?: string | null;
+  sourceDocumentId?: string | null;
+  journalLocationId?: string | null;
   lines: AdjustmentLine[];
 };
 
@@ -6873,11 +6885,13 @@ async function _postStockAdjustment(
       insert into document
         (company_id, doc_type, doc_no, fiscal_year_id, doc_date, posting_date,
          location_id, currency, exchange_rate, status,
-         net_total, tax_total, gross_total, memo, posted_at, reference)
+         net_total, tax_total, gross_total, memo, posted_at, reference,
+         driver_id, partner_id, source_document_id)
       values
         (${companyId}, 'STOCK_ADJUSTMENT', ${docNo}, ${fiscalYear}, ${docDate}::date,
          ${docDate}::date, ${locationId}, 'MMK', 1, 'POSTED',
-         0, 0, 0, ${input.memo ?? null}, now(), ${input.reference ?? null})
+         0, 0, 0, ${input.memo ?? null}, now(), ${input.reference ?? null},
+         ${input.driverId ?? null}, ${input.partnerId ?? null}, ${input.sourceDocumentId ?? null})
       returning id`;
 
     const journal: JournalLine[] = [];
@@ -6986,10 +7000,13 @@ async function _postStockAdjustment(
 
     netValue = round4(netValue);
     const adj = await tx`select fn_system_account(${companyId}, ${offsetRole}) as a`;
-    journal.push({ accountId: adj[0].a, amount: -netValue, locationId });
+    journal.push({ accountId: input.chargeAccountId ?? adj[0].a, amount: -netValue, locationId,
+                   ...(input.chargePartnerId ? { partnerId: input.chargePartnerId } : {}) });
+    // Stock that left a bin is booked at its warehouse, for the branch reports.
+    if (input.journalLocationId) for (const j of journal) if (j.locationId === locationId) j.locationId = input.journalLocationId;
 
     const entryId = await writeJournal(
-      tx, companyId, docDate, "STOCK_ADJUSTMENT", doc.id, `${docNo} stock adjustment`, journal, locationId
+      tx, companyId, docDate, "STOCK_ADJUSTMENT", doc.id, `${docNo} stock adjustment`, journal, input.journalLocationId ?? locationId
     );
 
     const absValue = Math.abs(netValue);

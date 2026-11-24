@@ -25,12 +25,12 @@ import type { TransactionSql } from "postgres";
 import { collect } from "./cod-collect";
 export { collectText, collectTotal } from "./cod-collect";
 import {
-  applyAdvance, inTransaction, postCashVoucher, postCustomerReceipt, postDelivery, postStockTransfer, round4,
+  applyAdvance, inTransaction, postCashVoucher, postCustomerReceipt, postDelivery, postStockAdjustment, postStockTransfer, round4,
 } from "./posting";
 
 type Db = typeof sql | TransactionSql;
 
-export type ParcelState = "OUT" | "NOT_HOME" | "REFUSED" | "RETURNED" | "HANDED_OVER";
+export type ParcelState = "OUT" | "NOT_HOME" | "REFUSED" | "RETURNED" | "HANDED_OVER" | "LOST";
 export type Collector = { kind: "DRIVER" | "COURIER"; id: string; name: string };
 
 export type Parcel = {
@@ -88,12 +88,12 @@ const PARCELS = (db: Db, where: ReturnType<typeof sql>) => db`
             join document_line il on il.id = sl.source_line_id and il.foc_reason_id is null
            where s.source_document_id = i.id and s.id <> t.id and s.doc_type = 'STOCK_TRANSFER' and s.status = 'POSTED'
              and not exists (select 1 from dispatch_event e left join document ed on ed.id = e.document_id
-                              where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED') and ed.status = 'POSTED')))
+                              where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED', 'LOST') and ed.status = 'POSTED')))
          ) as others_goods,
          array(select s.doc_no from document s join location sb on sb.id = s.to_location_id and sb.is_transit
                 where s.source_document_id = i.id and s.id <> t.id and s.doc_type = 'STOCK_TRANSFER' and s.status = 'POSTED'
                   and not exists (select 1 from dispatch_event e left join document ed on ed.id = e.document_id
-                                   where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED') and ed.status = 'POSTED')))
+                                   where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED', 'LOST') and ed.status = 'POSTED')))
                 order by s.doc_no) as others,
          -- ... and, while nothing has been handed over, the charge and services.
          (case when exists (select 1 from sales_billed_on_handover h join document hd on hd.id = h.document_id and hd.status = 'POSTED'
@@ -115,6 +115,7 @@ function toParcel(r: Record<string, unknown>): Parcel {
   const state: ParcelState = !last ? "OUT"
     : last.kind === "HANDED_OVER" ? "HANDED_OVER"
     : last.kind === "RETURNED" ? "RETURNED"
+    : last.kind === "LOST" ? "LOST"
     : last.kind === "REFUSED" ? "REFUSED"
     : last.kind === "NOT_HOME" ? "NOT_HOME" : "OUT";
   return {
@@ -124,8 +125,8 @@ function toParcel(r: Record<string, unknown>): Parcel {
     collector: r.driver_id ? { kind: "DRIVER", id: r.driver_id as string, name: r.driver_name as string }
       : r.courier_id ? { kind: "COURIER", id: r.courier_id as string, name: r.courier_name as string } : null,
     state, lastReason: last?.reason ?? null, retryOn: last?.retry ?? null, lastAt: last?.at ?? null,
-    closedBy: state === "HANDED_OVER" || state === "RETURNED" ? last!.doc : null,
-    closedByNo: state === "HANDED_OVER" || state === "RETURNED" ? last!.docNo : null,
+    closedBy: state === "HANDED_OVER" || state === "RETURNED" || state === "LOST" ? last!.doc : null,
+    closedByNo: state === "HANDED_OVER" || state === "RETURNED" || state === "LOST" ? last!.docNo : null,
     lines: ((r.lines as Array<{ lineId: string; itemId: string; item: string; qty: number; serials: string[]; foc: string | null }>) ?? [])
       .map((l) => ({ lineId: l.lineId, itemId: l.itemId, item: l.item, qty: Number(l.qty), serials: l.serials ?? [], focReasonId: l.foc })),
     due: round4(Number(r.goods) + Number(r.extras)),
@@ -149,7 +150,7 @@ export async function parcel(parcelId: string, db: Db = sql): Promise<Parcel | n
 export async function openParcels(companyId: string, courierId?: string | null): Promise<Parcel[]> {
   return (await PARCELS(sql, sql`t.company_id = ${companyId} ${courierId ? sql`and t.courier_id = ${courierId}` : sql``}
       and not exists (select 1 from dispatch_event e join document ed on ed.id = e.document_id and ed.status = 'POSTED'
-                       where e.parcel_id = t.id and e.kind in ('HANDED_OVER', 'RETURNED'))`)).map(toParcel);
+                       where e.parcel_id = t.id and e.kind in ('HANDED_OVER', 'RETURNED', 'LOST'))`)).map(toParcel);
 }
 
 async function collectorOf(db: Db, companyId: string, c: { driverId?: string | null; courierId?: string | null }) {
@@ -172,7 +173,11 @@ export async function undispatched(invoiceId: string, db: Db = sql) {
                 from document_line tl join document t on t.id = tl.document_id and t.status = 'POSTED' and t.doc_type = 'STOCK_TRANSFER'
                 join location tb on tb.id = t.to_location_id
                 join location fb on fb.id = t.location_id
-               where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0))::float as qty
+               where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0)
+           + coalesce((select sum(ll.base_qty) from document_line ll
+                         join dispatch_event le on le.parcel_id = ll.document_id and le.kind = 'LOST'
+                         join document led on led.id = le.document_id and led.status = 'POSTED'
+                        where ll.source_line_id = dl.id), 0))::float as qty
       from document_line dl join item it on it.id = dl.item_id
      where dl.document_id = ${invoiceId} and it.is_stocked
      order by dl.line_no`) as unknown as { lineId: string; itemId: string; item: string; serial: boolean; qty: number }[];
@@ -555,7 +560,11 @@ export async function codAwaitingDispatch(companyId: string) {
              select sum(case when tb.is_transit then tl.base_qty else -tl.base_qty end)
                from document_line tl join document t on t.id = tl.document_id and t.status = 'POSTED' and t.doc_type = 'STOCK_TRANSFER'
                join location tb on tb.id = t.to_location_id join location fb on fb.id = t.location_id
-              where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0))::float as qty
+              where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0)
+           + coalesce((select sum(ll.base_qty) from document_line ll
+                         join dispatch_event le on le.parcel_id = ll.document_id and le.kind = 'LOST'
+                         join document led on led.id = le.document_id and led.status = 'POSTED'
+                        where ll.source_line_id = dl.id), 0))::float as qty
       from document d
       join business_partner bp on bp.id = d.partner_id
       join document_line dl on dl.document_id = d.id
@@ -569,6 +578,53 @@ export async function codAwaitingDispatch(companyId: string) {
              select sum(case when tb.is_transit then tl.base_qty else -tl.base_qty end)
                from document_line tl join document t on t.id = tl.document_id and t.status = 'POSTED' and t.doc_type = 'STOCK_TRANSFER'
                join location tb on tb.id = t.to_location_id join location fb on fb.id = t.location_id
-              where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0)) > 0
+              where tl.source_line_id = dl.id and (tb.is_transit or fb.is_transit)), 0)
+           + coalesce((select sum(ll.base_qty) from document_line ll
+                         join dispatch_event le on le.parcel_id = ll.document_id and le.kind = 'LOST'
+                         join document led on led.id = le.document_id and led.status = 'POSTED'
+                        where ll.source_line_id = dl.id), 0)) > 0
      order by d.doc_date, d.doc_no`) as unknown as { id: string; no: string; date: string; warehouseId: string; customer: string; carrier: string | null; qty: number }[];
+}
+
+/**
+ * Lost in transit (0235): the parcel never arrived and is not coming back.
+ * Its phones are written off the Out for delivery bin at their cost, charged
+ * to whoever bears the loss: the shop (Inventory Damage), or the driver or
+ * courier carrying it, who then owes the cost (Cash with Drivers under the
+ * driver; COD Receivable under the courier) and settles it through Driver
+ * cash or the courier pay-in. Nothing was billed, so the customer owes
+ * nothing; any deposit stays theirs; the invoice can be dispatched again.
+ */
+export async function lostInTransit(tx: TransactionSql, input: {
+  companyId: string; parcelId: string; docDate: string; reason: string;
+  bearer: "SHOP" | "CARRIER"; userId?: string | null;
+}) {
+  const [lock] = await tx`select id from document where id = ${input.parcelId} and company_id = ${input.companyId} for update`;
+  if (!lock) throw new Error("That parcel no longer exists.");
+  const p = await parcel(input.parcelId, tx);
+  if (!p) throw new Error("That is not a cash-on-delivery parcel.");
+  if (p.state === "HANDED_OVER" || p.state === "RETURNED" || p.state === "LOST") throw new Error(`${p.no} is closed (${p.closedByNo}).`);
+  if (!input.reason.trim()) throw new Error("Say what happened: stolen, damaged beyond repair, lost by the courier.");
+  let charge: { accountId: string; partnerId: string | null; driverId: string | null } | null = null;
+  if (input.bearer === "CARRIER") {
+    if (!p.collector) throw new Error(`${p.no} names no driver or courier to charge.`);
+    const r = p.collector.kind === "DRIVER" ? "CASH_WITH_DRIVERS" : "COD_RECEIVABLE";
+    const [a] = await tx`select account_id from system_account where company_id = ${input.companyId} and role = ${r}`;
+    if (!a) throw new Error(`No account is set for ${r === "CASH_WITH_DRIVERS" ? "Cash with Drivers" : "COD Receivable"}.`);
+    charge = { accountId: a.account_id, partnerId: p.collector.kind === "COURIER" ? p.collector.id : null,
+               driverId: p.collector.kind === "DRIVER" ? p.collector.id : null };
+  }
+  const who = input.bearer === "SHOP" ? "the shop" : p.collector!.name;
+  const adj = await postStockAdjustment({
+    companyId: input.companyId, locationId: p.binId, journalLocationId: p.warehouseId, docDate: input.docDate,
+    writeOff: true, sourceDocumentId: p.invoiceId, partnerId: p.customerId,
+    chargeAccountId: charge?.accountId ?? null, chargePartnerId: charge?.partnerId ?? null, driverId: charge?.driverId ?? null,
+    memo: `Lost in transit: ${p.no} for ${p.invoiceNo} (${input.reason.trim()}). Borne by ${who}.`, reference: p.invoiceNo,
+    lines: p.lines.map((l) => ({ itemId: l.itemId, qty: -l.qty, serials: l.serials.length ? l.serials : undefined, sourceLineId: l.lineId })),
+  }, tx);
+  await tx`
+    insert into dispatch_event (company_id, parcel_id, invoice_id, kind, reason, holder, document_id, acted_by)
+    values (${input.companyId}, ${p.id}, ${p.invoiceId}, 'LOST', ${input.reason.trim()}, ${p.collector?.name ?? null}, ${adj.id}, ${input.userId ?? null})`;
+  await tx`update delivery_trip_stop set status = 'FAILED', failure_reason = ${`Lost: ${input.reason.trim()}`} where document_id = ${p.id}`;
+  return adj;
 }

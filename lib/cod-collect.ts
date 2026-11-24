@@ -27,6 +27,7 @@ export function collectText(p: Parcel) {
     case "REFUSED": return "Return to shop · collect nothing";
     case "RETURNED": return "Back in stock";
     case "HANDED_OVER": return "Handed over";
+    case "LOST": return "Lost in transit";
   }
   if (p.othersGoods > 0 && Math.abs(p.collectNow - p.collectLast) > 0.005) {
     // The deposit and charge come off whichever parcel is handed over first.

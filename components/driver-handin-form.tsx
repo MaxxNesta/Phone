@@ -82,7 +82,7 @@ export function DriverHandinForm({ action, drivers, branches, tills, initialDriv
         <div className="card-head"><h2>Collections not handed in</h2><span className="page-sub">{driver?.collections.length ?? 0} open</span></div>
         {(driver?.collections.length ?? 0) === 0 ? (
           <div className="card-body"><p className="page-sub">
-            {driver && driver.held > 0.005 ? `No open collection, but ${driver.driver} still owes ${fmt(driver.held)} from an earlier hand-in counted short.` : "Nothing to hand in."}
+            {driver && driver.held > 0.005 ? `No open collection, but ${driver.driver} still owes ${fmt(driver.held)}: a hand-in counted short, or a lost parcel charged to them.` : "Nothing to hand in."}
           </p></div>
         ) : (
           <div className="tablewrap">

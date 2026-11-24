@@ -138,7 +138,7 @@ try {
   check("chargers counted there", (await onHand(charger.id, qid)) === 2 && (await onHand(charger.id, wh.id)) === 8);
   check("quarantine is still stock: inventory value unchanged", (await bal("1310")) === stockBefore);
   const [sellable] = await sql`
-    select coalesce(sum(qty_on_hand) filter (where not is_quarantine and not is_transit), 0)::float as s,
+    select coalesce(sum(qty_on_hand) filter (where not is_quarantine), 0)::float as s,
            coalesce(sum(qty_on_hand) filter (where is_quarantine), 0)::float as q
       from v_stock_on_hand where item_id = ${charger.id}`;
   check("stock on hand tells sellable from quarantine", sellable.s === 8 && sellable.q === 2);

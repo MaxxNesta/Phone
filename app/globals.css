@@ -1253,14 +1253,15 @@ button.tiny { padding: 0.16rem 0.5rem; font-size: var(--t-sm); }
 
 /* Buttons and the forms wrapping them both have to fill the menu, or a
    submit button sits at its natural width and the menu looks ragged. */
-.rowmenu-list form { display: block; }
-.rowmenu-list button {
+/* Not inside a dialog opened from the menu: its buttons and form keep their own layout. */
+.rowmenu-list form:not(dialog form) { display: block; }
+.rowmenu-list button:not(dialog button) {
   display: block; width: 100%; text-align: left;
   background: transparent; border: none; color: var(--ink);
   padding: 0.34rem 0.5rem; border-radius: var(--r-md);
   font-weight: 400; font-size: var(--t-sm);
 }
-.rowmenu-list button:hover { background: var(--ground); }
+.rowmenu-list button:not(dialog button):hover { background: var(--ground); }
 .rowmenu-list button.warn  { color: var(--warn); }
 .rowmenu-list button.danger { color: var(--bad); }
 .rowmenu-sep { height: 1px; background: var(--line-soft); margin: 0.2rem 0; }

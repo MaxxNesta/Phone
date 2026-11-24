@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ConfirmDelete } from "./confirm-delete";
 import { useNotice } from "@/components/toast";
 import {
-  depositAction, dispatchCodAction, handoverAction, notHomeAction, receiveReturnAction, refusedAction,
+  depositAction, dispatchCodAction, handoverAction, lostInTransitAction, notHomeAction, receiveReturnAction, refusedAction,
 } from "@/lib/cod-actions";
 import type { CodSheet, Parcel } from "@/lib/cod";
 import { collectText } from "@/lib/cod-collect";
@@ -19,9 +19,9 @@ type Act = (prev: { error?: string; ok?: string } | null, fd: FormData) => Promi
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 const STATE: Record<Parcel["state"], string> = {
   OUT: "Out for delivery", NOT_HOME: "Not home · retry", REFUSED: "Refused · return in transit",
-  RETURNED: "Back in stock", HANDED_OVER: "Delivered",
+  RETURNED: "Back in stock", HANDED_OVER: "Delivered", LOST: "Lost in transit",
 };
-const TONE: Record<Parcel["state"], string> = { OUT: "info", NOT_HOME: "warn", REFUSED: "warn", RETURNED: "", HANDED_OVER: "ok" };
+const TONE: Record<Parcel["state"], string> = { OUT: "info", NOT_HOME: "warn", REFUSED: "warn", RETURNED: "", HANDED_OVER: "ok", LOST: "bad" };
 
 /** One dialog bound to one server action; reopens fresh after it succeeds. */
 function Step({ action, children, ...rest }: { action: Act; children: React.ReactNode } & Omit<Parameters<typeof ConfirmDelete>[0], "action" | "pending" | "error" | "children">) {
@@ -128,9 +128,31 @@ function Handover({ p, today, accounts, primary }: { p: Parcel; today: string; a
   );
 }
 
-export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accounts, today, canPost, defaultCollector }: {
+/** Never arrived, not coming back: written off at cost, borne by the shop or by whoever carried it. */
+function LostInTransit({ p, today }: { p: Parcel; today: string }) {
+  return (
+    <Step action={lostInTransitAction} className="" label="Lost in transit" pendingLabel="Posting…"
+      title={`${p.no} lost in transit`}
+      detail={`${p.lines.map((l) => (l.serials.length ? `IMEI ${l.serials.join(", ")}` : `${l.item} × ${l.qty}`)).join("; ")} `
+        + "come off stock at their cost: to Inventory Damage if the shop bears it, or owed by the driver or courier if they pay. The customer owes nothing and the invoice can be dispatched again."}
+      confirmLabel="Write off">
+      <input type="hidden" name="parcel_id" value={p.id} />
+      <DateField today={today} />
+      <div className="field">
+        <label>Who bears the loss</label>
+        <select name="bearer" defaultValue="SHOP">
+          <option value="SHOP">The shop</option>
+          {p.collector && <option value="CARRIER">{p.collector.name} pays</option>}
+        </select>
+      </div>
+      <div className="field cod-wide"><label>What happened</label><input name="reason" required placeholder="Stolen on the way, lost by the courier…" /></div>
+    </Step>
+  );
+}
+
+export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accounts, today, canPost, canAdjust = false, defaultCollector }: {
   invoiceId: string; invoiceNo: string; sheet: CodSheet; drivers: Opt[]; couriers: Opt[]; accounts: Account[];
-  today: string; canPost: boolean; defaultCollector: string;
+  today: string; canPost: boolean; canAdjust?: boolean; defaultCollector: string;
 }) {
   const open = sheet.parcels.filter((p) => p.state === "OUT" || p.state === "NOT_HOME");
   const returning = sheet.parcels.filter((p) => p.state === "REFUSED");
@@ -277,8 +299,13 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                           <input type="hidden" name="parcel_id" value={p.id} />
                           <div className="field cod-wide"><label>Why</label><input name="reason" required placeholder="Changed mind, wrong model…" /></div>
                         </Step>
+                        {canAdjust && <LostInTransit p={p} today={today} />}
                         </RowMenu>
                       </span>
+                    )}
+                    {/* Coming back and never arrived: the one thing left to say about it. */}
+                    {canAdjust && p.state === "REFUSED" && (
+                      <RowMenu label={`More for ${p.no}`}><LostInTransit p={p} today={today} /></RowMenu>
                     )}
                   </td>
                 </tr>

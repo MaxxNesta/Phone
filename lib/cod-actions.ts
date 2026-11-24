@@ -15,7 +15,7 @@ import { sql } from "./db";
 import { assertMyBranch } from "./branch-scope";
 import { postOnce } from "./idempotency";
 import {
-  codDispatch, confirmHandover, notHome, parcel, receiveFromDriver, receiveReturn, recordDeposit, refused, type Payment,
+  codDispatch, confirmHandover, lostInTransit, notHome, parcel, receiveFromDriver, receiveReturn, recordDeposit, refused, type Payment,
 } from "./cod";
 
 type Result = { error?: string; ok?: string } | null;
@@ -158,5 +158,19 @@ export async function receiveFromDriverAction(_prev: Result, fd: FormData): Prom
     }, tx));
     revalidatePath("/receivables");
     return { ok: `Received · ${v.docNo}` };
+  } catch (e) { return fail(e); }
+}
+
+/** Lost in transit (0235): a stock loss, so it is for whoever may adjust stock. */
+export async function lostInTransitAction(_prev: Result, fd: FormData): Promise<Result> {
+  const u = await requirePermission("inventory.manage");
+  try {
+    const p = await parcelInBranch(u.companyId, str(fd, "parcel_id"));
+    const bearer = str(fd, "bearer") === "CARRIER" ? "CARRIER" as const : "SHOP" as const;
+    const adj = await postOnce(u.companyId, key(fd), (tx) => lostInTransit(tx, {
+      companyId: u.companyId, parcelId: p.id, docDate: str(fd, "doc_date") || todayLocal(),
+      reason: str(fd, "reason"), bearer, userId: u.id }));
+    refresh(p.invoiceId);
+    return { ok: `Written off · ${adj.docNo}` };
   } catch (e) { return fail(e); }
 }

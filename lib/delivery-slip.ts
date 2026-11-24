@@ -30,7 +30,7 @@ const TRIP_DRIVER = (doc: ReturnType<typeof sql>) => sql`(
    where ts.document_id = ${doc} and tr.status <> 'CANCELLED' order by tr.trip_date desc, tr.created_at desc limit 1)`;
 
 function fromParcel(p: Parcel, tripDriver: string | null, phone: string | null, address: string | null): Carried {
-  const state = p.state === "HANDED_OVER" || p.state === "RETURNED" ? "DONE" : p.state;
+  const state = p.state === "HANDED_OVER" || p.state === "RETURNED" || p.state === "LOST" ? "DONE" : p.state;
   return {
     id: p.id, no: p.no, date: p.date, kind: "COD", invoiceId: p.invoiceId, invoiceNo: p.invoiceNo,
     customer: p.customer, phone, address, carrier: p.collector?.name ?? tripDriver,

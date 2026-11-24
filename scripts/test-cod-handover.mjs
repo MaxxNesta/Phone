@@ -41,9 +41,9 @@ try {
     const cust = await one(tx`insert into business_partner (company_id, code, name, is_customer) values (${co.id}, ${"CC" + tag}, 'COD customer', true) returning id`);
     const courier = await one(tx`insert into business_partner (company_id, code, name, is_courier) values (${co.id}, ${"CK" + tag}, 'Test Express', true) returning id`);
     const driver = await one(tx`insert into driver (company_id, code, name) values (${co.id}, ${"DR" + tag}, 'Ko Driver') returning id`);
-    const imei = Array.from({ length: 8 }, (_, i) => `CODT${tag}${i}`);
+    const imei = Array.from({ length: 10 }, (_, i) => `CODT${tag}${i}`);
     await P.postGoodsReceipt({ companyId: co.id, partnerId: supplier.id, locationId: wh.id, docDate: day,
-      lines: [{ itemId: phone.id, qty: 8, unitCost: 800000, serials: imei }] }, tx);
+      lines: [{ itemId: phone.id, qty: 10, unitCost: 800000, serials: imei }] }, tx);
 
     const role = async (r) => (await one(tx`select account_id from system_account where company_id = ${co.id} and role = ${r}`))?.account_id;
     const CWD = await role("CASH_WITH_DRIVERS"), CODR = await role("COD_RECEIVABLE"), CARR = await role("CARRIAGE_OUTWARD"), DI = await role("DELIVERY_INCOME");
@@ -229,6 +229,25 @@ try {
     check("the other parcel now says plainly: Collect 1,000,000 MMK", C.collectText(pa1) === "Collect 1,000,000 MMK", C.collectText(pa1));
     await C.confirmHandover(tx, { companyId: co.id, parcelId: ga.id, docDate: day, payment: { to: "DRIVER", amount: pa1.collectNow } });
     check("both handed over at the slip amounts: the customer owes nothing", near(await owed(g2.id), 0), await owed(g2.id));
+
+    console.log("\n  H  lost in transit");
+    const DMG = await role("INVENTORY_DAMAGE");
+    const lv = await codInvoice(1, 5000, { driverId: driver.id });
+    const lvl = await lineOf(lv);
+    const sv = await stockValue();
+    const pl = await C.codDispatch(tx, { companyId: co.id, invoiceId: lv.id, docDate: day, driverId: driver.id, lines: [{ lineId: lvl, qty: 1, serials: [imei[8]] }] });
+    const dmg0 = await bal(DMG);
+    const lost = await C.lostInTransit(tx, { companyId: co.id, parcelId: pl.id, docDate: day, reason: "Stolen", bearer: "SHOP" });
+    check("lost, borne by the shop: 800,000 to Inventory Damage, stock down by the same", near(await bal(DMG) - dmg0, 800000) && near(await stockValue(), sv - 800000), [await bal(DMG) - dmg0, sv - await stockValue()]);
+    check("the IMEI is written off, not sellable", (await unit(imei[8])).status !== "IN_STOCK", await unit(imei[8]));
+    check("the customer owes nothing and the invoice can be dispatched again", !(await aged(lv.id)) && (await C.undispatched(lv.id, tx))[0].qty === 1, 0);
+    const again2 = await attempt((s) => C.lostInTransit(s, { companyId: co.id, parcelId: pl.id, docDate: day, reason: "x", bearer: "SHOP" }));
+    check("a lost parcel cannot be closed twice", again2 !== "posted", again2);
+    const pl2 = await C.codDispatch(tx, { companyId: co.id, invoiceId: lv.id, docDate: day, driverId: driver.id, lines: [{ lineId: lvl, qty: 1, serials: [imei[9]] }] });
+    check("a replacement goes out on the same invoice", (await C.parcel(pl2.id, tx)).state === "OUT", 0);
+    const held0 = await driverHolds();
+    await C.lostInTransit(tx, { companyId: co.id, parcelId: pl2.id, docDate: day, reason: "Driver lost it", bearer: "CARRIER" });
+    check("lost, borne by the driver: the driver owes the 800,000 cost", near(await driverHolds() - held0, 800000), await driverHolds() - held0);
 
     const tb = await one(tx`select coalesce(sum(balance), 0)::float as v from v_trial_balance where company_id = ${co.id}`);
     check("the trial balance nets to zero", near(tb.v, 0), tb);
