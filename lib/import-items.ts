@@ -623,8 +623,13 @@ export function planImport(rowsIn: string[][], master: MasterData): ImportPlan {
       warnings.push({ row: rowNo, column: "Brand", message: "Brand is blank." });
     }
 
-    const uom = uoms.get(norm(unitText));
-    if (!unitText) {
+    // Blank means pieces, the unit nearly every product is counted in.
+    const pcs = uoms.get(norm("PCS"));
+    const uom = unitText ? uoms.get(norm(unitText)) : pcs;
+    if (!unitText && pcs) {
+      warnings.push({ row: rowNo, column: "Unit", message: "Unit is blank: counted in PCS." });
+    }
+    else if (!unitText) {
       add("Unit is empty. It is the unit every quantity of this item will be counted in, "
         + "so it has to be settled before the item exists.", "Unit");
     }

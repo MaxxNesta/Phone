@@ -96,7 +96,8 @@ export function ItemForm({
   const [askBrand, setAskBrand] = useState(false);
   // Controlled, because the pack sizes below have to exclude whichever
   // unit is currently the base — a box cannot contain boxes.
-  const [baseUomId, setBaseUomId] = useState(uoms[0]?.id ?? "");
+  // Pieces first: a phone, iPad or MacBook is one PCS. Alphabetical would pick BOX.
+  const [baseUomId, setBaseUomId] = useState(uoms.find((u) => u.code === "PCS")?.id ?? uoms[0]?.id ?? "");
   const [addingBrand, setAddingBrand] = useState(false);
   const [newBrandName, setNewBrandName] = useState("");
   const [brandError, setBrandError] = useState<string | null>(null);

@@ -137,7 +137,7 @@ export function ItemPicker({
 
   // Create form state
   const [chain, setChain] = useState<string[]>([]);
-  const [uomId, setUomId] = useState(uoms[0]?.id ?? "");
+  const [uomId, setUomId] = useState(uoms.find((u) => u.code === "PCS")?.id ?? uoms[0]?.id ?? "");
   const [price, setPrice] = useState("");
   const [stocked, setStocked] = useState(true);
 
