@@ -382,3 +382,4 @@ nav.sidebar > .navlink { display: flex; align-items: center; gap: 0.5rem; color:
 }
 .reject-imei input[type="checkbox"][name]::before { content: none; }
 .reject-imei input[type="checkbox"][name]:checked { background: none; }
+.le .reject-grid { grid-template-columns: 1fr; }

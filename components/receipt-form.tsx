@@ -15,7 +15,7 @@ import { UnitsRow, rowsProblem, type UnitRow, type UnitMode, type OnFile } from 
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { TrackMode } from "./track-mode";
 import { DocHeading } from "./doc-heading";
-import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink, AlertTriangle } from "lucide-react";
+import { Building2, Package, Plus, ChevronDown, CalendarDays, Clock, Hash, StickyNote, Warehouse, ExternalLink, AlertTriangle, Pencil, X } from "lucide-react";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import type { GrirCollisionLine } from "@/lib/queries";
 import { LineRemove } from "./line-remove";
@@ -178,6 +178,8 @@ export function ReceiptForm({
   const [imeiKey, setImeiKey] = useState<number | null>(null);
   /** A line whose phone is being changed. */
   const [changing, setChanging] = useState<number | null>(null);
+  /** The line open in the Edit line popup: change the product, refuse units. */
+  const [editKey, setEditKey] = useState<number | null>(null);
   const base = fx?.base ?? "MMK";
   const orderFx = order?.currency && order.currency !== base ? order : null;
   const [currency, setCurrency] = useState<string>(saved?.currency ?? orderFx?.currency ?? base);
@@ -720,19 +722,11 @@ export function ReceiptForm({
                                 );
                               })()}
                               <span className="vcode">{item.code}</span>
-                              {!l.sourceLineId && (
-                                <span className="vavail">
-                                  <button type="button" className="linkish" onClick={() => setChanging(l.key)}>Change</button>
-                                </span>
-                              )}
-                              <span className="vavail">
-                                <button type="button" className="linkish"
-                                  onClick={() => setLine(l.key, { reject: l.reject ? undefined : { qty: "", serials: [], reason: "", outcome: "" } })}>
-                                  {l.reject ? "Cancel refusal" : "Refuse some"}
+                              {l.reject && (
+                                <button type="button" className="sbadge" data-tone="warn" style={{ marginTop: 4, border: 0, cursor: "pointer" }}
+                                  onClick={() => setEditKey(l.key)} title="Open the refusal">
+                                  {rejectIncomplete.includes(l) ? "Refusal not finished" : `${fmt(rejectedQty(l))} to quarantine`}
                                 </button>
-                              </span>
-                              {l.reject && rejectedQty(l) > 0 && (
-                                <span className="sbadge" data-tone="warn" style={{ marginLeft: 6 }}>{fmt(rejectedQty(l))} to quarantine</span>
                               )}
                             </span>
                           </span>
@@ -807,8 +801,12 @@ export function ReceiptForm({
                           <span className="subline" style={{ display: "block" }}>≈ {fmt(amount(l) * Number(rate))} {base}</span>
                         )}
                       </td>
-                      <td className="tight">
-                        <LineRemove onClick={() => removeLine(l.key)} />
+                      <td className="tight vc-act">
+                        <div className="line-acts">
+                          <button type="button" className="vicon line-edit" aria-label={`Edit line ${idx + 1}`} title="Edit line"
+                            onClick={() => setEditKey(l.key)}><Pencil size={15} /></button>
+                          <LineRemove onClick={() => removeLine(l.key)} />
+                        </div>
                       </td>
                     </tr>
                     {/* The units under their line, where the sales invoice puts
@@ -816,10 +814,6 @@ export function ReceiptForm({
                     {named(l) && (
                       <UnitsRow colSpan={lineCols} title={item?.name ?? ""} qty={q} rows={l.serials ?? []}
                         onChange={(rows) => setLine(l.key, { serials: rows })} mode={modeOf(l)} onFile={onFile} />
-                    )}
-                    {l.reject && (
-                      <RejectRow colSpan={lineCols} line={l} tracked={named(l)} imei={modeOf(l) === "IMEI"} arrived={q}
-                        onChange={(reject) => setLine(l.key, { reject })} />
                     )}
                     {picking && (
                       <tr className="gr-pickrow">
@@ -894,6 +888,59 @@ export function ReceiptForm({
             </tbody>
           </table>
         </div>
+        {(() => {
+          const l = lines.find((x) => x.key === editKey);
+          if (!l) return null;
+          const item = byId(l.itemId);
+          const close = () => setEditKey(null);
+          return (
+            <div className="le-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
+              <div className="le" role="dialog" aria-modal="true" aria-labelledby="le-title"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") close();
+                  // Inside the receipt's form: Enter here must not post it.
+                  if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") { e.preventDefault(); close(); }
+                }}>
+                <header className="le-head">
+                  <div>
+                    <span className="le-eyebrow">Line {lines.indexOf(l) + 1}</span>
+                    <h2 id="le-title">{item?.name ?? "Item"}</h2>
+                    {item?.code && <span className="vcode">{item.code}</span>}
+                  </div>
+                  <button type="button" className="le-x" aria-label="Close" onClick={close}><X size={18} /></button>
+                </header>
+                <div className="le-body">
+                  {!l.sourceLineId && (
+                    <section className="le-sec">
+                      <div className="le-check" style={{ alignItems: "center" }}>
+                        <span><strong>Wrong product on this line?</strong><small>Pick another; the quantity and cost stay.</small></span>
+                        <button type="button" className="btn ghost" style={{ marginLeft: "auto", flex: "none" }}
+                          onClick={() => { setChanging(l.key); close(); }}>Change product</button>
+                      </div>
+                    </section>
+                  )}
+                  <section className="le-sec">
+                    <label className="le-check">
+                      <input type="checkbox" checked={!!l.reject}
+                        onChange={(e) => setLine(l.key, { reject: e.target.checked ? { qty: "", serials: [], reason: "", outcome: "" } : undefined })} />
+                      <span><strong>Some units arrived defective</strong><small>Still received, into this warehouse&rsquo;s quarantine bin, not for sale. The supplier replaces or credits them.</small></span>
+                    </label>
+                    {l.reject && (
+                      <div className="le-sub">
+                        <RejectFields line={l} tracked={named(l)} imei={modeOf(l) === "IMEI"} arrived={Number(l.qty) || 0}
+                          onChange={(reject) => setLine(l.key, { reject })} />
+                      </div>
+                    )}
+                  </section>
+                </div>
+                <footer className="le-foot">
+                  <button type="button" className="btn ghost danger" onClick={() => { removeLine(l.key); close(); }}>Remove line</button>
+                  <button type="button" className="btn" onClick={close}>Done</button>
+                </footer>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {carriage && (
@@ -1005,68 +1052,54 @@ export function ReceiptForm({
  * still count as arrived; they go to the branch's quarantine instead of the
  * shelf, and the return that sends them back is raised from the receipt.
  */
-function RejectRow({ colSpan, line, tracked, imei, arrived, onChange }: {
-  colSpan: number; line: Line; tracked: boolean; imei: boolean; arrived: number;
+function RejectFields({ line, tracked, imei, arrived, onChange }: {
+  line: Line; tracked: boolean; imei: boolean; arrived: number;
   onChange: (reject: NonNullable<Line["reject"]>) => void;
 }) {
   const r = line.reject!;
   const units = (line.serials ?? []).map((u) => u.serial.trim()).filter(Boolean);
   const toggle = (sn: string) => onChange({ ...r, serials: r.serials.includes(sn) ? r.serials.filter((x) => x !== sn) : [...r.serials, sn] });
-  const n = tracked ? r.serials.filter((sn) => units.includes(sn)).length : Math.max(0, Number(r.qty) || 0);
   return (
-    <tr className="gr-reject">
-      <td colSpan={colSpan}>
-        <div className="reject-panel">
-          <div className="reject-panel-head">
-            <AlertTriangle size={16} aria-hidden="true" style={{ color: "#B07F00" }} />
-            Refused on arrival{n > 0 ? ` — ${n} of ${arrived}` : ""}
-            <span className="page-sub" style={{ fontWeight: 400, marginLeft: 4 }}>
-              Still received, into this warehouse&rsquo;s quarantine bin, not for sale.
-            </span>
-          </div>
-          <div className="reject-grid">
-            <div className="field">
-              <label>{tracked ? "Which units" : "How many"} *</label>
-              {tracked ? (
-                units.length === 0 ? <span className="subline">Scan the {imei ? "IMEIs" : "serial numbers"} above first, then tap the refused ones.</span> : (
-                  <div className="reject-imeis">
-                    {units.map((sn) => (
-                      <label key={sn} className="reject-imei">
-                        <input type="checkbox" checked={r.serials.includes(sn)} onChange={() => toggle(sn)} /> {sn}
-                      </label>
-                    ))}
-                  </div>
-                )
-              ) : (
-                <input type="number" min="1" max={arrived || undefined} step="any" value={r.qty}
-                  onChange={(e) => onChange({ ...r, qty: e.target.value })} aria-label="Refused quantity" />
-              )}
-            </div>
-            <div className="field">
-              <label htmlFor={`reject-reason-${line.key}`}>What is wrong *</label>
-              <input id={`reject-reason-${line.key}`} type="text" value={r.reason}
-                placeholder="Screen cracked, does not power on, wrong colour…"
-                onChange={(e) => onChange({ ...r, reason: e.target.value })} aria-label="What is wrong" />
-              <span className="hint">Printed on the rejection note.</span>
-            </div>
-            <div className="field">
-              <label>The supplier will *</label>
-              <div className="choice-list">
-                <label className="choice">
-                  <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "REPLACE"}
-                    onChange={() => onChange({ ...r, outcome: "REPLACE" })} />
-                  <span>Replace it<small>The order waits for another once it goes back.</small></span>
+    <div className="reject-grid">
+      <div className="field">
+        <label>{tracked ? "Which units" : `How many, of ${arrived}`} *</label>
+        {tracked ? (
+          units.length === 0 ? <span className="subline">Enter the {imei ? "IMEIs" : "serial numbers"} under the line first, then tick the refused ones here.</span> : (
+            <div className="reject-imeis">
+              {units.map((sn) => (
+                <label key={sn} className="reject-imei">
+                  <input type="checkbox" checked={r.serials.includes(sn)} onChange={() => toggle(sn)} /> {sn}
                 </label>
-                <label className="choice">
-                  <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "CREDIT"}
-                    onChange={() => onChange({ ...r, outcome: "CREDIT" })} />
-                  <span>Credit it<small>The order is done; the bill or return covers it.</small></span>
-                </label>
-              </div>
+              ))}
             </div>
-          </div>
+          )
+        ) : (
+          <input type="number" min="1" max={arrived || undefined} step="any" value={r.qty}
+            onChange={(e) => onChange({ ...r, qty: e.target.value })} aria-label="Refused quantity" />
+        )}
+      </div>
+      <div className="field">
+        <label htmlFor={`reject-reason-${line.key}`}>What is wrong *</label>
+        <input id={`reject-reason-${line.key}`} type="text" value={r.reason}
+          placeholder="Screen cracked, does not power on, wrong colour…"
+          onChange={(e) => onChange({ ...r, reason: e.target.value })} aria-label="What is wrong" />
+        <span className="hint">Printed on the rejection note.</span>
+      </div>
+      <div className="field">
+        <label>The supplier will *</label>
+        <div className="choice-list">
+          <label className="choice">
+            <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "REPLACE"}
+              onChange={() => onChange({ ...r, outcome: "REPLACE" })} />
+            <span>Replace it<small>The order waits for another once it goes back.</small></span>
+          </label>
+          <label className="choice">
+            <input type="radio" name={`reject-outcome-${line.key}`} checked={r.outcome === "CREDIT"}
+              onChange={() => onChange({ ...r, outcome: "CREDIT" })} />
+            <span>Credit it<small>The order is done; the bill or return covers it.</small></span>
+          </label>
         </div>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
