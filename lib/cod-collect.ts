@@ -29,7 +29,9 @@ export function collectText(p: Parcel) {
     case "HANDED_OVER": return "Handed over";
   }
   if (p.othersGoods > 0 && Math.abs(p.collectNow - p.collectLast) > 0.005) {
-    return `Collect ${mmk(p.collectNow)} if handed over first, otherwise ${mmk(p.collectLast)}`;
+    // The deposit and charge come off whichever parcel is handed over first.
+    const who = p.others.length ? `${p.others.join(" or ")} goes` : "another parcel goes";
+    return `Collect ${mmk(p.collectNow)} (${mmk(p.collectLast)} if ${who} first)`;
   }
   return p.collectNow > 0 ? `Collect ${mmk(p.collectNow)}` : "Paid by deposit · collect nothing";
 }

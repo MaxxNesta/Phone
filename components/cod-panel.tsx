@@ -246,7 +246,11 @@ export function CodPanel({ invoiceId, invoiceNo, sheet, drivers, couriers, accou
                     {p.lastReason && <span className="cod-sub">{p.lastReason}{p.retryOn ? ` · retry ${p.retryOn}` : ""}</span>}
                     {p.closedBy && <span className="cod-sub"><Link href={`/documents/${p.closedBy}`} className="dl-link">{p.closedByNo}</Link></span>}
                   </td>
-                  <td className="r cod-collect-cell">{p.state === "OUT" || p.state === "NOT_HOME" ? collectText(p).replace(/^Collect /, "") : "—"}</td>
+                  <td className="r cod-collect-cell">{p.state === "OUT" || p.state === "NOT_HOME" ? (() => {
+                    // "705,000 MMK" on top; "1,000,000 MMK if ST… goes first" beneath, smaller.
+                    const [main, alt] = collectText(p).replace(/^Collect /, "").split(" (");
+                    return <>{main}{alt && <span className="cod-sub">{alt.replace(/\)$/, "")}</span>}</>;
+                  })() : "—"}</td>
                   <td className="tight">
                     {canPost && (p.state === "OUT" || p.state === "NOT_HOME") && (
                       <span className="cod-row-actions">

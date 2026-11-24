@@ -47,6 +47,8 @@ export type Parcel = {
   due: number;
   /** Its goods alone, the charge and services still unbilled, the invoice's unused deposit, and the goods on its other open parcels. */
   goods: number; extras: number; deposit: number; othersGoods: number;
+  /** The invoice's other parcels still out, by number. */
+  others: string[];
   /** Cash to take at the door: handed over now, and if every other open parcel goes first. */
   collectNow: number; collectLast: number;
 };
@@ -88,6 +90,11 @@ const PARCELS = (db: Db, where: ReturnType<typeof sql>) => db`
              and not exists (select 1 from dispatch_event e left join document ed on ed.id = e.document_id
                               where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED') and ed.status = 'POSTED')))
          ) as others_goods,
+         array(select s.doc_no from document s join location sb on sb.id = s.to_location_id and sb.is_transit
+                where s.source_document_id = i.id and s.id <> t.id and s.doc_type = 'STOCK_TRANSFER' and s.status = 'POSTED'
+                  and not exists (select 1 from dispatch_event e left join document ed on ed.id = e.document_id
+                                   where e.parcel_id = s.id and (e.kind = 'REFUSED' or (e.kind in ('HANDED_OVER', 'RETURNED') and ed.status = 'POSTED')))
+                order by s.doc_no) as others,
          -- ... and, while nothing has been handed over, the charge and services.
          (case when exists (select 1 from sales_billed_on_handover h join document hd on hd.id = h.document_id and hd.status = 'POSTED'
                              where h.invoice_id = i.id) then 0
@@ -123,6 +130,7 @@ function toParcel(r: Record<string, unknown>): Parcel {
       .map((l) => ({ lineId: l.lineId, itemId: l.itemId, item: l.item, qty: Number(l.qty), serials: l.serials ?? [], focReasonId: l.foc })),
     due: round4(Number(r.goods) + Number(r.extras)),
     ...collect(Number(r.goods), Number(r.extras), Number(r.deposit), Number(r.others_goods)),
+    others: (r.others as string[]) ?? [],
   };
 }
 

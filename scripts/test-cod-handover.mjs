@@ -219,8 +219,9 @@ try {
     const gb = await C.codDispatch(tx, { companyId: co.id, invoiceId: g2.id, docDate: day, driverId: driver.id, lines: [{ lineId: g2l, qty: 1, serials: [imei[7]] }] });
     await C.recordDeposit(tx, { companyId: co.id, parcelId: ga.id, docDate: day, payment: { to: "DRIVER", amount: 300000 } });
     let pa1 = await C.parcel(ga.id, tx), pb1 = await C.parcel(gb.id, tx);
-    check("each split slip names both amounts: 705,000 if first, 1,000,000 otherwise",
-      C.collectText(pa1) === "Collect 705,000 MMK if handed over first, otherwise 1,000,000 MMK" && C.collectText(pb1) === C.collectText(pa1), C.collectText(pa1));
+    check("each split slip names its amount and the other parcel: 705,000 (1,000,000 if the other goes first)",
+      C.collectText(pa1) === `Collect 705,000 MMK (1,000,000 MMK if ${pb1.no} goes first)` && C.collectText(pb1) === `Collect 705,000 MMK (1,000,000 MMK if ${pa1.no} goes first)`,
+      [C.collectText(pa1), C.collectText(pb1)]);
     check("the invoice and a courier batch count the deposit and charge once: 1,705,000", near(C.collectTotal([pa1, pb1]), 1705000), C.collectTotal([pa1, pb1]));
     const gh2 = await C.confirmHandover(tx, { companyId: co.id, parcelId: gb.id, docDate: day, payment: { to: "DRIVER", amount: pb1.collectNow } });
     pa1 = await C.parcel(ga.id, tx);
