@@ -26,10 +26,11 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       level_id: string; price: string | null; valid_from: string | null;
       history: { price: number | null; from: string }[] | null;
     }>>,
-    sql`select pl.id, pl.code, pl.name, pl.sort_order,
-               (select count(*)::int from item_price ip where ip.price_level_id = pl.id) as prices,
-               (select count(*)::int from business_partner bp where bp.price_level_id = pl.id) as partners
+    // Counted once each, grouped, rather than a count per level.
+    sql`select pl.id, pl.code, pl.name, pl.sort_order, coalesce(p.n, 0)::int as prices, coalesce(b.n, 0)::int as partners
           from price_level pl
+          left join (select price_level_id, count(*) as n from item_price where company_id = ${company.id} group by 1) p on p.price_level_id = pl.id
+          left join (select price_level_id, count(*) as n from business_partner where company_id = ${company.id} group by 1) b on b.price_level_id = pl.id
          where pl.company_id = ${company.id}
          order by pl.sort_order, pl.code` as unknown as Promise<Array<{
       id: string; code: string; name: string; sort_order: number; prices: number; partners: number;

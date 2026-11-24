@@ -12030,7 +12030,6 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
    their units beneath, a column per level; the Set price panel docks to the
    right and the page steps aside; levels live in a dialog. Scoped .pl3-. */
 .pl3-page, .pl3-panel, .pl3-dialog { --pl3-ink: #1D1D1F; --pl3-sub: #6E6E73; --pl3-rule: #E5E5EA; --pl3-field: #D2D2D7; --pl3-fill: #F5F5F7; --pl3-blue: #0071E3; color: var(--pl3-ink); }
-.pl3-page { max-width: 1180px; }
 .pl3-head { display: flex; align-items: flex-end; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--pl3-rule); }
 .pl3-head > div { flex: 1; min-width: 0; }
 .pl3-eyebrow { display: block; font-size: 12px; color: var(--pl3-sub); margin-bottom: 4px; }
@@ -12072,10 +12071,9 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-empty { padding: 32px; text-align: center; color: var(--pl3-sub); }
 .pl3-more { display: flex; justify-content: center; padding: 20px 0; }
 
-/* Set price: docked right; on a wide screen the page steps aside for it. */
+/* Set price: over the right of the list, under the top bar; the list stays where it is. */
 .pl3-panel { position: fixed; top: 56px; right: 0; bottom: 0; width: 400px; max-width: calc(100vw - 56px); z-index: 60; display: flex; flex-direction: column;
   background: #fff; border-left: 1px solid var(--pl3-rule); box-shadow: -12px 0 32px rgb(0 0 0 / 0.06); }
-@media (min-width: 1280px) { html.price-panel-open main.main > :not(.topbar) { margin-right: 400px; transition: margin-right 180ms ease; } }
 .pl3-panel-head, .pl3-dialog-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 16px 8px; }
 .pl3-panel-head > div, .pl3-dialog-head > div { flex: 1; min-width: 0; }
 .pl3-panel-head h2, .pl3-dialog-head h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }

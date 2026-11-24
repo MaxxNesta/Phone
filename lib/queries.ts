@@ -4606,39 +4606,40 @@ export async function getExpiryByItem(companyId: string) {
  */
 export async function getPriceList(companyId: string) {
   // One row per product, unit and level (0236): the piece, then each pack
-  // smallest first, each with its own price at every level and the dated
-  // prices before it, newest first, as they were.
+  // smallest first, each with today's price and every dated price before it,
+  // newest first, as they were. item_price is read once, grouped, rather
+  // than looked up again for every cell.
   return sql`
+    with h as (
+      select item_id, price_level_id, uom_id,
+             count(*)::int as prices,
+             json_agg(json_build_object('price', price::float, 'from', to_char(valid_from, 'YYYY-MM-DD'))
+                      order by valid_from desc) as history,
+             (array_agg(price order by valid_from desc) filter (where valid_from <= fn_shop_today()))[1] as price,
+             (array_agg(valid_from order by valid_from desc) filter (where valid_from <= fn_shop_today()))[1] as valid_from
+        from item_price
+       where company_id = ${companyId}
+       group by item_id, price_level_id, uom_id
+    ), un as (
+      select i.id as item_id, i.base_uom_id as uom_id, 1::float as factor, true as is_base
+        from item i where i.company_id = ${companyId} and i.is_active
+      union all
+      select iu.item_id, iu.uom_id, iu.factor::float, false
+        from item_uom iu join item i on i.id = iu.item_id
+       where i.company_id = ${companyId} and i.is_active
+    )
     select i.id as item_id, i.code, i.name, i.base_uom_id,
-           un.uom_id, un.code as uom_code, un.factor, un.is_base, bu.code as base_code,
+           un.uom_id, u.code as uom_code, un.factor, un.is_base, bu.code as base_code,
            pl.id as level_id, pl.name as level_name, pl.sort_order,
-           cur.price, to_char(cur.valid_from, 'YYYY-MM-DD') as valid_from,
-           (select count(*)::int from item_price h
-             where h.item_id = i.id and h.price_level_id = pl.id and h.uom_id = un.uom_id) as prices,
-           (select json_agg(json_build_object('price', h.price::float, 'from', to_char(h.valid_from, 'YYYY-MM-DD'))
-                            order by h.valid_from desc)
-              from item_price h
-             where h.item_id = i.id and h.price_level_id = pl.id and h.uom_id = un.uom_id) as history
-      from item i
+           h.price, to_char(h.valid_from, 'YYYY-MM-DD') as valid_from,
+           coalesce(h.prices, 0) as prices, h.history
+      from un
+      join item i on i.id = un.item_id
+      join uom u on u.id = un.uom_id
       join uom bu on bu.id = i.base_uom_id
-      cross join lateral (
-            select i.base_uom_id as uom_id, bu.code, 1::float as factor, true as is_base
-            union all
-            select iu.uom_id, pu.code, iu.factor::float, false
-              from item_uom iu join uom pu on pu.id = iu.uom_id
-             where iu.item_id = i.id
-      ) un
       cross join price_level pl
-      left join lateral (
-            select ip.price, ip.valid_from
-              from item_price ip
-             where ip.item_id = i.id and ip.price_level_id = pl.id and ip.uom_id = un.uom_id
-               and ip.valid_from <= fn_shop_today()
-             order by ip.valid_from desc
-             limit 1
-      ) cur on true
-     where i.company_id = ${companyId} and pl.company_id = ${companyId}
-       and i.is_active
+      left join h on h.item_id = un.item_id and h.price_level_id = pl.id and h.uom_id = un.uom_id
+     where pl.company_id = ${companyId}
      order by i.code, un.factor, pl.sort_order`;
 }
 

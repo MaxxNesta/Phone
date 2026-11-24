@@ -19,7 +19,7 @@ const PAGE = 40;
 /**
  * Price levels, laid out as the Astryx preview (2026-11-24): products down
  * with their units beneath, a column per level; a price opens the Set price
- * panel beside the list; the levels are managed in a dialog.
+ * panel over the right of the list; the levels are managed in a dialog.
  */
 export function PriceList({ products, levels, today, openLevels, setAction, clearAction, manage }: {
   products: PriceProduct[]; levels: Level[]; today: string; openLevels: boolean;
@@ -31,11 +31,6 @@ export function PriceList({ products, levels, today, openLevels, setAction, clea
   const [pick, setPick] = useState<Pick | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
 
-  // The page steps aside for the panel, as it does for the IMEI drawer.
-  useEffect(() => {
-    document.documentElement.classList.toggle("price-panel-open", !!pick);
-    return () => document.documentElement.classList.remove("price-panel-open");
-  }, [pick]);
   useEffect(() => { if (openLevels) dialog.current?.showModal(); }, [openLevels]);
 
   const list = useMemo(() => {
@@ -70,8 +65,8 @@ export function PriceList({ products, levels, today, openLevels, setAction, clea
 
       <div className="pl3-tablewrap">
         {/* Every price column holds a nine-digit kyat figure; past what fits, the table scrolls rather than squeezing. */}
-        <table className="pl3-table" style={{ width: `max(100%, ${240 + 150 + levels.length * 160}px)` }}>
-          <colgroup><col /><col style={{ width: 150 }} />{levels.map((l) => <col key={l.id} style={{ width: 160 }} />)}</colgroup>
+        <table className="pl3-table" style={{ width: `max(100%, ${180 + 140 + levels.length * 160}px)` }}>
+          <colgroup><col /><col style={{ width: 140 }} />{levels.map((l) => <col key={l.id} style={{ width: 160 }} />)}</colgroup>
           <thead>
             <tr>
               <th>Product</th><th>Unit</th>
