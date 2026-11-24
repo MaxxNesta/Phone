@@ -74,7 +74,9 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
   const side: PriceSide = sp.side === "sale" || !seeCost ? "sale" : sp.side === "receipt" ? "receipt" : "purchase";
   // Order against invoice: purchase prices, so cost-only too.
   const variance = seeCost && sp.side === "variance";
-  const tab = variance ? "variance" : side;
+  // The price list's own changes (0236/0237): every dated price, against the one before it.
+  const listTab = sp.side === "list";
+  const tab = listTab ? "list" : variance ? "variance" : side;
   const buying = side !== "sale";
   const range = { from: sp.from || firstOfLastMonth(), to: sp.to || todayLocal() };
 
@@ -84,7 +86,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
     categoryId: sp.category || undefined, brandId: sp.brand || undefined, branchId: sp.branch || undefined,
   };
   const [rows, vrows, partners, currencies, locations, categories, brands, branches] = await Promise.all([
-    variance ? Promise.resolve([] as PriceRow[]) : getPriceHistory(co, side, filters),
+    variance || listTab ? Promise.resolve([] as PriceRow[]) : getPriceHistory(co, side, filters),
     variance ? getOrderInvoiceVariance(co, filters) : Promise.resolve([]),
     buying
       ? sql`select id, name from business_partner where company_id = ${co} and is_supplier and is_active order by name`
@@ -95,6 +97,28 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
     sql`select id, name from brand where company_id = ${co} and is_active order by name`,
     sql`select id, name from location where company_id = ${co} and parent_id is null and is_active order by code`,
   ]);
+
+  const listChanges = listTab ? await sql`
+    select * from (
+      select to_char(ip.valid_from, 'YYYY-MM-DD') as date, ip.valid_from, i.id as item_id, i.code, i.name,
+             u.code as uom, (ip.uom_id = i.base_uom_id) as is_base, pl.name as level, pl.sort_order,
+             ip.price::float as price,
+             lag(ip.price) over w ::float as prev,
+             lag(ip.valid_from) over w is not null as had_prev,
+             i.item_group_id, i.brand_id
+        from item_price ip
+        join item i on i.id = ip.item_id
+        join uom u on u.id = ip.uom_id
+        join price_level pl on pl.id = ip.price_level_id
+       where ip.company_id = ${co}
+      window w as (partition by ip.item_id, ip.price_level_id, ip.uom_id order by ip.valid_from)
+    ) x
+     where x.valid_from between ${range.from}::date and ${range.to}::date
+       and (${filters.q ?? null}::text is null or x.code ilike ${"%" + (filters.q ?? "") + "%"} or x.name ilike ${"%" + (filters.q ?? "") + "%"})
+       and (${filters.categoryId ?? null}::uuid is null or x.item_group_id = ${filters.categoryId ?? null}::uuid)
+       and (${filters.brandId ?? null}::uuid is null or x.brand_id = ${filters.brandId ?? null}::uuid)
+     order by x.valid_from desc, x.code, x.is_base desc, x.uom, x.sort_order
+     limit 1000` as unknown as ListChange[] : [];
 
   const trends = productTrends(rows);
   const byLines = [...trends].sort((a, b) => b.lines - a.lines || a.item.localeCompare(b.item));
@@ -133,17 +157,18 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
       <div className="page-head">
         <div>
           <h1>Price history</h1>
-          <p className="page-sub">Actual prices from posted documents</p>
+          <p className="page-sub">{listTab ? "Changes to the price list, as they were" : "Actual prices from posted documents"}</p>
         </div>
-        <a href={exportHref} className="btn ghost" style={{ marginLeft: "auto" }}>
+        {!listTab && <a href={exportHref} className="btn ghost" style={{ marginLeft: "auto" }}>
           <Download size={15} aria-hidden="true" /> Export
-        </a>
+        </a>}
       </div>
 
       <div className="scopetabs" style={{ margin: "0 0 12px" }} role="tablist" aria-label="Side">
-        {seeCost && <Link scroll={false} className="scopetab" data-active={!variance && side === "purchase"} href={keep({ side: "purchase", partner: undefined })}>Purchases</Link>}
-        {seeCost && <Link scroll={false} className="scopetab" data-active={!variance && side === "receipt"} href={keep({ side: "receipt", partner: undefined })}>Goods receipts</Link>}
-        <Link scroll={false} className="scopetab" data-active={!variance && side === "sale"} href={keep({ side: "sale", partner: undefined })}>Sales</Link>
+        {seeCost && <Link scroll={false} className="scopetab" data-active={!variance && !listTab && side === "purchase"} href={keep({ side: "purchase", partner: undefined })}>Purchases</Link>}
+        {seeCost && <Link scroll={false} className="scopetab" data-active={!variance && !listTab && side === "receipt"} href={keep({ side: "receipt", partner: undefined })}>Goods receipts</Link>}
+        <Link scroll={false} className="scopetab" data-active={!variance && !listTab && side === "sale"} href={keep({ side: "sale", partner: undefined })}>Sales</Link>
+        <Link scroll={false} className="scopetab" data-active={listTab} href={keep({ side: "list", partner: undefined, item: undefined })}>Price list</Link>
         {seeCost && <Link scroll={false} className="scopetab" data-active={variance} href={keep({ side: "variance", partner: undefined, item: undefined })}>Order vs invoice</Link>}
       </div>
 
@@ -154,7 +179,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
           <label htmlFor="ph-q">Product</label>
           <input id="ph-q" name="q" data-live defaultValue={sp.q ?? ""} placeholder="Search product name, SKU, item code or barcode…" />
         </div>
-        {sel("ph-partner", "partner", partnerLabel, `All ${buying ? "suppliers" : "customers"}`, partners as unknown as { id: string; name: string }[])}
+        {!listTab && sel("ph-partner", "partner", partnerLabel, `All ${buying ? "suppliers" : "customers"}`, partners as unknown as { id: string; name: string }[])}
         <div className="field">
           <label htmlFor="ph-from">From</label>
           <input id="ph-from" name="from" type="date" defaultValue={range.from} />
@@ -165,15 +190,15 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
         </div>
         {!variance && sel("ph-cat", "category", "Category", "All categories", categories as unknown as { id: string; name: string }[])}
         {!variance && sel("ph-brand", "brand", "Brand", "All brands", brands as unknown as { id: string; name: string }[])}
-        {!variance && sel("ph-branch", "branch", "Branch", "All branches", branches as unknown as { id: string; name: string }[])}
-        <div className="field">
+        {!variance && !listTab && sel("ph-branch", "branch", "Branch", "All branches", branches as unknown as { id: string; name: string }[])}
+        {!listTab && <div className="field">
           <label htmlFor="ph-cur">Currency</label>
           <select id="ph-cur" name="currency" defaultValue={sp.currency ?? ""}>
             <option value="">All currencies</option>
             {(currencies as unknown as { code: string }[]).map((c) => <option key={c.code}>{c.code}</option>)}
           </select>
-        </div>
-        {sel("ph-loc", "location", "Warehouse", "All warehouses", locations as unknown as { id: string; name: string }[])}
+        </div>}
+        {!listTab && sel("ph-loc", "location", "Warehouse", "All warehouses", locations as unknown as { id: string; name: string }[])}
         <div className="actions">
           <AutoApply />
           <button type="submit" className="btn ghost" data-apply>Filter</button>
@@ -183,16 +208,55 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
 
       <p className="ph-note">
         <Info size={15} aria-hidden="true" />
-        {variance
+        {listTab
+          ? <>Every change to the price list, by level and unit, against the price before it. A change is a new dated price; the old one is never rewritten, so last month&rsquo;s figure stays as it was.</>
+          : variance
           ? <>Supplier bills against the purchase order behind them. A bill raised straight from an order is held to the order&rsquo;s price, so a difference comes from goods received first and billed later at another price.</>
           : <>Net unit price after line discounts, before tax. Converted at each document&rsquo;s own saved exchange rate — a later rate change does not alter history.</>}
       </p>
 
-      {variance ? <OrderVariance rows={vrows} all={sp.only === "all"} keep={keep} />
+      {listTab ? <ListChanges rows={listChanges} />
+        : variance ? <OrderVariance rows={vrows} all={sp.only === "all"} keep={keep} />
         : focus ? <ProductView focus={focus} rows={rows.filter((r) => trendKey(r) === focus.key)} side={side} sp={sp} keep={keep}
             pickerOptions={pickerOptions} partnerLabel={partnerLabel} range={range} />
         : <Overview rows={rows} trends={trends} side={side} sp={sp} keep={keep} pick={pick} partnerLabel={partnerLabel} />}
     </>
+  );
+}
+
+type ListChange = { date: string; item_id: string; code: string; name: string; uom: string; is_base: boolean;
+  level: string; price: number | null; prev: number | null; had_prev: boolean };
+
+/** The price list's changes: each dated price beside the one before it, at its level and unit. */
+function ListChanges({ rows }: { rows: ListChange[] }) {
+  if (rows.length === 0) return <div className="card"><div className="empty">No price list changes in this period.</div></div>;
+  return (
+    <div className="card">
+      <div className="card-head"><h2>Price list changes</h2><span className="page-sub">{rows.length} change{rows.length === 1 ? "" : "s"}</span></div>
+      <div className="tablewrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Product</th><th>Unit</th><th>Level</th><th className="r">Before</th><th className="r">After</th><th className="r">Change</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const pct = r.price != null && r.prev != null && r.prev > 0 ? ((r.price - r.prev) / r.prev) * 100 : null;
+              return (
+                <tr key={`${r.item_id}-${r.uom}-${r.level}-${r.date}-${i}`}>
+                  <td className="code">{r.date}</td>
+                  <td><Link href={`/items/${r.item_id}`}>{r.code}</Link><div className="subline">{r.name}</div></td>
+                  <td>{r.uom}</td>
+                  <td>{r.level}</td>
+                  <td className="r">{!r.had_prev ? <span className="subline">new</span> : r.prev == null ? <span className="subline">no price</span> : money(r.prev)}</td>
+                  <td className="r">{r.price == null ? <span className="subline">removed</span> : <strong>{money(r.price)}</strong>}</td>
+                  <td className="r">{pct == null ? "—" : <span style={{ color: pct > 0 ? "var(--link)" : pct < 0 ? "var(--bad)" : undefined }}>{pct > 0 ? "+" : ""}{pct.toFixed(1)}%</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
