@@ -31,4 +31,10 @@ assert.equal(x.qty, 5); assert.equal(x.avg, (100 + 600 + 210) / 5);      // weig
 const parts = T.breakdown([{ ...L("2026-01-01", 100, 3), grp: "A" }, { ...L("2026-01-01", 200, 1), grp: "B" }, { ...L("2026-01-02", 120, 1), grp: "A" }, { ...L("2026-01-02", 1, 9), grp: null }], (l) => l.grp);
 assert.deepEqual(parts.map((p) => [p.label, p.avg, p.qty]), [["A", 105, 4], ["B", 200, 1]]);   // ungrouped left out
 assert.equal(parts[0].share, 0.8);
+// Price levels: S1 at 100 last month, S2 at 90 this month is two lists, not a 10% cut.
+const lv = (date, price, level) => ({ ...D(date, price), level });
+assert.equal(T.priceChanges([lv("2026-10-01", 100, "S1"), lv("2026-11-01", 90, "S2")]).length, 0);
+assert.equal(T.priceChanges([lv("2026-10-01", 100, "S1"), lv("2026-11-01", 120, "S1")])[0].pct, 0.2);  // S1 itself moved
+const byLevel = T.productTrends([lv("2026-10-01", 100, "S1"), lv("2026-11-01", 90, "S2")]).map((t) => t.uom).sort();
+assert.deepEqual(byLevel, ["PCS · S1", "PCS · S2"]);
 console.log("price-trends ok");

@@ -4,10 +4,11 @@
  * draw. Pure functions over the lines getPriceHistory returns, all in MMK.
  *
  * A product is an item in one unit: a carton and a piece of the same item
- * are two prices, never averaged together.
+ * are two prices, never averaged together. A sale is also kept to its price
+ * level: S1 last month against S2 this month is two lists, not a change.
  */
 
-export type TrendLine = { date: string; item_id: string; item: string; code: string; uom: string; qty: number; unit_base: number; doc_no: string; partner: string; doc_id?: string };
+export type TrendLine = { date: string; item_id: string; item: string; code: string; uom: string; level?: string | null; qty: number; unit_base: number; doc_no: string; partner: string; doc_id?: string };
 
 export type ProductTrend = {
   key: string; item: string; code: string; uom: string; lines: number;
@@ -20,7 +21,9 @@ export type ProductTrend = {
   avg: number; qty: number; orders: number;
 };
 
-export const trendKey = (r: { item_id: string; uom: string }) => `${r.item_id}:${r.uom}`;
+export const trendKey = (r: { item_id: string; uom: string; level?: string | null }) => `${r.item_id}:${r.uom}${r.level ? `:${r.level}` : ""}`;
+/** The unit, and the level a sale was priced at: "PCS · S2". */
+const unitOf = (l: { uom: string; level?: string | null }) => (l.level ? `${l.uom} · ${l.level}` : l.uom);
 
 /** Quantity-weighted average per date, oldest first. */
 function byDay(lines: TrendLine[]) {
@@ -45,7 +48,7 @@ export function productTrends(rows: TrendLine[]): ProductTrend[] {
     const prices = ls.map((l) => l.unit_base);
     const qty = ls.reduce((t, l) => t + l.qty, 0);
     return {
-      key, item: ls[0].item, code: ls[0].code, uom: ls[0].uom, lines: ls.length,
+      key, item: ls[0].item, code: ls[0].code, uom: unitOf(ls[0]), lines: ls.length,
       first, last, low: Math.min(...prices), high: Math.max(...prices),
       change: first > 0 ? (last - first) / first : null,
       spark: days.map((d) => d.avg),
@@ -126,7 +129,7 @@ export function priceChanges(rows: (TrendLine & { doc_id: string })[]): PriceCha
       const prev = days[i - 1].avg, next = days[i].avg;
       if (Math.abs(next - prev) < 0.5) continue;
       const docs = [...new Map(ls.filter((l) => l.date === days[i].date).map((l) => [l.doc_id, { id: l.doc_id, no: l.doc_no }])).values()];
-      out.push({ key, item: ls[0].item, code: ls[0].code, uom: ls[0].uom, date: days[i].date, prevDate: days[i - 1].date,
+      out.push({ key, item: ls[0].item, code: ls[0].code, uom: unitOf(ls[0]), date: days[i].date, prevDate: days[i - 1].date,
         prev, next, change: next - prev, pct: prev > 0 ? (next - prev) / prev : null, docs });
     }
   }
