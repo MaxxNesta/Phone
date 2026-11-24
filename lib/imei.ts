@@ -31,3 +31,16 @@ export function lookupKeys(v: string): string[] {
   const imei = imeiFromImeisv(s);
   return imei ? [s, imei] : [s];
 }
+
+/**
+ * Why a value cannot be recorded as a phone's IMEI, or null when it can.
+ * Exactly 15 digits: the IMEISV (16) carries a software version that changes
+ * with updates, so a phone filed under it could not be found again.
+ */
+export function imeiProblem(v: string): string | null {
+  const s = v.trim();
+  const imei = imeiFromImeisv(s);
+  if (imei) return `${s} is the 16-digit IMEISV, which changes when the phone's software is updated. Record the 15-digit IMEI: ${imei}.`;
+  if (!/^\d{15}$/.test(s)) return `${s} is not an IMEI: an IMEI is exactly 15 digits.`;
+  return null;
+}

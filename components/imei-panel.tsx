@@ -34,7 +34,7 @@ function statusOf(row: UnitRow, all: UnitRow[], mode: UnitMode = "IMEI", onFile:
   if (/^\d{15}$/.test(v)) return imeiCheckOk(v) ? { ok: true, label: "Valid" } : { ok: false, label: "Check digit wrong" };
   // A 16-digit number is the IMEISV (software version), not the IMEI: say which IMEI it means.
   const fromSv = imeiFromImeisv(v);
-  if (fromSv) return { ok: false, label: `16 digits is the IMEISV. The IMEI is ${fromSv}` };
+  if (fromSv) return { ok: false, label: `This is the IMEISV (16 digits). Record the IMEI: ${fromSv}` };
   if (/^\d+$/.test(v)) return { ok: false, label: `${v.length} digits, IMEI has 15` };
   return { ok: true, label: "Serial" };
 }

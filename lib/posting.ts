@@ -1,4 +1,4 @@
-import { lookupKeys } from "./imei";
+import { imeiProblem, lookupKeys } from "./imei";
 import { todayLocal } from "@/lib/format";
 import type { TransactionSql } from "postgres";
 import { sql } from "./db";
@@ -5126,6 +5126,14 @@ async function _postGoodsReceipt(tx: TransactionSql, input: FulfillmentInput) {
         );
       }
       const details = new Map((line.unitDetails ?? []).map((d) => [d.serial.trim(), d]));
+      // A phone is filed under its 15-digit IMEI, never the IMEISV (it changes with software updates).
+      const [{ identity: unitIdentity }] = await tx`select identity from item where id = ${line.itemId}`;
+      if (unitIdentity === "IMEI") {
+        for (const v of [...given, ...[...details.values()].map((d) => d.imei2?.trim()).filter((x): x is string => Boolean(x))]) {
+          const bad = imeiProblem(v);
+          if (bad) throw new Error(`Line ${lineNo}: ${bad}`);
+        }
+      }
       const extra = [...details.values()].flatMap((d) => [d.imei2?.trim(), d.deviceSerial?.trim()])
         .filter((x): x is string => Boolean(x));
       const clash = await tx`
@@ -12328,6 +12336,12 @@ export async function postOpeningBatch(input: OpeningBatchInput, outer?: Transac
         // draws what the goods actually cost rather than a guess. A handset
         // gets a layer of its own, at its own cost.
         if (item.tracks_serial) {
+          if (item.identity === "IMEI") {
+            for (const u of units) for (const v of [u.serial, u.imei2?.trim()].filter((x): x is string => Boolean(x))) {
+              const bad = imeiProblem(v);
+              if (bad) throw new Error(bad);
+            }
+          }
           const clash = await tx`
             select serial_no from stock_serial
              where company_id = ${companyId}
