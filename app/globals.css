@@ -11666,9 +11666,9 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
    .pos3-page; markup in components/pos-till.tsx. Black for the action, blue
    only for choosing. */
 /* Outranks .main.main:has(.page-head.hero), which gives hero pages 22px on top. */
-.main.main:has(.pos3-page .page-head.hero) { background: #fff; padding: 0; }
+.main.main:has(.pos3-page .page-head.hero) { background: var(--u-bg); padding: 0; }
 .main:has(.pos3-page) .inner { max-width: none; gap: 0; }
-.pos3-page { gap: 0; --pos-line: #e5e5ea; --pos-fill: #f2f2f4; --pos-ink: #1d1d1f; --pos-muted: #6e6e73; }
+.pos3-page { gap: 0; --pos-line: var(--u-rule); --pos-fill: var(--u-fill); --pos-ink: var(--u-ink); --pos-muted: var(--u-sub); }
 
 /* header: title left, where you sell from right, hairline under */
 .pos3-page .pos3-top { height: 72px; box-sizing: border-box; padding: 16px; border-bottom: 1px solid var(--pos-line); align-items: center; flex-wrap: nowrap; }
@@ -11695,7 +11695,7 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .pos3-page .pos3 { gap: 0; grid-template-columns: minmax(0, 1fr) 420px; align-items: stretch; }
 .pos3-page .pos3-shelf { padding: 16px; gap: 12px; }
 .pos3-page .pos3-searchrow { align-items: center; gap: 16px; }
-.pos3-page .pos3-search { height: 40px; min-height: 40px; border: 1px solid #d2d2d7; border-radius: 8px; box-shadow: none; background: #fff; }
+.pos3-page .pos3-search { height: 40px; min-height: 40px; border: 1px solid var(--u-line); border-radius: 8px; box-shadow: none; background: var(--u-bg); }
 .pos3-page .pos3-search:focus-within { border-color: var(--pos-ink); box-shadow: 0 0 0 1px var(--pos-ink); }
 .pos3-page .pos3-search svg { color: var(--pos-muted); }
 .pos3-page .pos3-bar-right { display: flex; align-items: center; gap: 16px; flex: none; }
@@ -11704,11 +11704,11 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .pos3-page .pos3-instock { display: inline-flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--pos-ink); white-space: nowrap; }
 .pos3-page .pos3-instock input[role="switch"] {
   appearance: none; -webkit-appearance: none; width: 40px; height: 24px; margin: 0; border-radius: 999px;
-  background: #d2d2d7; position: relative; cursor: pointer; transition: background 150ms ease; flex: none;
+  background: var(--u-line); position: relative; cursor: pointer; transition: background 150ms ease; flex: none;
 }
 .pos3-page .pos3-instock input[role="switch"]::after {
   content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 150ms ease;
+  background: var(--u-bg); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform 150ms ease;
 }
 .pos3-page .pos3-instock input[role="switch"]:checked { background: var(--pos-ink); }
 .pos3-page .pos3-instock input[role="switch"]:checked::after { transform: translateX(16px); }
@@ -11718,12 +11718,12 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 .pos3-page .pos3-pills { gap: 4px; flex-wrap: wrap; overflow: visible; }
 .pos3-page .pos3-pill { border: 0; background: none; box-shadow: none; color: var(--pos-ink); font-weight: 500; padding: 6px 12px; border-radius: 8px; min-height: 32px; }
 .pos3-page .pos3-pill:hover:not([aria-pressed="true"]) { background: var(--pos-fill); border: 0; }
-.pos3-page .pos3-pill[aria-pressed="true"] { background: #e8e8ed; color: var(--pos-ink); font-weight: 600; border: 0; }
+.pos3-page .pos3-pill[aria-pressed="true"] { background: var(--u-fill2); color: var(--pos-ink); font-weight: 600; border: 0; }
 
 /* product cards: flat, hairline, tile, large price, quiet stock */
 .pos3-page .pos3-grid { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; }
-.pos3-page .pos3-card { border: 1px solid var(--pos-line); border-radius: 12px; box-shadow: none; padding: 12px; background: #fff; }
-.pos3-page .pos3-card:hover:not(:disabled) { border-color: #c7c7cc; box-shadow: none; background: #fafafa; }
+.pos3-page .pos3-card { border: 1px solid var(--pos-line); border-radius: 12px; box-shadow: none; padding: 12px; background: var(--u-bg); }
+.pos3-page .pos3-card:hover:not(:disabled) { border-color: var(--u-line2); box-shadow: none; background: var(--u-fill); }
 .pos3-page .pos3-img, .pos3-page .pos3-img.pos3-tile { width: 40px; height: 40px; border-radius: 10px; background: var(--pos-fill); }
 .pos3-page .pos3-img svg { color: var(--pos-muted); }
 .pos3-page .pos3-name { font-size: 0.9375rem; font-weight: 600; color: var(--pos-ink); }
@@ -11738,33 +11738,33 @@ button.pos3-card.nophoto { grid-template-rows: auto; }
 
 /* the sale: a column, not a card */
 .pos3-page .pos3-cart {
-  border-radius: 0; border: 0; border-left: 1px solid var(--pos-line); box-shadow: none; background: #fff;
+  border-radius: 0; border: 0; border-left: 1px solid var(--pos-line); box-shadow: none; background: var(--u-bg);
   padding: 0; gap: 0; position: sticky; top: 0; height: calc(var(--full-dh) - 72px); max-height: none;
 }
 .pos3-page .pos3-cart-head { padding: 16px 16px 8px; }
 .pos3-page .pos3-cart-head h2 { font-size: 1.0625rem; font-weight: 700; color: var(--pos-ink); }
-.pos3-page .pos3-customer { margin: 0 16px 12px; width: calc(100% - 32px); height: 36px; min-height: 36px; border: 1px solid #d2d2d7; border-radius: 8px; }
+.pos3-page .pos3-customer { margin: 0 16px 12px; width: calc(100% - 32px); height: 36px; min-height: 36px; border: 1px solid var(--u-line); border-radius: 8px; }
 .pos3-page .pos3-cart .pos3-scroll { border-top: 1px solid var(--pos-line); margin: 0; padding: 0 16px 16px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .pos3-page .pos3-empty { padding: 36px 8px; color: var(--pos-ink); font-size: 1rem; font-weight: 600; text-align: center; }
 .pos3-page .pos3-empty svg { color: var(--pos-ink); }
 .pos3-page .paymodes, .pos3-page .pos3-cart .paychannels { display: flex; flex-wrap: wrap; gap: 6px; background: none; padding: 0; border: 0; }
 .pos3-page .pos3-cart .paymode {
-  flex: 0 0 auto; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid #d2d2d7; background: #fff;
+  flex: 0 0 auto; min-height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--u-line); background: var(--u-bg);
   color: var(--pos-ink); font-weight: 500; box-shadow: none;
 }
-.pos3-page .pos3-cart .paymode[aria-pressed="true"] { background: var(--pos-ink); border-color: var(--pos-ink); color: #fff; }
+.pos3-page .pos3-cart .paymode[aria-pressed="true"] { background: var(--pos-ink); border-color: var(--pos-ink); color: var(--u-on-ink); }
 
 /* pinned foot: total left, the action right */
-.pos3-page .pos3-foot { margin-top: auto; padding: 14px 16px; background: #f7f7f9; border-top: 1px solid var(--pos-line); }
+.pos3-page .pos3-foot { margin-top: auto; padding: 14px 16px; background: var(--u-fill); border-top: 1px solid var(--pos-line); }
 .pos3-page .pos3-totalbar { display: flex; align-items: center; gap: 12px; }
 .pos3-page .pos3-totalfig { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.2; }
 .pos3-page .pos3-totalfig span { font-size: 0.8125rem; color: var(--pos-muted); }
 .pos3-page .pos3-totalfig strong { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; color: var(--pos-ink); font-variant-numeric: tabular-nums; }
 .pos3-page .pos3-cart .complete {
   width: auto; flex: none; min-height: 44px; padding: 0 20px; border-radius: 10px; border: 0;
-  background: var(--pos-ink); color: #fff; font-weight: 600; font-size: 0.9375rem; box-shadow: none;
+  background: var(--pos-ink); color: var(--u-on-ink); font-weight: 600; font-size: 0.9375rem; box-shadow: none;
 }
-.pos3-page .pos3-cart .complete:disabled { background: #d2d2d7; color: #fff; opacity: 1; }
+.pos3-page .pos3-cart .complete:disabled { background: var(--u-fill2); color: var(--u-faint); opacity: 1; }
 
 /* narrow: the shelf and the sale stack, as before, in the new look */
 @media (max-width: 1100px) {
@@ -12029,7 +12029,7 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
    /items/prices after the Astryx preview (2026-11-24): products down with
    their units beneath, a column per level; the Set price panel docks to the
    right and the page steps aside; levels live in a dialog. Scoped .pl3-. */
-.pl3-page, .pl3-panel, .pl3-dialog { --pl3-ink: #1D1D1F; --pl3-sub: #6E6E73; --pl3-rule: #E5E5EA; --pl3-field: #D2D2D7; --pl3-fill: #F5F5F7; --pl3-blue: #0071E3; color: var(--pl3-ink); }
+.pl3-page, .pl3-panel, .pl3-dialog { --pl3-ink: var(--u-ink); --pl3-sub: var(--u-sub); --pl3-rule: var(--u-rule); --pl3-field: var(--u-line); --pl3-fill: var(--u-fill); --pl3-blue: var(--u-blue); color: var(--pl3-ink); }
 .pl3-head { display: flex; align-items: flex-end; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--pl3-rule); }
 .pl3-head > div { flex: 1; min-width: 0; }
 .pl3-eyebrow { display: block; font-size: 12px; color: var(--pl3-sub); margin-bottom: 4px; }
@@ -12037,15 +12037,15 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-head p { margin: 6px 0 0; font-size: 15px; color: var(--pl3-sub); }
 .pl3-btn { appearance: none; border: 0; border-radius: 10px; background: var(--pl3-fill); color: var(--pl3-ink); font: inherit; font-size: 15px;
   font-weight: 500; padding: 9px 16px; min-height: 40px; cursor: pointer; white-space: nowrap; box-shadow: none; }
-.pl3-btn:hover { background: #E8E8ED; }
-.pl3-btn.primary { background: var(--pl3-ink); color: #fff; }
-.pl3-btn.primary:hover { background: #000; }
-.pl3-btn.primary:disabled { background: #AEAEB2; }
+.pl3-btn:hover { background: var(--u-fill2); }
+.pl3-btn.primary { background: var(--pl3-ink); color: var(--u-on-ink); }
+.pl3-btn.primary:hover { background: var(--u-ink-strong); }
+.pl3-btn.primary:disabled { background: var(--u-faint); }
 .pl3-btn.ghost { background: transparent; }
 .pl3-btn.ghost:hover { background: var(--pl3-fill); }
 .pl3-bar { display: flex; align-items: center; gap: 12px; padding: 20px 0 8px; }
 .pl3-count { flex: 1; font-size: 15px; color: var(--pl3-sub); }
-.pl3-search, .pl3-select { height: 40px; border: 1px solid var(--pl3-field); border-radius: 10px; background-color: #fff; font: inherit; font-size: 15px;
+.pl3-search, .pl3-select { height: 40px; border: 1px solid var(--pl3-field); border-radius: 10px; background-color: var(--u-bg); font: inherit; font-size: 15px;
   padding: 0 12px; color: var(--pl3-ink); box-shadow: none; }
 .pl3-search { width: 320px; }
 .pl3-select { width: 190px; }
@@ -12057,7 +12057,7 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-table th.r, .pl3-table td.r { text-align: right; }
 .pl3-table td { padding: 6px 12px; border-bottom: 1px solid var(--pl3-rule); vertical-align: middle; background: none; }
 .pl3-table tr.pl3-last > td, .pl3-table td.pl3-prod { border-bottom: 1px solid var(--pl3-ink); }
-.pl3-table tbody tr, .pl3-table tbody tr > td, .pl3-table tbody tr:nth-child(even) > td, .pl3-table tbody tr:hover > td { background: #fff; }
+.pl3-table tbody tr, .pl3-table tbody tr > td, .pl3-table tbody tr:nth-child(even) > td, .pl3-table tbody tr:hover > td { background: var(--u-bg); }
 .pl3-table td.pl3-prod { vertical-align: top; padding-top: 14px; }
 .pl3-prod strong { display: block; font-weight: 600; }
 .pl3-prod span, .pl3-unit span { display: block; font-size: 13px; color: var(--pl3-sub); margin-top: 2px; }
@@ -12065,7 +12065,7 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-cell { appearance: none; border: 0; background: none; box-shadow: none; display: block; width: 100%; min-height: 0; text-align: right;
   padding: 9px 12px; border-radius: 10px; font: inherit; font-size: 15px; font-variant-numeric: tabular-nums; color: var(--pl3-ink); cursor: pointer; }
 .pl3-cell:hover { background: var(--pl3-fill); }
-.pl3-cell.on { background: #E8E8ED; box-shadow: inset 0 0 0 2px var(--pl3-blue); }
+.pl3-cell.on { background: var(--u-fill2); box-shadow: inset 0 0 0 2px var(--pl3-blue); }
 .pl3-cell:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--pl3-blue); }
 .pl3-none { color: var(--pl3-sub); }
 .pl3-empty { padding: 32px; text-align: center; color: var(--pl3-sub); }
@@ -12073,7 +12073,7 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 
 /* Set price: over the right of the list, under the top bar; the list stays where it is. */
 .pl3-panel { position: fixed; top: 56px; right: 0; bottom: 0; width: 400px; max-width: calc(100vw - 56px); z-index: 60; display: flex; flex-direction: column;
-  background: #fff; border-left: 1px solid var(--pl3-rule); box-shadow: -12px 0 32px rgb(0 0 0 / 0.06); }
+  background: var(--u-bg); border-left: 1px solid var(--pl3-rule); box-shadow: -12px 0 32px rgb(0 0 0 / 0.06); }
 .pl3-panel-head, .pl3-dialog-head { display: flex; align-items: flex-start; gap: 12px; padding: 20px 16px 8px; }
 .pl3-panel-head > div, .pl3-dialog-head > div { flex: 1; min-width: 0; }
 .pl3-panel-head h2, .pl3-dialog-head h2 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
@@ -12084,7 +12084,7 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-panel-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 8px 16px 16px; }
 .pl3-panel-body hr { border: 0; border-top: 1px solid var(--pl3-rule); margin: 0; width: 100%; }
 .pl3-field { display: flex; flex-direction: column; gap: 6px; font-size: 15px; font-weight: 500; }
-.pl3-field select, .pl3-field input { height: 40px; border: 1px solid var(--pl3-field); border-radius: 10px; background-color: #fff; font: inherit;
+.pl3-field select, .pl3-field input { height: 40px; border: 1px solid var(--pl3-field); border-radius: 10px; background-color: var(--u-bg); font: inherit;
   font-weight: 400; font-size: 15px; padding: 0 12px; color: var(--pl3-ink); width: 100%; box-shadow: none; }
 .pl3-field select:focus, .pl3-field input:focus { outline: none; border-color: var(--pl3-blue); box-shadow: 0 0 0 1px var(--pl3-blue); }
 .pl3-hint { font-size: 13px; font-weight: 400; color: var(--pl3-sub); margin: 0; }
@@ -12093,9 +12093,9 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-hist-head:hover { background: none; }
 .pl3-caret { display: inline-block; width: 12px; font-size: 18px; line-height: 1; transition: transform 150ms ease; }
 .pl3-caret.open { transform: rotate(90deg); }
-.pl3-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: #E8E8ED; font-size: 12px;
+.pl3-badge { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--u-fill2); font-size: 12px;
   font-weight: 500; color: var(--pl3-ink); }
-.pl3-badge.info { background: #E8F1FD; color: var(--pl3-blue); }
+.pl3-badge.info { background: var(--u-blue-soft); color: var(--pl3-blue); }
 .pl3-hist { list-style: none; margin: 0; padding: 0; }
 .pl3-hist li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--pl3-rule); font-size: 15px; }
 .pl3-hist-r { display: inline-flex; align-items: center; gap: 8px; }
@@ -12103,7 +12103,7 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-panel-foot form { margin: 0; }
 
 /* Manage price levels. */
-.pl3-dialog { position: fixed; width: min(720px, calc(100vw - 32px)); max-height: 90dvh; padding: 0; border: 0; border-radius: 16px; background: #fff;
+.pl3-dialog { position: fixed; width: min(720px, calc(100vw - 32px)); max-height: 90dvh; padding: 0; border: 0; border-radius: 16px; background: var(--u-bg);
   box-shadow: 0 24px 64px rgb(0 0 0 / 0.18); }
 .pl3-dialog[open] { display: flex; flex-direction: column; }
 .pl3-dialog::backdrop { background: rgb(0 0 0 / 0.32); }
@@ -12111,56 +12111,56 @@ td:has(> .line-unit) > input, td:has(> .line-unit) > .flagged { display: inline-
 .pl3-dialog-body { overflow-y: auto; padding: 8px 16px; }
 .pl3-dialog-body > .actions { position: absolute; top: 20px; right: 60px; margin: 0; }
 .pl3-dialog-head > div { padding-right: 140px; }
-.pl3-dialog-body > .actions > button { background: #1D1D1F; color: #fff; border: 0; border-radius: 10px; min-height: 36px; padding: 0 14px; }
+.pl3-dialog-body > .actions > button { background: var(--u-ink); color: var(--u-on-ink); border: 0; border-radius: 10px; min-height: 36px; padding: 0 14px; }
 .pl3-levels { width: 100%; border-collapse: collapse; font-size: 15px; }
 .pl3-levels th { text-align: left; font-weight: 600; padding: 10px 8px; border-bottom: 1px solid var(--pl3-rule); background: none; color: var(--pl3-ink); text-transform: none; letter-spacing: 0; }
-.pl3-levels td, .pl3-levels tbody tr:nth-child(even) > td, .pl3-levels tbody tr:hover > td { padding: 12px 8px; border-bottom: 1px solid var(--pl3-rule); background: #fff; }
+.pl3-levels td, .pl3-levels tbody tr:nth-child(even) > td, .pl3-levels tbody tr:hover > td { padding: 12px 8px; border-bottom: 1px solid var(--pl3-rule); background: var(--u-bg); }
 .pl3-levels td:last-child button { background: none; color: var(--pl3-ink); box-shadow: none; border: 0; }
 .pl3-levels td:last-child button:hover { background: var(--pl3-fill); }
-.pl3-levels td:last-child button:disabled { color: #AEAEB2; }
+.pl3-levels td:last-child button:disabled { color: var(--u-faint); }
 .pl3-levels .r { text-align: right; }
 .pl3-levels td.code { font-weight: 600; }
 .pl3-levels td:last-child .actions { justify-content: flex-end; }
 .pl3-dialog-foot { display: flex; justify-content: flex-end; padding: 12px 16px 16px; }
 /* The price list sits on white, as the preview does. */
-html:has(.pl3-page) body, .main:has(.pl3-page) { background: #fff; }
+html:has(.pl3-page) body, .main:has(.pl3-page) { background: var(--u-bg); }
 .pl3-field input { text-align: left; }
 .pl3-field input::-webkit-inner-spin-button, .pl3-field input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .pl3-field input[type="number"] { -moz-appearance: textfield; }
-.pl3-table tbody tr > td, .pl3-levels tbody tr > td { background: #fff !important; }
+.pl3-table tbody tr > td, .pl3-levels tbody tr > td { background: var(--u-bg) !important; }
 .pl3-cell { white-space: nowrap; }
 .pl3-panel-foot .pl3-btn { padding: 9px 14px; font-size: 14px; }
 .pl3-panel-foot .pl3-btn.ghost { padding-inline: 8px; }
 .ie-pricegrid td.r { text-align: right; font-variant-numeric: tabular-nums; padding: 10px 12px; }
 .ie-noprice { color: #6E6E73; }
 .pl3-check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; font-weight: 500; cursor: pointer; }
-.pl3-check input { width: 18px; height: 18px; margin-top: 2px; accent-color: #1D1D1F; }
-.pl3-check small { display: block; font-size: 13px; font-weight: 400; color: #6E6E73; margin-top: 2px; }
+.pl3-check input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--u-ink); }
+.pl3-check small { display: block; font-size: 13px; font-weight: 400; color: var(--u-sub); margin-top: 2px; }
 
 /* ===================================================== product edit ====
    /items/[id]/edit after the Astryx preview (2026-11-25): full width, each
    section a row (title left, fields across), fields as thin underlines that
    turn blue in use, no boxes and no spreadsheet grid. Scoped .ie3. */
-.ie3 { --ie3-ink: #1D1D1F; --ie3-sub: #6E6E73; --ie3-rule: #E5E5EA; --ie3-line: #D2D2D7; --ie3-fill: #F5F5F7; --ie3-blue: #0071E3;
+.ie3 { --ie3-ink: var(--u-ink); --ie3-sub: var(--u-sub); --ie3-rule: var(--u-rule); --ie3-line: var(--u-line); --ie3-fill: var(--u-fill); --ie3-blue: var(--u-blue);
   color: var(--ie3-ink); width: 100%; }
-html:has(.ie3) body, .main:has(.ie3) { background: #fff; }
-.ie3-head { position: sticky; top: 0; z-index: 20; background: #fff; display: flex; align-items: flex-end; gap: 16px;
+html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
+.ie3-head { position: sticky; top: 0; z-index: 20; background: var(--u-bg); display: flex; align-items: flex-end; gap: 16px;
   padding: 8px 0 20px; border-bottom: 1px solid var(--ie3-rule); }
 .ie3-head > div:first-child { flex: 1; min-width: 0; }
 .ie3-head h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ie3-head p { margin: 6px 0 0; font-size: 15px; color: var(--ie3-sub); }
 .ie3-head p a { color: var(--ie3-blue); text-decoration: none; }
-.ie3-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #E8E8ED; font-size: 13px; font-weight: 500; color: var(--ie3-ink); }
+.ie3-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--u-fill2); font-size: 13px; font-weight: 500; color: var(--ie3-ink); }
 .ie3-badge.off { background: #FFF4E5; color: #8A4B00; }
 .ie3-acts { display: flex; align-items: center; gap: 8px; }
 .ie3-dirty { font-size: 13px; color: var(--ie3-sub); margin-right: 8px; }
 .ie3-btn { appearance: none; border: 0; border-radius: 10px; background: var(--ie3-fill); color: var(--ie3-ink); font: inherit; font-size: 15px; font-weight: 500;
   min-height: 40px; padding: 0 16px; display: inline-flex; align-items: center; cursor: pointer; text-decoration: none; box-shadow: none; white-space: nowrap; }
-.ie3-btn:hover { background: #E8E8ED; }
+.ie3-btn:hover { background: var(--u-fill2); }
 .ie3-btn.ghost { background: transparent; }
 .ie3-btn.ghost:hover { background: var(--ie3-fill); }
-.ie3-btn.primary { background: var(--ie3-ink); color: #fff; }
-.ie3-btn.primary:hover { background: #000; }
+.ie3-btn.primary { background: var(--ie3-ink); color: var(--u-on-ink); }
+.ie3-btn.primary:hover { background: var(--u-ink-strong); }
 .ie3-btn:disabled { opacity: 0.45; cursor: default; }
 
 .ie3-row { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; padding: 32px 0; border-bottom: 1px solid var(--ie3-rule); }
@@ -12184,9 +12184,9 @@ html:has(.ie3) body, .main:has(.ie3) { background: #fff; }
 .ie3 .ie3-body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), select) {
   height: 38px; border: 0; border-bottom: 1px solid var(--ie3-line); border-radius: 0; background-color: transparent; box-shadow: none;
   padding: 0 2px; font: inherit; font-size: 15px; color: var(--ie3-ink); width: 100%; min-width: 0; }
-.ie3 .ie3-body :is(input, select):hover:not(:disabled) { border-bottom-color: #86868B; }
+.ie3 .ie3-body :is(input, select):hover:not(:disabled) { border-bottom-color: var(--u-hover-line); }
 .ie3 .ie3-body :is(input, select):focus { outline: none; border-bottom-color: var(--ie3-blue); box-shadow: 0 1px 0 0 var(--ie3-blue); }
-.ie3 .ie3-body input::placeholder { color: #AEAEB2; }
+.ie3 .ie3-body input::placeholder { color: var(--u-faint); }
 .ie3 .ie3-body select { padding-right: 22px; }
 
 /* Sub-forms inside rows: their own cards, headings and grey fills go. */
@@ -12200,7 +12200,7 @@ html:has(.ie3) body, .main:has(.ie3) { background: #fff; }
 /* Tables: hairlines between rows, no grey header, no grid. */
 .ie3-table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .ie3-table th { text-align: left; font-weight: 500; font-size: 13px; color: var(--ie3-sub); padding: 0 12px 10px 0; border-bottom: 1px solid var(--ie3-rule); background: none; text-transform: none; letter-spacing: 0; }
-.ie3-table td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--ie3-rule); background: #fff !important; }
+.ie3-table td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--ie3-rule); background: var(--u-bg) !important; }
 .ie3-table tr:last-child td { border-bottom: 0; }
 .ie3-table :is(th, td).r { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; }
 .ie3-table small { color: var(--ie3-sub); font-size: 13px; }
@@ -12217,7 +12217,7 @@ html:has(.ie3) body, .main:has(.ie3) { background: #fff; }
 
 /* Photo: whose it is, and a confirm before it is kept. */
 .ie3-photo { display: flex; gap: 20px; align-items: flex-start; }
-.ie3-shot { width: 112px; height: 112px; border-radius: 14px; overflow: hidden; background: var(--ie3-fill, #F5F5F7); flex: none; display: block; }
+.ie3-shot { width: 112px; height: 112px; border-radius: 14px; overflow: hidden; background: var(--ie3-fill, var(--u-fill)); flex: none; display: block; }
 .ie3-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ie3-shot.faded { opacity: 0.55; }
 .ie3-photo-text { display: flex; flex-direction: column; gap: 4px; }
@@ -12240,15 +12240,44 @@ html:has(.ie3) body, .main:has(.ie3) { background: #fff; }
 .pk3 { display: flex; flex-direction: column; gap: 16px; }
 .pk3-grid { display: flex; flex-direction: column; gap: 4px; }
 .pk3-head, .pk3-row { display: grid; grid-template-columns: 150px 100px 130px 110px minmax(160px, 1fr) 80px; gap: 20px; align-items: end; }
-.pk3-head span { font-size: 13px; color: #6E6E73; }
-.pk3-total { font-size: 15px; color: #6E6E73; padding-bottom: 9px; font-variant-numeric: tabular-nums; }
+.pk3-head span { font-size: 13px; color: var(--u-sub); }
+.pk3-total { font-size: 15px; color: var(--u-sub); padding-bottom: 9px; font-variant-numeric: tabular-nums; }
 .ie3 .ie3-body .pk3-row input[type="number"] { text-align: right; }
 .pk3-remove, .pk3-add { appearance: none; border: 0; background: none; box-shadow: none; min-height: 0; padding: 6px 0; font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
-.pk3-remove { color: #1D1D1F; padding-bottom: 9px; }
+.pk3-remove { color: var(--u-ink); padding-bottom: 9px; }
 .pk3-remove:hover { color: #C00; }
-.pk3-add { color: #0071E3; font-weight: 500; }
+.pk3-add { color: var(--u-blue); font-weight: 500; }
 .pk3-foot { display: flex; align-items: center; gap: 24px; }
-.pk3-foot > span { font-size: 13px; color: #6E6E73; }
-.pk3-none { font-size: 15px; color: #6E6E73; }
+.pk3-foot > span { font-size: 13px; color: var(--u-sub); }
+.pk3-none { font-size: 15px; color: var(--u-sub); }
 .pk3-buy { max-width: 320px; }
 @media (max-width: 900px) { .pk3-head { display: none; } .pk3-row { grid-template-columns: 1fr 1fr; } }
+
+
+/* ======================================== Astryx-styled pages, both themes ====
+   The price list, product edit, its packs and the till were written light
+   only (white page, dark ink). Their colours are these tokens (2026-11-25),
+   so a dark browser, or the app's own dark setting, gets them dark too. */
+:root {
+  --u-bg: #FFFFFF; --u-raised: #FFFFFF; --u-ink: #1D1D1F; --u-sub: #6E6E73; --u-rule: #E5E5EA; --u-line: #D2D2D7;
+  --u-fill: #F5F5F7; --u-fill2: #E8E8ED; --u-blue: #0071E3; --u-faint: #AEAEB2; --u-hover-line: #86868B;
+  --u-line2: #C7C7CC; --u-blue-soft: #E8F1FD; --u-on-ink: #FFFFFF; --u-ink-strong: #000000;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --u-bg: #000000; --u-raised: #1C1C1E; --u-ink: #F5F5F7; --u-sub: #98989D; --u-rule: #2C2C2F; --u-line: #3A3A3C;
+    --u-fill: #1C1C1E; --u-fill2: #2C2C2E; --u-blue: #4C8DFF; --u-faint: #636366; --u-hover-line: #8E8E93;
+    --u-line2: #48484A; --u-blue-soft: rgb(76 141 255 / 0.18); --u-on-ink: #000000; --u-ink-strong: #FFFFFF;
+  }
+}
+:root[data-theme="dark"] {
+  --u-bg: #000000; --u-raised: #1C1C1E; --u-ink: #F5F5F7; --u-sub: #98989D; --u-rule: #2C2C2F; --u-line: #3A3A3C;
+  --u-fill: #1C1C1E; --u-fill2: #2C2C2E; --u-blue: #4C8DFF; --u-faint: #636366; --u-hover-line: #8E8E93;
+  --u-line2: #48484A; --u-blue-soft: rgb(76 141 255 / 0.18); --u-on-ink: #000000; --u-ink-strong: #FFFFFF;
+}
+/* What floats above the page (the Set price panel, the dialogs) sits a step lighter in the dark. */
+.pl3-panel, .pl3-dialog { background: var(--u-raised); }
+.pl3-panel .pl3-field :is(select, input), .pl3-dialog :is(select, input) { background-color: var(--u-raised); }
+
+/* Table headers on the price list stay clear of the app's dark header band. */
+.pl3-table thead th, .pl3-levels thead th, .ie3-table thead th { background: transparent !important; }
