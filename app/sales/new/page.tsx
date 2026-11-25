@@ -1,7 +1,7 @@
 import { todayLocal } from "@/lib/format";
 import { getFormData, createSalesInvoice, saveInvoiceDraft } from "@/lib/actions";
 import { ordersAndDeliveriesOn } from "@/lib/features";
-import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocumentDraft } from "@/lib/queries";
+import { getOpenDeliveries, getOwnershipMap, getOpenOrdersAwaitingGoods, getDocumentDraft, getAdvanceTotals } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { SalesVoucher } from "@/components/sales-voucher";
@@ -112,6 +112,7 @@ export default async function NewSalesInvoice({
         focReasons={d.focReasons as never}
         taxCodes={d.taxCodes as never}
         customerCredit={d.customerCredit as never}
+        advances={company ? await getAdvanceTotals(company.id, "CUSTOMER_RECEIPT") : {}}
         openInvoices={d.openInvoices as never}
         stockByLocation={d.stockByLocation as never}
         itemPrices={d.itemPrices as never}

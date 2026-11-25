@@ -1,7 +1,9 @@
 "use client";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { AdvanceDialog } from "./advance-dialog";
 import type { ActionResult, PickerItem } from "@/lib/actions";
 import type { Channel } from "@/lib/payment-channels";
 import { NegativeStockConfirm, type Shortfall } from "./negative-stock-confirm";
@@ -137,6 +139,7 @@ export function SalesVoucher({
   itemPrices, priceLevels, stockByLocation, deliveries, initialDeliveryId,
   taxCodes = [],
   customerCredit = [],
+  advances = {},
   ownership = [],
   awaiting = [],
   heading,
@@ -179,6 +182,8 @@ export function SalesVoucher({
   volumeDiscounts?: VolumeBand[];
   focReasons: FocReason[];
   /** What each customer with a limit may owe, and what they already do. */
+  /** Kyat each customer has paid in advance and not yet used (2026-11-25): offered on posting. */
+  advances?: Record<string, number>;
   customerCredit?: {
     partner_id: string; credit_limit: string | number;
     outstanding: string | number; unbilled_deliveries: string | number;
@@ -771,6 +776,19 @@ export function SalesVoucher({
   const total = r(goodsNet + taxOnGoods + deliveryFee);
   const cashAmount = Number(cashIn) || 0;
   const balance = total - cashAmount;
+  /* An advance this customer paid earlier (2026-11-25): offered in a popup on
+     posting, to pay what the sale leaves owing. Not for cash on delivery,
+     which is owed only when handed over. */
+  const advAvail = paymentType === "COD" ? 0 : Number(advances[customerId] ?? 0);
+  const advUse = r(Math.min(advAvail, Math.max(0, balance)));
+  const [advAnswer, setAdvAnswer] = useState<"" | "1" | "0">("");
+  const [askAdvance, setAskAdvance] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => { setAdvAnswer(""); }, [customerId]);
+  const postWith = (answer: "1" | "0") => {
+    flushSync(() => { setAdvAnswer(answer); setAskAdvance(false); });
+    formRef.current?.requestSubmit();
+  };
 
   /* What this customer may owe, and what this sale would add to it. Only the
      part left owing counts: cash at the counter extends no credit, which is
@@ -983,7 +1001,8 @@ export function SalesVoucher({
             )}
       </>}>{heading.help}</DocHeading>
     )}
-    <form action={formAction} className="form wide docsheet waved">
+    <form ref={formRef} action={formAction} className="form wide docsheet waved">
+      <input type="hidden" name="use_advance" value={advAnswer === "1" ? "1" : ""} />
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
@@ -1788,6 +1807,7 @@ export function SalesVoucher({
               <div className="paycard-note">
                 <p>The full amount goes on <strong>{customer?.name ?? "the customer"}</strong>&rsquo;s account
                   {dueDate ? <>, due <strong>{day(dueDate)}</strong></> : ""}. Nothing is taken now.</p>
+                {advAvail > 0 && <p className="adv-onaccount"><Wallet size={14} aria-hidden="true" /> {customer?.name} has <strong>{fmt(advAvail)}</strong> paid in advance. Posting asks whether to use it.</p>}
               </div>
             ) : (
               <div className="row">
@@ -2110,6 +2130,23 @@ export function SalesVoucher({
         );
       })()}
 
+      <AdvanceDialog
+        open={askAdvance}
+        title={<>{customer?.name} has {fmt(advAvail)} paid in advance</>}
+        rows={[
+          { label: "This invoice leaves owing", amount: balance },
+          { label: `Advance on account for ${customer?.name ?? "the customer"}`, amount: advAvail },
+          { label: "Use the advance now", amount: advUse, strong: true },
+          { label: "Still owed after", amount: r(balance - advUse) },
+        ]}
+        note={<>The advance pays {fmt(advUse)} of this invoice{advAvail - advUse > 0.005 ? <>; {fmt(advAvail - advUse)} stays on account for the next one</> : ""}. No money moves: it was received already.</>}
+        primary="Use advance and post"
+        onPrimary={() => postWith("1")}
+        secondary="Post without it"
+        onSecondary={() => postWith("0")}
+        onCancel={() => setAskAdvance(false)}
+      />
+
       <NegativeStockConfirm
         open={askNegative}
         shortfalls={shortfalls}
@@ -2127,10 +2164,11 @@ export function SalesVoucher({
           place on every purchase and sales document. */}
       <div className="actions form-commit">
         <button
-          type={shortages.length > 0 && !negativeConfirmed ? "button" : "submit"}
+          type={(shortages.length > 0 && !negativeConfirmed) || (advUse > 0 && !advAnswer) ? "button" : "submit"}
           onClick={
             shortages.length > 0 && !negativeConfirmed
               ? () => setAskNegative(true)
+              : advUse > 0 && !advAnswer ? () => setAskAdvance(true)
               : undefined
           }
           disabled={pending || total === 0 || cashTooMuch || imeiShort.length > 0}>

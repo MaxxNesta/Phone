@@ -2461,6 +2461,8 @@ export async function createSalesInvoice(_prev: unknown, fd: FormData): Promise<
           select id from document where source_document_id = ${posted.id} and doc_type = 'CUSTOMER_RECEIPT'`;
         if (rc) await stampReceipt(tx as never, rc.id, payChannelId, payRef, userId);
       }
+      // Answered yes on the form's popup: what the invoice still owes comes out of the customer's advance.
+      if (str(fd, "use_advance") === "1") await useAdvanceOnAccount(tx, co, posted.id, input.partnerId, "receive", input.docDate);
       // The customer took it at the counter: its delivery was a handover, so it says delivered (0233).
       if (fulfil === "counter" && !retail && !deliveryId && !toDeliver) {
         await tx`
@@ -2591,6 +2593,8 @@ export async function createPurchaseInvoice(_prev: unknown, fd: FormData): Promi
           select id from document where source_document_id = ${posted.id} and doc_type = 'SUPPLIER_PAYMENT'`;
         if (pay) await stampReceipt(tx as never, pay.id, payChannelId, payRef, userId);
       }
+      // Answered yes on the form's popup: what the bill still owes comes out of the advance paid this supplier.
+      if (str(fd, "use_advance") === "1") await useAdvanceOnAccount(tx, co, posted.id, input.partnerId, "pay", input.docDate);
       return posted;
     });
 
@@ -3277,6 +3281,33 @@ function fxFields(fd: FormData): { currency: string | null; exchangeRate: number
   return { currency, exchangeRate: rate > 0 ? rate : null };
 }
 
+/**
+ * After an invoice posts: what it still owes, paid from the advance this
+ * partner has on account, oldest advance first (2026-11-25). Kyat invoices
+ * only; a yuan bill is settled from the Pay screen, where the rate is shown.
+ * Nothing happens when there is no advance or nothing is owed.
+ */
+async function useAdvanceOnAccount(tx: import("postgres").TransactionSql, co: string, invoiceId: string, partnerId: string,
+                                   kind: "pay" | "receive", docDate: string) {
+  const [inv] = await tx`
+    select o.outstanding::float as owed, d.currency from v_open_item o join document d on d.id = o.document_id
+     where o.document_id = ${invoiceId} and o.company_id = ${co}`;
+  if (!inv || inv.currency !== "MMK" || Number(inv.owed) <= 0.005) return;
+  const pool = await tx`
+    select payment_id, available::float as left from v_partner_advance
+     where company_id = ${co} and partner_id = ${partnerId} and currency = 'MMK' and available > 0.005
+       and doc_type = ${kind === "pay" ? "SUPPLIER_PAYMENT" : "CUSTOMER_RECEIPT"}
+     order by doc_date, doc_no`;
+  let need = Number(inv.owed);
+  const allocations: { paymentId: string; amount: number }[] = [];
+  for (const a of pool) {
+    if (need <= 0.005) break;
+    const take = Math.round(Math.min(Number(a.left), need) * 100) / 100;
+    if (take > 0) { allocations.push({ paymentId: a.payment_id as string, amount: take }); need -= take; }
+  }
+  if (allocations.length) await applyAdvance({ companyId: co, invoiceId, allocations, docDate }, tx);
+}
+
 async function settle(
   fd: FormData,
   kind: "pay" | "receive"
@@ -3289,12 +3320,17 @@ async function settle(
   // bills or sitting on account, and the engine refuses anything that tries
   // to be both.
   const advance = str(fd, "purpose") === "advance" ? num(fd, "advance") : 0;
+  /* More money than the ticked invoices owe (2026-11-25): the rest is kept
+     as an advance for this partner, in the same act, after the popup said
+     so. Posted as a second receipt beside the settling one, because one
+     receipt is either settling or on account, never both. */
+  const leftover = advance > 0 ? 0 : Math.max(0, num(fd, "extra_advance"));
   // Advance already on account, put against bills in the same act: per bill,
   // how much. Which advance it comes from is decided below, oldest first.
   const advanceUse = advance > 0 ? [] : parseAllocations(fd, "advance_use");
   await assertMyBranch(str(fd, "location_id"));
 
-  if (advance <= 0 && allocations.length === 0 && advanceUse.length === 0) {
+  if (advance <= 0 && leftover <= 0 && allocations.length === 0 && advanceUse.length === 0) {
     return { error: "Enter an amount against at least one invoice, or record it as an advance" };
   }
   if (advance > 0 && !str(fd, "location_id")) {
@@ -3310,7 +3346,7 @@ async function settle(
   // foreign currency still names its account directly (its own yuan account).
   const foreign = Boolean(fxFields(fd).currency && fxFields(fd).currency !== "MMK");
   // Only advances and no new money: nothing leaves the till, so no account is asked for.
-  const cashMoves = advance > 0 || allocations.length > 0;
+  const cashMoves = advance > 0 || leftover > 0 || allocations.length > 0;
   const channelId = foreign || !cashMoves ? "" : str(fd, "payment_channel_id");
   let channelRef: string | null = null;
   if (channelId) {
@@ -3319,7 +3355,7 @@ async function settle(
       const [inv] = await sql`select location_id from document where id = ${allocations[0].invoiceId} and company_id = ${co}`;
       where = (inv?.location_id as string) ?? null;
     }
-    const total = advance > 0 ? advance : allocations.reduce((s, a) => s + a.amount, 0);
+    const total = advance > 0 ? advance : allocations.reduce((s, a) => s + a.amount, 0) + leftover;
     const r = await resolveTenders(co, where, [{ channelId, amount: total, reference: str(fd, "payment_reference"), accountId: str(fd, "payment_account_id") || null }], null);
     if (!r.ok) {
       const tr = await serverT("pos");
@@ -3381,9 +3417,25 @@ async function settle(
       }
     }
     if (!cashMoves) return firstApplied!;
-    const posted = kind === "pay" ? await postSupplierPayment(input, tx) : await postCustomerReceipt(input, tx);
-    if (channelId) await stampReceipt(tx as never, posted.id, channelId, channelRef, (await requireUser()).id);
-    return posted;
+    const post = (x: typeof input) => (kind === "pay" ? postSupplierPayment(x, tx) : postCustomerReceipt(x, tx));
+    const stamp = async (id: string) => { if (channelId) await stampReceipt(tx as never, id, channelId, channelRef, (await requireUser()).id); };
+    const posted = input.allocations.length > 0 || advance > 0 ? await post(input) : null;
+    if (posted) await stamp(posted.id);
+    if (leftover > 0) {
+      // An advance has no invoice to follow: it is taken where the settled
+      // invoices were, unless a branch was chosen.
+      let where = input.locationId;
+      if (!where && allocations[0]) {
+        const [inv] = await tx`select location_id from document where id = ${allocations[0].invoiceId} and company_id = ${co}`;
+        where = (inv?.location_id as string) ?? null;
+      }
+      if (!where) throw new Error("Choose which branch is taking this money: the part kept as an advance has no invoice to follow");
+      const adv = await post({ ...input, locationId: where, allocations: [], advance: leftover,
+        memo: input.memo ?? (posted ? `Paid over ${posted.docNo}: kept as an advance` : null) });
+      await stamp(adv.id);
+      return posted ?? adv;
+    }
+    return posted!;
   });
 
   return { id: result.id, docNo: result.docNo };

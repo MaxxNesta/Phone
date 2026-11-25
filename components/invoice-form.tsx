@@ -1,7 +1,9 @@
 "use client";
 import { WarehouseSelect } from "@/components/warehouse-select";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { AdvanceDialog } from "./advance-dialog";
 import { CurrencyRate, useFxSwitch, convertPrice, type FxOption } from "./currency-rate";
 import { serialsOnFile, type ActionResult, type PickerItem } from "@/lib/actions";
 import { pricePurchaseLines } from "@/lib/discount";
@@ -17,7 +19,7 @@ import { asVariant } from "@/components/variant-tags";
 import { AwaitingOrders, AlreadyAwaited } from "./awaiting-orders";
 import { useBackHere } from "./back-here";
 import { HelpHint } from "./help-hint";
-import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Pencil, X, ExternalLink } from "lucide-react";
+import { PackageCheck, Truck, Clock, Package, Plus, Building2, CalendarClock, CalendarDays, Hash, StickyNote, User, Warehouse, Pencil, X, ExternalLink, Wallet } from "lucide-react";
 import { AddItemsBar, type Pick } from "./add-items-bar";
 import { ChannelPicker } from "./channel-picker";
 import type { Channel } from "@/lib/payment-channels";
@@ -117,7 +119,10 @@ export function InvoiceForm({
   taxCodes = [],
   fx,
   supplierFocId = null,
+  advances = {},
 }: {
+  /** Kyat paid to each supplier in advance and not yet used (2026-11-25): offered on posting. */
+  advances?: Record<string, number>;
   /** The landed cost module: without it, no carriage section. */
   carriage?: boolean;
   /** Purchase: the supplier FOC reason a free line posts under; none hides the choice. */
@@ -617,6 +622,20 @@ export function InvoiceForm({
   }, [payMode, total, isSales]);
 
   const cashOverpaid = !isSales && Number(cashOut) > total;
+  /* An advance paid this supplier earlier (2026-11-25): offered in a popup on
+     posting, to pay what the bill leaves owing. Kyat bills only. */
+  const owedLeft = Math.max(0, total - (Number(cashOut) || 0));
+  const supplierName = partners.find((p) => p.id === partnerId)?.name ?? "the supplier";
+  const advAvail = !isSales && !foreign ? Number(advances[partnerId] ?? 0) : 0;
+  const advUse = Math.round(Math.min(advAvail, owedLeft) * 100) / 100;
+  const [advAnswer, setAdvAnswer] = useState<"" | "1" | "0">("");
+  const [askAdvance, setAskAdvance] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => { setAdvAnswer(""); }, [partnerId]);
+  const postWith = (answer: "1" | "0") => {
+    flushSync(() => { setAdvAnswer(answer); setAskAdvance(false); });
+    formRef.current?.requestSubmit();
+  };
   const leavesBalance = !isSales && Number(cashOut) < total;
 
   /**
@@ -641,7 +660,8 @@ export function InvoiceForm({
   });
 
   return (
-    <form action={formAction} className="form wide docsheet waved">
+    <form ref={formRef} action={formAction} className="form wide docsheet waved">
+      <input type="hidden" name="use_advance" value={advAnswer === "1" ? "1" : ""} />
       {/* One submission, one posting. Generated when this form mounts, so a
           double-click or a resent request carries the same key and is handed
           the document the first one posted; a new form is a new key. */}
@@ -1452,6 +1472,7 @@ export function InvoiceForm({
               <span>{total - (Number(cashOut) || 0) > 0.005 ? "Owed to the supplier" : "Nothing owed"}</span>
               <strong className={total - (Number(cashOut) || 0) > 0.005 ? "owed" : "clear"}>{fmt(Math.max(0, total - (Number(cashOut) || 0)))}</strong>
             </div>
+            {advAvail > 0 && <p className="adv-onaccount"><Wallet size={14} aria-hidden="true" /> {supplierName} holds <strong>{fmt(advAvail)}</strong> paid in advance. Posting asks whether to use it.</p>}
             {cashOverpaid && (
               <div className="alert" style={{ marginTop: "0.5rem" }}>
                 Amount paid can&rsquo;t be more than the invoice total ({fmt(total)} {foreign ? currency : base}).
@@ -1535,8 +1556,25 @@ export function InvoiceForm({
         </div>
       </div>
 
+      <AdvanceDialog
+        open={askAdvance}
+        title={<>{supplierName} holds {fmt(advAvail)} paid in advance</>}
+        rows={[
+          { label: "This bill leaves owing", amount: owedLeft },
+          { label: `Advance with ${supplierName}`, amount: advAvail },
+          { label: "Use the advance now", amount: advUse, strong: true },
+          { label: "Still owed after", amount: Math.max(0, owedLeft - advUse) },
+        ]}
+        note={<>The advance pays {fmt(advUse)} of this bill{advAvail - advUse > 0.005 ? <>; {fmt(advAvail - advUse)} stays with {supplierName} for the next one</> : ""}. No money moves: it was paid already.</>}
+        primary="Use advance and post"
+        onPrimary={() => postWith("1")}
+        secondary="Post without it"
+        onSecondary={() => postWith("0")}
+        onCancel={() => setAskAdvance(false)}
+      />
+
       <div className="actions form-commit">
-        <button type="submit"
+        <button type={advUse > 0 && !advAnswer ? "button" : "submit"} onClick={advUse > 0 && !advAnswer ? () => setAskAdvance(true) : undefined}
           disabled={pending || total === 0 || shortages.length > 0 || serialShort.length > 0 || (!isSales && receiveMode === "now" && !!carriageBlock) || cashOverpaid || (Number(cashOut) > 0 && !cashAccountId)}>
           {pending ? "Posting…" : `Post ${isSales ? "sales" : "purchase"} invoice`}
         </button>

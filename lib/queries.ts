@@ -8902,3 +8902,16 @@ export async function salesLast30(companyId: string, locs: string[] | null) {
     before: { revenue: sum(prev, "revenue"), profit: sum(prev, "profit"), customers: sum(prev, "customers") },
   };
 }
+
+/**
+ * Kyat each partner has paid in advance and not yet used, by partner: the
+ * figure the invoice forms offer on posting (2026-11-25). One read of the
+ * advance view, grouped.
+ */
+export async function getAdvanceTotals(companyId: string, docType: "CUSTOMER_RECEIPT" | "SUPPLIER_PAYMENT") {
+  const rows = await sql`
+    select partner_id, sum(available)::float as amount from v_partner_advance
+     where company_id = ${companyId} and doc_type = ${docType} and currency = 'MMK' and available > 0.005
+     group by partner_id`;
+  return Object.fromEntries(rows.map((r) => [r.partner_id as string, Number(r.amount)])) as Record<string, number>;
+}

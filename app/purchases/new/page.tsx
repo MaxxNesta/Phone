@@ -1,7 +1,7 @@
 import { hasModule } from "@/lib/plans";
 import { todayLocal } from "@/lib/format";
 import { getFormData, createPurchaseInvoice, saveInvoiceDraft } from "@/lib/actions";
-import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, getCompany } from "@/lib/queries";
+import { getOpenGoodsReceipts, getOpenOrdersAwaitingGoods, getDocumentDraft, getCompany, getAdvanceTotals } from "@/lib/queries";
 import { allCategories } from "@/lib/tree";
 import { sql } from "@/lib/db";
 import { InvoiceForm } from "@/components/invoice-form";
@@ -112,6 +112,7 @@ export default async function NewPurchaseInvoice({
         awaiting={awaiting}
         taxCodes={taxCodes as never}
         supplierFocId={supplierFocId}
+        advances={await getAdvanceTotals(co.id, "SUPPLIER_PAYMENT")}
       />
     </>
   );

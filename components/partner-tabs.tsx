@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getCompany } from "@/lib/queries";
 import { costSection } from "@/lib/courier-payables";
 
-type Tab = "list" | "couriers" | "drivers" | "ledger";
+type Tab = "list" | "couriers" | "drivers" | "ledger" | "summary";
 
 /**
  * The pages about who owes what, one set of tabs on each of them: the same
@@ -21,10 +21,12 @@ export async function PartnerTabs({ side, active, section }: {
         ["list", "/payables", "Suppliers"],
         ["couriers", "/payables?view=couriers", section ?? await costSectionOf()],
         ["ledger", "/payables/ledger", "Supplier ledger"],
+        ["summary", "/payables/summary", "Outstanding summary"],
       ]
     : [
         ["list", "/receivables", "Customers"],
         ["ledger", "/receivables/ledger", "Customer ledger"],
+        ["summary", "/receivables/summary", "Outstanding summary"],
       ];
   return (
     <nav className="vtabs pay-tabs" aria-label={pay ? "Payables" : "Receivables"}>

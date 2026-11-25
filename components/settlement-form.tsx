@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState } from "react";
+import { AdvanceDialog } from "./advance-dialog";
 import type { ActionResult } from "@/lib/actions";
 import { PartnerPicker } from "./partner-picker";
 import { CurrencyRate, type FxOption } from "./currency-rate";
@@ -213,8 +214,8 @@ export function SettlementForm({
     setSplit({ cash: { ...split.cash, ...f.cash }, adv: { ...split.adv, ...f.adv } });
   };
   const [spread, setSpread] = useState("");
-  /** The amount being paid now, put against the oldest bills first, after the advance. */
-  const spreadOldest = () => setSplit(fillRows(open, useAdv ? poolTotal : 0, useAdv, spread === "" ? Infinity : val(spread)));
+  /** The amount being paid now, put against the oldest bills first, after the advance: as it is typed. */
+  const spreadOldest = (v: string) => { setSpread(v); setSplit(fillRows(open, useAdv ? poolTotal : 0, useAdv, v === "" ? Infinity : val(v))); };
   // The advance documents, drawn oldest first: what each gives and keeps.
   let draw = advUsed;
   const drawn = pool.map((a) => { const use = Math.max(0, Math.min(a.available, draw)); draw -= use; return { ...a, use, after: a.available - use }; });
@@ -239,7 +240,13 @@ export function SettlementForm({
       .map((i) => ({ invoiceId: i.document_id, amount: val(split.adv[i.document_id]) }))
       .filter((a) => a.amount > 0)
   );
-  const settleOk = applied + advUsed > 0 && overApplied.length === 0 && !advOver;
+  /* Money beyond what the ticked bills take (2026-11-25): kept as an advance
+     for this partner in the same posting, after the popup says so. */
+  const leftover = purpose === "settle" && spread !== "" ? Math.max(0, r2(val(spread) - applied)) : 0;
+  const partnerName = partners.find((p) => p.id === partnerId)?.name ?? (isPay ? "this supplier" : "this customer");
+  const [askLeftover, setAskLeftover] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const settleOk = applied + advUsed + leftover > 0 && overApplied.length === 0 && !advOver;
   const cashWord = isPay ? "Pay" : "Receive";
 
   return (
@@ -262,7 +269,7 @@ export function SettlementForm({
         </label>
       ))}
     </fieldset>
-    <form action={formAction} className="form wide docsheet stl-form">
+    <form ref={formRef} action={formAction} className="form wide docsheet stl-form">
 
 
       {/* One submission, one posting. Generated when this form mounts, so a
@@ -275,6 +282,7 @@ export function SettlementForm({
       <input type="hidden" name="allocations" value={payload} />
       <input type="hidden" name="advance_use" value={purpose === "settle" ? advPayload : "[]"} />
       <input type="hidden" name="purpose" value={purpose} />
+      <input type="hidden" name="extra_advance" value={leftover > 0 ? String(leftover) : ""} />
 
       <div className="card doc-meta doc-info">
         <div className="card-head">
@@ -429,12 +437,11 @@ export function SettlementForm({
       <section className="card stl-bills">
         <div className="card-head stl-head">
           <h2>{pool.length > 0 && <span className="stl-step">2</span>}{isPay ? "Bills to pay" : "Invoices to settle"}{open.length > 0 && <span className="page-sub"> · {open.length} open · {fmt(owed)} {unit} owed</span>}</h2>
-          {open.length > 0 && (
+          {partnerId && (
             <span className="actions stl-quick">
-              <label htmlFor="stl-spread" className="page-sub">{cashWord} amount</label>
-              <Amount id="stl-spread" value={spread} onChange={setSpread} label={`${cashWord} amount, spread oldest first`} placeholder="Full amount" />
-              <button type="button" className="ghost tiny" onClick={spreadOldest}>Spread oldest first</button>
-              <button type="button" className="tiny" onClick={payAll} disabled={allTicked}>{isPay ? "Pay all" : "Receive all"}</button>
+              <label htmlFor="stl-spread" className="page-sub">{isPay ? "Amount paid" : "Amount received"}</label>
+              <Amount id="stl-spread" value={spread} onChange={spreadOldest} label={`${isPay ? "Amount paid" : "Amount received"}, put against the oldest first`} placeholder={open.length ? "Full amount" : "Amount"} />
+              {open.length > 0 && <button type="button" className="tiny" onClick={payAll} disabled={allTicked}>{isPay ? "Pay all" : "Receive all"}</button>}
               {settling.length > 0 && <button type="button" className="ghost tiny" onClick={() => setSplit({ cash: {}, adv: {} })}>Clear</button>}
             </span>
           )}
@@ -444,7 +451,8 @@ export function SettlementForm({
         {!partnerId ? (
           <div className="empty">Choose a {isPay ? "supplier" : "customer"} to see what is outstanding.</div>
         ) : open.length === 0 ? (
-          <div className="empty">Nothing outstanding — everything is settled.{pool.length > 0 && " The advance stays on account for the next bill."}</div>
+          <div className="empty">Nothing outstanding — everything is settled.{pool.length > 0 && " The advance stays on account for the next bill."}
+            {" "}An amount {isPay ? "paid" : "received"} now is kept as an advance for {partnerName}.</div>
         ) : (
           <div className="tablewrap">
             <table className="stl-table">
@@ -533,6 +541,13 @@ export function SettlementForm({
       </>
       )}
 
+      {leftover > 0 && (
+        <div className="stl-leftover" role="status">
+          <strong>{fmt(leftover)} {unit} becomes an advance for {partnerName}.</strong>{" "}
+          {open.length ? `It is more than the ticked ${isPay ? "bills" : "invoices"} owe; ` : ""}it is kept on account and offered on {partnerName}&apos;s next {isPay ? "bill" : "invoice"}.
+        </div>
+      )}
+
       {purpose === "settle" && (overApplied.length > 0 || advOver) && (
         <div className="alert">
           {overApplied.length > 0 && <>More than what is outstanding is put against {overApplied.map((i) => i.doc_no).join(", ")}. </>}
@@ -544,25 +559,43 @@ export function SettlementForm({
           invoice: the button says what it is; the figures beside it say
           how much and from where. */}
       <div className="actions form-commit stl-commit">
-        <button type="submit" disabled={pending || (purpose === "advance" ? !(Number(advance) > 0) : !settleOk)}>
+        <button type={leftover > 0 ? "button" : "submit"} onClick={leftover > 0 ? () => setAskLeftover(true) : undefined}
+          disabled={pending || (purpose === "advance" ? !(Number(advance) > 0) : !settleOk)}>
           {pending ? "Posting…" : isPay ? "Post payment" : "Post receipt"}
         </button>
         <Link href={isPay ? "/payables" : "/receivables"} className="btn ghost">Cancel</Link>
         <dl className="stl-sum" aria-live="polite">
           {purpose === "advance" ? (
             <div><dt>{isPay ? "Advance paid" : "Advance received"}</dt><dd>{fmt(Number(advance) || 0)} <small>{unit}</small></dd></div>
+          ) : settling.length === 0 && leftover > 0 ? (
+            <div className="stl-sum-cash"><dt>Becomes advance</dt><dd>{fmt(leftover)} <small>{unit}</small></dd></div>
           ) : settling.length === 0 ? (
             <div className="stl-sum-empty"><dt>{isPay ? "Tick the bills to pay" : "Tick the invoices to settle"}</dt><dd /></div>
           ) : (
             <>
               <div><dt>{isPay ? "Bills" : "Invoices"}</dt><dd title={settling.map((i) => i.doc_no).join(", ")}>{settling.length}</dd></div>
               {advUsed > 0 && <div><dt>From advance</dt><dd>{fmt(advUsed)}</dd></div>}
-              <div className="stl-sum-cash"><dt>{isPay ? "Paid now" : "Received now"}</dt><dd>{fmt(applied)} <small>{unit}</small></dd></div>
+              {leftover > 0 && <div><dt>Becomes advance</dt><dd>{fmt(leftover)}</dd></div>}
+              <div className="stl-sum-cash"><dt>{isPay ? "Paid now" : "Received now"}</dt><dd>{fmt(applied + leftover)} <small>{unit}</small></dd></div>
             </>
           )}
         </dl>
       </div>
     </form>
+    <AdvanceDialog
+      open={askLeftover}
+      unit={unit}
+      title={<>{fmt(leftover)} {unit} becomes an advance for {partnerName}</>}
+      rows={[
+        { label: isPay ? "Amount paid" : "Amount received", amount: applied + leftover },
+        ...(settling.length ? [{ label: `Settles ${settling.length} ${isPay ? (settling.length === 1 ? "bill" : "bills") : (settling.length === 1 ? "invoice" : "invoices")}`, amount: applied }] : []),
+        { label: `Advance for ${partnerName}`, amount: leftover, strong: true },
+      ]}
+      note={<>The {fmt(leftover)} is kept on account for {partnerName} and listed under {isPay ? "Supplier" : "Customer"} advances. Their next {isPay ? "bill" : "invoice"} offers to use it.</>}
+      primary={isPay ? "Post payment and advance" : "Post receipt and advance"}
+      onPrimary={() => { setAskLeftover(false); formRef.current?.requestSubmit(); }}
+      onCancel={() => setAskLeftover(false)}
+    />
     </>
   );
 }

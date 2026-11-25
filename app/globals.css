@@ -12361,3 +12361,24 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .dt-multi-none { padding: 8px; color: var(--muted); font-size: var(--t-sm); }
 .dt-multi-foot { display: flex; justify-content: space-between; gap: 8px; padding-top: 6px; margin-top: 4px; border-top: 1px solid var(--line-soft); }
 .dt-chip { max-width: 40rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Advances (2026-11-25): what becomes one on Receive / Pay, and what an invoice may use. */
+.stl-leftover { margin: 10px 0; padding: 10px 14px; border-radius: 10px; background: color-mix(in srgb, var(--link) 10%, transparent); color: var(--ink); font-size: 0.9rem; }
+.stl-leftover strong { color: var(--link); }
+.adv-onaccount { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-soft, var(--muted)); }
+.adv-onaccount svg { color: var(--link); flex: none; }
+.adv-dialog .confirm-panel { max-width: 34rem; }
+.adv-dialog .confirm-actions button { white-space: nowrap; }
+.adv-dialog-icon { color: var(--link); background: color-mix(in srgb, var(--link) 12%, transparent); }
+.adv-dialog-rows { margin: 12px 0 4px; display: grid; gap: 6px; }
+.adv-dialog-rows > div { display: flex; justify-content: space-between; gap: 16px; font-size: 0.9rem; }
+.adv-dialog-rows dt { color: var(--muted); }
+.adv-dialog-rows dd { margin: 0; font-variant-numeric: tabular-nums; }
+.adv-dialog-rows > div.strong { border-top: 1px solid var(--line); padding-top: 6px; font-weight: 600; }
+.adv-dialog-rows > div.strong dt { color: var(--ink); }
+.adv-dialog-rows > div.strong dd { color: var(--link); }
+/* Outstanding summary (2026-11-25). */
+.os-table td.os-owed { color: var(--ink); font-weight: 600; }
+.os-table td.os-pre { color: var(--link); }
+.os-table tfoot .os-grand td { border-top: 2px solid var(--ink); }
+.os-note { padding: 10px var(--s3, 16px) 14px; margin: 0; }

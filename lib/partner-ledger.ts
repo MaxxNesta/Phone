@@ -121,14 +121,68 @@ export async function getPartnerLedger(companyId: string, side: Side, f: {
 }
 
 /** Each partner's unapplied advance: paid or taken ahead, not yet set against a bill (positive either side). */
-export async function getAdvanceBalances(companyId: string, side: Side, branchId: string | null = null): Promise<Map<string, number>> {
+export async function getAdvanceBalances(companyId: string, side: Side, branchId: string | null = null,
+                                         /** As it stood at the end of this day; left out, as it stands now. */
+                                         to: string | null = null): Promise<Map<string, number>> {
   const rows = await sql`
     select jl.partner_id, sum(jl.base_amount)::float as bal
       from journal_line jl
      where jl.company_id = ${companyId} and jl.account_id = fn_system_account(${companyId}, ${ROLE[side].advance})
        and jl.partner_id is not null
+       ${to ? sql`and jl.journal_entry_id in (select id from journal_entry where company_id = ${companyId} and entry_date <= ${to}::date)` : sql``}
        ${branchFilterOn(sql`jl`, branchId)}
      group by jl.partner_id
     having round(sum(jl.base_amount), 2) <> 0`;
   return new Map(rows.map((r) => [r.partner_id as string, side === "SUPPLIER" ? Number(r.bal) : -Number(r.bal)]));
+}
+
+export type SummaryRow = {
+  partnerId: string; code: string; name: string; township: string | null;
+  opening: number; sale: number; returned: number; discount: number; payment: number; other: number;
+  /** Paid ahead and not yet set against a bill, at the period's end. */
+  prepaid: number;
+  /** Bills still owed at the period's end. Balance less prepaid is the ledger's closing. */
+  balance: number;
+};
+
+/**
+ * The Outstanding Summary (2026-11-25): one line a partner, from the same
+ * ledger as the detail report, so its closing figures are the ledger's.
+ * Sale is before discount and the discount has its own column, as the old
+ * report had them; an advance not yet used is Prepaid, apart from what bills
+ * still owe. Three reads however many partners: the ledger, the advances,
+ * the invoices' discounts.
+ */
+export async function getOutstandingSummary(companyId: string, side: Side, f: {
+  township?: string | null; from?: string | null; to?: string | null; branchId?: string | null;
+}): Promise<SummaryRow[]> {
+  const [ledger, prepaid] = await Promise.all([
+    getPartnerLedger(companyId, side, f),
+    getAdvanceBalances(companyId, side, f.branchId ?? null, f.to ?? null),
+  ]);
+  const billKind = side === "CUSTOMER" ? "Sales" : "Purchase";
+  const billIds = ledger.flatMap((g) => g.rows.filter((r) => r.kind === billKind && r.docId).map((r) => r.docId as string));
+  const disc = billIds.length ? new Map((await sql`
+    select document_id, sum(coalesce(discount_amount, 0) + coalesce(volume_discount_amount, 0) + coalesce(invoice_discount_amount, 0))::float as d
+      from document_line where document_id = any(${billIds}) group by document_id`).map((r) => [r.document_id as string, Number(r.d)])) : new Map<string, number>();
+  const returns = new Set(["Return", "Credit note", "Debit note"]);
+  const paid = new Set(["Payment", "Customer advance", "Supplier advance", "Advance applied"]);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return ledger.map((g) => {
+    const row: SummaryRow = { partnerId: g.partnerId, code: g.code, name: g.name, township: g.township,
+      opening: r2(g.opening), sale: 0, returned: 0, discount: 0, payment: 0, other: 0, prepaid: 0, balance: 0 };
+    for (const r of g.rows) {
+      if (r.kind === billKind) {
+        const d = r.docId ? disc.get(r.docId) ?? 0 : 0;
+        row.sale += r.charge - r.settle + d; row.discount += d;
+      } else if (returns.has(r.kind)) row.returned += r.settle - r.charge;
+      else if (paid.has(r.kind)) row.payment += r.settle - r.charge;
+      // Journals, opening balances brought in, refunds: kept apart so the line still adds up.
+      else row.other += r.charge - r.settle;
+    }
+    row.prepaid = r2(Math.max(0, prepaid.get(g.partnerId) ?? 0));
+    row.balance = r2(g.closing + row.prepaid);
+    for (const k of ["sale", "returned", "discount", "payment", "other"] as const) row[k] = r2(row[k]);
+    return row;
+  });
 }
