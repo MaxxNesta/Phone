@@ -56,7 +56,9 @@ const div = (a: number, b: number) => (Math.abs(b) > 0.0001 ? a / b : null);
 const pct = (a: number, b: number) => { const r = div(a, b); return r === null ? null : r * 100; };
 
 async function totalsAt(db: Sql, companyId: string, dates: string[], branchId: string | null) {
-  const last = dates.reduce((m, d) => (d > m ? d : m));
+  // The dates in order, once each; every line falls in the gap between two of them.
+  const ds = [...new Set(dates)].sort();
+  const last = ds[ds.length - 1];
   const rows = await db`
     with recursive up(leaf, id, parent_id, code) as (
       select id, id, parent_id, code from account where company_id = ${companyId}
@@ -69,9 +71,18 @@ async function totalsAt(db: Sql, companyId: string, dates: string[], branchId: s
        where company_id = ${companyId} and role in ('INVENTORY', 'AR_CONTROL', 'AP_CONTROL')
        group by account_id
     ),
-    acct as (
-      select a.id, a.account_type as t, p.codes, coalesce(r.roles, '{}') as roles,
-             a.is_cash_account or a.is_bank_account as money
+    -- Each account's place in the chart worked out once, as flags, not per journal line.
+    acct as materialized (
+      select a.id, a.account_type as t,
+             p.codes && array['11','12','13','14','15'] as is_ca,
+             p.codes && array['11','12','13','14','15'] and (a.is_cash_account or a.is_bank_account) as is_cash,
+             'AR_CONTROL' = any(coalesce(r.roles, '{}')) as is_ar,
+             'INVENTORY' = any(coalesce(r.roles, '{}')) as is_inv,
+             p.codes && array['21','22','23','24','26'] as is_cl,
+             'AP_CONTROL' = any(coalesce(r.roles, '{}')) as is_ap,
+             p.codes && array['25','26'] as is_debt,
+             '41' = any(p.codes) as is_sales,
+             '69' = any(p.codes) as is_interest
         from account a join path p on p.id = a.id left join role r on r.account_id = a.id
        where a.company_id = ${companyId}
     ),
@@ -81,38 +92,38 @@ async function totalsAt(db: Sql, companyId: string, dates: string[], branchId: s
     ),
     -- A branch is its own lines and its warehouses'.
     here as (select id from location where company_id = ${companyId} and (id = ${branchId} or parent_id = ${branchId})),
-    daily as (
-      select je.entry_date as d,
-        coalesce(sum(jl.base_amount) filter (where x.codes && array['11','12','13','14','15']), 0) as ca,
-        coalesce(sum(jl.base_amount) filter (where x.codes && array['11','12','13','14','15'] and x.money), 0) as cash,
-        coalesce(sum(jl.base_amount) filter (where 'AR_CONTROL' = any(x.roles)), 0) as ar,
-        coalesce(sum(jl.base_amount) filter (where 'INVENTORY' = any(x.roles)), 0) as inv,
-       -coalesce(sum(jl.base_amount) filter (where x.codes && array['21','22','23','24','26']), 0) as cl,
-       -coalesce(sum(jl.base_amount) filter (where 'AP_CONTROL' = any(x.roles)), 0) as ap,
-       -coalesce(sum(jl.base_amount) filter (where x.codes && array['25','26']), 0) as debt,
+    /* Each line straight into the gap between two of the dates it falls in
+       (width_bucket: 0 before the first date, k from the k-th on), with its
+       account's flags from a table of a few hundred rows: one pass, no sort,
+       a dozen groups however long the history. */
+    gaps as (
+      select width_bucket(je.entry_date, ${ds}::date[]) as b,
+        coalesce(sum(jl.base_amount) filter (where x.is_ca), 0) as ca,
+        coalesce(sum(jl.base_amount) filter (where x.is_cash), 0) as cash,
+        coalesce(sum(jl.base_amount) filter (where x.is_ar), 0) as ar,
+        coalesce(sum(jl.base_amount) filter (where x.is_inv), 0) as inv,
+       -coalesce(sum(jl.base_amount) filter (where x.is_cl), 0) as cl,
+       -coalesce(sum(jl.base_amount) filter (where x.is_ap), 0) as ap,
+       -coalesce(sum(jl.base_amount) filter (where x.is_debt), 0) as debt,
         coalesce(sum(jl.base_amount) filter (where x.t = 'ASSET'), 0) as assets,
        -coalesce(sum(jl.base_amount) filter (where x.t = 'LIABILITY'), 0) as liab,
-       -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE'
-                   and '41' = any(x.codes)), 0) as sales,
-       -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE'
-                   and not '41' = any(x.codes)), 0) as other_inc,
+       -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE' and x.is_sales), 0) as sales,
+       -coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'REVENUE' and not x.is_sales), 0) as other_inc,
         coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'COGS'), 0) as cogs,
-        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and not '69' = any(x.codes)), 0) as opex,
-        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and '69' = any(x.codes)), 0) as interest,
+        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and not x.is_interest), 0) as opex,
+        coalesce(sum(jl.base_amount) filter (where yc.journal_entry_id is null and x.t = 'EXPENSE' and x.is_interest), 0) as interest,
         -- Money in from customers, and what suppliers billed: the turnovers' numerators.
-       -coalesce(sum(jl.base_amount) filter (where 'AR_CONTROL' = any(x.roles) and jl.base_amount < 0
-                   and je.source_type = 'CUSTOMER_RECEIPT'), 0) as collected,
-       -coalesce(sum(jl.base_amount) filter (where 'AP_CONTROL' = any(x.roles) and jl.base_amount < 0
-                   and je.source_type = 'PURCHASE_INVOICE'), 0) as billed_ap
+       -coalesce(sum(jl.base_amount) filter (where x.is_ar and jl.base_amount < 0 and je.source_type = 'CUSTOMER_RECEIPT'), 0) as collected,
+       -coalesce(sum(jl.base_amount) filter (where x.is_ap and jl.base_amount < 0 and je.source_type = 'PURCHASE_INVOICE'), 0) as billed_ap
         from journal_line jl
         join journal_entry je on je.id = jl.journal_entry_id
         join acct x on x.id = jl.account_id
         left join closes yc on yc.journal_entry_id = je.id
        where jl.company_id = ${companyId} and je.entry_date < ${last}::date
          and (${branchId}::uuid is null or jl.location_id in (select id from here))
-       group by je.entry_date
+       group by 1
     )
-    select to_char(b.on_date, 'YYYY-MM-DD') as on_date,
+    select to_char(x.on_date, 'YYYY-MM-DD') as on_date,
            coalesce(sum(ca), 0)::float as ca, coalesce(sum(cash), 0)::float as cash,
            coalesce(sum(ar), 0)::float as ar, coalesce(sum(inv), 0)::float as inv,
            coalesce(sum(cl), 0)::float as cl, coalesce(sum(ap), 0)::float as ap,
@@ -121,9 +132,9 @@ async function totalsAt(db: Sql, companyId: string, dates: string[], branchId: s
            coalesce(sum(other_inc), 0)::float as "otherInc", coalesce(sum(cogs), 0)::float as cogs,
            coalesce(sum(opex), 0)::float as opex, coalesce(sum(interest), 0)::float as interest, coalesce(sum(collected), 0)::float as collected,
            coalesce(sum(billed_ap), 0)::float as "billedAp"
-      from unnest(${[...new Set(dates)]}::date[]) as b(on_date)
-      left join daily on daily.d < b.on_date
-     group by b.on_date`;
+      from unnest(${ds}::date[]) with ordinality as x(on_date, k)
+      left join gaps on gaps.b < x.k
+     group by x.on_date`;
   const at = new Map<string, Totals>();
   for (const r of rows) at.set(r.on_date as string, r as unknown as Totals);
   return at;
@@ -218,4 +229,27 @@ export async function getFinancialRatios(companyId: string, opts: {
     return { label, ...w.ratios, workingCapital: w.workingCapital };
   });
   return { current: windowOf(at, from, to), previous: windowOf(at, prevFrom, prevTo), trend };
+}
+
+/** The first of the month `n` months from a first-of-month date. */
+const monthsOn = (d: string, n: number) => {
+  const x = new Date(`${d}T00:00:00Z`); x.setUTCMonth(x.getUTCMonth() + n); return iso(x);
+};
+
+/**
+ * The Executive dashboard's Ratios tab: the period, the same number of months
+ * just before it, and each of the last twelve months on its own (a month's
+ * flows against its own opening and closing balances), all from one pass
+ * over the ledger. `from` and `to` are firsts of months, `to` exclusive.
+ */
+export async function getRatioOverview(companyId: string, from: string, to: string, db: Sql = sql) {
+  const span = Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (30.44 * 86_400_000)));
+  const prevFrom = monthsOn(from, -span);
+  const bounds = Array.from({ length: 13 }, (_, i) => monthsOn(to, i - 12));
+  const at = await totalsAt(db, companyId, [from, to, prevFrom, ...bounds], null);
+  return {
+    current: windowOf(at, from, to),
+    previous: windowOf(at, prevFrom, from),
+    months: bounds.slice(1).map((end, i) => ({ month: bounds[i].slice(0, 7), ...windowOf(at, bounds[i], end) })),
+  };
 }

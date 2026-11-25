@@ -6,6 +6,9 @@ import { hasModule } from "@/lib/plans";
 import { money } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import { executiveData, type Pl } from "@/lib/executive";
+import { getRatioOverview } from "@/lib/financial-ratios";
+import { ExecRatios } from "@/components/exec-ratios";
+import { Suspense } from "react";
 import { staleClearing, CLEARING_STALE_DAYS } from "@/lib/landed-cost-queries";
 import { compact } from "@/components/stat";
 import { RankedBarChart } from "@/components/charts";
@@ -28,7 +31,7 @@ function change(now: number, before: number) {
   return { c, text: `${c >= 0 ? "▲" : "▼"} ${Math.abs(c).toFixed(1)}%` };
 }
 
-const TABS = [["overview", "Overview"], ["profit", "Profit"], ["cash", "Working capital"], ["branches", "Branches"]] as const;
+const TABS = [["overview", "Overview"], ["profit", "Profit"], ["cash", "Working capital"], ["branches", "Branches"], ["ratios", "Ratios"]] as const;
 type Tab = (typeof TABS)[number][0];
 const SPANS = [["1m", "1M"], ["3m", "3M"], ["6m", "6M"], ["12m", "12M"]] as const;
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -38,7 +41,9 @@ const hourName = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "am" :
  * The owner's page (Management Reports add-on): is the business making money,
  * where is the cash, what is owed both ways, which branch carries it, and
  * when the shop is busy. Profit is the general ledger's, so it agrees with
- * the income statement. One loader, six queries in parallel, none per row.
+ * the income statement. One loader, its queries in parallel, none per row;
+ * the Ratios tab is one more pass over the ledger (lib/financial-ratios.ts),
+ * streamed in behind the rest.
  */
 export default async function Executive({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const sp = await searchParams;
@@ -325,7 +330,21 @@ export default async function Executive({ searchParams }: { searchParams: Promis
           </div>
         </>
         ) },
+        { id: "ratios", label: "Ratios", content: (
+          /* The ratios read the whole ledger once (balances need every line
+             since the start), so they stream in after the rest of the page
+             rather than hold it up. */
+          <Suspense fallback={<p className="xd-quiet rx-wait">Reading the ledger for the ratios…</p>}>
+            <RatiosPane co={company.id} from={period.from} to={period.to} phrase={period.phrase} />
+          </Suspense>
+        ) },
       ]}
     />,
   );
+}
+
+async function RatiosPane({ co, from, to, phrase }: { co: string; from: string; to: string; phrase: string }) {
+  const r = await getRatioOverview(co, from, to);
+  return <ExecRatios now={r.current} before={r.previous} months={r.months} from={from} to={to} phrase={phrase}
+    spanMonths={Math.round((Date.parse(to) - Date.parse(from)) / (30.44 * 86_400_000))} />;
 }
