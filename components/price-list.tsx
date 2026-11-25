@@ -7,7 +7,8 @@ import { useNotice } from "@/components/toast";
 
 type Cell = { price: number | null; validFrom: string | null; history: { price: number | null; from: string }[] };
 export type PriceUnit = { uomId: string; code: string; isBase: boolean; per: string | null; cells: Record<string, Cell> };
-export type PriceProduct = { itemId: string; code: string; name: string; units: PriceUnit[] };
+/** A variant carries its model (T-shirt) so a price can be set for all its colours and sizes at once. */
+export type PriceProduct = { itemId: string; code: string; name: string; modelId?: string | null; modelName?: string | null; units: PriceUnit[] };
 type Level = { id: string; name: string; isDefault: boolean };
 type Act = (prev: unknown, fd: FormData) => Promise<ActionResult>;
 type Pick = { itemId: string; uomId: string; levelId: string };
@@ -21,11 +22,11 @@ const PAGE = 40;
  * with their units beneath, a column per level; a price opens the Set price
  * panel over the right of the list; the levels are managed in a dialog.
  */
-export function PriceList({ products, levels, today, openLevels, setAction, clearAction, manage }: {
-  products: PriceProduct[]; levels: Level[]; today: string; openLevels: boolean;
+export function PriceList({ products, levels, today, openLevels, initialQ = "", setAction, clearAction, manage }: {
+  products: PriceProduct[]; levels: Level[]; today: string; openLevels: boolean; initialQ?: string;
   setAction: Act; clearAction: Act; manage: ReactNode;
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQ);
   const [only, setOnly] = useState("all");
   const [shown, setShown] = useState(PAGE);
   const [pick, setPick] = useState<Pick | null>(null);
@@ -115,6 +116,7 @@ export function PriceList({ products, levels, today, openLevels, setAction, clea
 
       {pick && product && (
         <SetPrice key={`${pick.itemId}|${pick.uomId}|${pick.levelId}`} product={product} pick={pick} levels={levels} today={today}
+          siblings={product.modelId ? products.filter((x) => x.modelId === product.modelId && x.units.some((u) => u.code === product.units.find((y) => y.uomId === pick.uomId)?.code)).length : 1}
           setAction={setAction} clearAction={clearAction} onPick={setPick} onClose={() => setPick(null)} />
       )}
 
@@ -137,8 +139,8 @@ export function PriceList({ products, levels, today, openLevels, setAction, clea
 }
 
 /** The side panel: one price of one unit at one level, from a date; every price before it below. */
-function SetPrice({ product, pick, levels, today, setAction, clearAction, onPick, onClose }: {
-  product: PriceProduct; pick: Pick; levels: Level[]; today: string;
+function SetPrice({ product, pick, levels, today, siblings, setAction, clearAction, onPick, onClose }: {
+  product: PriceProduct; pick: Pick; levels: Level[]; today: string; siblings: number;
   setAction: Act; clearAction: Act; onPick: (p: Pick) => void; onClose: () => void;
 }) {
   const router = useRouter();
@@ -195,6 +197,12 @@ function SetPrice({ product, pick, levels, today, setAction, clearAction, onPick
           <input name="price" type="number" min="0" step="any" inputMode="decimal" required autoFocus
             defaultValue={now?.price ?? ""} placeholder={now?.price == null ? "No price" : undefined} />
         </label>
+        {siblings > 1 && (
+          <label className="pl3-check">
+            <input type="checkbox" name="all_variants" value="1" />
+            <span>Same price for all {siblings} variants of {product.modelName}<small>Every colour and size sold in {unit.code}, at {levels.find((l) => l.id === pick.levelId)?.name}.</small></span>
+          </label>
+        )}
         <label className="pl3-field">Effective from
           <span className="pl3-hint">Invoices before this date keep their price; the price before it stays in the history.</span>
           <input name="valid_from" type="date" defaultValue={today} required />

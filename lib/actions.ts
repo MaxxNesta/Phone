@@ -1152,6 +1152,18 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
 
     const weight = weightKg(fd);
     if (weight === "bad") return { error: "Weight must be a number of kg above zero, or left blank." };
+    /* A model (T-shirt) is never sold; its variants (Red / S) are. What the
+       model's page says about units is said for all of them. */
+    const [cur] = await sql`select base_uom_id from item where id = ${id} and company_id = ${co}`;
+    if (!cur) return { error: await m("chooseItem") };
+    const variantIds = (await sql`select id from item where parent_item_id = ${id} and company_id = ${co}`).map((r) => r.id as string);
+    // Stock is counted in the unit: once anything was counted or written in it, it stays.
+    if (uomId !== cur.base_uom_id) {
+      const ids = [id, ...variantIds];
+      const [used] = await sql`select 1 from stock_movement where item_id = any(${ids}) limit 1`;
+      const [onDoc] = used ? [used] : await sql`select 1 from document_line where item_id = any(${ids}) limit 1`;
+      if (onDoc) return { error: "The unit cannot change once stock or a document uses it: quantities already recorded would change meaning. Add a pack size instead." };
+    }
     const photo = await photoFrom(fd);
     /** The object the old picture lived in, removed once the row is safely
      *  saved. Set inside the transaction, acted on after it. */
@@ -1198,6 +1210,27 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
           if (!ok) throw new Error("Bought in has to be one of this product's packs.");
         }
         await tx`update item set purchase_uom_id = ${buy} where id = ${id} and company_id = ${co}`;
+      }
+
+      /* The variants follow their model: its unit, its pack sizes and the
+         unit it is bought in. A variant keeps its own pack barcodes (a box of
+         red smalls is not a box of blue larges); a pack the model no longer
+         has goes from every variant. */
+      if (variantIds.length) {
+        await tx`update item set base_uom_id = ${uomId} where id = any(${variantIds})`;
+        if (rawPacks) {
+          const keep = packs.map((p) => p.uomId);
+          await tx`delete from item_uom where item_id = any(${variantIds}) and not (uom_id = any(${keep}))`;
+          for (const p of packs) {
+            await tx`
+              insert into item_uom (company_id, item_id, uom_id, factor)
+              select ${co}, v, ${p.uomId}, ${p.factor} from unnest(${variantIds}::uuid[]) v
+              on conflict (item_id, uom_id) do update set factor = excluded.factor`;
+          }
+        }
+        if (fd.has("purchase_uom_id")) {
+          await tx`update item set purchase_uom_id = ${str(fd, "purchase_uom_id") || null} where id = any(${variantIds})`;
+        }
       }
 
       // Left alone unless the picker said otherwise. A form submitted with
@@ -1563,8 +1596,16 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
     if (!(price >= 0)) return { error: await m("priceNegative") };
 
     const [item] = await sql`
-      select id, code from item where id = ${itemId} and company_id = ${co}`;
+      select id, code, parent_item_id from item where id = ${itemId} and company_id = ${co}`;
     if (!item) return { error: await m("itemNotOurs") };
+
+    /* One variant, or every variant of its model that is sold in this unit
+       (Red S, Red M, Blue L… all at 12,000 a box): one dated price each. */
+    const ids = fd.get("all_variants") && item.parent_item_id
+      ? (await sql`select i.id from item i where i.parent_item_id = ${item.parent_item_id} and i.company_id = ${co} and i.is_active
+                     and (i.base_uom_id = ${uomId} or exists (select 1 from item_uom iu where iu.item_id = i.id and iu.uom_id = ${uomId}))`)
+          .map((r) => r.id as string)
+      : [itemId];
 
     /* One price per item, level, unit and day. Asked for twice on the same
        day, the later answer wins — which is what somebody correcting a typo
@@ -1572,7 +1613,7 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
        arguing. */
     await sql`
       insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
-      values (${co}, ${itemId}, ${levelId}, ${uomId}, 'MMK', ${price}, ${from}::date)
+      select ${co}, v, ${levelId}, ${uomId}, 'MMK', ${price}, ${from}::date from unnest(${ids}::uuid[]) v
       on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
       do update set price = excluded.price`;
   } catch (e) {
@@ -5096,9 +5137,6 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
       const problem = await manualCodeProblem(co, [code], 1, [], [id]);
       if (problem) return { error: problem };
     }
-    const prices = JSON.parse(str(fd, "prices") || "{}") as Record<string, string>;
-    const levels = await sql<{ id: string }[]>`select id from price_level where company_id = ${co}`;
-
     // A variant's own picture (a product's goes through updateItem).
     const photo = item.parent_item_id ? await photoFrom(fd) : null;
     let replaced: string | null = null;
@@ -5137,28 +5175,8 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
                    values (${co}, ${id}, ${p.no}, ${p.kind}, ${p.maker})`;
         }
       }
-      for (const level of levels) {
-        if (!(level.id in prices)) continue;
-        const raw = String(prices[level.id] ?? "").trim();
-        if (raw === "") {
-          await priceFromToday(tx, co, id, level.id, null, null);
-        } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
-          await priceFromToday(tx, co, id, level.id, null, Number(raw));
-        }
-      }
-      // A pack's cell of the price grid ("level|unit"): only this product's packs, at its levels.
-      for (const [k, v] of Object.entries(prices)) {
-        const [lvl, uom] = k.split("|");
-        if (!uom || !levels.some((l) => l.id === lvl)) continue;
-        const [pack] = await tx`select 1 from item_uom where item_id = ${id} and uom_id = ${uom}`;
-        if (!pack) continue;
-        const raw = String(v ?? "").trim();
-        if (raw === "") {
-          await priceFromToday(tx, co, id, lvl, uom, null);
-        } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
-          await priceFromToday(tx, co, id, lvl, uom, Number(raw));
-        }
-      }
+      // Prices are not set here: the product page shows them, the price list
+      // (Products → Price levels) sets them, dated (2026-11-25).
     });
     if (replaced) await deleteObject("public", replaced);
   } catch (e) {

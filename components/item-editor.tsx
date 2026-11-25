@@ -30,6 +30,8 @@ export type EditorItem = {
   partNumbers: PartNo[] | null;
   /** Packs and unit conversion in use (lib/features.ts unitPacksOn), or packs already on this product. */
   unitPacks: boolean;
+  /** Stock or a document already counts in the unit (this product or a variant): it cannot change. */
+  unitLocked: boolean;
   brands: { id: string; code: string; name: string }[];
   uoms: { id: string; code: string; name: string }[];
   parts: { a: string; o: string }[];
@@ -111,7 +113,6 @@ export function ItemEditor({ item, action, tracking }: {
       <input type="hidden" name="barcode" value={f.barcode} />
       {!isModel && <input type="hidden" name="weight_kg" value={f.weightKg} />}
       <input type="hidden" name="is_active" value={f.active ? "1" : "0"} />
-      <input type="hidden" name="prices" value={isModel ? "{}" : JSON.stringify(f.prices)} />
       {product && <>
         <input type="hidden" name="name_my" value={f.nameMy} />
         <input type="hidden" name="brand_id" value={f.brandId} />
@@ -203,7 +204,8 @@ export function ItemEditor({ item, action, tracking }: {
                         {item.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
                       </select></label>
                     <label className="ie-field"><span>Unit</span>
-                      <select value={f.uomId} onChange={(e) => set({ uomId: e.target.value })}>
+                      <select value={f.uomId} onChange={(e) => set({ uomId: e.target.value })} disabled={item.unitLocked}
+                        title={item.unitLocked ? "Stock or a document already counts in this unit; add a pack size instead" : undefined}>
                         {item.uoms.map((u) => <option key={u.id} value={u.id}>{u.code} · {u.name}</option>)}
                       </select></label>
                   </>}
@@ -248,7 +250,7 @@ export function ItemEditor({ item, action, tracking }: {
 
           {!isModel && <section className="ie-card">
             <h3>Pricing</h3>
-            {/* Units down, price levels across: 1×3 for a phone, 3×3 for a cable sold by the piece, pack and box. */}
+            {/* Units down, price levels across; read only here (2026-11-25). Prices are set, dated, on the price list. */}
             <div className="tablewrap">
               <table className="ie-pricegrid">
                 <thead>
@@ -263,11 +265,10 @@ export function ItemEditor({ item, action, tracking }: {
                       <th scope="row">{u.code}{u.id && <small> = {u.factor.toLocaleString("en-US", { maximumFractionDigits: 4 })} {item.uom}</small>}</th>
                       {item.levels.map((l) => {
                         const k = u.id ? `${l.id}|${u.id}` : l.id;
+                        const v = f.prices[k];
                         return (
-                          <td key={l.id}>
-                            <input type="number" min="0" step="any" inputMode="decimal" placeholder="No price" value={f.prices[k] ?? ""}
-                              aria-label={`${l.name} price per ${u.code}`}
-                              onChange={(e) => set({ prices: { ...f.prices, [k]: e.target.value } })} />
+                          <td key={l.id} className="r">
+                            {v !== undefined && v !== "" ? Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 }) : <span className="ie-noprice">—</span>}
                           </td>
                         );
                       })}
@@ -276,7 +277,7 @@ export function ItemEditor({ item, action, tracking }: {
                 </tbody>
               </table>
             </div>
-            <span className="hint">A change starts today; the price before it stays in the price history. A new pack size gets its row once saved.</span>
+            <p className="hint">Set prices, with their dates and history, in <a href={`/items/prices?q=${encodeURIComponent(item.code)}`}>Products → Price levels</a>.</p>
             <div className="ie-prices">
               {item.seeCost && (
                 <div className="ie-field">

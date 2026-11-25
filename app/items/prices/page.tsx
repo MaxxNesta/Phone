@@ -21,7 +21,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
 
   const [list, levelUse] = await Promise.all([
     getPriceList(company.id) as unknown as Promise<Array<{
-      item_id: string; code: string; name: string;
+      item_id: string; code: string; name: string; parent_item_id: string | null; model_name: string | null;
       uom_id: string; uom_code: string; factor: number; is_base: boolean; base_code: string;
       level_id: string; price: string | null; valid_from: string | null;
       history: { price: number | null; from: string }[] | null;
@@ -40,7 +40,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
   // Rows come one per product, unit and level; the list wants a product with its units, each with a cell per level.
   const products = new Map<string, PriceProduct>();
   for (const r of list) {
-    const p = products.get(r.item_id) ?? { itemId: r.item_id, code: r.code, name: r.name, units: [] };
+    const p = products.get(r.item_id) ?? { itemId: r.item_id, code: r.code, name: r.name, modelId: r.parent_item_id, modelName: r.model_name, units: [] };
     products.set(r.item_id, p);
     let u = p.units.find((x) => x.uomId === r.uom_id);
     if (!u) {
@@ -58,6 +58,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       levels={levelUse.map((l, i) => ({ id: l.id, name: l.name, isDefault: i === 0 }))}
       today={todayLocal()}
       openLevels={sp.levels === "1"}
+      initialQ={sp.q ?? ""}
       setAction={setItemPrice}
       clearAction={clearItemPrice}
       manage={

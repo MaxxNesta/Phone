@@ -118,6 +118,9 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     buyUomId: (item.purchase_uom_id as string | null) ?? null,
     // Packs show when the shop uses them, or when this product already has some.
     unitPacks: unitPacksOn(company) || packs.length > 0,
+    // Counted in already (this product or a variant): the unit holds (lib/actions.ts updateItem refuses too).
+    unitLocked: Boolean((await sql`select exists (select 1 from stock_movement where item_id = ${id} or item_id in (select id from item where parent_item_id = ${id}))
+                                  or exists (select 1 from document_line where item_id = ${id} or item_id in (select id from item where parent_item_id = ${id})) as used`)[0]?.used),
     partNumbers: (await sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
                     where item_id = ${id} order by kind, part_no`) as unknown as PartNo[],
     parts: (item.parts ?? []) as { a: string; o: string }[],

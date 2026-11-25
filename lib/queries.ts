@@ -4623,12 +4623,15 @@ export async function getPriceList(companyId: string) {
     ), un as (
       select i.id as item_id, i.base_uom_id as uom_id, 1::float as factor, true as is_base
         from item i where i.company_id = ${companyId} and i.is_active
+         and not exists (select 1 from item c where c.parent_item_id = i.id)
       union all
       select iu.item_id, iu.uom_id, iu.factor::float, false
         from item_uom iu join item i on i.id = iu.item_id
        where i.company_id = ${companyId} and i.is_active
+         and not exists (select 1 from item c where c.parent_item_id = i.id)
     )
-    select i.id as item_id, i.code, i.name, i.base_uom_id,
+    select i.id as item_id, i.code, i.name, i.base_uom_id, i.parent_item_id,
+           (select p.name from item p where p.id = i.parent_item_id) as model_name,
            un.uom_id, u.code as uom_code, un.factor, un.is_base, bu.code as base_code,
            pl.id as level_id, pl.name as level_name, pl.sort_order,
            h.price, to_char(h.valid_from, 'YYYY-MM-DD') as valid_from,
