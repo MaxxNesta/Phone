@@ -102,6 +102,7 @@ export default async function PurchaseInvoices({
   const rows: DataRow[] = invoices.map((i) => ({
     key: i.document_id,
     searchText: [i.doc_no, i.old_ref, i.source_ref, i.partner_name].filter(Boolean).join(" "),
+    facet: { supplier: i.partner_id ?? "" },
     sort: {
       doc_no: i.doc_no ?? "",
       kind: i.imported ? "Imported historical" : i.source_ref ? "Imported" : "Normal",
@@ -243,6 +244,11 @@ export default async function PurchaseInvoices({
             emptyLabel="No purchase invoices"
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}
+            // One supplier or several; the dates come from the table's own date filter.
+            filters={[{ key: "supplier", allLabel: "All suppliers", label: "Suppliers", multi: true,
+              options: [...new Map(invoices.filter((i) => i.partner_id && i.partner_name)
+                .map((i) => [i.partner_id as string, i.partner_name as string])).entries()]
+                .sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label })) }]}
             toolbarEnd={<PurchaseInvoiceExport />}
             columns={[
               { key: "doc_no", label: "Invoice #", sortable: true },

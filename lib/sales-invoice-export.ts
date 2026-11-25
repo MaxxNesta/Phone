@@ -29,7 +29,8 @@ export async function salesExportIds(sp: Record<string, string>): Promise<string
     if (window && (t < window[0] || t >= window[1])) return false;
     if (needle && ![r.doc_no, r.partner_name].filter(Boolean).join(" ").toLowerCase().includes(needle)) return false;
     if (sp.f_channel && (r.channel ?? "INVOICE") !== sp.f_channel) return false;
-    if (sp.f_customer && r.partner_name !== sp.f_customer) return false;
+    // One customer or several (the list's checklist): their ids, comma-joined.
+    if (sp.f_customer && !sp.f_customer.split(",").includes(r.partner_id)) return false;
     if (sp.customer && r.partner_id !== sp.customer) return false;
     if (sp.status && invoiceDisplayStatus({ docStatus: "POSTED", paymentStatus: r.payment_status,
       outstanding: r.outstanding, daysOverdue: r.days_overdue }) !== sp.status) return false;

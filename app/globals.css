@@ -12350,3 +12350,14 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .idt-pair { align-items: start; }
 .idt-pair table td, .idt-pair table th { padding-top: 7px; padding-bottom: 7px; }
 @media (max-width: 640px) { .idt-facts .idt-wide { grid-column: 1 / -1; } }
+
+/* A filter of several values (2026-11-25): a checklist with a search box. */
+.dt-multi { position: relative; }
+.dt-multi-btn { text-align: left; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dt-multi-menu { left: 0; right: auto; width: 18rem; max-height: none; overflow: visible; }
+.dt-multi-find { width: 100%; margin-bottom: 4px; }
+.dt-multi-list { max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.dt-multi-list .dt-cols-item span { white-space: normal; }
+.dt-multi-none { padding: 8px; color: var(--muted); font-size: var(--t-sm); }
+.dt-multi-foot { display: flex; justify-content: space-between; gap: 8px; padding-top: 6px; margin-top: 4px; border-top: 1px solid var(--line-soft); }
+.dt-chip { max-width: 40rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

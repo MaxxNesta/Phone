@@ -24,7 +24,14 @@ export type Filter = {
   label?: string;
   /** Kept under "More filters" rather than on the bar. */
   more?: boolean;
+  /** Several values at once (2026-11-25): a searchable checklist, the values
+   *  joined by commas in f_<key>. Values must not hold a comma (ids do not). */
+  multi?: boolean;
 };
+
+/** A row's facet against a filter's value: equal, or one of a multi filter's comma-joined values. */
+export const facetMatches = (want: string, have: string | undefined) =>
+  want === have || (want.includes(",") && have !== undefined && want.split(",").includes(have));
 
 /** A field that exists only in the export — never on screen, never hideable. */
 export type CsvExtra = { key: string; label: string };
@@ -184,9 +191,12 @@ export function DataTable({
   };
   const [moreOpen, setMoreOpen] = useState(false);
   const [dates, setDates] = useState<DateRange>(server?.dates ?? ANY_DATE);
+  // A server list keeps its date filter while a window is set, even one that
+  // left nothing on the page: the control must stay to be widened again.
   const hasDates = useMemo(
-    () => rows.some((r) => typeof r.sort?.[dateKey] === "number" && (r.sort[dateKey] as number) > 0),
-    [rows, dateKey]);
+    () => Boolean(server?.dates?.preset || server?.dates?.from || server?.dates?.to)
+      || rows.some((r) => typeof r.sort?.[dateKey] === "number" && (r.sort[dateKey] as number) > 0),
+    [rows, dateKey, server]);
   const [hidden, setHidden] = useState<string[]>(defaultHidden);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [page, setPageHere] = useState(1);
@@ -260,7 +270,7 @@ export function DataTable({
         const t = r.sort?.[dateKey];
         if (typeof t !== "number" || t <= 0 || t < window[0] || t >= window[1]) return false;
       }
-      return chosen.every(([k, v]) => r.facet?.[k] === v);
+      return chosen.every(([k, v]) => facetMatches(v, r.facet?.[k]));
     });
   }, [rows, q, picked, hasDates, dates, dateKey, server]);
 
@@ -327,7 +337,9 @@ export function DataTable({
     setPicked((p) => ({ ...p, [key]: value }));
     if (server) nav({ [`f_${key}`]: value || null });
   };
-  const filterSelect = (f: Filter) => (
+  const filterSelect = (f: Filter) => f.multi ? (
+    <MultiFilter key={f.key} filter={f} value={picked[f.key] ?? ""} onApply={(v) => setFilter(f.key, v)} />
+  ) : (
     <select
       key={f.key}
       aria-label={f.allLabel}
@@ -470,13 +482,18 @@ export function DataTable({
         <div className="dt-chips">
           {active.map((f) => (
             <span key={f.key} className="dt-chip">
-              {f.label ?? f.allLabel}: {f.options.find((o) => o.value === picked[f.key])?.label ?? picked[f.key]}
+              {f.label ?? f.allLabel}: {picked[f.key].split(f.multi ? "," : " ")
+                .map((v) => f.options.find((o) => o.value === v)?.label ?? v).join(", ")}
               <button type="button" aria-label={dt("removeFilter")} onClick={() => setFilter(f.key, "")}>
                 <X size={12} aria-hidden="true" />
               </button>
             </span>
           ))}
-          <button type="button" className="ghost tiny" onClick={() => setPicked({})}>{dt("clearAll")}</button>
+          <button type="button" className="ghost tiny" onClick={() => {
+            setPicked({});
+            // A server list keeps its filters in the address: clearing them is clearing those too.
+            if (server) nav(Object.fromEntries(active.map((f) => [`f_${f.key}`, null])));
+          }}>{dt("clearAll")}</button>
         </div>
       )}
 
@@ -576,5 +593,59 @@ export function DataTable({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * A filter that takes several values: a button saying what is chosen, and a
+ * checklist with a search box (a shop has hundreds of customers). The choice
+ * is applied when the list closes, so ticking five names is one reload.
+ */
+function MultiFilter({ filter, value, onApply }: { filter: Filter; value: string; onApply: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [find, setFind] = useState("");
+  const [chosen, setChosen] = useState<string[]>(value ? value.split(",") : []);
+  useEffect(() => { setChosen(value ? value.split(",") : []); }, [value]);
+  const close = () => {
+    setOpen(false); setFind("");
+    const next = chosen.join(",");
+    if (next !== value) onApply(next);
+  };
+  const label = chosen.length === 0 ? filter.allLabel
+    : chosen.length === 1 ? (filter.options.find((o) => o.value === chosen[0])?.label ?? "1 chosen")
+    : `${chosen.length} ${(filter.label ?? filter.allLabel.replace(/^All /, "")).toLowerCase()}`;
+  const shown = filter.options.filter((o) => !find || o.label.toLowerCase().includes(find.toLowerCase()));
+  // What is ticked first, so a long list does not hide the choice.
+  shown.sort((a, b) => Number(chosen.includes(b.value)) - Number(chosen.includes(a.value)));
+  return (
+    <div className="dt-cols dt-multi">
+      <button type="button" className={`dt-filter dt-multi-btn${chosen.length ? " dt-filter-on" : ""}`}
+              aria-expanded={open} aria-label={filter.allLabel} onClick={() => (open ? close() : setOpen(true))}>
+        <span>{label}</span>
+      </button>
+      {open && (
+        <>
+          <div className="dt-cols-scrim" onClick={close} aria-hidden="true" />
+          <div className="dt-cols-menu dt-multi-menu" role="group" aria-label={filter.allLabel}>
+            <input type="search" className="dt-multi-find" placeholder="Search" value={find} autoFocus
+                   onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" || e.key === "Enter") close(); }} />
+            <div className="dt-multi-list">
+              {shown.map((o) => (
+                <label key={o.value} className="dt-cols-item">
+                  <input type="checkbox" checked={chosen.includes(o.value)}
+                         onChange={() => setChosen((c) => (c.includes(o.value) ? c.filter((x) => x !== o.value) : [...c, o.value]))} />
+                  <span>{o.label}</span>
+                </label>
+              ))}
+              {shown.length === 0 && <span className="dt-multi-none">Nothing matches.</span>}
+            </div>
+            <div className="dt-multi-foot">
+              <button type="button" className="btn ghost tiny" onClick={() => setChosen([])} disabled={chosen.length === 0}>Clear</button>
+              <button type="button" className="btn tiny" onClick={close}>Done</button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

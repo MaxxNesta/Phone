@@ -32,7 +32,9 @@ export function serverPage(
       const t = r.sort?.[dateKey];
       if (typeof t !== "number" || t <= 0 || t < window[0] || t >= window[1]) return false;
     }
-    return Object.entries(filters).every(([k, v]) => r.facet?.[k] === v);
+    // Equal, or one of a multi filter's comma-joined values (components/data-table facetMatches).
+    return Object.entries(filters).every(([k, v]) => v === r.facet?.[k]
+      || (v.includes(",") && r.facet?.[k] !== undefined && v.split(",").includes(r.facet[k])));
   });
 
   const known = sp.sort && rows.some((r) => r.sort && sp.sort! in r.sort);

@@ -28,6 +28,8 @@ export async function purchaseExportIds(sp: Record<string, string>): Promise<str
     if (window && (t < window[0] || t >= window[1])) return false;
     if (needle && ![r.doc_no, r.source_ref, r.partner_name].filter(Boolean).join(" ").toLowerCase().includes(needle)) return false;
     if (sp.supplier && r.partner_id !== sp.supplier) return false;
+    // The list's supplier checklist: one or several ids, comma-joined.
+    if (sp.f_supplier && !sp.f_supplier.split(",").includes(r.partner_id)) return false;
     if (sp.status && invoiceDisplayStatus({ docStatus: "POSTED", paymentStatus: r.payment_status,
       outstanding: r.outstanding, daysOverdue: r.days_overdue }) !== sp.status) return false;
     return true;

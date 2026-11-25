@@ -93,7 +93,7 @@ export default async function SalesInvoices({
   const rows: DataRow[] = invoices.map((i) => ({
     key: i.document_id,
     searchText: [i.doc_no, i.partner_name].filter(Boolean).join(" "),
-    facet: { channel: i.channel ?? "INVOICE", customer: i.partner_name ?? "" },
+    facet: { channel: i.channel ?? "INVOICE", customer: i.partner_id ?? "" },
     sort: {
       doc_no: i.doc_no ?? "",
       posting_date: toTime(i.posting_date),
@@ -243,10 +243,11 @@ export default async function SalesInvoices({
             defaultSort={{ key: "posting_date", dir: "desc" }}
             filters={[{ key: "channel", allLabel: "All channels",
                         options: [{ value: "POS", label: "Counter sale" }, { value: "INVOICE", label: "Sales invoice" }, { value: "COD", label: "Cash on delivery" }] },
-                      // One customer's invoices: what a statement or an export for one shop starts from.
-                      { key: "customer", allLabel: "All customers",
-                        options: [...new Set(invoices.map((i) => i.partner_name).filter(Boolean) as string[])].sort()
-                          .map((n) => ({ value: n, label: n })) }]}
+                      // Some customers' invoices: what a statement or an export for a few shops starts from.
+                      { key: "customer", allLabel: "All customers", label: "Customers", multi: true,
+                        options: [...new Map(invoices.filter((i) => i.partner_id && i.partner_name)
+                          .map((i) => [i.partner_id as string, i.partner_name as string])).entries()]
+                          .sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label })) }]}
             toolbarEnd={<SalesInvoiceExport />}
             columns={[
               { key: "doc_no", label: "Invoice #", sortable: true },
