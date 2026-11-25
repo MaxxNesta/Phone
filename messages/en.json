@@ -496,6 +496,7 @@
     "inQuarantine": "{qty} of them in quarantine bins, not for sale",
     "quarantineBin": "Quarantine",
     "inQuarantineShort": "{qty} in quarantine",
+    "variant": "Variant",
     "noneInStock": "None in stock.",
     "variants": "Variants",
     "recentMovements": "Recent movements",

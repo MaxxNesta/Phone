@@ -130,7 +130,8 @@ export default async function ItemPage({
 
   const onHand = stock.reduce((s, r) => s + Number(r.qty_on_hand), 0);
   const held = stock.filter((r) => r.is_quarantine).reduce((s, r) => s + Number(r.qty_on_hand), 0);
-  const recent = movements.slice(0, 12);
+  // Newest first: the list comes oldest first, for the stock card.
+  const recent = movements.slice(-12).reverse();
 
   return (
     <>
@@ -349,7 +350,7 @@ export default async function ItemPage({
               <table>
                 <thead>
                   <tr>
-                    <th>{c("date")}</th><th>{c("document")}</th><th>{c("warehouse")}</th>
+                    <th>{c("date")}</th>{isModel && <th>{t("variant")}</th>}<th>{c("document")}</th><th>{c("warehouse")}</th>
                     <th className="r">{c("quantity")}</th>{seeCost && <th className="r">{t("unitCost")}</th>}
                   </tr>
                 </thead>
@@ -357,6 +358,7 @@ export default async function ItemPage({
                   {recent.map((m) => (
                     <tr key={m.id}>
                       <td>{String(m.movement_date).slice(0, 10)}</td>
+                      {isModel && <td className="wrap"><span className="code">{m.item_code}</span><div className="subline">{m.item_name}</div></td>}
                       <td>
                         <Link href={`/documents/${m.document_id}`}
                               style={{ color: "var(--link)" }}>

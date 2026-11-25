@@ -496,6 +496,7 @@
     "inQuarantine": "ယင်းအနက် {qty} ခုသည် quarantine bin တွင်ရှိပြီး ရောင်းရန်မဟုတ်ပါ",
     "quarantineBin": "Quarantine",
     "inQuarantineShort": "Quarantine {qty} ခု",
+    "variant": "Variant",
     "noneInStock": "လက်ကျန် မရှိပါ။",
     "variants": "မျိုးကွဲများ",
     "recentMovements": "မကြာမီက အဝင်အထွက်",

@@ -3946,7 +3946,10 @@ export async function getStockMovements(
        -- anywhere: it is not stock coming or going, so it is not listed.
        and sm.kind is null
        ${locs ? sql`and sm.location_id = any(${locs})` : sql``}
-       and (${itemId ?? null}::uuid is null or sm.item_id = ${itemId ?? null})
+       -- An item, or a model's variants: the model itself never moves (it
+       -- cannot be on a document line), its variants are what moved.
+       and (${itemId ?? null}::uuid is null
+            or sm.item_id in (select ${itemId ?? null}::uuid union all select id from item where parent_item_id = ${itemId ?? null}))
        and (${categoryId}::uuid is null or i.item_group_id = ${categoryId})
        and (${from ?? null}::date is null or sm.movement_date >= ${from ?? null})
        and (${to ?? null}::date is null or sm.movement_date <= ${to ?? null})
@@ -3967,7 +3970,8 @@ export async function getStockOpeningBalance(
   const [row] = await sql`
     select coalesce(sum(qty), 0) as qty
       from stock_movement
-     where company_id = ${companyId} and item_id = ${itemId}
+     where company_id = ${companyId}
+       and item_id in (select ${itemId}::uuid union all select id from item where parent_item_id = ${itemId})
        and movement_date < ${before}`;
   return Number(row?.qty ?? 0);
 }

@@ -43,14 +43,12 @@ export default async function StockMovements({
     variant_count: number; variant: unknown; photo_version: string | null;
   }>;
   /**
-   * A product with variants is left out.
-   *
-   * It cannot appear on a document line — fn_document_line_not_parent
-   * refuses it — so it can never have a movement, and offering it here only
-   * leads to "nothing has moved on this item yet" about a shirt with a
-   * hundred and ten pieces on the shelf. The variants are what moved.
+   * A product with variants stands for its variants (2026-11-25): it cannot
+   * be on a document line itself (fn_document_line_not_parent), so choosing
+   * it lists every variant's movements, each row saying which variant, with
+   * the balance of them all together.
    */
-  const items = allItems.filter((i) => i.is_stocked && i.variant_count === 0);
+  const items = allItems.filter((i) => i.is_stocked);
 
   /**
    * Everything, unless one item is asked for.
@@ -62,6 +60,7 @@ export default async function StockMovements({
    */
   const selected = item && item !== "all" ? items.find((i) => i.id === item) ?? null : null;
   const oneItem = selected !== null;
+  const family = !!selected && selected.variant_count > 0;
 
   // Narrowed to one product category: what the supply-chain canvas links here with.
   const categories = (await sql`select id, name from item_group where company_id = ${company.id} and is_active order by name`) as unknown as { id: string; name: string }[];
@@ -121,7 +120,7 @@ export default async function StockMovements({
     node: (
       <tr>
         <td className="code">{shortDate(r.movement_date)}</td>
-        {!oneItem && (
+        {(!oneItem || family) && (
           <td className="wrap">
             <span className="m">{r.item_code}</span>
             <div className="subline">{r.item_name}</div>
@@ -160,7 +159,7 @@ export default async function StockMovements({
 
   const columns = [
     { key: "date", label: c("date") },
-    ...(!oneItem ? [{ key: "item", label: t("item") }] : []),
+    ...(!oneItem || family ? [{ key: "item", label: t("item") }] : []),
     { key: "document", label: c("document") },
     { key: "location", label: t("mov.location") },
     { key: "condition", label: "Condition" },
