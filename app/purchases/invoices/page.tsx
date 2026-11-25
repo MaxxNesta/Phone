@@ -6,6 +6,7 @@ import {
   type InvoiceDisplayStatus,
 } from "@/lib/format";
 import { getCompany, getInvoiceList, getDocumentDrafts } from "@/lib/queries";
+import { PurchaseInvoiceExport } from "@/components/sales-invoice-export";
 import { DataTable, type DataRow } from "@/components/data-table";
 import { serverPage } from "@/lib/server-page";
 import { HelpHint } from "@/components/help-hint";
@@ -242,6 +243,7 @@ export default async function PurchaseInvoices({
             emptyLabel="No purchase invoices"
             searchPlaceholder="Search invoices…"
             defaultSort={{ key: "posting_date", dir: "desc" }}
+            toolbarEnd={<PurchaseInvoiceExport />}
             columns={[
               { key: "doc_no", label: "Invoice #", sortable: true },
               { key: "kind", label: "Type", sortable: true },
