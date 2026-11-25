@@ -16,18 +16,21 @@ import type { RatioKey, RatioWindow } from "@/lib/financial-ratios";
  * a year read alike and the usual ranges hold for both.
  */
 type Group = { id: string; tab: string; title: string; question: string; rows: Row[] };
-type Row = { k: RatioKey; says: string; scale: [number, number]; band: [number, number]; annual?: boolean; of: string };
+/* `of` names what a ratio divides by. `top` names what it divides, for the
+   ratios where that cannot really be below zero: a loss makes a margin
+   negative, but nobody holds less than no cash or owes less than nothing. */
+type Row = { k: RatioKey; says: string; scale: [number, number]; band: [number, number]; annual?: boolean; of: string; top?: string };
 
 const GROUPS: Group[] = [
   { id: "liq", tab: "liquidity", title: "Liquidity", question: "Can the bills be paid?", rows: [
-    { k: "current", says: "Current assets over what falls due within a year.", scale: [0, 3], band: [1.2, 2], of: "current liabilities" },
-    { k: "quick", says: "The same, stock left out.", scale: [0, 1.5], band: [0.5, 1], of: "current liabilities" },
-    { k: "cash", says: "Cash and bank alone.", scale: [0, 1], band: [0.2, 0.5], of: "current liabilities" },
+    { k: "current", says: "Current assets over what falls due within a year.", scale: [0, 3], band: [1.2, 2], of: "current liabilities", top: "Current assets are" },
+    { k: "quick", says: "The same, stock left out.", scale: [0, 1.5], band: [0.5, 1], of: "current liabilities", top: "Current assets other than stock are" },
+    { k: "cash", says: "Cash and bank alone.", scale: [0, 1], band: [0.2, 0.5], of: "current liabilities", top: "Cash and bank are" },
   ] },
   { id: "eff", tab: "working-capital", title: "Working capital", question: "How fast does money turn?", rows: [
-    { k: "receivableTurnover", says: "Sales a year per kyat customers owe.", scale: [0, 30], band: [12, 30], annual: true, of: "receivables" },
-    { k: "debtorsTurnover", says: "Cash collected a year per kyat customers owe.", scale: [0, 30], band: [12, 30], annual: true, of: "receivables" },
-    { k: "creditorsTurnover", says: "Supplier bills a year per kyat owed to them.", scale: [0, 12], band: [3, 8], annual: true, of: "payables" },
+    { k: "receivableTurnover", says: "Sales a year per kyat customers owe.", scale: [0, 30], band: [12, 30], annual: true, of: "receivables", top: "Sales are" },
+    { k: "debtorsTurnover", says: "Cash collected a year per kyat customers owe.", scale: [0, 30], band: [12, 30], annual: true, of: "receivables", top: "Cash collected from customers is" },
+    { k: "creditorsTurnover", says: "Supplier bills a year per kyat owed to them.", scale: [0, 12], band: [3, 8], annual: true, of: "payables", top: "Supplier bills are" },
   ] },
   { id: "pro", tab: "profitability", title: "Profitability", question: "Is it worth it?", rows: [
     { k: "grossMargin", says: "Left of each sale after the cost of the goods.", scale: [0, 30], band: [10, 30], of: "sales" },
@@ -37,8 +40,8 @@ const GROUPS: Group[] = [
     { k: "roe", says: "Profit a year on the owners' money.", scale: [0, 40], band: [15, 40], annual: true, of: "equity" },
   ] },
   { id: "risk", tab: "risk", title: "Leverage and risk", question: "How much is borrowed?", rows: [
-    { k: "debtToEquity", says: "Loans against the owners' equity.", scale: [0, 2], band: [0, 1], of: "equity" },
-    { k: "liabilitiesToEquity", says: "Everything owed, suppliers included.", scale: [0, 3], band: [0, 1.5], of: "equity" },
+    { k: "debtToEquity", says: "Loans against the owners' equity.", scale: [0, 2], band: [0, 1], of: "equity", top: "Debt is" },
+    { k: "liabilitiesToEquity", says: "Everything owed, suppliers included.", scale: [0, 3], band: [0, 1.5], of: "equity", top: "Liabilities are" },
     { k: "interestCover", says: "Times operating profit covers interest.", scale: [0, 30], band: [5, 30], of: "interest" },
   ] },
 ];
@@ -47,9 +50,10 @@ const ROWS = new Map(GROUPS.flatMap((g) => g.rows.map((r) => [r.k, r] as const))
 /** A ratio read off one window: its value, or why there is none. */
 type Read = { v: number | null; bad?: string; nil?: string };
 function read(w: RatioWindow, k: RatioKey): Read {
-  const row = ROWS.get(k), [, den] = RATIO[k].parts(w);
+  const row = ROWS.get(k), [top, den] = RATIO[k].parts(w);
   if (Math.abs(den) < 0.0001) return { v: null, nil: `No ${row?.of ?? "base"} to divide by` };
   if (den < 0) return { v: null, bad: `${cap(row?.of ?? "the base")} ${row?.of.endsWith("s") ? "are" : "is"} below zero (${money(den)})` };
+  if (row?.top && top < -0.0001) return { v: null, bad: `${row.top} below zero (${money(top)})` };
   const v = w.ratios[k];
   return { v: v == null ? null : row?.annual ? v * (365 / w.days) : v };
 }
@@ -132,9 +136,8 @@ export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }
       : roe.v == null ? null
       : roe.v >= 0 ? <>the owners earned <strong>{show("pct", roe.v)}</strong>{yearly} on their money</>
       : <>the owners lost <strong className="neg">{show("pct", -roe.v)}</strong>{yearly} of their money</>,
-    cur.bad ? <>current liabilities read below zero, which needs a look</>
+    cur.bad ? <>{now.currentAssets < 0 ? "current assets" : "current liabilities"} read <strong className="neg">below zero</strong>, which needs a look</>
       : cur.v == null ? null
-      : cur.v < 0 ? <>current assets read <strong className="neg">below zero</strong>, which needs a look</>
       : <>every 100 kyat due within a year is covered by <strong className={cur.v < 1 ? "neg" : undefined}>{num(cur.v * 100, "plain")} kyat</strong> of current assets</>,
   ].filter(Boolean);
   const lead = phrase === "this month" ? "This month" : `In ${phrase}`;
@@ -165,7 +168,11 @@ export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }
   const issues: { href: string; text: string }[] = [];
   for (const g of GROUPS) for (const row of g.rows) {
     const r = R(row.k), label = RATIO[row.k].label.replace(/ \(.*\)$/, "");
-    if (r.bad) issues.push({ href: report(g.tab), text: `${label} cannot be read: ${r.bad[0].toLowerCase()}${r.bad.slice(1)}.` });
+    if (r.bad) {
+      const where = g.id === "liq" && row.k !== "cash" && now.inventory < 0 ? { href: "/inventory/negative-stock", also: " Stock is below zero: see Negative stock." }
+        : g.id === "liq" || g.id === "risk" ? { href: "/finance/balance-sheet", also: " See the balance sheet." } : { href: report(g.tab), also: "" };
+      issues.push({ href: where.href, text: `${label} cannot be read: ${r.bad[0].toLowerCase()}${r.bad.slice(1)}.${where.also}` });
+    }
     else if (r.v != null && worse(row, r.v, RATIO[row.k].lowerIsBetter)) {
       const kind = RATIO[row.k].kind;
       issues.push({ href: report(g.tab), text: `${label} is ${show(kind, r.v)}, ${RATIO[row.k].lowerIsBetter ? "above" : "below"} the usual ${show(kind, row.band[0])} to ${show(kind, row.band[1])}.` });
@@ -238,7 +245,7 @@ export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }
                 <td className="r">{show(RATIO[row.k].kind, row.band[0])} to {show(RATIO[row.k].kind, row.band[1])}</td></tr>
             ))}
             <tr className="xd-muted"><td colSpan={3}>The usual range is a common guide for a retail shop, not a rule: the dot is blue inside it and amber outside, with an arrow when it is off the bar.
-              A ratio is not meaningful when what it divides by is below zero. Turnovers and returns are put on a year&apos;s pace so a month and a year read alike.</td></tr>
+              A ratio is not meaningful when what it divides by is below zero, or when cash, stock, sales, debt or what is owed reads below zero: no real business holds less than none, so that is the books, not the business. Turnovers and returns are put on a year&apos;s pace so a month and a year read alike.</td></tr>
           </tbody></table>
         </details>
         <p className="xd-links"><Link href={report("overview")}>Open the full financial ratios report</Link></p>
