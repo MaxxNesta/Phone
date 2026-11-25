@@ -781,11 +781,12 @@ export function foldToModels(rows: any[]) {
     if (!m) {
       at.set(r.model_id, { ...r, id: r.model_id, name: r.model, variant: null, codes: [r.code], variants: 1,
         qty: Number(r.qty), value: Number(r.value), reserved: Number(r.reserved), available: Number(r.available),
-        min_qty: r.min_qty != null ? Number(r.min_qty) : null });
+        quarantine: Number(r.quarantine ?? 0), min_qty: r.min_qty != null ? Number(r.min_qty) : null });
       continue;
     }
     m.codes.push(r.code); m.variants++;
     m.qty += Number(r.qty); m.value += Number(r.value); m.reserved += Number(r.reserved); m.available += Number(r.available);
+    m.quarantine += Number(r.quarantine ?? 0);
     if (r.min_qty != null) m.min_qty = (m.min_qty ?? 0) + Number(r.min_qty);
     m.tracks_serial = m.tracks_serial || r.tracks_serial;
     m.photo = m.photo ?? r.photo;

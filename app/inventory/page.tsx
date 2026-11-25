@@ -451,7 +451,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
                     </span>
                   </td>
                   <td>{r.category}</td>
-                  <td className="num">{r.qty}</td>
+                  {/* On hand counts the quarantine bins (0218); when it does, it says so. */}
+                  <td className="num">{r.qty}{Number(r.quarantine) > 0 && <div className="subline">incl. {Number(r.quarantine).toLocaleString("en-US")} in quarantine</div>}</td>
                   {seeCost && <td className="num">{money(r.value)}</td>}
                   <td>{statusPill(r.status)}</td>
                   <td className="inv-go"><Link href={`/items/${r.id}`} aria-label={`Open ${r.model}`}><ChevronRight size={16} aria-hidden="true" /></Link></td>

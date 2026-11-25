@@ -79,6 +79,10 @@ export default async function ItemPage({
   if (!item) notFound();
 
   const partNos = await sql`select kind, part_no, maker from item_part_number where item_id = ${id} order by kind, part_no`;
+  /* A model (a product with variants) is never sold itself: its variants are
+     (fn_document_line_not_parent). So it shows no prices of its own, and its
+     stock is its variants' stock, added up per warehouse. */
+  const isModel = item.variant_count > 0;
   const [packs, prices, stock, movements, variants] = await Promise.all([
     sql`select u.code, u.name_my as my, iu.factor, iu.sale_price,
                (select bu.name_my from item bi join uom bu on bu.id = bi.base_uom_id where bi.id = ${id}) as base_my
@@ -88,7 +92,7 @@ export default async function ItemPage({
       Array<{ code: string; my: string | null; factor: string; sale_price: string | null; base_my: string | null }>>,
     // The price standing today at each level — a future-dated price is
     // real but not yet the answer, so it is not shown as one.
-    sql`select pl.name as level, pl.sort_order, ip.price, u.code as uom_code,
+    isModel ? Promise.resolve([]) : sql`select pl.name as level, pl.sort_order, ip.price, u.code as uom_code,
                to_char(ip.valid_from, 'YYYY-MM-DD') as valid_from
           from price_level pl
           left join lateral (
@@ -101,18 +105,31 @@ export default async function ItemPage({
          where pl.company_id = ${company.id}
          order by pl.sort_order, pl.code` as unknown as Promise<
       Array<{ level: string; price: string | null; uom_code: string | null; valid_from: string | null }>>,
-    sql`select l.code, l.name, s.qty_on_hand
+    // Quarantine bins (0218) are stock but not for sale: marked, and said in the total.
+    sql`select l.code, l.name, l.is_quarantine, sum(s.qty_on_hand) as qty_on_hand
           from v_stock_on_hand s join location l on l.id = s.location_id
-         where s.item_id = ${id} and s.qty_on_hand <> 0
+         where s.item_id in (select ${id}::uuid union all select id from item where parent_item_id = ${id})
+         group by l.code, l.name, l.is_quarantine
+        having sum(s.qty_on_hand) <> 0
          order by l.code` as unknown as Promise<
-      Array<{ code: string; name: string; qty_on_hand: string }>>,
+      Array<{ code: string; name: string; is_quarantine: boolean; qty_on_hand: string }>>,
     seenLocations().then((locs) => getStockMovements(company.id, id, null, null, locs)) as unknown as Promise<any[]>,
-    sql`select i.id, i.code, i.name from item i
-         where i.parent_item_id = ${id} order by i.code` as unknown as Promise<
-      Array<{ id: string; code: string; name: string }>>,
+    // Each variant with what it holds, the quarantine part apart: one read of the stock view for them all.
+    isModel ? sql`
+      with q as (
+        select s.item_id, sum(s.qty_on_hand)::float as qty,
+               coalesce(sum(s.qty_on_hand) filter (where l.is_quarantine), 0)::float as quarantine
+          from v_stock_on_hand s join location l on l.id = s.location_id
+         where s.item_id in (select id from item where parent_item_id = ${id})
+         group by s.item_id)
+      select i.id, i.code, i.name, coalesce(q.qty, 0) as qty, coalesce(q.quarantine, 0) as quarantine
+        from item i left join q on q.item_id = i.id
+       where i.parent_item_id = ${id} order by i.code` as unknown as Promise<
+      Array<{ id: string; code: string; name: string; qty: number; quarantine: number }>> : Promise.resolve([]),
   ]);
 
   const onHand = stock.reduce((s, r) => s + Number(r.qty_on_hand), 0);
+  const held = stock.filter((r) => r.is_quarantine).reduce((s, r) => s + Number(r.qty_on_hand), 0);
   const recent = movements.slice(0, 12);
 
   return (
@@ -157,7 +174,7 @@ export default async function ItemPage({
         )}
       </div>
 
-      <section className="grid2">
+      <section className={isModel ? undefined : "grid2"}>
         <div className="card">
           <div className="card-head">
             <div className="headwith">
@@ -197,6 +214,12 @@ export default async function ItemPage({
                   price: p.sale_price == null ? null : Number(p.sale_price) }))} />
               )}
             </div>
+            {isModel && (
+              <div className="field" style={{ marginTop: "var(--s2)" }}>
+                <label>{t("prices")}</label>
+                <span className="hint">{t("pricesOnVariants")}</span>
+              </div>
+            )}
             {partNos.length > 0 && (
               <div className="field" style={{ marginTop: "var(--s2)" }}>
                 <label>Part numbers</label>
@@ -220,7 +243,7 @@ export default async function ItemPage({
           </div>
         </div>
 
-        <div className="card">
+        {isModel ? null : <div className="card">
           <div className="card-head">
             <h2>{t("prices")}</h2>
             <span className="page-sub">{t("pricesSub")}</span>
@@ -246,7 +269,7 @@ export default async function ItemPage({
               </tbody>
             </table>
           </div>
-        </div>
+        </div>}
       </section>
 
       {item.is_stocked && (
@@ -256,6 +279,7 @@ export default async function ItemPage({
               <h2>{t("onHand")}</h2>
               <span className="page-sub">
                 {t("onHandSub", { qty: qty(onHand), unit: item.uom_code, n: stock.length })}
+                {held > 0 && <> · {t("inQuarantine", { qty: qty(held) })}</>}
               </span>
             </div>
             {stock.length === 0 ? (
@@ -269,7 +293,8 @@ export default async function ItemPage({
                   <tbody>
                     {stock.map((s) => (
                       <tr key={s.code}>
-                        <td><span className="code">{s.code}</span> {s.name}</td>
+                        <td><span className="code">{s.code}</span> {s.name}
+                          {s.is_quarantine && <> <span className="pill warn">{t("quarantineBin")}</span></>}</td>
                         <td className="r">{qty(s.qty_on_hand)} {item.uom_code}</td>
                       </tr>
                     ))}
@@ -290,6 +315,7 @@ export default async function ItemPage({
             </div>
             <div className="tablewrap">
               <table>
+                <thead><tr><th>{c("code")}</th><th>{c("name")}</th><th className="r">{t("onHand")}</th></tr></thead>
                 <tbody>
                   {variants.map((v) => (
                     <tr key={v.id}>
@@ -299,6 +325,10 @@ export default async function ItemPage({
                         </Link>
                       </td>
                       <td className="wrap">{v.name}</td>
+                      <td className="r">
+                        {v.qty ? `${qty(v.qty)} ${item.uom_code}` : <span className="page-sub">—</span>}
+                        {v.quarantine > 0 && <div className="subline">{t("inQuarantineShort", { qty: qty(v.quarantine) })}</div>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
