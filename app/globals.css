@@ -12136,3 +12136,102 @@ html:has(.pl3-page) body, .main:has(.pl3-page) { background: #fff; }
 .pl3-check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; font-weight: 500; cursor: pointer; }
 .pl3-check input { width: 18px; height: 18px; margin-top: 2px; accent-color: #1D1D1F; }
 .pl3-check small { display: block; font-size: 13px; font-weight: 400; color: #6E6E73; margin-top: 2px; }
+
+/* ===================================================== product edit ====
+   /items/[id]/edit after the Astryx preview (2026-11-25): full width, each
+   section a row (title left, fields across), fields as thin underlines that
+   turn blue in use, no boxes and no spreadsheet grid. Scoped .ie3. */
+.ie3 { --ie3-ink: #1D1D1F; --ie3-sub: #6E6E73; --ie3-rule: #E5E5EA; --ie3-line: #D2D2D7; --ie3-fill: #F5F5F7; --ie3-blue: #0071E3;
+  color: var(--ie3-ink); width: 100%; }
+html:has(.ie3) body, .main:has(.ie3) { background: #fff; }
+.ie3-head { position: sticky; top: 0; z-index: 20; background: #fff; display: flex; align-items: flex-end; gap: 16px;
+  padding: 8px 0 20px; border-bottom: 1px solid var(--ie3-rule); }
+.ie3-head > div:first-child { flex: 1; min-width: 0; }
+.ie3-head h1 { margin: 0; font-size: 28px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ie3-head p { margin: 6px 0 0; font-size: 15px; color: var(--ie3-sub); }
+.ie3-head p a { color: var(--ie3-blue); text-decoration: none; }
+.ie3-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; background: #E8E8ED; font-size: 13px; font-weight: 500; color: var(--ie3-ink); }
+.ie3-badge.off { background: #FFF4E5; color: #8A4B00; }
+.ie3-acts { display: flex; align-items: center; gap: 8px; }
+.ie3-dirty { font-size: 13px; color: var(--ie3-sub); margin-right: 8px; }
+.ie3-btn { appearance: none; border: 0; border-radius: 10px; background: var(--ie3-fill); color: var(--ie3-ink); font: inherit; font-size: 15px; font-weight: 500;
+  min-height: 40px; padding: 0 16px; display: inline-flex; align-items: center; cursor: pointer; text-decoration: none; box-shadow: none; white-space: nowrap; }
+.ie3-btn:hover { background: #E8E8ED; }
+.ie3-btn.ghost { background: transparent; }
+.ie3-btn.ghost:hover { background: var(--ie3-fill); }
+.ie3-btn.primary { background: var(--ie3-ink); color: #fff; }
+.ie3-btn.primary:hover { background: #000; }
+.ie3-btn:disabled { opacity: 0.45; cursor: default; }
+
+.ie3-row { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; padding: 32px 0; border-bottom: 1px solid var(--ie3-rule); }
+.ie3-label h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.ie3-label p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; color: var(--ie3-sub); }
+.ie3-body { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+@media (max-width: 900px) { .ie3-row { grid-template-columns: 1fr; gap: 16px; padding: 24px 0; } }
+
+.ie3-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 28px; }
+.ie3-grid .wide { grid-column: span 2; }
+@media (max-width: 1100px) { .ie3-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ie3-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; font-size: 15px; }
+.ie3-field > span:first-child { font-size: 15px; font-weight: 400; color: var(--ie3-ink); display: inline-flex; align-items: center; gap: 4px; }
+.ie3-ro output { font-size: 15px; color: var(--ie3-sub); padding: 0 0 9px; border-bottom: 1px dashed var(--ie3-line); min-height: 30px; display: flex; align-items: flex-end; }
+.ie3-ro small { font-size: 12px; color: var(--ie3-sub); }
+.ie3-name { display: flex; align-items: center; gap: 6px; }
+.ie3-name input { flex: 1; }
+.ie3-reset { appearance: none; border: 0; background: none; box-shadow: none; min-height: 0; padding: 4px; color: var(--ie3-sub); cursor: pointer; }
+
+/* Fields as lines: every input and select in the editor, the pack, part-number and tracking forms included. */
+.ie3 .ie3-body :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]), select) {
+  height: 38px; border: 0; border-bottom: 1px solid var(--ie3-line); border-radius: 0; background-color: transparent; box-shadow: none;
+  padding: 0 2px; font: inherit; font-size: 15px; color: var(--ie3-ink); width: 100%; min-width: 0; }
+.ie3 .ie3-body :is(input, select):hover:not(:disabled) { border-bottom-color: #86868B; }
+.ie3 .ie3-body :is(input, select):focus { outline: none; border-bottom-color: var(--ie3-blue); box-shadow: 0 1px 0 0 var(--ie3-blue); }
+.ie3 .ie3-body input::placeholder { color: #AEAEB2; }
+.ie3 .ie3-body select { padding-right: 22px; }
+
+/* Sub-forms inside rows: their own cards, headings and grey fills go. */
+.ie3 .ie3-body :is(.card, .ie-card, .ie-track) { border: 0; box-shadow: none; background: none; padding: 0; margin: 0; border-radius: 0; }
+.ie3 .ie3-body :is(.ie-track h3, .card-head) { display: none; }
+.ie3 .ie3-body .field > label { font-size: 15px; font-weight: 400; color: var(--ie3-ink); text-transform: none; letter-spacing: 0; }
+.ie3 .ie3-body .packgrid-head { font-size: 13px; text-transform: none; letter-spacing: 0; }
+.ie3 .ie3-body .ladder, .ie3 .ie3-body .ladder-box { background: none; border-color: var(--ie3-rule); }
+.ie3 .ie3-body .ghost.tiny, .ie3 .ie3-body .linkish { color: var(--ie3-blue); background: none; box-shadow: none; }
+
+/* Tables: hairlines between rows, no grey header, no grid. */
+.ie3-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.ie3-table th { text-align: left; font-weight: 500; font-size: 13px; color: var(--ie3-sub); padding: 0 12px 10px 0; border-bottom: 1px solid var(--ie3-rule); background: none; text-transform: none; letter-spacing: 0; }
+.ie3-table td { padding: 12px 12px 12px 0; border-bottom: 1px solid var(--ie3-rule); background: #fff !important; }
+.ie3-table tr:last-child td { border-bottom: 0; }
+.ie3-table :is(th, td).r { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; }
+.ie3-table small { color: var(--ie3-sub); font-size: 13px; }
+.ie3-table a { color: var(--ie3-blue); text-decoration: none; }
+.ie3-table tr[aria-current="page"] td { font-weight: 600; }
+.ie3-none { color: var(--ie3-sub); }
+.ie3-hint { margin: 0; font-size: 13px; color: var(--ie3-sub); }
+.ie3-hint a { color: var(--ie3-blue); text-decoration: none; }
+.ie3-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; }
+.ie3-kpis output { color: var(--ie3-ink); font-size: 17px; font-weight: 600; }
+.ie3-search { max-width: 320px; }
+.ie3-variant { display: inline-flex; align-items: center; gap: 10px; }
+.ie3-variant img, .ie3-vthumb { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; background: var(--ie3-fill); flex: none; }
+
+/* Photo: whose it is, and a confirm before it is kept. */
+.ie3-photo { display: flex; gap: 20px; align-items: flex-start; }
+.ie3-shot { width: 112px; height: 112px; border-radius: 14px; overflow: hidden; background: var(--ie3-fill, #F5F5F7); flex: none; display: block; }
+.ie3-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ie3-shot.faded { opacity: 0.55; }
+.ie3-photo-text { display: flex; flex-direction: column; gap: 4px; }
+.ie3-photo-text strong { font-size: 15px; font-weight: 500; }
+.ie3-photo-text > span { font-size: 13px; color: var(--ie3-sub); }
+.ie3-photo-acts { display: flex; gap: 6px; margin-top: 8px; }
+.ie3-photo-acts .ie3-btn { min-height: 34px; font-size: 14px; padding: 0 12px; }
+.ie3-error { font-size: 13px; color: #C00; }
+.ie3-dialog-body { display: flex; flex-direction: column; gap: 12px; font-size: 15px; }
+.ie3-dialog-body p { margin: 0; line-height: 1.45; }
+.ie3-dialog { width: min(480px, calc(100vw - 32px)); }
+.ie3 .ie3-body .packgrid-qty { gap: 10px; }
+.ie3 .ie3-body .packgrid-qty input { width: 72px !important; flex: none; text-align: right; }
+.ie3 .ie3-body .packgrid-qty select { width: 96px !important; flex: none; }
+.ie3 .ie3-body .packgrid-qty .hint { white-space: nowrap; flex: none; }
+.ie3 .ie3-body .packgrid-head, .ie3 .ie3-body .packgrid-row { grid-template-columns: minmax(140px, 1fr) minmax(280px, 1.6fr) minmax(140px, 1fr) auto; gap: 20px; }
+.ie3 .ie3-field input[type="number"] { text-align: left; }

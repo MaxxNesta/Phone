@@ -21,6 +21,9 @@ export type PhotoBearing = {
   id: string;
   photo_version: string | null;
   parts: VariantPart[] | null;
+  /** The model this variant belongs to and its photo: every variant's default (2026-11-25). */
+  parent_item_id?: string | null;
+  parent_photo_version?: string | null;
 };
 
 export type VariantPhotos = {
@@ -74,15 +77,21 @@ export function variantPhotos(rows: PhotoBearing[]): VariantPhotos {
     }
   }
 
+  // The model's photo stands for every variant that has none of its own
+  // colour: the same rule the till follows (lib/phone.ts).
+  const modelPhoto = (row: PhotoBearing): PhotoBearing | null =>
+    row.parent_item_id && row.parent_photo_version
+      ? { id: row.parent_item_id, photo_version: row.parent_photo_version, parts: null } : null;
+
   const pictureFor = (row: PhotoBearing): PhotoBearing | null => {
     // An ordinary item, or a variant of something that varies by no
-    // attribute anybody has photographed: its own picture or none.
+    // attribute anybody has photographed: its own picture, the model's, or none.
     if (!row.parts || row.parts.length === 0 || !photoAttributeId) {
-      return row.photo_version ? row : null;
+      return row.photo_version ? row : modelPhoto(row);
     }
     const p = row.parts.find((x) => x.attributeId === photoAttributeId);
-    if (!p) return row.photo_version ? row : null;
-    return byOption.get(p.optionId) ?? (row.photo_version ? row : null);
+    if (!p) return row.photo_version ? row : modelPhoto(row);
+    return byOption.get(p.optionId) ?? (row.photo_version ? row : modelPhoto(row));
   };
 
   const srcFor = (row: PhotoBearing) => {

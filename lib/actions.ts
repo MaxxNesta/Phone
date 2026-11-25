@@ -1252,6 +1252,10 @@ export async function updateItem(_prev: unknown, fd: FormData): Promise<ActionRe
              set photo_key = ${photo.set.key}, photo_mime = ${"image/webp"},
                  photo_updated_at = now()
            where id = ${id} and company_id = ${co}`;
+        // A model's photo, with "Also replace the colours' own photos": every variant shows it.
+        if (fd.get("photo_replace_all") && variantIds.length) {
+          await tx`update item set photo_key = null, photo = null, photo_mime = null, photo_updated_at = null where id = any(${variantIds})`;
+        }
       } else if (photo) {
         await tx`
           update item
@@ -5170,6 +5174,18 @@ export async function saveItemEdit(_prev: unknown, fd: FormData): Promise<Action
         } else {
           await tx`update item set photo_key = null, photo = null, photo_mime = null, photo_updated_at = null
                     where id = ${id} and company_id = ${co}`;
+        }
+        /* The photo belongs to a colour (photo_scope_option, 2026-11-25): set
+           here, the other variants of that colour give theirs up so this one
+           stands for all of them; removed, the whole colour goes back to the
+           model's photo. */
+        const scope = str(fd, "photo_scope_option");
+        if (scope && item.parent_item_id) {
+          await tx`
+            update item set photo_key = null, photo = null, photo_mime = null, photo_updated_at = null
+             where company_id = ${co} and parent_item_id = ${item.parent_item_id}
+               and (id <> ${id} or ${"clear" in photo})
+               and exists (select 1 from item_variant_option o where o.item_id = item.id and o.option_id = ${scope}::uuid)`;
         }
       }
       if (code !== item.code) await tx`update item set serial = ${code}, code_is_manual = true where id = ${id} and company_id = ${co}`;

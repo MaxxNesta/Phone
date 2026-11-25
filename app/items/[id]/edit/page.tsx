@@ -95,15 +95,35 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   // Siblings, with the picture each one shows.
   let siblings: EditorItem["siblings"] = [];
   let photo: string | null = item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null;
+  /* Where the photo comes from (2026-11-25): a model's is every variant's
+     default; a variant's is its colour's, shared by every size of it. */
+  const photoInfo: EditorItem["photoInfo"] = { modelName: item.parent_name ?? item.name, scope: null, inherits: false, colours: [], modelPhoto: null };
   if (item.parent_item_id || isModel) {
     const family = item.parent_item_id ?? id;
-    const vs = (await getVariantStock(company.id, family)) as unknown as Parameters<typeof variantPhotos>[0];
+    const vs = (await getVariantStock(company.id, family)) as unknown as (Parameters<typeof variantPhotos>[0][number] & Record<string, any>)[];
     const photos = variantPhotos(vs);
     siblings = (vs as any[]).filter((v) => v.parent_item_id === family)
       .sort((a, b) => String(a.code).localeCompare(String(b.code)))
       .map((v) => ({ id: v.id, code: v.code, name: v.name, qty: Number(v.qty_on_hand),
                      parts: ((v.parts ?? []) as any[]).map((p) => p.option as string), photo: photos.srcFor(v) }));
     if (!isModel) photo = siblings.find((s) => s.id === id)?.photo ?? photo;
+    const pv = vs.find((v) => v.parent_photo_version)?.parent_photo_version;
+    if (pv) photoInfo.modelPhoto = `/items/${family}/photo?v=${pv}`;
+    // The attribute photos belong to: the one already photographed, else colour, else the first.
+    const me = vs.find((v) => v.id === id);
+    const parts = (me?.parts ?? vs[0]?.parts ?? []) as { attributeId: string; attribute: string; optionId: string; option: string }[];
+    const attr = photos.photoAttributeId ?? parts.find((p) => /colou?r|အရောင်/i.test(p.attribute))?.attributeId ?? parts[0]?.attributeId ?? null;
+    if (me && attr) {
+      const p = parts.find((x) => x.attributeId === attr);
+      if (p) photoInfo.scope = { optionId: p.optionId, option: p.option, attribute: p.attribute,
+                                 count: vs.filter((v) => v.parts?.some((x) => x.optionId === p.optionId)).length };
+      const shot = photos.pictureFor(me);
+      photoInfo.inherits = !shot || shot.id === family;
+    }
+    if (isModel && attr) {
+      photoInfo.colours = [...new Set(vs.filter((v) => v.photo_version).flatMap((v) =>
+        (v.parts ?? []).filter((x) => x.attributeId === attr).map((x) => x.option)))];
+    }
   }
 
   const onHand = Number(stock[0]?.qty ?? 0);
@@ -120,6 +140,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     parentId: item.parent_item_id, parentName: item.parent_name,
     isModel, nameMy: item.name_my ?? "", brandId: item.brand_id ?? "", uomId: item.base_uom_id,
     ownPhoto: item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null,
+    photoInfo,
     packs: packs.map((p) => ({ uomId: p.uom_id, factor: Number(p.factor), price: p.price, barcode: p.barcode })), brands, uoms,
     buyUomId: (item.purchase_uom_id as string | null) ?? null,
     // Packs show when the shop uses them, or when this product already has some.

@@ -564,6 +564,7 @@ export async function getVariantStock(companyId: string, parentId: string | null
            p.code as parent_code, p.name as parent_name,
            g.name as category_name,
            to_char(i.photo_updated_at, 'YYYYMMDDHH24MISSMS') as photo_version,
+           to_char(p.photo_updated_at, 'YYYYMMDDHH24MISSMS') as parent_photo_version,
            coalesce(s.qty, 0) as qty_on_hand,
            coalesce(s.val, 0) as value_on_hand,
            u.code as uom_code,
@@ -594,7 +595,7 @@ export async function getVariantStock(companyId: string, parentId: string | null
      where i.company_id = ${companyId} and i.is_active
        and (${parentId}::uuid is null or i.parent_item_id = ${parentId}::uuid)
      group by i.id, i.code, i.name, i.is_active, i.parent_item_id,
-              p.code, p.name, g.name, i.photo_updated_at, s.qty, s.val, u.code
+              p.code, p.name, p.photo_updated_at, g.name, i.photo_updated_at, s.qty, s.val, u.code
      order by p.code, i.code`;
 }
 

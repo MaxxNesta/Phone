@@ -29,7 +29,7 @@ const MAX_PX = 512;
 
 const ACCEPT = "image/png,image/jpeg,image/webp";
 
-async function shrink(file: File): Promise<string> {
+export async function shrink(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_PX / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
