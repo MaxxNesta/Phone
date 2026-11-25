@@ -232,7 +232,7 @@ export function ItemEditor({ item, action, tracking }: {
 
       {product && item.unitPacks && (
         <Row key={`u${resetKey}`} title="Units and packs" sub={`Each pack holds so many of a smaller unit; stock is kept in ${item.uom}.${isModel ? ` For all ${variantCount} variants.` : ""}`} onChange={touch}>
-          <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts={!!item.partNumbers} buyUomId={item.buyUomId} priced={false} />
+          <PackSizes uoms={item.uoms} baseUomId={f.uomId} initial={item.packs} spareParts buyUomId={item.buyUomId} priced={false} layout="rows" />
         </Row>
       )}
 

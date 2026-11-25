@@ -36,8 +36,11 @@ function asChain(initial: { uomId: string; factor: number }[]): { of: string; pe
  * receipts saying 24.
  */
 export function PackSizes({
-  uoms, baseUomId, initial, spareParts = false, buyUomId = null, priced = true,
+  uoms, baseUomId, initial, spareParts = false, buyUomId = null, priced = true, layout = "grid",
 }: {
+  /** "rows": the product edit page (2026-11-25 preview): Unit · Holds · Of · In PCS · Barcode, one line each,
+   *  the chain in one sentence, and Bought in. Other forms keep the grid. */
+  layout?: "grid" | "rows";
   /** False where the product's prices are set elsewhere on the page (the edit page's price grid). */
   priced?: boolean;
   /** The unit purchase lines start in (0214); null is the stock unit. */
@@ -104,6 +107,54 @@ export function PackSizes({
       {p.of && total(p) > 0 && <span className="hint" style={{ whiteSpace: "nowrap" }}>= {n4(total(p))} {base?.code}</span>}
     </span>
   );
+
+  if (layout === "rows") {
+    // The chain in one sentence, biggest pack first: 1 BOX = 6 PACK = 36 PCS.
+    const ladder = [...packs.filter((p) => p.uomId && total(p) > 0).map((p) => ({ code: codeOf(p.uomId), n: total(p) })),
+                    { code: base?.code ?? "", n: 1 }].sort((a, b) => b.n - a.n);
+    const chain = ladder.length > 1 ? `1 ${ladder[0].code} = ${ladder.slice(1).map((u) => `${n4(ladder[0].n / u.n)} ${u.code}`).join(" = ")}` : "";
+    return (
+      <div className="pk3">
+        <input type="hidden" name="packs" value={payload} />
+        {packs.length > 0 ? (
+          <div className="pk3-grid" role="table" aria-label="Pack sizes">
+            <div className="pk3-head" role="row">
+              <span>Unit</span><span>Holds</span><span>Of</span><span>In {base?.code}</span><span>Barcode</span><span />
+            </div>
+            {packs.map((p) => (
+              <div key={p.key} className="pk3-row" role="row">
+                <select value={p.uomId} onChange={(e) => set(p.key, { uomId: e.target.value })} aria-label="Pack unit">
+                  <option value="">Choose</option>
+                  {available.map((u) => <option key={u.id} value={u.id}>{u.code}</option>)}
+                </select>
+                <input type="number" min="0" step="any" value={p.factor} onChange={(e) => set(p.key, { factor: e.target.value })} aria-label="Holds" />
+                <select value={p.of} onChange={(e) => set(p.key, { of: e.target.value })} aria-label="Counted in">
+                  <option value="">{base?.code ?? "PCS"}</option>
+                  {innerOptions(p).map((x) => <option key={x.key} value={x.uomId}>{codeOf(x.uomId)}</option>)}
+                </select>
+                <span className="pk3-total">{total(p) > 0 ? `${n4(total(p))} ${base?.code ?? ""}` : "—"}</span>
+                <input value={p.barcode} placeholder="Scan the box" onChange={(e) => set(p.key, { barcode: e.target.value })} aria-label="Pack barcode" />
+                <button type="button" className="pk3-remove" onClick={() => remove(p.key)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        ) : <span className="pk3-none">Only {base?.code ?? "the stock unit"} so far.</span>}
+        <div className="pk3-foot">
+          <button type="button" className="pk3-add"
+            onClick={() => setPacks((ps) => [...ps, { key: Date.now(), uomId: "", factor: "", of: "", price: "", barcode: "" }])}>+ Pack size</button>
+          {chain && <span>{chain}</span>}
+        </div>
+        {base && packs.some((p) => p.uomId) && (
+          <label className="ie3-field pk3-buy"><span>Bought in</span>
+            <select name="purchase_uom_id" value={buy} onChange={(e) => setBuy(e.target.value)}>
+              <option value="">{base.code} (stock unit)</option>
+              {packs.filter((p) => p.uomId).map((p) => <option key={p.key} value={p.uomId}>{codeOf(p.uomId)} of {total(p) > 0 ? n4(total(p)) : "?"} {base.code}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="field" style={{ marginTop: "0.6rem" }}>
