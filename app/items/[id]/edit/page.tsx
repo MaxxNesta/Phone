@@ -55,7 +55,8 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     sql`select id, code, name, name_my from uom where company_id = ${company.id} and is_active order by code` as unknown as Promise<{ id: string; code: string; name: string; name_my: string | null }[]>,
     sql`select uom_id, factor::float as factor, sale_price::float as price, barcode from v_item_pack where item_id = ${id} and not standard` as unknown as Promise<{ uom_id: string; factor: number; price: number | null; barcode: string | null }[]>,
   ]);
-  const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount] = await Promise.all([
+  const familyIds = [id, ...((await sql`select id from item where parent_item_id = ${id}`) as unknown as { id: string }[]).map((r) => r.id)];
+  const [levels, prices, stock, purchases, reservedAll, cost, serials, serialCount, partNos, locked] = await Promise.all([
     sql`select id, name from price_level where company_id = ${company.id}
          order by (code = 'RETAIL' and (select retail_mode from company where id = ${company.id})) desc, sort_order, code` as unknown as Promise<{ id: string; name: string }[]>,
     // Today's price per level and unit: the piece and each pack (0236).
@@ -73,7 +74,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
          where d.company_id = ${company.id} and dl.item_id = ${id} and d.doc_type = 'GOODS_RECEIPT'
            and d.status = 'POSTED' and dl.base_qty > 0
          group by d.id, bp.name order by d.doc_date desc, d.created_at desc limit 5` as unknown as Promise<any[]>,
-    getReservedQty(company.id) as unknown as Promise<Array<{ item_id: string; reserved_qty: string }>>,
+    getReservedQty(company.id, [id]) as unknown as Promise<Array<{ item_id: string; reserved_qty: string }>>,
     seeCost ? stockCost(id) : Promise.resolve(null),
     item.tracks_serial
       ? sql`select serial_id, imei, status, location_name from v_stock_serial
@@ -84,6 +85,11 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
       ? sql`select count(*)::int as n from v_stock_serial
              where company_id = ${company.id} and item_id = ${id} and status <> all(${GONE})` as unknown as Promise<any[]>
       : Promise.resolve([{ n: 0 }]),
+    sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
+         where item_id = ${id} order by kind, part_no` as unknown as Promise<PartNo[]>,
+    // Counted in already (this product or a variant): the unit holds (lib/actions.ts updateItem refuses too).
+    sql`select exists (select 1 from stock_movement where item_id = any(${familyIds}))
+            or exists (select 1 from document_line where item_id = any(${familyIds})) as used` as unknown as Promise<{ used: boolean }[]>,
   ]);
 
   // Siblings, with the picture each one shows.
@@ -91,7 +97,7 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
   let photo: string | null = item.photo_version ? `/items/${id}/photo?v=${item.photo_version}` : null;
   if (item.parent_item_id || isModel) {
     const family = item.parent_item_id ?? id;
-    const vs = (await getVariantStock(company.id)) as unknown as Parameters<typeof variantPhotos>[0];
+    const vs = (await getVariantStock(company.id, family)) as unknown as Parameters<typeof variantPhotos>[0];
     const photos = variantPhotos(vs);
     siblings = (vs as any[]).filter((v) => v.parent_item_id === family)
       .sort((a, b) => String(a.code).localeCompare(String(b.code)))
@@ -119,10 +125,8 @@ export default async function EditItem({ params }: { params: Promise<{ id: strin
     // Packs show when the shop uses them, or when this product already has some.
     unitPacks: unitPacksOn(company) || packs.length > 0,
     // Counted in already (this product or a variant): the unit holds (lib/actions.ts updateItem refuses too).
-    unitLocked: Boolean((await sql`select exists (select 1 from stock_movement where item_id = ${id} or item_id in (select id from item where parent_item_id = ${id}))
-                                  or exists (select 1 from document_line where item_id = ${id} or item_id in (select id from item where parent_item_id = ${id})) as used`)[0]?.used),
-    partNumbers: (await sql`select kind, part_no as no, coalesce(maker, '') as maker from item_part_number
-                    where item_id = ${id} order by kind, part_no`) as unknown as PartNo[],
+    unitLocked: Boolean(locked[0]?.used),
+    partNumbers: partNos,
     parts: (item.parts ?? []) as { a: string; o: string }[],
     photo, siblings,
     levels: levels.map((l) => ({ id: l.id, name: l.name, price: priceBy.get(l.id) ?? "", packs: packPriceBy(l.id) })),

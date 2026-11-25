@@ -556,7 +556,8 @@ export async function getVariantAttributes(companyId: string) {
  * somebody is looking for, and a row missing because it is zero cannot say
  * it.
  */
-export async function getVariantStock(companyId: string) {
+/** Variants with their stock; `parentId` keeps it to one model's family (a product page) instead of the catalogue. */
+export async function getVariantStock(companyId: string, parentId: string | null = null) {
   return sql`
     select i.id, i.code, i.name, i.is_active,
            i.parent_item_id,
@@ -586,9 +587,12 @@ export async function getVariantStock(companyId: string) {
              on iva.item_id = i.parent_item_id and iva.attribute_id = attr.id
       left join (
             select item_id, sum(qty_on_hand) as qty, sum(value_on_hand) as val
-              from v_stock_on_hand group by item_id
+              from v_stock_on_hand
+             where ${parentId}::uuid is null or item_id in (select id from item where parent_item_id = ${parentId}::uuid)
+             group by item_id
       ) s on s.item_id = i.id
      where i.company_id = ${companyId} and i.is_active
+       and (${parentId}::uuid is null or i.parent_item_id = ${parentId}::uuid)
      group by i.id, i.code, i.name, i.is_active, i.parent_item_id,
               p.code, p.name, g.name, i.photo_updated_at, s.qty, s.val, u.code
      order by p.code, i.code`;
@@ -3967,7 +3971,8 @@ export async function getStockOpeningBalance(
   return Number(row?.qty ?? 0);
 }
 
-export async function getReservedQty(companyId: string) {
+/** Reserved stock; `itemIds` keeps it to those items (one product's page) instead of the whole catalogue. */
+export async function getReservedQty(companyId: string, itemIds: string[] | null = null) {
   return sql`
     with so_remaining as (
       /*
@@ -4047,6 +4052,7 @@ export async function getReservedQty(companyId: string) {
     )
     select item_id, location_id, sum(qty) as reserved_qty
       from (select * from so_remaining union all select * from invoice_pending) x
+     where ${itemIds}::uuid[] is null or item_id = any(${itemIds}::uuid[])
      group by item_id, location_id`;
 }
 
