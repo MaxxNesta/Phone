@@ -12339,3 +12339,14 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 }
 .rx-wait { padding: 28px 0; }
 .inv-row3.solo { grid-template-columns: minmax(0, 1fr); }
+
+/* Product page (2026-11-25): what it is in one compact band, stock beside its variants or prices. */
+.idt-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 28px; margin: 0; padding: 12px var(--s3, 16px) 14px; }
+.idt-facts > div { min-width: 0; }
+.idt-facts .idt-wide { grid-column: span 2; }
+.idt-facts dt { font-size: var(--t-sm, 12px); color: var(--muted); margin-bottom: 2px; }
+.idt-facts dd { margin: 0; }
+.idt-part { display: block; }
+.idt-pair { align-items: start; }
+.idt-pair table td, .idt-pair table th { padding-top: 7px; padding-bottom: 7px; }
+@media (max-width: 640px) { .idt-facts .idt-wide { grid-column: 1 / -1; } }

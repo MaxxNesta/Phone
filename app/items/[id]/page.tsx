@@ -175,106 +175,41 @@ export default async function ItemPage({
         )}
       </div>
 
-      <section className={isModel ? undefined : "grid2"}>
-        <div className="card">
-          <div className="card-head">
-            <div className="headwith">
-              <h2>{t("howCounted")}</h2>
-              <HelpHint label={t("baseAndPacks")}>{t("baseAndPacksHelp")}</HelpHint>
-            </div>
-          </div>
-          <div className="card-body">
-            <div className="row">
-              <div className="field">
-                <label>{f("itemCode")}</label>
-                <div className="code">{item.code}</div>
-              </div>
-              <div className="field">
-                <label>{f("baseUnit")}</label>
-                <div className="code">{item.uom_code}</div>
-              </div>
-              <div className="field">
-                <label>{t("valuation")}</label>
-                <div className="code">{item.valuation_method}</div>
-              </div>
-              {item.barcode && (
-                <div className="field">
-                  <label>{c("barcode")}</label>
-                  <div className="code">{item.barcode}</div>
-                </div>
-              )}
-            </div>
-            <div className="field" style={{ marginTop: "var(--s2)" }}>
-              <label>{pk("label")}</label>
-              {packs.length === 0 ? (
-                <span className="hint">
-                  {pk("onlyBase", { unit: item.uom_code })}
-                </span>
-              ) : (
-                <PackLadder base={item.uom_code} baseMy={packs[0]?.base_my} packs={packs.map((p) => ({ code: p.code, my: p.my, factor: Number(p.factor),
-                  price: p.sale_price == null ? null : Number(p.sale_price) }))} />
-              )}
-            </div>
-            {isModel && (
-              <div className="field" style={{ marginTop: "var(--s2)" }}>
-                <label>{t("prices")}</label>
-                <span className="hint">{t("pricesOnVariants")}</span>
-              </div>
-            )}
-            {partNos.length > 0 && (
-              <div className="field" style={{ marginTop: "var(--s2)" }}>
-                <label>Part numbers</label>
-                <ul className="plainlist">
-                  {partNos.map((p) => (
-                    <li key={p.kind + p.part_no}><span className="code">{p.part_no}</span>
-                      <span className="subline"> {p.kind === "OEM" ? "OEM" : p.kind === "SUPPLIER" ? "Supplier code" : "Equivalent"}{p.maker ? ` · ${p.maker}` : ""}</span></li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {(item.tracks_batch || item.tracks_expiry) && (
-              <div className="field" style={{ marginTop: "var(--s2)" }}>
-                <label>{c("tracking")}</label>
-                <div>
-                  {item.tracks_batch && <span className="pill">{t("batches")}</span>}{" "}
-                  {item.tracks_expiry && <span className="pill">{t("expiry")}</span>}
-                </div>
-              </div>
-            )}
+      {/* What the product is, in one band: compact, so the stock and its variants sit just under it. */}
+      <section className="card idt-facts-card">
+        <div className="card-head">
+          <div className="headwith">
+            <h2>{t("howCounted")}</h2>
+            <HelpHint label={t("baseAndPacks")}>{t("baseAndPacksHelp")}</HelpHint>
           </div>
         </div>
-
-        {isModel ? null : <div className="card">
-          <div className="card-head">
-            <h2>{t("prices")}</h2>
-            <span className="page-sub">{t("pricesSub")}</span>
-          </div>
-          <div className="tablewrap">
-            <table>
-              <thead>
-                <tr><th>{t("level")}</th><th className="r">{c("price")}</th><th>{t("per")}</th><th>{t("from")}</th></tr>
-              </thead>
-              <tbody>
-                {prices.map((p) => (
-                  <tr key={p.level}>
-                    <td>{p.level}</td>
-                    <td className="r">
-                      {p.price === null
-                        ? <span className="page-sub">{t("notPriced")}</span>
-                        : <strong>{money(p.price)}</strong>}
-                    </td>
-                    <td className="code">{p.uom_code ?? "—"}</td>
-                    <td className="page-sub">{p.valid_from ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>}
+        <dl className="idt-facts">
+          <div><dt>{f("itemCode")}</dt><dd className="code">{item.code}</dd></div>
+          <div><dt>{f("baseUnit")}</dt><dd className="code">{item.uom_code}</dd></div>
+          <div><dt>{t("valuation")}</dt><dd className="code">{item.valuation_method}</dd></div>
+          {item.barcode && <div><dt>{c("barcode")}</dt><dd className="code">{item.barcode}</dd></div>}
+          <div className="idt-wide"><dt>{pk("label")}</dt><dd>
+            {packs.length === 0 ? <span className="hint">{pk("onlyBase", { unit: item.uom_code })}</span>
+              : <PackLadder base={item.uom_code} baseMy={packs[0]?.base_my} packs={packs.map((p) => ({ code: p.code, my: p.my, factor: Number(p.factor),
+                  price: p.sale_price == null ? null : Number(p.sale_price) }))} />}
+          </dd></div>
+          {isModel && <div className="idt-wide"><dt>{t("prices")}</dt><dd className="hint">{t("pricesOnVariants")}</dd></div>}
+          {(item.tracks_batch || item.tracks_expiry) && <div><dt>{c("tracking")}</dt><dd>
+            {item.tracks_batch && <span className="pill">{t("batches")}</span>}{" "}
+            {item.tracks_expiry && <span className="pill">{t("expiry")}</span>}
+          </dd></div>}
+          {partNos.length > 0 && <div className="idt-wide"><dt>Part numbers</dt><dd>
+            {partNos.map((p) => (
+              <span key={p.kind + p.part_no} className="idt-part"><span className="code">{p.part_no}</span>
+                <span className="subline"> {p.kind === "OEM" ? "OEM" : p.kind === "SUPPLIER" ? "Supplier code" : "Equivalent"}{p.maker ? ` · ${p.maker}` : ""}</span></span>
+            ))}
+          </dd></div>}
+        </dl>
       </section>
 
-      {item.is_stocked && (
-        <section>
+      {/* Stock beside what it is made of: the variants for a model, the prices for anything sold itself. */}
+      <section className={item.is_stocked ? "grid2 idt-pair" : undefined}>
+        {item.is_stocked && (
           <div className="card">
             <div className="card-head">
               <h2>{t("onHand")}</h2>
@@ -304,11 +239,8 @@ export default async function ItemPage({
               </div>
             )}
           </div>
-        </section>
-      )}
-
-      {variants.length > 0 && (
-        <section>
+        )}
+        {isModel ? (
           <div className="card">
             <div className="card-head">
               <h2>{t("variants")}</h2>
@@ -336,8 +268,36 @@ export default async function ItemPage({
               </table>
             </div>
           </div>
-        </section>
-      )}
+        ) : (
+        <div className="card">
+          <div className="card-head">
+            <h2>{t("prices")}</h2>
+            <span className="page-sub">{t("pricesSub")}</span>
+          </div>
+          <div className="tablewrap">
+            <table>
+              <thead>
+                <tr><th>{t("level")}</th><th className="r">{c("price")}</th><th>{t("per")}</th><th>{t("from")}</th></tr>
+              </thead>
+              <tbody>
+                {prices.map((p) => (
+                  <tr key={p.level}>
+                    <td>{p.level}</td>
+                    <td className="r">
+                      {p.price === null
+                        ? <span className="page-sub">{t("notPriced")}</span>
+                        : <strong>{money(p.price)}</strong>}
+                    </td>
+                    <td className="code">{p.uom_code ?? "—"}</td>
+                    <td className="page-sub">{p.valid_from ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        )}
+      </section>
 
       {item.is_stocked && recent.length > 0 && (
         <section>
