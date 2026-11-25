@@ -55,6 +55,8 @@ export default async function Stock({
   if (!company) return <div className="empty">{c("noCompany")}</div>;
   // Cost and value only for those who may see cost: left out of the data, not just the columns.
   const seeCost = can(await currentUser(), "cost.view");
+  // Low-stock alerts and reorder points: Standard and Advanced (2026-11-25).
+  const alerts = planIncludes(company.plan, "low_stock_alerts");
 
   const [items, reserved, incoming, lowPlan, reorderPoints, locations, stockByLocation, consigned,
          batches, expiryBands, variantStock] = await Promise.all([
@@ -63,9 +65,10 @@ export default async function Stock({
     getIncomingQty(company.id) as unknown as Promise<Array<{ item_id: string; location_id: string; incoming_qty: string }>>,
     // Below the calculated reorder point (lib/replenish-data): the same plan
     // Replenishment and the dashboard read, for the warehouse in view.
-    loadPlan(company.id, { windowDays: 30, coverDays: 30, fallbackLeadDays: company.default_lead_time_days,
-                           location: location && location !== "all" ? location : null }),
-    getReorderPoints(company.id) as unknown as Promise<Array<{
+    alerts ? loadPlan(company.id, { windowDays: 30, coverDays: 30, fallbackLeadDays: company.default_lead_time_days,
+                                    location: location && location !== "all" ? location : null })
+      : Promise.resolve({ rows: [] } as unknown as Awaited<ReturnType<typeof loadPlan>>),
+    (alerts ? getReorderPoints(company.id) : Promise.resolve([])) as unknown as Promise<Array<{
       id: string; item_id: string; location_id: string; min_qty: string;
       item_code: string; item_name: string; location_code: string;
     }>>,
@@ -410,7 +413,7 @@ export default async function Stock({
       <div className="kpis kpis-tiled kpis-compact">
         {seeCost && kpi(<Boxes size={16} aria-hidden="true" />, "var(--link)", t("stk.stockValue"), money(totalValue),
           t("stk.itemsInStock", { n: visible.filter((i) => i.onHand !== 0).length }))}
-        {kpi(<AlertTriangle size={16} aria-hidden="true" />, "var(--warn)", t("stk.lowStock"), lowStock.length,
+        {alerts && kpi(<AlertTriangle size={16} aria-hidden="true" />, "var(--warn)", t("stk.lowStock"), lowStock.length,
           t("stk.lowPairs", { n: lowStock.length }), lowStock.length > 0)}
         {kpi(<PackageCheck size={16} aria-hidden="true" />, "#3B6FD4", t("stk.incoming"), incoming.length,
           t("stk.incomingPairs", { n: incoming.length }))}
@@ -442,7 +445,7 @@ export default async function Stock({
             toolbarEnd={viewSwitch}
             filters={[
               { key: "status", allLabel: "All status", label: "Status",
-                options: (["IN", "LOW", "OUT"] as const).map((s) => ({ value: s, label: STATUS[s] })) },
+                options: ((alerts ? ["IN", "LOW", "OUT"] : ["IN", "OUT"]) as ("IN" | "LOW" | "OUT")[]).map((s) => ({ value: s, label: STATUS[s] })) },
               { key: "category", allLabel: "All categories", label: c("category"), more: true,
                 options: facetOptions(visible.map((i) => i.parent_group_name ?? i.group_name)) },
               ...(multiBrand ? [{ key: "brand", allLabel: "All brands", label: c("brand"), more: true,
@@ -501,7 +504,7 @@ export default async function Stock({
       {/* Only for a company that actually holds perishable stock. */}
       {expiryBands.length > 0 && <ExpiryBands bands={expiryBands} />}
 
-      <div className="grid2 stk-below">
+      {alerts && <div className="grid2 stk-below">
         <div className="card">
           <div className="card-head">
             <h2 id="low-stock">{t("stk.lowTitle")}</h2>
@@ -570,7 +573,7 @@ export default async function Stock({
             </div>
           )}
         </div>
-      </div>
+      </div>}
     </>
   );
 }

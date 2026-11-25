@@ -2,7 +2,7 @@ import Link from "next/link";
 import { IBM_Plex_Sans } from "next/font/google";
 import { getCompany, getHealth } from "@/lib/queries";
 import { seenLocations } from "@/lib/branch-scope";
-import { hasModule } from "@/lib/plans";
+import { hasModule, planIncludes } from "@/lib/plans";
 import { money } from "@/lib/format";
 import { resolvePeriod } from "@/lib/period";
 import { executiveData, type Pl } from "@/lib/executive";
@@ -287,7 +287,7 @@ export default async function Executive({ searchParams }: { searchParams: Promis
             {section("Largest expenses", period.label, <>
               {d.expenses.length === 0 ? <p className="xd-quiet">No expenses were posted in this period.</p>
                 : <RankedBarChart data={d.expenses.map((e) => ({ label: `${e.code} ${e.name}`, value: e.amount }))} />}
-              <p className="xd-links"><Link href="/finance/income-statement">Open the income statement</Link><Link href="/reports/financial-ratios">Open financial ratios</Link></p>
+              <p className="xd-links"><Link href="/finance/income-statement">Open the income statement</Link>{planIncludes(company.plan, "financial_ratios") && <Link href="/reports/financial-ratios">Open financial ratios</Link>}</p>
             </>)}
           </div>
         </>
@@ -335,7 +335,7 @@ export default async function Executive({ searchParams }: { searchParams: Promis
              since the start), so they stream in after the rest of the page
              rather than hold it up. */
           <Suspense fallback={<p className="xd-quiet rx-wait">Reading the ledger for the ratios…</p>}>
-            <RatiosPane co={company.id} from={period.from} to={period.to} phrase={period.phrase} />
+            <RatiosPane co={company.id} from={period.from} to={period.to} phrase={period.phrase} fullReport={planIncludes(company.plan, "financial_ratios")} />
           </Suspense>
         ) },
       ]}
@@ -343,8 +343,8 @@ export default async function Executive({ searchParams }: { searchParams: Promis
   );
 }
 
-async function RatiosPane({ co, from, to, phrase }: { co: string; from: string; to: string; phrase: string }) {
+async function RatiosPane({ co, from, to, phrase, fullReport }: { co: string; from: string; to: string; phrase: string; fullReport: boolean }) {
   const r = await getRatioOverview(co, from, to);
-  return <ExecRatios now={r.current} before={r.previous} months={r.months} from={from} to={to} phrase={phrase}
+  return <ExecRatios now={r.current} before={r.previous} months={r.months} from={from} to={to} phrase={phrase} fullReport={fullReport}
     spanMonths={Math.round((Date.parse(to) - Date.parse(from)) / (30.44 * 86_400_000))} />;
 }

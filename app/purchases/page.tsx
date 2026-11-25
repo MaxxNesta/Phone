@@ -1,4 +1,4 @@
-import { lowStockHref } from "@/lib/plans";
+import { lowStockHref, planIncludes } from "@/lib/plans";
 import { getCompany } from "@/lib/queries";
 import Link from "next/link";
 import { ShoppingBag, FileText, Wallet, CalendarClock, Plus } from "lucide-react";
@@ -21,12 +21,14 @@ export default async function PurchasesOverview() {
   const user = await requirePermission("purchase.view");
   const t = await getTranslations("overview");
   const dateLocale = (await getLocale()) === "my" ? "my-MM" : "en-GB";
-  const see = { payables: can(user, "accounting.view"), stock: can(user, "inventory.view") };
-  const serials = serialTrackingOn(await getCompany());
+  const company = await getCompany();
+  // The low-stock card: for whoever sees stock, in Standard and Advanced (2026-11-25).
+  const see = { payables: can(user, "accounting.view"),
+                stock: can(user, "inventory.view") && (!company || planIncludes(company.plan, "low_stock_alerts")) };
+  const serials = serialTrackingOn(company);
   const d = await purchasesOverview(user.companyId, await seenLocations(), see, serials);
   const day = (s: string, o: Intl.DateTimeFormatOptions) => new Date(`${s}T00:00:00Z`).toLocaleDateString(dateLocale, { ...o, timeZone: "UTC" });
   const p = d.payables;
-  const company = await getCompany();
   const lowHref = company ? lowStockHref(company.plan) : "/items/stock";
 
   return (

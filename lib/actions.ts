@@ -7323,6 +7323,7 @@ export async function createReorderPoint(_prev: unknown, fd: FormData): Promise<
   await requirePermission("items.manage");
   try {
     const co = await companyId();
+    if (!(await planHas("low_stock_alerts"))) return { error: "Low-stock alerts and reorder points are part of the Standard and Advanced packages" };
     const itemId = str(fd, "item_id");
     const locationId = str(fd, "location_id");
     const minQty = num(fd, "min_qty");
@@ -7362,6 +7363,7 @@ export async function updateReorderPoint(_prev: unknown, fd: FormData): Promise<
   await requirePermission("items.manage");
   try {
     const co = await companyId();
+    if (!(await planHas("low_stock_alerts"))) return { error: "Low-stock alerts and reorder points are part of the Standard and Advanced packages" };
     const id = str(fd, "id");
     const minQty = num(fd, "min_qty");
 

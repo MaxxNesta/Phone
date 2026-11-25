@@ -119,12 +119,14 @@ function Range({ row, v, kind }: { row: Row; v: number | null; kind: Kind }) {
   );
 }
 
-export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }: {
+export function ExecRatios({ now, before, months, from, to, phrase, spanMonths, fullReport }: {
   now: RatioWindow; before: RatioWindow; months: (RatioWindow & { month: string })[];
   from: string; to: string; phrase: string; spanMonths: number;
+  /** The Financial ratios report is Advanced only: without it, nothing links there. */
+  fullReport: boolean;
 }) {
   const last = new Date(new Date(to).getTime() - 86_400_000).toISOString().slice(0, 10);
-  const report = (tab: string) => `/reports/financial-ratios?${new URLSearchParams({ tab, from, to: last, compare: "previous" })}`;
+  const report = (tab: string) => fullReport ? `/reports/financial-ratios?${new URLSearchParams({ tab, from, to: last, compare: "previous" })}` : null;
   const R = (k: RatioKey) => read(now, k), B = (k: RatioKey) => read(before, k);
   const yearly = spanMonths < 12 ? " a year" : "";
 
@@ -165,7 +167,7 @@ export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }
   } : null;
   const missing = now.netSales <= 0 ? "there were no sales" : now.avgAssets <= 0 ? "the assets read nil or below zero" : "the owners' equity is nil or below zero";
 
-  const issues: { href: string; text: string }[] = [];
+  const issues: { href: string | null; text: string }[] = [];
   for (const g of GROUPS) for (const row of g.rows) {
     const r = R(row.k), label = RATIO[row.k].label.replace(/ \(.*\)$/, "");
     if (r.bad) {
@@ -237,7 +239,7 @@ export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }
       <section className="xd-sec">
         <header><h2>Needs a look</h2><span>Ratios that cannot be read, or sit on the wrong side of their usual range</span></header>
         {issues.length === 0 ? <p className="xd-quiet">Every ratio can be read and none is on the wrong side of its usual range.</p>
-          : <ol className="xd-issues">{issues.map((i) => <li key={i.text}><Link href={i.href}>{i.text}</Link></li>)}</ol>}
+          : <ol className="xd-issues">{issues.map((i) => <li key={i.text}>{i.href ? <Link href={i.href}>{i.text}</Link> : i.text}</li>)}</ol>}
         <details className="xd-how"><summary>How each ratio is worked out</summary>
           <table className="xd-table"><tbody>
             {GROUPS.flatMap((g) => g.rows).map((row) => (
@@ -248,7 +250,7 @@ export function ExecRatios({ now, before, months, from, to, phrase, spanMonths }
               A ratio is not meaningful when what it divides by is below zero, or when cash, stock, sales, debt or what is owed reads below zero: no real business holds less than none, so that is the books, not the business. Turnovers and returns are put on a year&apos;s pace so a month and a year read alike.</td></tr>
           </tbody></table>
         </details>
-        <p className="xd-links"><Link href={report("overview")}>Open the full financial ratios report</Link></p>
+        {fullReport && <p className="xd-links"><Link href={report("overview")!}>Open the full financial ratios report</Link></p>}
       </section>
     </>
   );

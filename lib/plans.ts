@@ -129,7 +129,8 @@ export function limitFor(plan: Plan, what: keyof PlanLimits): number | null {
  */
 export type Feature = "supplier_performance" | "dashboard_advanced" | "replenishment"
   | "financial_ratios" | "price_history" | "supply_chain"
-  | "inventory_aging" | "financial_statements" | "sales_report" | "ar_ap_aging" | "inventory_analysis";
+  | "inventory_aging" | "financial_statements" | "sales_report" | "ar_ap_aging" | "inventory_analysis"
+  | "low_stock_alerts";
 
 const FEATURES: Record<Feature, Plan[]> = {
   // Business and Enterprise. A Starter shop buys from a handful of people
@@ -144,9 +145,13 @@ const FEATURES: Record<Feature, Plan[]> = {
   dashboard_advanced: ["BUSINESS", "ENTERPRISE"],
   // The planning workbench (Inventory → Replenishment): safety stock, ABC/XYZ,
   // the projection and bulk purchase orders. The top package only (owner's
-  // call, 2026-11-11). Low-stock alerts and reorder points stay in every
-  // package; only the screen that plans the buying is withheld.
+  // call, 2026-11-11); only the screen that plans the buying is withheld.
   replenishment: ["ENTERPRISE"],
+  // Low-stock alerts and reorder points: Standard and Advanced (owner's call,
+  // 2026-11-25). Essential still shows what is on hand and what is out; it
+  // gets no "at or under the reorder point" lists, and cannot set one.
+  // lowStockToday (lib/replenish-data) answers empty, so every alert goes quiet.
+  low_stock_alerts: ["BUSINESS", "ENTERPRISE"],
 
   // Advanced only (2026-11-13): the analysis screens.
   financial_ratios: ["ENTERPRISE"],
@@ -222,7 +227,7 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; note?: st
     { label: "Counter sale, invoices, returns", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
     { label: "Purchases, goods receipts, payables", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
     { label: "Stock, IMEI tracking, transfers, counts", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
-    { label: "Low-stock alerts and reorder points", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
+    { label: "Low-stock alerts and reorder points", in: FEATURES.low_stock_alerts },
     { label: "Cash and bank vouchers, journals", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
     { label: "General ledger and trial balance", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },
     { label: "Sales overview and sales & margin", in: ["STARTER", "BUSINESS", "ENTERPRISE"] },

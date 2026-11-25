@@ -1,3 +1,4 @@
+import { planIncludes } from "./plans";
 import {
   getItems, getStockByLocation, getReservedQty, getIncomingQty, getReorderPoints,
   getDemandDays, getItemSupply, getSupplierLeadTimes, getOpenPurchaseLines,
@@ -85,6 +86,8 @@ export function lowStockFromPlan(rows: Awaited<ReturnType<typeof loadPlan>>["row
  */
 export const lowStockToday = cache(async (companyId: string) => {
   const co = await getCompany();
+  // Not in Essential (2026-11-25): no alert anywhere, and the plan is not even read.
+  if (co && !planIncludes(co.plan, "low_stock_alerts")) return { rows: [] as LowStockRow[], byCode: new Map<string, number>() };
   const plan = await loadPlan(companyId, { windowDays: 30, coverDays: 30, fallbackLeadDays: co?.default_lead_time_days ?? 7 });
   const rows = lowStockFromPlan(plan.rows, { id: "all", code: "All" });
   return {

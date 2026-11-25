@@ -67,6 +67,8 @@ export default async function InventorySummary({ searchParams }: { searchParams:
   const orderHref = company ? lowStockHref(company.plan) : "/items/stock";
   // Turnover, days of stock and stock cover: Standard and Advanced.
   const analysis = !company || planIncludes(company.plan, "inventory_analysis");
+  // Low-stock alerts: Standard and Advanced (2026-11-25). Essential sees in stock and out of stock only.
+  const alerts = !company || planIncludes(company.plan, "low_stock_alerts");
 
   // The warehouses this person may see, each with the branch it belongs to.
   const seen = await seenLocations();
@@ -310,8 +312,10 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </> : <>
           {kpi(<Box size={16} aria-hidden="true" />, "Total products", all.length.toLocaleString("en-US"),
             `${onHand.length.toLocaleString("en-US")} product models in stock.`)}
-          {kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low or out of stock", alert.length,
-            "Products at or under their reorder point — the same list as the Stock page.", alert.length > 0, lowHref)}
+          {alerts ? kpi(<AlertTriangle size={16} aria-hidden="true" />, "Low or out of stock", alert.length,
+            "Products at or under their reorder point — the same list as the Stock page.", alert.length > 0, lowHref)
+            : kpi(<AlertTriangle size={16} aria-hidden="true" />, "Out of stock", out.length,
+              "Product models with nothing left on the shelf.", out.length > 0)}
         </>}
       </div>
 
@@ -334,12 +338,13 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </div>
         <div className="card inv-chart inv-status-card">
           <div className="card-head"><h2>Catalogue by model</h2><span className="page-sub">{all.length} models</span>
-            <ChartTools name="catalogue-by-stock-status" rows={[["Status", "Models"], ["In stock", healthy.length], ["Low stock", low.length], ["Out of stock", out.length]]} /></div>
+            <ChartTools name="catalogue-by-stock-status" rows={[["Status", "Models"], ["In stock", healthy.length], ...(alerts ? [["Low stock", low.length]] : []), ["Out of stock", out.length]]} /></div>
           <div className="card-body">
             <ShareDonut count emptyLabel="No products yet." currency=""
               centre={{ value: String(all.length), label: "Models" }}
-              colours={["var(--ok)", "#FF9F0A", "var(--bad)"]}
-              data={[{ id: "in", name: "In stock", revenue: healthy.length }, { id: "low", name: "Low stock", revenue: low.length },
+              colours={alerts ? ["var(--ok)", "#FF9F0A", "var(--bad)"] : ["var(--ok)", "var(--bad)"]}
+              data={[{ id: "in", name: "In stock", revenue: healthy.length },
+                     ...(alerts ? [{ id: "low", name: "Low stock", revenue: low.length }] : []),
                      { id: "out", name: "Out of stock", revenue: out.length }]} />
           </div>
         </div>
@@ -385,7 +390,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         </Link>
       </section>
 
-      <div className="inv-row3">
+      <div className={`inv-row3${alerts ? "" : " solo"}`}>
       <section className="card inv-panel">
         <div className="inv-panel-head">
           <h2>Product summary</h2>
@@ -404,7 +409,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
             <select id="is" name="status" defaultValue={sp.status ?? ""}>
               <option value="">{c("all")}</option>
               <option value="HEALTHY">In stock</option>
-              <option value="LOW">Low stock</option>
+              {alerts && <option value="LOW">Low stock</option>}
               <option value="OUT">Out of stock</option>
             </select>
           </div>
@@ -463,7 +468,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
         <Pager p={pg} params={sp} />
       </section>
 
-        <section className="card inv-panel inv-repl">
+        {alerts && <section className="card inv-panel inv-repl">
           <div className="inv-panel-head">
             <h2>Low stock</h2>
             <Link href={lowHref}>{c("viewAll")}</Link>
@@ -493,7 +498,7 @@ export default async function InventorySummary({ searchParams }: { searchParams:
               <ChevronRight size={15} aria-hidden="true" />
             </Link>
           )}
-        </section>
+        </section>}
       </div>
     </div>
   );

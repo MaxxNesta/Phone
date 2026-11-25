@@ -12338,3 +12338,4 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
   .rx-range { grid-column: 3; min-width: 80px; }
 }
 .rx-wait { padding: 28px 0; }
+.inv-row3.solo { grid-template-columns: minmax(0, 1fr); }

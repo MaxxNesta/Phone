@@ -65,6 +65,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const company = await getCompany();
   const serials = serialTrackingOn(company);
   const advanced = !company || planIncludes(company.plan, "dashboard_advanced");
+  // Low-stock alerts: Standard and Advanced (2026-11-25).
+  const lowAlerts = !company || planIncludes(company.plan, "low_stock_alerts");
   const co = user.companyId;
   // The share-of donuts (category, region, branch, payment, customer and
   // supplier type) live on /overview; six queries on every load made this,
@@ -153,7 +155,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      <div className="section-grid eqrow">
+      <div className="section-grid eqrow" style={lowAlerts ? undefined : { gridTemplateColumns: "minmax(0, 1fr)" }}>
         <div className="card">
           <div className="card-head"><h2>{t("recentSales")}</h2><Link href="/sales/invoices">{t("viewAll")}</Link></div>
           <table>
@@ -176,7 +178,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </table>
         </div>
 
-        <div className="card">
+        {lowAlerts && <div className="card">
           <div className="card-head"><h2>{t("lowStock")}</h2><Link href="/items/stock#low-stock" className="page-sub">{t("viewAll")}</Link></div>
           <div className="card-body">
             {d.low.length === 0 && <p className="page-sub">{t("nothingLow")}</p>}
@@ -195,7 +197,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
               );
             })}
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className="stats">
