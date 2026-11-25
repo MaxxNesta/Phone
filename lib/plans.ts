@@ -240,7 +240,8 @@ export const PLAN_COMPARISON: { group: string; lines: { label: string; note?: st
     { label: "Inventory turnover, days of stock and stock cover", in: FEATURES.inventory_analysis },
     { label: "Dashboard accounting health and breakdowns", in: FEATURES.dashboard_advanced },
     { label: "Equity: shareholders, capital and the statement of changes in equity", in: ["BUSINESS", "ENTERPRISE"] },
-    { label: "Logistics: delivery trips, routes and vehicles, with cash on delivery per stop", in: ["BUSINESS", "ENTERPRISE"] },
+    { label: "Logistics: delivery trips, routes and vehicles, with cash on delivery per stop",
+      note: "Shows only when Orders & deliveries is on: the shop takes sales orders or delivers later", in: ["BUSINESS", "ENTERPRISE"] },
   ] },
   { group: "Advanced", lines: [
     { label: "Replenishment planning", in: FEATURES.replenishment },
