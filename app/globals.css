@@ -9280,13 +9280,6 @@ td.narrow, th.narrow { width: 1%; white-space: nowrap; }
 /* Supplier ledger: the old report's shape — a grey band per supplier, opening, rows, total. */
 .sl-filter { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 14px 16px; margin-bottom: 14px; }
 .sl-filter .field { min-width: 12rem; }
-.sl-table { font-variant-numeric: tabular-nums; }
-.sl-table tr.sl-head > td { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); padding-top: 10px; padding-bottom: 10px; }
-.sl-table tr.sl-open > td { border-bottom: 1px solid var(--line); }
-.sl-table tr.sl-total > td { border-top: 1px solid var(--line); border-bottom: 2px solid var(--line); }
-.sl-table td.sl-desc { color: var(--muted); max-width: 22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sl-table tr.sl-town > td { background: color-mix(in srgb, var(--ink) 12%, var(--surface)); padding-top: 10px; padding-bottom: 10px; }
-.sl-table tr.sl-towntotal > td { border-bottom: 3px double var(--line); padding-bottom: 12px; }
 /* Advance list: short cards, one toolbar row, rows that fold out to their applications. */
 .adv-kpis .kpi-value small { font-size: 0.55em; font-weight: 600; color: var(--muted); }
 .adv-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; }
@@ -12378,7 +12371,41 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .adv-dialog-rows > div.strong dt { color: var(--ink); }
 .adv-dialog-rows > div.strong dd { color: var(--link); }
 /* Outstanding summary (2026-11-25). */
-.os-table td.os-owed { color: var(--ink); font-weight: 600; }
-.os-table td.os-pre { color: var(--link); }
-.os-table tfoot .os-grand td { border-top: 2px solid var(--ink); }
 .os-note { padding: 10px var(--s3, 16px) 14px; margin: 0; }
+
+/* Ledger and outstanding summary (2026-11-25 preview): no grey bands or
+   stripes; a township in bold blue type, a partner in indigo with an accent;
+   names narrow, amounts wide enough for ten digits; every level folds. */
+.os { --os-indigo: #5856D6; width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .os { --os-indigo: #8E8CFF; } }
+:root[data-theme="dark"] .os { --os-indigo: #8E8CFF; }
+.os.os-sum { min-width: 1120px; }
+.os.os-led { min-width: 1040px; }
+.os col.c-sr { width: 2.8rem; } .os col.c-code { width: 5rem; } .os col.c-name { width: 13rem; } .os col.c-amt { width: 9.4rem; }
+.os > thead th { font-size: 0.78rem; font-weight: 600; color: var(--muted); padding: 10px 8px 8px; border-bottom: 1.5px solid var(--ink); white-space: nowrap; background: transparent; }
+.os > tbody > tr > td, .os > tfoot > tr > td { padding: 8px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: transparent !important; }
+.os .r { text-align: right; }
+.os td.name { white-space: normal; }
+.os td.zero { color: color-mix(in srgb, var(--muted) 55%, transparent); }
+.os td.owed { font-weight: 600; }
+.os td.pre { color: var(--link); font-weight: 600; }
+.os td.neg { color: var(--bad); }
+.os td.muted { color: var(--muted); }
+.os td.code { font-size: 0.85rem; }
+.os tr.os-town, .os tr.os-cust { cursor: pointer; user-select: none; }
+.os tr.os-town > td { padding: 20px 8px 8px; border-bottom: 2px solid var(--link); font-size: 1.05rem; font-weight: 700; color: var(--link); letter-spacing: -0.01em; }
+.os tr.os-town > td svg, .os tr.os-cust > td svg { vertical-align: -3px; margin-right: 6px; }
+.os tr.os-town > td span { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 10px; }
+.os tr.os-town > td em { font-style: normal; font-size: 0.78rem; font-weight: 500; color: var(--muted); margin-left: 12px; }
+.os tr.os-towntotal > td { font-weight: 700; color: var(--link); border-top: 1.5px solid var(--link); border-bottom: 0; padding-bottom: 12px; }
+.os > tfoot > tr > td { font-weight: 800; font-size: 0.98rem; border-top: 2px solid var(--ink); border-bottom: 3px double var(--ink); padding: 12px 8px; }
+.os tr.os-cust > td { padding: 14px 8px 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--os-indigo) 35%, transparent); font-weight: 700; color: var(--os-indigo); box-shadow: inset 3px 0 0 var(--os-indigo); }
+.os tr.os-cust > td b { font-size: 0.78rem; font-weight: 600; color: var(--muted); margin-right: 10px; }
+.os tr.os-cust > td i { font-style: normal; font-weight: 500; font-size: 0.78rem; color: var(--muted); margin-left: 12px; }
+.os tr.os-open > td { color: var(--muted); }
+.os tr.os-ctotal > td { font-weight: 700; border-top: 1px solid var(--ink); border-bottom: 0; padding-bottom: 12px; }
+.os tr:hover > td { background: color-mix(in srgb, var(--link) 4%, transparent) !important; }
+.os-fold { display: flex; gap: 6px; padding: 10px 12px 0; }
+.os-fold button { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 0.8rem; cursor: pointer; min-height: 0; box-shadow: none; }
+.os-fold button:hover { border-color: var(--link); color: var(--link); }
+.os > tbody > tr:hover { background: transparent; }

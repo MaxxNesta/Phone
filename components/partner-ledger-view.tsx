@@ -1,13 +1,20 @@
+"use client";
+
+import { Fragment, useState } from "react";
 import Link from "next/link";
-import { money, shortDate } from "@/lib/db";
+import { ChevronDown, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { money, shortDate } from "@/lib/format";
 import type { PartnerLedger, Side } from "@/lib/partner-ledger";
-import { ExportCsvButton } from "./export-csv";
 import { AutoSubmit } from "./auto-submit";
+import { exportLedger, periodText } from "./ledger-workbook";
 
 /**
  * The supplier or customer ledger, as the old reports printed it: a band per
  * partner — and, for customers, per township above them, with the township's
  * total — then opening, each document with the running balance, and the total.
+ *
+ * Each level folds (2026-11-25): a township to its total, a partner to its
+ * total, or everything at once from the bar above the table.
  */
 export function PartnerLedgerView({ side, ledger, partners, townships, branches = [], sp, base }: {
   side: Side; ledger: PartnerLedger;
@@ -20,19 +27,18 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
 }) {
   const cust = side === "CUSTOMER";
   const [chargeLabel, settleLabel] = cust ? ["Sales", "Payment"] : ["Purchase", "Payment"];
-  const neg = (n: number) => (n < 0 ? { color: "var(--bad)" } : undefined);
+  const neg = (n: number) => (n < 0 ? "neg" : "");
   // Customers fall under their township, as the old report grouped them.
   const groups = cust
     ? [...new Set(ledger.map((g) => g.township ?? ""))].map((t) => ({ township: t, partners: ledger.filter((g) => (g.township ?? "") === t) }))
     : [{ township: null as string | null, partners: ledger }];
 
-  const csv: (string | number)[][] = [[...(cust ? ["Township"] : []), "Code", cust ? "Customer" : "Supplier", "Date", "Type", "Document", "Old ref", "Description", chargeLabel, settleLabel, "Balance"]];
-  for (const grp of groups) for (const g of grp.partners) {
-    const lead = [...(cust ? [g.township ?? "No township"] : []), g.code, g.name];
-    csv.push([...lead, "", "Opening", "", "", "", "", "", g.opening]);
-    for (const r of g.rows) csv.push([...lead, r.date, r.kind, r.docNo ?? r.entryNo, r.oldRef ?? "", r.description, r.charge || "", r.settle || "", r.balance]);
-    csv.push([...lead, "", "Total", "", "", "", g.charges, g.settles, g.closing]);
-  }
+  const [shutTowns, setShutTowns] = useState<Set<string>>(new Set());
+  const [shutParts, setShutParts] = useState<Set<string>>(new Set());
+  const flip = (set: Set<string>, key: string, put: (s: Set<string>) => void) => {
+    const next = new Set(set); if (next.has(key)) next.delete(key); else next.add(key); put(next);
+  };
+  const [busy, setBusy] = useState(false);
 
   return (
     <>
@@ -67,7 +73,10 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
         <div className="field"><label htmlFor="from">From</label><input id="from" name="from" type="date" defaultValue={sp.from ?? ""} /></div>
         <div className="field"><label htmlFor="to">To</label><input id="to" name="to" type="date" defaultValue={sp.to ?? ""} /></div>
         <div className="actions">
-          <ExportCsvButton name={cust ? "customer-ledger" : "supplier-ledger"} rows={csv} />
+          <button type="button" className="dt-tool" disabled={busy || ledger.length === 0}
+            onClick={async () => { setBusy(true); try { await exportLedger(side, ledger, periodText(sp.from, sp.to)); } finally { setBusy(false); } }}>
+            <FileSpreadsheet size={15} aria-hidden="true" /> {busy ? "Exporting…" : "Export"}
+          </button>
         </div>
       </form>
 
@@ -75,45 +84,76 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
         <div className="card"><div className="empty">Nothing in this period.</div></div>
       ) : (
         <div className="card">
+          <div className="os-fold" role="group" aria-label="Fold">
+            <button type="button" onClick={() => { setShutTowns(new Set()); setShutParts(new Set()); }}>Expand all</button>
+            <button type="button" onClick={() => { setShutTowns(new Set()); setShutParts(new Set(ledger.map((g) => g.partnerId))); }}>{cust ? "Customers only" : "Suppliers only"}</button>
+            {cust && <button type="button" onClick={() => setShutTowns(new Set(groups.map((g) => g.township ?? "")))}>Townships only</button>}
+          </div>
           <div className="tablewrap">
-            <table className="sl-table">
+            <table className="os os-led">
+              <colgroup><col style={{ width: "7.5rem" }} /><col style={{ width: "9rem" }} /><col style={{ width: "9.5rem" }} />
+                <col style={{ width: "7.5rem" }} /><col /><col className="c-amt" /><col className="c-amt" /><col className="c-amt" /></colgroup>
               <thead>
                 <tr><th>Date</th><th>Type</th><th>Document</th><th>Old ref</th><th>Description</th>
                   <th className="r">{chargeLabel}</th><th className="r">{settleLabel}</th><th className="r">Balance</th></tr>
               </thead>
               {groups.map((grp) => {
+                const key = grp.township ?? "";
+                const shut = cust && shutTowns.has(key);
                 const t = grp.partners.reduce((a, g) => ({ c: a.c + g.charges, s: a.s + g.settles, b: a.b + g.closing }), { c: 0, s: 0, b: 0 });
                 return (
-                  <tbody key={grp.township ?? "all"}>
-                    {cust && <tr className="sl-town"><td colSpan={8}>Township: <strong>{grp.township || "No township"}</strong></td></tr>}
-                    {grp.partners.map((g) => [
-                      <tr key={`${g.partnerId}-h`} className="sl-head"><td className="code">{g.code}</td><td colSpan={7}><strong>{g.name}</strong></td></tr>,
-                      <tr key={`${g.partnerId}-o`} className="sl-open"><td /><td><strong>Opening</strong></td><td colSpan={5} /><td className="r" style={neg(g.opening)}>{money(g.opening)}</td></tr>,
-                      ...g.rows.map((r) => (
-                        <tr key={`${r.entryNo}-${r.partnerId}`}>
-                          <td className="code">{shortDate(r.date)}</td>
-                          <td>{r.kind}</td>
-                          <td className="code narrow">{r.docId ? <Link href={`/documents/${r.docId}`}>{r.docNo}</Link> : r.entryNo}</td>
-                          <td className="code narrow">{r.oldRef ?? ""}</td>
-                          <td className="sl-desc" title={r.description}>{r.description}</td>
-                          <td className="r">{r.charge ? money(r.charge) : ""}</td>
-                          <td className="r">{r.settle ? money(r.settle) : ""}</td>
-                          <td className="r" style={neg(r.balance)}>{money(r.balance)}</td>
-                        </tr>
-                      )),
-                      <tr key={`${g.partnerId}-t`} className="sl-total">
-                        <td colSpan={5} className="r"><strong>Total {g.name}</strong></td>
-                        <td className="r"><strong>{money(g.charges)}</strong></td>
-                        <td className="r"><strong>{money(g.settles)}</strong></td>
-                        <td className="r" style={neg(g.closing)}><strong>{money(g.closing)}</strong></td>
-                      </tr>,
-                    ])}
+                  <tbody key={key || "all"}>
                     {cust && (
-                      <tr className="sl-towntotal">
-                        <td colSpan={5} className="r"><strong>Total {grp.township || "No township"}</strong></td>
-                        <td className="r"><strong>{money(t.c)}</strong></td>
-                        <td className="r"><strong>{money(t.s)}</strong></td>
-                        <td className="r" style={neg(t.b)}><strong>{money(t.b)}</strong></td>
+                      <tr className="os-town" onClick={() => flip(shutTowns, key, setShutTowns)} aria-expanded={!shut}>
+                        <td colSpan={8}>
+                          {shut ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+                          <span>Township</span>{grp.township || "No township"}<em>{grp.partners.length} customer{grp.partners.length === 1 ? "" : "s"}</em>
+                        </td>
+                      </tr>
+                    )}
+                    {!shut && grp.partners.map((g) => {
+                      const closed = shutParts.has(g.partnerId);
+                      return (
+                        <Fragment key={g.partnerId}>
+                          <tr className="os-cust" onClick={() => flip(shutParts, g.partnerId, setShutParts)} aria-expanded={!closed}>
+                            <td colSpan={8}>
+                              {closed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                              <b>{g.code}</b>{g.name}
+                              {closed && <i>{g.rows.length} entr{g.rows.length === 1 ? "y" : "ies"}</i>}
+                            </td>
+                          </tr>
+                          {!closed && (
+                            <>
+                              <tr className="os-open"><td /><td>Opening</td><td colSpan={5} /><td className={`r ${neg(g.opening)}`}>{money(g.opening)}</td></tr>
+                              {g.rows.map((r) => (
+                                <tr key={`${r.entryNo}-${r.partnerId}`}>
+                                  <td className="code">{shortDate(r.date)}</td>
+                                  <td>{r.kind}</td>
+                                  <td className="code">{r.docId ? <Link href={`/documents/${r.docId}`}>{r.docNo}</Link> : r.entryNo}</td>
+                                  <td className="code muted">{r.oldRef ?? ""}</td>
+                                  <td className="muted" title={r.description}>{r.description}</td>
+                                  <td className="r">{r.charge ? money(r.charge) : ""}</td>
+                                  <td className="r">{r.settle ? money(r.settle) : ""}</td>
+                                  <td className={`r ${neg(r.balance)}`}>{money(r.balance)}</td>
+                                </tr>
+                              ))}
+                            </>
+                          )}
+                          <tr className="os-ctotal">
+                            <td colSpan={5} className="r">Total {g.name}</td>
+                            <td className="r">{money(g.charges)}</td>
+                            <td className="r">{money(g.settles)}</td>
+                            <td className={`r ${neg(g.closing)}`}>{money(g.closing)}</td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })}
+                    {cust && (
+                      <tr className="os-towntotal">
+                        <td colSpan={5} className="r">Total {grp.township || "No township"}</td>
+                        <td className="r">{money(t.c)}</td>
+                        <td className="r">{money(t.s)}</td>
+                        <td className={`r ${neg(t.b)}`}>{money(t.b)}</td>
                       </tr>
                     )}
                   </tbody>

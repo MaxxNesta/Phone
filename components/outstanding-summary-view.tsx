@@ -1,7 +1,11 @@
-import { money } from "@/lib/db";
+"use client";
+
+import { useState } from "react";
+import { ChevronDown, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { money } from "@/lib/format";
 import type { Side, SummaryRow } from "@/lib/partner-ledger";
-import { ExportCsvButton } from "./export-csv";
 import { AutoSubmit } from "./auto-submit";
+import { exportSummary, periodText } from "./ledger-workbook";
 
 type Sum = Omit<SummaryRow, "partnerId" | "code" | "name" | "township">;
 const KEYS = ["opening", "sale", "returned", "discount", "payment", "other", "prepaid", "balance"] as const;
@@ -10,7 +14,8 @@ const add = (rows: Sum[]): Sum => Object.fromEntries(KEYS.map((k) => [k, rows.re
 /**
  * The Outstanding Summary, as the old report printed it (2026-11-25): a line
  * a partner, customers under their township with the township's total, and
- * the whole at the foot. Other shows only when something sits in it.
+ * the whole at the foot. A township folds to its total; Other shows only
+ * when something sits in it.
  */
 export function OutstandingSummaryView({ side, rows, townships, branches = [], sp, base }: {
   side: Side; rows: SummaryRow[];
@@ -30,21 +35,20 @@ export function OutstandingSummaryView({ side, rows, townships, branches = [], s
     ? [...new Set(rows.map((r) => r.township ?? ""))].map((t) => ({ township: t, rows: rows.filter((r) => (r.township ?? "") === t) }))
     : [{ township: null as string | null, rows }];
   const all = add(rows);
+  const [shut, setShut] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
 
-  const csv: (string | number)[][] = [["Sr", ...(cust ? ["Township"] : []), "Code", cust ? "Customer" : "Supplier", ...cols.map(([, l]) => l)]];
-  let n = 0;
-  for (const g of groups) {
-    for (const r of g.rows) csv.push([++n, ...(cust ? [g.township || "No township"] : []), r.code, r.name, ...cols.map(([k]) => r[k])]);
-    if (cust) csv.push(["", g.township ? `${g.township} total` : "No township total", "", "", ...cols.map(([k]) => add(g.rows)[k])]);
-  }
-  csv.push(["", ...(cust ? [""] : []), "", "Total", ...cols.map(([k]) => all[k])]);
-
-  const cells = (s: Sum, strong = false) => cols.map(([k]) => (
-    <td key={k} className={`r${k === "balance" && s.balance > 0.005 ? " os-owed" : ""}${k === "prepaid" && s.prepaid > 0.005 ? " os-pre" : ""}`}>
-      {strong ? <strong>{money(s[k])}</strong> : money(s[k])}
-    </td>
+  const cells = (s: Sum, total = false) => cols.map(([k]) => (
+    <td key={k} className={[
+      "r",
+      !total && Math.abs(s[k]) < 0.005 && "zero",
+      k === "balance" && s.balance > 0.005 && "owed",
+      k === "prepaid" && s.prepaid > 0.005 && "pre",
+      s[k] < -0.005 && "neg",
+    ].filter(Boolean).join(" ")}>{money(s[k])}</td>
   ));
-  let sr = 0;
+  // Each township's first serial number, so folding one does not renumber the rest.
+  const firstSr = groups.map((_, i) => 1 + groups.slice(0, i).reduce((t, g) => t + g.rows.length, 0));
 
   return (
     <>
@@ -72,7 +76,10 @@ export function OutstandingSummaryView({ side, rows, townships, branches = [], s
         <div className="field"><label htmlFor="from">From</label><input id="from" name="from" type="date" defaultValue={sp.from ?? ""} /></div>
         <div className="field"><label htmlFor="to">To</label><input id="to" name="to" type="date" defaultValue={sp.to ?? ""} /></div>
         <div className="actions">
-          <ExportCsvButton name={cust ? "customer-outstanding-summary" : "supplier-outstanding-summary"} rows={csv} />
+          <button type="button" className="dt-tool" disabled={busy || rows.length === 0}
+            onClick={async () => { setBusy(true); try { await exportSummary(side, rows, periodText(sp.from, sp.to), showOther); } finally { setBusy(false); } }}>
+            <FileSpreadsheet size={15} aria-hidden="true" /> {busy ? "Exporting…" : "Export"}
+          </button>
         </div>
       </form>
 
@@ -80,33 +87,51 @@ export function OutstandingSummaryView({ side, rows, townships, branches = [], s
         <div className="card"><div className="empty">Nothing in this period.</div></div>
       ) : (
         <div className="card">
+          {cust && (
+            <div className="os-fold" role="group" aria-label="Fold">
+              <button type="button" onClick={() => setShut(new Set())}>Expand all</button>
+              <button type="button" onClick={() => setShut(new Set(groups.map((g) => g.township ?? "")))}>Townships only</button>
+            </div>
+          )}
           <div className="tablewrap">
-            <table className="sl-table os-table">
+            <table className="os os-sum">
+              <colgroup><col className="c-sr" /><col className="c-code" /><col className="c-name" />{cols.map(([k]) => <col key={k} className="c-amt" />)}</colgroup>
               <thead>
-                <tr><th className="narrow">Sr.</th><th>Code</th><th>{cust ? "Customer" : "Supplier"}</th>
+                <tr><th>Sr.</th><th>Code</th><th>{cust ? "Customer" : "Supplier"}</th>
                   {cols.map(([k, l]) => <th key={k} className="r">{l}</th>)}</tr>
               </thead>
-              {groups.map((g) => (
-                <tbody key={g.township ?? "all"}>
-                  {cust && <tr className="sl-town"><td colSpan={3 + cols.length}>Township: <strong>{g.township || "No township"}</strong></td></tr>}
-                  {g.rows.map((r) => (
-                    <tr key={r.partnerId}>
-                      <td className="narrow page-sub">{++sr}</td>
-                      <td className="code">{r.code}</td>
-                      <td className="wrap">{r.name}</td>
-                      {cells(r)}
-                    </tr>
-                  ))}
-                  {cust && (
-                    <tr className="sl-towntotal">
-                      <td colSpan={3}><strong>{g.township || "No township"} total</strong></td>
-                      {cells(add(g.rows), true)}
-                    </tr>
-                  )}
-                </tbody>
-              ))}
+              {groups.map((g, gi) => {
+                const key = g.township ?? "";
+                const closed = shut.has(key);
+                return (
+                  <tbody key={key || "all"}>
+                    {cust && (
+                      <tr className="os-town" onClick={() => setShut((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; })} aria-expanded={!closed}>
+                        <td colSpan={3 + cols.length}>
+                          {closed ? <ChevronRight size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+                          <span>Township</span>{g.township || "No township"}<em>{g.rows.length} customer{g.rows.length === 1 ? "" : "s"}</em>
+                        </td>
+                      </tr>
+                    )}
+                    {!closed && g.rows.map((r, i) => (
+                      <tr key={r.partnerId}>
+                        <td className="muted">{firstSr[gi] + i}</td>
+                        <td className="code">{r.code}</td>
+                        <td className="name">{r.name}</td>
+                        {cells(r)}
+                      </tr>
+                    ))}
+                    {cust && (
+                      <tr className="os-towntotal">
+                        <td colSpan={3}>{g.township || "No township"} total</td>
+                        {cells(add(g.rows), true)}
+                      </tr>
+                    )}
+                  </tbody>
+                );
+              })}
               <tfoot>
-                <tr className="os-grand"><td colSpan={3}><strong>Total</strong></td>{cells(all, true)}</tr>
+                <tr><td colSpan={3}>Total</td>{cells(all, true)}</tr>
               </tfoot>
             </table>
           </div>
