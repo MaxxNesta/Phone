@@ -69,8 +69,20 @@ export async function postOnce<T extends Posted>(
     if (!isDuplicateKey(e)) throw e;
 
     const [row] = await sql`
-      select document_id, doc_no from posting_attempt
-       where company_id = ${companyId} and key = ${key}`;
+      select pa.document_id, pa.doc_no, d.status, d.superseded_by_document_id
+        from posting_attempt pa left join document d on d.id = pa.document_id
+       where pa.company_id = ${companyId} and pa.key = ${key}`;
+
+    /* The document this key made has since been voided (2026-11-26): there is
+       no posting left for the key to protect, so it is released and this one
+       posts. Without it, an imported invoice voided to be imported again
+       whole was answered with the voided one, and nothing was posted. */
+    // Voided outright only: an amended document is voided too, but it was
+    // replaced by a newer version, and a retry is still answered, not reposted.
+    if (row?.document_id && row.status === "REVERSED" && !row.superseded_by_document_id) {
+      await sql`delete from posting_attempt where company_id = ${companyId} and key = ${key} and document_id = ${row.document_id}`;
+      return postOnce(companyId, key, run);
+    }
 
     if (row?.document_id) {
       return {

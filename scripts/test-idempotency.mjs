@@ -378,6 +378,20 @@ try {
   const p2 = await receive(undefined);
   check("two keyless postings are two documents", p1.id !== p2.id);
 
+  // ---- the document the key made was voided ------------------------------
+  // An imported invoice voided so it can be imported again whole carries the
+  // same key. The key must not hand back the voided document (2026-11-26).
+
+  console.log("\n  the key's document voided\n");
+
+  const vk = `test-void-${Date.now()}`;
+  const v1 = await receive(vk);
+  await P.voidDocument({ documentId: v1.id, reason: "test: posted again" });
+  const v2 = await receive(vk);
+  check("a key whose document was voided posts again", v2.id !== v1.id && !v2.repeated, `${v1.docNo} -> ${v2.docNo}`);
+  const v3 = await receive(vk);
+  check("  and the new document is then the one a retry is handed", v3.id === v2.id && v3.repeated === true);
+
   console.log(bad === 0 ? "\n  one submission, one posting\n" : `\n  ${bad} FAILED\n`);
   process.exitCode = bad === 0 ? 0 : 1;
 } catch (e) {
