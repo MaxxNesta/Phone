@@ -107,10 +107,13 @@ export function AdvanceLedger({ side, advances }: { side: "CUSTOMER" | "SUPPLIER
                   <Fragment key={r.id}>
                     <tr className={`adv-row${isOpen ? " open" : ""}`}>
                       <td className="adv-chev">
-                        <button type="button" className="vicon" aria-expanded={isOpen} aria-label={`${isOpen ? "Hide" : "Show"} where ${r.doc_no} went`}
-                          onClick={() => toggle(r.id)} disabled={r.applications.length === 0}>
-                          {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        </button>
+                        {/* Nothing applied yet, nothing to show: no arrow rather than a dead one. */}
+                        {r.applications.length > 0 && (
+                          <button type="button" className="vicon" aria-expanded={isOpen} aria-label={`${isOpen ? "Hide" : "Show"} where ${r.doc_no} went`}
+                            onClick={() => toggle(r.id)}>
+                            {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </button>
+                        )}
                       </td>
                       <td className="m">{shortDate(r.doc_date)}</td>
                       <td className="m">
