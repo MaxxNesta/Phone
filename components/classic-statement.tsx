@@ -55,8 +55,10 @@ export function ClassicStatement({ sections, subtotals, revenue, scope }: {
                   ...g.accounts.map((a) => (
                     <tr key={a.id} className="cl-acct">
                       <td>{a.name}</td>
+                      {/* Two columns, as the legacy books ruled them: each account's figure
+                          in the inner column, only subtotals and totals in the outer one. */}
                       <td className="r">{fmt(a.amount)}</td>
-                      <td className="r">{fmt(a.amount)}</td>
+                      <td />
                       <td className="r">{pct(a.amount, s.total)}</td>
                       <td className="r">{pct(a.amount, revenue)}</td>
                     </tr>
