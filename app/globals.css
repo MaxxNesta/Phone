@@ -9105,7 +9105,8 @@ td.disccell { width: 9.5rem; }
 .classic-pl .cl-group > td { padding-top: 14px; color: var(--link); font-weight: 600; }
 .classic-pl .cl-acct > td { font-weight: 400; }
 .classic-pl .cl-subtotal > td { border-top: 1px solid var(--ink); font-weight: 600; padding-bottom: 12px; }
-.classic-pl .cl-subtotal > td:first-child { border-top: 0; }
+.classic-pl .cl-subtotal > td:nth-child(-n+2) { border-top: 0; }
+.classic-pl .cl-code { width: 6.5rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .classic-pl .cl-total > td { border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
 .classic-pl .cl-total.strong > td { border-top-width: 2px; font-weight: 700; }
 .form.docsheet table.linetable td.disccell .disc-entry > input { flex: 1 1 0; min-width: 3.5rem; width: 0; }

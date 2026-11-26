@@ -41,7 +41,9 @@ export function ClassicStatement({ sections, subtotals, revenue, scope }: {
       <div className="tablewrap">
         <table>
           <thead>
-            <tr><th>Description</th><th className="r">Account</th><th className="r">Amount</th>
+            {/* As the old books printed it: the account's code and name, its figure
+                and each group's subtotal in Amount, section totals in Total. */}
+            <tr><th className="cl-code">Code</th><th>Description</th><th className="r">Amount</th><th className="r">Total</th>
               <th className="r">% of section</th><th className="r">% of revenue</th></tr>
           </thead>
           <tbody>
@@ -49,14 +51,13 @@ export function ClassicStatement({ sections, subtotals, revenue, scope }: {
               // What the section does to profit: revenue adds, everything else takes away.
               const effect = (v: number) => (s.key === "REVENUE" || s.key === "OTHER" ? v : -v);
               return [
-                <tr key={`${s.key}-h`} className="cl-section"><td colSpan={5}>{s.label}</td></tr>,
+                <tr key={`${s.key}-h`} className="cl-section"><td colSpan={6}>{s.label}</td></tr>,
                 ...groupsOf(s.nodes, s.label).flatMap((g, gi) => [
-                  <tr key={`${s.key}-${gi}-h`} className="cl-group"><td colSpan={5}>{g.name}</td></tr>,
+                  <tr key={`${s.key}-${gi}-h`} className="cl-group"><td colSpan={6}>{g.name}</td></tr>,
                   ...g.accounts.map((a) => (
                     <tr key={a.id} className="cl-acct">
+                      <td className="cl-code">{a.code}</td>
                       <td>{a.name}</td>
-                      {/* Two columns, as the legacy books ruled them: each account's figure
-                          in the inner column, only subtotals and totals in the outer one. */}
                       <td className="r">{fmt(a.amount)}</td>
                       <td />
                       <td className="r">{pct(a.amount, s.total)}</td>
@@ -64,18 +65,18 @@ export function ClassicStatement({ sections, subtotals, revenue, scope }: {
                     </tr>
                   )),
                   <tr key={`${s.key}-${gi}-t`} className="cl-subtotal">
-                    <td /><td /><td className="r">{fmt(effect(g.amount))}</td><td /><td />
+                    <td /><td /><td className="r">{fmt(effect(g.amount))}</td><td /><td /><td />
                   </tr>,
                 ]),
                 <tr key={`${s.key}-t`} className="cl-total">
-                  <td>{s.totalLabel}</td><td />
+                  <td colSpan={3}>{s.totalLabel}</td>
                   <td className="r">{fmt(effect(s.total))}</td>
                   <td className="r">{s.total === 0 ? "" : "100 %"}</td>
                   <td className="r">{pct(s.total, revenue)}</td>
                 </tr>,
                 ...subtotals.filter((t) => t.after === s.key).map((t) => (
                   <tr key={`${s.key}-${t.label}`} className={`cl-total${t.strong ? " strong" : ""}`}>
-                    <td>{t.label}</td><td /><td className="r">{fmt(t.value)}</td><td /><td className="r">{pct(t.value, revenue)}</td>
+                    <td colSpan={3}>{t.label}</td><td className="r">{fmt(t.value)}</td><td /><td className="r">{pct(t.value, revenue)}</td>
                   </tr>
                 )),
               ];
