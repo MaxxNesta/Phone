@@ -26,7 +26,9 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
   base: string;
 }) {
   const cust = side === "CUSTOMER";
-  const [chargeLabel, settleLabel] = cust ? ["Sales", "Payment"] : ["Purchase", "Payment"];
+  // What raises the balance and what lowers it — a sale, an opening balance or a journal raises a
+  // customer's; a payment, a return or a discount lowers it — so the columns say which way, not why.
+  const [chargeLabel, settleLabel] = ["Increase", "Decrease"];
   const neg = (n: number) => (n < 0 ? "neg" : "");
   // Customers fall under their township, as the old report grouped them.
   const groups = cust
@@ -34,6 +36,7 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
     : [{ township: null as string | null, partners: ledger }];
 
   const all = ledger.reduce((a, g) => ({ c: a.c + g.charges, s: a.s + g.settles, b: a.b + g.closing }), { c: 0, s: 0, b: 0 });
+  const grand = `Grand total · ${ledger.length} ${cust ? (ledger.length === 1 ? "customer" : "customers") : (ledger.length === 1 ? "supplier" : "suppliers")}`;
   const [shutTowns, setShutTowns] = useState<Set<string>>(new Set());
   const [shutParts, setShutParts] = useState<Set<string>>(new Set());
   const flip = (set: Set<string>, key: string, put: (s: Set<string>) => void) => {
@@ -97,6 +100,13 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
               <thead>
                 <tr><th>Date</th><th>Type</th><th>Document</th><th>Old ref</th><th>Description</th>
                   <th className="r">{chargeLabel}</th><th className="r">{settleLabel}</th><th className="r">Balance</th></tr>
+                {/* The whole at the top as well as the foot, so it is seen before scrolling. */}
+                <tr className="os-grandtop">
+                  <td colSpan={5} className="r">{grand}</td>
+                  <td className="r">{money(all.c)}</td>
+                  <td className="r">{money(all.s)}</td>
+                  <td className={`r ${neg(all.b)}`}>{money(all.b)}</td>
+                </tr>
               </thead>
               {groups.map((grp) => {
                 const key = grp.township ?? "";
@@ -163,7 +173,7 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
               {/* Every customer or supplier in view, whatever is folded: the figure the summary's foot shows too. */}
               <tfoot>
                 <tr>
-                  <td colSpan={5} className="r">Grand total · {ledger.length} {cust ? (ledger.length === 1 ? "customer" : "customers") : (ledger.length === 1 ? "supplier" : "suppliers")}</td>
+                  <td colSpan={5} className="r">{grand}</td>
                   <td className="r">{money(all.c)}</td>
                   <td className="r">{money(all.s)}</td>
                   <td className={`r ${neg(all.b)}`}>{money(all.b)}</td>

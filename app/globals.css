@@ -12410,3 +12410,5 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .os-fold button { appearance: none; border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 0.8rem; cursor: pointer; min-height: 0; box-shadow: none; }
 .os-fold button:hover { border-color: var(--link); color: var(--link); }
 .os > tbody > tr:hover { background: transparent; }
+/* The ledger's grand total, under the column heads too. */
+.os > thead tr.os-grandtop > td { font-weight: 800; padding: 10px 8px; border-bottom: 2px solid var(--ink); background: transparent; }

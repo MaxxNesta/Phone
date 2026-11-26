@@ -55,10 +55,15 @@ export async function exportLedger(side: Side, ledger: PartnerLedger, period: st
   const COLS = 8;
   const { wb, ws } = await book(cust ? "Customer ledger" : "Supplier ledger", `${period} · ${ledger.length} ${cust ? "customers" : "suppliers"} · exported ${nice(todayLocal())}`,
     [13, 12, 17, 14, 34, 17, 17, 17]);
-  const head = ws.addRow(["Date", "Type", "Document", "Old ref", "Description", cust ? "Sales" : "Purchase", "Payment", "Balance"]) as unknown as Row;
+  const head = ws.addRow(["Date", "Type", "Document", "Old ref", "Description", "Increase", "Decrease", "Balance"]) as unknown as Row;
   paint(head, COLS, null, { bold: true, color: { argb: "FF3A3A3C" } });
   line(head, 1, COLS, "medium", DARK, "bottom");
   [6, 7, 8].forEach((n) => { head.getCell(n).alignment = { horizontal: "right" }; });
+  // The whole first as well as last, so it is seen before scrolling.
+  const top = ws.addRow(["", "", "", "", `Grand total · ${ledger.length} ${cust ? "customers" : "suppliers"}`,
+    ledger.reduce((t, g) => t + g.charges, 0), ledger.reduce((t, g) => t + g.settles, 0), ledger.reduce((t, g) => t + g.closing, 0)]) as unknown as Row;
+  top.getCell(5).font = { bold: true }; top.getCell(5).alignment = { horizontal: "right" };
+  nums(top, 6, 8, true); line(top, 5, 8, "medium", DARK, "bottom");
 
   const towns = cust ? [...new Set(ledger.map((g) => g.township ?? ""))] : [null];
   const all = { c: 0, s: 0, b: 0 };
@@ -96,7 +101,7 @@ export async function exportLedger(side: Side, ledger: PartnerLedger, period: st
   const g = ws.addRow(["", "", "", "", "Total", all.c, all.s, all.b]) as unknown as Row;
   g.getCell(5).font = { bold: true, size: 12 }; g.getCell(5).alignment = { horizontal: "right" };
   nums(g, 6, 8, true); line(g, 5, 8, "double", DARK, "bottom");
-  (ws as unknown as { views: unknown[] }).views = [{ state: "frozen", ySplit: 4 }];
+  (ws as unknown as { views: unknown[] }).views = [{ state: "frozen", ySplit: 5 }];
   await save(wb as never, cust ? "customer-ledger" : "supplier-ledger");
 }
 
