@@ -33,6 +33,7 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
     ? [...new Set(ledger.map((g) => g.township ?? ""))].map((t) => ({ township: t, partners: ledger.filter((g) => (g.township ?? "") === t) }))
     : [{ township: null as string | null, partners: ledger }];
 
+  const all = ledger.reduce((a, g) => ({ c: a.c + g.charges, s: a.s + g.settles, b: a.b + g.closing }), { c: 0, s: 0, b: 0 });
   const [shutTowns, setShutTowns] = useState<Set<string>>(new Set());
   const [shutParts, setShutParts] = useState<Set<string>>(new Set());
   const flip = (set: Set<string>, key: string, put: (s: Set<string>) => void) => {
@@ -159,6 +160,15 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
                   </tbody>
                 );
               })}
+              {/* Every customer or supplier in view, whatever is folded: the figure the summary's foot shows too. */}
+              <tfoot>
+                <tr>
+                  <td colSpan={5} className="r">Grand total · {ledger.length} {cust ? (ledger.length === 1 ? "customer" : "customers") : (ledger.length === 1 ? "supplier" : "suppliers")}</td>
+                  <td className="r">{money(all.c)}</td>
+                  <td className="r">{money(all.s)}</td>
+                  <td className={`r ${neg(all.b)}`}>{money(all.b)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
