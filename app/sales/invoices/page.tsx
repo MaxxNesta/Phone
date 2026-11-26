@@ -208,7 +208,7 @@ export default async function SalesInvoices({
           </span>
         </div>
         <div className="kpi">
-          <span className="kpi-label">Paid</span>
+          <span className="kpi-label">Received</span>
           <span className="kpi-value">{money(totalPaid)}</span>
           {totalAdv > 0.005 && <span className="kpi-note">+ {money(totalAdv)} from advances</span>}
         </div>

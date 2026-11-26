@@ -254,7 +254,14 @@ export function SalesVoucher({
       : [],
   );
   const [customerId, setCustomerId] = useState(restored?.customerId ?? "");
-  const [locationId, setLocationId] = useState(restored?.locationId ?? locations[0]?.id ?? "");
+  // Opens on the warehouse holding the most stock, not the first by name: a
+  // second branch with nothing in it sorted first and the picker found nothing.
+  const [locationId, setLocationId] = useState(() => {
+    if (restored?.locationId) return restored.locationId;
+    const qty = new Map<string, number>();
+    for (const r of stockByLocation) qty.set(r.location_id, (qty.get(r.location_id) ?? 0) + Number(r.qty_on_hand));
+    return [...locations].sort((a, b) => (qty.get(b.id) ?? 0) - (qty.get(a.id) ?? 0))[0]?.id ?? "";
+  });
   const [matchedDeliveryId, setMatchedDeliveryId] = useState("");
   /**
    * Bill less than went out — asked for, not typed into. The purchase side's
