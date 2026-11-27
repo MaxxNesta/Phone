@@ -15,6 +15,7 @@ import {
 import { SalesOverview } from "@/components/sales-overview";
 import { SalesPivot } from "@/components/sales-pivot";
 import { ChartTools } from "@/components/chart-tools";
+import { RegionMap } from "@/components/region-map";
 
 type Tab = SalesBreakdownBy | "overview" | "pivot";
 
@@ -321,6 +322,18 @@ export default async function SalesReports({
           can be re-asked rather than two fixed rankings. */}
       {rows.length > 0 && (by !== "item" ? (
         <section className="grid2 chartrow">
+          {by === "region" ? (
+          <div className="card">
+            <div className="card-head">
+              <h2>Where it sold</h2>
+              <span className="page-sub">net sales by region</span>
+            </div>
+            <div className="card-body">
+              <RegionMap currency={company.base_currency}
+                rows={rows.map((r) => ({ name: r.name, revenue: r.revenue, qty: r.qty, marginPct: r.marginPct }))} />
+            </div>
+          </div>
+          ) : (
           <div className="card">
             <div className="card-head">
               <h2>Share of net sales</h2>
@@ -337,6 +350,7 @@ export default async function SalesReports({
               </div>
             </div>
           </div>
+          )}
 
           <BreakdownPerformance rows={rows} label={label} retail={retail} />
         </section>

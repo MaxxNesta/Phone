@@ -12430,3 +12430,23 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .os > tbody > tr:hover { background: transparent; }
 /* The ledger's grand total, under the column heads too. */
 .os > thead tr.os-grandtop > td { font-weight: 800; padding: 10px 8px; border-bottom: 2px solid var(--ink); background: transparent; }
+
+/* Sales by region on a map of Myanmar (2026-11-27): one blue, light to dark. */
+.rmap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(11rem, 14rem); gap: 16px; align-items: start; }
+.rmap svg { width: 100%; height: 420px; display: block; }
+.rmap path, .rmap circle { stroke: var(--surface); stroke-width: 1; cursor: pointer; transition: fill .15s; outline: none; }
+.rmap .rmap-npt { stroke-width: 2; }
+.rmap path.on, .rmap circle.on, .rmap path:focus-visible, .rmap circle:focus-visible { stroke: var(--ink); stroke-width: 1.5; }
+.rmap-label { font-size: 14px; font-weight: 600; fill: var(--ink); text-anchor: middle; dominant-baseline: middle; pointer-events: none;
+  paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.rmap-side { display: flex; flex-direction: column; gap: 14px; font-size: var(--t-sm); }
+.rmap-info strong { display: block; font-size: 1rem; margin-bottom: 6px; }
+.rmap-info dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+.rmap-info dt { color: var(--muted); }
+.rmap-info dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rmap-info dd small { color: var(--muted); font-weight: 400; }
+.rmap-info p, .rmap-note { margin: 0; color: var(--muted); }
+.rmap-swatches { display: flex; gap: 2px; }
+.rmap-swatches span { flex: 1; height: 10px; border-radius: 3px; }
+.rmap-ends { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); font-size: 0.75rem; }
+@media (max-width: 640px) { .rmap { grid-template-columns: 1fr; } }
