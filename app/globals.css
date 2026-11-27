@@ -12347,9 +12347,27 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 
 /* A filter of several values (2026-11-25): a checklist with a search box. */
 .dt-multi { position: relative; }
-.dt-multi-btn { text-align: left; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.dt-multi-btn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  max-width: 14rem; height: 36px; min-height: 36px; padding: 0 10px 0 12px; cursor: pointer;
+  border: 0; border-radius: 10px; background: var(--line-soft); color: var(--ink);
+  font-size: 0.875rem; font-weight: 500; text-align: left;
+}
+.dt-multi-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt-multi-btn svg { flex: none; color: var(--muted); }
+.dt-multi-btn.dt-filter-on { background: color-mix(in srgb, var(--ink) 8%, transparent); font-weight: 600; }
+/* In a filter bar of ordinary fields (the ledgers, 2026-11-27): a field like the ones beside it. */
+.sl-filter.card { overflow: visible; }
+.sl-filter .dt-multi { display: block; }
+.sl-filter .dt-multi-btn {
+  width: 100%; max-width: 20rem; height: var(--field-h); min-height: var(--field-h); padding: 0 12px 0 var(--field-px);
+  border: 1px solid var(--line); border-radius: var(--field-r); background: var(--surface); font-size: 1rem; font-weight: 400;
+}
+.sl-filter .dt-multi-btn.dt-filter-on { border-color: var(--ink); font-weight: 600; }
 .dt-multi-menu { left: 0; right: auto; width: 18rem; max-height: none; overflow: visible; }
-.dt-multi-find { width: 100%; margin-bottom: 4px; }
+.dt-multi-findbox { position: relative; margin-bottom: 4px; }
+.dt-multi-findbox svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.dt-multi-findbox input.dt-multi-find { width: 100%; padding-left: 34px; }
 .dt-multi-list { max-height: 45vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
 .dt-multi-list .dt-cols-item span { white-space: normal; }
 .dt-multi-none { padding: 8px; color: var(--muted); font-size: var(--t-sm); }

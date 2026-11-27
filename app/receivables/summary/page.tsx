@@ -2,22 +2,25 @@ import { PartnerTabs } from "@/components/partner-tabs";
 import { getCompany, getBranches } from "@/lib/queries";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
-import { getOutstandingSummary } from "@/lib/partner-ledger";
+import { getOutstandingSummary, partnerIdsOf } from "@/lib/partner-ledger";
 import { OutstandingSummaryView } from "@/components/outstanding-summary-view";
 import { HelpHint } from "@/components/help-hint";
 
 export const metadata = { title: "Customer outstanding summary" };
 
 /** The old Customer Outstanding Summary (2026-11-25): a line a customer, by township, from the customer ledger. */
-export default async function CustomerSummaryPage({ searchParams }: { searchParams: Promise<{ branch?: string; township?: string; from?: string; to?: string }> }) {
+export default async function CustomerSummaryPage({ searchParams }: { searchParams: Promise<{ branch?: string; township?: string; partner?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
   const branch = await scopedBranch(sp.branch);
   const branches = await seenBranches((await getBranches(company.id)) as unknown as { id: string; code: string; name: string }[]);
-  const [towns, rows] = await Promise.all([
+  const [customers, towns, rows] = await Promise.all([
+    sql`select id, code, name from business_partner where company_id = ${company.id} and is_customer
+          ${sp.township ? (sp.township === "-" ? sql`and township is null` : sql`and township = ${sp.township}`) : sql``}
+        order by code`,
     sql`select distinct township from business_partner where company_id = ${company.id} and is_customer and township is not null order by township`,
-    getOutstandingSummary(company.id, "CUSTOMER", { branchId: branch, township: sp.township || null, from: sp.from || null, to: sp.to || null }),
+    getOutstandingSummary(company.id, "CUSTOMER", { branchId: branch, partnerIds: partnerIdsOf(sp.partner), township: sp.township || null, from: sp.from || null, to: sp.to || null }),
   ]);
   return (
     <>
@@ -31,7 +34,7 @@ export default async function CustomerSummaryPage({ searchParams }: { searchPara
       </div>
       <PartnerTabs side="CUSTOMER" active="summary" />
       <OutstandingSummaryView side="CUSTOMER" rows={rows} townships={towns.map((t) => t.township as string)}
-        branches={branches} sp={{ ...sp, branch: branch ?? "" }} base="/receivables/summary" />
+        branches={branches} partners={customers as never} sp={{ ...sp, branch: branch ?? "" }} base="/receivables/summary" />
     </>
   );
 }

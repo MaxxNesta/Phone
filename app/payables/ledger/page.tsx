@@ -2,7 +2,7 @@ import { PartnerTabs } from "@/components/partner-tabs";
 import { getCompany, getBranches } from "@/lib/queries";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
-import { getPartnerLedger } from "@/lib/partner-ledger";
+import { getPartnerLedger, partnerIdsOf } from "@/lib/partner-ledger";
 import { PartnerLedgerView } from "@/components/partner-ledger-view";
 import { HelpHint } from "@/components/help-hint";
 
@@ -24,7 +24,7 @@ export default async function SupplierLedgerPage({ searchParams }: { searchParam
   const partner = sp.partner || sp.supplier || "";
   const [suppliers, ledger] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${company.id} and is_supplier order by code`,
-    getPartnerLedger(company.id, "SUPPLIER", { branchId: branch, partnerId: partner || null, from: sp.from || null, to: sp.to || null }),
+    getPartnerLedger(company.id, "SUPPLIER", { branchId: branch, partnerIds: partnerIdsOf(partner), from: sp.from || null, to: sp.to || null }),
   ]);
   return (
     <>

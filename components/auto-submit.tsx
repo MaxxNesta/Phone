@@ -8,7 +8,9 @@ export function AutoSubmit() {
   useEffect(() => {
     const form = ref.current?.closest("form");
     if (!form) return;
-    const go = () => form.requestSubmit();
+    // Only a field the form sends: a picker's own checkboxes and search box
+    // have no name, and ticking one must not reload the page mid-choice.
+    const go = (e: Event) => { if ((e.target as HTMLInputElement | null)?.name) form.requestSubmit(); };
     form.addEventListener("change", go);
     return () => form.removeEventListener("change", go);
   }, []);

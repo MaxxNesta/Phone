@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronRight, FileSpreadsheet } from "lucide-react";
 import { money, shortDate } from "@/lib/format";
 import type { PartnerLedger, Side } from "@/lib/partner-ledger";
+import { PartnerPick } from "@/components/partner-pick";
 import { AutoSubmit } from "./auto-submit";
 import { exportLedger, periodText } from "./ledger-workbook";
 
@@ -68,11 +69,9 @@ export function PartnerLedgerView({ side, ledger, partners, townships, branches 
           </div>
         )}
         <div className="field">
-          <label htmlFor="partner">{cust ? "Customer" : "Supplier"}</label>
-          <select id="partner" name="partner" defaultValue={sp.partner ?? ""}>
-            <option value="">{cust ? "All customers" : "All suppliers"}</option>
-            {partners.map((s) => <option key={s.id} value={s.id}>{s.code} · {s.name}</option>)}
-          </select>
+          <label>{cust ? "Customers" : "Suppliers"}</label>
+          <PartnerPick name="partner" value={sp.partner ?? ""} partners={partners}
+            allLabel={cust ? "All customers" : "All suppliers"} label={cust ? "Customers" : "Suppliers"} />
         </div>
         <div className="field"><label htmlFor="from">From</label><input id="from" name="from" type="date" defaultValue={sp.from ?? ""} /></div>
         <div className="field"><label htmlFor="to">To</label><input id="to" name="to" type="date" defaultValue={sp.to ?? ""} /></div>

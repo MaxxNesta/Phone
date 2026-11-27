@@ -8000,7 +8000,7 @@ export async function getInventoryCogsReconciliation(
 }
 
 /** How a sales report is cut. */
-export type SalesBreakdownBy = "item" | "model" | "brand" | "customer" | "category";
+export type SalesBreakdownBy = "item" | "model" | "brand" | "customer" | "region" | "category";
 
 /** One row of a sales breakdown. */
 export type SalesBreakdownRow = {
@@ -8038,6 +8038,7 @@ function salesDimension(by: SalesBreakdownBy) {
     dim: {
       item:     sql`i.id::text`,
       customer: sql`d.partner_id::text`,
+      region:   sql`coalesce(p.region, '')`,
       category: sql`coalesce(pg.id, g.id)::text`,
       model:    sql`coalesce(m.id::text, 'n:' || ${MODEL_OF_NAME})`,
       brand:    sql`coalesce(b.id::text, 'none')`,
@@ -8045,6 +8046,7 @@ function salesDimension(by: SalesBreakdownBy) {
     code: {
       item:     sql`i.code`,
       customer: sql`p.code`,
+      region:   sql`coalesce(p.region, '—')`,
       category: sql`coalesce(pg.code, g.code)`,
       model:    sql`coalesce(m.code, ${MODEL_OF_NAME})`,
       brand:    sql`coalesce(b.code, '—')`,
@@ -8052,6 +8054,7 @@ function salesDimension(by: SalesBreakdownBy) {
     name: {
       item:     sql`i.name`,
       customer: sql`p.name`,
+      region:   sql`coalesce(p.region, 'No region')`,
       category: sql`coalesce(pg.name, g.name)`,
       model:    sql`coalesce(m.name, ${MODEL_OF_NAME})`,
       brand:    sql`coalesce(b.name, 'No brand')`,

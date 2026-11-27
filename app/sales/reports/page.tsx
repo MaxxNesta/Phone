@@ -24,6 +24,7 @@ const TABS: [Tab, string, string][] = [
   ["model", "By model", "Each model, every storage and colour together"],
   ["brand", "By brand", "Whose goods sold"],
   ["customer", "By customer", "Who it came from"],
+  ["region", "By region", "Where the customers are"],
   ["category", "By category", "Which part of the catalogue"],
   ["pivot", "Pivot", "Group and compare any way: rows, columns, measures"],
 ];
@@ -96,7 +97,7 @@ export default async function SalesReports({
   const TOP = 5;
   const sliced = by === "item" ? [...modelRows].sort((a, b) => b.revenue - a.revenue) : rows;
   const sliceNoun = by === "item" ? "models"
-    : ({ model: "models", brand: "brands", customer: "customers", category: "categories" } as Record<string, string>)[by] ?? "others";
+    : ({ model: "models", brand: "brands", customer: "customers", region: "regions", category: "categories" } as Record<string, string>)[by] ?? "others";
   const head = sliced.slice(0, TOP);
   const tail = sliced.slice(TOP);
   const donut = [
@@ -117,10 +118,10 @@ export default async function SalesReports({
     return `/sales/reports?${q.toString()}`;
   };
 
-  const label = { item: "Item", model: "Model", brand: "Brand", customer: "Customer", category: "Category" }[by];
+  const label = { item: "Item", model: "Model", brand: "Brand", customer: "Customer", region: "Region", category: "Category" }[by];
   /* Written out, because adding an s gives "categorys". English plurals are
      not a rule the code can apply and these are four known words. */
-  const plural = { item: "items", customer: "customers",
+  const plural = { item: "items", customer: "customers", region: "regions",
                    category: "categories", model: "models", brand: "brands" }[by];
 
   /* The fourth tile asks something the table and the donut do not already
@@ -180,7 +181,7 @@ export default async function SalesReports({
        is a row nobody can check against its header. */
     node: (
       <tr>
-        <td className="code salescode" title={r.code}><span className="ellip">{r.code}</span></td>
+        {by !== "region" && <td className="code salescode" title={r.code}><span className="ellip">{r.code}</span></td>}
         <td className="wrap salesname">
           <span className="clamp2" title={r.name}>{r.name}</span>
           {r.freeQty > 0 && (
@@ -411,7 +412,7 @@ export default async function SalesReports({
             defaultSort={{ key: "revenue", dir: "desc" }}
             defaultPageSize={20}
             columns={[
-              { key: "code", label: "Code", sortable: true },
+              ...(by === "region" ? [] : [{ key: "code", label: "Code", sortable: true }]),
               { key: "name", label, sortable: true },
               { key: "qty", label: "Qty sold", sortable: true, align: "r" },
               { key: "gross", label: "Gross revenue", sortable: true, align: "r" },

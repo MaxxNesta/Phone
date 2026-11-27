@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, FileSpreadsheet } from "lucide-react";
 import { money } from "@/lib/format";
+import { PartnerPick } from "@/components/partner-pick";
 import type { Side, SummaryRow } from "@/lib/partner-ledger";
 import { AutoSubmit } from "./auto-submit";
 import { exportSummary, periodText } from "./ledger-workbook";
@@ -17,11 +18,12 @@ const add = (rows: Sum[]): Sum => Object.fromEntries(KEYS.map((k) => [k, rows.re
  * the whole at the foot. A township folds to its total; Other shows only
  * when something sits in it.
  */
-export function OutstandingSummaryView({ side, rows, townships, branches = [], sp, base }: {
+export function OutstandingSummaryView({ side, rows, townships, branches = [], partners = [], sp, base }: {
   side: Side; rows: SummaryRow[];
   townships?: string[];
   branches?: { id: string; code: string; name: string }[];
-  sp: { township?: string; from?: string; to?: string; branch?: string };
+  partners?: { id: string; code: string; name: string }[];
+  sp: { township?: string; partner?: string; from?: string; to?: string; branch?: string };
   base: string;
 }) {
   const cust = side === "CUSTOMER";
@@ -73,6 +75,11 @@ export function OutstandingSummaryView({ side, rows, townships, branches = [], s
             </select>
           </div>
         )}
+        <div className="field">
+          <label>{cust ? "Customers" : "Suppliers"}</label>
+          <PartnerPick name="partner" value={sp.partner ?? ""} partners={partners}
+            allLabel={cust ? "All customers" : "All suppliers"} label={cust ? "Customers" : "Suppliers"} />
+        </div>
         <div className="field"><label htmlFor="from">From</label><input id="from" name="from" type="date" defaultValue={sp.from ?? ""} /></div>
         <div className="field"><label htmlFor="to">To</label><input id="to" name="to" type="date" defaultValue={sp.to ?? ""} /></div>
         <div className="actions">

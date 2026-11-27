@@ -2,7 +2,7 @@ import { PartnerTabs } from "@/components/partner-tabs";
 import { getCompany, getBranches } from "@/lib/queries";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
 import { sql } from "@/lib/db";
-import { getPartnerLedger } from "@/lib/partner-ledger";
+import { getPartnerLedger, partnerIdsOf } from "@/lib/partner-ledger";
 import { PartnerLedgerView } from "@/components/partner-ledger-view";
 import { HelpHint } from "@/components/help-hint";
 
@@ -26,7 +26,7 @@ export default async function CustomerLedgerPage({ searchParams }: { searchParam
           ${sp.township ? (sp.township === "-" ? sql`and township is null` : sql`and township = ${sp.township}`) : sql``}
         order by code`,
     sql`select distinct township from business_partner where company_id = ${company.id} and is_customer and township is not null order by township`,
-    getPartnerLedger(company.id, "CUSTOMER", { branchId: branch, partnerId: sp.partner || null, township: sp.township || null, from: sp.from || null, to: sp.to || null }),
+    getPartnerLedger(company.id, "CUSTOMER", { branchId: branch, partnerIds: partnerIdsOf(sp.partner), township: sp.township || null, from: sp.from || null, to: sp.to || null }),
   ]);
   return (
     <>

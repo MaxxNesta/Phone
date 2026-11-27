@@ -1,20 +1,24 @@
 import { PartnerTabs } from "@/components/partner-tabs";
 import { getCompany, getBranches } from "@/lib/queries";
 import { scopedBranch, seenBranches } from "@/lib/branch-scope";
-import { getOutstandingSummary } from "@/lib/partner-ledger";
+import { sql } from "@/lib/db";
+import { getOutstandingSummary, partnerIdsOf } from "@/lib/partner-ledger";
 import { OutstandingSummaryView } from "@/components/outstanding-summary-view";
 import { HelpHint } from "@/components/help-hint";
 
 export const metadata = { title: "Supplier outstanding summary" };
 
 /** The supplier side of the Outstanding Summary (2026-11-25): a line a supplier, from the supplier ledger. */
-export default async function SupplierSummaryPage({ searchParams }: { searchParams: Promise<{ branch?: string; from?: string; to?: string }> }) {
+export default async function SupplierSummaryPage({ searchParams }: { searchParams: Promise<{ branch?: string; partner?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
   const company = await getCompany();
   if (!company) return <div className="empty">No company found.</div>;
   const branch = await scopedBranch(sp.branch);
   const branches = await seenBranches((await getBranches(company.id)) as unknown as { id: string; code: string; name: string }[]);
-  const rows = await getOutstandingSummary(company.id, "SUPPLIER", { branchId: branch, from: sp.from || null, to: sp.to || null });
+  const [suppliers, rows] = await Promise.all([
+    sql`select id, code, name from business_partner where company_id = ${company.id} and is_supplier order by code`,
+    getOutstandingSummary(company.id, "SUPPLIER", { branchId: branch, partnerIds: partnerIdsOf(sp.partner), from: sp.from || null, to: sp.to || null }),
+  ]);
   return (
     <>
       <div className="page-head">
@@ -26,7 +30,7 @@ export default async function SupplierSummaryPage({ searchParams }: { searchPara
         </HelpHint>
       </div>
       <PartnerTabs side="SUPPLIER" active="summary" />
-      <OutstandingSummaryView side="SUPPLIER" rows={rows} branches={branches} sp={{ ...sp, branch: branch ?? "" }} base="/payables/summary" />
+      <OutstandingSummaryView side="SUPPLIER" rows={rows} branches={branches} partners={suppliers as never} sp={{ ...sp, branch: branch ?? "" }} base="/payables/summary" />
     </>
   );
 }

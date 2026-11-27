@@ -448,7 +448,7 @@ export async function warrantiesEnding(companyId: string, days = 30, locs: strin
 
 export const SALES_DIMENSIONS = {
   model: "Model", brand: "Brand", variant: "Variant", storage: "Storage", colour: "Colour",
-  imei: "IMEI", salesperson: "Salesperson", customer: "Customer", branch: "Branch", day: "Day",
+  imei: "IMEI", salesperson: "Salesperson", customer: "Customer", region: "Region", branch: "Branch", day: "Day",
 } as const;
 export type SalesDimension = keyof typeof SALES_DIMENSIONS;
 
@@ -471,6 +471,8 @@ export async function phoneSales(companyId: string, from: string, to: string,
     imei: sql`coalesce(u.serial_no, '(not serialized)')`,
     salesperson: sql`coalesce(sm.name, '—')`,
     customer: sql`bp.name`,
+    // The customer's region (Mandalay, Shan…), as kept on the customer (2026-11-27).
+    region: sql`coalesce(bp.region, 'No region')`,
     branch: sql`coalesce(br.name, loc.name)`,
     day: sql`to_char(u.posting_date, 'YYYY-MM-DD')`,
   }[by];

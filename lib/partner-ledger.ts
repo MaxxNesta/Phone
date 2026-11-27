@@ -49,8 +49,13 @@ const KIND: Record<string, string> = {
   ADVANCE_APPLICATION: "Advance applied",
 };
 
+/** The partner filter as the pages send it: ids joined by commas; anything not an id is dropped. */
+export const partnerIdsOf = (v: string | null | undefined) =>
+  (v ?? "").split(",").map((x) => x.trim()).filter((x) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x));
+
 export async function getPartnerLedger(companyId: string, side: Side, f: {
-  partnerId?: string | null; township?: string | null; from?: string | null; to?: string | null;
+  /** Several at once (2026-11-27); empty or left out is every partner. */
+  partnerIds?: string[] | null; township?: string | null; from?: string | null; to?: string | null;
   /** One branch and its warehouses; null is every branch. Callers pass scopedBranch's answer. */
   branchId?: string | null;
 }): Promise<PartnerLedger> {
@@ -67,7 +72,7 @@ export async function getPartnerLedger(companyId: string, side: Side, f: {
         join business_partner p on p.id = jl.partner_id
              and ${side === "SUPPLIER" ? sql`p.is_supplier` : sql`p.is_customer`}
        where jl.company_id = ${companyId}
-         ${f.partnerId ? sql`and jl.partner_id = ${f.partnerId}` : sql``}
+         ${f.partnerIds?.length ? sql`and jl.partner_id = any(${f.partnerIds}::uuid[])` : sql``}
          ${f.township ? (f.township === "-" ? sql`and p.township is null` : sql`and p.township = ${f.township}`) : sql``}
          ${f.to ? sql`and je.entry_date <= ${f.to}::date` : sql``}
          ${branchFilterOn(sql`jl`, f.branchId)}
@@ -154,7 +159,7 @@ export type SummaryRow = {
  * the invoices' discounts.
  */
 export async function getOutstandingSummary(companyId: string, side: Side, f: {
-  township?: string | null; from?: string | null; to?: string | null; branchId?: string | null;
+  partnerIds?: string[] | null; township?: string | null; from?: string | null; to?: string | null; branchId?: string | null;
 }): Promise<SummaryRow[]> {
   const [ledger, prepaid] = await Promise.all([
     getPartnerLedger(companyId, side, f),

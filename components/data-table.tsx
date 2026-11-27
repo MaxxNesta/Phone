@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { csvCell } from "@/lib/csv";
 import { useRouter } from "next/navigation";
-import { Columns3, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, X } from "lucide-react";
+import { Columns3, ChevronDown, ChevronLeft, ChevronRight, Search, Download, SlidersHorizontal, X } from "lucide-react";
 import { DateFilter, dateWindow, ANY_DATE, type DateRange } from "./date-filter";
 import { useTranslations } from "next-intl";
 
@@ -601,7 +601,7 @@ export function DataTable({
  * checklist with a search box (a shop has hundreds of customers). The choice
  * is applied when the list closes, so ticking five names is one reload.
  */
-function MultiFilter({ filter, value, onApply }: { filter: Filter; value: string; onApply: (v: string) => void }) {
+export function MultiFilter({ filter, value, onApply }: { filter: Filter; value: string; onApply: (v: string) => void }) {
   const [open, setOpen] = useState(false);
   const [find, setFind] = useState("");
   const [chosen, setChosen] = useState<string[]>(value ? value.split(",") : []);
@@ -622,13 +622,17 @@ function MultiFilter({ filter, value, onApply }: { filter: Filter; value: string
       <button type="button" className={`dt-filter dt-multi-btn${chosen.length ? " dt-filter-on" : ""}`}
               aria-expanded={open} aria-label={filter.allLabel} onClick={() => (open ? close() : setOpen(true))}>
         <span>{label}</span>
+        <ChevronDown size={15} aria-hidden="true" />
       </button>
       {open && (
         <>
           <div className="dt-cols-scrim" onClick={close} aria-hidden="true" />
           <div className="dt-cols-menu dt-multi-menu" role="group" aria-label={filter.allLabel}>
-            <input type="search" className="dt-multi-find" placeholder="Search" value={find} autoFocus
-                   onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" || e.key === "Enter") close(); }} />
+            <div className="dt-multi-findbox">
+              <Search size={15} aria-hidden="true" />
+              <input type="search" className="dt-multi-find" placeholder="Type to search" value={find} autoFocus
+                     onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" || e.key === "Enter") close(); }} />
+            </div>
             <div className="dt-multi-list">
               {shown.map((o) => (
                 <label key={o.value} className="dt-cols-item">
