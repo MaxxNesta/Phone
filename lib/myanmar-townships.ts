@@ -8,6 +8,7 @@ export const TOWNSHIP_ALIAS: Record<string, string> = {
   yinmabin: "Yinmarbin", minpyar: "Minbya", ayartaw: "Ayadaw",
   // Towns inside a township: drawn as that township.
   bagan: "Nyaung-U", aungpann: "Kalaw", aungban: "Kalaw", kume: "Myittha",
+  kanhtuma: "Taze", kaduma: "Taze",
 };
 
 /** Cities that span several townships: drawn as a dot, not a shape. */
