@@ -77,13 +77,15 @@ export default async function SalesReports({
       ])
     : [null, null];
   const facts = tab === "pivot" ? await getSalesPivotFacts(company.id, range.from, range.to, branchId) : null;
-  const [rows, modelRows] = tab === "overview" || tab === "pivot"
-    ? [[], []]
+  const [rows, modelRows, townRows] = tab === "overview" || tab === "pivot"
+    ? [[], [], []]
     : await Promise.all([
         getSalesBreakdown(company.id, range.from, range.to, by, branchId),
         // The item tab's donut is drawn by model: colours of one phone are
         // one slice, so five slices cover most of the sales, not a third.
         by === "item" ? getSalesBreakdown(company.id, range.from, range.to, "model", branchId) : Promise.resolve([]),
+        // The region map's zoom: each region's townships, in the same query shape.
+        by === "region" ? getSalesBreakdown(company.id, range.from, range.to, "township", branchId) : Promise.resolve([]),
       ]);
 
   const tot = rows.reduce((t, r) => ({
@@ -119,10 +121,10 @@ export default async function SalesReports({
     return `/sales/reports?${q.toString()}`;
   };
 
-  const label = { item: "Item", model: "Model", brand: "Brand", customer: "Customer", region: "Region", category: "Category" }[by];
+  const label = { item: "Item", model: "Model", brand: "Brand", customer: "Customer", region: "Region", township: "Township", category: "Category" }[by];
   /* Written out, because adding an s gives "categorys". English plurals are
      not a rule the code can apply and these are four known words. */
-  const plural = { item: "items", customer: "customers", region: "regions",
+  const plural = { item: "items", customer: "customers", region: "regions", township: "townships",
                    category: "categories", model: "models", brand: "brands" }[by];
 
   /* The fourth tile asks something the table and the donut do not already
@@ -330,7 +332,8 @@ export default async function SalesReports({
             </div>
             <div className="card-body">
               <RegionMap currency={company.base_currency}
-                rows={rows.map((r) => ({ name: r.name, revenue: r.revenue, qty: r.qty, marginPct: r.marginPct }))} />
+                rows={rows.map((r) => ({ name: r.name, revenue: r.revenue, qty: r.qty, marginPct: r.marginPct }))}
+                towns={townRows.map((r) => ({ region: r.code, name: r.name, revenue: r.revenue, qty: r.qty, marginPct: r.marginPct }))} />
             </div>
           </div>
           ) : (
