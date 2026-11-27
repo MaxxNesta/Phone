@@ -1,121 +1,93 @@
-import { todayLocal } from "@/lib/format";
-import { getCompany, rejectedOnReceipt } from "@/lib/queries";
 import Link from "next/link";
-import { getFormData, createStockAdjustment } from "@/lib/actions";
-import { allCategories } from "@/lib/tree";
-import { sql } from "@/lib/db";
-import { AdjustmentForm } from "@/components/adjustment-form";
-import { ErpCrumbs } from "@/components/erp-worklist";
-import { DocHeading } from "@/components/doc-heading";
+import { Plus } from "lucide-react";
+import { money, qty, shortDate, sql } from "@/lib/db";
+import { requirePermission, can } from "@/lib/auth";
+import { seenLocations } from "@/lib/branch-scope";
+import { DataTable, type DataRow } from "@/components/data-table";
 import { HelpHint } from "@/components/help-hint";
+import { BranchScope } from "@/components/branch-scope";
 import { getTranslations } from "next-intl/server";
 
-export default async function NewStockAdjustment({
-  searchParams,
-}: {
-  searchParams?: Promise<{ writeoff?: string }>;
-}) {
-  const { writeoff } = (await searchParams) ?? {};
+/**
+ * Stock adjustments, the list first (2026-11-27): the menu used to open a
+ * blank form, so finding last month's write-off meant the documents screen.
+ * The form is one button away, top right, as Record carriage inward is.
+ */
+export default async function StockAdjustments() {
+  const user = await requirePermission("inventory.manage");
   const t = await getTranslations("inventory");
-  const c = await getTranslations("common");
   const n = await getTranslations("nav");
-  const d = await getFormData();
-  // The layout already read the company; this is that same cached read.
-  const co = await getCompany();
-  if (!co) return <div className="empty">{c("noCompany")}</div>;
-  const categories = await allCategories(co.id);
-  const today = todayLocal();
+  const seeCost = can(user, "cost.view");
+  const locs = await seenLocations();
+  const rows = await sql`
+    select d.id, d.doc_no, to_char(d.doc_date, 'YYYY-MM-DD') as doc_date, d.status, d.memo, d.reference,
+           l.name as warehouse,
+           coalesce(sum(m.qty) filter (where m.qty > 0), 0)::float as found,
+           coalesce(-sum(m.qty) filter (where m.qty < 0), 0)::float as lost,
+           coalesce(sum(m.total_cost), 0)::float as value
+      from document d
+      left join location l on l.id = d.location_id
+      left join stock_movement m on m.document_id = d.id
+     where d.company_id = ${user.companyId} and d.doc_type = 'STOCK_ADJUSTMENT' and d.reverses_document_id is null
+       ${locs ? sql`and d.location_id = any(${locs})` : sql``}
+     group by d.id, l.name
+     order by d.doc_date desc, d.doc_no desc` as unknown as {
+       id: string; doc_no: string; doc_date: string; status: string; memo: string | null; reference: string | null;
+       warehouse: string | null; found: number; lost: number; value: number }[];
 
-  /**
-   * Opened from a goods receipt's defects (Path B): the units still in
-   * quarantine that the supplier will neither take back nor credit, written
-   * off from the bin they sit in, each line naming the receipt line it came
-   * in on so the receipt can say what became of it.
-   */
-  const prefill = writeoff ? await (async () => {
-    const [gr] = await sql`
-      select id, doc_no from document
-       where id = ${writeoff} and company_id = ${co.id} and doc_type = 'GOODS_RECEIPT' and status = 'POSTED'`;
-    if (!gr) return null;
-    const rows = (await rejectedOnReceipt(gr.id)) as any[];
-    const held = rows.map((r) => {
-      const us = r.units as any[];
-      const serials = us.filter((u) => u.stillHeld).map((u) => String(u.imei));
-      const qty = us.length ? serials.length
-        : Math.max(0, Number(r.qty) - Number(r.returned) - Number(r.written_off ?? 0));
-      return { r, serials, qty };
-    }).filter((x) => x.qty > 0);
-    if (held.length === 0) return null;
-    // One adjustment is one bin: the first one holding these units.
-    const bin = String(held[0].r.location_id);
-    const here = held.filter((x) => String(x.r.location_id) === bin);
-    const why = (src: string) => [...new Set(here.filter((x) => x.r.source === src).map((x) => String(x.r.reject_reason)))];
-    return {
-      docNo: String(gr.doc_no),
-      locationId: bin,
-      lines: here.map((x) => ({
-        itemId: String(x.r.item_id), qty: String(-x.qty), sourceLineId: String(x.r.line_id),
-        // What these units came in at: the cost the write-off takes off stock.
-        cost: Number(x.r.unit_cost),
-        serials: x.serials.map((serial) => ({ serial })),
-        origin: `${x.r.source === "FOUND" ? "Reported defective after receipt" : "Rejected at receipt"} · ${String(x.r.reject_reason)}`,
-      })),
-      memo: [
-        ...why("REFUSED").map((r) => `Rejected at receipt: ${r}.`),
-        ...why("FOUND").map((r) => `Reported defective after receipt: ${r}.`),
-      ].join(" ") + ` (${gr.doc_no}) Written off: the supplier will not take it back or credit it.`,
-    };
-  })() : null;
-
-  if (categories.length === 0 || d.locations.length === 0) {
-    return (
-      <>
-        <ErpCrumbs steps={[
-          { label: n("inventory") },
-          { label: t("adj.title") },
-        ]} />
-        <div className="page-head">
-          <h1>{t("adj.title")}</h1>
-        </div>
-        <div className="alert">
-          {categories.length === 0 && <div>{t("noCategoriesFirst")}</div>}
-          {d.locations.length === 0 && <div>{t("noLocation")}</div>}
-        </div>
-      </>
-    );
-  }
+  const data: DataRow[] = rows.map((r) => ({
+    key: r.id,
+    searchText: [r.doc_no, r.memo, r.reference, r.warehouse].filter(Boolean).join(" "),
+    facet: { warehouse: r.warehouse ?? "", status: r.status },
+    sort: { doc_no: r.doc_no, date: Date.parse(r.doc_date), found: r.found, lost: r.lost, value: r.value },
+    node: (
+      <tr className="link">
+        <td><Link href={`/documents/${r.id}`} className="m">{r.doc_no}</Link></td>
+        <td>{shortDate(r.doc_date)}</td>
+        <td>{r.warehouse ?? "—"}</td>
+        <td className="wrap">{r.memo || "—"}{r.reference && <div className="m" style={{ color: "var(--muted)" }}>{r.reference}</div>}</td>
+        <td className="r">{r.found ? `+${qty(r.found)}` : "—"}</td>
+        <td className="r">{r.lost ? `−${qty(r.lost)}` : "—"}</td>
+        {seeCost && <td className="r">{money(r.value)}</td>}
+        <td><span className={`pill ${r.status === "POSTED" ? "posted" : "reversed"}`}>{r.status === "POSTED" ? "Posted" : "Voided"}</span></td>
+      </tr>
+    ),
+  }));
+  const warehouses = [...new Set(rows.map((r) => r.warehouse).filter(Boolean) as string[])].sort();
 
   return (
     <>
-      <DocHeading
-        back={writeoff && prefill
-          ? { href: `/documents/${writeoff}`, label: `Back to ${prefill.docNo}` }
-          : { href: "/documents?type=STOCK_ADJUSTMENT", label: t("pastAdjustments") }}
-        trail={[{ label: t("pastAdjustments"), href: "/documents?type=STOCK_ADJUSTMENT" },
-                ...(writeoff && prefill ? [{ label: prefill.docNo, href: `/documents/${writeoff}` }] : [])]}
-        title={prefill ? t("adj.writeOffTitle") : t("adj.title")} status="New">
-        <HelpHint>
-          {t("adj.help")}{" "}
-          <Link href="/documents?type=STOCK_ADJUSTMENT" style={{ color: "var(--link)" }}>
-            {t("pastAdjustments")}
-          </Link>
-        </HelpHint>
-      </DocHeading>
-
-      <AdjustmentForm
-        action={createStockAdjustment}
-        items={d.items as never}
-        // Defective stock is written off from quarantine, so its bins are offered too.
-        locations={[...d.locations, ...d.quarantineLocations] as never}
-        stockByLocation={d.stockByLocation as never}
-        shelfSerials={await sql`
-          select item_id, location_id, imei from v_stock_serial
-           where status = 'IN_STOCK' order by imei` as never}
-        categories={categories}
-        uoms={d.uoms as never}
-        today={today}
-        prefill={prefill}
-      />
+      <div className="page-head">
+        <span className="eyebrow">{n("inventory")}</span>
+        <h1>{n("stockCount")}</h1>
+        <BranchScope />
+        <HelpHint>{t("adj.help")}</HelpHint>
+        <span className="actions">
+          <Link href="/inventory/adjustments/new" className="btn"><Plus size={16} aria-hidden="true" /> {t("adj.title")}</Link>
+        </span>
+      </div>
+      <div className="card">
+        <DataTable
+          rows={data}
+          emptyLabel="No stock adjustments yet."
+          searchPlaceholder="Search number, description, reference…"
+          defaultSort={{ key: "date", dir: "desc" }}
+          filters={[
+            { key: "warehouse", allLabel: "Any warehouse", options: warehouses.map((w) => ({ value: w, label: w })) },
+            { key: "status", allLabel: "Any status", options: [{ value: "POSTED", label: "Posted" }, { value: "REVERSED", label: "Voided" }] },
+          ]}
+          columns={[
+            { key: "doc_no", label: "Number", sortable: true },
+            { key: "date", label: "Date", sortable: true },
+            { key: "warehouse", label: "Warehouse" },
+            { key: "memo", label: "Description" },
+            { key: "found", label: "Found", sortable: true, align: "r" },
+            { key: "lost", label: "Lost / written off", sortable: true, align: "r" },
+            ...(seeCost ? [{ key: "value", label: "Value", sortable: true, align: "r" as const }] : []),
+            { key: "status", label: "Status" },
+          ]}
+        />
+      </div>
     </>
   );
 }

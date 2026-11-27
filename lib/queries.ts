@@ -2092,6 +2092,38 @@ export async function getRelatedDocuments(documentId: string): Promise<RelatedDo
            order by d.doc_date, d.doc_no`
   );
 
+  /* Stock written off out of what a receipt brought in, and the other way
+     round (2026-11-27). Not a stored link — a write-off is raised from the
+     shelf, not from a receipt — but the lots know: the adjustment consumed
+     lots this receipt created. The seized iPads' receipt then shows the
+     write-off that took them, and the write-off names the receipt. */
+  const goods = doc.doc_type === "GOODS_RECEIPT" || doc.doc_type === "PURCHASE_INVOICE";
+  const writtenOff = goods ? shape(await sql`
+    select d.id, d.doc_type, d.doc_no, to_char(d.doc_date,'YYYY-MM-DD') as doc_date,
+           d.status, d.gross_total, sum(c.qty) as qty
+      from stock_movement rm
+      join stock_lot l on l.stock_movement_id = rm.id
+      join stock_lot_consumption c on c.company_id = ${doc.company_id} and c.lot_id = l.id
+      join stock_movement cm on cm.id = c.stock_movement_id
+      join document d on d.id = cm.document_id
+     where rm.document_id in (
+             select id from document where id in (${versionsOf(documentId)}) or source_document_id in (${versionsOf(documentId)})
+             union select ${doc.source_document_id ?? null}::uuid)
+       and d.doc_type = 'STOCK_ADJUSTMENT' and d.status = 'POSTED'
+     group by d.id
+     order by d.doc_date, d.doc_no`) : [];
+  const takenFrom = doc.doc_type === "STOCK_ADJUSTMENT" ? shape(await sql`
+    select d.id, d.doc_type, d.doc_no, to_char(d.doc_date,'YYYY-MM-DD') as doc_date,
+           d.status, d.gross_total, sum(c.qty) as qty
+      from stock_movement cm
+      join stock_lot_consumption c on c.stock_movement_id = cm.id
+      join stock_lot l on l.id = c.lot_id
+      join stock_movement rm on rm.id = l.stock_movement_id
+      join document d on d.id = rm.document_id
+     where cm.document_id = ${documentId}
+     group by d.id
+     order by d.doc_date, d.doc_no`) : [];
+
   // Headings are listed even when empty, so the answer to "was there an
   // order?" is visible rather than absent. Which headings belong depends on
   // the document: an invoice can come from an order or a delivery, a payment
@@ -2126,6 +2158,7 @@ export async function getRelatedDocuments(documentId: string): Promise<RelatedDo
         || (doc.to_deliver && byType(parent, moveType).length === 0)) {
       downstream.push(group(REL_LABEL[moveType], byType(children, moveType)));
     }
+    if (writtenOff.length) downstream.push(group("Stock adjustment", writtenOff));
   } else if (doc.doc_type === "DELIVERY" || doc.doc_type === "GOODS_RECEIPT") {
     const orderType = sales ? "SALES_ORDER" : "PURCHASE_ORDER";
     const invType = sales ? "SALES_INVOICE" : "PURCHASE_INVOICE";
@@ -2135,6 +2168,7 @@ export async function getRelatedDocuments(documentId: string): Promise<RelatedDo
     downstream.push(group(REL_LABEL[invType], byType(children, invType)));
     downstream.push(group(REL_LABEL[sales ? "SALES_RETURN" : "PURCHASE_RETURN"],
       byType(children, sales ? "SALES_RETURN" : "PURCHASE_RETURN")));
+    if (writtenOff.length) downstream.push(group("Stock adjustment", writtenOff));
   } else if (doc.doc_type === "SALES_ORDER" || doc.doc_type === "PURCHASE_ORDER") {
     const moveType = sales ? "DELIVERY" : "GOODS_RECEIPT";
     const invType = sales ? "SALES_INVOICE" : "PURCHASE_INVOICE";
@@ -2146,6 +2180,7 @@ export async function getRelatedDocuments(documentId: string): Promise<RelatedDo
     // payment's source would be the wrong relationship.
     source.push(group("Applied to", settlements));
   } else {
+    if (takenFrom.length) source.push(group("Stock from", takenFrom));
     if (parent.length) source.push(group("Raised from", parent));
     if (children.length) downstream.push(group("Raised from this", children));
   }

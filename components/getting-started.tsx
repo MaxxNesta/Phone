@@ -78,7 +78,7 @@ export function GettingStarted({ status }: { status: Status }) {
       detail: status.stockRows > 0
         ? "Stock on hand recorded"
         : "Record what is already on the shelf as a stock adjustment, so inventory opens at the right quantity and value",
-      href: "/inventory/adjustments",
+      href: "/inventory/adjustments/new",
       cta: "Add stock",
       required: false,
     },

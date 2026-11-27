@@ -1682,7 +1682,7 @@ export default async function DocumentPage({
                       </Link>
                     ))}
                   {refusedHeld > 0 && can(user, "inventory.manage") && (
-                    <Link href={`/inventory/adjustments?writeoff=${doc.id}`} className="btn ghost tiny">Write off</Link>
+                    <Link href={`/inventory/adjustments/new?writeoff=${doc.id}`} className="btn ghost tiny">Write off</Link>
                   )}
                 </>}
               />

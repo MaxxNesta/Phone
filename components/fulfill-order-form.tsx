@@ -392,7 +392,7 @@ export function FulfillOrderForm({
               <div className="alert">
                 Not enough {shortages.filter((l) => !shortEverywhere.includes(l)).map((l) => l.itemCode).join(", ")}
                 {" "}at this location to deliver that much, though the company has it elsewhere.{" "}
-                <Link href="/inventory/transfer" style={{ color: "inherit", textDecoration: "underline" }}>
+                <Link href="/inventory/transfer/new" style={{ color: "inherit", textDecoration: "underline" }}>
                   Transfer stock in
                 </Link>{" "}
                 first, or lower the quantity to what&rsquo;s available here.
