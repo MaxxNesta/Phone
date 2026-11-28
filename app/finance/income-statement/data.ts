@@ -86,6 +86,22 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
 
   const chart = chartRaw as unknown as ChartRow[];
   const amounts = new Map(rows.map((r) => [r.id, Number(r.amount)]));
+  const { summaries, sections, subtotals } = shapeIncome(chart, amounts);
+
+  return {
+    company, branches, unassignedLines, branchId, branchName, range,
+    summaries, sections, subtotals, cogsBreakdown,
+    scope: `${branchName} · ${range.from} to ${range.to}`,
+  };
+}
+
+/**
+ * Account amounts into the statement's sections, subtotals and headline
+ * figures. One function for the period statement and for every column of the
+ * comparison (2026-11-28), so a month in the comparison is the statement for
+ * that month — never a second calculation of it.
+ */
+export function shapeIncome(chart: ChartRow[], amounts: Map<string, number>) {
   const cogsTree = buildStatement(chart, amounts, ["COGS"]);
   const expenseTree = buildStatement(chart, amounts, ["EXPENSE"]);
 
@@ -185,9 +201,5 @@ export async function getIncomeStatementData({ from, to, branch }: Params) {
       : [{ after: "EXPENSE", label: "Net income", value: netIncome, strong: true }]),
   ];
 
-  return {
-    company, branches, unassignedLines, branchId, branchName, range,
-    summaries, sections, subtotals, cogsBreakdown,
-    scope: `${branchName} · ${range.from} to ${range.to}`,
-  };
+  return { summaries, sections, subtotals, revenue, grossProfit, operatingProfit, netIncome, otherIncome, nonOpExpense, expense, cogs };
 }

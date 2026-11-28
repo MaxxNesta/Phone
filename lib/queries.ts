@@ -4404,6 +4404,29 @@ export async function getIncomeStatement(
 }
 
 /**
+ * The income statement's accounts split by month, quarter or year
+ * (2026-11-28): the same lines as getIncomeStatement, each with the period
+ * it fell in, for the comparison view. One read for every column.
+ */
+export async function getIncomeStatementByPeriod(
+  companyId: string, from: string, to: string, grain: "month" | "quarter" | "year", branchId?: string | null
+) {
+  return sql`
+    select a.id, to_char(date_trunc(${grain}, je.entry_date), 'YYYY-MM-DD') as period,
+           case when fn_is_debit_normal(a.account_type)
+                then sum(jl.base_amount) else -sum(jl.base_amount) end as amount
+      from journal_line jl
+      join journal_entry je on je.id = jl.journal_entry_id
+      join account a on a.id = jl.account_id
+     where jl.company_id = ${companyId}
+       and a.account_type in ('REVENUE', 'COGS', 'EXPENSE')
+       and je.entry_date between ${from}::date and ${to}::date
+       ${branchFilter(branchId)}
+     group by a.id, 2, a.account_type
+    having sum(jl.base_amount) <> 0` as unknown as Promise<{ id: string; period: string; amount: string }[]>;
+}
+
+/**
  * Revenue by calendar month for the trailing `months` months, including
  * months with no postings at all — a chart needs the empty gaps to show a
  * true trend rather than silently compressing the x-axis to whichever

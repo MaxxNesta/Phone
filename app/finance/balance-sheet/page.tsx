@@ -2,15 +2,19 @@ import { money } from "@/lib/db";
 import { AutoApply } from "@/components/auto-apply";
 import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { StatementTable } from "@/components/statement-table";
+import { ClassicStatement } from "@/components/classic-statement";
 import { HelpHint } from "@/components/help-hint";
 import { getBalanceSheetData, type Params } from "./data";
 
 export default async function BalanceSheet({
   searchParams,
 }: {
-  searchParams: Promise<Params>;
+  searchParams: Promise<Params & { layout?: string }>;
 }) {
-  const data = await getBalanceSheetData(await searchParams);
+  const sp = await searchParams;
+  // Classic (2026-11-28): the legacy books' layout, as on the income statement.
+  const classic = sp.layout === "classic";
+  const data = await getBalanceSheetData(sp);
   if (!data) return <div className="empty">No company found.</div>;
   const {
     company, branches, unassignedLines, branchId, asOf,
@@ -42,6 +46,12 @@ export default async function BalanceSheet({
               </select>
           </label>
           )}
+          <label className="stmt-ctl" htmlFor="layout"><span>Layout</span>
+            <select id="layout" name="layout" defaultValue={classic ? "classic" : ""}>
+              <option value="">Standard</option>
+              <option value="classic">Classic</option>
+            </select>
+          </label>
           <label className="stmt-ctl" htmlFor="asOf"><span>As of</span>
             <input id="asOf" name="asOf" type="date" defaultValue={asOf} />
           </label>
@@ -62,6 +72,10 @@ export default async function BalanceSheet({
         </p>
       )}
 
+      {classic ? (
+        <ClassicStatement sections={sections} subtotals={subtotals} scope={scope} basis="position"
+          revenue={sections.find((x) => x.key === "ASSET")?.total ?? 0} baseLabel="% of total assets" />
+      ) : (
       <StatementTable
         title="Statement"
         currency={company.base_currency}
@@ -73,6 +87,7 @@ export default async function BalanceSheet({
         sections={sections}
         subtotals={subtotals}
       />
+      )}
     </>
   );
 }

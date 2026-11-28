@@ -413,3 +413,55 @@ export function MeasureBars({
     </ResponsiveContainer>
   );
 }
+
+/**
+ * Several measures per period, side by side (2026-11-28): revenue, gross
+ * profit and net income across the months of the income statement's
+ * comparison. Colours in the palette's fixed order; a bar below nought turns
+ * red on its own, because a month can sell and still lose money. The tooltip
+ * names every measure of the period, not just the first.
+ */
+export function GroupedBars({
+  data, series, height = 260,
+}: {
+  data: Record<string, string | number>[];
+  series: { key: string; label: string }[];
+  height?: number;
+}) {
+  const Tip = ({ active, payload, label }: any) => {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="card" style={{ padding: "0.5rem 0.7rem", fontSize: "0.78rem", boxShadow: "0 2px 8px rgba(0,0,0,0.12)" }}>
+        <div style={{ color: "var(--muted)", marginBottom: 4 }}>{label}</div>
+        {payload.map((p: any, i: number) => (
+          <div key={p.dataKey} style={{ display: "flex", gap: 12, justifyContent: "space-between" }}>
+            <span><i style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, marginRight: 6, background: SLICE_COLOURS[i] }} />{p.name}</span>
+            <span className="m" style={{ fontWeight: 600 }}>{money(p.value)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2}>
+        <CartesianGrid stroke="var(--line-soft)" vertical={false} />
+        <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "var(--muted)", fontSize: 11 }} />
+        <YAxis axisLine={false} tickLine={false} width={50}
+               tick={{ fill: "var(--muted)", fontSize: 10, fontFamily: "var(--mono)" }}
+               tickFormatter={(v: number) =>
+                 Math.abs(v) >= 1e9 ? `${Math.round(v / 1e8) / 10}B`
+                 : Math.abs(v) >= 1e6 ? `${Math.round(v / 1e5) / 10}M`
+                 : Math.abs(v) >= 1e3 ? `${Math.round(v / 1e3)}K` : String(v)} />
+        <Tooltip content={<Tip />} cursor={{ fill: "var(--line-soft)" }} />
+        {/* In the bars' own order, not alphabetical (the library's default). */}
+        <Legend iconType="circle" iconSize={8} itemSorter={null} wrapperStyle={{ fontSize: 12, color: "var(--muted)" }} />
+        {series.map((s, i) => (
+          <Bar key={s.key} dataKey={s.key} name={s.label} fill={SLICE_COLOURS[i]} radius={[4, 4, 4, 4]} maxBarSize={14}>
+            {data.map((r, j) => <Cell key={j} fill={signed(Number(r[s.key]), SLICE_COLOURS[i])} />)}
+          </Bar>
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}

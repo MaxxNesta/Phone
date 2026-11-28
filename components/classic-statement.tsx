@@ -29,11 +29,15 @@ function groupsOf(nodes: StatementNode[], parentName: string): Group[] {
   return out;
 }
 
-export function ClassicStatement({ sections, subtotals, revenue, scope }: {
+export function ClassicStatement({ sections, subtotals, revenue, scope, basis = "income", baseLabel = "% of revenue" }: {
   sections: Section[];
   subtotals: { after: string; label: string; value: number; strong?: boolean }[];
+  /** What the last column measures against: revenue, or total assets on a balance sheet. */
   revenue: number;
   scope: string;
+  /** "position" for the balance sheet (2026-11-28): every figure keeps its own sign; nothing is taken off profit. */
+  basis?: "income" | "position";
+  baseLabel?: string;
 }) {
   return (
     <section className="card classic-pl">
@@ -44,12 +48,12 @@ export function ClassicStatement({ sections, subtotals, revenue, scope }: {
             {/* As the old books printed it: the account's code and name, its figure
                 and each group's subtotal in Amount, section totals in Total. */}
             <tr><th className="cl-code">Code</th><th>Description</th><th className="r">Amount</th><th className="r">Total</th>
-              <th className="r">% of section</th><th className="r">% of revenue</th></tr>
+              <th className="r">% of section</th><th className="r">{baseLabel}</th></tr>
           </thead>
           <tbody>
             {sections.map((s) => {
               // What the section does to profit: revenue adds, everything else takes away.
-              const effect = (v: number) => (s.key === "REVENUE" || s.key === "OTHER" ? v : -v);
+              const effect = (v: number) => (basis === "position" || s.key === "REVENUE" || s.key === "OTHER" ? v : -v);
               return [
                 <tr key={`${s.key}-h`} className="cl-section"><td colSpan={6}>{s.label}</td></tr>,
                 ...groupsOf(s.nodes, s.label).flatMap((g, gi) => [

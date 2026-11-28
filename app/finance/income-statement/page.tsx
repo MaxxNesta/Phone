@@ -7,21 +7,29 @@ import { ClassicStatement } from "@/components/classic-statement";
 import { HelpHint } from "@/components/help-hint";
 
 import { getIncomeStatementData, type Params } from "./data";
+import { getIncomeCompare, GRAINS, type Grain } from "./compare";
+import { IncomeCompare } from "@/components/income-compare";
+import { GroupedBars } from "@/components/charts";
 
 export default async function IncomeStatement({
   searchParams,
 }: {
-  searchParams: Promise<Params & { layout?: string }>;
+  searchParams: Promise<Params & { layout?: string; grain?: string }>;
 }) {
   const sp = await searchParams;
   // Classic is the legacy books' layout: group headings, ruled subtotals, brackets.
   const classic = sp.layout === "classic";
+  // Compare (2026-11-28): the same statement, a column a month, quarter or year.
+  const compare = sp.layout === "compare";
+  const grain = (sp.grain && sp.grain in GRAINS ? sp.grain : "month") as Grain;
   const data = await getIncomeStatementData(sp);
   if (!data) return <div className="empty">No company found.</div>;
   const {
     company, branches, unassignedLines, branchId, range,
     summaries, sections, subtotals, scope, cogsBreakdown,
   } = data;
+  const cmp = compare ? await getIncomeCompare(company.id, range, grain, branchId) : null;
+  const pctOf = (v: number) => (cmp && cmp.totals.revenue ? `${((v / cmp.totals.revenue) * 100).toFixed(1)}% of revenue` : "");
 
   return (
     <>
@@ -49,11 +57,19 @@ export default async function IncomeStatement({
           </label>
           )}
           <label className="stmt-ctl" htmlFor="layout"><span>Layout</span>
-            <select id="layout" name="layout" defaultValue={classic ? "classic" : ""}>
+            <select id="layout" name="layout" defaultValue={compare ? "compare" : classic ? "classic" : ""}>
               <option value="">Standard</option>
               <option value="classic">Classic</option>
+              <option value="compare">Compare periods</option>
             </select>
           </label>
+          {compare && (
+            <label className="stmt-ctl" htmlFor="grain"><span>Period</span>
+              <select id="grain" name="grain" defaultValue={grain}>
+                {Object.entries(GRAINS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </label>
+          )}
           <label className="stmt-ctl" htmlFor="from"><span>From</span>
             <input id="from" name="from" type="date" defaultValue={range.from} />
           </label>
@@ -77,7 +93,22 @@ export default async function IncomeStatement({
         </p>
       )}
 
-      {classic ? (
+      {cmp ? (
+        <>
+          <div className="icmp-kpis">
+            <div className="card icmp-kpi"><span>Total revenue</span><strong>{money(String(Math.round(cmp.totals.revenue)))}</strong><small>{company.base_currency}</small></div>
+            <div className="card icmp-kpi"><span>Gross profit</span><strong className={cmp.totals.gross < 0 ? "neg" : ""}>{money(String(Math.round(cmp.totals.gross)))}</strong><small>{pctOf(cmp.totals.gross)}</small></div>
+            <div className="card icmp-kpi"><span>Net income</span><strong className={cmp.totals.net < 0 ? "neg" : ""}>{money(String(Math.round(cmp.totals.net)))}</strong><small>{pctOf(cmp.totals.net)}</small></div>
+          </div>
+          <section className="card" style={{ marginBottom: "var(--s3)" }}>
+            <div className="card-head"><h2>{GRAINS[grain]} result</h2><span className="page-sub">{scope}</span></div>
+            <div className="card-body">
+              <GroupedBars data={cmp.chart} series={[{ key: "revenue", label: "Revenue" }, { key: "gross", label: "Gross profit" }, { key: "net", label: "Net income" }]} />
+            </div>
+          </section>
+          <IncomeCompare periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} />
+        </>
+      ) : classic ? (
         <ClassicStatement sections={sections} subtotals={subtotals} scope={scope}
           revenue={sections.find((x) => x.key === "REVENUE")?.total ?? 0} />
       ) : (
