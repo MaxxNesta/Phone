@@ -1623,10 +1623,10 @@ export async function setItemPrice(_prev: unknown, fd: FormData): Promise<Action
        means, and a second row for the same morning would leave the two
        arguing. */
     await sql`
-      insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from)
-      select ${co}, v, ${levelId}, ${uomId}, 'MMK', ${price}, ${from}::date from unnest(${ids}::uuid[]) v
+      insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from, note)
+      select ${co}, v, ${levelId}, ${uomId}, 'MMK', ${price}, ${from}::date, ${str(fd, "note") || null} from unnest(${ids}::uuid[]) v
       on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
-      do update set price = excluded.price`;
+      do update set price = excluded.price, note = excluded.note`;
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -1679,6 +1679,74 @@ export async function clearItemPrice(_prev: unknown, fd: FormData): Promise<Acti
   revalidatePath("/sales/new");
   if (fd.get("stay")) return { ok: true };
   redirectWithToast("/items/prices", "Price removed");
+}
+
+/**
+ * Change prices (2026-11-28): many prices up or down at once — by an amount
+ * or a percentage, at the chosen levels and units, for the chosen products —
+ * each as a new dated price with the note given, so the history keeps what
+ * it was. The amount goes onto each unit's own price as it is: a pack raised
+ * 10,000 leaves its pieces alone; they change only when their unit is chosen
+ * too. Only prices already set change (a blank stays blank), the figure being
+ * the one in force on the effective date. Nothing is written if any price
+ * would fall to zero or below.
+ */
+export async function changePrices(_prev: unknown, fd: FormData): Promise<ActionResult> {
+  await requirePermission("items.manage");
+  let changed = 0;
+  try {
+    const co = await companyId();
+    const itemIds = fd.getAll("item_id").map(String).filter(Boolean);
+    const levelIds = fd.getAll("price_level_id").map(String).filter(Boolean);
+    const uomIds = fd.getAll("uom_id").map(String).filter(Boolean);
+    const up = str(fd, "direction") !== "down";
+    const percent = str(fd, "by") === "percent";
+    const value = num(fd, "value");
+    const round = [0, 100, 500, 1000, 10000].includes(num(fd, "round")) ? num(fd, "round") : 0;
+    const from = str(fd, "valid_from") || todayLocal();
+    const note = str(fd, "note").slice(0, 200) || null;
+
+    if (!itemIds.length) return { error: "Choose the products to change." };
+    if (!levelIds.length) return { error: "Choose at least one price level." };
+    if (!uomIds.length) return { error: "Choose at least one unit." };
+    if (!(value > 0)) return { error: percent ? "Enter a percentage above 0." : "Enter an amount above 0." };
+    if (percent && !up && value >= 100) return { error: "A decrease must be less than 100%." };
+
+    const delta = up ? value : -value;
+    changed = await sql.begin(async (tx) => {
+      const rows = await tx`
+        with base as (
+          select distinct on (ip.item_id, ip.price_level_id, ip.uom_id)
+                 ip.item_id, ip.price_level_id, ip.uom_id, ip.price
+            from item_price ip
+            join item i on i.id = ip.item_id and i.company_id = ${co}
+            join price_level pl on pl.id = ip.price_level_id and pl.company_id = ${co}
+           where ip.company_id = ${co} and ip.currency = 'MMK' and ip.valid_from <= ${from}::date
+             and ip.item_id = any(${itemIds}::uuid[]) and ip.price_level_id = any(${levelIds}::uuid[]) and ip.uom_id = any(${uomIds}::uuid[])
+           order by ip.item_id, ip.price_level_id, ip.uom_id, ip.valid_from desc
+        ), nxt as (
+          select *, (case when ${round}::numeric > 0 then round(x / ${round}::numeric) * ${round}::numeric else round(x) end) as next
+            from (select *, case when ${percent} then price * (1 + ${delta}::numeric / 100) else price + ${delta}::numeric end as x
+                    from base where price is not null) b
+        )
+        select item_id, price_level_id, uom_id, price, next from nxt where next <> price`;
+      if (rows.some((r) => Number(r.next) <= 0)) throw new Error("Some prices would fall to zero or below. Lower the amount, or leave those products out.");
+      if (!rows.length) return 0;
+      await tx`
+        insert into item_price (company_id, item_id, price_level_id, uom_id, currency, price, valid_from, note)
+        select ${co}, r.item_id, r.price_level_id, r.uom_id, 'MMK', r.next, ${from}::date, ${note}
+          from jsonb_to_recordset(${tx.json(rows.map((r) => ({ item_id: r.item_id, price_level_id: r.price_level_id, uom_id: r.uom_id, next: Number(r.next) })))})
+               as r(item_id uuid, price_level_id uuid, uom_id uuid, next numeric)
+        on conflict (company_id, item_id, price_level_id, uom_id, currency, valid_from)
+        do update set price = excluded.price, note = excluded.note`;
+      return rows.length;
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+  revalidatePath("/items/prices");
+  revalidatePath("/sales/new");
+  return changed ? { ok: true } : { error: "No price changed: none is set at these levels and units for these products." };
 }
 
 export async function createBrand(_prev: unknown, fd: FormData): Promise<ActionResult> {

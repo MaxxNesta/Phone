@@ -102,7 +102,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
     select * from (
       select to_char(ip.valid_from, 'YYYY-MM-DD') as date, ip.valid_from, i.id as item_id, i.code, i.name,
              u.code as uom, (ip.uom_id = i.base_uom_id) as is_base, pl.name as level, pl.sort_order,
-             ip.price::float as price,
+             ip.price::float as price, ip.note,
              lag(ip.price) over w ::float as prev,
              lag(ip.valid_from) over w is not null as had_prev,
              i.item_group_id, i.brand_id
@@ -225,7 +225,7 @@ export default async function PriceHistory({ searchParams }: { searchParams: Pro
 }
 
 type ListChange = { date: string; item_id: string; code: string; name: string; uom: string; is_base: boolean;
-  level: string; price: number | null; prev: number | null; had_prev: boolean };
+  level: string; price: number | null; prev: number | null; had_prev: boolean; note?: string | null };
 
 /** The price list's changes: each dated price beside the one before it, at its level and unit. */
 function ListChanges({ rows }: { rows: ListChange[] }) {
@@ -236,7 +236,7 @@ function ListChanges({ rows }: { rows: ListChange[] }) {
       <div className="tablewrap">
         <table>
           <thead>
-            <tr><th>Date</th><th>Product</th><th>Unit</th><th>Level</th><th className="r">Before</th><th className="r">After</th><th className="r">Change</th></tr>
+            <tr><th>Date</th><th>Product</th><th>Unit</th><th>Level</th><th className="r">Before</th><th className="r">After</th><th className="r">Change</th><th>Note</th></tr>
           </thead>
           <tbody>
             {rows.map((r, i) => {
@@ -250,6 +250,7 @@ function ListChanges({ rows }: { rows: ListChange[] }) {
                   <td className="r">{!r.had_prev ? <span className="subline">new</span> : r.prev == null ? <span className="subline">no price</span> : money(r.prev)}</td>
                   <td className="r">{r.price == null ? <span className="subline">removed</span> : <strong>{money(r.price)}</strong>}</td>
                   <td className="r">{pct == null ? "—" : <span style={{ color: pct > 0 ? "var(--link)" : pct < 0 ? "var(--bad)" : undefined }}>{pct > 0 ? "+" : ""}{pct.toFixed(1)}%</span>}</td>
+                  <td className="subline">{r.note ?? ""}</td>
                 </tr>
               );
             })}

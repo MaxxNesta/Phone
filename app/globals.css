@@ -12585,3 +12585,56 @@ a.icmp-cell:hover { color: var(--link); border-bottom-color: var(--link); }
 .xd .mk-rank-bar i { display: block; height: 100%; background: var(--xh-4); transition: width 0.4s ease; }
 .xd .mk-rank-none { cursor: default !important; color: var(--xd-mute); }
 @media (max-width: 900px) { .mk-body { grid-template-columns: 1fr; } .mk-stage { height: 70vh; } }
+
+/* Change prices (2026-11-28, after the Astryx preview): a wide dialog, the
+   form on the left and every price it will change on the right. Scoped .cp-. */
+.cp-dialog { width: min(1040px, calc(100vw - 32px)); max-height: 92dvh; }
+.cp-body { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 32px; align-items: start; overflow-y: auto; padding: 8px 16px 4px; margin: 0; }
+.cp-form, .cp-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.cp-form hr { border: 0; border-top: 1px solid var(--pl3-rule); margin: 0; width: 100%; }
+.cp-set { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cp-set legend { padding: 0; margin-bottom: 8px; font-size: 15px; font-weight: 500; color: var(--pl3-ink); }
+.cp-radio { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 10px; font-size: 15px; cursor: pointer; }
+.cp-radio input { width: 18px; height: 18px; margin: 0; accent-color: var(--u-ink); }
+.cp-radio small { display: block; font-size: 13px; color: var(--pl3-sub); margin-top: 1px; }
+.cp-radio.off { color: var(--u-faint); cursor: default; }
+.cp-checks { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.cp-checks .pl3-check { align-items: center; }
+.cp-checks .pl3-check input { margin-top: 0; }
+.cp-segs { display: flex; flex-wrap: wrap; gap: 12px; }
+.cp-seg { display: inline-flex; padding: 3px; border-radius: 10px; background: var(--pl3-fill); }
+.cp-seg button { appearance: none; border: 0; box-shadow: none; min-height: 0; background: none; border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 15px; color: var(--pl3-sub); cursor: pointer; }
+.cp-seg button[aria-checked="true"] { background: var(--u-raised); color: var(--pl3-ink); font-weight: 600; box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.cp-seg button:focus-visible { outline: 2px solid var(--pl3-blue); outline-offset: 1px; }
+.cp-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cp-sum { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 15px; }
+.cp-up { background: var(--u-blue-soft); color: var(--pl3-blue); }
+.cp-down { background: var(--u-fill2); color: var(--pl3-ink); }
+.cp-preview { max-height: 56dvh; overflow-y: auto; border-top: 1px solid var(--pl3-ink); }
+.cp-table td { vertical-align: top; padding-block: 10px; }
+.cp-table th { position: sticky; top: 0; z-index: 1; background: var(--u-raised) !important; }
+.cp-table tbody tr > td { background: var(--u-raised) !important; }
+.cp-prod span, .cp-prod small { display: block; }
+.cp-prod small, .cp-diff { font-size: 13px; color: var(--pl3-sub); }
+.cp-diff { display: block; }
+.cp-now { color: var(--pl3-sub); font-variant-numeric: tabular-nums; }
+.cp-table strong { font-variant-numeric: tabular-nums; }
+.cp-bad { color: var(--bad); }
+.cp-empty { padding: 32px 16px; border: 1px dashed var(--pl3-field); border-radius: 12px; text-align: center; color: var(--pl3-sub); font-size: 15px; }
+.cp-more { padding: 8px 12px; }
+.cp-foot { gap: 8px; }
+.cp-selbar { display: flex; align-items: center; gap: 8px; }
+.cp-selbar .pl3-btn { padding: 6px 12px; font-size: 14px; }
+.pl3-table .cp-tick { padding-inline: 12px 0; }
+.pl3-table .cp-tick input { width: 18px; height: 18px; margin: 0; accent-color: var(--u-ink); }
+.pl3-table td.cp-tick { padding-top: 16px; }
+.cp-note { display: block; font-size: 13px; color: var(--pl3-sub); margin-top: 2px; }
+@media (max-width: 860px) { .cp-body { grid-template-columns: 1fr; } }
+.cp-side { position: sticky; top: 0; }
+.cp-table td, .cp-table th { white-space: normal; overflow-wrap: anywhere; }
+.cp-table td.cp-prod span { font-size: 14px; line-height: 1.3; }
+.cp-table td.r, .cp-table th.r { white-space: nowrap; }
+.cp-dialog .cp-seg button, .cp-dialog .cp-seg button:hover, .cp-dialog .cp-seg button:focus { background: none; color: var(--pl3-sub); border: 0; box-shadow: none; }
+.cp-dialog .cp-seg button[aria-checked="true"], .cp-dialog .cp-seg button[aria-checked="true"]:hover, .cp-dialog .cp-seg button[aria-checked="true"]:focus { background: var(--u-raised); color: var(--pl3-ink); box-shadow: 0 1px 3px rgb(0 0 0 / 0.12); }
+.cp-dialog .cp-seg button:hover:not([aria-checked="true"]) { color: var(--pl3-ink); }
+.pl3-field input::placeholder, .cp-dialog input::placeholder { color: var(--u-faint); opacity: 1; }

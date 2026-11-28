@@ -1,7 +1,7 @@
 import { todayLocal } from "@/lib/format";
 import { getCompany, getPriceList } from "@/lib/queries";
 import { sql } from "@/lib/db";
-import { setItemPrice, clearItemPrice, createPriceLevel, updatePriceLevel, deletePriceLevel } from "@/lib/actions";
+import { setItemPrice, clearItemPrice, changePrices, createPriceLevel, updatePriceLevel, deletePriceLevel } from "@/lib/actions";
 import { AddPriceLevelForm, PriceLevelRow } from "@/components/price-level-form";
 import { PriceList, type PriceProduct } from "@/components/price-list";
 import { getTranslations } from "next-intl/server";
@@ -24,7 +24,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       item_id: string; code: string; name: string; parent_item_id: string | null; model_name: string | null;
       uom_id: string; uom_code: string; factor: number; is_base: boolean; base_code: string;
       level_id: string; price: string | null; valid_from: string | null;
-      history: { price: number | null; from: string }[] | null;
+      history: { price: number | null; from: string; note: string | null }[] | null;
     }>>,
     // Counted once each, grouped, rather than a count per level.
     sql`select pl.id, pl.code, pl.name, pl.sort_order, coalesce(p.n, 0)::int as prices, coalesce(b.n, 0)::int as partners
@@ -61,6 +61,7 @@ export default async function Prices({ searchParams }: { searchParams: Promise<R
       initialQ={sp.q ?? ""}
       setAction={setItemPrice}
       clearAction={clearItemPrice}
+      changeAction={changePrices}
       manage={
         <>
           <AddPriceLevelForm action={createPriceLevel} />

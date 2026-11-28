@@ -4,8 +4,9 @@ import { useActionState, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { useRouter } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
 import { useNotice } from "@/components/toast";
+import { ChangePrices } from "@/components/change-prices";
 
-type Cell = { price: number | null; validFrom: string | null; history: { price: number | null; from: string }[] };
+type Cell = { price: number | null; validFrom: string | null; history: { price: number | null; from: string; note?: string | null }[] };
 export type PriceUnit = { uomId: string; code: string; isBase: boolean; per: string | null; cells: Record<string, Cell> };
 /** A variant carries its model (T-shirt) so a price can be set for all its colours and sizes at once. */
 export type PriceProduct = { itemId: string; code: string; name: string; modelId?: string | null; modelName?: string | null; units: PriceUnit[] };
@@ -22,14 +23,16 @@ const PAGE = 40;
  * with their units beneath, a column per level; a price opens the Set price
  * panel over the right of the list; the levels are managed in a dialog.
  */
-export function PriceList({ products, levels, today, openLevels, initialQ = "", setAction, clearAction, manage }: {
+export function PriceList({ products, levels, today, openLevels, initialQ = "", setAction, clearAction, changeAction, manage }: {
   products: PriceProduct[]; levels: Level[]; today: string; openLevels: boolean; initialQ?: string;
-  setAction: Act; clearAction: Act; manage: ReactNode;
+  setAction: Act; clearAction: Act; changeAction: Act; manage: ReactNode;
 }) {
   const [q, setQ] = useState(initialQ);
   const [only, setOnly] = useState("all");
   const [shown, setShown] = useState(PAGE);
   const [pick, setPick] = useState<Pick | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => { if (openLevels) dialog.current?.showModal(); }, [openLevels]);
@@ -51,11 +54,18 @@ export function PriceList({ products, levels, today, openLevels, initialQ = "", 
           <p>Selling prices by product and unit, at every price level</p>
         </div>
         <button type="button" className="pl3-btn" onClick={() => dialog.current?.showModal()}>Manage price levels</button>
+        <button type="button" className="pl3-btn primary" onClick={() => { setPick(null); setBulk(true); }}><span aria-hidden="true">⇅</span> Change prices</button>
       </div>
 
       <div className="pl3-bar">
-        <span className="pl3-count">{levels.length} level{levels.length === 1 ? "" : "s"} · {priced} of {products.length} products priced</span>
-        <input type="search" className="pl3-search" placeholder="Search products…" aria-label="Search products" value={q}
+        {sel.size > 0 ? (
+          <span className="pl3-count cp-selbar">
+            <span className="pl3-badge info">{sel.size} selected</span>
+            <button type="button" className="pl3-btn" onClick={() => { setPick(null); setBulk(true); }}><span aria-hidden="true">⇅</span> Change selected</button>
+            <button type="button" className="pl3-btn ghost" onClick={() => setSel(new Set())}>× Clear</button>
+          </span>
+        ) : <span className="pl3-count">{levels.length} level{levels.length === 1 ? "" : "s"} · {priced} of {products.length} products priced</span>}
+        <input type="search" className="pl3-search" placeholder="Search name or code…" aria-label="Search products by name or code" value={q}
           onChange={(e) => { setQ(e.target.value); setShown(PAGE); }} />
         <select className="pl3-select" aria-label="Show" value={only} onChange={(e) => { setOnly(e.target.value); setShown(PAGE); }}>
           <option value="all">All products</option>
@@ -66,10 +76,16 @@ export function PriceList({ products, levels, today, openLevels, initialQ = "", 
 
       <div className="pl3-tablewrap">
         {/* Every price column holds a nine-digit kyat figure; past what fits, the table scrolls rather than squeezing. */}
-        <table className="pl3-table" style={{ width: `max(100%, ${180 + 140 + levels.length * 160}px)` }}>
-          <colgroup><col /><col style={{ width: 140 }} />{levels.map((l) => <col key={l.id} style={{ width: 160 }} />)}</colgroup>
+        <table className="pl3-table" style={{ width: `max(100%, ${44 + 180 + 140 + levels.length * 160}px)` }}>
+          <colgroup><col style={{ width: 44 }} /><col /><col style={{ width: 140 }} />{levels.map((l) => <col key={l.id} style={{ width: 160 }} />)}</colgroup>
           <thead>
             <tr>
+              <th className="cp-tick">
+                <input type="checkbox" aria-label="Select every product shown"
+                  checked={list.length > 0 && list.every((p) => sel.has(p.itemId))}
+                  ref={(el) => { if (el) el.indeterminate = list.some((p) => sel.has(p.itemId)) && !list.every((p) => sel.has(p.itemId)); }}
+                  onChange={(e) => setSel((s) => { const n = new Set(s); for (const p of list) if (e.target.checked) n.add(p.itemId); else n.delete(p.itemId); return n; })} />
+              </th>
               <th>Product</th><th>Unit</th>
               {levels.map((l) => <th key={l.id} className="r">{l.name}{l.isDefault ? " (Default)" : ""} <small>MMK</small></th>)}
             </tr>
@@ -77,6 +93,12 @@ export function PriceList({ products, levels, today, openLevels, initialQ = "", 
           <tbody>
             {list.slice(0, shown).map((p) => p.units.map((u, i) => (
               <tr key={`${p.itemId}-${u.uomId}`} className={i === p.units.length - 1 ? "pl3-last" : undefined}>
+                {i === 0 && (
+                  <td rowSpan={p.units.length} className="pl3-prod cp-tick">
+                    <input type="checkbox" aria-label={`Select ${p.name}`} checked={sel.has(p.itemId)}
+                      onChange={(e) => setSel((s) => { const n = new Set(s); if (e.target.checked) n.add(p.itemId); else n.delete(p.itemId); return n; })} />
+                  </td>
+                )}
                 {i === 0 && (
                   <td rowSpan={p.units.length} className="pl3-prod">
                     <strong>{p.name}</strong>
@@ -119,6 +141,9 @@ export function PriceList({ products, levels, today, openLevels, initialQ = "", 
           siblings={product.modelId ? products.filter((x) => x.modelId === product.modelId && x.units.some((u) => u.code === product.units.find((y) => y.uomId === pick.uomId)?.code)).length : 1}
           setAction={setAction} clearAction={clearAction} onPick={setPick} onClose={() => setPick(null)} />
       )}
+
+      <ChangePrices open={bulk} onClose={() => setBulk(false)} products={products} selected={sel} matching={list} q={q}
+        levels={levels} today={today} action={async (prev, fd) => { const r = await changeAction(prev, fd); if ("ok" in r) setSel(new Set()); return r; }} />
 
       <dialog ref={dialog} className="pl3-dialog" aria-labelledby="pl3-dialog-title"
         onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
@@ -207,6 +232,9 @@ function SetPrice({ product, pick, levels, today, siblings, setAction, clearActi
           <span className="pl3-hint">Invoices before this date keep their price; the price before it stays in the history.</span>
           <input name="valid_from" type="date" defaultValue={today} required />
         </label>
+        <label className="pl3-field">Note <span className="pl3-hint">Optional. Shown in the price history.</span>
+          <input name="note" maxLength={200} placeholder="Supplier cut" />
+        </label>
         <hr />
         <button type="button" className="pl3-hist-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
           <span className={`pl3-caret${open ? " open" : ""}`} aria-hidden="true">›</span>
@@ -217,7 +245,7 @@ function SetPrice({ product, pick, levels, today, siblings, setAction, clearActi
           <ul className="pl3-hist">
             {rows.map((r, i) => (
               <li key={r.from}>
-                <span>{nice(r.from)}</span>
+                <span>{nice(r.from)}{r.note && <small className="cp-note">{r.note}</small>}</span>
                 <span className="pl3-hist-r">
                   {r.from > today && <span className="pl3-badge info">Starts later</span>}
                   {r === now && <span className="pl3-badge">Current</span>}

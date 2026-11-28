@@ -4682,7 +4682,7 @@ export async function getPriceList(companyId: string) {
     with h as (
       select item_id, price_level_id, uom_id,
              count(*)::int as prices,
-             json_agg(json_build_object('price', price::float, 'from', to_char(valid_from, 'YYYY-MM-DD'))
+             json_agg(json_build_object('price', price::float, 'from', to_char(valid_from, 'YYYY-MM-DD'), 'note', note)
                       order by valid_from desc) as history,
              (array_agg(price order by valid_from desc) filter (where valid_from <= fn_shop_today()))[1] as price,
              (array_agg(valid_from order by valid_from desc) filter (where valid_from <= fn_shop_today()))[1] as valid_from
