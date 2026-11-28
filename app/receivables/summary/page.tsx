@@ -17,9 +17,9 @@ export default async function CustomerSummaryPage({ searchParams }: { searchPara
   const branches = await seenBranches((await getBranches(company.id)) as unknown as { id: string; code: string; name: string }[]);
   const [customers, towns, rows] = await Promise.all([
     sql`select id, code, name from business_partner where company_id = ${company.id} and is_customer
-          ${sp.township ? (sp.township === "-" ? sql`and township is null` : sql`and township = ${sp.township}`) : sql``}
+          ${sp.township ? (sp.township === "-" ? sql`and coalesce(city, township) is null` : sql`and coalesce(city, township) = ${sp.township}`) : sql``}
         order by code`,
-    sql`select distinct township from business_partner where company_id = ${company.id} and is_customer and township is not null order by township`,
+    sql`select distinct coalesce(city, township) as township from business_partner where company_id = ${company.id} and is_customer and coalesce(city, township) is not null order by 1`,
     getOutstandingSummary(company.id, "CUSTOMER", { branchId: branch, partnerIds: partnerIdsOf(sp.partner), township: sp.township || null, from: sp.from || null, to: sp.to || null }),
   ]);
   return (

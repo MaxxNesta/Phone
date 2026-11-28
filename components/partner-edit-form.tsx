@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ActionResult } from "@/lib/actions";
-import { REGION_GROUPS } from "@/lib/regions";
+import { PlacePicker } from "./place-picker";
 import { useTranslations } from "next-intl";
 import { CreditFields } from "./credit-fields";
 import { useNotice } from "@/components/toast";
@@ -20,6 +20,8 @@ export type Partner = {
   category_id: string | null; category_name: string | null;
   supplier_category_id: string | null; supplier_category_name: string | null;
   township: string | null; address: string | null; phone: string | null;
+  /** Where the customer is (0239): the place chosen, and the city it lies in. */
+  place_code?: string | null; city?: string | null;
   payment_terms_days: number;
   /** What they bill or pay in; null is the company's own. */
   currency?: string | null;
@@ -89,19 +91,10 @@ export function PartnerEditForm({
           <input name="email" type="email" defaultValue={partner.email ?? ""} />
         </div>
         <div className="field">
-          <label>{t("region")}</label>
-          <select name="region" defaultValue={partner.region ?? ""}>
-            <option value="">{t("notSet")}</option>
-            {REGION_GROUPS.map((g) => (
-              <optgroup key={g.label} label={g.label}>
-                {g.options.map((r) => <option key={r} value={r}>{r}</option>)}
-              </optgroup>
-            ))}
-          </select>
-        </div>
-        <div className="field">
           <label>{t("township")}</label>
-          <input name="township" type="text" defaultValue={partner.township ?? ""} />
+          <PlacePicker label={t("township")}
+            value={{ code: partner.place_code ?? null,
+                     label: partner.place_code ? [partner.township, partner.city && partner.city !== partner.township ? `${partner.city} city` : null, partner.region].filter(Boolean).join(" · ") || null : null }} />
         </div>
         <div className="field">
           <label>{t("address")}</label>

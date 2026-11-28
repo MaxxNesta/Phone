@@ -26,7 +26,7 @@ import { assertMyBranch, onlyMyLocations, seenLocations } from "./branch-scope";
 import { encodeItemPhoto } from "./item-photo";
 import { putObject, deleteObject, newKey } from "./r2";
 import { sniff, ATTACHMENT_SNIFF } from "./upload-limits";
-import { asRegion } from "./regions";
+import { placeFields } from "./places";
 import {
   postSalesInvoice, postPurchaseInvoice, postSaleWithDelivery, postRetailSale, postPurchaseWithReceipt,
   postCreditNote, postDebitNote, postSupplierRefund,
@@ -242,6 +242,10 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
     if (!code) return { error: await m("codeRequired") };
     if (!name) return { error: await m("nameRequired") };
     if (!isCustomer && !isSupplier && !isCourier) return { error: await m("chooseRole") };
+    // Where a customer is, from the township list (0239). An answer is
+    // required, and "Not sure yet" is one.
+    const place = await placeFields(str(fd, "place_code"));
+    if (isCustomer && !place) return { error: "Choose the customer’s township, city or region — or “Not sure yet”." };
 
     const dup = await sql`
       select 1 from business_partner where company_id = ${co} and code = ${code}`;
@@ -250,13 +254,13 @@ export async function createPartner(_prev: unknown, fd: FormData): Promise<Actio
     await sql`
       insert into business_partner
         (company_id, code, name, name_my, company_name, is_customer, is_supplier, is_courier, cod_fee_mode,
-         region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
+         place_code, city, region, township, address, phone, payment_terms_days, credit_limit, price_level_id,
          category_id, supplier_category_id, currency, member_card_id,
          contact_person, email, notes)
       values
         (${co}, ${code}, ${name}, ${str(fd, "name_my") || null},
          ${str(fd, "company_name") || null}, ${isCustomer}, ${isSupplier}, ${isCourier}, ${feeMode(fd) ?? "DEDUCTED"},
-         ${asRegion(str(fd, "region"))}, ${str(fd, "township") || null},
+         ${place?.place_code ?? null}, ${place?.city ?? null}, ${place?.region ?? null}, ${place?.township ?? null},
          ${str(fd, "address") || null},
          ${str(fd, "phone") || null}, ${num(fd, "payment_terms_days")},
          ${fd.get("credit_limit") ? num(fd, "credit_limit") : null},
@@ -314,6 +318,8 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
     const dup = await sql`
       select 1 from business_partner where company_id = ${co} and code = ${code} and id <> ${id}`;
     if (dup.length) return { error: await m("codeUsed", { code }) };
+    // Left as it is when the form did not carry the place.
+    const place = await placeFields(str(fd, "place_code"));
 
     await sql`
       update business_partner set
@@ -325,8 +331,8 @@ export async function updatePartner(_prev: unknown, fd: FormData): Promise<Actio
         is_customer = ${isCustomer}, is_supplier = ${isSupplier}, is_courier = ${isCourier},
         -- How a courier charges for COD (0234); kept when the form does not ask.
         cod_fee_mode = coalesce(${feeMode(fd)}, cod_fee_mode),
-        region = ${asRegion(str(fd, "region"))},
-        township = ${str(fd, "township") || null}, address = ${str(fd, "address") || null},
+        ${place ? sql`place_code = ${place.place_code}, city = ${place.city}, region = ${place.region}, township = ${place.township},` : sql``}
+        address = ${str(fd, "address") || null},
         phone = ${str(fd, "phone") || null}, payment_terms_days = ${num(fd, "payment_terms_days")},
         -- Blank means "measure it", not zero: an empty override falls back
         -- to what the receipts say, and nought would claim same-day supply.

@@ -73,7 +73,7 @@ export async function getPartnerLedger(companyId: string, side: Side, f: {
              and ${side === "SUPPLIER" ? sql`p.is_supplier` : sql`p.is_customer`}
        where jl.company_id = ${companyId}
          ${f.partnerIds?.length ? sql`and jl.partner_id = any(${f.partnerIds}::uuid[])` : sql``}
-         ${f.township ? (f.township === "-" ? sql`and p.township is null` : sql`and p.township = ${f.township}`) : sql``}
+         ${f.township ? (f.township === "-" ? sql`and coalesce(p.city, p.township) is null` : sql`and coalesce(p.city, p.township) = ${f.township}`) : sql``}
          ${f.to ? sql`and je.entry_date <= ${f.to}::date` : sql``}
          ${branchFilterOn(sql`jl`, f.branchId)}
          and (jl.account_id = (select id from adv)
@@ -86,14 +86,16 @@ export async function getPartnerLedger(companyId: string, side: Side, f: {
       having round(sum(base_amount), 2) <> 0
     )
     select e.entry_id, e.entry_no, e.entry_date::text as date, e.source_type, e.partner_id, e.amt, e.on_adv,
-           p.code, p.name, p.township, d.id as doc_id, d.doc_type, d.doc_no, d.memo, d.reference, d.source_ref,
+           p.code, p.name,
+           -- Grouped as the old report did: a city of several townships is one heading (0239).
+           coalesce(p.city, p.township) as township, d.id as doc_id, d.doc_type, d.doc_no, d.memo, d.reference, d.source_ref,
            -- The money's other side, for a payment or receipt: the bank or cash it moved through.
            (select string_agg(distinct a.name, ', ') from journal_line x join account a on a.id = x.account_id
              where x.journal_entry_id = e.entry_id and (a.is_cash_account or a.is_bank_account)) as paid_from
       from entries e
       join business_partner p on p.id = e.partner_id
       left join document d on d.id = e.source_id
-     order by p.township nulls last, p.code, e.entry_date, e.entry_no`;
+     order by coalesce(p.city, p.township) nulls last, p.code, e.entry_date, e.entry_no`;
 
   const out = new Map<string, PartnerLedger[number]>();
   for (const r of rows) {

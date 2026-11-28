@@ -12454,3 +12454,29 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .rmap-swatches span { flex: 1; height: 10px; border-radius: 3px; }
 .rmap-ends { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); font-size: 0.75rem; }
 @media (max-width: 640px) { .rmap { grid-template-columns: 1fr; } }
+
+/* Where a customer is (2026-11-27): one search over MIMU's townships, towns, cities and regions. */
+.place-pick { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.card:has(.place-pick-menu), .card-body:has(.place-pick-menu) { overflow: visible; }
+.place-pick-btn {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%;
+  height: var(--field-h); min-height: var(--field-h); padding: 0 12px 0 var(--field-px);
+  border: 1px solid var(--line); border-radius: var(--field-r); background: var(--surface); color: var(--ink);
+  font-size: 1rem; font-weight: 400; text-align: left; cursor: pointer;
+}
+.place-pick-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-pick-btn.empty span { color: var(--muted); }
+.place-pick-btn svg { flex: none; color: var(--muted); }
+.place-pick-req { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; bottom: 0; left: 12px; }
+.place-pick-menu {
+  position: absolute; top: calc(var(--field-h) + 4px); left: 0; z-index: 40; width: min(26rem, 92vw);
+  padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .14);
+}
+.place-pick-menu ul { list-style: none; margin: 4px 0 0; padding: 0; max-height: 46vh; overflow-y: auto; }
+.place-pick-menu li { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.place-pick-menu li.on { background: color-mix(in srgb, var(--link) 10%, transparent); }
+.place-pick-menu li strong { font-weight: 600; }
+.place-pick-menu li .my { color: var(--muted); }
+.place-pick-menu li small { grid-column: 1 / -1; color: var(--muted); font-size: 0.8125rem; }
+.place-pick-none { color: var(--muted); cursor: default; }

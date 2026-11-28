@@ -3,7 +3,7 @@ import { CreditFields } from "@/components/credit-fields";
 import { createPartner } from "@/lib/actions";
 import { SimpleForm } from "@/components/simple-form";
 import { HelpHint } from "@/components/help-hint";
-import { REGION_GROUPS } from "@/lib/regions";
+import { PlacePicker } from "@/components/place-picker";
 import { sql } from "@/lib/db";
 import { getTranslations } from "next-intl/server";
 
@@ -150,24 +150,12 @@ export default async function NewPartner() {
                 </span>
               </div>
               <CreditFields defaultLimit={null} defaultTerms={30} limitHint={t("creditLimitHint")} />
-              {/* Region groups for reporting; township stays the address
-                  line it has always been. Two different jobs, which is why
-                  one is a fixed list and the other is free text. */}
+              {/* Where the customer is, from MIMU's township list (2026-11-27):
+                  the region and city follow from the township. A customer
+                  must answer, "Not sure yet" included. */}
               <div className="field">
-                <label htmlFor="region">{t("region")}</label>
-                <select id="region" name="region" defaultValue="">
-                  <option value="">{t("notSet")}</option>
-                  {REGION_GROUPS.map((g) => (
-                    <optgroup key={g.label} label={g.label}>
-                      {g.options.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-                <span className="hint">{t("regionHint")}</span>
-              </div>
-              <div className="field">
-                <label htmlFor="township">{t("township")}</label>
-                <input id="township" name="township" type="text" placeholder="Bahan" />
+                <label>{t("township")}</label>
+                <PlacePicker value={null} label={t("township")} />
               </div>
               <div className="field">
                 <label htmlFor="phone">{t("phone")}</label>

@@ -78,6 +78,8 @@ export default async function Partners({
         allowed: creditKind(p) === "NONE" ? "no" : "yes",
         region: p.region ?? "",
         township: p.township ?? "",
+        // How exactly we know where they are (0239): the ones short of a township are the list to complete.
+        place: !p.place_code ? "NONE" : p.place_code.startsWith("R-") ? "REGION" : p.place_code.startsWith("C-") ? "CITY" : "TOWNSHIP",
         price_level: p.price_level_id ?? "default",
         terms: String(Number(p.payment_terms_days)),
       },
@@ -137,6 +139,9 @@ export default async function Partners({
                   { key: "credit", label: cp("creditStatus"), allLabel: cp("allCredit"), more: true,
                     options: [{ value: "LIMIT", label: cp("withinLimit") }, { value: "OVER", label: cp("overLimit") },
                               { value: "NONE", label: cp("noCredit") }, { value: "UNLIMITED", label: cp("unlimited") }] },
+                  { key: "place", label: "Location", allLabel: "Any location",
+                    options: [{ value: "TOWNSHIP", label: "Township known" }, { value: "CITY", label: "City only" },
+                              { value: "REGION", label: "Region only" }, { value: "NONE", label: "Not sure yet" }] },
                   { key: "region", label: t("region"), allLabel: cp("allRegions"), more: true,
                     options: distinct(customers.map((p) => p.region)).map((v) => ({ value: v, label: v })) },
                   { key: "township", label: t("township"), allLabel: cp("allTownships"), more: true,
