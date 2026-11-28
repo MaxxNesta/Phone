@@ -1,4 +1,5 @@
-// Sign-in is refused after too many failures, per email and per address.
+// Sign-in is refused after too many failures: per email and address, per email
+// from every address, and per address.
 //
 //   ./node_modules/.bin/tsx scripts/test-login-throttle.mjs
 //
@@ -29,17 +30,22 @@ const check = (label, ok, detail = "") => {
 const tag = Date.now().toString(36);
 const email = `throttle-${tag}@test.invalid`, other = `other-${tag}@test.invalid`;
 const ip = `203.0.113.${Number.parseInt(tag.slice(-2), 36) % 250}`, ip2 = `198.51.100.${Number.parseInt(tag.slice(-3, -1), 36) % 250}`;
-const { perEmail, perIp } = T.LOGIN_LIMITS;
+const { perEmailAndIp, perEmail, perIp } = T.LOGIN_LIMITS;
 
 try {
   console.log("\n  one email, one address\n");
   check("a fresh email may try", !(await T.tooManyFailures(sql, email, ip)));
-  for (let i = 0; i < perEmail - 1; i++) await T.recordFailure(sql, email, ip);
-  check(`  ${perEmail - 1} failures: still allowed`, !(await T.tooManyFailures(sql, email, ip)));
+  for (let i = 0; i < perEmailAndIp - 1; i++) await T.recordFailure(sql, email, ip);
+  check(`  ${perEmailAndIp - 1} failures: still allowed`, !(await T.tooManyFailures(sql, email, ip)));
   await T.recordFailure(sql, email, ip);
-  check(`  ${perEmail} failures: refused`, await T.tooManyFailures(sql, email, ip));
-  check("  from another address too: the email is what is guarded", await T.tooManyFailures(sql, email, ip2));
+  check(`  ${perEmailAndIp} failures: refused from that address`, await T.tooManyFailures(sql, email, ip));
+  check("  the owner on another address is NOT locked out by it", !(await T.tooManyFailures(sql, email, ip2)));
   check("  another email from a clean address is unaffected", !(await T.tooManyFailures(sql, other, ip2)));
+
+  console.log("\n  one email from many addresses\n");
+  const many = (i) => `192.0.2.${(i * 7 + Number.parseInt(tag.slice(-2), 36)) % 250}`;
+  for (let i = 0; i < perEmail - perEmailAndIp; i++) await T.recordFailure(sql, email, many(i));
+  check(`${perEmail} failures across addresses: refused everywhere`, await T.tooManyFailures(sql, email, ip2));
 
   console.log("\n  a correct password\n");
   await T.clearFailures(sql, email);
@@ -49,10 +55,12 @@ try {
   for (let i = 0; i < perIp; i++) await T.recordFailure(sql, `spray-${i}-${tag}@test.invalid`, ip2);
   check(`${perIp} failures across emails: the address is refused`, await T.tooManyFailures(sql, `new-${tag}@test.invalid`, ip2));
   check("  a request with no address is judged by email alone", !(await T.tooManyFailures(sql, `new-${tag}@test.invalid`, null)));
+  for (let i = 0; i < perEmailAndIp; i++) await T.recordFailure(sql, `noaddr-${tag}@test.invalid`, null);
+  check("  and refused after its own failures", await T.tooManyFailures(sql, `noaddr-${tag}@test.invalid`, null));
 
   console.log("\n  the window\n");
   await sql`update login_failure set failed_at = now() - interval '16 minutes' where email = ${other} or ip = ${ip2}`;
-  for (let i = 0; i < perEmail; i++) await T.recordFailure(sql, other, null);
+  for (let i = 0; i < perEmailAndIp; i++) await T.recordFailure(sql, other, null);
   await sql`update login_failure set failed_at = now() - interval '16 minutes' where email = ${other}`;
   check("failures older than the window no longer count", !(await T.tooManyFailures(sql, other, ip2)));
 } catch (e) {
