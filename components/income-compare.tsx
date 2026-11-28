@@ -35,10 +35,26 @@ export function IncomeCompare({ periods, rows, currency }: {
   currency: string;
 }) {
   const [shut, setShut] = useState<Set<string>>(new Set());
+  // The same switches as the standard statement, plus Change. Percentages is
+  // the vertical analysis (each figure against its period's revenue), Change
+  // the horizontal one (each period against the one before). A viewer's
+  // preference, kept in this browser only.
+  const [codes, setCodes] = useState(false);
+  const [pcts, setPcts] = useState(false);
   const [change, setChange] = useState(false);
-  // The switch is a viewer's preference, kept in this browser only.
-  useEffect(() => { try { setChange(localStorage.getItem("icmp-change") === "1"); } catch {} }, []);
-  const flip = (on: boolean) => { setChange(on); try { localStorage.setItem("icmp-change", on ? "1" : "0"); } catch {} };
+  useEffect(() => {
+    try {
+      setCodes(localStorage.getItem("icmp-codes") === "1");
+      setPcts(localStorage.getItem("icmp-pcts") === "1");
+      setChange(localStorage.getItem("icmp-change") === "1");
+    } catch {}
+  }, []);
+  const keep = (k: string, set: (b: boolean) => void) => (on: boolean) => { set(on); try { localStorage.setItem(k, on ? "1" : "0"); } catch {} };
+  const revenue = rows.find((r) => r.key === "t:REVENUE");
+  const pctOf = (v: number, base: number | undefined) =>
+    base && Math.abs(base) >= 0.005 && Math.abs(v) >= 0.005
+      // A small share keeps its digits: −200,000 of 2.5 billion is −0.01%, not −0.0%.
+      ? (() => { const p = (v / base) * 100; return `${p.toFixed(Math.abs(p) < 0.1 ? 2 : 1)}%`; })() : null;
   const groups = rows.filter((r) => r.kind === "group").map((r) => r.key);
   const visible = rows.filter((r) => !r.under.some((u) => shut.has(u)));
   const cols = periods.length + 2;
@@ -50,14 +66,24 @@ export function IncomeCompare({ periods, rows, currency }: {
     <section className="card icmp-card">
       <div className="icmp-bar">
         <div className="icmp-folds">
-          <button type="button" className="btn ghost tiny" onClick={() => setShut(new Set())}>Expand all</button>
-          <button type="button" className="btn ghost tiny" onClick={() => setShut(new Set(groups))}>Groups only</button>
+          <button type="button" className="erp-hbtn" onClick={() => setShut(new Set())}>Expand all</button>
+          <button type="button" className="erp-hbtn" onClick={() => setShut(new Set(groups))}>Collapse all</button>
         </div>
-        <label className="check icmp-switch">
-          <input type="checkbox" checked={change} onChange={(e) => flip(e.target.checked)} />
-          Show change from the period before
-        </label>
-        <span className="page-sub">{currency}</span>
+        <div className="icmp-switches">
+          <label className="stmt-switch">
+            <input type="checkbox" checked={codes} onChange={(e) => keep("icmp-codes", setCodes)(e.target.checked)} />
+            <span className="stmt-track" aria-hidden="true" />Account codes
+          </label>
+          <label className="stmt-switch" title="Vertical analysis: each figure as a share of that period's revenue">
+            <input type="checkbox" checked={pcts} onChange={(e) => keep("icmp-pcts", setPcts)(e.target.checked)} />
+            <span className="stmt-track" aria-hidden="true" />Percentages
+          </label>
+          <label className="stmt-switch" title="Horizontal analysis: each period against the one before, green when it helps profit">
+            <input type="checkbox" checked={change} onChange={(e) => keep("icmp-change", setChange)(e.target.checked)} />
+            <span className="stmt-track" aria-hidden="true" />Change
+          </label>
+          <span className="page-sub">{currency}</span>
+        </div>
       </div>
       <div className="icmp-wrap">
         <table className="icmp">
@@ -81,19 +107,23 @@ export function IncomeCompare({ periods, rows, currency }: {
                       <button type="button" className="icmp-fold" aria-expanded={!isShut}
                               onClick={() => setShut((s) => { const n = new Set(s); if (n.has(r.key)) n.delete(r.key); else n.add(r.key); return n; })}>
                         {isShut ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
-                        {r.label}
+                        {codes && r.code && <span className="icmp-code">{r.code}</span>}{r.label}
                       </button>
                     ) : (
-                      <>{r.code && r.kind === "account" && <span className="icmp-code">{r.code}</span>}{r.label}</>
+                      <>{codes && r.code && <span className="icmp-code">{r.code}</span>}{r.label}</>
                     )}
                   </td>
                   {r.values.map((v, i) => (
                     <td key={i} className={`r${v < 0 ? " neg" : ""}`}>
                       <span className="icmp-num">{fmt(v)}</span>
+                      {pcts && pctOf(v, revenue?.values[i]) && <span className="icmp-pct">{pctOf(v, revenue?.values[i])}</span>}
                       {change && i > 0 && live[i] && live[i - 1] && <Change now={v} before={r.values[i - 1]} better={r.better} />}
                     </td>
                   ))}
-                  <td className={`r icmp-totcol${r.total < 0 ? " neg" : ""}`}><span className="icmp-num">{fmt(r.total)}</span></td>
+                  <td className={`r icmp-totcol${r.total < 0 ? " neg" : ""}`}>
+                    <span className="icmp-num">{fmt(r.total)}</span>
+                    {pcts && pctOf(r.total, revenue?.total) && <span className="icmp-pct">{pctOf(r.total, revenue?.total)}</span>}
+                  </td>
                 </tr>
               );
             })}
