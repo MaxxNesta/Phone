@@ -4913,6 +4913,18 @@ export async function getBalanceSheetByPeriod(
     having sum(jl.base_amount) <> 0` as unknown as Promise<{ id: string; code: string; name: string; account_type: string; period: string; raw: string }[]>;
 }
 
+/**
+ * The clearing and tax accounts (2026-11-28): GR/IR, landed cost and trade-in
+ * clearing, goods shipped not invoiced, input and output tax. The exported
+ * statements fold them into "Other current assets / liabilities" rather than
+ * giving each a line of its own.
+ */
+export async function getClearingAndTaxAccounts(companyId: string): Promise<string[]> {
+  const rows = await sql`select account_id from system_account
+    where company_id = ${companyId} and role ~ '(CLEARING|TAX|SHIPPED_NOT_INVOICED)'`;
+  return rows.map((r) => r.account_id as string);
+}
+
 export async function getBalanceSheet(companyId: string, asOf: string, branchId?: string | null) {
   const [rows, netIncomeRows] = await Promise.all([
     sql`

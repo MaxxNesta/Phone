@@ -7,6 +7,8 @@ import { CompareTable } from "@/components/income-compare";
 import { GroupedBars } from "@/components/charts";
 import { GRAINS, asGrain } from "@/lib/statement-compare";
 import { getBalanceCompare } from "./compare";
+import { getClearingAndTaxAccounts } from "@/lib/queries";
+import { rowsToDoc, shapeToDoc, longDate, type StatementDoc } from "@/lib/statement-doc";
 import { HelpHint } from "@/components/help-hint";
 import { getBalanceSheetData, type Params } from "./data";
 
@@ -28,7 +30,18 @@ export default async function BalanceSheet({
     summaries, sections, subtotals, scope,
   } = data;
   const from = sp.from && /^\d{4}-\d{2}-\d{2}$/.test(sp.from) ? sp.from : `${asOf.slice(0, 4)}-01-01`;
-  const cmp = compare ? await getBalanceCompare(company.id, { from, to: asOf }, grain, branchId) : null;
+  const [cmp, foldList] = await Promise.all([
+    compare ? getBalanceCompare(company.id, { from, to: asOf }, grain, branchId) : Promise.resolve(null),
+    getClearingAndTaxAccounts(company.id),
+  ]);
+  // The statement as a document to hand over (Export): clearing and tax inside current assets / liabilities.
+  const foldIds = new Set(foldList);
+  const docBase = { company: company.name, title: "Balance sheet", currency: company.base_currency, file: "balance-sheet" };
+  const exportDoc: StatementDoc = cmp
+    ? { ...docBase, title: `Balance sheet — ${GRAINS[grain].toLowerCase()} comparison`, wide: true,
+        lines: [`As at each period end, ${longDate(from)} to ${longDate(asOf)}`, data.branchName],
+        columns: cmp.periods.map((p) => `${p.label}`), rows: rowsToDoc(cmp.rows, { columns: cmp.periods.length, total: false, foldIds }) }
+    : { ...docBase, lines: [`As at ${longDate(asOf)}`, data.branchName], columns: ["Amount"], rows: shapeToDoc({ sections, subtotals }, foldIds) };
 
   return (
     <>
@@ -108,13 +121,14 @@ export default async function BalanceSheet({
             </div>
           </section>
           <CompareTable periods={cmp.periods} rows={cmp.rows} currency={company.base_currency}
-            pctBase="t:ASSET" pctTitle="each figure as a share of total assets at that date" showTotal={false} />
+            pctBase="t:ASSET" pctTitle="each figure as a share of total assets at that date" showTotal={false} exportDoc={exportDoc} />
         </>
       ) : classic ? (
-        <ClassicStatement sections={sections} subtotals={subtotals} scope={scope} basis="position"
+        <ClassicStatement sections={sections} subtotals={subtotals} scope={scope} basis="position" exportDoc={exportDoc}
           revenue={sections.find((x) => x.key === "ASSET")?.total ?? 0} baseLabel="% of total assets" />
       ) : (
       <StatementTable
+        exportDoc={exportDoc}
         title="Statement"
         currency={company.base_currency}
         scope={scope}

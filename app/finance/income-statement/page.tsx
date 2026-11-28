@@ -10,6 +10,7 @@ import { getIncomeStatementData, type Params } from "./data";
 import { getIncomeCompare, GRAINS, type Grain } from "./compare";
 import { IncomeCompare } from "@/components/income-compare";
 import { GroupedBars } from "@/components/charts";
+import { rowsToDoc, shapeToDoc, longDate, type StatementDoc } from "@/lib/statement-doc";
 
 export default async function IncomeStatement({
   searchParams,
@@ -29,6 +30,13 @@ export default async function IncomeStatement({
     summaries, sections, subtotals, scope, cogsBreakdown,
   } = data;
   const cmp = compare ? await getIncomeCompare(company.id, range, grain, branchId) : null;
+  // The statement as a document to hand over (Export), in whichever layout is on screen.
+  const docBase = { company: company.name, title: "Income statement", currency: company.base_currency, file: "income-statement",
+    lines: [`For the period ${longDate(range.from)} to ${longDate(range.to)}`, data.branchName] };
+  const exportDoc: StatementDoc = cmp
+    ? { ...docBase, title: `Income statement — ${GRAINS[grain].toLowerCase()} comparison`, wide: true,
+        columns: [...cmp.periods.map((p) => p.label), "Total"], rows: rowsToDoc(cmp.rows, { columns: cmp.periods.length, total: true }) }
+    : { ...docBase, columns: ["Amount"], rows: shapeToDoc({ sections, subtotals }) };
   const pctOf = (v: number) => (cmp && cmp.totals.revenue ? `${((v / cmp.totals.revenue) * 100).toFixed(1)}% of revenue` : "");
 
   return (
@@ -106,13 +114,14 @@ export default async function IncomeStatement({
               <GroupedBars data={cmp.chart} series={[{ key: "revenue", label: "Revenue" }, { key: "gross", label: "Gross profit" }, { key: "net", label: "Net income" }]} />
             </div>
           </section>
-          <IncomeCompare periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} />
+          <IncomeCompare periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} exportDoc={exportDoc} />
         </>
       ) : classic ? (
-        <ClassicStatement sections={sections} subtotals={subtotals} scope={scope}
+        <ClassicStatement sections={sections} subtotals={subtotals} scope={scope} exportDoc={exportDoc}
           revenue={sections.find((x) => x.key === "REVENUE")?.total ?? 0} />
       ) : (
       <StatementTable
+        exportDoc={exportDoc}
         title="Statement"
         currency={company.base_currency}
         scope={scope}

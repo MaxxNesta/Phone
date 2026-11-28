@@ -12528,3 +12528,6 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 a.icmp-cell { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line); }
 a.icmp-cell:hover { color: var(--link); border-bottom-color: var(--link); }
 .icmp tbody tr > td.icmp-open { background: color-mix(in srgb, var(--link) 12%, var(--surface)) !important; }
+
+/* A switch with its "?" beside it, outside the label so the hint does not flip the switch. */
+.icmp-sw { display: inline-flex; align-items: center; gap: 2px; }

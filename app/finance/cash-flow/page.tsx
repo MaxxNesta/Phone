@@ -8,7 +8,9 @@ import { getCashFlowData, SECTIONS, type Params } from "./data";
 import { CashFlowPanel } from "./panel";
 import { IndirectStatementView, IndirectPanel } from "./indirect";
 import { getIndirectCashFlow } from "@/lib/indirect-cash-flow";
-import { getDirectCompare, getIndirectCompare } from "./compare";
+import { getDirectCompare, getIndirectCompare, indirectRows, directRowsOf } from "./compare";
+import { rowsToDoc, longDate, type StatementDoc } from "@/lib/statement-doc";
+import { StatementExportButton } from "@/components/statement-export";
 import { CompareTable } from "@/components/income-compare";
 import { GroupedBars } from "@/components/charts";
 import { GRAINS, asGrain } from "@/lib/statement-compare";
@@ -33,6 +35,15 @@ export default async function CashFlow({
     ? await (indirect ? getIndirectCompare : getDirectCompare)(company.id, range, grain, branchId)
     : null;
   const ind = indirect && !compare ? await getIndirectCashFlow(company.id, range.from, range.to, branchId) : null;
+  // The statement as a document to hand over (Export), in whichever view is on screen.
+  const method = indirect ? "Indirect method" : "Direct method";
+  const docBase = { company: company.name, currency: company.base_currency, file: `cash-flow-${indirect ? "indirect" : "direct"}`,
+    lines: [`For the period ${longDate(range.from)} to ${longDate(range.to)}`, `${method} · ${data.branchName}`] };
+  const exportDoc: StatementDoc = cmp
+    ? { ...docBase, title: `Cash flow statement — ${GRAINS[grain].toLowerCase()} comparison`, wide: true,
+        columns: [...cmp.periods.map((p) => p.label), "Total"], rows: rowsToDoc(cmp.rows, { columns: cmp.periods.length, total: true }) }
+    : { ...docBase, title: "Cash flow statement", columns: ["Amount"],
+        rows: rowsToDoc(ind ? indirectRows(ind, [ind]) : directRowsOf(typed, Number(beginningCash), Number(endingCash)), { columns: 1, total: false }) };
   // The period a comparison figure opened its panel for; the whole range otherwise.
   const day = /^\d{4}-\d{2}-\d{2}$/;
   const pf = (sp as { pf?: string }).pf, pt = (sp as { pt?: string }).pt;
@@ -147,7 +158,7 @@ export default async function CashFlow({
           <div className={sp.line ? "cf-split" : undefined}>
             <section>
               <CompareTable periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} pctBase={null} codes={false} first="Activity"
-                drillBase={methodHref(indirect ? "indirect" : null)} open={sp.line ? { line: sp.line, pf: panelRange.from !== range.from || panelRange.to !== range.to ? panelRange.from : undefined } : undefined} />
+                exportDoc={exportDoc} drillBase={methodHref(indirect ? "indirect" : null)} open={sp.line ? { line: sp.line, pf: panelRange.from !== range.from || panelRange.to !== range.to ? panelRange.from : undefined } : undefined} />
             </section>
             {sp.line && indirect && (
               <IndirectPanel companyId={company.id} range={panelRange} branchId={branchId} sp={sp as Record<string, string | undefined>} />
@@ -181,6 +192,7 @@ export default async function CashFlow({
             >
               <Printer size={15} aria-hidden="true" /> Print
             </Link>
+            <StatementExportButton doc={exportDoc} />
           </div>
           {ind ? <IndirectStatementView st={ind} sp={sp as Record<string, string | undefined>} range={range} /> : (
           <div className="tablewrap">

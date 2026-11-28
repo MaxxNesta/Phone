@@ -1,5 +1,7 @@
 import type { StatementNode } from "@/lib/report-tree";
 import type { Section } from "./statement-table";
+import type { StatementDoc } from "@/lib/statement-doc";
+import { StatementExportButton } from "./statement-export";
 
 /**
  * The income statement as the shop's legacy books lay it out: each section
@@ -29,7 +31,9 @@ function groupsOf(nodes: StatementNode[], parentName: string): Group[] {
   return out;
 }
 
-export function ClassicStatement({ sections, subtotals, revenue, scope, basis = "income", baseLabel = "% of revenue" }: {
+export function ClassicStatement({ sections, subtotals, revenue, scope, basis = "income", baseLabel = "% of revenue", exportDoc }: {
+  /** The statement as a document, for the Export button. */
+  exportDoc?: StatementDoc;
   sections: Section[];
   subtotals: { after: string; label: string; value: number; strong?: boolean }[];
   /** What the last column measures against: revenue, or total assets on a balance sheet. */
@@ -41,7 +45,8 @@ export function ClassicStatement({ sections, subtotals, revenue, scope, basis = 
 }) {
   return (
     <section className="card classic-pl">
-      <div className="card-head"><h2>Statement</h2><span className="page-sub">{scope}</span></div>
+      <div className="card-head"><h2>Statement</h2><span className="page-sub">{scope}</span>
+        {exportDoc && <span style={{ marginLeft: "auto" }}><StatementExportButton doc={exportDoc} /></span>}</div>
       <div className="tablewrap">
         <table>
           <thead>

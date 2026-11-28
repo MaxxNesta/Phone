@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { csvCell } from "@/lib/csv";
 import Link from "next/link";
 import { HelpHint } from "./help-hint";
+import { StatementExportButton } from "./statement-export";
+import type { StatementDoc } from "@/lib/statement-doc";
 import { ChevronRight, Download, Printer } from "lucide-react";
 import type { UrlObject } from "url";
 import { money } from "@/lib/format";
@@ -41,8 +43,10 @@ export type Summary = {
  * decides what is on screen.
  */
 export function StatementTable({
-  title, sections, summaries, subtotals, scope, currency, printHref,
+  title, sections, summaries, subtotals, scope, currency, printHref, exportDoc,
 }: {
+  /** The statement as a formatted document (2026-11-28); without one, Export is the old CSV. */
+  exportDoc?: StatementDoc;
   title: string;
   sections: Section[];
   summaries: Summary[];
@@ -228,15 +232,20 @@ export function StatementTable({
             <span className="stmt-track" aria-hidden="true" />
             Account codes
           </label>
-          <label className="stmt-switch">
-            <input type="checkbox" checked={showPct}
-                   onChange={(e) => setShowPct(e.target.checked)} />
-            <span className="stmt-track" aria-hidden="true" />
-            Percentages
-          </label>
-          <button type="button" className="erp-hbtn noprint" onClick={exportCsv}>
-            <Download size={15} aria-hidden="true" /> Export
-          </button>
+          <span className="icmp-sw">
+            <label className="stmt-switch">
+              <input type="checkbox" checked={showPct}
+                     onChange={(e) => setShowPct(e.target.checked)} />
+              <span className="stmt-track" aria-hidden="true" />
+              Vertical analysis
+            </label>
+            <HelpHint label="What vertical analysis is">Vertical analysis reads each line against a base figure in the same period: on the income statement, as a share of revenue; on the balance sheet, as a share of total assets. It shows how the business is made up — for example, that cost of sales takes 97% of every kyat sold.</HelpHint>
+          </span>
+          {exportDoc ? <StatementExportButton doc={exportDoc} /> : (
+            <button type="button" className="erp-hbtn noprint" onClick={exportCsv}>
+              <Download size={15} aria-hidden="true" /> Export
+            </button>
+          )}
           <Link href={printHref} className="erp-hbtn noprint">
             <Printer size={15} aria-hidden="true" /> Print
           </Link>

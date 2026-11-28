@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { HelpHint } from "./help-hint";
+import { StatementExportButton } from "./statement-export";
+import type { StatementDoc } from "@/lib/statement-doc";
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import type { CompareRow } from "@/lib/statement-compare";
 
@@ -37,7 +40,7 @@ function Change({ now, before, better }: { now: number; before: number; better: 
  * it does not on a balance sheet, where columns are balances, not flows.
  */
 export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", pctTitle = "each figure as a share of that period's revenue",
-  showTotal = true, codes: hasCodes = true, first = "Account", drillBase, open }: {
+  showTotal = true, codes: hasCodes = true, first = "Account", drillBase, open, exportDoc }: {
   periods: { key: string; label: string; from?: string; to?: string }[];
   rows: CompareRow[];
   currency: string;
@@ -52,6 +55,8 @@ export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", p
   drillBase?: string;
   /** The line and period whose panel is open, to mark them. */
   open?: { line: string; pf?: string };
+  /** The statement as a document, for the Export button. */
+  exportDoc?: StatementDoc;
 }) {
   // A line's name opens it for the whole range; a figure, for that period alone.
   const drillHref = (line: string, p?: { from?: string; to?: string }) => {
@@ -104,16 +109,23 @@ export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", p
             </label>
           )}
           {pctBase && (
-            <label className="stmt-switch" title={`Vertical analysis: ${pctTitle}`}>
-              <input type="checkbox" checked={pcts} onChange={(e) => keep("icmp-pcts", setPcts)(e.target.checked)} />
-              <span className="stmt-track" aria-hidden="true" />Percentages
-            </label>
+            <span className="icmp-sw">
+              <label className="stmt-switch">
+                <input type="checkbox" checked={pcts} onChange={(e) => keep("icmp-pcts", setPcts)(e.target.checked)} />
+                <span className="stmt-track" aria-hidden="true" />Vertical analysis
+              </label>
+              <HelpHint label="What vertical analysis is">Vertical analysis reads each line against a base figure in the same period: on the income statement, as a share of revenue; on the balance sheet, as a share of total assets. It shows how the business is made up — for example, that cost of sales takes 97% of every kyat sold. Here: {pctTitle}.</HelpHint>
+            </span>
           )}
-          <label className="stmt-switch" title="Horizontal analysis: each period against the one before, green when the move is a good one">
-            <input type="checkbox" checked={change} onChange={(e) => keep("icmp-change", setChange)(e.target.checked)} />
-            <span className="stmt-track" aria-hidden="true" />Change
-          </label>
+          <span className="icmp-sw">
+            <label className="stmt-switch">
+              <input type="checkbox" checked={change} onChange={(e) => keep("icmp-change", setChange)(e.target.checked)} />
+              <span className="stmt-track" aria-hidden="true" />Horizontal analysis
+            </label>
+            <HelpHint label="What horizontal analysis is">Horizontal analysis reads each line against the period before it: the arrow shows how much it rose or fell. Green means the move is good — sales, profit or cash up, costs or debts down; red means it is not.</HelpHint>
+          </span>
           <span className="page-sub">{currency}</span>
+          {exportDoc && <StatementExportButton doc={exportDoc} />}
         </div>
       </div>
       <div className="icmp-wrap">

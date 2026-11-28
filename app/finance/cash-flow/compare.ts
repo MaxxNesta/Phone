@@ -1,5 +1,5 @@
 import { getCashFlowByPeriod } from "@/lib/queries";
-import { getIndirectCashFlow, type IndirectLine } from "@/lib/indirect-cash-flow";
+import { getIndirectCashFlow, type IndirectLine, type IndirectStatement } from "@/lib/indirect-cash-flow";
 import { periodsOf, type CompareRow, type Grain, type Period } from "@/lib/statement-compare";
 import { SECTIONS } from "./data";
 
@@ -42,9 +42,9 @@ export async function getDirectCompare(companyId: string, range: { from: string;
   let bal = Number(cash.find((c) => c.period === "open")?.balance ?? 0);
   const begin: number[] = [], end: number[] = [];
   for (const p of periods) { begin.push(bal); bal += Number(cash.find((c) => c.period === p.key)?.balance ?? 0); end.push(bal); }
-  out.push(line("s:change", "subtotal", "Net change in cash", change, sum(change), true));
+  out.push(line("s:change", "subtotal", "Net change in cash", change, sum(change)));
   out.push(line("s:begin", "total", "Cash at beginning of period", begin, begin[0] ?? 0));
-  out.push(line("s:end", "subtotal", "Cash at end of period", end, end[end.length - 1] ?? 0));
+  out.push(line("s:end", "subtotal", "Cash at end of period", end, end[end.length - 1] ?? 0, true));
   return {
     periods, rows: out,
     chart: periods.map((p, i) => ({ label: p.label, operating: net.operating[i], investing: net.investing[i], financing: net.financing[i] })),
@@ -64,6 +64,16 @@ export async function getIndirectCompare(companyId: string, range: { from: strin
     getIndirectCashFlow(companyId, range.from, range.to, branchId),
     ...periods.map((p) => getIndirectCashFlow(companyId, p.from, p.to, branchId)),
   ]);
+  const out = indirectRows(whole, cols);
+  return {
+    periods, rows: out,
+    chart: periods.map((p, i) => ({ label: p.label, operating: cols[i].netOperating, investing: cols[i].netInvesting, financing: cols[i].netFinancing })),
+    totals: { netChange: whole.netChange, beginning: whole.beginningCash, ending: whole.endingCash },
+  };
+}
+
+/** The indirect statement's lines as the comparison's rows: a column per statement in `cols`, `whole` for order and Total. */
+export function indirectRows(whole: IndirectStatement, cols: IndirectStatement[]): CompareRow[] {
   const out: CompareRow[] = [];
   const parts = [["operating", "Operating activities", "netOperating", "Net cash from operating activities"],
                  ["investing", "Investing activities", "netInvesting", "Net cash from investing activities"],
@@ -82,12 +92,27 @@ export async function getIndirectCompare(companyId: string, range: { from: strin
     }
     out.push(line(`t:${k}`, "total", netLabel, cols.map((c) => c[netKey]), whole[netKey]));
   }
-  out.push(line("s:change", "subtotal", "Net change in cash", cols.map((c) => c.netChange), whole.netChange, true));
+  out.push(line("s:change", "subtotal", "Net change in cash", cols.map((c) => c.netChange), whole.netChange));
   out.push(line("s:begin", "total", "Cash at beginning of period", cols.map((c) => c.beginningCash), whole.beginningCash));
-  out.push(line("s:end", "subtotal", "Cash at end of period", cols.map((c) => c.endingCash), whole.endingCash));
-  return {
-    periods, rows: out,
-    chart: periods.map((p, i) => ({ label: p.label, operating: cols[i].netOperating, investing: cols[i].netInvesting, financing: cols[i].netFinancing })),
-    totals: { netChange: whole.netChange, beginning: whole.beginningCash, ending: whole.endingCash },
-  };
+  out.push(line("s:end", "subtotal", "Cash at end of period", cols.map((c) => c.endingCash), whole.endingCash, true));
+  return out;
+}
+
+/** The direct statement for one range as rows of one column, for its export. */
+export function directRowsOf(typed: { category: string; section: string; amount: string | number }[], beginning: number, ending: number): CompareRow[] {
+  const out: CompareRow[] = [];
+  let change = 0;
+  for (const sec of SECTIONS) {
+    const mine = typed.filter((r) => r.section === sec.key);
+    if (!mine.length) continue;
+    out.push(line(`h:${sec.key}`, "section", sec.label, [], 0));
+    let t = 0;
+    for (const r of mine) { const v = Number(r.amount); t += v; out.push({ ...line(`c:${sec.key}:${r.category}`, "account", r.category, [v], v), drill: r.category }); }
+    change += t;
+    out.push(line(`t:${sec.key}`, "total", `Net ${sec.label.toLowerCase()}`, [t], t));
+  }
+  out.push(line("s:change", "subtotal", "Net change in cash", [change], change));
+  out.push(line("s:begin", "total", "Cash at beginning of period", [beginning], beginning));
+  out.push(line("s:end", "subtotal", "Cash at end of period", [ending], ending, true));
+  return out;
 }
