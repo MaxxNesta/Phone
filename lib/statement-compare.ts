@@ -27,6 +27,8 @@ export type CompareRow = {
   /** +1 when a rise is good (sales, profit, assets, cash in), −1 when it is bad (costs, debts, cash out). */
   better: 1 | -1;
   strong?: boolean;
+  /** The statement line it opens beside the table (the cash flow's ?line=), when it has one. */
+  drill?: string;
   values: number[];
   total: number;
 };

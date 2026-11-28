@@ -58,7 +58,7 @@ export async function CashFlowPanel({ companyId, range, branchId, sp, lineTotal 
     for (const [k, v] of Object.entries(merged)) if (v) qs.set(k, v);
     return `/finance/cash-flow?${qs.toString()}`;
   };
-  const closeHref = href({ line: undefined, tab: undefined, q: undefined, lp: undefined, doc: undefined });
+  const closeHref = href({ line: undefined, tab: undefined, q: undefined, lp: undefined, doc: undefined, pf: undefined, pt: undefined });
   const exportHref = `/finance/cash-flow/export?${new URLSearchParams(
     Object.entries({ from: range.from, to: range.to, branch: branchId ?? "", line: category })
       .filter(([, v]) => v)).toString()}`;

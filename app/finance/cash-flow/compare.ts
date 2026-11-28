@@ -32,7 +32,7 @@ export async function getDirectCompare(companyId: string, range: { from: string;
       const vals = periods.map(() => 0);
       for (const r of mine.filter((x) => x.category === c)) { const i = at.get(r.period); if (i !== undefined) vals[i] += Number(r.amount); }
       vals.forEach((v, i) => { totals[i] += v; });
-      out.push(line(`c:${sec.key}:${c}`, "account", c, vals, sum(vals)));
+      out.push({ ...line(`c:${sec.key}:${c}`, "account", c, vals, sum(vals)), drill: c });
     }
     net[sec.key] = totals;
     if (cats.length) out.push(line(`t:${sec.key}`, "total", `Net ${sec.label.toLowerCase()}`, totals, sum(totals)));
@@ -77,6 +77,7 @@ export async function getIndirectCompare(companyId: string, range: { from: strin
       const vals = cols.map((c) => c[k].find((x) => x.key === l.key)?.amount ?? 0);
       const r = line(`l:${k}:${l.key}`, l.bold ? "total" : "account", l.label, vals, whole[k].find((x) => x.key === l.key)?.amount ?? 0);
       if (!l.bold) r.depth = l.indent ? 2 : 1;
+      if (l.drill) r.drill = l.key;
       out.push(r);
     }
     out.push(line(`t:${k}`, "total", netLabel, cols.map((c) => c[netKey]), whole[netKey]));

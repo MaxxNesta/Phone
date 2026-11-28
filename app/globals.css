@@ -12521,3 +12521,10 @@ html:has(.ie3) body, .main:has(.ie3) { background: var(--u-bg); }
 .icmp-kpi strong.neg { color: var(--bad); }
 .icmp-kpi small { color: var(--muted); }
 @media (max-width: 720px) { .icmp-kpis { grid-template-columns: 1fr; } .icmp .icmp-first { min-width: 11rem; } }
+/* A cash flow line opens its panel from the comparison: the name for the range, a figure for its period. */
+.icmp-drill { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
+.icmp-drill:hover, .icmp-drill.on { color: var(--link); }
+.icmp-drill svg { flex: none; color: var(--muted); }
+a.icmp-cell { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--line); }
+a.icmp-cell:hover { color: var(--link); border-bottom-color: var(--link); }
+.icmp tbody tr > td.icmp-open { background: color-mix(in srgb, var(--link) 12%, var(--surface)) !important; }

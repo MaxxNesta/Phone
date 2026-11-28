@@ -95,7 +95,7 @@ export async function IndirectPanel({ companyId, range, branchId, sp }: {
   const rows = q ? d.rows.filter((r) => [r.docNo, r.entryNo, r.partner, r.description, r.account]
     .some((v) => v?.toLowerCase().includes(q))) : d.rows;
   const pg = paginate(rows, sp.lp, 10);
-  const closeHref = qs(sp, { line: undefined, lp: undefined, q: undefined });
+  const closeHref = qs(sp, { line: undefined, lp: undefined, q: undefined, pf: undefined, pt: undefined });
   const exportHref = `/finance/cash-flow/export?${new URLSearchParams(Object.entries({
     method: "indirect", from: range.from, to: range.to, branch: branchId ?? "", line: key,
   }).filter(([, v]) => v)).toString()}`;

@@ -33,6 +33,11 @@ export default async function CashFlow({
     ? await (indirect ? getIndirectCompare : getDirectCompare)(company.id, range, grain, branchId)
     : null;
   const ind = indirect && !compare ? await getIndirectCashFlow(company.id, range.from, range.to, branchId) : null;
+  // The period a comparison figure opened its panel for; the whole range otherwise.
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  const pf = (sp as { pf?: string }).pf, pt = (sp as { pt?: string }).pt;
+  const panelRange = compare && pf && pt && day.test(pf) && day.test(pt) && pf >= range.from && pt <= range.to && pf <= pt
+    ? { from: pf, to: pt } : range;
   // The switch keeps the period and branch, and drops the open drawer: a
   // direct line and an indirect line are different questions.
   const methodHref = (m: string | null) => {
@@ -137,7 +142,23 @@ export default async function CashFlow({
               <GroupedBars data={cmp.chart} series={[{ key: "operating", label: "Operating" }, { key: "investing", label: "Investing" }, { key: "financing", label: "Financing" }]} />
             </div>
           </section>
-          <CompareTable periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} pctBase={null} codes={false} first="Activity" />
+          {/* A line opens its panel as on the statement: from its name for the
+              whole range, from a figure for that period alone (pf/pt). */}
+          <div className={sp.line ? "cf-split" : undefined}>
+            <section>
+              <CompareTable periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} pctBase={null} codes={false} first="Activity"
+                drillBase={methodHref(indirect ? "indirect" : null)} open={sp.line ? { line: sp.line, pf: panelRange.from !== range.from || panelRange.to !== range.to ? panelRange.from : undefined } : undefined} />
+            </section>
+            {sp.line && indirect && (
+              <IndirectPanel companyId={company.id} range={panelRange} branchId={branchId} sp={sp as Record<string, string | undefined>} />
+            )}
+            {sp.line && !indirect && (() => {
+              const row = cmp.rows.find((r) => r.drill === sp.line);
+              const i = cmp.periods.findIndex((p) => p.from === panelRange.from && p.to === panelRange.to);
+              return <CashFlowPanel companyId={company.id} range={panelRange} branchId={branchId} sp={sp as Record<string, string | undefined>}
+                lineTotal={row ? (i >= 0 ? row.values[i] : row.total) : 0} />;
+            })()}
+          </div>
         </>
       ) : (
       <div className={sp.line ? "cf-split" : undefined}>

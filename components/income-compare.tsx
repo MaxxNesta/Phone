@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import type { CompareRow } from "@/lib/statement-compare";
 
@@ -36,8 +37,8 @@ function Change({ now, before, better }: { now: number; before: number; better: 
  * it does not on a balance sheet, where columns are balances, not flows.
  */
 export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", pctTitle = "each figure as a share of that period's revenue",
-  showTotal = true, codes: hasCodes = true, first = "Account" }: {
-  periods: { key: string; label: string }[];
+  showTotal = true, codes: hasCodes = true, first = "Account", drillBase, open }: {
+  periods: { key: string; label: string; from?: string; to?: string }[];
   rows: CompareRow[];
   currency: string;
   /** The row Percentages divides by; null hides the switch. */
@@ -47,7 +48,19 @@ export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", p
   /** Whether the rows are accounts with codes to show. */
   codes?: boolean;
   first?: string;
+  /** The page's own address (period, branch, method, layout): a row with a drill key opens its panel from it. */
+  drillBase?: string;
+  /** The line and period whose panel is open, to mark them. */
+  open?: { line: string; pf?: string };
 }) {
+  // A line's name opens it for the whole range; a figure, for that period alone.
+  const drillHref = (line: string, p?: { from?: string; to?: string }) => {
+    const q = new URLSearchParams(drillBase?.split("?")[1] ?? "");
+    for (const k of ["line", "pf", "pt", "lp", "q", "tab", "doc"]) q.delete(k);
+    q.set("line", line);
+    if (p?.from && p?.to) { q.set("pf", p.from); q.set("pt", p.to); }
+    return `${drillBase?.split("?")[0] ?? ""}?${q}`;
+  };
   const [shut, setShut] = useState<Set<string>>(new Set());
   // The same switches as the standard statement, plus Change. Percentages is
   // the vertical analysis (each figure against its period's revenue), Change
@@ -128,12 +141,16 @@ export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", p
                         {codes && r.code && <span className="icmp-code">{r.code}</span>}{r.label}
                       </button>
                     ) : (
-                      <>{codes && r.code && <span className="icmp-code">{r.code}</span>}{r.label}</>
+                      r.drill && drillBase
+                        ? <Link href={drillHref(r.drill)} scroll={false} className={`icmp-drill${open?.line === r.drill && !open.pf ? " on" : ""}`}>{r.label}<ChevronRight size={14} aria-hidden="true" /></Link>
+                        : <>{codes && r.code && <span className="icmp-code">{r.code}</span>}{r.label}</>
                     )}
                   </td>
                   {r.values.map((v, i) => (
-                    <td key={i} className={`r${v < 0 ? " neg" : ""}`}>
-                      <span className="icmp-num">{fmt(v)}</span>
+                    <td key={i} className={`r${v < 0 ? " neg" : ""}${r.drill && open?.line === r.drill && open.pf === periods[i]?.from ? " icmp-open" : ""}`}>
+                      {r.drill && drillBase && Math.abs(v) >= 0.005
+                        ? <Link href={drillHref(r.drill, periods[i])} scroll={false} className="icmp-num icmp-cell">{fmt(v)}</Link>
+                        : <span className="icmp-num">{fmt(v)}</span>}
                       {pcts && pctOf(v, revenue?.values[i]) && <span className="icmp-pct">{pctOf(v, revenue?.values[i])}</span>}
                       {change && i > 0 && live[i] && live[i - 1] && <Change now={v} before={r.values[i - 1]} better={r.better} />}
                     </td>
