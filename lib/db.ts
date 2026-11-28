@@ -28,6 +28,25 @@ function connect() {
     prepare: !isPooled,
     onnotice: () => {},
     transform: { undefined: null },
+    types: {
+      // postgres.js turns every value bound to a date or timestamp into
+      // new Date(x).toISOString(), which throws on a date like "ZAP" from a
+      // link. Thrown there, mid-way through the server's replies, it drops the
+      // rest of them and the connection reads every later answer as the wrong
+      // query's (found by the ZAP scan, 2026-11-28: other pages got another
+      // query's rows, then the pool hung). An invalid date goes to Postgres as
+      // typed instead, which refuses it with an ordinary error. Parsing is the
+      // library's own.
+      date: {
+        to: 1184,
+        from: [1082, 1114, 1184],
+        serialize: (x: unknown) => {
+          const d = x instanceof Date ? x : new Date(x as string);
+          return Number.isNaN(d.getTime()) ? String(x) : d.toISOString();
+        },
+        parse: (x: string) => new Date(x),
+      },
+    },
   });
 }
 
