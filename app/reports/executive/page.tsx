@@ -1,3 +1,5 @@
+import { ExecMarkets } from "@/components/exec-markets";
+import { getMarkets } from "@/lib/markets";
 import Link from "next/link";
 import { IBM_Plex_Sans } from "next/font/google";
 import { getCompany, getHealth } from "@/lib/queries";
@@ -31,7 +33,7 @@ function change(now: number, before: number) {
   return { c, text: `${c >= 0 ? "▲" : "▼"} ${Math.abs(c).toFixed(1)}%` };
 }
 
-const TABS = [["overview", "Overview"], ["profit", "Profit"], ["cash", "Working capital"], ["branches", "Branches"], ["ratios", "Ratios"]] as const;
+const TABS = [["overview", "Overview"], ["profit", "Profit"], ["cash", "Working capital"], ["branches", "Branches"], ["ratios", "Ratios"], ["markets", "Markets"]] as const;
 type Tab = (typeof TABS)[number][0];
 const SPANS = [["1m", "1M"], ["3m", "3M"], ["6m", "6M"], ["12m", "12M"]] as const;
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -330,6 +332,12 @@ export default async function Executive({ searchParams }: { searchParams: Promis
           </div>
         </>
         ) },
+        { id: "markets", label: "Markets", content: (
+          /* Where the money came from, on a map: streamed in like the ratios. */
+          <Suspense fallback={<p className="xd-quiet rx-wait">Drawing the map…</p>}>
+            <MarketsPane co={company.id} from={period.from} to={period.to} label={period.label} />
+          </Suspense>
+        ) },
         { id: "ratios", label: "Ratios", content: (
           /* The ratios read the whole ledger once (balances need every line
              since the start), so they stream in after the rest of the page
@@ -341,6 +349,10 @@ export default async function Executive({ searchParams }: { searchParams: Promis
       ]}
     />,
   );
+}
+
+async function MarketsPane({ co, from, to, label }: { co: string; from: string; to: string; label: string }) {
+  return <ExecMarkets data={await getMarkets(co, from, to)} period={label} />;
 }
 
 async function RatiosPane({ co, from, to, phrase, fullReport }: { co: string; from: string; to: string; phrase: string; fullReport: boolean }) {
