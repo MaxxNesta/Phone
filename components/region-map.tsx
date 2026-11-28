@@ -165,7 +165,7 @@ export function RegionMap({ rows, towns = [], currency }: { rows: Row[]; towns?:
             <div className="rmap-ends"><span>None</span><span>Most · {max > 0 ? money(String(Math.round(max))) : "—"}</span></div>
           </div>
           {offMap.length > 0 && <p className="rmap-note">Not placed on the map: {offMap.map((r) => r.name).join(", ")}.</p>}
-          <p className="rmap-note">Dots are cities of several townships. Townships: geoBoundaries (CC BY 4.0).</p>
+          <p className="rmap-note">Dots are cities of several townships. Townships: MIMU (CC BY-IGO).</p>
         </div>
       </div>
     );
