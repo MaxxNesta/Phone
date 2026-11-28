@@ -46,18 +46,42 @@ export async function getBalanceSheetData({ asOf: asOfParam, branch }: Params) {
   }>;
 
   const chart = (await getAccountTree(company.id)) as unknown as ChartRow[];
-  const amounts = new Map(typed.map((r) => [r.id, Number(r.amount)]));
+  const clearingIds = new Set((await sql`
+    select account_id from system_account
+     where company_id = ${company.id} and role in ('GRIR_CLEARING', 'LANDED_COST_CLEARING', 'SHIPPED_NOT_INVOICED')`)
+    .map((r) => r.account_id as string));
+  const { summaries, sections, subtotals, assets, liabilities, equity, balanced } =
+    shapeBalance(chart, typed, netIncome, clearingIds);
 
+  return {
+    company, branches, unassignedLines, branchId, branchName, asOf,
+    assets, liabilities, equity, balanced,
+    summaries, sections, subtotals,
+    scope: `${branchName} · as of ${asOf} · ${
+      balanced ? "Balanced" : `Out by ${money(assets - (liabilities + equity))}`}`,
+  };
+}
+
+/**
+ * Account balances into the balance sheet's sections, subtotals and headline
+ * figures. One function for the dated statement and for every column of the
+ * comparison (2026-11-28), so a month-end in the comparison is the balance
+ * sheet at that date — never a second calculation of it.
+ */
+export function shapeBalance(
+  chart: ChartRow[],
+  typed: Array<{ id: string; code: string; name: string; account_type: string; amount: string | number }>,
+  netIncome: number,
+  clearingIds: Set<string>,
+) {
+  const amounts = new Map(typed.map((r) => [r.id, Number(r.amount)]));
   /* The clearing accounts are where a step waits for its other half: goods
      in before the bill (GR/IR), a landed cost spread before its bill, goods
      out before the invoice. They sit in the chart under current assets, but
      a credit balance there is something owed, an accrual, and reads as a
      negative asset. Presented by their balance instead: a credit balance
      under liabilities, a debit balance where it is. Nothing is reposted. */
-  const clearingIds = new Set((await sql`
-    select account_id from system_account
-     where company_id = ${company.id} and role in ('GRIR_CLEARING', 'LANDED_COST_CLEARING', 'SHIPPED_NOT_INVOICED')`)
-    .map((r) => r.account_id as string));
+
   const owing = typed.filter((r) => clearingIds.has(r.id) && r.account_type === "ASSET" && Number(r.amount) < -0.00005);
   for (const r of owing) amounts.delete(r.id);
 
@@ -132,11 +156,5 @@ export async function getBalanceSheetData({ asOf: asOfParam, branch }: Params) {
       value: liabilities + equity, strong: true },
   ];
 
-  return {
-    company, branches, unassignedLines, branchId, branchName, asOf,
-    assets, liabilities, equity, balanced,
-    summaries, sections, subtotals,
-    scope: `${branchName} · as of ${asOf} · ${
-      balanced ? "Balanced" : `Out by ${money(assets - (liabilities + equity))}`}`,
-  };
+  return { summaries, sections, subtotals, assets, liabilities, equity, balanced };
 }

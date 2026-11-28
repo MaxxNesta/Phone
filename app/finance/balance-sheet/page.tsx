@@ -3,23 +3,32 @@ import { AutoApply } from "@/components/auto-apply";
 import { UNASSIGNED_BRANCH } from "@/lib/queries";
 import { StatementTable } from "@/components/statement-table";
 import { ClassicStatement } from "@/components/classic-statement";
+import { CompareTable } from "@/components/income-compare";
+import { GroupedBars } from "@/components/charts";
+import { GRAINS, asGrain } from "@/lib/statement-compare";
+import { getBalanceCompare } from "./compare";
 import { HelpHint } from "@/components/help-hint";
 import { getBalanceSheetData, type Params } from "./data";
 
 export default async function BalanceSheet({
   searchParams,
 }: {
-  searchParams: Promise<Params & { layout?: string }>;
+  searchParams: Promise<Params & { layout?: string; grain?: string; from?: string }>;
 }) {
   const sp = await searchParams;
   // Classic (2026-11-28): the legacy books' layout, as on the income statement.
   const classic = sp.layout === "classic";
+  // Compare (2026-11-28): the balance sheet at the end of each month, quarter or year.
+  const compare = sp.layout === "compare";
+  const grain = asGrain(sp.grain);
   const data = await getBalanceSheetData(sp);
   if (!data) return <div className="empty">No company found.</div>;
   const {
     company, branches, unassignedLines, branchId, asOf,
     summaries, sections, subtotals, scope,
   } = data;
+  const from = sp.from && /^\d{4}-\d{2}-\d{2}$/.test(sp.from) ? sp.from : `${asOf.slice(0, 4)}-01-01`;
+  const cmp = compare ? await getBalanceCompare(company.id, { from, to: asOf }, grain, branchId) : null;
 
   return (
     <>
@@ -47,12 +56,25 @@ export default async function BalanceSheet({
           </label>
           )}
           <label className="stmt-ctl" htmlFor="layout"><span>Layout</span>
-            <select id="layout" name="layout" defaultValue={classic ? "classic" : ""}>
+            <select id="layout" name="layout" defaultValue={compare ? "compare" : classic ? "classic" : ""}>
               <option value="">Standard</option>
               <option value="classic">Classic</option>
+              <option value="compare">Compare periods</option>
             </select>
           </label>
-          <label className="stmt-ctl" htmlFor="asOf"><span>As of</span>
+          {compare && (
+            <>
+              <label className="stmt-ctl" htmlFor="grain"><span>Period</span>
+                <select id="grain" name="grain" defaultValue={grain}>
+                  {Object.entries(GRAINS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </label>
+              <label className="stmt-ctl" htmlFor="from"><span>From</span>
+                <input id="from" name="from" type="date" defaultValue={from} />
+              </label>
+            </>
+          )}
+          <label className="stmt-ctl" htmlFor="asOf"><span>{compare ? "To" : "As of"}</span>
             <input id="asOf" name="asOf" type="date" defaultValue={asOf} />
           </label>
           <div className="stmt-bar-actions">
@@ -72,7 +94,23 @@ export default async function BalanceSheet({
         </p>
       )}
 
-      {classic ? (
+      {cmp ? (
+        <>
+          <div className="icmp-kpis">
+            <div className="card icmp-kpi"><span>Total assets</span><strong>{money(String(Math.round(cmp.latest.assets)))}</strong><small>as of {asOf}</small></div>
+            <div className="card icmp-kpi"><span>Total liabilities</span><strong>{money(String(Math.round(cmp.latest.liabilities)))}</strong><small>as of {asOf}</small></div>
+            <div className="card icmp-kpi"><span>Total equity</span><strong className={cmp.latest.equity < 0 ? "neg" : ""}>{money(String(Math.round(cmp.latest.equity)))}</strong><small>{cmp.latest.balanced ? "balanced" : "not balanced"}</small></div>
+          </div>
+          <section className="card" style={{ marginBottom: "var(--s3)" }}>
+            <div className="card-head"><h2>At each {grain === "month" ? "month" : grain === "quarter" ? "quarter" : "year"} end</h2><span className="page-sub">{scope}</span></div>
+            <div className="card-body">
+              <GroupedBars data={cmp.chart} series={[{ key: "assets", label: "Assets" }, { key: "liabilities", label: "Liabilities" }, { key: "equity", label: "Equity" }]} />
+            </div>
+          </section>
+          <CompareTable periods={cmp.periods} rows={cmp.rows} currency={company.base_currency}
+            pctBase="t:ASSET" pctTitle="each figure as a share of total assets at that date" showTotal={false} />
+        </>
+      ) : classic ? (
         <ClassicStatement sections={sections} subtotals={subtotals} scope={scope} basis="position"
           revenue={sections.find((x) => x.key === "ASSET")?.total ?? 0} baseLabel="% of total assets" />
       ) : (

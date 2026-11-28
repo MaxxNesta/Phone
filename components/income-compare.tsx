@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
-import type { CompareRow } from "@/app/finance/income-statement/compare";
+import type { CompareRow } from "@/lib/statement-compare";
 
 /**
  * The income statement by period, one column a month, quarter or year
@@ -29,10 +29,24 @@ function Change({ now, before, better }: { now: number; before: number; better: 
   );
 }
 
-export function IncomeCompare({ periods, rows, currency }: {
+/**
+ * One table for every statement's Compare view: the income statement, the
+ * balance sheet and both cash flow methods. Each says what Percentages
+ * measures against (a row's key), and whether a Total column makes sense —
+ * it does not on a balance sheet, where columns are balances, not flows.
+ */
+export function CompareTable({ periods, rows, currency, pctBase = "t:REVENUE", pctTitle = "each figure as a share of that period's revenue",
+  showTotal = true, codes: hasCodes = true, first = "Account" }: {
   periods: { key: string; label: string }[];
   rows: CompareRow[];
   currency: string;
+  /** The row Percentages divides by; null hides the switch. */
+  pctBase?: string | null;
+  pctTitle?: string;
+  showTotal?: boolean;
+  /** Whether the rows are accounts with codes to show. */
+  codes?: boolean;
+  first?: string;
 }) {
   const [shut, setShut] = useState<Set<string>>(new Set());
   // The same switches as the standard statement, plus Change. Percentages is
@@ -50,14 +64,14 @@ export function IncomeCompare({ periods, rows, currency }: {
     } catch {}
   }, []);
   const keep = (k: string, set: (b: boolean) => void) => (on: boolean) => { set(on); try { localStorage.setItem(k, on ? "1" : "0"); } catch {} };
-  const revenue = rows.find((r) => r.key === "t:REVENUE");
+  const revenue = pctBase ? rows.find((r) => r.key === pctBase) : undefined;
   const pctOf = (v: number, base: number | undefined) =>
     base && Math.abs(base) >= 0.005 && Math.abs(v) >= 0.005
       // A small share keeps its digits: −200,000 of 2.5 billion is −0.01%, not −0.0%.
       ? (() => { const p = (v / base) * 100; return `${p.toFixed(Math.abs(p) < 0.1 ? 2 : 1)}%`; })() : null;
   const groups = rows.filter((r) => r.kind === "group").map((r) => r.key);
   const visible = rows.filter((r) => !r.under.some((u) => shut.has(u)));
-  const cols = periods.length + 2;
+  const cols = periods.length + 1 + (showTotal ? 1 : 0);
   // A period with nothing posted yet (this month's future, a quiet month) is
   // not a 100% fall in everything: its changes are left out.
   const live = periods.map((_, i) => rows.some((r) => r.kind === "account" && Math.abs(r.values[i] ?? 0) >= 0.005));
@@ -70,15 +84,19 @@ export function IncomeCompare({ periods, rows, currency }: {
           <button type="button" className="erp-hbtn" onClick={() => setShut(new Set(groups))}>Collapse all</button>
         </div>
         <div className="icmp-switches">
-          <label className="stmt-switch">
-            <input type="checkbox" checked={codes} onChange={(e) => keep("icmp-codes", setCodes)(e.target.checked)} />
-            <span className="stmt-track" aria-hidden="true" />Account codes
-          </label>
-          <label className="stmt-switch" title="Vertical analysis: each figure as a share of that period's revenue">
-            <input type="checkbox" checked={pcts} onChange={(e) => keep("icmp-pcts", setPcts)(e.target.checked)} />
-            <span className="stmt-track" aria-hidden="true" />Percentages
-          </label>
-          <label className="stmt-switch" title="Horizontal analysis: each period against the one before, green when it helps profit">
+          {hasCodes && (
+            <label className="stmt-switch">
+              <input type="checkbox" checked={codes} onChange={(e) => keep("icmp-codes", setCodes)(e.target.checked)} />
+              <span className="stmt-track" aria-hidden="true" />Account codes
+            </label>
+          )}
+          {pctBase && (
+            <label className="stmt-switch" title={`Vertical analysis: ${pctTitle}`}>
+              <input type="checkbox" checked={pcts} onChange={(e) => keep("icmp-pcts", setPcts)(e.target.checked)} />
+              <span className="stmt-track" aria-hidden="true" />Percentages
+            </label>
+          )}
+          <label className="stmt-switch" title="Horizontal analysis: each period against the one before, green when the move is a good one">
             <input type="checkbox" checked={change} onChange={(e) => keep("icmp-change", setChange)(e.target.checked)} />
             <span className="stmt-track" aria-hidden="true" />Change
           </label>
@@ -89,9 +107,9 @@ export function IncomeCompare({ periods, rows, currency }: {
         <table className="icmp">
           <thead>
             <tr>
-              <th className="icmp-first">Account</th>
+              <th className="icmp-first">{first}</th>
               {periods.map((p) => <th key={p.key} className="r">{p.label}</th>)}
-              <th className="r icmp-totcol">Total</th>
+              {showTotal && <th className="r icmp-totcol">Total</th>}
             </tr>
           </thead>
           <tbody>
@@ -120,10 +138,10 @@ export function IncomeCompare({ periods, rows, currency }: {
                       {change && i > 0 && live[i] && live[i - 1] && <Change now={v} before={r.values[i - 1]} better={r.better} />}
                     </td>
                   ))}
-                  <td className={`r icmp-totcol${r.total < 0 ? " neg" : ""}`}>
+                  {showTotal && <td className={`r icmp-totcol${r.total < 0 ? " neg" : ""}`}>
                     <span className="icmp-num">{fmt(r.total)}</span>
                     {pcts && pctOf(r.total, revenue?.total) && <span className="icmp-pct">{pctOf(r.total, revenue?.total)}</span>}
-                  </td>
+                  </td>}
                 </tr>
               );
             })}
@@ -133,3 +151,6 @@ export function IncomeCompare({ periods, rows, currency }: {
     </section>
   );
 }
+
+/** The income statement's comparison, as it was first built. */
+export const IncomeCompare = CompareTable;

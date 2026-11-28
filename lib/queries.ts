@@ -4888,6 +4888,31 @@ export async function getReorderPoints(companyId: string) {
  * is folded in as a "Retained earnings" line — without it Assets would not
  * equal Liabilities + Equity.
  */
+/**
+ * Every account's balance before `from` and its movement in each period to
+ * `to` (2026-11-28), raw debit-positive, for the balance sheet's comparison:
+ * the column for a period is the opening plus every movement up to it. One
+ * read whatever the number of columns. Revenue and expense come too — their
+ * running net is the unclosed earnings each column folds into equity.
+ */
+export async function getBalanceSheetByPeriod(
+  companyId: string, from: string, to: string, grain: "month" | "quarter" | "year", branchId?: string | null
+) {
+  return sql`
+    select a.id, a.code, a.name, a.account_type,
+           case when je.entry_date < ${from}::date then 'open'
+                else to_char(date_trunc(${grain}, je.entry_date), 'YYYY-MM-DD') end as period,
+           sum(jl.base_amount) as raw
+      from journal_line jl
+      join journal_entry je on je.id = jl.journal_entry_id
+      join account a on a.id = jl.account_id
+     where jl.company_id = ${companyId}
+       and je.entry_date <= ${to}::date
+       ${branchFilter(branchId)}
+     group by a.id, a.code, a.name, a.account_type, 5
+    having sum(jl.base_amount) <> 0` as unknown as Promise<{ id: string; code: string; name: string; account_type: string; period: string; raw: string }[]>;
+}
+
 export async function getBalanceSheet(companyId: string, asOf: string, branchId?: string | null) {
   const [rows, netIncomeRows] = await Promise.all([
     sql`
@@ -5032,6 +5057,39 @@ export async function getCashFlowStatement(
     rows,
     beginningCash: Number(beginning[0]?.balance ?? 0),
     endingCash: Number(ending[0]?.balance ?? 0),
+  };
+}
+
+/**
+ * The direct cash flow statement by month, quarter or year (2026-11-28): the
+ * statement's own pieces, each in the period it fell in, and the cash and
+ * bank balance before the range with its movement each period — so every
+ * column has its beginning and ending cash. Two reads whatever the columns.
+ */
+export async function getCashFlowByPeriod(
+  companyId: string, from: string, to: string, grain: "month" | "quarter" | "year", branchId?: string | null
+) {
+  const [rows, cash] = await Promise.all([
+    sql`
+      select category, section, to_char(date_trunc(${grain}, p.entry_date), 'YYYY-MM-DD') as period, sum(amount) as amount
+        from (${cashFlowPieces(companyId, from, to, branchId)}) p
+       group by 1, 2, 3`,
+    sql`
+      select case when je.entry_date < ${from}::date then 'open'
+                  else to_char(date_trunc(${grain}, je.entry_date), 'YYYY-MM-DD') end as period,
+             coalesce(sum(jl.base_amount), 0) as balance
+        from journal_line jl
+        join journal_entry je on je.id = jl.journal_entry_id
+        join account a on a.id = jl.account_id
+       where jl.company_id = ${companyId}
+         and (a.is_cash_account or a.is_bank_account)
+         and je.entry_date <= ${to}::date
+         ${branchFilter(branchId)}
+       group by 1`,
+  ]);
+  return {
+    rows: rows as unknown as { category: string; section: string; period: string; amount: string }[],
+    cash: cash as unknown as { period: string; balance: string }[],
   };
 }
 

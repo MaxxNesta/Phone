@@ -8,6 +8,10 @@ import { getCashFlowData, SECTIONS, type Params } from "./data";
 import { CashFlowPanel } from "./panel";
 import { IndirectStatementView, IndirectPanel } from "./indirect";
 import { getIndirectCashFlow } from "@/lib/indirect-cash-flow";
+import { getDirectCompare, getIndirectCompare } from "./compare";
+import { CompareTable } from "@/components/income-compare";
+import { GroupedBars } from "@/components/charts";
+import { GRAINS, asGrain } from "@/lib/statement-compare";
 
 export default async function CashFlow({
   searchParams,
@@ -22,12 +26,19 @@ export default async function CashFlow({
     beginningCash, endingCash, netChange, difference, unreconciled,
   } = data;
   const indirect = sp.method === "indirect";
-  const ind = indirect ? await getIndirectCashFlow(company.id, range.from, range.to, branchId) : null;
+  // Compare (2026-11-28): the statement a column a month, quarter or year, either method.
+  const compare = (sp as { layout?: string }).layout === "compare";
+  const grain = asGrain((sp as { grain?: string }).grain);
+  const cmp = compare
+    ? await (indirect ? getIndirectCompare : getDirectCompare)(company.id, range, grain, branchId)
+    : null;
+  const ind = indirect && !compare ? await getIndirectCashFlow(company.id, range.from, range.to, branchId) : null;
   // The switch keeps the period and branch, and drops the open drawer: a
   // direct line and an indirect line are different questions.
   const methodHref = (m: string | null) => {
     const q = new URLSearchParams();
-    for (const [k, v] of Object.entries({ from: range.from, to: range.to, branch: branchId ?? "", method: m ?? "" })) if (v) q.set(k, v);
+    for (const [k, v] of Object.entries({ from: range.from, to: range.to, branch: branchId ?? "", method: m ?? "",
+      layout: compare ? "compare" : "", grain: compare ? grain : "" })) if (v) q.set(k, v);
     return `/finance/cash-flow${q.toString() ? `?${q}` : ""}`;
   };
 
@@ -44,6 +55,19 @@ export default async function CashFlow({
             statement starts right under its name. */}
         <form className="stmt-bar">
           {indirect && <input type="hidden" name="method" value="indirect" />}
+          <label className="stmt-ctl" htmlFor="layout"><span>Layout</span>
+            <select id="layout" name="layout" defaultValue={compare ? "compare" : ""}>
+              <option value="">Standard</option>
+              <option value="compare">Compare periods</option>
+            </select>
+          </label>
+          {compare && (
+            <label className="stmt-ctl" htmlFor="grain"><span>Period</span>
+              <select id="grain" name="grain" defaultValue={grain}>
+                {Object.entries(GRAINS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </label>
+          )}
           <label className="stmt-ctl" htmlFor="from"><span>From</span>
             <input id="from" name="from" type="date" defaultValue={range.from} />
           </label>
@@ -100,6 +124,22 @@ export default async function CashFlow({
         </p>
       )}
 
+      {cmp ? (
+        <>
+          <div className="icmp-kpis">
+            <div className="card icmp-kpi"><span>Net change in cash</span><strong className={cmp.totals.netChange < 0 ? "neg" : ""}>{money(String(Math.round(cmp.totals.netChange)))}</strong><small>{range.from} to {range.to}</small></div>
+            <div className="card icmp-kpi"><span>Cash at beginning</span><strong>{money(String(Math.round(cmp.totals.beginning)))}</strong><small>{range.from}</small></div>
+            <div className="card icmp-kpi"><span>Cash at end</span><strong className={cmp.totals.ending < 0 ? "neg" : ""}>{money(String(Math.round(cmp.totals.ending)))}</strong><small>{range.to}</small></div>
+          </div>
+          <section className="card" style={{ marginBottom: "var(--s3)" }}>
+            <div className="card-head"><h2>{GRAINS[grain]} cash flow</h2><span className="page-sub">{indirect ? "Indirect method" : "Direct method"}</span></div>
+            <div className="card-body">
+              <GroupedBars data={cmp.chart} series={[{ key: "operating", label: "Operating" }, { key: "investing", label: "Investing" }, { key: "financing", label: "Financing" }]} />
+            </div>
+          </section>
+          <CompareTable periods={cmp.periods} rows={cmp.rows} currency={company.base_currency} pctBase={null} codes={false} first="Activity" />
+        </>
+      ) : (
       <div className={sp.line ? "cf-split" : undefined}>
       <section>
         <div className="card">
@@ -186,6 +226,7 @@ export default async function CashFlow({
           lineTotal={typed.filter((r) => r.category === sp.line).reduce((s, r) => s + Number(r.amount), 0)} />
       )}
       </div>
+      )}
     </>
   );
 }
